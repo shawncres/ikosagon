@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
 import "./globals.css";
+import { FluidBackground } from "@/components/FluidBackground";
 import { Footer } from "@/components/Footer";
 import { Nav } from "@/components/Nav";
 
@@ -55,10 +56,13 @@ export default function RootLayout({
       lang="en"
       className={`${spaceGrotesk.variable} ${inter.variable} ${jetBrainsMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-background text-foreground">
-        <Nav />
-        <main className="flex-1">{children}</main>
-        <Footer />
+      <body className="relative min-h-full flex flex-col bg-background text-foreground">
+        <FluidBackground />
+        <div className="relative z-10 flex min-h-full flex-1 flex-col">
+          <Nav />
+          <main className="flex-1">{children}</main>
+          <Footer />
+        </div>
       </body>
     </html>
   );
