@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "About",
-  description: "About Ikosagon \u2014 software that upgrades existing processes for a post-AGI future.",
+  description: "About Ikosagon: software that upgrades existing processes for a post-AGI future.",
 };
 
 const skills = [
@@ -28,7 +28,7 @@ export default function AboutPage() {
       <h1 className="mb-4 font-[var(--font-space-grotesk)] text-4xl font-bold">About</h1>
       <p className="max-w-3xl text-zinc-300">
         I build software that upgrades how people already work: fast iteration, clear user experience,
-        and architecture that survives real usage \u2014 including AI-backed workflows.
+        and architecture that survives real usage, including AI-backed workflows.
       </p>
 
       <section className="mt-10">

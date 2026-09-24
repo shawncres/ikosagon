@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Contact",
-  description: "Start a project with Ikosagon \u2014 process upgrades, products, and AI-backed systems.",
+  description: "Start a project with Ikosagon: process upgrades, products, and AI-backed systems.",
 };
 
 type ContactPageProps = {
@@ -28,7 +28,7 @@ export default async function ContactPage({ searchParams }: ContactPageProps) {
 
       {showSuccess && (
         <p className="mb-6 rounded-xl border border-accent/40 bg-accent/10 px-4 py-3 text-accent" role="status">
-          Thanks \u2014 your message was sent. I will get back to you soon.
+          Thanks. Your message was sent. I will get back to you soon.
         </p>
       )}
 
