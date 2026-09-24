@@ -24,6 +24,16 @@ function canMountFluid() {
   return true;
 }
 
+function pinInnerLayer(el: HTMLDivElement) {
+  // webgl-fluid-enhanced sets position:relative on its container; keep it filling the fixed shell.
+  el.style.position = "absolute";
+  el.style.inset = "0";
+  el.style.width = "100%";
+  el.style.height = "100%";
+  el.style.margin = "0";
+  el.style.overflow = "hidden";
+}
+
 export function FluidBackground() {
   const containerRef = useRef<HTMLDivElement>(null);
   const prefersReducedMotion = useSyncExternalStore(subscribeReducedMotion, getReducedMotion, () => true);
@@ -49,6 +59,7 @@ export function FluidBackground() {
 
     try {
       fluid = new WebGLFluidEnhanced(el);
+      pinInnerLayer(el);
       fluid.setConfig({
         simResolution: 128,
         dyeResolution: 512,
@@ -70,6 +81,7 @@ export function FluidBackground() {
         sunrays: false,
       });
       fluid.start();
+      pinInnerLayer(el);
 
       // pointer-events:none on the layer; drive hover trails from window moves
       const onMove = (event: MouseEvent) => {
@@ -123,9 +135,10 @@ export function FluidBackground() {
 
   return (
     <div
-      ref={containerRef}
       aria-hidden
-      className="pointer-events-none fixed inset-0 -z-10 h-[100vh] w-[100vw] opacity-25 mix-blend-screen"
-    />
+      className="pointer-events-none fixed inset-0 z-0 h-screen w-screen overflow-hidden opacity-25 mix-blend-screen"
+    >
+      <div ref={containerRef} className="absolute inset-0 h-full w-full" />
+    </div>
   );
 }
