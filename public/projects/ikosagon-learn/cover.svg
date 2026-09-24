@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480" viewBox="0 0 800 480" fill="none">
+  <rect width="800" height="480" fill="#0a0a0a"/>
+  <circle cx="400" cy="240" r="120" stroke="#2bffe8" stroke-width="3" opacity="0.9"/>
+  <circle cx="400" cy="240" r="80" stroke="#2bffe8" stroke-width="1.5" opacity="0.45"/>
+  <circle cx="400" cy="240" r="40" stroke="#2bffe8" stroke-width="1" opacity="0.25"/>
+  <circle cx="400" cy="140" r="6" fill="#2bffe8"/>
+  <circle cx="480" cy="280" r="5" fill="#2bffe8" opacity="0.8"/>
+  <circle cx="320" cy="280" r="5" fill="#2bffe8" opacity="0.8"/>
+  <text x="400" y="420" text-anchor="middle" fill="#fafafa" font-family="Arial, sans-serif" font-size="28" font-weight="700">Inquiry · Curriculum · Parent insight</text>
+</svg>
