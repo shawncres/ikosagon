@@ -44,12 +44,20 @@ export default async function Home() {
         <div className="container-shell grid gap-6 md:grid-cols-2">
           <article className="card-surface rounded-2xl p-6">
             <h3 className="mb-3 text-2xl font-semibold">Services</h3>
-            <p className="mb-2 text-zinc-300">Product engineering, MVP builds, frontend systems, and AI integrations.</p>
-            <p className="text-zinc-300">From idea to launch with clear communication and production-level delivery.</p>
+            <p className="mb-2 text-zinc-300">
+              Product engineering, MVP builds, frontend systems, and AI integrations that upgrade how
+              teams already work.
+            </p>
+            <p className="text-zinc-300">
+              From first ship to durable systems, with clear communication and production-level delivery.
+            </p>
           </article>
           <article className="card-surface rounded-2xl p-6">
-            <h3 className="mb-3 text-2xl font-semibold">Open for Work</h3>
-            <p className="mb-4 text-zinc-300">Available for freelance projects, contracts, and selected full-time opportunities.</p>
+            <h3 className="mb-3 text-2xl font-semibold">Open for work</h3>
+            <p className="mb-4 text-zinc-300">
+              Available for freelance projects, contracts, and selected full-time roles where
+              AI-era process upgrades matter.
+            </p>
             <Link href="/contact" className="rounded-xl bg-accent px-4 py-2 font-semibold text-black">
               Start a project
             </Link>

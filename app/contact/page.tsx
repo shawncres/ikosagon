@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Contact",
-  description: "Get in touch for freelance work, contracts, and collaborations.",
+  description: "Start a project with Ikosagon \u2014 process upgrades, products, and AI-backed systems.",
 };
 
 type ContactPageProps = {
@@ -17,7 +17,7 @@ export default async function ContactPage({ searchParams }: ContactPageProps) {
     <div className="container-shell section-block">
       <h1 className="mb-4 font-[var(--font-space-grotesk)] text-4xl font-bold">Contact</h1>
       <p className="mb-2 max-w-3xl text-zinc-300">
-        Tell me what you are building, where you are stuck, and what success looks like.
+        Tell me what process you want to upgrade, where you are stuck, and what success looks like.
       </p>
       <p className="mb-8 text-zinc-400">
         Or email directly:{" "}
@@ -28,7 +28,7 @@ export default async function ContactPage({ searchParams }: ContactPageProps) {
 
       {showSuccess && (
         <p className="mb-6 rounded-xl border border-accent/40 bg-accent/10 px-4 py-3 text-accent" role="status">
-          Thanks — your message was sent. I will get back to you soon.
+          Thanks \u2014 your message was sent. I will get back to you soon.
         </p>
       )}
 
@@ -43,14 +43,14 @@ export default async function ContactPage({ searchParams }: ContactPageProps) {
         />
         <input
           name="projectType"
-          placeholder="Project type (MVP, redesign, full-stack app...)"
+          placeholder="Project type (MVP, redesign, AI workflow, full-stack app...)"
           className="w-full rounded-xl border border-border bg-black/40 px-4 py-2"
         />
         <textarea
           name="message"
           required
           rows={6}
-          placeholder="What should we build?"
+          placeholder="What should we upgrade or build?"
           className="w-full rounded-xl border border-border bg-black/40 px-4 py-2"
         />
         <button type="submit" className="rounded-xl bg-accent px-5 py-2 font-semibold text-black">
