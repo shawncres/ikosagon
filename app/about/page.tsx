@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "About",
-  description: "About Ikosagon and the software craft behind the projects.",
+  description: "About Ikosagon: software that upgrades existing processes for a post-AGI future.",
 };
 
 const skills = [
@@ -17,7 +17,7 @@ const skills = [
 ];
 
 const timeline = [
-  { year: "2026", note: "Shipping portfolio-quality products and scalable internal tools." },
+  { year: "2026", note: "Shipping products and internal tools built for a post-AGI operating environment." },
   { year: "2025", note: "Focused on product engineering, design systems, and performance-first frontend builds." },
   { year: "2024", note: "Expanded into full-stack workflows and automation-heavy project delivery." },
 ];
@@ -27,8 +27,8 @@ export default function AboutPage() {
     <div className="container-shell section-block">
       <h1 className="mb-4 font-[var(--font-space-grotesk)] text-4xl font-bold">About</h1>
       <p className="max-w-3xl text-zinc-300">
-        I build software with a product mindset: fast iteration, clean user experience, and architecture that survives
-        real usage.
+        I build software that upgrades how people already work: fast iteration, clear user experience,
+        and architecture that survives real usage, including AI-backed workflows.
       </p>
 
       <section className="mt-10">

@@ -23,15 +23,15 @@ const jetBrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.ikosagon.com"),
   title: {
-    default: "Ikosagon | Software Portfolio",
+    default: "Ikosagon | Post-AGI process upgrades",
     template: "%s | Ikosagon",
   },
   description:
-    "Software portfolio for Ikosagon - shipping polished web products, tools, and experiments.",
+    "Ikosagon designs and ships software that upgrades the processes you already run for a post-AGI future.",
   openGraph: {
-    title: "Ikosagon | Software Portfolio",
+    title: "Ikosagon | Post-AGI process upgrades",
     description:
-      "Software portfolio for Ikosagon - shipping polished web products, tools, and experiments.",
+      "Ikosagon designs and ships software that upgrades the processes you already run for a post-AGI future.",
     url: "https://www.ikosagon.com",
     siteName: "Ikosagon",
     images: [{ url: "/opengraph-image" }],
@@ -39,9 +39,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Ikosagon | Software Portfolio",
+    title: "Ikosagon | Post-AGI process upgrades",
     description:
-      "Software portfolio for Ikosagon - shipping polished web products, tools, and experiments.",
+      "Ikosagon designs and ships software that upgrades the processes you already run for a post-AGI future.",
     images: ["/opengraph-image"],
   },
 };
