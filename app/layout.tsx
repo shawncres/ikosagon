@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
 import "./globals.css";
+import { ChatWidget } from "@/components/ChatWidget";
 import { FluidBackground } from "@/components/FluidBackground";
 import { Footer } from "@/components/Footer";
 import { Nav } from "@/components/Nav";
@@ -63,6 +64,7 @@ export default function RootLayout({
           <main className="flex-1">{children}</main>
           <Footer />
         </div>
+        <ChatWidget />
       </body>
     </html>
   );
