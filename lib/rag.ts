@@ -1,3 +1,4 @@
+import type { Dirent } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import matter from "gray-matter";
@@ -62,7 +63,7 @@ function splitSoft(text: string, size: number): string[] {
 }
 
 async function readDirMarkdown(dir: string, prefix: string): Promise<RagChunk[]> {
-  let entries: Awaited<ReturnType<typeof fs.readdir>>;
+  let entries: Dirent[];
   try {
     entries = await fs.readdir(dir, { withFileTypes: true });
   } catch {
