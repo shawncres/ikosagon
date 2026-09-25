@@ -39,6 +39,26 @@ status: "Shipped"
 
 Place project assets in `public/projects/<slug>/`.
 
+## Grounded RAG chat
+
+The floating **Ask the notes** widget retrieves from markdown, then (optionally) asks a cloud model to answer only from those passages.
+
+- Notes: `content/knowledge/*.md`
+- Project briefs are also indexed: `content/projects/*.mdx`
+- Retrieval: lexical overlap in `lib/rag.ts` (no vector database, Hobby-safe)
+- API: `POST /api/chat`
+- Widget: `components/ChatWidget.tsx`
+
+Edit the knowledge files when the offer changes. Redeploy so the function rereads disk.
+
+Set one key in Vercel or `.env.local`:
+
+- `GROQ_API_KEY` (default model `llama-3.1-8b-instant`)
+- `XAI_API_KEY` (default `grok-3-mini`)
+- `OPENAI_API_KEY` (default `gpt-4o-mini`)
+
+Without a key the route still returns matching notes. Rate limit is 20 requests per IP per hour.
+
 ## Scripts
 
 - `npm run dev` - start dev server
