@@ -36,3 +36,8 @@ Public featured work on this site includes Ikosagon Learn, AI Recording Artist, 
 ## How do I start?
 
 Open /contact. Include business type, the painful workflow, and a rough timeline.
+
+## What is Hexcast?
+
+Hexcast is Ikosagon’s in-progress R&D project for self-improving ranked probability aggregation — ranking forecast sources and combining their probabilities for prediction markets and sports, using a proprietary ranking system. There are no public performance numbers or prices; see /projects/hexcast or ask via /contact.
+
