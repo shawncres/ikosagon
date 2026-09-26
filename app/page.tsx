@@ -45,18 +45,19 @@ export default async function Home() {
           <article className="card-surface rounded-2xl p-6">
             <h3 className="mb-3 text-2xl font-semibold">Services</h3>
             <p className="mb-2 text-zinc-300">
-              Product engineering, MVP builds, frontend systems, and AI integrations that upgrade how
-              teams already work.
+              Product engineering, RAG and agentic systems, CRM integrations with strong QA, edge and
+              embedded IoT (Orin, ARM, ESP32), and contact-center–style natural-language flows.
             </p>
             <p className="text-zinc-300">
-              From first ship to durable systems, with clear communication and production-level delivery.
+              Lean builds for on-prem or cloud: grounded retrieval, reliable tool calling on small
+              models, and continuous improvement so bots harden in production.
             </p>
           </article>
           <article className="card-surface rounded-2xl p-6">
             <h3 className="mb-3 text-2xl font-semibold">Open for work</h3>
             <p className="mb-4 text-zinc-300">
-              Available for freelance projects, contracts, and selected full-time roles where
-              AI-era process upgrades matter.
+              Available for freelance, contract, and selected full-time roles spanning AI systems,
+              embedded/edge software, and production process upgrades for SMB through enterprise.
             </p>
             <Link href="/contact" className="rounded-xl bg-accent px-4 py-2 font-semibold text-black">
               Start a project

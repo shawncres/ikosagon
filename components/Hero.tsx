@@ -9,12 +9,16 @@ export function Hero() {
     <section className="section-block relative overflow-x-clip overflow-y-visible">
       <div className="container-shell grid items-center gap-10 md:grid-cols-[1.2fr_1fr]">
         <div className="space-y-6">
-          <p className="font-mono text-sm text-accent">Software studio · AI systems · education product</p>
+          <p className="font-mono text-sm text-accent">
+            Edge · embedded · RAG · agentic systems · education product
+          </p>
           <h1 className="font-[var(--font-space-grotesk)] text-5xl leading-tight font-bold md:text-6xl">
-            Upgrade your existing processes for a post-AGI future.
+            Production AI and systems engineering for lean, high-volume workflows.
           </h1>
           <p className="max-w-xl text-zinc-300">
-            I design and ship web products, internal tools, and AI-backed workflows that hold up in production.
+            Ikosagon ships grounded RAG, reliable tool-calling agents, CRM-grade integrations, and
+            edge/IoT software — on-prem or cloud — so teams upgrade processes without inventing
+            vanity metrics.
           </p>
           <div className="flex flex-wrap gap-3">
             <Link href="/projects" className="rounded-xl bg-accent px-5 py-2 font-semibold text-black transition hover:opacity-90">
