@@ -15,8 +15,8 @@ export default async function Home() {
             <p className="mb-2 font-mono text-sm text-accent">Lead product</p>
             <h2 className="mb-3 text-3xl font-semibold">IkoArtist</h2>
             <p className="mb-4 max-w-3xl text-zinc-300">
-              Almost anonymous song participation: listen to top tracks, click a short taste path,
-              get 3 track leans. No account required — email only if you want opportunity follow-up.
+              Agentic music pipeline that cycles ranked songs into the player — better tracks rise.
+              Click a short taste path, get 3 leans. Anonymous is fine; email only for opportunities.
             </p>
             <Link href="/projects/ikoartist" className="rounded-xl bg-accent px-4 py-2 font-semibold text-black">
               Open IkoArtist

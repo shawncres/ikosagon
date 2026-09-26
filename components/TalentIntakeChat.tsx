@@ -13,11 +13,12 @@ export function TalentIntakeChat() {
     >
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="mb-1 font-mono text-xs text-accent">IkoArtist · almost anonymous · no account</p>
+          <p className="mb-1 font-mono text-xs text-accent">IkoArtist · agentic playlist · anonymous OK</p>
           <h2 className="text-xl font-semibold">IkoArtist — help Ikosagon make a song for you</h2>
           <p className="mt-1 max-w-2xl text-sm text-zinc-400">
-            Click options every step → taste profile → 3 track leans. Finish without email.
-            Leave contact only if you want opportunity follow-up. No auto Suno spend.
+            Agentic pipeline cycles ranked songs into the player (better tracks rise). Click a taste
+            path → 3 leans. Finish without email — a song can still get made. Leave contact only for
+            opportunity follow-ups.
           </p>
           {intake.catalogAsOf ? (
             <p className="mt-2 font-mono text-[10px] text-zinc-500">
