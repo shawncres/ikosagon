@@ -1,8 +1,23 @@
 "use client";
 
-import { STEP_PROMPTS, type AnswerRow, type MediaPayload, type StepId } from "@/components/talentIntakeConfig";
+import {
+  STEP_PROMPTS,
+  type AnswerRow,
+  type MediaPayload,
+  type StepId,
+  type TrackRecommendation,
+} from "@/components/talentIntakeConfig";
 
 type Contact = { name: string; email: string; phone: string };
+
+type TastePath = {
+  genres: string[];
+  mood: string | null;
+  era: string | null;
+  region: string | null;
+  artists: string[];
+  albums: string[];
+};
 
 type SubmitDeps = {
   contact: Contact;
@@ -10,6 +25,9 @@ type SubmitDeps = {
   setAnswers: (value: AnswerRow[]) => void;
   voice: MediaPayload;
   photo: MediaPayload;
+  recommendations: TrackRecommendation[];
+  tastePath: TastePath;
+  catalogAsOf: string | null;
   setPending: (value: boolean) => void;
   setError: (value: string | null) => void;
   setSubmitted: (value: boolean) => void;
@@ -46,6 +64,9 @@ export function useTalentIntakeSubmit({
   setAnswers,
   voice,
   photo,
+  recommendations,
+  tastePath,
+  catalogAsOf,
   setPending,
   setError,
   setSubmitted,
@@ -59,6 +80,29 @@ export function useTalentIntakeSubmit({
     pushBot(STEP_PROMPTS.done);
   };
 
+  const postIntake = async (answersPayload: AnswerRow[], contactPayload: Contact | Record<string, never>) => {
+    const response = await fetch("/api/talent-intake", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contact: contactPayload,
+        answers: answersPayload,
+        tastePath,
+        recommendations,
+        catalogAsOf,
+        ...mediaBody(voice, photo),
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      setError(payload.error || "Could not send intake. Try again or use /contact.");
+      setPending(false);
+      return false;
+    }
+    finishOk();
+    return true;
+  };
+
   const submitIntake = async () => {
     setError(null);
     const name = contact.name.trim();
@@ -67,7 +111,7 @@ export function useTalentIntakeSubmit({
 
     if (!email && !name && !phone) {
       setError(
-        "Add an email (preferred), name, or phone so Shawn can follow up — or skip to send answers only.",
+        "Add an email only if you want opportunity follow-up — or choose Finish anonymously / send without contact.",
       );
       return;
     }
@@ -91,22 +135,7 @@ export function useTalentIntakeSubmit({
 
     setPending(true);
     try {
-      const response = await fetch("/api/talent-intake", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contact: { name, email, phone },
-          answers: answersWithContact,
-          ...mediaBody(voice, photo),
-        }),
-      });
-      const payload = await response.json();
-      if (!response.ok || !payload.ok) {
-        setError(payload.error || "Could not send intake. Try again or use /contact.");
-        setPending(false);
-        return;
-      }
-      finishOk();
+      await postIntake(answersWithContact, { name, email, phone });
     } catch {
       setError("Network error. Try again or email shawn@ikosagon.com.");
     } finally {
@@ -115,26 +144,11 @@ export function useTalentIntakeSubmit({
   };
 
   const submitContactSkip = async () => {
-    pushUser("Skipped contact — send answers only");
+    pushUser("Skipped contact — send path + picks only");
     setPending(true);
     setError(null);
     try {
-      const response = await fetch("/api/talent-intake", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contact: {},
-          answers,
-          ...mediaBody(voice, photo),
-        }),
-      });
-      const payload = await response.json();
-      if (!response.ok || !payload.ok) {
-        setError(payload.error || "Could not send intake. Try again or use /contact.");
-        setPending(false);
-        return;
-      }
-      finishOk();
+      await postIntake(answers, {});
     } catch {
       setError("Network error. Try again or email shawn@ikosagon.com.");
     } finally {
@@ -142,5 +156,18 @@ export function useTalentIntakeSubmit({
     }
   };
 
-  return { submitIntake, submitContactSkip };
+  const finishAnonymous = async () => {
+    pushUser("Finish anonymously — send taste path + 3 leans");
+    setPending(true);
+    setError(null);
+    try {
+      await postIntake(answers, {});
+    } catch {
+      setError("Network error. Try again or email shawn@ikosagon.com.");
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return { submitIntake, submitContactSkip, finishAnonymous };
 }
