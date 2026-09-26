@@ -2,24 +2,38 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "About",
-  description: "About Ikosagon: software that upgrades existing processes for a post-AGI future.",
+  description:
+    "About Ikosagon and Shawn Cooper: edge AI, embedded IoT, RAG, CRM integrations, and agentic systems for lean production workflows.",
 };
 
 const skills = [
-  "Next.js",
-  "TypeScript",
-  "React",
-  "Node.js",
-  "PostgreSQL",
-  "AI Integrations",
-  "UI Systems",
-  "API Architecture",
+  "Next.js / TypeScript",
+  "Python",
+  "RAG & vector DBs",
+  "LangChain agents",
+  "NVIDIA Orin / edge",
+  "ARM & ESP32 firmware",
+  "CRM integrations",
+  "QA automation",
+  "xAI ecosystem",
+  "On-prem & cloud",
+  "PWAs / remote desktop",
+  "Contact-center NL flows",
 ];
 
 const timeline = [
-  { year: "2026", note: "Shipping products and internal tools built for a post-AGI operating environment." },
-  { year: "2025", note: "Focused on product engineering, design systems, and performance-first frontend builds." },
-  { year: "2024", note: "Expanded into full-stack workflows and automation-heavy project delivery." },
+  {
+    year: "2026",
+    note: "Shipping agentic products, RAG knowledge systems, and edge-ready tooling under Ikosagon — including Ikosagon Learn and AI Recording Artist.",
+  },
+  {
+    year: "2025",
+    note: "Deepened product engineering across AI integrations, custom CRM workflows with strong QA, and cost-sensitive on-prem/cloud deployments.",
+  },
+  {
+    year: "2024",
+    note: "Expanded full-stack delivery into automation-heavy systems, microcontroller/IoT firmware (ARM, ESP32), and production web platforms.",
+  },
 ];
 
 export default function AboutPage() {
@@ -27,8 +41,18 @@ export default function AboutPage() {
     <div className="container-shell section-block">
       <h1 className="mb-4 font-[var(--font-space-grotesk)] text-4xl font-bold">About</h1>
       <p className="max-w-3xl text-zinc-300">
-        I build software that upgrades how people already work: fast iteration, clear user experience,
-        and architecture that survives real usage, including AI-backed workflows.
+        Ikosagon is Shawn Cooper&apos;s Toronto studio for software that upgrades processes people
+        already run. The work spans edge devices (NVIDIA Orin series), microcontroller firmware for
+        IoT, RAG applications with open-source models, custom CRM integrations with a QA-first
+        mindset, and AI-integrated remote-desktop PWAs — designed lean for high-volume, cost-sensitive
+        environments on-prem or in the cloud.
+      </p>
+      <p className="mt-4 max-w-3xl text-zinc-300">
+        Specialty areas include chunked retrieval over vector databases (e.g. Chroma), reliable tool
+        calling even on small or low-parameter models, natural-language contact-center–style flows
+        (LangChain, ElevenLabs, Suno), and agile continuous improvement so chatbots and agents get
+        better reactively over time. xAI ecosystem adoption is a common path from SMB through
+        enterprise-shaped scopes.
       </p>
 
       <section className="mt-10">

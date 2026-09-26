@@ -24,15 +24,15 @@ const jetBrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.ikosagon.com"),
   title: {
-    default: "Ikosagon | Post-AGI process upgrades",
+    default: "Ikosagon | AI systems, edge & process upgrades",
     template: "%s | Ikosagon",
   },
   description:
-    "Ikosagon designs and ships software that upgrades the processes you already run for a post-AGI future.",
+    "Ikosagon designs and ships RAG, agentic systems, edge/IoT software, and CRM-grade integrations for lean production workflows.",
   openGraph: {
-    title: "Ikosagon | Post-AGI process upgrades",
+    title: "Ikosagon | AI systems, edge & process upgrades",
     description:
-      "Ikosagon designs and ships software that upgrades the processes you already run for a post-AGI future.",
+      "Ikosagon designs and ships RAG, agentic systems, edge/IoT software, and CRM-grade integrations for lean production workflows.",
     url: "https://www.ikosagon.com",
     siteName: "Ikosagon",
     images: [{ url: "/opengraph-image" }],
@@ -40,9 +40,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Ikosagon | Post-AGI process upgrades",
+    title: "Ikosagon | AI systems, edge & process upgrades",
     description:
-      "Ikosagon designs and ships software that upgrades the processes you already run for a post-AGI future.",
+      "Ikosagon designs and ships RAG, agentic systems, edge/IoT software, and CRM-grade integrations for lean production workflows.",
     images: ["/opengraph-image"],
   },
 };
