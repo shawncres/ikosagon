@@ -27,7 +27,7 @@ There is no public rate card. Scope first, then a written estimate. The assistan
 
 ## What is AI Recording Artist?
 
-A featured project page with a demo audio playlist and a future collaboration inquiry flow for artists. Demo tracks are placeholders today. There is no public price list — inquire via /contact or shawn@ikosagon.com.
+A featured project page with a demo audio playlist (proof of results) and a free talent intake chatbot for artists. Intake answers email Shawn for review before any costed agentic work. There is no live generation or auto star-potential scoring on the page yet, and no public price list — use the intake on /projects/ai-recording-artist, /contact, or shawn@ikosagon.com.
 
 ## What featured products exist today?
 
@@ -40,4 +40,3 @@ Open /contact. Include business type, the painful workflow, and a rough timeline
 ## What is Hexcast?
 
 Hexcast is Ikosagon’s in-progress R&D project for self-improving ranked probability aggregation — ranking forecast sources and combining their probabilities for prediction markets and sports, using a proprietary ranking system. There are no public performance numbers or prices; see /projects/hexcast or ask via /contact.
-
