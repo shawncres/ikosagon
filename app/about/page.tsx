@@ -24,7 +24,7 @@ const skills = [
 const timeline = [
   {
     year: "2026",
-    note: "Shipping agentic products, RAG knowledge systems, and edge-ready tooling under Ikosagon — including Ikosagon Learn and AI Recording Artist.",
+    note: "Shipping agentic products, RAG knowledge systems, and edge-ready tooling under Ikosagon — including IkoArtist and Ikosagon Learn.",
   },
   {
     year: "2025",
