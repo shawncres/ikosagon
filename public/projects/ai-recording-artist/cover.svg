@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480" viewBox="0 0 800 480" fill="none">
+  <rect width="800" height="480" fill="#0a0a0a"/>
+  <circle cx="400" cy="230" r="110" stroke="#2bffe8" stroke-width="3" opacity="0.9"/>
+  <circle cx="400" cy="230" r="70" stroke="#2bffe8" stroke-width="1.5" opacity="0.45"/>
+  <circle cx="400" cy="230" r="28" fill="#2bffe8" opacity="0.85"/>
+  <!-- waveform marks -->
+  <path d="M180 230 Q200 180 220 230 T260 230 T300 230" stroke="#2bffe8" stroke-width="2" opacity="0.55" fill="none"/>
+  <path d="M500 230 Q520 180 540 230 T580 230 T620 230" stroke="#2bffe8" stroke-width="2" opacity="0.55" fill="none"/>
+  <text x="400" y="400" text-anchor="middle" fill="#fafafa" font-family="Arial, sans-serif" font-size="26" font-weight="700">AI Recording Artist · Demos</text>
+</svg>
