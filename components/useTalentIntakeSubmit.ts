@@ -111,7 +111,7 @@ export function useTalentIntakeSubmit({
 
     if (!email && !name && !phone) {
       setError(
-        "Add an email only if you want opportunity follow-up — or choose Finish anonymously / send without contact.",
+        "Leave email only for opportunity follow-ups — or Finish anonymously (your path still feeds the agentic pipeline).",
       );
       return;
     }
@@ -144,7 +144,7 @@ export function useTalentIntakeSubmit({
   };
 
   const submitContactSkip = async () => {
-    pushUser("Skipped contact — send path + picks only");
+    pushUser("Skipped contact — path + picks to the agentic pipeline");
     setPending(true);
     setError(null);
     try {
@@ -157,7 +157,7 @@ export function useTalentIntakeSubmit({
   };
 
   const finishAnonymous = async () => {
-    pushUser("Finish anonymously — send taste path + 3 leans");
+    pushUser("Finish anonymously — path + leans to the agentic song pipeline");
     setPending(true);
     setError(null);
     try {
