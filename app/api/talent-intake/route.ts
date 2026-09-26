@@ -186,7 +186,7 @@ export async function POST(request: Request) {
   }
 
   const displayName = name || (email ? email : "Anonymous participant");
-  const subject = `AI Recording Artist song path - ${displayName}`;
+  const subject = `IkoArtist song path - ${displayName}`;
 
   const transcriptHtml = answers.length
     ? answers
@@ -213,7 +213,7 @@ export async function POST(request: Request) {
   const html = `<!DOCTYPE html>
 <html><body style="margin:0;background:#0a0a0a;color:#fafafa;font-family:Inter,Arial,sans-serif;">
   <div style="max-width:640px;margin:0 auto;padding:24px;">
-    <p style="font-family:ui-monospace,monospace;font-size:12px;color:#2bffe8;margin:0 0 8px;">Ikosagon | AI Recording Artist</p>
+    <p style="font-family:ui-monospace,monospace;font-size:12px;color:#2bffe8;margin:0 0 8px;">Ikosagon | IkoArtist</p>
     <h1 style="font-size:22px;margin:0 0 16px;">Song participation | taste path</h1>
     <p style="color:#9ca3af;line-height:1.5;">Almost-anonymous song participation: click-path taste + three track leans for the Ikosagon song workflow. Visitor email is optional (opportunity follow-up only). No auto Suno spend.</p>
     <h2 style="font-size:16px;margin:24px 0 8px;color:#2bffe8;">Contact</h2>
@@ -243,7 +243,7 @@ export async function POST(request: Request) {
 </body></html>`;
 
   const textLines = [
-    `AI Recording Artist intake - ${displayName}`,
+    `IkoArtist intake - ${displayName}`,
     "",
     `Name: ${name || "-"}`,
     `Email: ${email || "-"}`,

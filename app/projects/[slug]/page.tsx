@@ -32,7 +32,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<Pa
   const index = projects.findIndex((entry) => entry.slug === slug);
   const prev = index > 0 ? projects[index - 1] : null;
   const next = index < projects.length - 1 ? projects[index + 1] : null;
-  const isAiRecordingArtist = project.slug === "ai-recording-artist";
+  const isIkoArtist = project.slug === "ikoartist";
 
   return (
     <article className="container-shell section-block">
@@ -52,17 +52,17 @@ export default async function ProjectDetailPage({ params }: { params: Promise<Pa
       {project.tracks?.length ? (
         <AudioPlaylist
           tracks={project.tracks}
-          heading={isAiRecordingArtist ? "Top tracks · proof of results" : "Demo playlist"}
+          heading={isIkoArtist ? "Top tracks · proof of results" : "Demo playlist"}
         />
       ) : null}
 
-      {isAiRecordingArtist ? <TalentIntakeChat /> : null}
+      {isIkoArtist ? <TalentIntakeChat /> : null}
 
       <div className="prose-project max-w-none">
         <MDXRemote source={project.content} />
       </div>
 
-      {isAiRecordingArtist ? (
+      {isIkoArtist ? (
         <section className="card-surface mt-10 rounded-2xl border border-dashed border-accent/35 p-6">
           <p className="mb-2 font-mono text-xs text-accent">Optional next step</p>
           <h2 className="mb-3 text-2xl font-semibold">Want opportunity follow-up?</h2>

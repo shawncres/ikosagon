@@ -66,15 +66,17 @@ Without a key the route still returns matching notes. Rate limit is 20 requests 
 - `npm run build` - production build
 - `npm run format` - format code with Prettier
 
-## AI Recording Artist audio
+## IkoArtist audio
 
-Real playlist MP3s live under `public/projects/ai-recording-artist/` and are committed.
+Product page is `/projects/ikoartist` (301 from `/projects/ai-recording-artist`).
+Cover: `public/projects/ikoartist/cover.svg`.
+Playlist MP3s remain under `public/projects/ai-recording-artist/` (stable asset URLs) and are committed.
 Optional tiny lavfi demos can still be materialized with `node scripts/ensure-demo-audio.mjs`
 (from `scripts/demo-audio/*.mp3.b64`); those `demo-*.mp3` outputs are gitignored and unused by the page.
 
-## AI Recording Artist product loop
+## IkoArtist product loop
 
-Public page `/projects/ai-recording-artist` — almost anonymous song participation (no account):
+Public page `/projects/ikoartist` — almost anonymous song participation (no account):
 
 1. Top tracks player (proof / featured results)
 2. Click-path taste intake (genre → mood → era → geo-ish → artists → albums)

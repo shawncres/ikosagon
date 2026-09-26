@@ -85,7 +85,7 @@ export const STEP_ORDER: StepId[] = [
 
 export const STEP_PROMPTS: Record<StepId, string> = {
   intro:
-    "Almost anonymous, no account needed. Click through a short taste path so Ikosagon can make a song in your direction. More answers → better match. You'll get 3 track leans. Email is optional — only if you want opportunity follow-up. No auto Suno spend.",
+    "Welcome to IkoArtist. Almost anonymous, no account needed. Click through a short taste path so Ikosagon can make a song in your direction. More answers → better match. You'll get 3 track leans. Email is optional — only if you want opportunity follow-up. No auto Suno spend.",
   genres: "Which genres feel closest to you? Tap any that fit.",
   mood: "What mood should the song lean toward?",
   era: "Which era should we weight?",

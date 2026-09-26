@@ -82,7 +82,7 @@ export async function getProjectBySlug(slug: string) {
 export async function getFeaturedProjects() {
   const projects = await getProjects();
   const featured = projects.filter((project) => project.featured);
-  const lead = "ikosagon-learn";
+  const lead = "ikoartist";
   return featured.sort((a, b) => {
     if (a.slug === lead && b.slug !== lead) return -1;
     if (b.slug === lead && a.slug !== lead) return 1;

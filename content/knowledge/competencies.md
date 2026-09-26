@@ -37,7 +37,7 @@ Professional capabilities Shawn Cooper brings through Ikosagon. Use this note wh
 
 - Next.js, TypeScript, React, Node.js, Python, PostgreSQL
 - Product engineering and MVP builds with production-level communication and delivery
-- Public portfolio products include Ikosagon Learn, AI Recording Artist, Signalboard, and NeonOps as documented under /projects — additional cards may be added later when a dedicated public brief is ready
+- Public portfolio products include IkoArtist (primary featured), Ikosagon Learn, Hexcast, Signalboard, and NeonOps as documented under /projects — additional cards may be added later when a dedicated public brief is ready
 
 ## Guardrails for the site assistant
 

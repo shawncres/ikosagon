@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Optional: writes tiny lavfi demo MP3s from scripts/demo-audio/*.mp3.b64
- * into public/projects/ai-recording-artist/demo-*.mp3 (gitignored).
+ * into public/projects/ai-recording-artist/demo-*.mp3 (gitignored; IkoArtist playlist assets).
  * The live project page now uses committed real tracks; this script is kept
  * only for local regenerations of the old placeholders.
  */

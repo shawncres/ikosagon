@@ -25,14 +25,14 @@ Edge devices (NVIDIA Orin series); microcontroller firmware (ARM, ESP32) for IoT
 
 There is no public rate card. Scope first, then a written estimate. The assistant must not invent a price.
 
-## What is AI Recording Artist?
+## What is IkoArtist?
 
-A web product for almost anonymous song participation: listen to top tracks, click a short taste path, get 3 track leans. No account required; email is optional (only if you want opportunity follow-up). The path still reaches Shawn for the song workflow via /api/talent-intake. No auto Suno spend or public price list — /projects/ai-recording-artist, /contact, or shawn@ikosagon.com.
+IkoArtist (formerly AI Recording Artist) is a web product for almost anonymous song participation: listen to top tracks, click a short taste path, get 3 track leans. No account required; email is optional (only if you want opportunity follow-up). The path still reaches Shawn for the song workflow via /api/talent-intake. No auto Suno spend or public price list — /projects/ikoartist, /contact, or shawn@ikosagon.com.
 
 
 ## What featured products exist today?
 
-Public featured work on this site includes Ikosagon Learn, AI Recording Artist, and Signalboard (plus other project cards as listed under /projects). Additional competency areas may get dedicated cards later — do not invent shipped products or metrics that are not in the notes.
+Public featured work on this site includes IkoArtist (primary), Hexcast, and Signalboard (plus other project cards as listed under /projects). Ikosagon Learn remains documented under /projects. Additional competency areas may get dedicated cards later — do not invent shipped products or metrics that are not in the notes.
 
 ## How do I start?
 

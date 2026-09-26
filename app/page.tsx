@@ -13,14 +13,13 @@ export default async function Home() {
         <div className="container-shell">
           <article className="card-surface neon-border rounded-2xl p-6 md:p-8">
             <p className="mb-2 font-mono text-sm text-accent">Lead product</p>
-            <h2 className="mb-3 text-3xl font-semibold">Ikosagon Learn</h2>
+            <h2 className="mb-3 text-3xl font-semibold">IkoArtist</h2>
             <p className="mb-4 max-w-3xl text-zinc-300">
-              An AI inquiry agent for homeschool families: talk with kids to find strengths, adapt
-              curriculum overnight to their interests while covering real standards, and keep parents
-              in the loop by phone or web.
+              Almost anonymous song participation: listen to top tracks, click a short taste path,
+              get 3 track leans. No account required — email only if you want opportunity follow-up.
             </p>
-            <Link href="/projects/ikosagon-learn" className="rounded-xl bg-accent px-4 py-2 font-semibold text-black">
-              View the product brief
+            <Link href="/projects/ikoartist" className="rounded-xl bg-accent px-4 py-2 font-semibold text-black">
+              Open IkoArtist
             </Link>
           </article>
         </div>
