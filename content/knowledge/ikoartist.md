@@ -5,14 +5,14 @@ slug: ikoartist
 
 # IkoArtist
 
-Ikosagon’s **IkoArtist** (formerly AI Recording Artist) is a **web product** for people to almost anonymously participate in Ikosagon making a song for them. No account required. Low friction.
+Ikosagon’s **IkoArtist** (formerly AI Recording Artist) is a **web product** for almost anonymous song participation. An **agentic system** produces music and **cycles it into the player**; **better songs get higher priority** in the playlist. No account required. Low friction.
 
 ## What exists today
 
 - Page: /projects/ikoartist (old URL /projects/ai-recording-artist redirects here)
-- **Top tracks** player — featured / proof of results (not framed as a generic demo dump)
+- **Ranked playlist** player — agentic pipeline feeds tracks; stronger songs rise (framed as product behavior, not a live auto-generate button on every click)
 - Clickable taste path (genre → mood → era → geo-ish → artists → albums) → **3 track leans**
-- **Anonymous finish works end-to-end** — path + picks email Shawn via `/api/talent-intake` for the song workflow; visitor email is **optional** (only for opportunity follow-up)
+- **Anonymous finish is enough** — path + picks go to the agentic song pipeline via `/api/talent-intake`; visitor email is **optional** (opportunities only)
 - Optional voice / photo add-ons
 - Free catalog seed (`data/music-catalog.json` from iTunes Search; optional `GET /api/music-catalog?live=1` overlay with MusicBrainz best-effort). Labeled with an **as of** date. No paid music-data vendors.
 
@@ -23,9 +23,9 @@ Next.js on Vercel Hobby; Resend for backend intake email; free music backends (i
 ## What is not public yet
 
 - No public rate card
-- No live generation / auto Suno spend on the page
-- No automatic star-potential scoring
+- No live click-to-generate / auto Suno spend on the page (pipeline generates and ranks off-page)
+- No automatic star-potential scoring published as a visitor metric
 
 ## How to inquire
 
-Use the taste path on /projects/ikoartist (anonymous OK), or optionally leave email there / use /contact / shawn@ikosagon.com if you want follow-up. Do not invent prices.
+Use the taste path on /projects/ikoartist (anonymous OK — song path still runs through the agentic pipeline), or optionally leave email there / use /contact / shawn@ikosagon.com if you want opportunity follow-up. Do not invent prices.

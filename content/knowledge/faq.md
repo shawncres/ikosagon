@@ -27,7 +27,7 @@ There is no public rate card. Scope first, then a written estimate. The assistan
 
 ## What is IkoArtist?
 
-IkoArtist (formerly AI Recording Artist) is a web product for almost anonymous song participation: listen to top tracks, click a short taste path, get 3 track leans. No account required; email is optional (only if you want opportunity follow-up). The path still reaches Shawn for the song workflow via /api/talent-intake. No auto Suno spend or public price list — /projects/ikoartist, /contact, or shawn@ikosagon.com.
+IkoArtist (formerly AI Recording Artist) is a web product for almost anonymous song participation. An agentic system produces music and cycles it into the player; better songs get higher playlist priority. Listen, click a short taste path, get 3 track leans. No account required — finish anonymously and your path still feeds the agentic song pipeline via /api/talent-intake; email is optional (opportunities only). No live auto Suno spend on the page or public price list — /projects/ikoartist, /contact, or shawn@ikosagon.com.
 
 
 ## What featured products exist today?
