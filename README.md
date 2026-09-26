@@ -72,13 +72,15 @@ Real playlist MP3s live under `public/projects/ai-recording-artist/` and are com
 Optional tiny lavfi demos can still be materialized with `node scripts/ensure-demo-audio.mjs`
 (from `scripts/demo-audio/*.mp3.b64`); those `demo-*.mp3` outputs are gitignored and unused by the page.
 
-## Contact form env vars
+## Contact + talent intake env vars
 
-Copy `.env.example` to `.env.local` and set:
+Copy `.env.example` to `.env.local` and set (shared by `/api/contact` and `/api/talent-intake`):
 
 - `RESEND_API_KEY`
-- `CONTACT_TO_EMAIL`
-- `CONTACT_FROM_EMAIL`
+- `CONTACT_TO_EMAIL` (defaults to `shawn@ikosagon.com`)
+- `CONTACT_FROM_EMAIL` (production pattern: `hello@send.ikosagon.com`)
+
+Talent intake may attach short voice/photo files when under Hobby size caps; larger media is noted in the email without attachment.
 
 ## Deployment
 
