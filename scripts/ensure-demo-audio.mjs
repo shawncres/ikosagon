@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /**
- * Writes tiny demo MP3 placeholders from scripts/demo-audio/*.mp3.b64
- * into public/projects/ai-recording-artist/. Text-only so GitHub MCP can push.
+ * Optional: writes tiny lavfi demo MP3s from scripts/demo-audio/*.mp3.b64
+ * into public/projects/ai-recording-artist/demo-*.mp3 (gitignored).
+ * The live project page now uses committed real tracks; this script is kept
+ * only for local regenerations of the old placeholders.
  */
 import fs from "node:fs";
 import path from "node:path";

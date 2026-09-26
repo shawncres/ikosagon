@@ -10,7 +10,7 @@ Ikosagon is exploring an AI Recording Artist offering: a portfolio page with dem
 ## What exists today
 
 - A featured project page at /projects/ai-recording-artist
-- An HTML5 audio playlist that plays short demo tracks (placeholder / generative tone demos until real AI artist samples are published)
+- An HTML5 audio playlist with real sample tracks from the project library
 - A visual stub for an artist collaboration inquiry QA flow (coming soon)
 - Contact for now: use /contact or email shawn@ikosagon.com
 
@@ -18,7 +18,6 @@ Ikosagon is exploring an AI Recording Artist offering: a portfolio page with dem
 
 - No public rate card or package prices for artist collaborations
 - No automated collab QA email form on this page yet (do not invent pricing or turnaround times)
-- Real AI-produced artist tracks will replace the current demo placeholders when ready
 
 ## How to inquire
 
