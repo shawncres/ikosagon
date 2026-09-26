@@ -1,0 +1,38 @@
+{
+  "asOf": "2026-09-26",
+  "source": "iTunes Search API (no key) + curated genre tree; MusicBrainz optional live refresh",
+  "moods": [
+    "Upbeat / energetic",
+    "Chill / late-night",
+    "Emotional / confessional",
+    "Dancefloor",
+    "Storytelling"
+  ],
+  "eras": [
+    "2020s current",
+    "2010s",
+    "2000s",
+    "90s & earlier"
+  ],
+  "regions": [
+    "North America",
+    "UK / Ireland",
+    "Afrobeats / Africa diaspora",
+    "Latin America / Spain",
+    "Global mix"
+  ],
+  "musicBrainzNote": "Live MusicBrainz enrichment attempted at refresh time; seed built from iTunes Search API.",
+  "genreFiles": {
+    "Pop": "pop.json",
+    "Hip-hop / Rap": "hip-hop-rap.json",
+    "R&B / Soul": "randb-soul.json",
+    "Afrobeats": "afrobeats.json",
+    "Rock / Alt": "rock-alt.json",
+    "Electronic / Dance": "electronic-dance.json",
+    "Country / Folk": "country-folk.json",
+    "Jazz / Blues": "jazz-blues.json",
+    "Gospel / Worship": "gospel-worship.json",
+    "Latin": "latin.json",
+    "Other / Hybrid": "other-hybrid.json"
+  }
+}
