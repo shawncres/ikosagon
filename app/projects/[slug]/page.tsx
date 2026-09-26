@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MDXRemote } from "next-mdx-remote/rsc";
 import { AudioPlaylist } from "@/components/AudioPlaylist";
+import { TalentIntakeChat } from "@/components/TalentIntakeChat";
 import { getProjectBySlug, getProjects } from "@/lib/projects";
 
 type Params = { slug: string };
@@ -31,7 +32,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<Pa
   const index = projects.findIndex((entry) => entry.slug === slug);
   const prev = index > 0 ? projects[index - 1] : null;
   const next = index < projects.length - 1 ? projects[index + 1] : null;
-  const showCollabStub = project.slug === "ai-recording-artist";
+  const isAiRecordingArtist = project.slug === "ai-recording-artist";
 
   return (
     <article className="container-shell section-block">
@@ -48,29 +49,33 @@ export default async function ProjectDetailPage({ params }: { params: Promise<Pa
         </div>
       </header>
 
-      {project.tracks?.length ? <AudioPlaylist tracks={project.tracks} /> : null}
+      {project.tracks?.length ? (
+        <AudioPlaylist
+          tracks={project.tracks}
+          heading={isAiRecordingArtist ? "Proof of results · demo playlist" : "Demo playlist"}
+        />
+      ) : null}
+
+      {isAiRecordingArtist ? <TalentIntakeChat /> : null}
 
       <div className="prose-project max-w-none">
         <MDXRemote source={project.content} />
       </div>
 
-      {showCollabStub ? (
+      {isAiRecordingArtist ? (
         <section className="card-surface mt-10 rounded-2xl border border-dashed border-accent/35 p-6">
-          <p className="mb-2 font-mono text-xs text-accent">Coming soon</p>
-          <h2 className="mb-3 text-2xl font-semibold">Artist collaboration inquiry</h2>
+          <p className="mb-2 font-mono text-xs text-accent">Coming after approval</p>
+          <h2 className="mb-3 text-2xl font-semibold">Active artist representation</h2>
           <p className="mb-4 max-w-3xl text-zinc-300">
-            A short guided QA flow will collect genre, goals, and timeline, then email Shawn about
-            potential AI Recording Artist collaborations. That form is not live yet — no automated
-            send from this page.
+            After Shawn reviews an intake and both sides agree on next steps, active representation and
+            any costed agentic work (generation tooling, deeper taste/geo suggestions, and related
+            workflows) can start. Nothing here claims live Suno, ElevenLabs, or Gemini generation, and
+            there is no automatic star-potential score yet.
           </p>
-          <p className="mb-5 text-sm text-zinc-400">
-            Until then, reach out through the existing contact path. Mention &quot;AI Recording
-            Artist&quot; so the inquiry is easy to spot. Pricing is scoped after conversation — nothing
-            public invents a rate.
+          <p className="text-sm text-zinc-400">
+            Proprietary taste/geo algorithms and career suggestions are future features. Free intake
+            first — no invented public prices.
           </p>
-          <Link href="/contact" className="inline-flex rounded-xl bg-accent px-4 py-2 font-semibold text-black">
-            Contact for now
-          </Link>
         </section>
       ) : null}
 
