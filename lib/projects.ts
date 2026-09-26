@@ -4,6 +4,12 @@ import matter from "gray-matter";
 
 const projectsDir = path.join(process.cwd(), "content", "projects");
 
+export type ProjectTrack = {
+  title: string;
+  src: string;
+  note?: string;
+};
+
 export type ProjectMeta = {
   title: string;
   slug: string;
@@ -15,11 +21,28 @@ export type ProjectMeta = {
   repo?: string;
   live?: string;
   status: string;
+  tracks?: ProjectTrack[];
 };
 
 export type Project = ProjectMeta & {
   content: string;
 };
+
+function parseTracks(raw: unknown): ProjectTrack[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const tracks: ProjectTrack[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const record = entry as Record<string, unknown>;
+    const title = record.title ? String(record.title) : "";
+    const src = record.src ? String(record.src) : "";
+    if (!title || !src) continue;
+    const track: ProjectTrack = { title, src };
+    if (record.note) track.note = String(record.note);
+    tracks.push(track);
+  }
+  return tracks.length ? tracks : undefined;
+}
 
 export async function getProjects(): Promise<Project[]> {
   const entries = await fs.readdir(projectsDir, { withFileTypes: true });
@@ -42,6 +65,7 @@ export async function getProjects(): Promise<Project[]> {
         repo: data.repo ? String(data.repo) : undefined,
         live: data.live ? String(data.live) : undefined,
         status: String(data.status ?? "In progress"),
+        tracks: parseTracks(data.tracks),
         content,
       } satisfies Project;
     }),
