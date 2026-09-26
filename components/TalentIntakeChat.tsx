@@ -13,8 +13,8 @@ export function TalentIntakeChat() {
     >
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="mb-1 font-mono text-xs text-accent">Product · almost anonymous · no account</p>
-          <h2 className="text-xl font-semibold">Help Ikosagon make a song for you</h2>
+          <p className="mb-1 font-mono text-xs text-accent">IkoArtist · almost anonymous · no account</p>
+          <h2 className="text-xl font-semibold">IkoArtist — help Ikosagon make a song for you</h2>
           <p className="mt-1 max-w-2xl text-sm text-zinc-400">
             Click options every step → taste profile → 3 track leans. Finish without email.
             Leave contact only if you want opportunity follow-up. No auto Suno spend.
