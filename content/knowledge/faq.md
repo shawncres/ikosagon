@@ -21,6 +21,10 @@ GTA and remote SMBs that leak time on intake, quotes, policy questions, and foll
 
 There is no public rate card. Scope first, then a written estimate. The assistant must not invent a price.
 
+## What is AI Recording Artist?
+
+A featured project page with a demo audio playlist and a future collaboration inquiry flow for artists. Demo tracks are placeholders today. There is no public price list — inquire via /contact or shawn@ikosagon.com.
+
 ## How do I start?
 
 Open /contact. Include business type, the painful workflow, and a rough timeline.

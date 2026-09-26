@@ -36,3 +36,6 @@ next-env.d.ts
 
 # vercel
 .vercel
+
+# Optional local regenerations of tiny lavfi demos (real tracks are committed)
+public/projects/ai-recording-artist/demo-*.mp3
