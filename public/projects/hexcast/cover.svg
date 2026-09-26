@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480" viewBox="0 0 800 480" fill="none">
+  <rect width="800" height="480" fill="#0a0a0a"/>
+  <!-- outer glow hex -->
+  <polygon points="400,78 548,163 548,333 400,418 252,333 252,163" stroke="#2bffe8" stroke-width="2" opacity="0.25" fill="none"/>
+  <!-- main hex -->
+  <polygon points="400,110 510,174 510,302 400,366 290,302 290,174" stroke="#2bffe8" stroke-width="3" opacity="0.95" fill="none"/>
+  <!-- inner hex -->
+  <polygon points="400,160 460,195 460,265 400,300 340,265 340,195" stroke="#2bffe8" stroke-width="1.5" opacity="0.45" fill="none"/>
+  <!-- ranked probability nodes -->
+  <circle cx="400" cy="230" r="10" fill="#2bffe8" opacity="0.9"/>
+  <circle cx="455" cy="200" r="5" fill="#2bffe8" opacity="0.75"/>
+  <circle cx="455" cy="260" r="5" fill="#2bffe8" opacity="0.75"/>
+  <circle cx="345" cy="200" r="5" fill="#2bffe8" opacity="0.75"/>
+  <circle cx="345" cy="260" r="5" fill="#2bffe8" opacity="0.75"/>
+  <circle cx="400" cy="170" r="4" fill="#2bffe8" opacity="0.55"/>
+  <circle cx="400" cy="290" r="4" fill="#2bffe8" opacity="0.55"/>
+  <!-- aggregation rays -->
+  <line x1="400" y1="230" x2="455" y2="200" stroke="#2bffe8" stroke-width="1.2" opacity="0.5"/>
+  <line x1="400" y1="230" x2="455" y2="260" stroke="#2bffe8" stroke-width="1.2" opacity="0.5"/>
+  <line x1="400" y1="230" x2="345" y2="200" stroke="#2bffe8" stroke-width="1.2" opacity="0.5"/>
+  <line x1="400" y1="230" x2="345" y2="260" stroke="#2bffe8" stroke-width="1.2" opacity="0.5"/>
+  <line x1="400" y1="230" x2="400" y2="170" stroke="#2bffe8" stroke-width="1" opacity="0.35"/>
+  <line x1="400" y1="230" x2="400" y2="290" stroke="#2bffe8" stroke-width="1" opacity="0.35"/>
+  <text x="400" y="440" text-anchor="middle" fill="#fafafa" font-family="Arial, sans-serif" font-size="24" font-weight="700">Hexcast · Ranked probability aggregation</text>
+</svg>
