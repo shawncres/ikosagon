@@ -5,24 +5,27 @@ slug: ai-recording-artist
 
 # AI Recording Artist
 
-Ikosagon is exploring an AI Recording Artist offering: a portfolio page with demo playback (proof of results) and a free talent intake chatbot for artists and partners.
+Ikosagon’s AI Recording Artist is a **web product** for people to almost anonymously participate in Ikosagon making a song for them. No account required. Low friction.
 
 ## What exists today
 
-- A featured project page at /projects/ai-recording-artist
-- An HTML5 audio playlist with real sample tracks from the project library
-- A guided, skippable intake chatbot (genres, favorites, age category, location/geo, tastes, optional voice/photo, contact)
-- On complete, `/api/talent-intake` emails Shawn an HTML summary via the same Resend setup as the contact form (`RESEND_API_KEY`, `CONTACT_FROM_EMAIL` such as hello@send.ikosagon.com, `CONTACT_TO_EMAIL`)
-- Stub copy for "Active artist representation" — coming after Shawn's approval
+- Page: /projects/ai-recording-artist
+- **Top tracks** player — featured / proof of results (not framed as a generic demo dump)
+- Clickable taste path (genre → mood → era → geo-ish → artists → albums) → **3 track leans**
+- **Anonymous finish works end-to-end** — path + picks email Shawn via `/api/talent-intake` for the song workflow; visitor email is **optional** (only for opportunity follow-up)
+- Optional voice / photo add-ons
+- Free catalog seed (`data/music-catalog.json` from iTunes Search; optional `GET /api/music-catalog?live=1` overlay with MusicBrainz best-effort). Labeled with an **as of** date. No paid music-data vendors.
+
+## Employer-facing stack (light)
+
+Next.js on Vercel Hobby; Resend for backend intake email; free music backends (iTunes Search, MusicBrainz) with seed fallback.
 
 ## What is not public yet
 
-- No public rate card or package prices for artist collaborations
-- No live Suno, ElevenLabs, or Gemini generation on this page
+- No public rate card
+- No live generation / auto Suno spend on the page
 - No automatic star-potential scoring
-- Proprietary taste/geo algorithms and career suggestions are future features — they require Shawn's explicit yes before any costed agentic work
-- Voice/photo email attachments are size-capped for Vercel Hobby (~1.8 MB voice, ~1.2 MB photo); larger captures are noted in the email without attaching
 
 ## How to inquire
 
-Artists can use the intake chatbot on /projects/ai-recording-artist, or the contact form at /contact / email shawn@ikosagon.com. Mention "AI Recording Artist". Scope and pricing are discussed after review — the site assistant must not invent a price.
+Use the taste path on /projects/ai-recording-artist (anonymous OK), or optionally leave email there / use /contact / shawn@ikosagon.com if you want follow-up. Do not invent prices.

@@ -52,7 +52,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<Pa
       {project.tracks?.length ? (
         <AudioPlaylist
           tracks={project.tracks}
-          heading={isAiRecordingArtist ? "Proof of results · demo playlist" : "Demo playlist"}
+          heading={isAiRecordingArtist ? "Top tracks · proof of results" : "Demo playlist"}
         />
       ) : null}
 
@@ -64,17 +64,15 @@ export default async function ProjectDetailPage({ params }: { params: Promise<Pa
 
       {isAiRecordingArtist ? (
         <section className="card-surface mt-10 rounded-2xl border border-dashed border-accent/35 p-6">
-          <p className="mb-2 font-mono text-xs text-accent">Coming after approval</p>
-          <h2 className="mb-3 text-2xl font-semibold">Active artist representation</h2>
+          <p className="mb-2 font-mono text-xs text-accent">Optional next step</p>
+          <h2 className="mb-3 text-2xl font-semibold">Want opportunity follow-up?</h2>
           <p className="mb-4 max-w-3xl text-zinc-300">
-            After Shawn reviews an intake and both sides agree on next steps, active representation and
-            any costed agentic work (generation tooling, deeper taste/geo suggestions, and related
-            workflows) can start. Nothing here claims live Suno, ElevenLabs, or Gemini generation, and
-            there is no automatic star-potential score yet.
+            The product works anonymously: finish the taste path, get 3 track leans, and Ikosagon can
+            use that signal in the song workflow. Leave an email only if you want to be contacted for
+            further opportunities. Nothing here auto-spends on Suno, ElevenLabs, or Gemini.
           </p>
           <p className="text-sm text-zinc-400">
-            Proprietary taste/geo algorithms and career suggestions are future features. Free intake
-            first — no invented public prices.
+            More answers → better match. No account. No invented public prices.
           </p>
         </section>
       ) : null}

@@ -18,6 +18,25 @@ type AttachmentInput = {
   durationSeconds?: number;
 };
 
+type TastePath = {
+  genres?: string[];
+  mood?: string | null;
+  era?: string | null;
+  region?: string | null;
+  artists?: string[];
+  albums?: string[];
+};
+
+type RecommendationInput = {
+  id?: string;
+  title?: string;
+  artist?: string;
+  album?: string;
+  year?: string | null;
+  genre?: string;
+  why?: string;
+};
+
 type IntakePayload = {
   contact?: {
     name?: string;
@@ -25,6 +44,9 @@ type IntakePayload = {
     phone?: string;
   };
   answers?: Array<{ question: string; answer: string }>;
+  tastePath?: TastePath;
+  recommendations?: RecommendationInput[];
+  catalogAsOf?: string;
   voice?: AttachmentInput | null;
   photo?: AttachmentInput | null;
 };
@@ -72,7 +94,26 @@ export async function POST(request: Request) {
       }))
     : [];
 
-  if (!email && !name && !phone && answers.length === 0) {
+  const tastePath = body.tastePath || {};
+  const pathGenres = Array.isArray(tastePath.genres) ? tastePath.genres.map((v) => clip(v, 80)).filter(Boolean).slice(0, 12) : [];
+  const pathArtists = Array.isArray(tastePath.artists) ? tastePath.artists.map((v) => clip(v, 120)).filter(Boolean).slice(0, 16) : [];
+  const pathAlbums = Array.isArray(tastePath.albums) ? tastePath.albums.map((v) => clip(v, 160)).filter(Boolean).slice(0, 16) : [];
+  const pathMood = clip(tastePath.mood, 80);
+  const pathEra = clip(tastePath.era, 80);
+  const pathRegion = clip(tastePath.region, 80);
+  const catalogAsOf = clip(body.catalogAsOf, 40);
+  const recommendations = Array.isArray(body.recommendations)
+    ? body.recommendations.slice(0, 5).map((item) => ({
+        title: clip(item?.title, 160),
+        artist: clip(item?.artist, 160),
+        album: clip(item?.album, 160),
+        year: clip(item?.year, 12),
+        genre: clip(item?.genre, 80),
+        why: clip(item?.why, 400),
+      }))
+    : [];
+
+  if (!email && !name && !phone && answers.length === 0 && recommendations.length === 0) {
     return NextResponse.json(
       { ok: false, error: "Share at least contact info or a few answers before submitting." },
       { status: 400 },
@@ -116,12 +157,12 @@ export async function POST(request: Request) {
       mediaNotes.push(`Voice sample attached${durationLabel} (${Math.round(buf.length / 1024)} KB).`);
     } else {
       mediaNotes.push(
-        `Voice captured${durationLabel}${size ? ` — ${Math.round(size / 1024)} KB` : ""} — download not included (over ~${Math.round(MAX_VOICE_BYTES / 1_000_000)} MB Hobby email limit). Contact the user for the file.`,
+        `Voice captured${durationLabel}${size ? ` - ${Math.round(size / 1024)} KB` : ""} - download not included (over ~${Math.round(MAX_VOICE_BYTES / 1_000_000)} MB Hobby email limit). Contact the user for the file.`,
       );
     }
   } else if (voice?.durationSeconds) {
     mediaNotes.push(
-      `Voice captured length ~${Math.round(Number(voice.durationSeconds))}s — download not included.`,
+      `Voice captured length ~${Math.round(Number(voice.durationSeconds))}s - download not included.`,
     );
   }
 
@@ -139,13 +180,13 @@ export async function POST(request: Request) {
       mediaNotes.push(`Photo attached (${Math.round(buf.length / 1024)} KB).`);
     } else {
       mediaNotes.push(
-        `Photo captured${size ? ` — ${Math.round(size / 1024)} KB` : ""} — not attached (over size cap). Contact the user for the file.`,
+        `Photo captured${size ? ` - ${Math.round(size / 1024)} KB` : ""} - not attached (over size cap). Contact the user for the file.`,
       );
     }
   }
 
-  const displayName = name || "Unknown artist";
-  const subject = `AI Recording Artist intake — ${displayName}`;
+  const displayName = name || (email ? email : "Anonymous participant");
+  const subject = `AI Recording Artist song path - ${displayName}`;
 
   const transcriptHtml = answers.length
     ? answers
@@ -160,32 +201,70 @@ export async function POST(request: Request) {
     ? `<ul>${mediaNotes.map((note) => `<li style="margin-bottom:6px;">${escapeHtml(note)}</li>`).join("")}</ul>`
     : `<p style="color:#9ca3af;">No voice or photo submitted.</p>`;
 
+  const recsHtml = recommendations.length
+    ? recommendations
+        .map(
+          (item, index) =>
+            `<tr><td style="padding:8px 12px;border-bottom:1px solid #222;color:#9ca3af;vertical-align:top;">${index + 1}</td><td style="padding:8px 12px;border-bottom:1px solid #222;color:#fafafa;"><strong>${escapeHtml(item.title || "-")}</strong> - ${escapeHtml(item.artist || "-")}${item.album ? ` <span style="color:#9ca3af;">(${escapeHtml(item.album)}${item.year ? ` | ${escapeHtml(item.year)}` : ""})</span>` : ""}<br/><span style="color:#2bffe8;font-size:12px;">Why: ${escapeHtml(item.why || "from click path")}</span></td></tr>`,
+        )
+        .join("")
+    : `<tr><td style="padding:12px;color:#9ca3af;">No track picks generated (user skipped early).</td></tr>`;
+
   const html = `<!DOCTYPE html>
 <html><body style="margin:0;background:#0a0a0a;color:#fafafa;font-family:Inter,Arial,sans-serif;">
   <div style="max-width:640px;margin:0 auto;padding:24px;">
-    <p style="font-family:ui-monospace,monospace;font-size:12px;color:#2bffe8;margin:0 0 8px;">Ikosagon · AI Recording Artist</p>
-    <h1 style="font-size:22px;margin:0 0 16px;">Talent intake summary</h1>
-    <p style="color:#9ca3af;line-height:1.5;">Free intake for Shawn’s review/approval before any costed agentic work. Proprietary taste/geo algo and career suggestions are future — not live generation or auto star-potential scoring.</p>
+    <p style="font-family:ui-monospace,monospace;font-size:12px;color:#2bffe8;margin:0 0 8px;">Ikosagon | AI Recording Artist</p>
+    <h1 style="font-size:22px;margin:0 0 16px;">Song participation | taste path</h1>
+    <p style="color:#9ca3af;line-height:1.5;">Almost-anonymous song participation: click-path taste + three track leans for the Ikosagon song workflow. Visitor email is optional (opportunity follow-up only). No auto Suno spend.</p>
     <h2 style="font-size:16px;margin:24px 0 8px;color:#2bffe8;">Contact</h2>
     <table style="width:100%;border-collapse:collapse;background:#111;border-radius:12px;overflow:hidden;">
-      <tr><td style="padding:8px 12px;color:#9ca3af;width:120px;">Name</td><td style="padding:8px 12px;">${escapeHtml(name || "—")}</td></tr>
-      <tr><td style="padding:8px 12px;color:#9ca3af;">Email</td><td style="padding:8px 12px;">${escapeHtml(email || "—")}</td></tr>
-      <tr><td style="padding:8px 12px;color:#9ca3af;">Phone</td><td style="padding:8px 12px;">${escapeHtml(phone || "—")}</td></tr>
+      <tr><td style="padding:8px 12px;color:#9ca3af;width:120px;">Name</td><td style="padding:8px 12px;">${escapeHtml(name || "-")}</td></tr>
+      <tr><td style="padding:8px 12px;color:#9ca3af;">Email</td><td style="padding:8px 12px;">${escapeHtml(email || "-")}</td></tr>
+      <tr><td style="padding:8px 12px;color:#9ca3af;">Phone</td><td style="padding:8px 12px;">${escapeHtml(phone || "-")}</td></tr>
     </table>
     <h2 style="font-size:16px;margin:24px 0 8px;color:#2bffe8;">Transcript</h2>
     <table style="width:100%;border-collapse:collapse;background:#111;border-radius:12px;overflow:hidden;">${transcriptHtml}</table>
+    <h2 style="font-size:16px;margin:24px 0 8px;color:#2bffe8;">Taste path</h2>
+    <table style="width:100%;border-collapse:collapse;background:#111;border-radius:12px;overflow:hidden;">
+      <tr><td style="padding:8px 12px;color:#9ca3af;width:140px;">Genres</td><td style="padding:8px 12px;">${escapeHtml(pathGenres.join(", ") || "-")}</td></tr>
+      <tr><td style="padding:8px 12px;color:#9ca3af;">Mood</td><td style="padding:8px 12px;">${escapeHtml(pathMood || "-")}</td></tr>
+      <tr><td style="padding:8px 12px;color:#9ca3af;">Era</td><td style="padding:8px 12px;">${escapeHtml(pathEra || "-")}</td></tr>
+      <tr><td style="padding:8px 12px;color:#9ca3af;">Region</td><td style="padding:8px 12px;">${escapeHtml(pathRegion || "-")}</td></tr>
+      <tr><td style="padding:8px 12px;color:#9ca3af;">Artists</td><td style="padding:8px 12px;">${escapeHtml(pathArtists.join(", ") || "-")}</td></tr>
+      <tr><td style="padding:8px 12px;color:#9ca3af;">Albums</td><td style="padding:8px 12px;">${escapeHtml(pathAlbums.join(", ") || "-")}</td></tr>
+      <tr><td style="padding:8px 12px;color:#9ca3af;">Catalog as of</td><td style="padding:8px 12px;">${escapeHtml(catalogAsOf || "-")}</td></tr>
+    </table>
+    <h2 style="font-size:16px;margin:24px 0 8px;color:#2bffe8;">3 suggested tracks</h2>
+    <table style="width:100%;border-collapse:collapse;background:#111;border-radius:12px;overflow:hidden;">${recsHtml}</table>
     <h2 style="font-size:16px;margin:24px 0 8px;color:#2bffe8;">Media</h2>
     <div style="background:#111;border-radius:12px;padding:12px 16px;">${mediaHtml}</div>
-    <p style="margin-top:24px;font-size:12px;color:#6b7280;">Reply to the artist email when provided. Active artist representation is stubbed until you approve next steps.</p>
+    <p style="margin-top:24px;font-size:12px;color:#6b7280;">Reply only if the visitor left email for opportunity follow-up. Anonymous paths are expected and valid.</p>
   </div>
 </body></html>`;
 
   const textLines = [
-    `AI Recording Artist intake — ${displayName}`,
+    `AI Recording Artist intake - ${displayName}`,
     "",
-    `Name: ${name || "—"}`,
-    `Email: ${email || "—"}`,
-    `Phone: ${phone || "—"}`,
+    `Name: ${name || "-"}`,
+    `Email: ${email || "-"}`,
+    `Phone: ${phone || "-"}`,
+    "",
+    "Taste path:",
+    `Genres: ${pathGenres.join(", ") || "-"}`,
+    `Mood: ${pathMood || "-"}`,
+    `Era: ${pathEra || "-"}`,
+    `Region: ${pathRegion || "-"}`,
+    `Artists: ${pathArtists.join(", ") || "-"}`,
+    `Albums: ${pathAlbums.join(", ") || "-"}`,
+    `Catalog as of: ${catalogAsOf || "-"}`,
+    "",
+    "3 suggested tracks:",
+    ...(recommendations.length
+      ? recommendations.map(
+          (item, index) =>
+            `${index + 1}. ${item.title || "-"} - ${item.artist || "-"}${item.why ? ` | Why: ${item.why}` : ""}`,
+        )
+      : ["None"]),
     "",
     "Transcript:",
     ...answers.map((item, index) => `${index + 1}. ${item.question}\n   ${item.answer}`),

@@ -72,6 +72,23 @@ Real playlist MP3s live under `public/projects/ai-recording-artist/` and are com
 Optional tiny lavfi demos can still be materialized with `node scripts/ensure-demo-audio.mjs`
 (from `scripts/demo-audio/*.mp3.b64`); those `demo-*.mp3` outputs are gitignored and unused by the page.
 
+## AI Recording Artist product loop
+
+Public page `/projects/ai-recording-artist` — almost anonymous song participation (no account):
+
+1. Top tracks player (proof / featured results)
+2. Click-path taste intake (genre → mood → era → geo-ish → artists → albums)
+3. Three track leans (`POST /api/music-recommend`) with short “why” copy
+4. Finish anonymously (path + picks still email Shawn via `/api/talent-intake` for the song workflow)
+5. Optional voice / photo / email — email only if the visitor wants opportunity follow-up
+
+### Catalog freshness (free backends)
+
+- Seed: `data/music-catalog.json` (built from **iTunes Search API**, no key) labeled with an **as of** date
+- Read: `GET /api/music-catalog` (seed by default)
+- Optional live overlay: `GET /api/music-catalog?live=1` — rate-limited (~60s), short timeouts; tries iTunes refresh and MusicBrainz artist enrichment; falls back to seed if flaky
+- No Chartmetric / Spotify premium; no invented chart ranks
+
 ## Contact + talent intake env vars
 
 Copy `.env.example` to `.env.local` and set (shared by `/api/contact` and `/api/talent-intake`):

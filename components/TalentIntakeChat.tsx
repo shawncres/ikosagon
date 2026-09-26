@@ -9,16 +9,22 @@ export function TalentIntakeChat() {
   return (
     <section
       className="card-surface neon-border mb-10 rounded-2xl p-5 md:p-6"
-      aria-label="Talent intake chatbot"
+      aria-label="Song participation taste path"
     >
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="mb-1 font-mono text-xs text-accent">Talent intake · free to start</p>
-          <h2 className="text-xl font-semibold">Artist collaboration chatbot</h2>
+          <p className="mb-1 font-mono text-xs text-accent">Product · almost anonymous · no account</p>
+          <h2 className="text-xl font-semibold">Help Ikosagon make a song for you</h2>
           <p className="mt-1 max-w-2xl text-sm text-zinc-400">
-            Guided, skippable questions for Shawn’s review. No public prices. Generation tools and
-            career scoring are future — after explicit approval.
+            Click options every step → taste profile → 3 track leans. Finish without email.
+            Leave contact only if you want opportunity follow-up. No auto Suno spend.
           </p>
+          {intake.catalogAsOf ? (
+            <p className="mt-2 font-mono text-[10px] text-zinc-500">
+              Music catalog as of {intake.catalogAsOf}
+              {intake.catalogNote ? ` · ${intake.catalogNote}` : ""}
+            </p>
+          ) : null}
         </div>
         <p className="font-mono text-xs text-zinc-500" aria-live="polite">
           {intake.progress}%
@@ -49,7 +55,7 @@ export function TalentIntakeChat() {
             }
           >
             <p className="mb-1 font-mono text-[10px] uppercase tracking-wide text-zinc-500">
-              {message.role === "user" ? "You" : "Intake guide"}
+              {message.role === "user" ? "You" : "Guide"}
             </p>
             <p className="whitespace-pre-wrap">{message.content}</p>
           </article>
@@ -61,22 +67,37 @@ export function TalentIntakeChat() {
           step={intake.step}
           submitted={intake.submitted}
           pending={intake.pending}
+          loadingRecs={intake.loadingRecs}
           selectedGenres={intake.selectedGenres}
-          textInput={intake.textInput}
+          selectedMood={intake.selectedMood}
+          selectedEra={intake.selectedEra}
+          selectedRegion={intake.selectedRegion}
+          selectedArtists={intake.selectedArtists}
+          selectedAlbums={intake.selectedAlbums}
+          artistOptions={intake.artistOptions}
+          albumOptions={intake.albumOptions}
+          recommendations={intake.recommendations}
+          catalogAsOf={intake.catalogAsOf}
           contact={intake.contact}
           voice={intake.voice}
           photo={intake.photo}
           recording={intake.recording}
           recordSeconds={intake.recordSeconds}
           fileInputRef={intake.fileInputRef}
-          onTextInput={intake.setTextInput}
           onContactChange={intake.setContact}
           onToggleGenre={intake.toggleGenre}
+          onToggleArtist={intake.toggleArtist}
+          onToggleAlbum={intake.toggleAlbum}
           onAdvanceFromIntro={intake.advanceFromIntro}
           onSkip={intake.skip}
           onSubmitGenres={intake.submitGenres}
-          onSubmitAge={intake.submitAge}
-          onSubmitTextStep={intake.submitTextStep}
+          onSubmitMood={intake.submitMood}
+          onSubmitEra={intake.submitEra}
+          onSubmitRegion={intake.submitRegion}
+          onSubmitArtists={intake.submitArtists}
+          onSubmitAlbums={intake.submitAlbums}
+          onContinueAfterRecs={intake.continueAfterRecs}
+          onFinishAnonymous={() => void intake.finishAnonymous()}
           onStartRecording={() => void intake.startRecording()}
           onStopRecording={intake.stopRecording}
           onConfirmVoice={intake.confirmVoice}
