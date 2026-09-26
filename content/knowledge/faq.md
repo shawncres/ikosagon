@@ -27,7 +27,8 @@ There is no public rate card. Scope first, then a written estimate. The assistan
 
 ## What is AI Recording Artist?
 
-A featured project page with a demo audio playlist (proof of results) and a free talent intake chatbot for artists. Intake answers email Shawn for review before any costed agentic work. There is no live generation or auto star-potential scoring on the page yet, and no public price list — use the intake on /projects/ai-recording-artist, /contact, or shawn@ikosagon.com.
+A web product for almost anonymous song participation: listen to top tracks, click a short taste path, get 3 track leans. No account required; email is optional (only if you want opportunity follow-up). The path still reaches Shawn for the song workflow via /api/talent-intake. No auto Suno spend or public price list — /projects/ai-recording-artist, /contact, or shawn@ikosagon.com.
+
 
 ## What featured products exist today?
 
