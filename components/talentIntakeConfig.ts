@@ -1,10 +1,12 @@
 export type StepId =
   | "intro"
   | "genres"
-  | "favorites"
-  | "age"
-  | "location"
-  | "tastes"
+  | "mood"
+  | "era"
+  | "region"
+  | "artists"
+  | "albums"
+  | "recommendations"
   | "voice"
   | "photo"
   | "contact"
@@ -23,6 +25,17 @@ export type MediaPayload = {
   durationSeconds?: number;
 } | null;
 
+export type TrackRecommendation = {
+  id: string;
+  title: string;
+  artist: string;
+  album?: string;
+  year?: string | null;
+  genre?: string;
+  why: string;
+  previewUrl?: string | null;
+};
+
 export const GENRE_OPTIONS = [
   "Pop",
   "Hip-hop / Rap",
@@ -37,15 +50,33 @@ export const GENRE_OPTIONS = [
   "Other / Hybrid",
 ] as const;
 
-export const AGE_OPTIONS = ["Under 18", "18–24", "25–34", "35–44", "45+"] as const;
+export const MOOD_OPTIONS = [
+  "Upbeat / energetic",
+  "Chill / late-night",
+  "Emotional / confessional",
+  "Dancefloor",
+  "Storytelling",
+] as const;
+
+export const ERA_OPTIONS = ["2020s current", "2010s", "2000s", "90s & earlier"] as const;
+
+export const REGION_OPTIONS = [
+  "North America",
+  "UK / Ireland",
+  "Afrobeats / Africa diaspora",
+  "Latin America / Spain",
+  "Global mix",
+] as const;
 
 export const STEP_ORDER: StepId[] = [
   "intro",
   "genres",
-  "favorites",
-  "age",
-  "location",
-  "tastes",
+  "mood",
+  "era",
+  "region",
+  "artists",
+  "albums",
+  "recommendations",
   "voice",
   "photo",
   "contact",
@@ -54,30 +85,34 @@ export const STEP_ORDER: StepId[] = [
 
 export const STEP_PROMPTS: Record<StepId, string> = {
   intro:
-    "Welcome — this intake is free to start. Answer what you want; everything is skippable. The more you share, the better the fit when Shawn reviews. This is not live Suno/ElevenLabs/Gemini generation or auto star-potential scoring yet — your answers go to Shawn for review before any costed agentic work.",
-  genres: "Which genres feel closest to your sound? Pick any that fit, or type your own.",
-  favorites: "Favorite artists or songs that shape your taste? A short list is perfect.",
-  age: "Age category (optional — helps with taste and trend context, not gatekeeping).",
-  location: "Where are you based? City / region / country helps with local trend context.",
-  tastes:
-    "Anything else about your taste, vibe, goals, or career hopes? Skip if you prefer.",
+    "Almost anonymous, no account needed. Click through a short taste path so Ikosagon can make a song in your direction. More answers → better match. You'll get 3 track leans. Email is optional — only if you want opportunity follow-up. No auto Suno spend.",
+  genres: "Which genres feel closest to you? Tap any that fit.",
+  mood: "What mood should the song lean toward?",
+  era: "Which era should we weight?",
+  region: "Any geo-ish lean? Soft signal only.",
+  artists: "Tap related artists that resonate. Options branch from your genres.",
+  albums: "Any albums / projects that feel right? Tap a few.",
+  recommendations:
+    "Here are 3 track leans from your clicks — a taste signal for the song Ikosagon may make with you in mind. You can finish anonymously now, or optionally leave voice / photo / email for opportunities.",
   voice:
-    "Optional: record a short voice sample in the browser (about 15–30 seconds). Skip if you are not ready.",
-  photo: "Optional: upload a photo (headshot or vibe shot). Skip anytime.",
+    "Optional: record a short voice sample (about 15–30 seconds). Skip anytime — not required to participate.",
+  photo: "Optional: upload a photo (headshot or vibe). Skip anytime.",
   contact:
-    "How can Shawn reach you? Email is most useful; name helps; phone is optional. Contact is encouraged so he can follow up.",
-  done: "Thanks — your intake was sent for Shawn’s review. Active artist representation comes after approval; nothing costed runs until then.",
+    "Optional: leave an email only if you want to be contacted for further opportunities. You can finish without any contact.",
+  done: "You're in. Your taste path and 3 leans were sent for the song workflow. Stay anonymous, or check back — no account required.",
 };
 
 export const QUESTION_LABELS: Partial<Record<StepId, string>> = {
   genres: "Genres",
-  favorites: "Favorite artists / songs",
-  age: "Age category",
-  location: "Location / geo",
-  tastes: "Tastes / goals",
+  mood: "Mood",
+  era: "Era",
+  region: "Region / geo-ish",
+  artists: "Related artists",
+  albums: "Related albums",
+  recommendations: "Suggested track leans",
   voice: "Voice sample",
   photo: "Photo",
-  contact: "Contact",
+  contact: "Contact (optional)",
 };
 
 export const MAX_VOICE_BYTES = 1_800_000;
