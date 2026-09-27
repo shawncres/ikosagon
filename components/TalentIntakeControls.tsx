@@ -266,8 +266,8 @@ export function TalentIntakeControls(p: TalentIntakeControlsProps) {
           </button>
         </div>
         <p className="text-xs text-zinc-500">
-          Anonymous finish still shares your path + 3 leans with Ikosagon for the song workflow. Email
-          is only if you want opportunity follow-up.
+          Anonymous is fine — your path + 3 leans still feed the agentic Ikosagon engine so a song
+          can get made (takes some time). Leave email only if you want opportunity follow-ups.
         </p>
       </div>
     );
@@ -353,7 +353,8 @@ export function TalentIntakeControls(p: TalentIntakeControlsProps) {
     return (
       <div className="space-y-3">
         <p className="text-xs text-zinc-500">
-          Email is optional. Skip or finish anonymously anytime - you already have your 3 leans.
+          Email is optional (opportunities only). Finish anonymously anytime — your path still reaches
+          the agentic Ikosagon engine. You already have your 3 leans.
         </p>
         <div className="grid gap-2 md:grid-cols-3">
           {(
