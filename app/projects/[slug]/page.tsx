@@ -52,7 +52,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<Pa
       {project.tracks?.length ? (
         <AudioPlaylist
           tracks={project.tracks}
-          heading={isIkoArtist ? "Ranked playlist · agentic pipeline" : "Demo playlist"}
+          heading={isIkoArtist ? "Leaderboard playlist · ranked by views" : "Demo playlist"}
         />
       ) : null}
 
@@ -67,13 +67,14 @@ export default async function ProjectDetailPage({ params }: { params: Promise<Pa
           <p className="mb-2 font-mono text-xs text-accent">Optional next step</p>
           <h2 className="mb-3 text-2xl font-semibold">Want opportunity follow-up?</h2>
           <p className="mb-4 max-w-3xl text-zinc-300">
-            Anonymous is fine: finish the taste path, get 3 track leans, and that signal still feeds
-            the agentic song pipeline. Leave an email only if you want opportunity follow-ups. This
-            page does not auto-spend on Suno, ElevenLabs, or Gemini.
+            Anonymous is fine: answer as many questions as you want, get 3 track leans, and that
+            signal still feeds the agentic Ikosagon engine so a song can get made. Leave an email
+            only if you want opportunity follow-ups. This page does not auto-spend on Suno,
+            ElevenLabs, or Gemini.
           </p>
           <p className="text-sm text-zinc-400">
-            More answers → better match. Better songs rise in the ranked playlist. No account. No
-            invented public prices.
+            Low commitment — more answers → clearer signal. Tracks compete on a view-ranked
+            leaderboard. No account. No invented public prices.
           </p>
         </section>
       ) : null}
