@@ -85,7 +85,7 @@ export const STEP_ORDER: StepId[] = [
 
 export const STEP_PROMPTS: Record<StepId, string> = {
   intro:
-    "Welcome to IkoArtist. Almost anonymous, no account needed. An agentic system produces songs and cycles stronger ones into the player. Click a short taste path so we can make one in your direction — more answers → better match, then 3 track leans. Finish without email anytime; leave email only for opportunity follow-ups. No live auto Suno spend on this page.",
+    "Welcome to IkoArtist. No account needed — answer as many questions as you want. We’ll discover tastes and songs you might like, with enough signal to understand what you’d want to hear. The agentic Ikosagon engine produces the hit over time (curated choices + adapting processes); results compete on a view-ranked leaderboard playlist. Finish without email anytime; leave email only for opportunity follow-ups.",
   genres: "Which genres feel closest to you? Tap any that fit.",
   mood: "What mood should the song lean toward?",
   era: "Which era should we weight?",
@@ -93,13 +93,13 @@ export const STEP_PROMPTS: Record<StepId, string> = {
   artists: "Tap related artists that resonate. Options branch from your genres.",
   albums: "Any albums / projects that feel right? Tap a few.",
   recommendations:
-    "Here are 3 track leans from your clicks — a taste signal for the agentic song pipeline. Finish anonymously now (path still gets a song made), or optionally leave voice / photo / email for opportunities.",
+    "Here are 3 track leans — songs you might like, from your clicks. Enough signal for the agentic Ikosagon engine to understand what you’d want to hear. Finish anonymously now (a song can still get made — it takes some time), or optionally leave voice / photo / email for opportunities.",
   voice:
     "Optional: record a short voice sample (about 15–30 seconds). Skip anytime — not required to participate.",
   photo: "Optional: upload a photo (headshot or vibe). Skip anytime.",
   contact:
-    "Optional: leave an email only if you want opportunity follow-ups. Anonymous is fine — your path still feeds the agentic pipeline.",
-  done: "You're in. Your taste path and 3 leans are in the agentic song pipeline. Stay anonymous, or check back — no account required.",
+    "Optional: leave an email only if you want opportunity follow-ups. Anonymous is fine — your path still feeds the agentic Ikosagon engine.",
+  done: "You're in. Your taste path and 3 leans are with the agentic Ikosagon engine — it takes some time to produce the hit. Stay anonymous, or check back on the view-ranked leaderboard. No account required.",
 };
 
 export const QUESTION_LABELS: Partial<Record<StepId, string>> = {

@@ -111,7 +111,7 @@ export function useTalentIntakeSubmit({
 
     if (!email && !name && !phone) {
       setError(
-        "Leave email only for opportunity follow-ups — or Finish anonymously (your path still feeds the agentic pipeline).",
+        "Leave email only for opportunity follow-ups — or Finish anonymously (your path still feeds the agentic Ikosagon engine).",
       );
       return;
     }
@@ -144,7 +144,7 @@ export function useTalentIntakeSubmit({
   };
 
   const submitContactSkip = async () => {
-    pushUser("Skipped contact — path + picks to the agentic pipeline");
+    pushUser("Skipped contact — path + picks to the agentic Ikosagon engine");
     setPending(true);
     setError(null);
     try {
@@ -157,7 +157,7 @@ export function useTalentIntakeSubmit({
   };
 
   const finishAnonymous = async () => {
-    pushUser("Finish anonymously — path + leans to the agentic song pipeline");
+    pushUser("Finish anonymously — path + leans to the agentic Ikosagon engine");
     setPending(true);
     setError(null);
     try {
