@@ -4,6 +4,9 @@ import matter from "gray-matter";
 
 const projectsDir = path.join(process.cwd(), "content", "projects");
 
+/** Lead product slug pinned first in featured homepage cards. */
+export const FEATURED_LEAD_SLUG = "ikoartist";
+
 export type ProjectTrack = {
   title: string;
   src: string;
@@ -15,6 +18,8 @@ export type ProjectMeta = {
   slug: string;
   summary: string;
   year: number;
+  /** ISO timestamp used for homepage / archive ordering (frontmatter or file mtime). */
+  updated: string;
   tags: string[];
   cover: string;
   featured: boolean;
@@ -44,6 +49,27 @@ function parseTracks(raw: unknown): ProjectTrack[] | undefined {
   return tracks.length ? tracks : undefined;
 }
 
+/** Prefer frontmatter `updated`; otherwise use file mtime. Falls back to year Jan 1. */
+function resolveUpdated(raw: unknown, mtimeMs: number, year: number): string {
+  if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+    return raw.toISOString();
+  }
+  if (typeof raw === "string" && raw.trim()) {
+    const parsed = new Date(raw.trim());
+    if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+  }
+  if (Number.isFinite(mtimeMs) && mtimeMs > 0) {
+    return new Date(mtimeMs).toISOString();
+  }
+  return new Date(Date.UTC(year || 1970, 0, 1)).toISOString();
+}
+
+function byUpdatedDesc(a: ProjectMeta, b: ProjectMeta) {
+  const diff = Date.parse(b.updated) - Date.parse(a.updated);
+  if (diff !== 0) return diff;
+  return b.year - a.year;
+}
+
 export async function getProjects(): Promise<Project[]> {
   const entries = await fs.readdir(projectsDir, { withFileTypes: true });
   const mdxFiles = entries.filter((entry) => entry.isFile() && entry.name.endsWith(".mdx"));
@@ -51,14 +77,16 @@ export async function getProjects(): Promise<Project[]> {
   const projects = await Promise.all(
     mdxFiles.map(async (file) => {
       const filePath = path.join(projectsDir, file.name);
-      const source = await fs.readFile(filePath, "utf8");
+      const [source, stat] = await Promise.all([fs.readFile(filePath, "utf8"), fs.stat(filePath)]);
       const { data, content } = matter(source);
+      const year = Number(data.year);
 
       return {
         title: String(data.title),
         slug: String(data.slug),
         summary: String(data.summary),
-        year: Number(data.year),
+        year,
+        updated: resolveUpdated(data.updated, stat.mtimeMs, year),
         tags: Array.isArray(data.tags) ? data.tags.map(String) : [],
         cover: String(data.cover),
         featured: Boolean(data.featured),
@@ -71,7 +99,7 @@ export async function getProjects(): Promise<Project[]> {
     }),
   );
 
-  return projects.sort((a, b) => b.year - a.year);
+  return projects.sort(byUpdatedDesc);
 }
 
 export async function getProjectBySlug(slug: string) {
@@ -79,13 +107,17 @@ export async function getProjectBySlug(slug: string) {
   return projects.find((project) => project.slug === slug) ?? null;
 }
 
+/**
+ * Featured cards for the homepage.
+ * IkoArtist stays pinned first (lead slot); remaining featured projects sort by `updated` desc.
+ */
 export async function getFeaturedProjects() {
   const projects = await getProjects();
   const featured = projects.filter((project) => project.featured);
-  const lead = "ikoartist";
+  const lead = FEATURED_LEAD_SLUG;
   return featured.sort((a, b) => {
     if (a.slug === lead && b.slug !== lead) return -1;
     if (b.slug === lead && a.slug !== lead) return 1;
-    return b.year - a.year;
+    return byUpdatedDesc(a, b);
   });
 }
