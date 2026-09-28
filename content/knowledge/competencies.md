@@ -5,7 +5,7 @@ slug: competencies
 
 # Competencies
 
-Professional capabilities Shawn Cooper brings through Ikosagon. Chrome identity: Shawn Cooper · Applied AI Engineer & QA. Use this note when visitors ask what he can build, what stack he uses, or whether edge / IoT / RAG / CRM work is in scope. Do not invent clients, win rates, prices, or shipped product metrics beyond what project notes say. Employer timeline (three lines, not a full resume) lives in about.md /about.
+Professional capabilities Shawn Cooper brings through Ikosagon. Site chrome is role/studio only (Applied AI Engineer & QA / we at Ikosagon) — personal name belongs on /about, not Nav/Footer. Use this note when visitors ask what he can build, what stack he uses, or whether edge / IoT / RAG / CRM work is in scope. Do not invent clients, win rates, prices, or shipped product metrics beyond what project notes say. Employer timeline (three lines, not a full resume) lives in about.md /about.
 
 ## Edge and embedded (as a service)
 

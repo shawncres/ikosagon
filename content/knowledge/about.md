@@ -5,7 +5,7 @@ slug: about
 
 # About Ikosagon
 
-Ikosagon is Shawn Cooper's studio for software that upgrades processes people already run. Public site: ikosagon.com. Chrome identity: Shawn Cooper · Applied AI Engineer & QA. Work-from-anywhere — do not lock Shawn to Toronto.
+Ikosagon is Shawn Cooper's studio for software that upgrades processes people already run. Public site: ikosagon.com. Site chrome uses studio/role only (e.g. Applied AI Engineer & QA / we at Ikosagon) — do not put Shawn Cooper in Nav, Footer, or other global chrome; save the personal name for /about. Work-from-anywhere — do not lock Shawn to Toronto.
 
 ## Who this is for
 
