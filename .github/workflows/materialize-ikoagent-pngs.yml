@@ -16,13 +16,13 @@ jobs:
           set -euo pipefail
           DEST=public/projects/ikoagent
           for f in answer-and-trace cover desktop-answer desktop-desk phone-desk; do
-            cat "$DEST/${f}.png.b64.part"* > /tmp/${f}.b64
-            base64 -d < /tmp/${f}.b64 > "$DEST/${f}.png"
-            rm -f "$DEST/${f}.png.b64.part"* "$DEST/${f}.svg"
-            file "$DEST/${f}.png"
-            python3 -c "d=open('$DEST/${f}.png','rb').read(8); assert d.startswith(b'\x89PNG'), d"
+            cat $DEST/${f}.png.b64.part* > /tmp/${f}.b64
+            base64 -d < /tmp/${f}.b64 > $DEST/${f}.png
+            rm -f $DEST/${f}.png.b64.part* $DEST/${f}.svg
+            file $DEST/${f}.png
+            python3 -c "import pathlib; d=pathlib.Path('$DEST/' + '$f' + '.png').read_bytes()[:8]; assert d[:4]==b'\x89PNG', d"
           done
-          rm -f "$DEST/PROBE.png"
+          rm -f $DEST/PROBE.png
           python3 -c "from pathlib import Path; p=Path('content/projects/ikoagent.mdx'); p.write_text(p.read_text().replace('.svg','.png'))"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
