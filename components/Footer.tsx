@@ -5,7 +5,7 @@ export function Footer() {
         <div>
           <p>© {new Date().getFullYear()} Ikosagon. Built to upgrade the systems you already run.</p>
           <p className="mt-1 font-mono text-xs text-zinc-500">
-            Shawn Cooper · Applied AI Engineer &amp; QA · work-from-anywhere
+            Applied AI Engineer &amp; QA · work-from-anywhere
           </p>
         </div>
         <p className="font-mono">
