@@ -10,6 +10,7 @@ export async function POST(request: Request) {
   const email = String(formData.get("email") ?? "");
   const projectType = String(formData.get("projectType") ?? "");
   const message = String(formData.get("message") ?? "");
+  const door = String(formData.get("door") ?? "build");
 
   if (!name || !email || !message) {
     return NextResponse.json({ ok: false, error: "Missing required fields." }, { status: 400 });
@@ -26,8 +27,8 @@ export async function POST(request: Request) {
     to: contactToEmail,
     from: process.env.CONTACT_FROM_EMAIL,
     replyTo: email,
-    subject: `Ikosagon inquiry from ${name}`,
-    text: `Name: ${name}\nEmail: ${email}\nProject type: ${projectType}\n\n${message}`,
+    subject: `Ikosagon ${door} inquiry from ${name}`,
+    text: `Door: ${door}\nName: ${name}\nEmail: ${email}\nProject type / role: ${projectType}\n\n${message}`,
   });
 
   return NextResponse.redirect(new URL("/contact?sent=1", request.url), 303);

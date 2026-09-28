@@ -14,7 +14,7 @@ export default async function ProjectsPage() {
     <div className="container-shell section-block">
       <h1 className="mb-3 font-[var(--font-space-grotesk)] text-4xl font-bold">Projects</h1>
       <p className="max-w-3xl text-zinc-300">
-        A growing library of software products, experiments, and client builds. Filter by tag or search by keyword.
+        A growing library of software products and experiments. Filter by tag or search by keyword.
       </p>
       <ProjectGrid projects={projects} />
     </div>
