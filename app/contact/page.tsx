@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Contact",
   description:
-    "Two doors: build with Ikosagon, or hire Shawn Cooper (contract or full-time, remote / work-from-anywhere).",
+    "Two doors: build with Ikosagon, or hiring (contract or full-time, remote / work-from-anywhere).",
 };
 
 type ContactPageProps = {
