@@ -68,3 +68,19 @@ a {
 .prose-project ul {
   @apply mb-4 list-disc space-y-2 pl-6 text-zinc-300;
 }
+
+.prose-project ol {
+  @apply mb-4 list-decimal space-y-2 pl-6 text-zinc-300;
+}
+
+.prose-project img {
+  @apply my-6 h-auto w-full rounded-xl border border-border;
+}
+
+.prose-project a {
+  @apply text-accent underline-offset-2 hover:underline;
+}
+
+.prose-project strong {
+  @apply font-semibold text-zinc-100;
+}
