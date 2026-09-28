@@ -13,13 +13,14 @@ Small and medium businesses through enterprise-shaped scopes, homeschool familie
 
 ## Who builds it
 
-Shawn Cooper — Applied AI Engineer & QA. Employers (not a full resume):
+Shawn Cooper — Applied AI Engineer & QA · work-from-anywhere. Timeline (not a full resume) — Ikosagon first:
 
-- 2022–2025, ATTAbotics. QA on the apps that manufacture, commission, and administer robotics systems. Selenium, pytest, Power BI, Kusto. High-velocity. The release did not wait.
-- 2020–2022, Intact Financial. Business systems analyst. CRM and policy overhaul, telematics, provincial feeds, UAT. A bad calculation was an operations failure.
-- 2017–2020, belairdirect. Licensed P&C. Where the regulated-rules habit started.
+- Jul 2025–Present, Ikosagon. Founder. Applied AI Engineer & QA. Grounded RAG, tool-calling agents, eval suites, Next.js / Vercel / Resend.
+- Mar 2022–Jun 2025, ATTAbotics. QA Analyst. Selenium, pytest, Power BI, Kusto. High-velocity robotics software. The release did not wait.
+- Apr 2020–Feb 2022, Intact Financial. Business Systems Analyst. CRM and policy overhaul, telematics, provincial feeds, UAT. A bad calculation was an operations failure.
+- Dec 2017–Apr 2020, belairdirect. Licensed P&C. Where the regulated-rules habit started.
 
-Studio years (2024–2026) under Ikosagon: agentic products, RAG knowledge systems, edge-ready tooling. Employers and clients have been in QA and professional services / SMB contexts.
+Formal QA starts at Intact in 2020 (not “decades of QA”). Employers and clients have been in QA and professional services / SMB contexts. Do not invent a 2024–2026 studio-years blob after 2017.
 
 Daily and project stack includes: Python, Next.js, TypeScript, React, Node.js, PostgreSQL, LangChain, vector databases (e.g. Chroma), model APIs including xAI and local models, edge/IoT as a service (Orin-class when the job needs it — not an Orin-first identity), and microcontroller firmware on ARM and ESP32.
 
@@ -32,6 +33,7 @@ Daily and project stack includes: Python, Next.js, TypeScript, React, Node.js, P
 
 ## Competencies in short
 
+- QA automation and black-box LLM testing (lead)
 - Edge/IoT as a service on NVIDIA Orin-class hardware when required
 - Microcontroller software and firmware (ARM, ESP32) for IoT
 - RAG applications with open-source and cloud models; chunked data management and retrieval in AI-ready vector databases (e.g. Chroma)
@@ -45,7 +47,7 @@ Daily and project stack includes: Python, Next.js, TypeScript, React, Node.js, P
 
 ## How work starts
 
-Two doors at /contact: Build (studio product/process work) and Hiring (role, contract or full-time, remote / work-from-anywhere). Email shawn@ikosagon.com. No public resume PDF. Discovery is paid when the scope is unclear. No invented case studies, client logo walls, win rates, or prices live on this site.
+Two doors at /contact: Build (studio product/process work) and Hiring (role, contract or selected full-time, Toronto hybrid or remote). Email shawn@ikosagon.com. No public resume PDF. Discovery is paid when the scope is unclear. No invented case studies, client logo walls, win rates, or prices live on this site.
 
 ## What this site is not
 
