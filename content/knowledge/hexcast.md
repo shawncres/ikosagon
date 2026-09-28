@@ -19,10 +19,10 @@ Many sources emit probabilities (models, books, markets, experts). Hexcast ranks
 
 ## What must not be invented
 
-- No win rates, ROI, backtest numbers, accuracy claims, or leaderboard results
+- Honest R&D: no invented win rates, ROI, backtest numbers, accuracy claims, or leaderboard results
 - No clients, partners, or live product pricing
 - No claim that Hexcast is a finished consumer app or a guaranteed edge tool
-- Do not invent Toronto/GTA expansion plans or geographic rollout stories for Hexcast
+- Do not invent geographic rollout stories, client logos, or win rates for Hexcast
 
 ## Status
 
