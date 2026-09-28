@@ -7,6 +7,8 @@ export const metadata: Metadata = {
 };
 
 const skills = [
+  "QA automation",
+  "Black-box LLM testing",
   "Next.js / TypeScript",
   "Python",
   "RAG & vector DBs",
@@ -14,7 +16,6 @@ const skills = [
   "Edge / IoT (service)",
   "ARM & ESP32 firmware",
   "CRM integrations",
-  "QA automation",
   "Model APIs, including xAI · local models",
   "On-prem & cloud",
   "PWAs / remote desktop",
@@ -23,20 +24,20 @@ const skills = [
 
 const timeline = [
   {
-    year: "2022–2025",
-    note: "ATTAbotics. QA on the apps that manufacture, commission, and administer robotics systems. Selenium, pytest, Power BI, Kusto. High-velocity. The release did not wait.",
+    year: "Jul 2025–Present",
+    note: "Ikosagon. Founder. Applied AI Engineer & QA. Grounded RAG, tool-calling agents, eval suites, Next.js / Vercel / Resend.",
   },
   {
-    year: "2020–2022",
-    note: "Intact Financial. Business systems analyst. CRM and policy overhaul, telematics, provincial feeds, UAT. A bad calculation was an operations failure.",
+    year: "Mar 2022–Jun 2025",
+    note: "ATTAbotics. QA Analyst. Selenium, pytest, Power BI, Kusto. High-velocity robotics software. The release did not wait.",
   },
   {
-    year: "2017–2020",
+    year: "Apr 2020–Feb 2022",
+    note: "Intact Financial. Business Systems Analyst. CRM and policy overhaul, telematics, provincial feeds, UAT. A bad calculation was an operations failure.",
+  },
+  {
+    year: "Dec 2017–Apr 2020",
     note: "belairdirect. Licensed P&C. Where the regulated-rules habit started.",
-  },
-  {
-    year: "2024–2026",
-    note: "Ikosagon studio years: shipping agentic products, RAG knowledge systems, and edge-ready tooling — including IkoArtist and Ikosagon Learn — for lean production workflows.",
   },
 ];
 
@@ -44,11 +45,14 @@ export default function AboutPage() {
   return (
     <div className="container-shell section-block">
       <h1 className="mb-4 font-[var(--font-space-grotesk)] text-4xl font-bold">About</h1>
-      <p className="font-mono text-sm text-accent">Shawn Cooper · Applied AI Engineer &amp; QA</p>
+      <p className="font-mono text-sm text-accent">
+        Shawn Cooper · Applied AI Engineer &amp; QA · work-from-anywhere
+      </p>
       <p className="mt-4 max-w-3xl text-zinc-300">
         Shawn Cooper builds and hardens AI systems that have to behave in production — retrieval that
-        cites its sources, agents that refuse when the store is empty, and release discipline learned
-        in high-velocity robotics QA and regulated insurance operations. Work-from-anywhere.
+        cites its sources, agents that refuse when the store is empty, and release discipline from
+        Intact Financial and ATTAbotics. Formal QA starts at Intact in 2020; the regulated-rules habit
+        started earlier in P&amp;C. Work-from-anywhere.
       </p>
       <p className="mt-4 max-w-3xl text-zinc-300">
         Employers and clients have been in QA and professional services / SMB contexts: robotics
@@ -103,7 +107,7 @@ export default function AboutPage() {
       <section className="mt-10">
         <h2 className="mb-4 text-2xl font-semibold">Timeline</h2>
         <p className="mb-4 max-w-3xl text-sm text-zinc-400">
-          Employer years first (not a full resume). Studio years follow.
+          Ikosagon first, then employers (not a full resume). No studio-years blob after 2017.
         </p>
         <div className="space-y-3">
           {timeline.map((item) => (

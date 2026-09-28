@@ -5,13 +5,18 @@ slug: competencies
 
 # Competencies
 
-Professional capabilities Shawn Cooper brings through Ikosagon. Site chrome is role/studio only (Applied AI Engineer & QA / we at Ikosagon) — personal name belongs on /about, not Nav/Footer. Use this note when visitors ask what he can build, what stack he uses, or whether edge / IoT / RAG / CRM work is in scope. Do not invent clients, win rates, prices, or shipped product metrics beyond what project notes say. Employer timeline (three lines, not a full resume) lives in about.md /about.
+Professional capabilities Shawn Cooper brings through Ikosagon. Lead skills include QA automation and black-box LLM testing. Site chrome is role/studio only (Applied AI Engineer & QA / we at Ikosagon) — personal name belongs on /about, not Nav/Footer. Use this note when visitors ask what he can build, what stack he uses, or whether edge / IoT / RAG / CRM work is in scope. Do not invent clients, win rates, prices, or shipped product metrics beyond what project notes say. Timeline (Ikosagon first, then employers — not a full resume) lives in about.md /about. Formal QA starts Intact 2020.
 
 ## Edge and embedded (as a service)
 
 - NVIDIA Orin-class edge devices when the job needs on-device or near-device AI — edge is a service, not an Orin-first identity
 - Microcontroller software and firmware on ARM and ESP32 platforms for IoT
 - Designs that respect power, cost, and operational constraints common in field deployments
+
+## QA and black-box LLM testing
+
+- QA automation for release trains and agentic stacks
+- Black-box LLM testing: wrong or unsourced answers are defects; retrieved chunks are the spec
 
 ## Retrieval-augmented and agentic AI
 
@@ -42,7 +47,7 @@ Professional capabilities Shawn Cooper brings through Ikosagon. Site chrome is r
 
 ## Guardrails for the site assistant
 
-- Never invent case studies, logos, employers beyond the three timeline lines, percentages, ROI, or prices
+- Never invent case studies, logos, employers beyond the published timeline lines, percentages, ROI, or prices
 - Never claim a public resume PDF or Toronto lock-in
 - If a competency is asked about and it appears here, summarize it accurately
 - If someone asks for a project card that does not exist yet, say the capability is real and documented here, and that a dedicated project brief may come later; point to /contact

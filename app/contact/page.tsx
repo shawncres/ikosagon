@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Contact",
   description:
-    "Two doors: build with Ikosagon, or hiring (contract or full-time, remote / work-from-anywhere).",
+    "Two doors: build with Ikosagon, or hiring (contract or selected full-time, Toronto hybrid or remote).",
 };
 
 type ContactPageProps = {
@@ -19,7 +19,7 @@ export default async function ContactPage({ searchParams }: ContactPageProps) {
       <h1 className="mb-4 font-[var(--font-space-grotesk)] text-4xl font-bold">Contact</h1>
       <p className="mb-2 max-w-3xl text-zinc-300">
         Two doors. Build with us at Ikosagon on a product or process upgrade — or reach Shawn for a
-        role (contract or full-time, remote / work-from-anywhere).
+        role (contract or selected full-time, Toronto hybrid or remote).
       </p>
       <p className="mb-8 text-zinc-400">
         Email:{" "}
@@ -72,8 +72,8 @@ export default async function ContactPage({ searchParams }: ContactPageProps) {
         <section id="hiring" className="scroll-mt-24">
           <h2 className="mb-2 text-2xl font-semibold">Hiring</h2>
           <p className="mb-4 text-sm text-zinc-400">
-            Role, contract or full-time, remote / work-from-anywhere. No public resume PDF — email or
-            use the form.
+            Role, contract or selected full-time, Toronto hybrid or remote. No public resume PDF —
+            email or use the form.
           </p>
           <form action="/api/contact" method="POST" className="card-surface space-y-4 rounded-2xl p-6">
             <input type="hidden" name="door" value="hiring" />
@@ -87,7 +87,7 @@ export default async function ContactPage({ searchParams }: ContactPageProps) {
             />
             <input
               name="projectType"
-              placeholder="Role title · contract or full-time · remote / WFA"
+              placeholder="Role title · contract or full-time · Toronto hybrid or remote"
               className="w-full rounded-xl border border-border bg-black/40 px-4 py-2"
             />
             <textarea
