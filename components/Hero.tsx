@@ -89,9 +89,13 @@ export function Hero() {
             </div>
           ) : null}
           <p className="max-w-xl text-zinc-300">
-            Ikosagon ships grounded RAG, reliable tool-calling agents, CRM-grade integrations, and
+            We at Ikosagon ship grounded RAG, reliable tool-calling agents, CRM-grade integrations, and
             edge/IoT software — on-prem or cloud — so teams upgrade processes without inventing
             vanity metrics.
+          </p>
+          <p className="max-w-xl font-mono text-sm text-zinc-400">
+            The model is a black box. Retrieved chunks are the spec. A wrong or unsourced answer is a
+            defect.
           </p>
           <div className="flex flex-wrap gap-3">
             <Link href="/projects" className="rounded-xl bg-accent px-5 py-2 font-semibold text-black transition hover:opacity-90">
