@@ -1,0 +1,34 @@
+name: materialize-ikoagent-pngs
+on:
+  workflow_dispatch:
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/ikoagent-project-page
+          fetch-depth: 0
+      - name: Decode PNGs and commit
+        run: |
+          set -euo pipefail
+          DEST=public/projects/ikoagent
+          for f in answer-and-trace cover desktop-answer desktop-desk phone-desk; do
+            base64 -d < "$DEST/${f}.png.b64" > "$DEST/${f}.png"
+            rm -f "$DEST/${f}.png.b64" "$DEST/${f}.svg"
+            file "$DEST/${f}.png"
+          done
+          rm -f "$DEST/PROBE.png"
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('content/projects/ikoagent.mdx')
+          t = p.read_text()
+          p.write_text(t.replace('.svg', '.png'))
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A public/projects/ikoagent content/projects/ikoagent.mdx
+          git commit -m "assets: replace IkoAgent SVG wrappers with real PNG screenshots"
+          git push origin HEAD:feat/ikoagent-project-page
