@@ -16,11 +16,16 @@ export function Nav() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-border/80 bg-background/75 backdrop-blur-md">
-      <nav className="container-shell flex h-16 items-center justify-between">
-        <Link href="/" className="font-[var(--font-space-grotesk)] text-2xl font-bold">
-          IKOSAGON
-        </Link>
-        <div className="flex items-center gap-5 text-sm">
+      <nav className="container-shell flex h-16 items-center justify-between gap-4">
+        <div className="min-w-0">
+          <Link href="/" className="font-[var(--font-space-grotesk)] text-2xl font-bold">
+            IKOSAGON
+          </Link>
+          <p className="truncate font-mono text-[11px] leading-tight text-zinc-400 sm:text-xs">
+            Shawn Cooper · Applied AI Engineer &amp; QA
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-3 text-sm sm:gap-5">
           {navItems.map((item) => (
             <Link
               key={item.href}
@@ -33,6 +38,12 @@ export function Nav() {
               {item.label}
             </Link>
           ))}
+          <a
+            href="mailto:shawn@ikosagon.com"
+            className="hidden text-zinc-400 transition-colors hover:text-accent md:inline"
+          >
+            shawn@ikosagon.com
+          </a>
         </div>
       </nav>
     </header>
