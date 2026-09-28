@@ -6,10 +6,10 @@ import { useCallback, useEffect, useState } from "react";
 import { RingGlow } from "@/components/RingGlow";
 
 const H1_LINES = [
+  "Builds the product. Then black-box tests it.",
   "Upgrade your existing processes for a post-AGI future.",
   "Hireable AI systems, edge software, and production process upgrades.",
   "Grounded RAG, reliable agents, and edge/IoT that hold up in production.",
-  "Post-AGI workflows: lean builds for high-volume systems engineering.",
 ] as const;
 
 const ROTATE_MS = 6500;
@@ -37,7 +37,7 @@ export function Hero() {
       <div className="container-shell grid items-center gap-10 md:grid-cols-[1.2fr_1fr]">
         <div className="space-y-6">
           <p className="font-mono text-sm text-accent">
-            Edge · embedded · RAG · agentic systems · IkoArtist
+            Applied AI Engineer &amp; QA
           </p>
           <div className="relative min-h-[7.5rem] md:min-h-[8.5rem]" aria-live="polite" aria-atomic="true">
             <AnimatePresence mode="wait" initial={false}>
@@ -93,7 +93,7 @@ export function Hero() {
             edge/IoT software — on-prem or cloud — so teams upgrade processes without inventing
             vanity metrics.
           </p>
-          <p className="max-w-xl font-mono text-sm text-zinc-400">
+          <p className="max-w-xl font-mono text-sm text-zinc-300">
             The model is a black box. Retrieved chunks are the spec. A wrong or unsourced answer is a
             defect.
           </p>

@@ -21,7 +21,7 @@ export function Nav() {
           <Link href="/" className="font-[var(--font-space-grotesk)] text-2xl font-bold">
             IKOSAGON
           </Link>
-          <p className="truncate font-mono text-[11px] leading-tight text-zinc-400 sm:text-xs">
+          <p className="truncate font-mono text-xs leading-tight text-zinc-200 sm:text-sm">
             Applied AI Engineer &amp; QA
           </p>
         </div>
