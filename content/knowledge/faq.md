@@ -19,7 +19,7 @@ Remote / work-from-anywhere SMBs through enterprise-shaped scopes that leak time
 
 ## What are Shawn's core competencies?
 
-Applied AI Engineer & QA. Edge/IoT as a service; microcontroller firmware (ARM, ESP32); RAG apps with open-source models and vector databases (e.g. Chroma); custom CRM integrations with regression-minded QA; AI-integrated remote-desktop PWAs; lean on-prem and cloud deployments; model APIs including xAI · local models; LangChain natural-language flows (ElevenLabs / Suno evaluated, not claimed as live production on this site); reliable tool calling on small models; agile continuous improvement for chatbots and agents. Employer timeline (ATTAbotics, Intact, belairdirect) is on /about — not a full resume. See content/knowledge/competencies.md. Do not invent win rates, prices, or a resume PDF.
+Applied AI Engineer & QA. Edge/IoT as a service; microcontroller firmware (ARM, ESP32); RAG apps with open-source models and vector databases (e.g. Chroma); custom CRM integrations with regression-minded QA; AI-integrated remote-desktop PWAs; lean on-prem and cloud deployments; model APIs including xAI · local models; LangChain natural-language flows (ElevenLabs / Suno evaluated, not claimed as live production on this site); reliable tool calling on small models; agile continuous improvement for chatbots and agents. Timeline on /about is Ikosagon-first (Jul 2025–Present), then ATTAbotics, Intact, belairdirect — not a full resume. Formal QA starts Intact 2020. See content/knowledge/competencies.md. Do not invent win rates, prices, or a resume PDF.
 
 ## How much does a project cost?
 
@@ -31,12 +31,12 @@ IkoArtist (formerly AI Recording Artist) is a web product for almost anonymous s
 
 ## What featured products exist today?
 
-Public featured work on this site includes IkoArtist (primary lead), Hexcast (honest R&D: no invented win rates), and Signalboard (shipped proof). Ikosagon Learn is documented under /projects (model provider: xAI API; not an xAI role). NeonOps is paused. Do not invent client builds, shipped products, or metrics that are not in the notes.
+Public featured work on this site includes IkoArtist (primary lead), Hexcast (In progress. No win rates on this site.), and Signalboard (shipped proof). Ikosagon Learn is documented under /projects (model provider: xAI API; not an xAI role). NeonOps is paused. Do not invent client builds, shipped products, or metrics that are not in the notes.
 
 ## How do I start?
 
-Open /contact — two doors: Build (studio) and Hiring (role, contract or full-time, remote / work-from-anywhere). Or email shawn@ikosagon.com. No public resume.
+Open /contact — two doors: Build (studio) and Hiring (role, contract or selected full-time, Toronto hybrid or remote). Or email shawn@ikosagon.com. No public resume.
 
 ## What is Hexcast?
 
-Hexcast is Ikosagon’s in-progress R&D project for self-improving ranked probability aggregation — ranking forecast sources and combining their probabilities for prediction markets and sports, using a proprietary ranking system. Honest R&D: no invented win rates. There are no public performance numbers or prices; see /projects/hexcast or ask via /contact.
+Hexcast is Ikosagon’s in-progress R&D project for self-improving ranked probability aggregation — ranking forecast sources and combining their probabilities for prediction markets and sports, using a proprietary ranking system. In progress. No win rates on this site. There are no public performance numbers or prices; see /projects/hexcast or ask via /contact.
