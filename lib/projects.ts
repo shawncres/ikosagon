@@ -26,6 +26,8 @@ export type ProjectMeta = {
   repo?: string;
   live?: string;
   status: string;
+  /** Optional ProjectCard CTA label (defaults to "View case study"). */
+  linkLabel?: string;
   tracks?: ProjectTrack[];
 };
 
@@ -93,6 +95,7 @@ export async function getProjects(): Promise<Project[]> {
         repo: data.repo ? String(data.repo) : undefined,
         live: data.live ? String(data.live) : undefined,
         status: String(data.status ?? "In progress"),
+        linkLabel: data.linkLabel ? String(data.linkLabel) : undefined,
         tracks: parseTracks(data.tracks),
         content,
       } satisfies Project;
