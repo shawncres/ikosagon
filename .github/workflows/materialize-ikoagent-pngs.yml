@@ -19,7 +19,7 @@ jobs:
         run: |
           set -euo pipefail
           DEST=public/projects/ikoagent
-          for f in desktop-desk desktop-answer answer-and-trace phone-desk; do
+          for f in answer-and-trace desktop-answer desktop-desk phone-desk; do
             cat "$DEST/${f}.png.b64.part"* > /tmp/${f}.b64
             base64 -d < /tmp/${f}.b64 > "$DEST/${f}.png"
             python3 -c "d=open('$DEST/${f}.png','rb').read(8); assert d.startswith(b'\x89PNG'), d"
@@ -27,7 +27,7 @@ jobs:
             ls -la "$DEST/${f}.png"
           done
           cp "$DEST/desktop-desk.png" "$DEST/cover.png"
-          rm -f "$DEST/cover.svg"
+          rm -f "$DEST/cover.svg" "$DEST/_plus_test.txt"
           rm -f .github/workflows/materialize-ikoagent-pngs.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -37,5 +37,5 @@ jobs:
             echo "Nothing to commit"
             exit 0
           fi
-          git commit -m "assets: materialize IkoAgent sharp PNG screenshots; remove SVG wrappers"
+          git commit -m "assets: materialize IkoAgent sharp PNG screenshots"
           git push origin HEAD:feat/ikoagent-sharp-pngs
