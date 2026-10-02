@@ -1,6 +1,10 @@
 name: materialize-ikoagent-pngs
 on:
   workflow_dispatch:
+  push:
+    branches: [feat/ikoagent-sharp-pngs]
+    paths:
+      - 'public/projects/ikoagent/*.png.b64.part*'
 jobs:
   materialize:
     runs-on: ubuntu-latest
@@ -9,24 +13,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: feat/ikoagent-project-page
+          ref: feat/ikoagent-sharp-pngs
           fetch-depth: 0
-      - name: Decode PNGs and commit
+      - name: Decode PNGs, drop SVG wrappers, commit
         run: |
           set -euo pipefail
           DEST=public/projects/ikoagent
-          for f in answer-and-trace cover desktop-answer desktop-desk phone-desk; do
-            cat $DEST/${f}.png.b64.part* > /tmp/${f}.b64
-            base64 -d < /tmp/${f}.b64 > $DEST/${f}.png
-            rm -f $DEST/${f}.png.b64.part* $DEST/${f}.svg
-            file $DEST/${f}.png
-            python3 -c "import pathlib; d=pathlib.Path('$DEST/' + '$f' + '.png').read_bytes()[:8]; assert d[:4]==b'\x89PNG', d"
+          for f in desktop-desk desktop-answer answer-and-trace phone-desk; do
+            cat "$DEST/${f}.png.b64.part"* > /tmp/${f}.b64
+            base64 -d < /tmp/${f}.b64 > "$DEST/${f}.png"
+            python3 -c "d=open('$DEST/${f}.png','rb').read(8); assert d.startswith(b'\x89PNG'), d"
+            rm -f "$DEST/${f}.png.b64.part"* "$DEST/${f}.svg"
+            ls -la "$DEST/${f}.png"
           done
-          rm -f $DEST/PROBE.png
-          python3 -c "from pathlib import Path; p=Path('content/projects/ikoagent.mdx'); p.write_text(p.read_text().replace('.svg','.png'))"
+          cp "$DEST/desktop-desk.png" "$DEST/cover.png"
+          rm -f "$DEST/cover.svg"
+          rm -f .github/workflows/materialize-ikoagent-pngs.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A public/projects/ikoagent content/projects/ikoagent.mdx
+          git add -A "$DEST" .github/workflows || true
           git status
-          git commit -m "assets: replace IkoAgent SVG wrappers with real PNG screenshots"
-          git push origin HEAD:feat/ikoagent-project-page
+          if git diff --cached --quiet; then
+            echo "Nothing to commit"
+            exit 0
+          fi
+          git commit -m "assets: materialize IkoAgent sharp PNG screenshots; remove SVG wrappers"
+          git push origin HEAD:feat/ikoagent-sharp-pngs
