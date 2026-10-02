@@ -1,11 +1,6 @@
 name: materialize-ikoagent-pngs
 on:
   workflow_dispatch:
-  push:
-    branches: [feat/ikoagent-pngs-card-click]
-    paths:
-      - 'public/projects/ikoagent/*.png.b64'
-      - 'public/projects/ikoagent/*.png.b64.part*'
 jobs:
   materialize:
     runs-on: ubuntu-latest
@@ -30,12 +25,12 @@ jobs:
               exit 1
             fi
             base64 -d < /tmp/${f}.b64 > "$DEST/${f}.png"
-            python3 -c "d=open('$DEST/${f}.png','rb').read(8); assert d.startswith(b'\x89PNG'), d"
+            python3 -c "d=open('$DEST/${f}.png','rb').read(8); assert d.startswith(b'\\x89PNG'), d"
             rm -f "$DEST/${f}.png.b64.part"* "$DEST/${f}.png.b64" "$DEST/${f}.svg"
             ls -la "$DEST/${f}.png"
           done
           cp "$DEST/answer-and-trace.png" "$DEST/cover.png"
-          rm -f "$DEST/cover.svg" "$DEST/_probe.txt" "$DEST/_tiny.png"
+          rm -f "$DEST/cover.svg" "$DEST/_probe.txt" "$DEST/_tiny.png" "$DEST/_encoding_test.png" "$DEST/_path_test.txt"
           rm -f .github/workflows/materialize-ikoagent-pngs.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
