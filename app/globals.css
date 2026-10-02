@@ -74,7 +74,7 @@ a {
 }
 
 .prose-project img {
-  @apply my-6 h-auto w-full rounded-xl border border-border;
+  @apply my-6 h-auto w-full rounded-xl border border-border object-contain;
 }
 
 .prose-project a {

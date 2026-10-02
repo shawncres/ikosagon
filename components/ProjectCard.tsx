@@ -19,7 +19,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
             alt=""
             width={800}
             height={480}
-            className="h-40 w-full object-cover object-top transition group-hover:scale-[1.02]"
+            className="h-40 w-full object-contain object-top transition group-hover:scale-[1.02]"
           />
         </div>
       ) : null}
