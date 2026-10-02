@@ -10,10 +10,10 @@ export function ProjectCard({ project }: ProjectCardProps) {
   const linkLabel = project.linkLabel ?? "View case study";
 
   return (
-    <article className="card-surface group rounded-2xl p-5 transition hover:-translate-y-1 hover:border-accent/50">
+    <article className="card-surface group relative rounded-2xl p-5 transition hover:-translate-y-1 hover:border-accent/50">
       {project.cover ? (
         <div className="mb-4 overflow-hidden rounded-xl border border-border/80 bg-black/40">
-          {/* eslint-disable-next-line @next/next/no-img-element -- SVG covers + static public assets */}
+          {/* eslint-disable-next-line @next/next/no-img-element -- static public cover assets */}
           <img
             src={project.cover}
             alt=""
@@ -36,9 +36,15 @@ export function ProjectCard({ project }: ProjectCardProps) {
           </span>
         ))}
       </div>
-      <Link href={`/projects/${project.slug}`} className="inline-flex items-center gap-2 text-sm text-accent">
-        {linkLabel}
-        <ArrowUpRight className="h-4 w-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+      <Link
+        href={`/projects/${project.slug}`}
+        className="inline-flex items-center gap-2 text-sm text-accent after:absolute after:inset-0 after:rounded-2xl after:content-['']"
+        aria-label={`${linkLabel}: ${project.title}`}
+      >
+        <span className="relative z-10 inline-flex items-center gap-2">
+          {linkLabel}
+          <ArrowUpRight className="h-4 w-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+        </span>
       </Link>
     </article>
   );
