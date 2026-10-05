@@ -5,7 +5,7 @@ import matter from "gray-matter";
 const projectsDir = path.join(process.cwd(), "content", "projects");
 
 /** Lead product slug pinned first in featured homepage cards. */
-export const FEATURED_LEAD_SLUG = "ikoartist";
+export const FEATURED_LEAD_SLUG = "ikoagent";
 
 export type ProjectTrack = {
   title: string;
@@ -112,7 +112,7 @@ export async function getProjectBySlug(slug: string) {
 
 /**
  * Featured cards for the homepage.
- * IkoArtist stays pinned first (lead slot); remaining featured projects sort by `updated` desc.
+ * IkoAgent stays pinned first (lead slot); remaining featured projects sort by `updated` desc.
  */
 export async function getFeaturedProjects() {
   const projects = await getProjects();
