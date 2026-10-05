@@ -13,18 +13,18 @@ export default async function Home() {
         <div className="container-shell">
           <article className="card-surface neon-border rounded-2xl p-6 md:p-8">
             <p className="mb-2 font-mono text-sm text-accent">Lead product</p>
-            <h2 className="mb-3 text-3xl font-semibold">IkoArtist</h2>
+            <h2 className="mb-3 text-3xl font-semibold">IkoAgent</h2>
             <p className="mb-4 max-w-3xl text-zinc-300">
-              Discover tastes and songs you might like — answer as many questions as you want. The
-              agentic Ikosagon engine produces the hit; tracks compete on a view-ranked leaderboard.
-              Anonymous is fine; email only for opportunities.
+              A procedure desk for a small business. Staff and customers ask in plain language.
+              Answers come from the shop's own documents, and each one shows its source.
             </p>
             <p className="mb-4 max-w-3xl text-sm text-zinc-400">
-              Intake, leans, and anonymous finish are on the page. Generation runs in the pipeline, not
-              as a live spend.
+              The public sample is a fictional outdoor shop. On that desk, 39 of 39 checks passed:
+              the right procedure was retrieved, and off-topic questions were refused. This site does
+              not host a live demo.
             </p>
-            <Link href="/projects/ikoartist" className="rounded-xl bg-accent px-4 py-2 font-semibold text-black">
-              Open IkoArtist
+            <Link href="/projects/ikoagent" className="rounded-xl bg-accent px-4 py-2 font-semibold text-black">
+              Open IkoAgent
             </Link>
           </article>
         </div>
