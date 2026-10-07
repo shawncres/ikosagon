@@ -2,7 +2,7 @@
   "id": "sales",
   "title": "Sales",
   "vertical": "sales",
-  "description": "Greet \u2192 discover \u2192 match offer (RAG) \u2192 objections / competitor / trial \u2192 close or callback. Ethical sales corpus.",
+  "description": "Greet → discover → match offer (RAG) → objections / competitor / trial → close or callback. Ethical sales corpus.",
   "start": "greet",
   "ragCorpus": "sales",
   "tools": [
@@ -16,7 +16,7 @@
       "id": "greet",
       "label": "Greet",
       "agentSay": [
-        "Hi \u2014 thanks for taking this IkoLine sales demo with Ikosagon. I help match a simple plan to what you need, without a hard sell. What are you hoping to solve?"
+        "Hello there — thanks for hopping on this IkoLine sales demo with Ikosagon. How can I help you today? What are you hoping to solve?"
       ],
       "allowParaphrase": true,
       "listenFor": [
@@ -67,7 +67,7 @@
       "id": "discover",
       "label": "Discover needs",
       "agentSay": [
-        "Got it \u2014 focusing on {{need}}. Is this for a small team, or are you thinking enterprise scale? Any must-haves like phone support, SSO, or deeper analytics?"
+        "Absolutely — I can help you with {{need}}. Is this for a small team, or are you thinking enterprise scale? Any must-haves like phone support, SSO, or deeper analytics?"
       ],
       "allowParaphrase": true,
       "listenFor": [
@@ -111,7 +111,7 @@
       "id": "match_offer",
       "label": "Match offer",
       "agentSay": [
-        "Based on that, I\u2019ll pull a matching offer from our sales procedures and summarize fit in plain language \u2014 you can choose Basic, Pro, a trial, or a callback. No pressure."
+        "Based on that, I’ll pull a matching offer from our sales procedures and summarize fit in plain language — you can choose Basic, Pro, a trial, or a callback. No pressure."
       ],
       "allowParaphrase": true,
       "listenFor": [
@@ -195,7 +195,7 @@
       "id": "objection",
       "label": "Handle objection",
       "agentSay": [
-        "That\u2019s a fair concern. We can look at Basic versus Pro, offer a fourteen-day Pro trial, or schedule a deeper walkthrough. What would make this a yes for you \u2014 price, timing, or features?"
+        "That’s a fair concern. We can look at Basic versus Pro, offer a fourteen-day Pro trial, or schedule a deeper walkthrough. What would make this a yes for you — price, timing, or features?"
       ],
       "allowParaphrase": true,
       "listenFor": [
@@ -271,7 +271,7 @@
       "id": "close",
       "label": "Close",
       "agentSay": [
-        "Wonderful \u2014 I\u2019m marking this demo as a close path. In production this would hand off to checkout or a human AE. Thanks for walking the flow with me."
+        "Wonderful — I’m marking this demo as a close path. In production this would hand off to checkout or a human AE. Thanks for walking the flow with me."
       ],
       "allowParaphrase": true,
       "listenFor": [
@@ -302,7 +302,7 @@
       "exits": [
         {
           "type": "resolve",
-          "label": "Closed \u2014 demo win path"
+          "label": "Closed — demo win path"
         }
       ]
     },
@@ -310,7 +310,7 @@
       "id": "callback",
       "label": "Callback",
       "agentSay": [
-        "Of course \u2014 I\u2019ll schedule a callback so you can decide on your timeline. Would morning or afternoon work better?"
+        "Of course — I’ll schedule a callback so you can decide on your timeline. Would morning or afternoon work better?"
       ],
       "allowParaphrase": true,
       "listenFor": [

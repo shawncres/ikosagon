@@ -4,11 +4,21 @@ import {
   buildAgentTurn,
   collectSlots,
   getCurrentNode,
+  isGreetingOrAck,
   matchIntent,
   openingAgentText,
   runToolsForTurn,
   looksLikeInjection,
+  scrubWeakSlots,
+  topicFromText,
 } from "@/lib/ikoline/engine";
+import {
+  extractCustomerName,
+  getCrmStore,
+  looksLikeNoAccount,
+  sanitizeAccountId,
+} from "@/lib/ikoline/crm";
+import { applyToolSlots } from "@/lib/ikoline/tools";
 import { loadFlow, listFlows } from "@/lib/ikoline/loadFlow";
 import {
   classifyTurn,
@@ -31,7 +41,9 @@ export const maxDuration = 30;
 
 const WINDOW_MS = 60 * 60 * 1000;
 const MAX_PER_WINDOW = 40;
+const MAX_CREATES_PER_WINDOW = 8;
 const buckets = new Map<string, { count: number; resetAt: number }>();
+const createBuckets = new Map<string, { count: number; resetAt: number }>();
 
 function clientKey(request: Request) {
   return (
@@ -53,6 +65,18 @@ function rateLimit(key: string) {
   return { ok: true };
 }
 
+function createRateLimit(key: string) {
+  const now = Date.now();
+  const current = createBuckets.get(key);
+  if (!current || current.resetAt < now) {
+    createBuckets.set(key, { count: 1, resetAt: now + WINDOW_MS });
+    return { ok: true };
+  }
+  if (current.count >= MAX_CREATES_PER_WINDOW) return { ok: false };
+  current.count += 1;
+  return { ok: true };
+}
+
 function sanitizeHistory(input: unknown): HistoryTurn[] {
   if (!Array.isArray(input)) return [];
   return input
@@ -68,20 +92,6 @@ function sanitizeHistory(input: unknown): HistoryTurn[] {
 }
 
 
-function topicFromText(text: string): string {
-  const t = text.toLowerCase();
-  if (/ship|track(ing)?|deliver|package|late|delay/.test(t)) return "shipping delay";
-  if (/refund|return|exchange/.test(t)) return "return or exchange";
-  if (/warranty|defect|broken|crack/.test(t)) return "warranty or defect";
-  if (/bill|charge|invoice|charged/.test(t)) return "billing";
-  if (/login|password|access|locked/.test(t)) return "login access";
-  if (/price|expensive|budget|cost/.test(t)) return "pricing";
-  if (/hardship|can't pay|cannot pay|lost (my )?job/.test(t)) return "hardship";
-  // No keyword match → leave empty so we do not overwrite a good prior topic
-  // with "Account 1001" / "yes" / etc.
-  return "";
-}
-
 function sanitizeSlots(input: unknown): SlotMap {
   if (!input || typeof input !== "object") return {};
   const out: SlotMap = {};
@@ -95,7 +105,13 @@ function sanitizeSlots(input: unknown): SlotMap {
 
 export async function GET() {
   const flows = await listFlows();
-  return NextResponse.json({ ok: true, flows, provider: getProviderName() });
+  const crm = getCrmStore();
+  return NextResponse.json({
+    ok: true,
+    flows,
+    provider: getProviderName(),
+    crmBackend: crm.backend,
+  });
 }
 
 export async function POST(request: Request) {
@@ -242,33 +258,85 @@ export async function POST(request: Request) {
   if (classified?.slots) {
     slots = mergeSlots(slots, classified.slots);
   }
-  // Prefer short topic tags — never let a full rant land in {{reason}}/{{need}}
+  // Prefer short topic tags — never let greetings / rants land in {{reason}}/{{need}}
+  // Always overwrite a weak prior reason when the caller later describes a real issue.
   const topic = topicFromText(userText);
-  if (matchedIntent === "describe_issue") {
-    const normalized = topic || topicFromText(slots.reason || "");
-    if (normalized) slots = mergeSlots(slots, { reason: normalized });
-    else if (slots.reason && slots.reason.length > 60) {
-      slots = mergeSlots(slots, { reason: slots.reason.slice(0, 48) });
+  slots = scrubWeakSlots(slots);
+
+  if (topic) {
+    // Real issue phrases always win — overwrite "hi" / empty / other weak priors
+    slots = mergeSlots(slots, { reason: topic });
+    if (flow.vertical === "sales" || matchedIntent === "discover_need") {
+      slots = mergeSlots(slots, { need: topic });
     }
-  } else if (slots.reason && slots.reason.length > 60) {
-    // Collapse an LLM-stuffed rant without touching good short topics
+  } else if (matchedIntent === "describe_issue" && isGreetingOrAck(userText)) {
+    // LLM sometimes mislabels "hi" as describe_issue — do not keep a garbage reason
+    slots = scrubWeakSlots(slots);
+  }
+
+  // Collapse an LLM-stuffed rant without inventing a topic from noise
+  if (slots.reason && slots.reason.length > 60) {
     const collapsed = topicFromText(slots.reason) || slots.reason.slice(0, 48);
     slots = mergeSlots(slots, { reason: collapsed });
   }
-  if (matchedIntent === "discover_need") {
-    const normalized = topic || topicFromText(slots.need || "");
-    if (normalized) slots = mergeSlots(slots, { need: normalized });
-    else if (slots.need && slots.need.length > 60) {
-      slots = mergeSlots(slots, { need: slots.need.slice(0, 48) });
-    }
-  } else if (slots.need && slots.need.length > 60) {
+  if (slots.need && slots.need.length > 60) {
     const collapsed = topicFromText(slots.need) || slots.need.slice(0, 48);
     slots = mergeSlots(slots, { need: collapsed });
   }
+  slots = scrubWeakSlots(slots);
+
+  // Name / no-account heuristics (validated) — never from raw LLM SQL
+  const extractedName = extractCustomerName(userText);
+  if (extractedName) {
+    slots = mergeSlots(slots, { customerName: extractedName });
+  }
+  if (looksLikeNoAccount(userText)) {
+    slots = mergeSlots(slots, { needsAccount: "true" });
+  }
+
+  // Greeting / small-talk should not advance the graph as if an issue was described
+  let intentForGraph = matchedIntent;
+  if (matchedIntent === "describe_issue" && isGreetingOrAck(userText) && !topic && !slots.reason) {
+    intentForGraph = "greeting";
+  }
+  // Prefer deterministic intents when keywords match and node listens for them
+  const listenIds = new Set(node.listenFor.map((e) => e.intent));
+  if (looksLikeNoAccount(userText) && listenIds.has("no_account")) {
+    intentForGraph = "no_account";
+  } else if (
+    extractedName &&
+    listenIds.has("provide_name") &&
+    !sanitizeAccountId(userText) &&
+    !sanitizeAccountId(slots.accountId || "")
+  ) {
+    // Name without account digits → create / look up via provide_name
+    intentForGraph = "provide_name";
+  } else if (sanitizeAccountId(userText) && listenIds.has("provide_account")) {
+    intentForGraph = "provide_account";
+  }
 
   // C. Tools + transition (graph still owns the journey)
-  const toolResults = runToolsForTurn(flow, node, matchedIntent, slots);
-  const { nextNodeId, exit } = applyTransition(node, matchedIntent, slots);
+  // Rate-limit account creates separately (abuse / prompt-injection spam)
+  if (intentForGraph === "provide_name" && !sanitizeAccountId(slots.accountId || "")) {
+    if (!createRateLimit(clientKey(request)).ok) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Too many new-account creates from this network. Try again later.",
+          nodeId: node.id,
+          agentText: "",
+          slots,
+        } satisfies TurnResponse,
+        { status: 429 },
+      );
+    }
+  }
+
+  let toolResults = await runToolsForTurn(flow, node, intentForGraph, slots);
+  slots = applyToolSlots(slots, toolResults);
+  slots = scrubWeakSlots(slots);
+
+  const { nextNodeId, exit } = applyTransition(node, intentForGraph, slots);
   const nextNode = nextNodeId ? getCurrentNode(flow, nextNodeId) : null;
   const speakNode = exit ? node : nextNode ?? node;
   const transitioned = Boolean(nextNode && nextNode.id !== node.id);
@@ -296,7 +364,7 @@ export async function POST(request: Request) {
     ragContext,
     toolResults,
     exit,
-    matchedIntent,
+    matchedIntent: intentForGraph,
     transitioned,
   });
 
@@ -314,7 +382,7 @@ export async function POST(request: Request) {
       slots,
       toolResults,
       ragSnippets,
-      matchedIntent,
+      matchedIntent: intentForGraph,
     });
     mode = classified ? "llm" : "scripted";
     // If classify worked but speak failed, still mark llm for intent path transparency
@@ -332,7 +400,7 @@ export async function POST(request: Request) {
     userText,
     agentText,
     mode,
-    intent: matchedIntent,
+    intent: intentForGraph,
     slots,
     provider,
     exit: exit ?? null,
@@ -348,7 +416,7 @@ export async function POST(request: Request) {
     exit: exit ?? undefined,
     mode,
     debug: {
-      matchedIntent,
+      matchedIntent: intentForGraph,
       ragHits: ragHits.map((h) => ({
         title: h.title,
         heading: h.heading,
@@ -364,5 +432,6 @@ export async function POST(request: Request) {
     flowTitle: flow.title,
     sessionId,
     provider,
+    crmBackend: getCrmStore().backend,
   });
 }

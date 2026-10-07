@@ -55,8 +55,11 @@ export function matchIntent(
 
 function synonymBoost(intent: string, text: string): number {
   const rules: Record<string, string[]> = {
+    greeting: ["hi", "hello", "hey", "good morning", "good afternoon", "thanks", "thank you"],
     verify_identity: ["account", "verify", "it's me", "my name", "last four", "last 4"],
     provide_account: ["account", "number", "1001", "2044", "3300"],
+    provide_name: ["my name is", "i am", "i'm", "call me", "this is"],
+    no_account: ["no account", "don't have", "new customer", "set one up", "create an account"],
     describe_issue: [
       "broken",
       "not working",
@@ -98,9 +101,74 @@ function synonymBoost(intent: string, text: string): number {
   const needles = rules[intent] ?? [];
   let boost = 0;
   for (const n of needles) {
-    if (text.includes(n)) boost += 1.5;
+    // Short tokens need word boundaries ("hi" must not match inside "this" / "shipping")
+    if (n.length <= 3) {
+      const re = new RegExp(`(?:^|[^a-z0-9])${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:[^a-z0-9]|$)`);
+      if (re.test(text)) boost += 1.5;
+    } else if (text.includes(n)) {
+      boost += 1.5;
+    }
   }
   return boost;
+}
+
+
+/** Greetings / acks that must never become the issue reason */
+export function isGreetingOrAck(text: string): boolean {
+  const t = text.toLowerCase().replace(/[^a-z0-9\s']/g, " ").replace(/\s+/g, " ").trim();
+  if (!t) return true;
+  // Pure short social openers / fillers
+  if (
+    /^(hi|hii+|hello|hey|hey there|hi there|howdy|yo|sup|good (morning|afternoon|evening)|thanks|thank you|ty|ok|okay|sure|yes|yeah|yep|yup|no|nope|cool|great|alright|all right|please|nm|never ?mind)[\s!.]*$/i.test(
+      t,
+    )
+  ) {
+    return true;
+  }
+  // Very short non-issue chatter
+  if (t.split(" ").length <= 2 && /^(hi|hello|hey|thanks|thank you|ok|okay|sure|yes|yeah)\b/.test(t)) {
+    return true;
+  }
+  return false;
+}
+
+/** Weak / garbage topics that should not be spoken as {{reason}} */
+export function isWeakTopic(value: string | undefined | null): boolean {
+  if (!value) return true;
+  const t = value.toLowerCase().replace(/\s+/g, " ").trim();
+  if (!t || t.length < 3) return true;
+  if (isGreetingOrAck(t)) return true;
+  if (/^(account|number|demo|please|help|issue|problem|question|hi|hello)\b/.test(t) && t.length < 18) {
+    return true;
+  }
+  // Account digits alone
+  if (/^(1001|2044|3300|\d{4,6})$/.test(t)) return true;
+  return false;
+}
+
+/** Map free text to a short CS/sales topic tag (empty if nothing real) */
+export function topicFromText(text: string): string {
+  const t = text.toLowerCase();
+  if (!t.trim() || isGreetingOrAck(t)) return "";
+  if (/lost\s+(my\s+)?package|never\s+(got|received|arrived)|haven'?t\s+received|no\s+scan/.test(t)) {
+    return "lost package";
+  }
+  if (/ship|track(ing)?|deliver|package|late|delay|still\s+waiting/.test(t)) return "shipping delay";
+  if (/refund|return|exchange/.test(t)) return "return or exchange";
+  if (/warranty|defect|broken|crack/.test(t)) return "warranty or defect";
+  if (/bill|charge|invoice|charged/.test(t)) return "billing";
+  if (/login|password|access|locked/.test(t)) return "login access";
+  if (/price|expensive|budget|cost/.test(t)) return "pricing";
+  if (/hardship|can'?t pay|cannot pay|lost (my )?job/.test(t)) return "hardship";
+  return "";
+}
+
+/** Drop weak reason/need so scripts never say "help with hi" */
+export function scrubWeakSlots(slots: SlotMap): SlotMap {
+  const next: SlotMap = { ...slots };
+  if (isWeakTopic(next.reason)) delete next.reason;
+  if (isWeakTopic(next.need)) delete next.need;
+  return next;
 }
 
 /** Pull common demo slots from free text */
@@ -120,10 +188,9 @@ export function collectSlots(userText: string, existing: SlotMap, required?: str
   const months = text.match(/\b(\d+)\s*(?:month|mo)\b/i);
   if (months) next.planMonths = months[1];
 
-  if (/refund|return|warranty|shipping|login|password|billing/i.test(text)) {
-    const m = text.match(/\b(refund|return|warranty|shipping|login|password|billing)\b/i);
-    if (m) next.reason = m[1].toLowerCase();
-  }
+  // Prefer short topic tags — never stash greetings as the issue reason
+  const topic = topicFromText(text);
+  if (topic) next.reason = topic;
 
   if (/morning|afternoon|evening|tomorrow|today/i.test(text)) {
     const m = text.match(/\b(morning|afternoon|evening|tomorrow|today)\b/i);
@@ -135,15 +202,41 @@ export function collectSlots(userText: string, existing: SlotMap, required?: str
     if (m) next.offer = m[1].toLowerCase().replace(/\s+/g, "_");
   }
 
-  // If a required slot is still empty, stash raw text as a soft fill for single-slot nodes
+  // Customer name (validated) — never treat account digits or issue phrases as names
+  {
+    const nameMatch = text.match(
+      /\b(?:my name is|i(?:'m| am)|this is|call me)\s+([A-Za-z][A-Za-z .'\-]{1,40})/i,
+    );
+    let candidate = nameMatch?.[1]?.replace(/[.,!?]+$/, "").trim() ?? "";
+    if (
+      !candidate &&
+      /^[A-Za-z][A-Za-z .'\-]{1,40}$/.test(text) &&
+      !/\d/.test(text) &&
+      !/package|refund|account|help|late|order|billing|login|hi|hello|hey/i.test(text)
+    ) {
+      candidate = text.trim();
+    }
+    if (
+      candidate.length >= 2 &&
+      candidate.length <= 60 &&
+      /^[A-Za-z][A-Za-z .'\-]*[A-Za-z.]$/.test(candidate)
+    ) {
+      next.customerName = candidate
+        .split(" ")
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ");
+    }
+  }
+
+  // Soft-fill notes/objection only — never dump raw text into reason/need (greetings poisoned those)
   if (required?.length === 1 && !next[required[0]] && text.length > 1) {
     const key = required[0];
-    if (key === "reason" || key === "need" || key === "notes" || key === "objection") {
+    if ((key === "notes" || key === "objection") && !isGreetingOrAck(text)) {
       next[key] = text.slice(0, 200);
     }
   }
 
-  return next;
+  return scrubWeakSlots(next);
 }
 
 export function slotsFilled(slots: SlotMap, required?: string[]): boolean {
@@ -239,7 +332,11 @@ export function buildAgentTurn(opts: {
     // Stay on node — clarify or restate
     const clarify =
       opts.node.requireSlots?.filter((s) => !opts.slots[s]) ?? [];
-    if (clarify.length) {
+    if (opts.matchedIntent === "greeting") {
+      lines.push(
+        "Hello there — how can I help you today? Orders, billing, login, returns — I'm right here with you.",
+      );
+    } else if (clarify.length) {
       lines.push(
         interpolate(
           opts.node.agentSay[0] ?? "Could you share a bit more so we can continue?",
@@ -290,6 +387,14 @@ export function buildAgentTurn(opts: {
     if (tr.name === "scheduleCallback" && tr.data.callbackId) {
       lines.push(`Callback ${tr.data.callbackId} set for ${tr.data.window}.`);
     }
+    if (tr.name === "createCustomer" && tr.data.accountId && tr.data.created === true) {
+      lines.push(
+        `I've set up demo account ${tr.data.accountId} for ${tr.data.name}.`,
+      );
+    }
+    if (tr.name === "lookupAccount" && tr.data.verified && tr.data.name) {
+      lines.push(`Account on file for ${tr.data.name}.`);
+    }
   }
 
   return stripPlaceholders(lines.filter(Boolean).join("\n\n"));
@@ -297,7 +402,8 @@ export function buildAgentTurn(opts: {
 
 export function interpolate(template: string, slots: SlotMap, tools: ToolResult[] = []): string {
   let out = template;
-  for (const [key, value] of Object.entries(slots)) {
+  const safe: SlotMap = scrubWeakSlots(slots);
+  for (const [key, value] of Object.entries(safe)) {
     out = out.replaceAll(`{{${key}}}`, value);
   }
   const balance = tools.find((t) => t.name === "checkBalance");
@@ -309,7 +415,8 @@ export function interpolate(template: string, slots: SlotMap, tools: ToolResult[
     out = out.replaceAll("{{installment}}", String(plan.data.installment));
     out = out.replaceAll("{{planMonths}}", String(plan.data.months ?? ""));
   }
-  return out;
+  // stripPlaceholders removes any {{reason}} left after scrubbing weak topics
+  return stripPlaceholders(out);
 }
 
 function cleanRagSnippet(raw: string): string {
@@ -328,7 +435,14 @@ function cleanRagSnippet(raw: string): string {
 }
 
 export function stripPlaceholders(text: string): string {
-  return text.replace(/\{\{[a-zA-Z0-9_]+\}\}/g, "").replace(/  +/g, " ").trim();
+  return text
+    .replace(/\{\{[a-zA-Z0-9_]+\}\}/g, "")
+    // Collapse awkward gaps left by empty reason/need ("help with .", "about the ,")
+    .replace(/\b(with|about the|for|regarding)\s*([.,;:]|$)/gi, "$2")
+    .replace(/\s+([.,;:!?])/g, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim();
 }
 
 export function interpolateLines(
@@ -347,12 +461,12 @@ export function openingAgentText(flow: Flow): string {
   );
 }
 
-export function runToolsForTurn(
+export async function runToolsForTurn(
   flow: Flow,
   node: FlowNode,
   intent: string | null,
   slots: SlotMap,
-): ToolResult[] {
+): Promise<ToolResult[]> {
   const names = toolsForIntent(intent, node.toolsAllowed, flow.tools);
   // Also auto-run tools listed on the destination-oriented node when slots just filled
   const extra =
@@ -360,20 +474,30 @@ export function runToolsForTurn(
       ? ["checkBalance"]
       : intent === "provide_account" || intent === "verify_identity"
         ? ["lookupAccount"]
-        : [];
+        : intent === "provide_name"
+          ? ["createCustomer"]
+          : [];
   const unique = [...new Set([...names, ...extra])].filter(
     (n) => flow.tools.includes(n) || node.toolsAllowed?.includes(n),
   );
-  return unique.map((name) => runTool(name, slots));
+  const results: ToolResult[] = [];
+  for (const name of unique) {
+    results.push(await runTool(name, slots));
+  }
+  return results;
 }
 
 export function looksLikeInjection(text: string): boolean {
   const t = text.toLowerCase();
   return (
-    /ignore (all|any|previous) instructions/.test(t) ||
+    /ignore\s+(all|any|previous)\b.{0,40}\binstructions/.test(t) ||
     /system prompt/.test(t) ||
     /jailbreak/.test(t) ||
-    /do not follow (the )?flow/.test(t)
+    /do not follow (the )?flow/.test(t) ||
+    /\b(drop|truncate|delete)\s+table\b/.test(t) ||
+    /\bunion\s+select\b/.test(t) ||
+    /\binsert\s+into\b/.test(t) ||
+    /\b(exec|execute)\s*\(/.test(t)
   );
 }
 
@@ -387,14 +511,14 @@ export type ProcessTurnResult = {
   history: HistoryTurn[];
 };
 
-export function processTurn(opts: {
+export async function processTurn(opts: {
   flow: Flow;
   nodeId: string;
   slots: SlotMap;
   history: HistoryTurn[];
   userText: string;
   ragSnippets?: string[];
-}): ProcessTurnResult {
+}): Promise<ProcessTurnResult> {
   const node = getCurrentNode(opts.flow, opts.nodeId);
   if (!node) {
     return {
@@ -431,7 +555,7 @@ export function processTurn(opts: {
 
   const slots = collectSlots(opts.userText, opts.slots, node.requireSlots);
   const { intent } = matchIntent(node, opts.userText);
-  const toolResults = runToolsForTurn(opts.flow, node, intent, slots);
+  const toolResults = await runToolsForTurn(opts.flow, node, intent, slots);
   const { nextNodeId, exit } = applyTransition(node, intent, slots);
   const nextNode = nextNodeId ? getCurrentNode(opts.flow, nextNodeId) : null;
 
