@@ -2,7 +2,7 @@
   "id": "collections",
   "title": "Collections",
   "vertical": "collections",
-  "description": "Identity \u2192 mini-Miranda disclosure \u2192 balance \u2192 arrange, hardship, dispute/cease paths \u2192 disposition. Expanded compliance corpus.",
+  "description": "Identity → mini-Miranda disclosure → balance → arrange, hardship, dispute/cease paths → disposition. Expanded compliance corpus.",
   "start": "identity",
   "ragCorpus": "collections",
   "tools": [
@@ -18,7 +18,7 @@
       "id": "identity",
       "label": "Identity",
       "agentSay": [
-        "Hello \u2014 this is the IkoLine collections demonstration line with Ikosagon. May I confirm I\u2019m speaking with the account holder? Please share demo account 1001, 2044, or 3300."
+        "Hello there — this is the IkoLine collections demonstration line with Ikosagon. May I confirm I'm speaking with the account holder? Please share demo account 1001, 2044, or 3300."
       ],
       "allowParaphrase": false,
       "listenFor": [
@@ -85,7 +85,7 @@
       "exits": [
         {
           "type": "refuse",
-          "label": "Wrong party \u2014 call ended"
+          "label": "Wrong party — call ended"
         }
       ]
     },
@@ -93,7 +93,7 @@
       "id": "disclosure",
       "label": "Mini-Miranda / disclosure",
       "agentSay": [
-        "This is an attempt to collect a debt. Any information obtained will be used for that purpose. This is a demonstration script for Ikosagon \u2014 not a real collection call. Do you understand?"
+        "This is an attempt to collect a debt. Any information obtained will be used for that purpose. This is a demonstration script for Ikosagon — not a real collection call. Do you understand?"
       ],
       "allowParaphrase": false,
       "listenFor": [
@@ -141,7 +141,7 @@
       "exits": [
         {
           "type": "refuse",
-          "label": "Disclosure declined \u2014 call ended"
+          "label": "Disclosure declined — call ended"
         }
       ]
     },
@@ -149,7 +149,7 @@
       "id": "balance",
       "label": "Balance",
       "agentSay": [
-        "Thank you. I\u2019m pulling the balance for account {{accountId}} now, and then we can talk about options \u2014 including a short plan if you qualify."
+        "Thank you. I’m pulling the balance for account {{accountId}} now, and then we can talk about options — including a short plan if you qualify."
       ],
       "allowParaphrase": false,
       "listenFor": [
@@ -222,7 +222,7 @@
       "exits": [
         {
           "type": "refuse",
-          "label": "Payment refused \u2014 disposition logged"
+          "label": "Payment refused — disposition logged"
         }
       ]
     },
@@ -308,7 +308,7 @@
       "id": "hardship",
       "label": "Hardship escalate",
       "agentSay": [
-        "I\u2019m sorry you\u2019re dealing with that. Per our hardship path, I\u2019m pausing standard collection prompts and escalating to a specialist who can review options with you."
+        "I’m sorry you’re dealing with that. Per our hardship path, I’m pausing standard collection prompts and escalating to a specialist who can review options with you."
       ],
       "allowParaphrase": false,
       "listenFor": [
@@ -360,7 +360,7 @@
       "id": "disposition",
       "label": "Disposition",
       "agentSay": [
-        "I\u2019ve noted the arrangement for account {{accountId}} and logged the disposition. Thank you for your time on this demonstration call \u2014 take care."
+        "I’ve noted the arrangement for account {{accountId}} and logged the disposition. Thank you for your time on this demonstration call — take care."
       ],
       "allowParaphrase": false,
       "listenFor": [

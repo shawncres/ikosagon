@@ -58,6 +58,8 @@ function synonymBoost(intent: string, text: string): number {
     greeting: ["hi", "hello", "hey", "good morning", "good afternoon", "thanks", "thank you"],
     verify_identity: ["account", "verify", "it's me", "my name", "last four", "last 4"],
     provide_account: ["account", "number", "1001", "2044", "3300"],
+    provide_name: ["my name is", "i am", "i'm", "call me", "this is"],
+    no_account: ["no account", "don't have", "new customer", "set one up", "create an account"],
     describe_issue: [
       "broken",
       "not working",
@@ -200,6 +202,32 @@ export function collectSlots(userText: string, existing: SlotMap, required?: str
     if (m) next.offer = m[1].toLowerCase().replace(/\s+/g, "_");
   }
 
+  // Customer name (validated) — never treat account digits or issue phrases as names
+  {
+    const nameMatch = text.match(
+      /\b(?:my name is|i(?:'m| am)|this is|call me)\s+([A-Za-z][A-Za-z .'\-]{1,40})/i,
+    );
+    let candidate = nameMatch?.[1]?.replace(/[.,!?]+$/, "").trim() ?? "";
+    if (
+      !candidate &&
+      /^[A-Za-z][A-Za-z .'\-]{1,40}$/.test(text) &&
+      !/\d/.test(text) &&
+      !/package|refund|account|help|late|order|billing|login|hi|hello|hey/i.test(text)
+    ) {
+      candidate = text.trim();
+    }
+    if (
+      candidate.length >= 2 &&
+      candidate.length <= 60 &&
+      /^[A-Za-z][A-Za-z .'\-]*[A-Za-z.]$/.test(candidate)
+    ) {
+      next.customerName = candidate
+        .split(" ")
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ");
+    }
+  }
+
   // Soft-fill notes/objection only — never dump raw text into reason/need (greetings poisoned those)
   if (required?.length === 1 && !next[required[0]] && text.length > 1) {
     const key = required[0];
@@ -306,7 +334,7 @@ export function buildAgentTurn(opts: {
       opts.node.requireSlots?.filter((s) => !opts.slots[s]) ?? [];
     if (opts.matchedIntent === "greeting") {
       lines.push(
-        "Hi — happy to help. What can I take care of for you today: an order, billing, login, or a return?",
+        "Hello there — how can I help you today? Orders, billing, login, returns — I'm right here with you.",
       );
     } else if (clarify.length) {
       lines.push(
@@ -358,6 +386,14 @@ export function buildAgentTurn(opts: {
     }
     if (tr.name === "scheduleCallback" && tr.data.callbackId) {
       lines.push(`Callback ${tr.data.callbackId} set for ${tr.data.window}.`);
+    }
+    if (tr.name === "createCustomer" && tr.data.accountId && tr.data.created === true) {
+      lines.push(
+        `I've set up demo account ${tr.data.accountId} for ${tr.data.name}.`,
+      );
+    }
+    if (tr.name === "lookupAccount" && tr.data.verified && tr.data.name) {
+      lines.push(`Account on file for ${tr.data.name}.`);
     }
   }
 
@@ -425,12 +461,12 @@ export function openingAgentText(flow: Flow): string {
   );
 }
 
-export function runToolsForTurn(
+export async function runToolsForTurn(
   flow: Flow,
   node: FlowNode,
   intent: string | null,
   slots: SlotMap,
-): ToolResult[] {
+): Promise<ToolResult[]> {
   const names = toolsForIntent(intent, node.toolsAllowed, flow.tools);
   // Also auto-run tools listed on the destination-oriented node when slots just filled
   const extra =
@@ -438,20 +474,30 @@ export function runToolsForTurn(
       ? ["checkBalance"]
       : intent === "provide_account" || intent === "verify_identity"
         ? ["lookupAccount"]
-        : [];
+        : intent === "provide_name"
+          ? ["createCustomer"]
+          : [];
   const unique = [...new Set([...names, ...extra])].filter(
     (n) => flow.tools.includes(n) || node.toolsAllowed?.includes(n),
   );
-  return unique.map((name) => runTool(name, slots));
+  const results: ToolResult[] = [];
+  for (const name of unique) {
+    results.push(await runTool(name, slots));
+  }
+  return results;
 }
 
 export function looksLikeInjection(text: string): boolean {
   const t = text.toLowerCase();
   return (
-    /ignore (all|any|previous) instructions/.test(t) ||
+    /ignore\s+(all|any|previous)\b.{0,40}\binstructions/.test(t) ||
     /system prompt/.test(t) ||
     /jailbreak/.test(t) ||
-    /do not follow (the )?flow/.test(t)
+    /do not follow (the )?flow/.test(t) ||
+    /\b(drop|truncate|delete)\s+table\b/.test(t) ||
+    /\bunion\s+select\b/.test(t) ||
+    /\binsert\s+into\b/.test(t) ||
+    /\b(exec|execute)\s*\(/.test(t)
   );
 }
 
@@ -465,14 +511,14 @@ export type ProcessTurnResult = {
   history: HistoryTurn[];
 };
 
-export function processTurn(opts: {
+export async function processTurn(opts: {
   flow: Flow;
   nodeId: string;
   slots: SlotMap;
   history: HistoryTurn[];
   userText: string;
   ragSnippets?: string[];
-}): ProcessTurnResult {
+}): Promise<ProcessTurnResult> {
   const node = getCurrentNode(opts.flow, opts.nodeId);
   if (!node) {
     return {
@@ -509,7 +555,7 @@ export function processTurn(opts: {
 
   const slots = collectSlots(opts.userText, opts.slots, node.requireSlots);
   const { intent } = matchIntent(node, opts.userText);
-  const toolResults = runToolsForTurn(opts.flow, node, intent, slots);
+  const toolResults = await runToolsForTurn(opts.flow, node, intent, slots);
   const { nextNodeId, exit } = applyTransition(node, intent, slots);
   const nextNode = nextNodeId ? getCurrentNode(opts.flow, nextNodeId) : null;
 

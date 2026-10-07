@@ -2,11 +2,12 @@
   "id": "customer_service",
   "title": "Customer Service",
   "vertical": "customer_service",
-  "description": "Greet → verify → diagnose → policy RAG → resolve, callback, or escalate. Richer corpus for returns, shipping, billing, defects, de-escalation.",
+  "description": "Conversational greet → verify (name or account / new customer) → diagnose → policy RAG → resolve, callback, or escalate.",
   "start": "greet",
   "ragCorpus": "cs",
   "tools": [
     "lookupAccount",
+    "createCustomer",
     "createCase",
     "scheduleCallback",
     "logDisposition"
@@ -16,7 +17,7 @@
       "id": "greet",
       "label": "Greet",
       "agentSay": [
-        "Thank you for calling Ikosagon Support — this is the IkoLine demo queue. I’m here to help with orders, billing, login, or returns. What can I take care of for you today?"
+        "Hello there — how can I help you today?"
       ],
       "allowParaphrase": true,
       "listenFor": [
@@ -71,7 +72,8 @@
       "id": "verify",
       "label": "Verify identity",
       "agentSay": [
-        "I'd be glad to help. For security, may I have your demo account number? You can use 1001, 2044, or 3300."
+        "Absolutely — I can help you with that. Would it be okay if I asked you some questions to pull up and secure your account?",
+        "What is your name, and if you don't have an account I can help you set one up. You can also use demo account 1001, 2044, or 3300."
       ],
       "allowParaphrase": true,
       "listenFor": [
@@ -81,15 +83,35 @@
             "my account is 1001",
             "account 2044",
             "3300",
-            "it's 1001"
+            "it's 1001",
+            "use 2044"
+          ]
+        },
+        {
+          "intent": "provide_name",
+          "examples": [
+            "my name is Maya Chen",
+            "I'm Chris Patel",
+            "this is Jordan",
+            "call me Sam"
+          ]
+        },
+        {
+          "intent": "no_account",
+          "examples": [
+            "I don't have an account",
+            "no account yet",
+            "I'm a new customer",
+            "can you set one up",
+            "create an account for me"
           ]
         },
         {
           "intent": "verify_identity",
           "examples": [
             "last four 1001",
-            "it's Alex",
-            "yes I'm the account holder"
+            "yes I'm the account holder",
+            "sure go ahead"
           ]
         }
       ],
@@ -97,11 +119,19 @@
         "accountId"
       ],
       "toolsAllowed": [
-        "lookupAccount"
+        "lookupAccount",
+        "createCustomer"
       ],
       "transitions": [
         {
           "on": "provide_account",
+          "to": "diagnose",
+          "whenSlotsFilled": [
+            "accountId"
+          ]
+        },
+        {
+          "on": "provide_name",
           "to": "diagnose",
           "whenSlotsFilled": [
             "accountId"
@@ -113,6 +143,10 @@
           "whenSlotsFilled": [
             "accountId"
           ]
+        },
+        {
+          "on": "no_account",
+          "to": "verify"
         },
         {
           "on": "slots_filled",
@@ -127,7 +161,7 @@
       "id": "diagnose",
       "label": "Diagnose",
       "agentSay": [
-        "Thank you — account {{accountId}} is on file. Tell me a little more about what happened so I can pull the right procedure."
+        "Thanks — account {{accountId}} is on file. Tell me a little more about what happened so I can pull the right procedure."
       ],
       "allowParaphrase": true,
       "listenFor": [
@@ -286,7 +320,7 @@
       "id": "resolve_close",
       "label": "Resolve",
       "agentSay": [
-        "I’m glad we could sort this using the published procedure. I’ve logged the disposition on account {{accountId}}. Is there anything else I can help with before we wrap up?"
+        "I'm glad we could sort this. I've logged the disposition on account {{accountId}}. Is there anything else I can help with before we wrap up?"
       ],
       "allowParaphrase": true,
       "listenFor": [
@@ -361,7 +395,7 @@
       "id": "callback_close",
       "label": "Schedule callback",
       "agentSay": [
-        "Absolutely — I’ll schedule a callback on this account and attach notes so we pick up where we left off. Would morning, afternoon, or tomorrow work better?"
+        "Absolutely — I'll schedule a callback on this account and attach notes so we pick up where we left off. Would morning, afternoon, or tomorrow work better?"
       ],
       "allowParaphrase": true,
       "listenFor": [

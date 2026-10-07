@@ -12,6 +12,13 @@ import {
   scrubWeakSlots,
   topicFromText,
 } from "@/lib/ikoline/engine";
+import {
+  extractCustomerName,
+  getCrmStore,
+  looksLikeNoAccount,
+  sanitizeAccountId,
+} from "@/lib/ikoline/crm";
+import { applyToolSlots } from "@/lib/ikoline/tools";
 import { loadFlow, listFlows } from "@/lib/ikoline/loadFlow";
 import {
   classifyTurn,
@@ -34,7 +41,9 @@ export const maxDuration = 30;
 
 const WINDOW_MS = 60 * 60 * 1000;
 const MAX_PER_WINDOW = 40;
+const MAX_CREATES_PER_WINDOW = 8;
 const buckets = new Map<string, { count: number; resetAt: number }>();
+const createBuckets = new Map<string, { count: number; resetAt: number }>();
 
 function clientKey(request: Request) {
   return (
@@ -52,6 +61,18 @@ function rateLimit(key: string) {
     return { ok: true };
   }
   if (current.count >= MAX_PER_WINDOW) return { ok: false };
+  current.count += 1;
+  return { ok: true };
+}
+
+function createRateLimit(key: string) {
+  const now = Date.now();
+  const current = createBuckets.get(key);
+  if (!current || current.resetAt < now) {
+    createBuckets.set(key, { count: 1, resetAt: now + WINDOW_MS });
+    return { ok: true };
+  }
+  if (current.count >= MAX_CREATES_PER_WINDOW) return { ok: false };
   current.count += 1;
   return { ok: true };
 }
@@ -84,7 +105,13 @@ function sanitizeSlots(input: unknown): SlotMap {
 
 export async function GET() {
   const flows = await listFlows();
-  return NextResponse.json({ ok: true, flows, provider: getProviderName() });
+  const crm = getCrmStore();
+  return NextResponse.json({
+    ok: true,
+    flows,
+    provider: getProviderName(),
+    crmBackend: crm.backend,
+  });
 }
 
 export async function POST(request: Request) {
@@ -258,14 +285,57 @@ export async function POST(request: Request) {
   }
   slots = scrubWeakSlots(slots);
 
+  // Name / no-account heuristics (validated) — never from raw LLM SQL
+  const extractedName = extractCustomerName(userText);
+  if (extractedName) {
+    slots = mergeSlots(slots, { customerName: extractedName });
+  }
+  if (looksLikeNoAccount(userText)) {
+    slots = mergeSlots(slots, { needsAccount: "true" });
+  }
+
   // Greeting / small-talk should not advance the graph as if an issue was described
   let intentForGraph = matchedIntent;
   if (matchedIntent === "describe_issue" && isGreetingOrAck(userText) && !topic && !slots.reason) {
     intentForGraph = "greeting";
   }
+  // Prefer deterministic intents when keywords match and node listens for them
+  const listenIds = new Set(node.listenFor.map((e) => e.intent));
+  if (looksLikeNoAccount(userText) && listenIds.has("no_account")) {
+    intentForGraph = "no_account";
+  } else if (
+    extractedName &&
+    listenIds.has("provide_name") &&
+    !sanitizeAccountId(userText) &&
+    !sanitizeAccountId(slots.accountId || "")
+  ) {
+    // Name without account digits → create / look up via provide_name
+    intentForGraph = "provide_name";
+  } else if (sanitizeAccountId(userText) && listenIds.has("provide_account")) {
+    intentForGraph = "provide_account";
+  }
 
   // C. Tools + transition (graph still owns the journey)
-  const toolResults = runToolsForTurn(flow, node, intentForGraph, slots);
+  // Rate-limit account creates separately (abuse / prompt-injection spam)
+  if (intentForGraph === "provide_name" && !sanitizeAccountId(slots.accountId || "")) {
+    if (!createRateLimit(clientKey(request)).ok) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Too many new-account creates from this network. Try again later.",
+          nodeId: node.id,
+          agentText: "",
+          slots,
+        } satisfies TurnResponse,
+        { status: 429 },
+      );
+    }
+  }
+
+  let toolResults = await runToolsForTurn(flow, node, intentForGraph, slots);
+  slots = applyToolSlots(slots, toolResults);
+  slots = scrubWeakSlots(slots);
+
   const { nextNodeId, exit } = applyTransition(node, intentForGraph, slots);
   const nextNode = nextNodeId ? getCurrentNode(flow, nextNodeId) : null;
   const speakNode = exit ? node : nextNode ?? node;
@@ -362,5 +432,6 @@ export async function POST(request: Request) {
     flowTitle: flow.title,
     sessionId,
     provider,
+    crmBackend: getCrmStore().backend,
   });
 }
