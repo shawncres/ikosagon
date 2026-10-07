@@ -203,13 +203,15 @@ export async function POST(request: Request) {
   if (classified?.slots) {
     slots = mergeSlots(slots, classified.slots);
   }
-  // Soft-fill short topic tags (not the full rant) when useful for later nodes
+  // Prefer short topic tags — never let a full rant land in {{reason}}/{{need}}
   const topic = topicFromText(userText);
-  if (!slots.reason && matchedIntent === "describe_issue" && topic) {
-    slots = mergeSlots(slots, { reason: topic });
+  if (matchedIntent === "describe_issue" || slots.reason) {
+    const normalized = topic || topicFromText(slots.reason || "") || (slots.reason || "").slice(0, 48);
+    if (normalized) slots = mergeSlots(slots, { reason: normalized });
   }
-  if (!slots.need && matchedIntent === "discover_need" && topic) {
-    slots = mergeSlots(slots, { need: topic });
+  if (matchedIntent === "discover_need" || slots.need) {
+    const normalized = topic || topicFromText(slots.need || "") || (slots.need || "").slice(0, 48);
+    if (normalized) slots = mergeSlots(slots, { need: normalized });
   }
 
   // C. Tools + transition (graph still owns the journey)
