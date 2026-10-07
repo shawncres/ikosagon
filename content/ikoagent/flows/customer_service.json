@@ -155,7 +155,18 @@
             "accountId"
           ]
         }
-      ]
+      ],
+      "agentSayVariants": {
+        "knownName": [
+          "Thanks, {{customerName}}. Do you have an account number handy? If not, I can set one up for you right now."
+        ],
+        "accountNotFound": [
+          "I couldn't find an account with that number. Could you double-check it? If you're new, just tell me your name and I'll set one up — demo accounts 1001, 2044, and 3300 also work."
+        ],
+        "reprompt": [
+          "Could you share your name or your account number? If you don't have an account, I can set one up — demo accounts 1001, 2044, and 3300 also work."
+        ]
+      }
     },
     "diagnose": {
       "id": "diagnose",
@@ -215,7 +226,12 @@
           "on": "*",
           "to": "policy"
         }
-      ]
+      ],
+      "agentSayVariants": {
+        "knownReason": [
+          "Thanks — account {{accountId}} is all set. About the {{reason}}: what's happened so far, so I can pull the right procedure?"
+        ]
+      }
     },
     "policy": {
       "id": "policy",
@@ -314,7 +330,12 @@
           "type": "callback",
           "label": "Callback scheduled"
         }
-      ]
+      ],
+      "agentSayVariants": {
+        "reprompt": [
+          "Here's what our procedure says for that."
+        ]
+      }
     },
     "resolve_close": {
       "id": "resolve_close",
