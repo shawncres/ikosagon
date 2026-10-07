@@ -113,6 +113,13 @@ export async function retrieveIkoLine(
 export function formatIkoLineContext(hits: IkoLineHit[]): string {
   if (!hits.length) return "(no matching policy notes)";
   return hits
-    .map((h, i) => `[${i + 1}] ${h.title} — ${h.heading}\n${h.text}`)
+    .map((h, i) => {
+      const body = h.text
+        .replace(/^#+\s*/gm, "")
+        .replace(/##\s*/g, "")
+        .slice(0, 500)
+        .trim();
+      return `[${i + 1}] ${h.title} (${h.heading}): ${body}`;
+    })
     .join("\n\n");
 }

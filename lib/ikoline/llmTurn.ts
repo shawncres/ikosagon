@@ -188,6 +188,8 @@ export async function speakTurn(opts: {
     "Never invent prices, balances, policies, or legal claims beyond POLICY NOTES and TOOL FACTS.",
     "Do not mention being an AI unless asked. Do not break character into a free chat.",
     "Never leave {{placeholders}} in your reply.",
+    "Never paste markdown headers or the words POLICY NOTES / SCRIPT GUIDE. Speak as the agent.",
+    "If the caller already described the issue, acknowledge it briefly — do not quote their rant verbatim.",
     mustSayExact && mustLead
       ? "COMPLIANCE: Your reply MUST begin with the MUST-SAY line verbatim (same words), then you may add one short natural follow-up sentence."
       : "Use SCRIPT GUIDE as intent and tone — say it naturally; do not dump every line robotically.",
@@ -204,7 +206,7 @@ export async function speakTurn(opts: {
     opts.exit ? `EXIT: ${opts.exit.type} — ${opts.exit.label}` : "EXIT: none",
     `SLOTS: ${JSON.stringify(opts.slots)}`,
     `TOOL FACTS:\n${toolFacts(opts.toolResults)}`,
-    `POLICY NOTES:\n${opts.ragContext || "(none)"}`,
+    `POLICY NOTES (paraphrase only; do not paste):\n${(opts.ragContext || "(none)").slice(0, 900)}`,
     mustSayExact && mustLead ? `MUST-SAY (verbatim lead):\n${mustLead}` : "",
     `SCRIPT GUIDE:\n${scriptGuide || "(improvise briefly for this step)"}`,
     `RECENT_HISTORY:\n${historyBlock(opts.history) || "(none)"}`,
@@ -216,8 +218,8 @@ export async function speakTurn(opts: {
 
   try {
     const result = await completeChat({
-      temperature: 0.45,
-      maxTokens: 280,
+      temperature: 0.4,
+      maxTokens: 220,
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },
