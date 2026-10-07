@@ -9,18 +9,18 @@ import {
   stripPlaceholders,
   buildAgentTurn,
   looksLikeInjection,
-} from "../lib/ikoline/engine.ts";
+} from "../lib/ikoagent/engine.ts";
 import {
   extractCustomerName,
   looksLikeNoAccount,
   sanitizeAccountId,
   sanitizeCustomerName,
-} from "../lib/ikoline/crm/validate.ts";
-import { getCrmStore, resetCrmStoreForTests } from "../lib/ikoline/crm/store.ts";
-import { applyToolSlots, runTool } from "../lib/ikoline/tools.ts";
+} from "../lib/ikoagent/crm/validate.ts";
+import { getCrmStore, resetCrmStoreForTests } from "../lib/ikoagent/crm/store.ts";
+import { applyToolSlots, runTool } from "../lib/ikoagent/tools.ts";
 import { readFileSync } from "fs";
 
-const flow = JSON.parse(readFileSync("./content/ikoline/flows/customer_service.json", "utf8"));
+const flow = JSON.parse(readFileSync("./content/ikoagent/flows/customer_service.json", "utf8"));
 const greet = flow.nodes.greet;
 const verify = flow.nodes.verify;
 

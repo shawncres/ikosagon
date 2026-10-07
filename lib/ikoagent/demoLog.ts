@@ -1,4 +1,4 @@
-/** Shared IkoLine demo transcript types + free structured logging (Vercel stdout). */
+/** Shared IkoAgent demo transcript types + free structured logging (Vercel stdout). */
 
 export type DemoTurnLog = {
   ts: string;
@@ -60,7 +60,7 @@ export function logDemoSessionDump(session: DemoSessionTranscript): void {
 /** Human-readable paste format for Website Ops language review. */
 export function formatTranscriptPlain(session: DemoSessionTranscript): string {
   const lines: string[] = [
-    `IkoLine demo transcript`,
+    `IkoAgent demo transcript`,
     `sessionId: ${session.sessionId}`,
     `flow: ${session.flowId}${session.flowTitle ? ` (${session.flowTitle})` : ""}`,
     `started: ${session.startedAt}`,

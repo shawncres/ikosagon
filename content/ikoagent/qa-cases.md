@@ -1,6 +1,6 @@
-# IkoLine — planned black-box cases
+# IkoAgent — planned black-box cases
 
-Runner not fully shipped. These cases track corpus + flow coverage as the desk deepens.
+Runner not fully shipped. These cases track corpus + flow coverage as the agent deepens.
 
 ## Customer service
 1. Happy path: reason → account 1001 → policy ask → resolve.

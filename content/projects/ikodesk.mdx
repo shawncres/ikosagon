@@ -1,0 +1,70 @@
+---
+title: "IkoDesk"
+slug: "ikodesk"
+summary: "A procedure desk for a small business. Staff and customers ask in plain language. Answers come from the shop's own documents, and each one shows its source."
+year: 2026
+updated: "2026-10-02T00:40:00-04:00"
+tags: ["AI", "RAG", "SMB", "Product"]
+cover: "/projects/ikodesk/cover.png"
+featured: true
+status: "Sample desk"
+linkLabel: "See how it helps a shop"
+---
+
+IkoDesk answers from your procedures, not from memory.
+
+A small business already has the answers in return policies, price sheets, hours, and product notes. We at Ikosagon built IkoDesk so staff and customers can ask in plain language — and see the document the answer came from.
+
+## The problem
+
+The usual failure is not a missing chatbot. It is two employees giving two different answers about a refund, a recall, or the hours on Tuesday. The policy exists. It is just buried in a file nobody opens during a rush.
+
+## What the client gets
+
+- One desk for the questions customers already ask.
+- An answer that cites the procedure it used.
+- A refusal when the documents do not cover the question, instead of a confident guess.
+- A backlog of the questions the desk could not answer. That list is the next procedure to write.
+- Updates by editing a document. The shop does not retrain a model to change a return window.
+
+## How a shop uses it
+
+1. Gather the documents the staff already trust: policies, SKUs, hours, warranties, recalls.
+2. Ask the questions customers actually call about.
+3. Read the cited passage next to the answer. If the passage is wrong, fix the document.
+4. Each week, read the questions that were refused. Write the missing procedure, add the file, and those questions start getting answers.
+
+## The sample
+
+The public example is a fictional outdoor shop, **Northwind Outfitters**. Its procedures cover returns, a membership club, three store schedules, tents, garment repair, and a stove recall. It is a demonstration, not a client engagement.
+
+![IkoDesk sample desk for the fictional shop Northwind Outfitters, with customer themes around the message bar and the shop procedures listed on the left.](/projects/ikodesk/desktop-desk.png)
+
+A visitor can ask things like:
+
+- Which fuel canister lot codes were recalled?
+- How long is a Boot Lab appointment, and which shop offers it?
+- What is the Summit Club annual fee, and when is the card billed?
+- How many days does a customer have to return an unused item?
+
+![IkoDesk answering which fuel canister lots were recalled for the Northwind sample, with the cited passages in the trace column.](/projects/ikodesk/desktop-answer.png)
+
+![Close view of a Summit Lantern warranty and battery coverage question, the cited answer, and the passages used.](/projects/ikodesk/answer-and-trace.png)
+
+An unrelated question, such as the population of a city, is refused. The desk does not spend an answer on something the procedures do not contain.
+
+![The same procedure desk on a phone, with the topic buttons around the message bar.](/projects/ikodesk/phone-desk.png)
+
+## Proof
+
+**39 of 39** checks on the included question set. For every policy question, the correct procedure file was among the three passages retrieved. Off-topic questions were stopped before a model wrote an answer.
+
+This is black-box QA on the sample desk — measured retrieval and refusal — not a customer case study and not a rounded-up marketing metric.
+
+## What happens next
+
+IkoDesk can be stood up for another small business from that business's own documents. The first version is a sample desk the staff can try against their real questions. The backlog from that trial becomes the writing list.
+
+The sample can be read from the screenshots on this page. A live public text box is not required to understand the offer — and this site does not host a live FastAPI desk (Hobby + API key is the wrong fit for a public demo). The next step is to request a desk built from the shop's own documents.
+
+**[Request a desk for your shop →](/contact#build)**

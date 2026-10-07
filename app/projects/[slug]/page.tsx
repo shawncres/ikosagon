@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { MDXRemote } from "next-mdx-remote/rsc";
 import { AudioPlaylist } from "@/components/AudioPlaylist";
 import { TalentIntakeChat } from "@/components/TalentIntakeChat";
-import { IkoLineDemo } from "@/components/IkoLineDemo";
+import { IkoAgentDemo } from "@/components/IkoAgentDemo";
 import { getProjectBySlug, getProjects } from "@/lib/projects";
 
 type Params = { slug: string };
@@ -34,7 +34,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<Pa
   const prev = index > 0 ? projects[index - 1] : null;
   const next = index < projects.length - 1 ? projects[index + 1] : null;
   const isIkoArtist = project.slug === "ikoartist";
-  const isIkoLine = project.slug === "ikoline";
+  const isIkoAgent = project.slug === "ikoagent";
 
   return (
     <article className="container-shell section-block">
@@ -60,7 +60,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<Pa
 
       {isIkoArtist ? <TalentIntakeChat /> : null}
 
-      {isIkoLine ? <IkoLineDemo /> : null}
+      {isIkoAgent ? <IkoAgentDemo /> : null}
 
       <div className="prose-project max-w-none">
         <MDXRemote source={project.content} />

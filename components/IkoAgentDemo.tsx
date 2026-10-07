@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DemoTurnLog } from "@/lib/ikoline/demoLog";
+import type { DemoTurnLog } from "@/lib/ikoagent/demoLog";
 import {
   buildSession,
   copyText,
@@ -10,7 +10,7 @@ import {
   loadSessionRing,
   newSessionId,
   upsertSessionInRing,
-} from "@/lib/ikoline/clientTranscript";
+} from "@/lib/ikoagent/clientTranscript";
 
 type FlowMeta = {
   id: string;
@@ -45,7 +45,23 @@ const VERTICALS: { id: string; label: string; blurb: string }[] = [
   },
 ];
 
-const TTS_STORAGE_KEY = "ikoline-tts-enabled";
+const TTS_STORAGE_KEY = "ikoagent-tts-enabled";
+const LEGACY_TTS_STORAGE_KEY = "ikoline-tts-enabled";
+
+function readTtsEnabled(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    const cur = window.localStorage.getItem(TTS_STORAGE_KEY);
+    if (cur === "0") return false;
+    if (cur === "1") return true;
+    const legacy = window.localStorage.getItem(LEGACY_TTS_STORAGE_KEY);
+    if (legacy === "0") return false;
+    if (legacy === "1") return true;
+  } catch {
+    /* ignore */
+  }
+  return true;
+}
 
 function speechSupported(): boolean {
   return typeof window !== "undefined" && typeof window.speechSynthesis !== "undefined";
@@ -79,7 +95,7 @@ function speakAgentLine(text: string) {
   }
 }
 
-export function IkoLineDemo() {
+export function IkoAgentDemo() {
   const [flowId, setFlowId] = useState("customer_service");
   const [nodeId, setNodeId] = useState("");
   const [nodeLabel, setNodeLabel] = useState("");
@@ -156,14 +172,15 @@ export function IkoLineDemo() {
       return;
     }
     try {
-      const raw = window.localStorage.getItem(TTS_STORAGE_KEY);
-      if (raw === "0" || raw === "false") {
-        setTtsOn(false);
-        ttsOnRef.current = false;
-      } else {
-        // Default ON (including missing key)
-        setTtsOn(true);
-        ttsOnRef.current = true;
+      const enabled = readTtsEnabled();
+      setTtsOn(enabled);
+      ttsOnRef.current = enabled;
+      // Persist under the new key when we only found a legacy preference
+      if (window.localStorage.getItem(TTS_STORAGE_KEY) == null) {
+        const legacy = window.localStorage.getItem(LEGACY_TTS_STORAGE_KEY);
+        if (legacy === "0" || legacy === "1") {
+          window.localStorage.setItem(TTS_STORAGE_KEY, legacy);
+        }
       }
     } catch {
       /* private mode etc. — keep default ON */
@@ -212,7 +229,7 @@ export function IkoLineDemo() {
       setTranscriptTurns([]);
       transcriptRef.current = [];
       try {
-        const res = await fetch("/api/ikoline/turn", {
+        const res = await fetch("/api/ikoagent/turn", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ flowId: id, start: true, sessionId: sid }),
@@ -265,7 +282,7 @@ export function IkoLineDemo() {
   useEffect(() => {
     void (async () => {
       try {
-        const res = await fetch("/api/ikoline/turn");
+        const res = await fetch("/api/ikoagent/turn");
         const data = await res.json();
         if (data.flows) setFlows(data.flows);
         setOffline(!data.provider);
@@ -291,7 +308,7 @@ export function IkoLineDemo() {
     setHistory((h) => [...h, { role: "user", content: userText }]);
     const sid = sessionIdRef.current || sessionId || newSessionId();
     try {
-      const res = await fetch("/api/ikoline/turn", {
+      const res = await fetch("/api/ikoagent/turn", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -395,12 +412,12 @@ export function IkoLineDemo() {
   return (
     <section
       className="card-surface neon-border mb-10 rounded-2xl p-5 md:p-6"
-      aria-label="IkoLine call-flow demo"
+      aria-label="IkoAgent call-flow demo"
     >
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="mb-1 font-mono text-xs text-accent">
-            IkoLine · call-flow + LLM turns · browser TTS · transcripts
+            IkoAgent · call-flow + LLM turns · browser TTS · transcripts
           </p>
           <h2 className="text-xl font-semibold">Live call demo</h2>
           <p className="mt-1 max-w-2xl text-sm text-zinc-400">
@@ -514,11 +531,11 @@ export function IkoLineDemo() {
           void sendTurn(input);
         }}
       >
-        <label className="sr-only" htmlFor="ikoline-input">
+        <label className="sr-only" htmlFor="ikoagent-input">
           Caller reply
         </label>
         <input
-          id="ikoline-input"
+          id="ikoagent-input"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           disabled={pending || Boolean(exit)}

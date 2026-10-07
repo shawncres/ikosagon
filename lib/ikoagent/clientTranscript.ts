@@ -1,23 +1,37 @@
 /** Browser-only session ring buffer + export helpers (no paid storage). */
 
-import type { DemoSessionTranscript, DemoTurnLog } from "@/lib/ikoline/demoLog";
-import { formatTranscriptPlain } from "@/lib/ikoline/demoLog";
+import type { DemoSessionTranscript, DemoTurnLog } from "@/lib/ikoagent/demoLog";
+import { formatTranscriptPlain } from "@/lib/ikoagent/demoLog";
 
 export { formatTranscriptPlain };
 
-const STORAGE_KEY = "ikoline-demo-sessions-v1";
+const STORAGE_KEY = "ikoagent-demo-sessions-v1";
+const LEGACY_STORAGE_KEY = "ikoline-demo-sessions-v1";
 const MAX_SESSIONS = 12;
+
+function migrateLegacySessions(): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (window.localStorage.getItem(STORAGE_KEY)) return;
+    const legacy = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (!legacy) return;
+    window.localStorage.setItem(STORAGE_KEY, legacy);
+  } catch {
+    /* ignore */
+  }
+}
 
 export function newSessionId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
-  return `ikoline-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  return `ikoagent-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export function loadSessionRing(): DemoSessionTranscript[] {
   if (typeof window === "undefined") return [];
   try {
+    migrateLegacySessions();
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
@@ -69,7 +83,7 @@ export function downloadSessionJson(session: DemoSessionTranscript): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `ikoline-transcript-${session.flowId}-${session.sessionId.slice(0, 8)}.json`;
+  a.download = `ikoagent-transcript-${session.flowId}-${session.sessionId.slice(0, 8)}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }

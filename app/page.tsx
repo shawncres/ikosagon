@@ -13,18 +13,18 @@ export default async function Home() {
         <div className="container-shell">
           <article className="card-surface neon-border rounded-2xl p-6 md:p-8">
             <p className="mb-2 font-mono text-sm text-accent">Lead product</p>
-            <h2 className="mb-3 text-3xl font-semibold">IkoArtist</h2>
+            <h2 className="mb-3 text-3xl font-semibold">IkoAgent</h2>
             <p className="mb-4 max-w-3xl text-zinc-300">
-              Discover tastes and songs you might like — answer as many questions as you want. The
-              agentic Ikosagon engine produces the hit; tracks compete on a view-ranked leaderboard.
-              Anonymous is fine; email only for opportunities.
+              Author-controlled call flows for CS, collections, and sales. The graph owns the journey;
+              NLP fills intents and slots inside each node — with free browser TTS, a growing policy
+              corpus, and a secure demo CRM.
             </p>
             <p className="mb-4 max-w-3xl text-sm text-zinc-400">
-              Intake, leans, and anonymous finish are on the page. Generation runs in the pipeline, not
-              as a live spend.
+              Text-first interactive demo on the project page. Try a natural open, verify with a demo
+              account, and copy a transcript when you want language polish.
             </p>
-            <Link href="/projects/ikoartist" className="rounded-xl bg-accent px-4 py-2 font-semibold text-black">
-              Open IkoArtist
+            <Link href="/projects/ikoagent" className="rounded-xl bg-accent px-4 py-2 font-semibold text-black">
+              Open IkoAgent
             </Link>
           </article>
         </div>

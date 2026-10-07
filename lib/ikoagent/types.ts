@@ -40,7 +40,7 @@ export type Flow = {
   vertical: FlowVertical;
   description: string;
   start: string;
-  /** Folder name under content/ikoline/corpus/ */
+  /** Folder name under content/ikoagent/corpus/ */
   ragCorpus?: string;
   tools: string[];
   nodes: Record<string, FlowNode>;
