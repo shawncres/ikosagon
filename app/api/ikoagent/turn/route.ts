@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import {
+  alreadyAcknowledged,
   applyTransition,
   buildAgentTurn,
   collectSlots,
+  extractAccountId,
   getCurrentNode,
   isGreetingOrAck,
   matchIntent,
@@ -18,7 +20,7 @@ import {
   looksLikeNoAccount,
   sanitizeAccountId,
 } from "@/lib/ikoagent/crm";
-import { applyToolSlots } from "@/lib/ikoagent/tools";
+import { applyToolSlots, runTool } from "@/lib/ikoagent/tools";
 import { loadFlow, listFlows } from "@/lib/ikoagent/loadFlow";
 import {
   classifyTurn,
@@ -31,8 +33,10 @@ import { getProviderName } from "@/lib/llm";
 import { logDemoTurn } from "@/lib/ikoagent/demoLog";
 import {
   MAX_TURNS,
+  type FlowNode,
   type HistoryTurn,
   type SlotMap,
+  type ToolResult,
   type TurnResponse,
 } from "@/lib/ikoagent/types";
 
@@ -99,6 +103,44 @@ function sanitizeSlots(input: unknown): SlotMap {
     if (typeof value === "string" && key.length < 40) {
       out[key] = value.slice(0, 200);
     }
+  }
+  return out;
+}
+
+/**
+ * Verify a captured account number with the CRM lookup tool at nodes that allow it.
+ * Found → slots get the CRM name; not found → the bad digits are cleared so the
+ * graph cannot advance on an unknown account.
+ */
+async function verifyAccountAt(
+  node: FlowNode,
+  slots: SlotMap,
+): Promise<{ slots: SlotMap; result: ToolResult | null; notFound: boolean }> {
+  const id = sanitizeAccountId(slots.accountId || "");
+  if (!id || !node.toolsAllowed?.includes("lookupAccount")) {
+    return { slots, result: null, notFound: false };
+  }
+  const result = await runTool("lookupAccount", { ...slots, accountId: id });
+  if (result.ok) {
+    return { slots: applyToolSlots(slots, [result]), result, notFound: false };
+  }
+  const next: SlotMap = { ...slots };
+  delete next.accountId;
+  delete next.last4;
+  return { slots: next, result, notFound: true };
+}
+
+/** Caller declined having an account after we asked ("no", "nope", "I don't") */
+function looksLikeDecline(text: string): boolean {
+  return /^\s*(no|nope|nah|not really|i don'?t|i do not|don'?t have (one|it)|never had one)\b/i.test(text);
+}
+
+/** Strip internal/engine-only keys a client could try to inject */
+function dropInternalSlots(slots: SlotMap): SlotMap {
+  const out: SlotMap = {};
+  for (const [k, v] of Object.entries(slots)) {
+    if (k.startsWith("_") || k === "accountCreated") continue;
+    out[k] = v;
   }
   return out;
 }
@@ -208,7 +250,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Flow node missing." }, { status: 500 });
   }
 
-  const priorSlots = sanitizeSlots(body.slots);
+  const priorSlots = dropInternalSlots(sanitizeSlots(body.slots));
   const history = sanitizeHistory(body.history);
 
   if (looksLikeInjection(userText)) {
@@ -286,7 +328,10 @@ export async function POST(request: Request) {
   slots = scrubWeakSlots(slots);
 
   // Name / no-account heuristics (validated) — never from raw LLM SQL
-  const extractedName = extractCustomerName(userText);
+  const asksForName = node.listenFor.some((e) => e.intent === "provide_name");
+  const extractedName = extractCustomerName(userText, {
+    allowBare: asksForName && !slots.customerName,
+  });
   if (extractedName) {
     slots = mergeSlots(slots, { customerName: extractedName });
   }
@@ -301,23 +346,38 @@ export async function POST(request: Request) {
   }
   // Prefer deterministic intents when keywords match and node listens for them
   const listenIds = new Set(node.listenFor.map((e) => e.intent));
-  if (looksLikeNoAccount(userText) && listenIds.has("no_account")) {
-    intentForGraph = "no_account";
-  } else if (
-    extractedName &&
-    listenIds.has("provide_name") &&
-    !sanitizeAccountId(userText) &&
-    !sanitizeAccountId(slots.accountId || "")
+  const accountInText = extractAccountId(userText);
+  if (
+    (intentForGraph === "greeting" || !intentForGraph) &&
+    listenIds.has("describe_issue") &&
+    (topic || (accountInText && slots.reason))
   ) {
-    // Name without account digits → create / look up via provide_name
-    intentForGraph = "provide_name";
-  } else if (sanitizeAccountId(userText) && listenIds.has("provide_account")) {
+    // "Hi, my package still hasn't shown up" is an issue, not a greeting
+    intentForGraph = "describe_issue";
+  }
+  if (
+    (looksLikeNoAccount(userText) ||
+      (slots.customerName && !slots.accountId && looksLikeDecline(userText))) &&
+    listenIds.has("no_account")
+  ) {
+    intentForGraph = "no_account";
+    slots = mergeSlots(slots, { needsAccount: "true" });
+  } else if (accountInText && listenIds.has("provide_account")) {
+    // Account digits win (name may ride along: "I'm Alex Rivera — account 1001")
     intentForGraph = "provide_account";
+  } else if (extractedName && listenIds.has("provide_name") && !slots.accountId) {
+    // Name only → ask for the account (or create one if they already said they're new)
+    intentForGraph = "provide_name";
   }
 
   // C. Tools + transition (graph still owns the journey)
   // Rate-limit account creates separately (abuse / prompt-injection spam)
-  if (intentForGraph === "provide_name" && !sanitizeAccountId(slots.accountId || "")) {
+  const createPossible =
+    (intentForGraph === "provide_name" || intentForGraph === "no_account") &&
+    slots.needsAccount === "true" &&
+    Boolean(slots.customerName) &&
+    !sanitizeAccountId(slots.accountId || "");
+  if (createPossible) {
     if (!createRateLimit(clientKey(request)).ok) {
       return NextResponse.json(
         {
@@ -332,14 +392,62 @@ export async function POST(request: Request) {
     }
   }
 
-  let toolResults = await runToolsForTurn(flow, node, intentForGraph, slots);
+  // Verify any captured account against the CRM before the graph can advance on it
+  const verified = await verifyAccountAt(node, slots);
+  slots = verified.slots;
+  let accountNotFound = verified.notFound;
+  let toolResults: ToolResult[] = verified.result ? [verified.result] : [];
+
+  toolResults = [
+    ...toolResults,
+    ...(await runToolsForTurn(flow, node, intentForGraph, slots, {
+      skip: verified.result ? ["lookupAccount"] : [],
+    })),
+  ];
   slots = applyToolSlots(slots, toolResults);
   slots = scrubWeakSlots(slots);
 
-  const { nextNodeId, exit } = applyTransition(node, intentForGraph, slots);
-  const nextNode = nextNodeId ? getCurrentNode(flow, nextNodeId) : null;
+  let { nextNodeId, exit } = applyTransition(node, intentForGraph, slots);
+  // Staying put (or self-loop like no_account → verify) but required slots are now
+  // satisfied (e.g. a new account was just created) → take the slots_filled edge.
+  if (
+    !exit &&
+    (!nextNodeId || nextNodeId === node.id) &&
+    node.transitions.some((tr) => tr.on === "slots_filled")
+  ) {
+    const retry = applyTransition(node, "slots_filled", slots);
+    if (retry.nextNodeId && retry.nextNodeId !== node.id) {
+      nextNodeId = retry.nextNodeId;
+      exit = retry.exit;
+    }
+  }
+  let nextNode = nextNodeId ? getCurrentNode(flow, nextNodeId) : null;
+
+  // Chain through a slot-collection node whose requirements are already met
+  // (e.g. caller gave name + account at greet → skip re-asking at verify).
+  // Never skip compliance nodes (allowParaphrase: false) — must-say lines stay.
+  if (
+    !exit &&
+    nextNode &&
+    nextNode.id !== node.id &&
+    nextNode.allowParaphrase !== false &&
+    nextNode.requireSlots?.length &&
+    nextNode.transitions.some((tr) => tr.on === "slots_filled")
+  ) {
+    const chained = await verifyAccountAt(nextNode, slots);
+    slots = chained.slots;
+    if (chained.result) toolResults = [...toolResults, chained.result];
+    if (chained.notFound) accountNotFound = true;
+    const hop = applyTransition(nextNode, "slots_filled", slots);
+    if (hop.nextNodeId && hop.nextNodeId !== nextNode.id && !hop.exit) {
+      const hopNode = getCurrentNode(flow, hop.nextNodeId);
+      if (hopNode) nextNode = hopNode;
+    }
+  }
+
   const speakNode = exit ? node : nextNode ?? node;
   const transitioned = Boolean(nextNode && nextNode.id !== node.id);
+  const acknowledged = alreadyAcknowledged(history);
 
   // RAG against speak node (or current) for reply grounding
   const ragNode = speakNode;
@@ -366,6 +474,8 @@ export async function POST(request: Request) {
     exit,
     matchedIntent: intentForGraph,
     transitioned,
+    acknowledged,
+    accountNotFound,
   });
 
   let agentText: string;
@@ -383,6 +493,8 @@ export async function POST(request: Request) {
       toolResults,
       ragSnippets,
       matchedIntent: intentForGraph,
+      accountNotFound,
+      acknowledged,
     });
     mode = classified ? "llm" : "scripted";
     // If classify worked but speak failed, still mark llm for intent path transparency

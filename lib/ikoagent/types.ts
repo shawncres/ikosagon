@@ -32,6 +32,14 @@ export type FlowNode = {
   transitions: FlowTransition[];
   exits?: FlowExit[];
   toolsAllowed?: string[];
+  /**
+   * Optional context-aware script variants (paraphrasable nodes only).
+   * knownName: caller gave a name but no account yet.
+   * accountNotFound: caller gave digits that did not match an account.
+   * knownReason: issue topic already captured (avoid re-asking "what happened?").
+   * reprompt: staying on this node without new info (skip the long intro).
+   */
+  agentSayVariants?: Partial<Record<"knownName" | "accountNotFound" | "knownReason" | "reprompt", string[]>>;
 };
 
 export type Flow = {

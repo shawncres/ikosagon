@@ -7,6 +7,7 @@ import type {
   ToolResult,
 } from "./types";
 import { runTool, toolsForIntent } from "./tools";
+import { extractCustomerName } from "./crm/validate";
 
 const TOKEN = /[a-z0-9]{2,}/g;
 
@@ -176,10 +177,11 @@ export function collectSlots(userText: string, existing: SlotMap, required?: str
   const next: SlotMap = { ...existing };
   const text = userText.trim();
 
-  const accountMatch = text.match(/\b(1001|2044|3300|\d{4,6})\b/);
-  if (accountMatch) next.accountId = accountMatch[1];
+  const accountDigits = extractAccountId(text);
+  if (accountDigits) next.accountId = accountDigits;
 
-  const last4 = text.match(/\blast\s*(?:four|4)\D*(\d{4})\b/i) || text.match(/\b(\d{4})\b/);
+  // Only an explicit "last four" phrase fills last4 — account digits are not a card's last 4
+  const last4 = text.match(/\blast\s*(?:four|4)\D*(\d{4})\b/i);
   if (last4 && !next.last4) next.last4 = last4[1];
 
   const amount = text.match(/\$?\s*(\d+(?:\.\d{1,2})?)\s*(dollars)?/i);
@@ -202,30 +204,13 @@ export function collectSlots(userText: string, existing: SlotMap, required?: str
     if (m) next.offer = m[1].toLowerCase().replace(/\s+/g, "_");
   }
 
-  // Customer name (validated) — never treat account digits or issue phrases as names
+  // Customer name (validated) — never treat account digits, issue phrases, or
+  // sentences like "I was charged twice" / "no" as names
   {
-    const nameMatch = text.match(
-      /\b(?:my name is|i(?:'m| am)|this is|call me)\s+([A-Za-z][A-Za-z .'\-]{1,40})/i,
-    );
-    let candidate = nameMatch?.[1]?.replace(/[.,!?]+$/, "").trim() ?? "";
-    if (
-      !candidate &&
-      /^[A-Za-z][A-Za-z .'\-]{1,40}$/.test(text) &&
-      !/\d/.test(text) &&
-      !/package|refund|account|help|late|order|billing|login|hi|hello|hey/i.test(text)
-    ) {
-      candidate = text.trim();
-    }
-    if (
-      candidate.length >= 2 &&
-      candidate.length <= 60 &&
-      /^[A-Za-z][A-Za-z .'\-]*[A-Za-z.]$/.test(candidate)
-    ) {
-      next.customerName = candidate
-        .split(" ")
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(" ");
-    }
+    // Intro phrases only ("my name is…", "I'm…"); bare "Maya Chen" replies are
+    // handled by the route at nodes that actually asked for a name.
+    const name = extractCustomerName(text, { allowBare: false });
+    if (name) next.customerName = name;
   }
 
   // Soft-fill notes/objection only — never dump raw text into reason/need (greetings poisoned those)
@@ -237,6 +222,98 @@ export function collectSlots(userText: string, existing: SlotMap, required?: str
   }
 
   return scrubWeakSlots(next);
+}
+
+
+/**
+ * Pull a standalone 4–6 digit account number from caller text.
+ * Never concatenates scattered digits ("10 days … the 28th" is NOT account 1028).
+ */
+export function extractAccountId(text: string): string | null {
+  const m = text.match(/(?:^|[^\d])(\d{4,6})(?![\d]|st|nd|rd|th)/i);
+  return m ? m[1] : null;
+}
+
+/** Required slots for a node that are still empty */
+export function missingSlots(node: FlowNode, slots: SlotMap): string[] {
+  return (node.requireSlots ?? []).filter((key) => !slots[key]?.trim());
+}
+
+/** Has the agent already used the "I can help you with …" acknowledgement this call? */
+export function alreadyAcknowledged(history: HistoryTurn[]): boolean {
+  return history.some(
+    (t) =>
+      t.role === "agent" &&
+      /\b(absolutely|of course|certainly)\b[^.!?]{0,6}\s*(i can|i'd be happy to|i will)\s+help\b|\bi can help (you )?with\b/i.test(
+        t.content,
+      ),
+  );
+}
+
+const REPEAT_ACK =
+  /^\s*(?:(?:absolutely|of course|certainly|sure)(?:,\s*[A-Z][a-z]+)?\s*[,!—–-]*\s*)?(?:i can (?:definitely )?help(?: you)? with (?:that|this|your [^.!?]{1,40}|[^.!?]{1,40})|i(?:'d| would) be happy to help(?: with that)?)\s*[.!—–-]*\s*/i;
+const BARE_ABSOLUTELY = /^\s*(?:absolutely|of course|certainly)(?:,\s*[A-Z][a-z]+)?\s*[,!—–-]+\s*/i;
+
+/** Drop a repeated "Absolutely, I can help you with that." opener (keeps the rest) */
+export function stripRepeatAck(text: string): string {
+  let out = text.replace(REPEAT_ACK, "");
+  out = out.replace(BARE_ABSOLUTELY, "");
+  out = out.trim();
+  if (!out) return text.trim();
+  return out.charAt(0).toUpperCase() + out.slice(1);
+}
+
+const ASK_RE = /\?|\b(may i (have|get)|could you|can you|would you|please (share|provide|give|tell)|what(?:'s| is) your|let me (have|get)|i(?:'ll| will) need)\b/i;
+const NEVER_COLLECTED_RE =
+  /\b(order (number|no\.?|id|date)|tracking (number|no\.?|id|code)|e-?mail(?: address)?|phone number|date (you|it was) (placed|ordered)|the email you used)\b/i;
+
+/**
+ * Remove sentences that re-ask for things we already have (name / account) or
+ * that this demo never collects (order #, tracking #, email, phone).
+ */
+export function stripReasks(text: string, slots: SlotMap): string {
+  const sentences = text
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(/(?<=[.!?])\s+/)
+    .filter(Boolean);
+  const kept = sentences.filter((s) => {
+    if (!ASK_RE.test(s)) return true;
+    if (NEVER_COLLECTED_RE.test(s)) return false;
+    if (slots.customerName && /\b(your (full )?name|who (am i|i'm) speaking with|name (on|for) the account)\b/i.test(s)) {
+      return false;
+    }
+    if (slots.accountId && /\b(account (number|no\.?|id)|your account\b(?! is))/i.test(s) && !/\bset (one|it|an account) up\b/i.test(s)) {
+      return false;
+    }
+    return true;
+  });
+  return kept.join(" ").trim();
+}
+
+/**
+ * Context-aware script lines for a node: pick a variant so the agent asks only
+ * for what is missing, then interpolate. Compliance nodes always use agentSay.
+ */
+export function scriptLinesFor(
+  node: FlowNode,
+  slots: SlotMap,
+  tools: ToolResult[] = [],
+  ctx: { transitioned?: boolean; accountNotFound?: boolean; acknowledged?: boolean } = {},
+): string[] {
+  let lines = node.agentSay ?? [];
+  const v = node.allowParaphrase === false ? undefined : node.agentSayVariants;
+  if (v) {
+    if (ctx.accountNotFound && v.accountNotFound?.length) lines = v.accountNotFound;
+    else if (slots.customerName && !slots.accountId && v.knownName?.length) lines = v.knownName;
+    else if (slots.reason && !isWeakTopic(slots.reason) && v.knownReason?.length) lines = v.knownReason;
+    else if (ctx.transitioned === false && v.reprompt?.length) lines = v.reprompt;
+  }
+  let out = interpolateLines(lines, scrubWeakSlots(slots), tools);
+  if (ctx.acknowledged && node.allowParaphrase !== false && out.length) {
+    out = [stripRepeatAck(out[0]), ...out.slice(1)].filter(Boolean);
+  }
+  return out;
 }
 
 export function slotsFilled(slots: SlotMap, required?: string[]): boolean {
@@ -309,6 +386,10 @@ export function buildAgentTurn(opts: {
   toolResults: ToolResult[];
   ragSnippets: string[];
   matchedIntent: string | null;
+  /** Caller gave digits that did not match an account this turn */
+  accountNotFound?: boolean;
+  /** The "I can help you with …" acknowledgement was already used this call */
+  acknowledged?: boolean;
 }): string {
   const lines: string[] = [];
 
@@ -323,36 +404,30 @@ export function buildAgentTurn(opts: {
     return lines.join("\n\n");
   }
 
-  // If we transitioned, prefer the destination script
-  if (opts.nextNode && opts.nextNode.id !== opts.node.id) {
-    for (const line of opts.nextNode.agentSay) {
-      lines.push(interpolate(line, opts.slots, opts.toolResults));
-    }
+  const transitioned = Boolean(opts.nextNode && opts.nextNode.id !== opts.node.id);
+  if (transitioned && opts.nextNode) {
+    // Destination script — variant-aware so we only ask for what is missing
+    lines.push(
+      ...scriptLinesFor(opts.nextNode, opts.slots, opts.toolResults, {
+        transitioned: true,
+        accountNotFound: opts.accountNotFound,
+        acknowledged: opts.acknowledged,
+      }),
+    );
   } else {
     // Stay on node — clarify or restate
-    const clarify =
-      opts.node.requireSlots?.filter((s) => !opts.slots[s]) ?? [];
+    const clarify = missingSlots(opts.node, opts.slots);
     if (opts.matchedIntent === "greeting") {
       lines.push(
         "Hello there — how can I help you today? Orders, billing, login, returns — I'm right here with you.",
       );
-    } else if (clarify.length) {
-      lines.push(
-        interpolate(
-          opts.node.agentSay[0] ?? "Could you share a bit more so we can continue?",
-          opts.slots,
-          opts.toolResults,
-        ),
-      );
-      lines.push(`Still need: ${clarify.join(", ")}.`);
-    } else if (opts.matchedIntent) {
-      lines.push(
-        interpolate(
-          opts.node.agentSay[0] ?? "Got it — let’s keep going.",
-          opts.slots,
-          opts.toolResults,
-        ),
-      );
+    } else if (clarify.length || opts.matchedIntent) {
+      const scripted = scriptLinesFor(opts.node, opts.slots, opts.toolResults, {
+        transitioned: false,
+        accountNotFound: opts.accountNotFound,
+        acknowledged: opts.acknowledged,
+      });
+      lines.push(...(scripted.length ? scripted : ["Could you share a bit more so we can continue?"]));
     } else {
       lines.push(
         "I want to stay on-script for this step. " +
@@ -392,12 +467,23 @@ export function buildAgentTurn(opts: {
         `I've set up demo account ${tr.data.accountId} for ${tr.data.name}.`,
       );
     }
-    if (tr.name === "lookupAccount" && tr.data.verified && tr.data.name) {
+    if (
+      tr.name === "lookupAccount" &&
+      tr.data.verified &&
+      tr.data.name &&
+      !lines.some((l) => l.includes(String(tr.data.accountId ?? "")) || l.includes(String(tr.data.name)))
+    ) {
       lines.push(`Account on file for ${tr.data.name}.`);
     }
   }
 
-  return stripPlaceholders(lines.filter(Boolean).join("\n\n"));
+  const joined = stripPlaceholders(lines.filter(Boolean).join("\n\n"));
+  if (speakNode.allowParaphrase === false) return joined;
+  return joined
+    .split("\n\n")
+    .map((para) => stripReasks(para, opts.slots))
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 export function interpolate(template: string, slots: SlotMap, tools: ToolResult[] = []): string {
@@ -420,7 +506,7 @@ export function interpolate(template: string, slots: SlotMap, tools: ToolResult[
 }
 
 function cleanRagSnippet(raw: string): string {
-  let t = raw
+  const t = raw
     .replace(/^[^:]+:\s*/u, "")
     .replace(/^#+\s*/gm, "")
     .replace(/##\s*Say this\s*/gi, "")
@@ -466,6 +552,7 @@ export async function runToolsForTurn(
   node: FlowNode,
   intent: string | null,
   slots: SlotMap,
+  opts: { skip?: string[] } = {},
 ): Promise<ToolResult[]> {
   const names = toolsForIntent(intent, node.toolsAllowed, flow.tools);
   // Also auto-run tools listed on the destination-oriented node when slots just filled
@@ -474,12 +561,20 @@ export async function runToolsForTurn(
       ? ["checkBalance"]
       : intent === "provide_account" || intent === "verify_identity"
         ? ["lookupAccount"]
-        : intent === "provide_name"
+        : intent === "provide_name" || intent === "no_account"
           ? ["createCustomer"]
           : [];
-  const unique = [...new Set([...names, ...extra])].filter(
-    (n) => flow.tools.includes(n) || node.toolsAllowed?.includes(n),
-  );
+  const skip = new Set(opts.skip ?? []);
+  const unique = [...new Set([...names, ...extra])].filter((n) => {
+    if (skip.has(n)) return false;
+    if (!(flow.tools.includes(n) || node.toolsAllowed?.includes(n))) return false;
+    // Only create a new account when the caller said they don't have one,
+    // we have a valid name, and no account is on file yet.
+    if (n === "createCustomer") {
+      return slots.needsAccount === "true" && Boolean(slots.customerName) && !slots.accountId;
+    }
+    return true;
+  });
   const results: ToolResult[] = [];
   for (const name of unique) {
     results.push(await runTool(name, slots));
