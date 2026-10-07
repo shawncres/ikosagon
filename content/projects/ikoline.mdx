@@ -1,9 +1,9 @@
 ---
 title: "IkoLine"
 slug: "ikoline"
-summary: "Author-controlled call flows for CS, collections, and sales. The graph owns the journey; NLP fills intents and slots inside each node. Text-first demo with mock CRM tools and a growing policy RAG corpus — voice is next."
+summary: "Author-controlled call flows for CS, collections, and sales. The graph owns the journey; NLP fills intents and slots inside each node. Text-first demo with free browser TTS for agent lines, mock CRM tools, and a growing policy RAG corpus — production voice is next."
 year: 2026
-updated: "2026-10-07T12:20:00-04:00"
+updated: "2026-10-07T13:00:00-04:00"
 tags: ["AI", "Call flow", "NLP", "RAG", "Product"]
 cover: "/projects/ikoline/cover.svg"
 featured: true
@@ -30,14 +30,14 @@ A controllable agent that can run **CS / collections / sales** workflows you app
 ## Honesty
 
 - **Text-first** interactive demo on this page. No live inbound phone number (PSTN costs money; Hobby stays free).
-- **Voice** (push-to-talk STT / agent TTS) is **phase 2** — UI stubs only.
+- **Browser TTS** (Web Speech API `speechSynthesis`) optionally reads agent replies aloud — free system voices, mute toggle in the demo chrome. This is **not** production contact-center voice (no Twilio/ElevenLabs). Push-to-talk STT remains phase 2.
 - Conversational turns use Groq (`CHAT_MODEL` / `openai/gpt-oss-20b`) when `GROQ_API_KEY` is set; without a key the demo still advances on scripted lines + keyword intents. Rate-limited to protect Hobby quotas.
 - Status is **in progress**: shared skeleton + rich corpus + live LLM turns in-node; telephony certification is not claimed.
 
 ## How to try it
 
 1. Pick a vertical skin.
-2. Walk the call in the transcript; watch the **node label** and **slot chips** update.
+2. Walk the call in the transcript; watch the **node label** and **slot chips** update. Leave **Agent voice** on to hear browser TTS, or mute it anytime.
 3. Ask policy questions (returns, hardship, plan fit) to see RAG citations.
 4. Tools fire as the graph allows. Restart anytime — turn cap is 20 per session.
 
