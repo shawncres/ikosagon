@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import matter from "gray-matter";
 
-export type IkoLineChunk = {
+export type IkoAgentChunk = {
   id: string;
   title: string;
   source: string;
@@ -11,19 +11,19 @@ export type IkoLineChunk = {
   text: string;
 };
 
-export type IkoLineHit = IkoLineChunk & { score: number };
+export type IkoAgentHit = IkoAgentChunk & { score: number };
 
-const CORPUS_ROOT = path.join(process.cwd(), "content", "ikoline", "corpus");
+const CORPUS_ROOT = path.join(process.cwd(), "content", "ikoagent", "corpus");
 const TOKEN = /[a-z0-9]{2,}/g;
 
 function tokenize(value: string): string[] {
   return (value.toLowerCase().match(TOKEN) ?? []).filter((token) => token.length > 1);
 }
 
-function chunkMarkdown(source: string, title: string, filePath: string): IkoLineChunk[] {
+function chunkMarkdown(source: string, title: string, filePath: string): IkoAgentChunk[] {
   const normalized = source.replace(/\r\n/g, "\n").trim();
   const sections = normalized.split(/\n(?=##\s+)/);
-  const chunks: IkoLineChunk[] = [];
+  const chunks: IkoAgentChunk[] = [];
 
   sections.forEach((section, index) => {
     const headingMatch = section.match(/^##\s+(.+)$/m);
@@ -43,7 +43,7 @@ function chunkMarkdown(source: string, title: string, filePath: string): IkoLine
   return chunks;
 }
 
-async function readCorpusDir(corpus: string): Promise<IkoLineChunk[]> {
+async function readCorpusDir(corpus: string): Promise<IkoAgentChunk[]> {
   const dir = path.join(CORPUS_ROOT, corpus);
   let entries: Dirent[];
   try {
@@ -62,7 +62,7 @@ async function readCorpusDir(corpus: string): Promise<IkoLineChunk[]> {
       const raw = await fs.readFile(filePath, "utf8");
       const { data, content } = matter(raw);
       const title = String(data.title ?? file.name.replace(/\.mdx?$/, ""));
-      const source = `ikoline/corpus/${corpus}/${file.name}`;
+      const source = `ikoagent/corpus/${corpus}/${file.name}`;
       return chunkMarkdown(`# ${title}\n\n${content}`, title, source);
     }),
   );
@@ -70,13 +70,13 @@ async function readCorpusDir(corpus: string): Promise<IkoLineChunk[]> {
   return loaded.flat();
 }
 
-const cache = new Map<string, IkoLineChunk[]>();
+const cache = new Map<string, IkoAgentChunk[]>();
 
-export async function retrieveIkoLine(
+export async function retrieveIkoAgent(
   corpus: string | undefined,
   query: string,
   k = 3,
-): Promise<IkoLineHit[]> {
+): Promise<IkoAgentHit[]> {
   if (!corpus) return [];
   let chunks = cache.get(corpus);
   if (!chunks) {
@@ -110,7 +110,7 @@ export async function retrieveIkoLine(
     .slice(0, k);
 }
 
-export function formatIkoLineContext(hits: IkoLineHit[]): string {
+export function formatIkoAgentContext(hits: IkoAgentHit[]): string {
   if (!hits.length) return "(no matching policy notes)";
   return hits
     .map((h, i) => {

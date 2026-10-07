@@ -1,6 +1,6 @@
--- IkoLine demo CRM (Neon Postgres Hobby free)
+-- IkoAgent demo CRM (Neon Postgres Hobby free)
+-- Legacy table name: ikoline_customers (kept so existing Hobby rows survive the IkoLine→IkoAgent rename).
 -- Run once after linking Neon to the Vercel project (DATABASE_URL / POSTGRES_URL).
-
 CREATE TABLE IF NOT EXISTS ikoline_customers (
   account_id TEXT PRIMARY KEY,
   name TEXT NOT NULL,

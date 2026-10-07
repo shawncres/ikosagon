@@ -3,7 +3,7 @@ import {
   sanitizeAccountId,
   sanitizeCustomerName,
   type CustomerRecord,
-} from "@/lib/ikoline/crm";
+} from "@/lib/ikoagent/crm";
 import type { SlotMap, ToolResult } from "./types";
 
 export const TOOL_NAMES = [
@@ -99,7 +99,7 @@ export async function runTool(
           name: customerName,
           notes: {
             reason: typeof slots.reason === "string" ? slots.reason.slice(0, 80) : undefined,
-            flow: "ikoline",
+            flow: "ikoagent",
           },
         });
         return {

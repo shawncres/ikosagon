@@ -1,8 +1,8 @@
-# IkoLine demo CRM (free tier)
+# IkoAgent demo CRM (free tier)
 
 ## What it is
 
-A small customer table for the IkoLine call-flow demo:
+A small customer table for the IkoAgent call-flow demo:
 
 | Column | Notes |
 |--------|--------|
@@ -14,6 +14,8 @@ A small customer table for the IkoLine call-flow demo:
 
 Schema + seed: `migrations/001_ikoline_customers.sql`.
 
+**Table name note:** the Neon table remains `ikoline_customers` (legacy from the IkoLine rename) so existing Hobby data keeps working without a paid migration. Application code and docs say **IkoAgent**.
+
 ## Backend choice (cost: free)
 
 1. **Preferred:** Neon Postgres **Hobby free** linked to the Vercel project `ikosagon` (Marketplace / Storage). Env: `DATABASE_URL` or `POSTGRES_URL`.
@@ -23,7 +25,7 @@ Do **not** buy paid Neon/Blob plans for this demo.
 
 ## Security
 
-- Tool layer (`lib/ikoline/tools.ts` + `lib/ikoline/crm/*`) is the **only** path to the DB.
+- Tool layer (`lib/ikoagent/tools.ts` + `lib/ikoagent/crm/*`) is the **only** path to the DB.
 - All SQL uses Neon tagged-template **parameterized** queries — never string-concat user text or LLM output into SQL.
 - `sanitizeAccountId` / `sanitizeCustomerName` reject control chars, SQL-ish input, and prompt-injection phrases.
 - LLM classify/speak never builds queries; create is rate-limited (`8` / hour / IP) separately from turn rate limits.
@@ -39,5 +41,5 @@ Do **not** buy paid Neon/Blob plans for this demo.
 ## Local check
 
 ```bash
-npx tsx scripts/ikoline-lang-check.mjs
+npx tsx scripts/ikoagent-lang-check.mjs
 ```

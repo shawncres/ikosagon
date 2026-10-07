@@ -107,7 +107,7 @@ function createMemoryStore(): CrmStore {
         accountId,
         name,
         createdAt: new Date().toISOString(),
-        notes: { ...notes, source: "ikoline_demo" },
+        notes: { ...notes, source: "ikoagent_demo" },
         balance: 0,
         currency: "USD",
         status: "active",
@@ -193,7 +193,7 @@ function createNeonStore(url: string): CrmStore {
     async createCustomer(input: CreateCustomerInput) {
       const name = sanitizeCustomerName(input.name);
       if (!name) throw new Error("Invalid customer name.");
-      const notes = sanitizeNotes({ ...input.notes, source: "ikoline_demo" });
+      const notes = sanitizeNotes({ ...input.notes, source: "ikoagent_demo" });
       await this.ensureReady();
 
       // Next id: max numeric account_id >= 4000, else 4001 — computed in SQL, not from LLM.

@@ -16,7 +16,7 @@
       "id": "greet",
       "label": "Greet",
       "agentSay": [
-        "Hello there — thanks for hopping on this IkoLine sales demo with Ikosagon. How can I help you today? What are you hoping to solve?"
+        "Hello there — thanks for hopping on this IkoAgent sales demo with Ikosagon. How can I help you today? What are you hoping to solve?"
       ],
       "allowParaphrase": true,
       "listenFor": [

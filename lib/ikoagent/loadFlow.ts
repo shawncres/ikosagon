@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { Flow, FlowVertical } from "./types";
 
-const FLOWS_DIR = path.join(process.cwd(), "content", "ikoline", "flows");
+const FLOWS_DIR = path.join(process.cwd(), "content", "ikoagent", "flows");
 
 const VERTICAL_TO_FILE: Record<FlowVertical, string> = {
   customer_service: "customer_service.json",

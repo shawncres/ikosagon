@@ -6,8 +6,8 @@ import {
   isWeakTopic,
   scrubWeakSlots,
   stripPlaceholders,
-} from "@/lib/ikoline/engine";
-import { sanitizeCustomerName } from "@/lib/ikoline/crm";
+} from "@/lib/ikoagent/engine";
+import { sanitizeCustomerName } from "@/lib/ikoagent/crm";
 import type {
   Flow,
   FlowExit,
@@ -15,7 +15,7 @@ import type {
   HistoryTurn,
   SlotMap,
   ToolResult,
-} from "@/lib/ikoline/types";
+} from "@/lib/ikoagent/types";
 
 export type ClassifyResult = {
   intent: string | null;
@@ -129,7 +129,7 @@ export async function classifyTurn(opts: {
         {
           role: "system",
           content: [
-            "You are the NLP layer for IkoLine, a contact-center call-flow demo by we at Ikosagon.",
+            "You are the NLP layer for IkoAgent, a contact-center call-flow demo by we at Ikosagon.",
             "Classify the caller's latest message for the CURRENT step only.",
             "Return JSON: {\"intent\": string|null, \"slots\": object}.",
             "intent MUST be one of the listed intents, or null if none fit.",
@@ -229,7 +229,7 @@ export async function speakTurn(opts: {
   const scriptGuide = scriptLines.join("\n");
 
   const system = [
-    "You are IkoLine, a reactive contact-center agent for we at Ikosagon.",
+    "You are IkoAgent, a reactive contact-center agent for we at Ikosagon.",
     "Tone: natural phone support — warm, conversational, reactive. Sound like a real agent, not a script reader.",
     "Favor phrasing like: 'Hello there, how can I help you', 'Absolutely, I can help you with ___', 'Would it be okay if I asked you some questions to pull up and secure your account?', 'What is your name, and if you don't have an account I can help you set one up.'",
     "Stay in the current call step. 2–4 complete short sentences. Always finish your last sentence.",

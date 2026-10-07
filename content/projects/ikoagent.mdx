@@ -1,70 +1,44 @@
 ---
 title: "IkoAgent"
 slug: "ikoagent"
-summary: "A procedure desk for a small business. Staff and customers ask in plain language. Answers come from the shop's own documents, and each one shows its source."
+summary: "Author-controlled call flows for CS, collections, and sales. The graph owns the journey; NLP fills intents and slots inside each node. Text-first demo with free browser TTS for agent lines, mock CRM tools, and a growing policy RAG corpus — production voice is next."
 year: 2026
-updated: "2026-10-02T00:40:00-04:00"
-tags: ["AI", "RAG", "SMB", "Product"]
-cover: "/projects/ikoagent/cover.png"
+updated: "2026-10-07T15:00:00-04:00"
+tags: ["AI", "Call flow", "NLP", "RAG", "Product"]
+cover: "/projects/ikoagent/cover.svg"
 featured: true
-status: "Sample desk"
-linkLabel: "See how it helps a shop"
+status: "In progress"
+linkLabel: "Try the call-flow demo"
 ---
 
-IkoAgent answers from your procedures, not from memory.
+IkoAgent is how we at Ikosagon showcase **call-flow mastery** as a product — not a free-chat bot.
 
-A small business already has the answers in return policies, price sheets, hours, and product notes. We at Ikosagon built IkoAgent so staff and customers can ask in plain language — and see the document the answer came from.
+Years of contact-center instinct live in the graph: stages, must-say lines, escalation gates, payment-plan rules, quiet-hour awareness, and clean exits. When a model key is present, Groq runs **real NLP turns** inside each node (intent + slots + natural reply). The graph still owns transitions and must-say compliance lines. Keyword matching is the offline fallback.
 
-## The problem
+## For employers
 
-The usual failure is not a missing chatbot. It is two employees giving two different answers about a refund, a recall, or the hours on Tuesday. The policy exists. It is just buried in a file nobody opens during a rush.
+- **Authored flows** as the artifact: versioned JSON skins for customer service, collections, and sales on one shared runtime.
+- **NLP-in-node**: Groq classifies intents, fills slots, and speaks naturally for the current/next node; compliance nodes (`allowParaphrase: false`) lead with the must-say line verbatim. Keyword fallback when offline.
+- **RAG** over a **substantial** policy/script corpus per vertical (returns, shipping, billing, hardship, quiet hours, ethical sales, and more); citations surface when the node asks for them.
+- **Mock CRM tools**: lookup account, balance, payment plan, case, callback, disposition — deterministic demo accounts (`1001`, `2044`, `3300`).
+- **Measured cases forthcoming**: an expanded black-box set lives in `content/ikoagent/qa-cases.md` (full runner still in progress).
 
-## What the client gets
+## For clients
 
-- One desk for the questions customers already ask.
-- An answer that cites the procedure it used.
-- A refusal when the documents do not cover the question, instead of a confident guess.
-- A backlog of the questions the desk could not answer. That list is the next procedure to write.
-- Updates by editing a document. The shop does not retrain a model to change a return window.
+A controllable agent that can run **CS / collections / sales** workflows you approve — disclosures that cannot drift, escalation when the graph says so, and answers grounded in your procedures. We shape the experience with you; the model stays on a leash.
 
-## How a shop uses it
+## Honesty
 
-1. Gather the documents the staff already trust: policies, SKUs, hours, warranties, recalls.
-2. Ask the questions customers actually call about.
-3. Read the cited passage next to the answer. If the passage is wrong, fix the document.
-4. Each week, read the questions that were refused. Write the missing procedure, add the file, and those questions start getting answers.
+- **Text-first** interactive demo on this page. No live inbound phone number (PSTN costs money; Hobby stays free).
+- **Browser TTS** (Web Speech API `speechSynthesis`) optionally reads agent replies aloud — free system voices, mute toggle in the demo chrome. This is **not** production contact-center voice (no Twilio/ElevenLabs). Push-to-talk STT remains phase 2.
+- Conversational turns use Groq (`CHAT_MODEL` / `openai/gpt-oss-20b`) when `GROQ_API_KEY` is set; without a key the demo still advances on scripted lines + keyword intents. Rate-limited to protect Hobby quotas.
+- Status is **in progress**: shared skeleton + rich corpus + live LLM turns in-node; telephony certification is not claimed.
 
-## The sample
+## How to try it
 
-The public example is a fictional outdoor shop, **Northwind Outfitters**. Its procedures cover returns, a membership club, three store schedules, tents, garment repair, and a stove recall. It is a demonstration, not a client engagement.
+1. Pick a vertical skin.
+2. Walk the call in the transcript; watch the **node label** and **slot chips** update. Leave **Agent voice** on to hear browser TTS, or mute it anytime.
+3. Ask policy questions (returns, hardship, plan fit) to see RAG citations.
+4. Tools fire as the graph allows. Restart anytime — turn cap is 20 per session.
 
-![IkoAgent sample desk for the fictional shop Northwind Outfitters, with customer themes around the message bar and the shop procedures listed on the left.](/projects/ikoagent/desktop-desk.png)
-
-A visitor can ask things like:
-
-- Which fuel canister lot codes were recalled?
-- How long is a Boot Lab appointment, and which shop offers it?
-- What is the Summit Club annual fee, and when is the card billed?
-- How many days does a customer have to return an unused item?
-
-![IkoAgent answering which fuel canister lots were recalled for the Northwind sample, with the cited passages in the trace column.](/projects/ikoagent/desktop-answer.png)
-
-![Close view of a Summit Lantern warranty and battery coverage question, the cited answer, and the passages used.](/projects/ikoagent/answer-and-trace.png)
-
-An unrelated question, such as the population of a city, is refused. The desk does not spend an answer on something the procedures do not contain.
-
-![The same procedure desk on a phone, with the topic buttons around the message bar.](/projects/ikoagent/phone-desk.png)
-
-## Proof
-
-**39 of 39** checks on the included question set. For every policy question, the correct procedure file was among the three passages retrieved. Off-topic questions were stopped before a model wrote an answer.
-
-This is black-box QA on the sample desk — measured retrieval and refusal — not a customer case study and not a rounded-up marketing metric.
-
-## What happens next
-
-IkoAgent can be stood up for another small business from that business's own documents. The first version is a sample desk the staff can try against their real questions. The backlog from that trial becomes the writing list.
-
-The sample can be read from the screenshots on this page. A live public text box is not required to understand the offer — and this site does not host a live FastAPI desk (Hobby + API key is the wrong fit for a public demo). The next step is to request a desk built from the shop's own documents.
-
-**[Request a desk for your shop →](/contact#build)**
+**[Talk to us about a call-flow desk →](/contact#build)**

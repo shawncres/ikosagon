@@ -8,6 +8,17 @@ const nextConfig: NextConfig = {
         destination: "/projects/ikoartist",
         permanent: true,
       },
+      // IkoLine → IkoAgent (call-flow demo)
+      {
+        source: "/projects/ikoline",
+        destination: "/projects/ikoagent",
+        permanent: true,
+      },
+      {
+        source: "/projects/ikoline/:path*",
+        destination: "/projects/ikoagent/:path*",
+        permanent: true,
+      },
     ];
   },
 };
