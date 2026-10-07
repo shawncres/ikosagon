@@ -76,9 +76,9 @@ function topicFromText(text: string): string {
   if (/login|password|access|locked/.test(t)) return "login access";
   if (/price|expensive|budget|cost/.test(t)) return "pricing";
   if (/hardship|can't pay|cannot pay|lost (my )?job/.test(t)) return "hardship";
-  // keep short — never dump the whole utterance into {{reason}}
-  const clipped = text.replace(/\s+/g, " ").trim().slice(0, 48);
-  return clipped.length >= 8 ? clipped : "";
+  // No keyword match → leave empty so we do not overwrite a good prior topic
+  // with "Account 1001" / "yes" / etc.
+  return "";
 }
 
 function sanitizeSlots(input: unknown): SlotMap {
@@ -205,13 +205,26 @@ export async function POST(request: Request) {
   }
   // Prefer short topic tags — never let a full rant land in {{reason}}/{{need}}
   const topic = topicFromText(userText);
-  if (matchedIntent === "describe_issue" || slots.reason) {
-    const normalized = topic || topicFromText(slots.reason || "") || (slots.reason || "").slice(0, 48);
+  if (matchedIntent === "describe_issue") {
+    const normalized = topic || topicFromText(slots.reason || "");
     if (normalized) slots = mergeSlots(slots, { reason: normalized });
+    else if (slots.reason && slots.reason.length > 60) {
+      slots = mergeSlots(slots, { reason: slots.reason.slice(0, 48) });
+    }
+  } else if (slots.reason && slots.reason.length > 60) {
+    // Collapse an LLM-stuffed rant without touching good short topics
+    const collapsed = topicFromText(slots.reason) || slots.reason.slice(0, 48);
+    slots = mergeSlots(slots, { reason: collapsed });
   }
-  if (matchedIntent === "discover_need" || slots.need) {
-    const normalized = topic || topicFromText(slots.need || "") || (slots.need || "").slice(0, 48);
+  if (matchedIntent === "discover_need") {
+    const normalized = topic || topicFromText(slots.need || "");
     if (normalized) slots = mergeSlots(slots, { need: normalized });
+    else if (slots.need && slots.need.length > 60) {
+      slots = mergeSlots(slots, { need: slots.need.slice(0, 48) });
+    }
+  } else if (slots.need && slots.need.length > 60) {
+    const collapsed = topicFromText(slots.need) || slots.need.slice(0, 48);
+    slots = mergeSlots(slots, { need: collapsed });
   }
 
   // C. Tools + transition (graph still owns the journey)
