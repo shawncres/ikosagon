@@ -1,0 +1,44 @@
+---
+title: "IkoLine"
+slug: "ikoline"
+summary: "Author-controlled call flows for CS, collections, and sales. The graph owns the journey; NLP fills intents and slots inside each node. Text-first demo with mock CRM tools and policy RAG — voice is next."
+year: 2026
+updated: "2026-10-07T09:18:00-04:00"
+tags: ["AI", "Call flow", "NLP", "RAG", "Product"]
+cover: "/projects/ikoline/cover.svg"
+featured: true
+status: "Skeleton"
+linkLabel: "Try the call-flow demo"
+---
+
+IkoLine is how we at Ikosagon showcase **call-flow mastery** as a product — not a free-chat bot.
+
+Years of contact-center instinct live in the graph: stages, must-say lines, escalation gates, payment-plan rules, quiet-hour awareness, and clean exits. The language model classifies intents, fills slots, and may lightly paraphrase **inside the current node**. It does not own the journey.
+
+## For employers
+
+- **Authored flows** as the artifact: versioned JSON skins for customer service, collections, and sales on one shared runtime.
+- **NLP-in-node**: keyword-first matching (works offline); optional Groq paraphrase only when a node allows it — compliance nodes stay verbatim.
+- **RAG** over a small policy/script corpus per vertical; citations surface in the agent turn when the node asks for them.
+- **Mock CRM tools**: lookup account, balance, payment plan, case, callback, disposition — deterministic demo accounts (`1001`, `2044`, `3300`).
+- **Measured cases forthcoming**: a planned black-box set lives in `content/ikoline/qa-cases.md` (runner not shipped in this skeleton).
+
+## For clients
+
+A controllable agent that can run **CS / collections / sales** workflows you approve — disclosures that cannot drift, escalation when the graph says so, and answers grounded in your procedures. We shape the experience with you; the model stays on a leash.
+
+## Honesty
+
+- **Text-first** interactive demo on this page. No live inbound phone number (PSTN costs money; Hobby stays free).
+- **Voice** (push-to-talk STT / agent TTS) is **phase 2** — UI stubs only.
+- Free-tier caps apply when a model key is present; without a key the demo still advances on scripted lines + keyword intents.
+- This is a portfolio skeleton and proof of control, not a claim of production telephony certification.
+
+## How the skeleton works
+
+1. Pick a vertical skin.
+2. Walk the call in the transcript; watch the **node label** and **slot chips** update.
+3. Tools and policy hits appear as the graph allows.
+4. Restart anytime — turn cap is 20 per session.
+
+**[Talk to us about a call-flow desk →](/contact#build)**

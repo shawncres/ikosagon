@@ -1,0 +1,145 @@
+{
+  "id": "customer_service",
+  "title": "Customer Service",
+  "vertical": "customer_service",
+  "description": "Greet → verify → diagnose → policy RAG → resolve or escalate.",
+  "start": "greet",
+  "ragCorpus": "cs",
+  "tools": ["lookupAccount", "createCase", "scheduleCallback", "logDisposition"],
+  "nodes": {
+    "greet": {
+      "id": "greet",
+      "label": "Greet",
+      "agentSay": [
+        "Thanks for calling Ikosagon Support Demo. I’m the IkoLine agent for this queue. How can I help today?"
+      ],
+      "allowParaphrase": true,
+      "listenFor": [
+        {
+          "intent": "describe_issue",
+          "examples": ["my order is late", "I need a refund", "login problem", "billing issue"]
+        },
+        {
+          "intent": "ask_policy",
+          "examples": ["what's your return policy", "warranty question"]
+        }
+      ],
+      "requireSlots": ["reason"],
+      "transitions": [
+        { "on": "describe_issue", "to": "verify" },
+        { "on": "ask_policy", "to": "verify" },
+        { "on": "slots_filled", "to": "verify", "whenSlotsFilled": ["reason"] }
+      ]
+    },
+    "verify": {
+      "id": "verify",
+      "label": "Verify identity",
+      "agentSay": [
+        "Happy to help with {{reason}}. For security, please share your demo account number (try 1001, 2044, or 3300)."
+      ],
+      "allowParaphrase": false,
+      "listenFor": [
+        { "intent": "provide_account", "examples": ["my account is 1001", "account 2044", "3300"] },
+        { "intent": "verify_identity", "examples": ["last four 1001", "it's Alex"] }
+      ],
+      "requireSlots": ["accountId"],
+      "toolsAllowed": ["lookupAccount"],
+      "transitions": [
+        { "on": "provide_account", "to": "diagnose", "whenSlotsFilled": ["accountId"] },
+        { "on": "verify_identity", "to": "diagnose", "whenSlotsFilled": ["accountId"] },
+        { "on": "slots_filled", "to": "diagnose", "whenSlotsFilled": ["accountId"] }
+      ]
+    },
+    "diagnose": {
+      "id": "diagnose",
+      "label": "Diagnose",
+      "agentSay": [
+        "Account {{accountId}} is on file. Tell me a bit more about the {{reason}} issue so I can pull the right procedure."
+      ],
+      "allowParaphrase": true,
+      "listenFor": [
+        { "intent": "describe_issue", "examples": ["it still won't ship", "charged twice", "can't reset password"] },
+        { "intent": "ask_policy", "examples": ["what does the policy say", "am I eligible"] },
+        { "intent": "escalate", "examples": ["I want a supervisor", "transfer me"] }
+      ],
+      "rag": { "queryHint": "customer service policy for the reported issue", "required": false },
+      "transitions": [
+        { "on": "ask_policy", "to": "policy" },
+        { "on": "describe_issue", "to": "policy" },
+        { "on": "escalate", "to": "escalate_handoff" },
+        { "on": "*", "to": "policy" }
+      ]
+    },
+    "policy": {
+      "id": "policy",
+      "label": "Policy lookup",
+      "agentSay": [
+        "I’m checking the support corpus for {{reason}}. I’ll cite what applies, then we can resolve or escalate."
+      ],
+      "allowParaphrase": true,
+      "listenFor": [
+        { "intent": "resolve", "examples": ["that answers it", "thanks that works", "we're good"] },
+        { "intent": "escalate", "examples": ["still not happy", "supervisor please"] },
+        { "intent": "create_ticket", "examples": ["open a ticket", "create a case"] },
+        { "intent": "request_callback", "examples": ["call me back", "callback tomorrow"] }
+      ],
+      "rag": { "queryHint": "refund return warranty shipping login billing", "required": true },
+      "toolsAllowed": ["createCase", "scheduleCallback", "logDisposition"],
+      "transitions": [
+        { "on": "resolve", "to": "resolve_close" },
+        { "on": "create_ticket", "to": "resolve_close" },
+        { "on": "escalate", "to": "escalate_handoff" },
+        { "on": "request_callback", "to": "callback_close" }
+      ],
+      "exits": [
+        { "type": "resolve", "label": "Resolved with policy citation" },
+        { "type": "escalate", "label": "Escalated to human queue" },
+        { "type": "callback", "label": "Callback scheduled" }
+      ]
+    },
+    "resolve_close": {
+      "id": "resolve_close",
+      "label": "Resolve",
+      "agentSay": [
+        "Glad we could sort this using the published procedure. I’ve logged the disposition on account {{accountId}}. Is there anything else?"
+      ],
+      "allowParaphrase": true,
+      "listenFor": [
+        { "intent": "resolve", "examples": ["no that's all", "thanks bye"] },
+        { "intent": "describe_issue", "examples": ["one more thing"] }
+      ],
+      "toolsAllowed": ["logDisposition"],
+      "transitions": [
+        { "on": "resolve", "to": "exit:resolve" },
+        { "on": "*", "to": "exit:resolve" }
+      ],
+      "exits": [{ "type": "resolve", "label": "Call resolved" }]
+    },
+    "escalate_handoff": {
+      "id": "escalate_handoff",
+      "label": "Escalate",
+      "agentSay": [
+        "Understood — I’m opening a case and moving you to the escalation queue. A specialist will take the next step."
+      ],
+      "allowParaphrase": false,
+      "listenFor": [{ "intent": "affirm", "examples": ["ok", "please do"] }],
+      "toolsAllowed": ["createCase", "logDisposition"],
+      "transitions": [{ "on": "*", "to": "exit:escalate" }],
+      "exits": [{ "type": "escalate", "label": "Escalated to human queue" }]
+    },
+    "callback_close": {
+      "id": "callback_close",
+      "label": "Schedule callback",
+      "agentSay": [
+        "I’ll schedule a callback on this account. Prefer morning, afternoon, or tomorrow?"
+      ],
+      "allowParaphrase": true,
+      "listenFor": [
+        { "intent": "request_callback", "examples": ["afternoon", "tomorrow morning", "call me tonight"] }
+      ],
+      "toolsAllowed": ["scheduleCallback", "logDisposition"],
+      "transitions": [{ "on": "*", "to": "exit:callback" }],
+      "exits": [{ "type": "callback", "label": "Callback scheduled" }]
+    }
+  }
+}
