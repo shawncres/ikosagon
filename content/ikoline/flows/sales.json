@@ -1,0 +1,122 @@
+{
+  "id": "sales",
+  "title": "Sales",
+  "vertical": "sales",
+  "description": "Greet → discover needs → match offer (RAG) → handle objection → close or callback.",
+  "start": "greet",
+  "ragCorpus": "sales",
+  "tools": ["lookupAccount", "scheduleCallback", "logDisposition", "createCase"],
+  "nodes": {
+    "greet": {
+      "id": "greet",
+      "label": "Greet",
+      "agentSay": [
+        "Hi — thanks for taking this IkoLine sales demo. I help match a simple plan to what you need. What are you hoping to solve?"
+      ],
+      "allowParaphrase": true,
+      "listenFor": [
+        { "intent": "discover_need", "examples": ["need better support", "want analytics", "looking for a cheaper plan"] },
+        { "intent": "ask_offer", "examples": ["what do you offer", "show me plans"] }
+      ],
+      "requireSlots": ["need"],
+      "transitions": [
+        { "on": "discover_need", "to": "discover" },
+        { "on": "ask_offer", "to": "discover" },
+        { "on": "slots_filled", "to": "discover", "whenSlotsFilled": ["need"] }
+      ]
+    },
+    "discover": {
+      "id": "discover",
+      "label": "Discover needs",
+      "agentSay": [
+        "Got it — focusing on {{need}}. Is this for a small team, or are you thinking enterprise scale? Any must-have features?"
+      ],
+      "allowParaphrase": true,
+      "listenFor": [
+        { "intent": "discover_need", "examples": ["small team", "enterprise", "need phone support", "need SSO"] },
+        { "intent": "ask_offer", "examples": ["what's the pro plan", "compare plans"] }
+      ],
+      "transitions": [
+        { "on": "ask_offer", "to": "match_offer" },
+        { "on": "discover_need", "to": "match_offer" },
+        { "on": "*", "to": "match_offer" }
+      ]
+    },
+    "match_offer": {
+      "id": "match_offer",
+      "label": "Match offer",
+      "agentSay": [
+        "Based on that, I’ll pull a matching offer from our sales corpus and summarize fit — not a hard sell."
+      ],
+      "allowParaphrase": true,
+      "listenFor": [
+        { "intent": "ask_offer", "examples": ["tell me more", "pricing", "what's included"] },
+        { "intent": "objection_price", "examples": ["too expensive", "out of budget"] },
+        { "intent": "objection_timing", "examples": ["not now", "maybe next quarter"] },
+        { "intent": "close_won", "examples": ["I'll take it", "let's sign up", "buy pro"] },
+        { "intent": "request_callback", "examples": ["email me", "call me later"] }
+      ],
+      "rag": { "queryHint": "plan comparison pricing features", "required": true },
+      "transitions": [
+        { "on": "objection_price", "to": "objection" },
+        { "on": "objection_timing", "to": "objection" },
+        { "on": "close_won", "to": "close" },
+        { "on": "request_callback", "to": "callback" },
+        { "on": "ask_offer", "to": "objection" },
+        { "on": "*", "to": "objection" }
+      ]
+    },
+    "objection": {
+      "id": "objection",
+      "label": "Handle objection",
+      "agentSay": [
+        "Fair concern. We can look at Basic vs Pro, or schedule a deeper walkthrough. What would make this a yes — price, timing, or features?"
+      ],
+      "allowParaphrase": true,
+      "listenFor": [
+        { "intent": "objection_price", "examples": ["still too pricey", "need a discount"] },
+        { "intent": "objection_timing", "examples": ["later", "next month"] },
+        { "intent": "close_won", "examples": ["ok let's do pro", "sign me up"] },
+        { "intent": "request_callback", "examples": ["callback please", "call tomorrow"] },
+        { "intent": "ask_offer", "examples": ["compare basic and pro"] }
+      ],
+      "rag": { "queryHint": "objection handling discount trial", "required": false },
+      "transitions": [
+        { "on": "close_won", "to": "close" },
+        { "on": "request_callback", "to": "callback" },
+        { "on": "objection_timing", "to": "callback" },
+        { "on": "objection_price", "to": "close" },
+        { "on": "*", "to": "close" }
+      ]
+    },
+    "close": {
+      "id": "close",
+      "label": "Close",
+      "agentSay": [
+        "Great — marking this demo as a close path. In production this would hand off to checkout or a human AE. Thanks for walking the flow."
+      ],
+      "allowParaphrase": true,
+      "listenFor": [
+        { "intent": "close_won", "examples": ["confirm", "yes"] },
+        { "intent": "resolve", "examples": ["thanks", "done"] }
+      ],
+      "toolsAllowed": ["logDisposition"],
+      "transitions": [{ "on": "*", "to": "exit:resolve" }],
+      "exits": [{ "type": "resolve", "label": "Closed — demo win path" }]
+    },
+    "callback": {
+      "id": "callback",
+      "label": "Callback",
+      "agentSay": [
+        "No problem — I’ll schedule a callback so you can decide on your timeline. Morning or afternoon?"
+      ],
+      "allowParaphrase": true,
+      "listenFor": [
+        { "intent": "request_callback", "examples": ["afternoon", "tomorrow morning"] }
+      ],
+      "toolsAllowed": ["scheduleCallback", "logDisposition"],
+      "transitions": [{ "on": "*", "to": "exit:callback" }],
+      "exits": [{ "type": "callback", "label": "Sales callback scheduled" }]
+    }
+  }
+}

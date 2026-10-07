@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480" viewBox="0 0 800 480" fill="none">
+  <rect width="800" height="480" fill="#0a0a0a"/>
+  <!-- outer hex -->
+  <polygon points="400,78 548,163 548,333 400,418 252,333 252,163" stroke="#2bffe8" stroke-width="2" opacity="0.22" fill="none"/>
+  <!-- main hex -->
+  <polygon points="400,110 510,174 510,302 400,366 290,302 290,174" stroke="#2bffe8" stroke-width="3" opacity="0.95" fill="none"/>
+  <!-- handset glyph -->
+  <path d="M355 200c8-18 28-28 48-22l12 4c6 2 8 8 6 14l-8 22c-2 4-6 6-10 5l-14-4c-4 8-2 18 4 26l18 18c8 8 20 10 28 4l-2-12c-1-5 2-10 7-12l22-10c5-2 11 0 14 5l6 12c8 16-2 36-20 44-32 14-74 2-102-26s-40-70-26-102z" stroke="#2bffe8" stroke-width="2.5" fill="none" opacity="0.9"/>
+  <!-- flow nodes -->
+  <circle cx="455" cy="255" r="5" fill="#2bffe8" opacity="0.85"/>
+  <circle cx="480" cy="230" r="4" fill="#2bffe8" opacity="0.55"/>
+  <circle cx="480" cy="280" r="4" fill="#2bffe8" opacity="0.55"/>
+  <line x1="455" y1="255" x2="480" y2="230" stroke="#2bffe8" stroke-width="1.2" opacity="0.45"/>
+  <line x1="455" y1="255" x2="480" y2="280" stroke="#2bffe8" stroke-width="1.2" opacity="0.45"/>
+  <text x="400" y="440" text-anchor="middle" fill="#fafafa" font-family="Arial, sans-serif" font-size="24" font-weight="700">IkoLine · Author-controlled call flows</text>
+</svg>
