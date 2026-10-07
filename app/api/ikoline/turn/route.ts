@@ -18,6 +18,7 @@ import {
 } from "@/lib/ikoline/llmTurn";
 import { formatIkoLineContext, retrieveIkoLine } from "@/lib/ikoline/rag";
 import { getProviderName } from "@/lib/llm";
+import { logDemoTurn } from "@/lib/ikoline/demoLog";
 import {
   MAX_TURNS,
   type HistoryTurn,
@@ -113,6 +114,8 @@ export async function POST(request: Request) {
     userText?: string;
     turnCount?: number;
     start?: boolean;
+    /** Client-generated id so Vercel logs + browser exports correlate */
+    sessionId?: string;
   };
   try {
     body = await request.json();
@@ -126,21 +129,41 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Unknown flow." }, { status: 404 });
   }
 
+  const sessionId = String(body.sessionId ?? "").trim().slice(0, 80) || "anon";
+  const provider = getProviderName();
+
   if (body.start) {
     const agentText = safeOpening(flow, openingAgentText(flow));
     const startNode = getCurrentNode(flow, flow.start);
+    const nodeLabel = startNode?.label ?? flow.start;
+    logDemoTurn({
+      ts: new Date().toISOString(),
+      sessionId,
+      flowId: flow.id,
+      nodeId: flow.start,
+      nodeLabel,
+      userText: null,
+      agentText,
+      mode: "scripted",
+      intent: null,
+      slots: {},
+      provider,
+      kind: "start",
+    });
     const res: TurnResponse = {
       ok: true,
       nodeId: flow.start,
       agentText,
       slots: {},
       mode: "scripted",
-      debug: { matchedIntent: null, ragHits: [], offline: !getProviderName() },
+      debug: { matchedIntent: null, ragHits: [], offline: !provider },
     };
     return NextResponse.json({
       ...res,
-      nodeLabel: startNode?.label ?? flow.start,
+      nodeLabel,
       flowTitle: flow.title,
+      sessionId,
+      provider,
     });
   }
 
@@ -175,15 +198,31 @@ export async function POST(request: Request) {
   if (looksLikeInjection(userText)) {
     const agentText =
       "I stay inside the authored call flow. Please continue with a normal customer reply for this step.";
+    logDemoTurn({
+      ts: new Date().toISOString(),
+      sessionId,
+      flowId: flow.id,
+      nodeId: node.id,
+      nodeLabel: node.label,
+      userText,
+      agentText,
+      mode: "scripted",
+      intent: null,
+      slots: priorSlots,
+      provider,
+      kind: "turn",
+    });
     return NextResponse.json({
       ok: true,
       nodeId: node.id,
       agentText,
       slots: priorSlots,
       mode: "scripted",
-      debug: { matchedIntent: null, ragHits: [], offline: !getProviderName() },
+      debug: { matchedIntent: null, ragHits: [], offline: !provider },
       nodeLabel: node.label,
       flowTitle: flow.title,
+      sessionId,
+      provider,
     });
   }
 
@@ -282,6 +321,23 @@ export async function POST(request: Request) {
   }
 
   const finalNodeId = exit ? node.id : nextNode?.id ?? node.id;
+  const finalLabel = (getCurrentNode(flow, finalNodeId) ?? speakNode).label;
+
+  logDemoTurn({
+    ts: new Date().toISOString(),
+    sessionId,
+    flowId: flow.id,
+    nodeId: finalNodeId,
+    nodeLabel: finalLabel,
+    userText,
+    agentText,
+    mode,
+    intent: matchedIntent,
+    slots,
+    provider,
+    exit: exit ?? null,
+    kind: "turn",
+  });
 
   const res: TurnResponse = {
     ok: true,
@@ -298,13 +354,15 @@ export async function POST(request: Request) {
         heading: h.heading,
         score: Math.round(h.score * 100) / 100,
       })),
-      offline: !getProviderName(),
+      offline: !provider,
     },
   };
 
   return NextResponse.json({
     ...res,
-    nodeLabel: (getCurrentNode(flow, finalNodeId) ?? speakNode).label,
+    nodeLabel: finalLabel,
     flowTitle: flow.title,
+    sessionId,
+    provider,
   });
 }

@@ -1,6 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { DemoTurnLog } from "@/lib/ikoline/demoLog";
+import {
+  buildSession,
+  copyText,
+  downloadSessionJson,
+  formatTranscriptPlain,
+  loadSessionRing,
+  newSessionId,
+  upsertSessionInRing,
+} from "@/lib/ikoline/clientTranscript";
 
 type FlowMeta = {
   id: string;
@@ -88,8 +98,18 @@ export function IkoLineDemo() {
   /** Browser TTS for agent lines — default ON; remembered in localStorage. */
   const [ttsOn, setTtsOn] = useState(true);
   const [ttsAvailable, setTtsAvailable] = useState(false);
+  const [sessionId, setSessionId] = useState("");
+  const [sessionStartedAt, setSessionStartedAt] = useState("");
+  const [flowTitle, setFlowTitle] = useState<string | undefined>();
+  const [transcriptTurns, setTranscriptTurns] = useState<DemoTurnLog[]>([]);
+  const [provider, setProvider] = useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = useState<string | null>(null);
+  const [savedCount, setSavedCount] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
   const ttsOnRef = useRef(true);
+  const sessionIdRef = useRef("");
+  const sessionStartedAtRef = useRef("");
+  const transcriptRef = useRef<DemoTurnLog[]>([]);
 
   const scrollLog = () => {
     requestAnimationFrame(() => {
@@ -102,9 +122,30 @@ export function IkoLineDemo() {
     speakAgentLine(agentText);
   }, []);
 
+  const persistTranscript = useCallback(
+    (nextTurns: DemoTurnLog[], opts: { sessionId: string; startedAt: string; flowId: string; flowTitle?: string }) => {
+      transcriptRef.current = nextTurns;
+      setTranscriptTurns(nextTurns);
+      const session = buildSession({
+        sessionId: opts.sessionId,
+        startedAt: opts.startedAt,
+        flowId: opts.flowId,
+        flowTitle: opts.flowTitle,
+        turns: nextTurns,
+      });
+      upsertSessionInRing(session);
+      setSavedCount(loadSessionRing().length);
+    },
+    [],
+  );
+
   useEffect(() => {
     ttsOnRef.current = ttsOn;
   }, [ttsOn]);
+
+  useEffect(() => {
+    setSavedCount(loadSessionRing().length);
+  }, []);
 
   useEffect(() => {
     const available = speechSupported();
@@ -161,11 +202,20 @@ export function IkoLineDemo() {
       setTurnCount(0);
       setSlots({});
       setInput("");
+      setCopyStatus(null);
+      const sid = newSessionId();
+      const startedAt = new Date().toISOString();
+      sessionIdRef.current = sid;
+      sessionStartedAtRef.current = startedAt;
+      setSessionId(sid);
+      setSessionStartedAt(startedAt);
+      setTranscriptTurns([]);
+      transcriptRef.current = [];
       try {
         const res = await fetch("/api/ikoline/turn", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ flowId: id, start: true }),
+          body: JSON.stringify({ flowId: id, start: true, sessionId: sid }),
         });
         const data = await res.json();
         if (!res.ok || !data.ok) {
@@ -176,9 +226,31 @@ export function IkoLineDemo() {
         setFlowId(id);
         setNodeId(data.nodeId);
         setNodeLabel(data.nodeLabel || data.nodeId);
+        setFlowTitle(typeof data.flowTitle === "string" ? data.flowTitle : undefined);
         setHistory([{ role: "agent", content: data.agentText }]);
         setMode(data.mode ?? "scripted");
         setOffline(Boolean(data.debug?.offline));
+        setProvider(typeof data.provider === "string" ? data.provider : null);
+        const opening: DemoTurnLog = {
+          ts: new Date().toISOString(),
+          sessionId: sid,
+          flowId: id,
+          nodeId: data.nodeId,
+          nodeLabel: data.nodeLabel || data.nodeId,
+          userText: null,
+          agentText: data.agentText,
+          mode: data.mode === "llm" ? "llm" : "scripted",
+          intent: null,
+          slots: {},
+          provider: typeof data.provider === "string" ? data.provider : null,
+          kind: "start",
+        };
+        persistTranscript([opening], {
+          sessionId: sid,
+          startedAt,
+          flowId: id,
+          flowTitle: typeof data.flowTitle === "string" ? data.flowTitle : undefined,
+        });
         speakIfEnabled(data.agentText);
         scrollLog();
       } catch {
@@ -187,7 +259,7 @@ export function IkoLineDemo() {
         setPending(false);
       }
     },
-    [speakIfEnabled],
+    [speakIfEnabled, persistTranscript],
   );
 
   useEffect(() => {
@@ -197,6 +269,7 @@ export function IkoLineDemo() {
         const data = await res.json();
         if (data.flows) setFlows(data.flows);
         setOffline(!data.provider);
+        if (typeof data.provider === "string") setProvider(data.provider);
       } catch {
         /* ignore */
       }
@@ -216,6 +289,7 @@ export function IkoLineDemo() {
     setError(null);
     setInput("");
     setHistory((h) => [...h, { role: "user", content: userText }]);
+    const sid = sessionIdRef.current || sessionId || newSessionId();
     try {
       const res = await fetch("/api/ikoline/turn", {
         method: "POST",
@@ -227,6 +301,7 @@ export function IkoLineDemo() {
           history,
           userText,
           turnCount,
+          sessionId: sid,
         }),
       });
       const data = await res.json();
@@ -245,6 +320,30 @@ export function IkoLineDemo() {
       setDebugIntent(data.debug?.matchedIntent ?? null);
       setToolResults(Array.isArray(data.toolResults) ? data.toolResults : []);
       if (data.exit) setExit(data.exit);
+      if (typeof data.flowTitle === "string") setFlowTitle(data.flowTitle);
+      const nextProvider = typeof data.provider === "string" ? data.provider : provider;
+      setProvider(nextProvider);
+      const entry: DemoTurnLog = {
+        ts: new Date().toISOString(),
+        sessionId: sid,
+        flowId,
+        nodeId: data.nodeId,
+        nodeLabel: data.nodeLabel || data.nodeId,
+        userText,
+        agentText: data.agentText,
+        mode: data.mode === "llm" ? "llm" : "scripted",
+        intent: data.debug?.matchedIntent ?? null,
+        slots: data.slots || {},
+        provider: nextProvider,
+        exit: data.exit ?? null,
+        kind: "turn",
+      };
+      persistTranscript([...transcriptRef.current, entry], {
+        sessionId: sid,
+        startedAt: sessionStartedAtRef.current || sessionStartedAt || new Date().toISOString(),
+        flowId,
+        flowTitle: typeof data.flowTitle === "string" ? data.flowTitle : flowTitle,
+      });
       speakIfEnabled(data.agentText);
     } catch {
       setError("Network error on this turn.");
@@ -253,7 +352,45 @@ export function IkoLineDemo() {
     }
   }
 
+  function currentSession() {
+    const sid = sessionIdRef.current || sessionId;
+    if (!sid || transcriptRef.current.length < 1) return null;
+    return buildSession({
+      sessionId: sid,
+      startedAt: sessionStartedAtRef.current || sessionStartedAt || new Date().toISOString(),
+      flowId,
+      flowTitle,
+      turns: transcriptRef.current,
+    });
+  }
+
+  async function handleCopyTranscript() {
+    const session = currentSession();
+    if (!session) return;
+    const ok = await copyText(formatTranscriptPlain(session));
+    setCopyStatus(ok ? "Copied — paste into chat for Website Ops" : "Copy failed");
+    window.setTimeout(() => setCopyStatus(null), 3500);
+  }
+
+  function handleDownloadTranscript() {
+    const session = currentSession();
+    if (!session) return;
+    downloadSessionJson(session);
+    setCopyStatus("Downloaded JSON");
+    window.setTimeout(() => setCopyStatus(null), 2500);
+  }
+
+  async function handleCopyLastSaved() {
+    const ring = loadSessionRing();
+    const session = ring[0];
+    if (!session) return;
+    const ok = await copyText(formatTranscriptPlain(session));
+    setCopyStatus(ok ? `Copied saved session ${session.sessionId.slice(0, 8)}…` : "Copy failed");
+    window.setTimeout(() => setCopyStatus(null), 3500);
+  }
+
   const slotEntries = Object.entries(slots).filter(([, v]) => v);
+  const canExport = transcriptTurns.length > 0;
 
   return (
     <section
@@ -263,14 +400,15 @@ export function IkoLineDemo() {
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="mb-1 font-mono text-xs text-accent">
-            IkoLine · call-flow + LLM turns · browser TTS
+            IkoLine · call-flow + LLM turns · browser TTS · transcripts
           </p>
           <h2 className="text-xl font-semibold">Live call demo</h2>
           <p className="mt-1 max-w-2xl text-sm text-zinc-400">
             Three vertical skins on one engine. The graph owns transitions and must-say lines; Groq
             handles intent, slots, and natural replies inside each node (keyword fallback offline).
             Agent lines can speak via free browser text-to-speech (not production contact-center
-            voice). No live phone number.
+            voice). Sessions are saved in this browser so you can Copy / Download a transcript for
+            language review. No live phone number.
           </p>
         </div>
         <div className="text-right font-mono text-[10px] text-zinc-500">
@@ -278,10 +416,12 @@ export function IkoLineDemo() {
             Turn {turnCount}/20
             {mode ? ` · ${mode}` : ""}
             {offline ? " · offline keywords" : ""}
+            {provider ? ` · ${provider}` : ""}
             {ttsAvailable ? (ttsOn ? " · TTS on" : " · TTS muted") : ""}
           </p>
           {nodeLabel ? <p className="text-accent">Node: {nodeLabel}</p> : null}
           {debugIntent ? <p>Intent: {debugIntent}</p> : null}
+          {sessionId ? <p title={sessionId}>Session: {sessionId.slice(0, 8)}…</p> : null}
         </div>
       </div>
 
@@ -436,6 +576,45 @@ export function IkoLineDemo() {
         </div>
       </form>
 
+      <div className="mt-3 flex flex-wrap items-center gap-2" aria-label="Transcript export">
+        <button
+          type="button"
+          disabled={!canExport}
+          onClick={() => void handleCopyTranscript()}
+          className="rounded-xl border border-border px-3 py-1.5 text-xs text-zinc-300 hover:border-accent/50 disabled:opacity-40"
+          title="Copy a plain-text transcript to paste into chat for language review"
+        >
+          Copy transcript
+        </button>
+        <button
+          type="button"
+          disabled={!canExport}
+          onClick={handleDownloadTranscript}
+          className="rounded-xl border border-border px-3 py-1.5 text-xs text-zinc-300 hover:border-accent/50 disabled:opacity-40"
+          title="Download this session as JSON"
+        >
+          Download JSON
+        </button>
+        <button
+          type="button"
+          disabled={savedCount < 1}
+          onClick={() => void handleCopyLastSaved()}
+          className="rounded-xl border border-border px-3 py-1.5 text-xs text-zinc-300 hover:border-accent/50 disabled:opacity-40"
+          title="Copy the most recent session saved in this browser (last 12)"
+        >
+          Copy last saved ({savedCount})
+        </button>
+        {copyStatus ? (
+          <span className="font-mono text-[10px] text-accent" role="status">
+            {copyStatus}
+          </span>
+        ) : (
+          <span className="font-mono text-[10px] text-zinc-600">
+            Free local logging — paste into chat so Website Ops can review tone
+          </span>
+        )}
+      </div>
+
       {error ? (
         <p className="mt-2 font-mono text-xs text-amber-300" role="alert">
           {error}
@@ -447,7 +626,8 @@ export function IkoLineDemo() {
         <span className="text-zinc-400">2044</span>, or <span className="text-zinc-400">3300</span>.
         Collections disclosure nodes never paraphrase. Hobby deploy uses keyword matching when no
         model key is present. Agent voice uses free browser TTS (system voices) — not a production
-        contact-center voice stack.
+        contact-center voice stack. Transcripts stay in this browser (ring of 12); nothing is written
+        to a paid database.
       </p>
     </section>
   );
