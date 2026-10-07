@@ -66,6 +66,21 @@ function sanitizeHistory(input: unknown): HistoryTurn[] {
     .filter((t): t is HistoryTurn => Boolean(t));
 }
 
+
+function topicFromText(text: string): string {
+  const t = text.toLowerCase();
+  if (/ship|track(ing)?|deliver|package|late|delay/.test(t)) return "shipping delay";
+  if (/refund|return|exchange/.test(t)) return "return or exchange";
+  if (/warranty|defect|broken|crack/.test(t)) return "warranty or defect";
+  if (/bill|charge|invoice|charged/.test(t)) return "billing";
+  if (/login|password|access|locked/.test(t)) return "login access";
+  if (/price|expensive|budget|cost/.test(t)) return "pricing";
+  if (/hardship|can't pay|cannot pay|lost (my )?job/.test(t)) return "hardship";
+  // keep short — never dump the whole utterance into {{reason}}
+  const clipped = text.replace(/\s+/g, " ").trim().slice(0, 48);
+  return clipped.length >= 8 ? clipped : "";
+}
+
 function sanitizeSlots(input: unknown): SlotMap {
   if (!input || typeof input !== "object") return {};
   const out: SlotMap = {};
@@ -188,12 +203,13 @@ export async function POST(request: Request) {
   if (classified?.slots) {
     slots = mergeSlots(slots, classified.slots);
   }
-  // Soft-fill reason/need from free text when diagnose-like nodes expect it
-  if (!slots.reason && matchedIntent === "describe_issue") {
-    slots = mergeSlots(slots, { reason: userText.slice(0, 120) });
+  // Soft-fill short topic tags (not the full rant) when useful for later nodes
+  const topic = topicFromText(userText);
+  if (!slots.reason && matchedIntent === "describe_issue" && topic) {
+    slots = mergeSlots(slots, { reason: topic });
   }
-  if (!slots.need && matchedIntent === "discover_need") {
-    slots = mergeSlots(slots, { need: userText.slice(0, 120) });
+  if (!slots.need && matchedIntent === "discover_need" && topic) {
+    slots = mergeSlots(slots, { need: topic });
   }
 
   // C. Tools + transition (graph still owns the journey)

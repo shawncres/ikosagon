@@ -267,7 +267,8 @@ export function buildAgentTurn(opts: {
   }
 
   if (opts.ragSnippets.length) {
-    lines.push(`From policy notes: ${opts.ragSnippets[0].slice(0, 280)}`);
+    const cleaned = cleanRagSnippet(opts.ragSnippets[0]);
+    if (cleaned) lines.push(cleaned);
   }
 
   // Surface key tool facts briefly
@@ -309,6 +310,21 @@ export function interpolate(template: string, slots: SlotMap, tools: ToolResult[
     out = out.replaceAll("{{planMonths}}", String(plan.data.months ?? ""));
   }
   return out;
+}
+
+function cleanRagSnippet(raw: string): string {
+  let t = raw
+    .replace(/^[^:]+:\s*/u, "")
+    .replace(/^#+\s*/gm, "")
+    .replace(/##\s*Say this\s*/gi, "")
+    .replace(/["“”]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (t.length < 20) return "";
+  // Prefer a single spoken sentence
+  const sentence = t.match(/[A-Z][^.!?]{20,}[.!?]/);
+  const pick = (sentence?.[0] ?? t).slice(0, 220).trim();
+  return pick ? `Quick policy note: ${pick}` : "";
 }
 
 export function stripPlaceholders(text: string): string {
