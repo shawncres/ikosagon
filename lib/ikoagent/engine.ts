@@ -151,7 +151,7 @@ export function isWeakTopic(value: string | undefined | null): boolean {
 export function topicFromText(text: string): string {
   const t = text.toLowerCase();
   if (!t.trim() || isGreetingOrAck(t)) return "";
-  if (/lost\s+(my\s+)?package|never\s+(got|received|arrived)|haven'?t\s+received|no\s+scan/.test(t)) {
+  if (/lost\s+(my\s+)?package|never\s+(got|received|arrived|came|showed)|haven'?t\s+received|no\s+scan/.test(t)) {
     return "lost package";
   }
   if (/ship|track(ing)?|deliver|package|late|delay|still\s+waiting/.test(t)) return "shipping delay";
@@ -283,7 +283,10 @@ export function stripReasks(text: string, slots: SlotMap): string {
     if (slots.customerName && /\b(your (full )?name|who (am i|i'm) speaking with|name (on|for) the account)\b/i.test(s)) {
       return false;
     }
-    if (slots.accountId && /\b(account (number|no\.?|id)|your account\b(?! is))/i.test(s) && !/\bset (one|it|an account) up\b/i.test(s)) {
+    const asksAccount = /\b(account (number|no\.?|id)|your account\b(?! is))/i.test(s);
+    // Caller already said they have no account → never ask "account number handy?"
+    if (asksAccount && slots.needsAccount === "true") return false;
+    if (slots.accountId && asksAccount && !/\bset (one|it|an account) up\b/i.test(s)) {
       return false;
     }
     return true;
@@ -304,7 +307,16 @@ export function scriptLinesFor(
   let lines = node.agentSay ?? [];
   const v = node.allowParaphrase === false ? undefined : node.agentSayVariants;
   if (v) {
+    const hasReason = Boolean(slots.reason && !isWeakTopic(slots.reason));
+    const newCustomer = slots.needsAccount === "true";
     if (ctx.accountNotFound && v.accountNotFound?.length) lines = v.accountNotFound;
+    // Account just created / found but no issue yet → confirm and ask how to help
+    else if (slots.accountId && !hasReason && slots.accountCreated === "true" && v.accountCreated?.length) {
+      lines = v.accountCreated;
+    } else if (slots.accountId && !hasReason && v.accountReady?.length) lines = v.accountReady;
+    // Caller said they're new: ask only for the missing name, never for an account number
+    else if (newCustomer && !slots.accountId && !slots.customerName && v.needsName?.length) lines = v.needsName;
+    else if (newCustomer && !slots.accountId && slots.customerName && v.settingUp?.length) lines = v.settingUp;
     else if (slots.customerName && !slots.accountId && v.knownName?.length) lines = v.knownName;
     else if (slots.reason && !isWeakTopic(slots.reason) && v.knownReason?.length) lines = v.knownReason;
     else if (ctx.transitioned === false && v.reprompt?.length) lines = v.reprompt;
@@ -390,6 +402,8 @@ export function buildAgentTurn(opts: {
   accountNotFound?: boolean;
   /** The "I can help you with …" acknowledgement was already used this call */
   acknowledged?: boolean;
+  /** Prior turns, so a greeting reply never repeats an earlier agent line */
+  history?: HistoryTurn[];
 }): string {
   const lines: string[] = [];
 
@@ -418,9 +432,7 @@ export function buildAgentTurn(opts: {
     // Stay on node — clarify or restate
     const clarify = missingSlots(opts.node, opts.slots);
     if (opts.matchedIntent === "greeting") {
-      lines.push(
-        "Hello there — how can I help you today? Orders, billing, login, returns — I'm right here with you.",
-      );
+      lines.push(greetingReply(opts.node, opts.history ?? []));
     } else if (clarify.length || opts.matchedIntent) {
       const scripted = scriptLinesFor(opts.node, opts.slots, opts.toolResults, {
         transitioned: false,
@@ -438,8 +450,9 @@ export function buildAgentTurn(opts: {
     }
   }
 
+  // ragSnippets are caller-safe policy lines only (agent-only guidance is filtered upstream)
   if (opts.ragSnippets.length) {
-    const cleaned = cleanRagSnippet(opts.ragSnippets[0]);
+    const cleaned = callerPolicyNote(opts.ragSnippets[0]);
     if (cleaned) lines.push(cleaned);
   }
 
@@ -462,7 +475,12 @@ export function buildAgentTurn(opts: {
     if (tr.name === "scheduleCallback" && tr.data.callbackId) {
       lines.push(`Callback ${tr.data.callbackId} set for ${tr.data.window}.`);
     }
-    if (tr.name === "createCustomer" && tr.data.accountId && tr.data.created === true) {
+    if (
+      tr.name === "createCustomer" &&
+      tr.data.accountId &&
+      tr.data.created === true &&
+      !lines.some((l) => l.includes(String(tr.data.accountId)))
+    ) {
       lines.push(
         `I've set up demo account ${tr.data.accountId} for ${tr.data.name}.`,
       );
@@ -505,19 +523,101 @@ export function interpolate(template: string, slots: SlotMap, tools: ToolResult[
   return stripPlaceholders(out);
 }
 
-function cleanRagSnippet(raw: string): string {
-  const t = raw
-    .replace(/^[^:]+:\s*/u, "")
-    .replace(/^#+\s*/gm, "")
-    .replace(/##\s*Say this\s*/gi, "")
-    .replace(/["“”]/g, "")
+/** Speak one authored caller-safe policy line (never raw corpus guidance). */
+export function callerPolicyNote(line: string): string {
+  const t = line
+    .replace(/\*\*/g, "")
+    .replace(/`[^`]*`/g, "")
     .replace(/\s+/g, " ")
     .trim();
   if (t.length < 20) return "";
-  // Prefer a single spoken sentence
-  const sentence = t.match(/[A-Z][^.!?]{20,}[.!?]/);
-  const pick = (sentence?.[0] ?? t).slice(0, 220).trim();
-  return pick ? `Quick policy note: ${pick}` : "";
+  return `Here's what our policy says: ${t.charAt(0).toLowerCase()}${t.slice(1)}`;
+}
+
+const STOP_SHINGLE = 6;
+
+function words(text: string): string[] {
+  return text.toLowerCase().replace(/[*`"“”]/g, "").match(/[a-z0-9']+/g) ?? [];
+}
+
+/**
+ * Drop sentences that leak agent-only guidance: internal labels ("Quick policy note",
+ * "Say this", disposition codes like SHIP_LOST) or any 6-word run copied from an
+ * agent-only corpus chunk. Caller-safe lines are passed as `allowed` and kept.
+ */
+export function stripAgentGuidance(text: string, agentTexts: string[], allowed: string[] = []): string {
+  const shingles = new Set<string>();
+  for (const src of agentTexts) {
+    const w = words(src);
+    for (let i = 0; i + STOP_SHINGLE <= w.length; i++) shingles.add(w.slice(i, i + STOP_SHINGLE).join(" "));
+  }
+  for (const ok of allowed) {
+    const w = words(ok);
+    for (let i = 0; i + STOP_SHINGLE <= w.length; i++) shingles.delete(w.slice(i, i + STOP_SHINGLE).join(" "));
+  }
+  const paragraphs = text.split(/\n{2,}/);
+  const out = paragraphs
+    .map((para) =>
+      para
+        .replace(/\s+/g, " ")
+        .trim()
+        .split(/(?<=[.!?])\s+/)
+        .filter((sentence) => {
+          if (/\bquick policy note\b|\bsay this\b|\bagent[- ]only\b|\bpolicy notes\b|\bscript guide\b/i.test(sentence)) return false;
+          if (/\b[A-Z]{3,}_[A-Z_]{2,}\b/.test(sentence)) return false; // disposition codes
+          const w = words(sentence);
+          for (let i = 0; i + STOP_SHINGLE <= w.length; i++) {
+            if (shingles.has(w.slice(i, i + STOP_SHINGLE).join(" "))) return false;
+          }
+          return true;
+        })
+        .join(" ")
+        .trim(),
+    )
+    .filter(Boolean);
+  return out.join("\n\n").trim();
+}
+
+const DEFAULT_GREETING_REPLIES = [
+  "Hi! What can I help you with today?",
+  "Hey there! What's going on — an order, billing, a login, or a return?",
+  "Hi again! Tell me what you need and I'll take it from there.",
+];
+
+function normalizeLine(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+/** True when `text` repeats (or opens with) an earlier agent line verbatim */
+export function repeatsEarlierAgentLine(text: string, history: HistoryTurn[]): boolean {
+  const t = normalizeLine(text);
+  if (!t) return false;
+  return history.some((h) => {
+    if (h.role !== "agent") return false;
+    const prior = normalizeLine(h.content);
+    if (!prior) return false;
+    if (t === prior) return true;
+    // Opening with a whole earlier line ("Hello there — how can I help you today? …")
+    if (prior.length >= 20 && t.startsWith(prior)) return true;
+    // Being a long prefix of an earlier line
+    return t.length >= 30 && prior.startsWith(t);
+  });
+}
+
+/**
+ * Short reply when the caller only greets back after the opener. Never identical
+ * to the opener or any earlier agent line; rotates through the node's variants.
+ */
+export function greetingReply(node: FlowNode, history: HistoryTurn[]): string {
+  const pool = node.agentSayVariants?.greetingReply?.length
+    ? node.agentSayVariants.greetingReply
+    : DEFAULT_GREETING_REPLIES;
+  const greetsSoFar = history.filter((h) => h.role === "user" && isGreetingOrAck(h.content)).length;
+  for (let i = 0; i < pool.length; i++) {
+    const pick = pool[(greetsSoFar + i) % pool.length];
+    if (!repeatsEarlierAgentLine(pick, history)) return pick;
+  }
+  return "I'm here whenever you're ready — what can I help you with?";
 }
 
 export function stripPlaceholders(text: string): string {

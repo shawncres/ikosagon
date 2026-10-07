@@ -33,13 +33,38 @@ export type FlowNode = {
   exits?: FlowExit[];
   toolsAllowed?: string[];
   /**
+   * When the flow arrives here with requireSlots already met in the same turn
+   * (e.g. name + "no account" at greet → account created on entry), stay on this
+   * node until these extra slots are also known instead of chain-skipping past it.
+   * Lets verify ask "what can I help you with?" before diagnose.
+   */
+  holdForSlots?: string[];
+  /**
    * Optional context-aware script variants (paraphrasable nodes only).
    * knownName: caller gave a name but no account yet.
    * accountNotFound: caller gave digits that did not match an account.
    * knownReason: issue topic already captured (avoid re-asking "what happened?").
    * reprompt: staying on this node without new info (skip the long intro).
    */
-  agentSayVariants?: Partial<Record<"knownName" | "accountNotFound" | "knownReason" | "reprompt", string[]>>;
+  agentSayVariants?: Partial<
+    Record<
+      | "knownName"
+      | "accountNotFound"
+      | "knownReason"
+      | "reprompt"
+      /** Account just created this turn, issue not known yet */
+      | "accountCreated"
+      /** Account on file, issue not known yet */
+      | "accountReady"
+      /** Caller is new but has not given a name yet */
+      | "needsName"
+      /** Caller is new and named; account create pending / unavailable */
+      | "settingUp"
+      /** Caller only greeted back after the opener */
+      | "greetingReply",
+      string[]
+    >
+  >;
 };
 
 export type Flow = {
@@ -89,6 +114,8 @@ export type TurnResponse = {
     matchedIntent: string | null;
     ragHits: { title: string; heading: string; score: number }[];
     offline?: boolean;
+    /** Why a turn was scripted vs LLM (see DemoTurnLog.llm) */
+    llm?: { classify?: string; speak?: string };
   };
   error?: string;
 };

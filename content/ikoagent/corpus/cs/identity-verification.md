@@ -1,5 +1,7 @@
 ---
 title: "Identity verification"
+# Agent-only guidance; skip once the caller's account is verified or created
+skipWhenVerified: true
 ---
 
 ## Why we verify

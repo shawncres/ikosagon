@@ -59,14 +59,65 @@ export type ChatMessage = {
   content: string;
 };
 
+/**
+ * Short, secret-free failure code for logs / debug ("rate_limited", "http_401",
+ * "timeout", "empty", "parse", "network", "cooldown").
+ */
+export class LlmError extends Error {
+  code: string;
+  constructor(code: string, message?: string) {
+    super(message ?? code);
+    this.code = code;
+  }
+}
+
+export function llmErrorCode(err: unknown): string {
+  if (err instanceof LlmError) return err.code;
+  if (err instanceof SyntaxError) return "parse";
+  if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) return "timeout";
+  return "network";
+}
+
+/**
+ * After a 429 we skip provider calls until Retry-After passes (per warm instance).
+ * The turn falls back to scripts immediately instead of spending more of the
+ * free-tier RPM/TPM budget on calls that will also be rejected.
+ */
+const MAX_COOLDOWN_MS = 60_000;
+// Shared on globalThis so every bundle/module copy in the instance sees one window
+const cooldownState = ((globalThis as { __llmCooldown?: { until: number } }).__llmCooldown ??= { until: 0 });
+
+export function llmCoolingDown(now = Date.now()): boolean {
+  return now < cooldownState.until;
+}
+
+/** Test hook */
+export function resetLlmCooldown() {
+  cooldownState.until = 0;
+}
+
+function retryAfterMs(response: Response): number {
+  const header = response.headers.get("retry-after");
+  const secs = header ? Number.parseFloat(header) : NaN;
+  if (Number.isFinite(secs) && secs > 0) return Math.min(secs * 1000, MAX_COOLDOWN_MS);
+  return 10_000;
+}
+
+/** gpt-oss on Groq is a reasoning model: hidden reasoning tokens count toward TPM. */
+function isGptOss(model: string) {
+  return /^openai\/gpt-oss/i.test(model);
+}
+
 export async function completeChat(opts: {
   messages: ChatMessage[];
   temperature?: number;
   maxTokens?: number;
   json?: boolean;
+  timeoutMs?: number;
 }): Promise<{ text: string; provider: string } | null> {
   const provider = resolveProvider();
   if (!provider) return null;
+  if (llmCoolingDown()) throw new LlmError("cooldown");
 
   const body: Record<string, unknown> = {
     model: provider.model,
@@ -77,23 +128,37 @@ export async function completeChat(opts: {
   if (opts.json) {
     body.response_format = { type: "json_object" };
   }
+  if (provider.name === "groq" && isGptOss(provider.model)) {
+    // Keep reasoning short so it does not eat max_tokens (empty content) or the
+    // free 8K tokens/min budget, and do not send reasoning text back.
+    body.reasoning_effort = "low";
+    body.include_reasoning = false;
+  }
 
   const response = await fetch(provider.url, {
     method: "POST",
     headers: provider.headers,
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(opts.timeoutMs ?? 12_000),
   });
 
   if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`${provider.name} ${response.status}: ${detail.slice(0, 280)}`);
+    const detail = await response.text().catch(() => "");
+    if (response.status === 429) {
+      cooldownState.until = Date.now() + retryAfterMs(response);
+      throw new LlmError("rate_limited", `${provider.name} 429: ${detail.slice(0, 200)}`);
+    }
+    throw new LlmError(`http_${response.status}`, `${provider.name} ${response.status}: ${detail.slice(0, 200)}`);
   }
 
   const payload = (await response.json()) as {
-    choices?: { message?: { content?: string } }[];
+    choices?: { message?: { content?: string }; finish_reason?: string }[];
   };
   const text = payload.choices?.[0]?.message?.content?.trim();
-  if (!text) throw new Error("Empty model response");
+  if (!text) {
+    const finish = payload.choices?.[0]?.finish_reason;
+    throw new LlmError(finish === "length" ? "empty_length" : "empty");
+  }
   return { text, provider: provider.name };
 }
 

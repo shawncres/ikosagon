@@ -8,7 +8,15 @@ export type IkoAgentChunk = {
   title: string;
   source: string;
   heading: string;
+  /** Agent-facing guidance (instructions, codes, scripts). Never read to the caller. */
   text: string;
+  /**
+   * Caller-safe policy line authored as `<!-- caller: … -->` under a heading.
+   * Sections without one are agent-only: the scripted fallback never surfaces them.
+   */
+  callerLine?: string;
+  /** Frontmatter `skipWhenVerified: true` — drop once the account is verified/created */
+  skipWhenVerified?: boolean;
 };
 
 export type IkoAgentHit = IkoAgentChunk & { score: number };
@@ -20,7 +28,14 @@ function tokenize(value: string): string[] {
   return (value.toLowerCase().match(TOKEN) ?? []).filter((token) => token.length > 1);
 }
 
-function chunkMarkdown(source: string, title: string, filePath: string): IkoAgentChunk[] {
+const CALLER_LINE = /<!--\s*caller:\s*([\s\S]*?)-->/i;
+
+function chunkMarkdown(
+  source: string,
+  title: string,
+  filePath: string,
+  meta: { skipWhenVerified?: boolean } = {},
+): IkoAgentChunk[] {
   const normalized = source.replace(/\r\n/g, "\n").trim();
   const sections = normalized.split(/\n(?=##\s+)/);
   const chunks: IkoAgentChunk[] = [];
@@ -28,7 +43,9 @@ function chunkMarkdown(source: string, title: string, filePath: string): IkoAgen
   sections.forEach((section, index) => {
     const headingMatch = section.match(/^##\s+(.+)$/m);
     const heading = headingMatch?.[1]?.trim() || title;
-    const body = section.replace(/^---[\s\S]*?---\n/, "").trim();
+    const rawBody = section.replace(/^---[\s\S]*?---\n/, "");
+    const callerLine = rawBody.match(CALLER_LINE)?.[1]?.replace(/\s+/g, " ").trim() || undefined;
+    const body = rawBody.replace(/<!--[\s\S]*?-->\n?/g, "").trim();
     if (body.length < 30) return;
 
     chunks.push({
@@ -37,6 +54,8 @@ function chunkMarkdown(source: string, title: string, filePath: string): IkoAgen
       source: filePath,
       heading,
       text: body.slice(0, 1200).trim(),
+      callerLine,
+      skipWhenVerified: meta.skipWhenVerified,
     });
   });
 
@@ -63,7 +82,9 @@ async function readCorpusDir(corpus: string): Promise<IkoAgentChunk[]> {
       const { data, content } = matter(raw);
       const title = String(data.title ?? file.name.replace(/\.mdx?$/, ""));
       const source = `ikoagent/corpus/${corpus}/${file.name}`;
-      return chunkMarkdown(`# ${title}\n\n${content}`, title, source);
+      return chunkMarkdown(`# ${title}\n\n${content}`, title, source, {
+        skipWhenVerified: data.skipWhenVerified === true,
+      });
     }),
   );
 
@@ -76,6 +97,7 @@ export async function retrieveIkoAgent(
   corpus: string | undefined,
   query: string,
   k = 3,
+  opts: { accountVerified?: boolean } = {},
 ): Promise<IkoAgentHit[]> {
   if (!corpus) return [];
   let chunks = cache.get(corpus);
@@ -83,6 +105,8 @@ export async function retrieveIkoAgent(
     chunks = await readCorpusDir(corpus);
     cache.set(corpus, chunks);
   }
+  // Account-failure / verification guidance is noise once the account is on file
+  if (opts.accountVerified) chunks = chunks.filter((c) => !c.skipWhenVerified);
 
   const terms = tokenize(query);
   if (!terms.length) return chunks.slice(0, k).map((c) => ({ ...c, score: 0 }));
@@ -110,6 +134,10 @@ export async function retrieveIkoAgent(
     .slice(0, k);
 }
 
+/**
+ * LLM context: caller-safe facts are marked as quotable; everything else is
+ * labelled agent-only guidance (follow it, never say it).
+ */
 export function formatIkoAgentContext(hits: IkoAgentHit[]): string {
   if (!hits.length) return "(no matching policy notes)";
   return hits
@@ -117,9 +145,20 @@ export function formatIkoAgentContext(hits: IkoAgentHit[]): string {
       const body = h.text
         .replace(/^#+\s*/gm, "")
         .replace(/##\s*/g, "")
-        .slice(0, 500)
+        .slice(0, 400)
         .trim();
-      return `[${i + 1}] ${h.title} (${h.heading}): ${body}`;
+      const fact = h.callerLine ? `\n  CALLER-SAFE FACT (ok to paraphrase): ${h.callerLine}` : "";
+      return `[${i + 1}] ${h.title} (${h.heading})${fact}\n  AGENT-ONLY GUIDANCE (follow silently; never quote or read aloud): ${body}`;
     })
     .join("\n\n");
+}
+
+/** Caller-safe policy lines only (scripted fallback). Agent-only chunks are dropped. */
+export function callerPolicyLines(hits: IkoAgentHit[]): string[] {
+  return hits.map((h) => h.callerLine).filter((l): l is string => Boolean(l));
+}
+
+/** Agent-only text from hits, used to scrub accidental leaks from spoken replies. */
+export function agentOnlyTexts(hits: IkoAgentHit[]): string[] {
+  return hits.map((h) => h.text);
 }
