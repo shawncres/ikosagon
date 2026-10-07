@@ -15,7 +15,7 @@ function resolveProvider(): Provider | null {
     return {
       name: "groq",
       url: "https://api.groq.com/openai/v1/chat/completions",
-      model: process.env.CHAT_MODEL || "llama-3.1-8b-instant",
+      model: process.env.CHAT_MODEL || "openai/gpt-oss-20b",
       headers: {
         Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
         "Content-Type": "application/json",
@@ -52,6 +52,74 @@ function resolveProvider(): Provider | null {
 
 export function getProviderName() {
   return resolveProvider()?.name ?? null;
+}
+
+export type ChatMessage = {
+  role: "system" | "user" | "assistant";
+  content: string;
+};
+
+export async function completeChat(opts: {
+  messages: ChatMessage[];
+  temperature?: number;
+  maxTokens?: number;
+  json?: boolean;
+}): Promise<{ text: string; provider: string } | null> {
+  const provider = resolveProvider();
+  if (!provider) return null;
+
+  const body: Record<string, unknown> = {
+    model: provider.model,
+    temperature: opts.temperature ?? 0.3,
+    max_tokens: opts.maxTokens ?? 420,
+    messages: opts.messages,
+  };
+  if (opts.json) {
+    body.response_format = { type: "json_object" };
+  }
+
+  const response = await fetch(provider.url, {
+    method: "POST",
+    headers: provider.headers,
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`${provider.name} ${response.status}: ${detail.slice(0, 280)}`);
+  }
+
+  const payload = (await response.json()) as {
+    choices?: { message?: { content?: string } }[];
+  };
+  const text = payload.choices?.[0]?.message?.content?.trim();
+  if (!text) throw new Error("Empty model response");
+  return { text, provider: provider.name };
+}
+
+export async function completeJson<T extends Record<string, unknown>>(opts: {
+  messages: ChatMessage[];
+  temperature?: number;
+  maxTokens?: number;
+}): Promise<{ data: T; provider: string } | null> {
+  const result = await completeChat({
+    ...opts,
+    json: true,
+    temperature: opts.temperature ?? 0,
+    maxTokens: opts.maxTokens ?? 300,
+  });
+  if (!result) return null;
+
+  let raw = result.text;
+  // Some models wrap JSON in fences despite json_object
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenced) raw = fenced[1].trim();
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start >= 0 && end > start) raw = raw.slice(start, end + 1);
+
+  const data = JSON.parse(raw) as T;
+  return { data, provider: result.provider };
 }
 
 export const SYSTEM_PROMPT = `You are the Ikosagon site assistant (Applied AI Engineer & QA; work-from-anywhere). Studio voice for products/ops is “we at Ikosagon.” Shawn Cooper’s name and employer story belong on /about — do not invent a sitewide personal byline in Nav, Footer, or hero.

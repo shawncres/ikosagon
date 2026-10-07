@@ -165,12 +165,13 @@ export function IkoLineDemo() {
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="mb-1 font-mono text-xs text-accent">
-            IkoLine · shared call-flow skeleton · text-first
+            IkoLine · call-flow + LLM turns · text-first
           </p>
           <h2 className="text-xl font-semibold">Live call demo</h2>
           <p className="mt-1 max-w-2xl text-sm text-zinc-400">
-            Three vertical skins on one engine. The graph owns transitions and must-say lines; the
-            model only helps inside the current node. No live phone number. Voice is phase 2.
+            Three vertical skins on one engine. The graph owns transitions and must-say lines; Groq
+            handles intent, slots, and natural replies inside each node (keyword fallback offline).
+            No live phone number. Voice is phase 2.
           </p>
         </div>
         <div className="text-right font-mono text-[10px] text-zinc-500">

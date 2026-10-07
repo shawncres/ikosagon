@@ -1,10 +1,21 @@
 import { NextResponse } from "next/server";
 import {
+  applyTransition,
+  buildAgentTurn,
+  collectSlots,
   getCurrentNode,
+  matchIntent,
   openingAgentText,
-  processTurn,
+  runToolsForTurn,
+  looksLikeInjection,
 } from "@/lib/ikoline/engine";
 import { loadFlow, listFlows } from "@/lib/ikoline/loadFlow";
+import {
+  classifyTurn,
+  mergeSlots,
+  safeOpening,
+  speakTurn,
+} from "@/lib/ikoline/llmTurn";
 import { formatIkoLineContext, retrieveIkoLine } from "@/lib/ikoline/rag";
 import { getProviderName } from "@/lib/llm";
 import {
@@ -66,68 +77,6 @@ function sanitizeSlots(input: unknown): SlotMap {
   return out;
 }
 
-async function maybeParaphrase(opts: {
-  scripted: string;
-  allow: boolean;
-  nodeLabel: string;
-  userText: string;
-  ragContext: string;
-}): Promise<{ text: string; mode: "scripted" | "llm" }> {
-  if (!opts.allow || !getProviderName()) {
-    return { text: opts.scripted, mode: "scripted" };
-  }
-
-  const providerKey =
-    process.env.GROQ_API_KEY || process.env.XAI_API_KEY || process.env.OPENAI_API_KEY;
-  if (!providerKey) return { text: opts.scripted, mode: "scripted" };
-
-  // Reuse Groq-first OpenAI-compatible path via completeGrounded-like fetch
-  const base =
-    process.env.GROQ_API_KEY
-      ? {
-          url: "https://api.groq.com/openai/v1/chat/completions",
-          model: process.env.CHAT_MODEL || "llama-3.1-8b-instant",
-          key: process.env.GROQ_API_KEY,
-        }
-      : null;
-  if (!base) return { text: opts.scripted, mode: "scripted" };
-
-  try {
-    const response = await fetch(base.url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${base.key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: base.model,
-        temperature: 0.3,
-        max_tokens: 220,
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are IkoLine, a call-flow agent for Ikosagon demos. Lightly paraphrase the SCRIPT for natural speech. Do not add new promises, prices, or legal claims. Stay in the current step. If POLICY NOTES exist, you may cite them briefly. Studio voice: we at Ikosagon.",
-          },
-          {
-            role: "user",
-            content: `NODE: ${opts.nodeLabel}\nCUSTOMER: ${opts.userText}\nPOLICY NOTES:\n${opts.ragContext}\nSCRIPT:\n${opts.scripted}`,
-          },
-        ],
-      }),
-    });
-    if (!response.ok) return { text: opts.scripted, mode: "scripted" };
-    const payload = (await response.json()) as {
-      choices?: { message?: { content?: string } }[];
-    };
-    const text = payload.choices?.[0]?.message?.content?.trim();
-    if (!text) return { text: opts.scripted, mode: "scripted" };
-    return { text, mode: "llm" };
-  } catch {
-    return { text: opts.scripted, mode: "scripted" };
-  }
-}
-
 export async function GET() {
   const flows = await listFlows();
   return NextResponse.json({ ok: true, flows, provider: getProviderName() });
@@ -162,9 +111,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Unknown flow." }, { status: 404 });
   }
 
-  // Session start: return opening agent line without consuming a user turn
   if (body.start) {
-    const agentText = openingAgentText(flow);
+    const agentText = safeOpening(flow, openingAgentText(flow));
     const startNode = getCurrentNode(flow, flow.start);
     const res: TurnResponse = {
       ok: true,
@@ -206,47 +154,114 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "Flow node missing." }, { status: 500 });
   }
 
-  const slots = sanitizeSlots(body.slots);
+  const priorSlots = sanitizeSlots(body.slots);
   const history = sanitizeHistory(body.history);
 
-  const ragQuery = [node.rag?.queryHint, userText, slots.reason, slots.need]
+  if (looksLikeInjection(userText)) {
+    const agentText =
+      "I stay inside the authored call flow. Please continue with a normal customer reply for this step.";
+    return NextResponse.json({
+      ok: true,
+      nodeId: node.id,
+      agentText,
+      slots: priorSlots,
+      mode: "scripted",
+      debug: { matchedIntent: null, ragHits: [], offline: !getProviderName() },
+      nodeLabel: node.label,
+      flowTitle: flow.title,
+    });
+  }
+
+  // A. Heuristic slots first (account numbers, etc.)
+  let slots = collectSlots(userText, priorSlots, node.requireSlots);
+
+  // B. LLM classify (intent + slot updates), keyword fallback
+  const classified = await classifyTurn({
+    flow,
+    node,
+    userText,
+    slots,
+    history,
+  });
+  const keyword = matchIntent(node, userText);
+  const matchedIntent = classified?.intent ?? keyword.intent;
+  if (classified?.slots) {
+    slots = mergeSlots(slots, classified.slots);
+  }
+  // Soft-fill reason/need from free text when diagnose-like nodes expect it
+  if (!slots.reason && matchedIntent === "describe_issue") {
+    slots = mergeSlots(slots, { reason: userText.slice(0, 120) });
+  }
+  if (!slots.need && matchedIntent === "discover_need") {
+    slots = mergeSlots(slots, { need: userText.slice(0, 120) });
+  }
+
+  // C. Tools + transition (graph still owns the journey)
+  const toolResults = runToolsForTurn(flow, node, matchedIntent, slots);
+  const { nextNodeId, exit } = applyTransition(node, matchedIntent, slots);
+  const nextNode = nextNodeId ? getCurrentNode(flow, nextNodeId) : null;
+  const speakNode = exit ? node : nextNode ?? node;
+  const transitioned = Boolean(nextNode && nextNode.id !== node.id);
+
+  // RAG against speak node (or current) for reply grounding
+  const ragNode = speakNode;
+  const ragQuery = [ragNode.rag?.queryHint, userText, slots.reason, slots.need, matchedIntent]
     .filter(Boolean)
     .join(" ");
-  const ragHits = node.rag
-    ? await retrieveIkoLine(flow.ragCorpus, ragQuery || userText, 3)
-    : [];
+  const ragHits =
+    ragNode.rag || node.rag
+      ? await retrieveIkoLine(flow.ragCorpus, ragQuery || userText, 3)
+      : [];
   const ragSnippets = ragHits.map((h) => `${h.heading}: ${h.text}`);
   const ragContext = formatIkoLineContext(ragHits);
 
-  const result = processTurn({
+  // D. LLM speak for destination/current node; E. scripted fallback
+  const spoken = await speakTurn({
     flow,
-    nodeId: node.id,
+    speakNode,
+    fromNode: node,
+    userText,
     slots,
     history,
-    userText,
-    ragSnippets,
+    ragContext,
+    toolResults,
+    exit,
+    matchedIntent,
+    transitioned,
   });
 
-  const speakNode =
-    getCurrentNode(flow, result.nodeId) ?? node;
-  const paraphrased = await maybeParaphrase({
-    scripted: result.agentText,
-    allow: Boolean(speakNode.allowParaphrase),
-    nodeLabel: speakNode.label,
-    userText,
-    ragContext,
-  });
+  let agentText: string;
+  let mode: "llm" | "scripted";
+  if (spoken) {
+    agentText = spoken.agentText;
+    // Classify OR speak counts as llm mode when either succeeded
+    mode = "llm";
+  } else {
+    agentText = buildAgentTurn({
+      node,
+      nextNode,
+      exit,
+      slots,
+      toolResults,
+      ragSnippets,
+      matchedIntent,
+    });
+    mode = classified ? "llm" : "scripted";
+    // If classify worked but speak failed, still mark llm for intent path transparency
+  }
+
+  const finalNodeId = exit ? node.id : nextNode?.id ?? node.id;
 
   const res: TurnResponse = {
     ok: true,
-    nodeId: result.nodeId,
-    agentText: paraphrased.text,
-    slots: result.slots,
-    toolResults: result.toolResults,
-    exit: result.exit ?? undefined,
-    mode: paraphrased.mode,
+    nodeId: finalNodeId,
+    agentText,
+    slots,
+    toolResults,
+    exit: exit ?? undefined,
+    mode,
     debug: {
-      matchedIntent: result.matchedIntent,
+      matchedIntent,
       ragHits: ragHits.map((h) => ({
         title: h.title,
         heading: h.heading,
@@ -258,8 +273,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     ...res,
-    nodeLabel: speakNode.label,
+    nodeLabel: (getCurrentNode(flow, finalNodeId) ?? speakNode).label,
     flowTitle: flow.title,
   });
 }
-
