@@ -4,10 +4,13 @@ import {
   buildAgentTurn,
   collectSlots,
   getCurrentNode,
+  isGreetingOrAck,
   matchIntent,
   openingAgentText,
   runToolsForTurn,
   looksLikeInjection,
+  scrubWeakSlots,
+  topicFromText,
 } from "@/lib/ikoline/engine";
 import { loadFlow, listFlows } from "@/lib/ikoline/loadFlow";
 import {
@@ -67,20 +70,6 @@ function sanitizeHistory(input: unknown): HistoryTurn[] {
     .filter((t): t is HistoryTurn => Boolean(t));
 }
 
-
-function topicFromText(text: string): string {
-  const t = text.toLowerCase();
-  if (/ship|track(ing)?|deliver|package|late|delay/.test(t)) return "shipping delay";
-  if (/refund|return|exchange/.test(t)) return "return or exchange";
-  if (/warranty|defect|broken|crack/.test(t)) return "warranty or defect";
-  if (/bill|charge|invoice|charged/.test(t)) return "billing";
-  if (/login|password|access|locked/.test(t)) return "login access";
-  if (/price|expensive|budget|cost/.test(t)) return "pricing";
-  if (/hardship|can't pay|cannot pay|lost (my )?job/.test(t)) return "hardship";
-  // No keyword match → leave empty so we do not overwrite a good prior topic
-  // with "Account 1001" / "yes" / etc.
-  return "";
-}
 
 function sanitizeSlots(input: unknown): SlotMap {
   if (!input || typeof input !== "object") return {};
@@ -242,33 +231,42 @@ export async function POST(request: Request) {
   if (classified?.slots) {
     slots = mergeSlots(slots, classified.slots);
   }
-  // Prefer short topic tags — never let a full rant land in {{reason}}/{{need}}
+  // Prefer short topic tags — never let greetings / rants land in {{reason}}/{{need}}
+  // Always overwrite a weak prior reason when the caller later describes a real issue.
   const topic = topicFromText(userText);
-  if (matchedIntent === "describe_issue") {
-    const normalized = topic || topicFromText(slots.reason || "");
-    if (normalized) slots = mergeSlots(slots, { reason: normalized });
-    else if (slots.reason && slots.reason.length > 60) {
-      slots = mergeSlots(slots, { reason: slots.reason.slice(0, 48) });
+  slots = scrubWeakSlots(slots);
+
+  if (topic) {
+    // Real issue phrases always win — overwrite "hi" / empty / other weak priors
+    slots = mergeSlots(slots, { reason: topic });
+    if (flow.vertical === "sales" || matchedIntent === "discover_need") {
+      slots = mergeSlots(slots, { need: topic });
     }
-  } else if (slots.reason && slots.reason.length > 60) {
-    // Collapse an LLM-stuffed rant without touching good short topics
+  } else if (matchedIntent === "describe_issue" && isGreetingOrAck(userText)) {
+    // LLM sometimes mislabels "hi" as describe_issue — do not keep a garbage reason
+    slots = scrubWeakSlots(slots);
+  }
+
+  // Collapse an LLM-stuffed rant without inventing a topic from noise
+  if (slots.reason && slots.reason.length > 60) {
     const collapsed = topicFromText(slots.reason) || slots.reason.slice(0, 48);
     slots = mergeSlots(slots, { reason: collapsed });
   }
-  if (matchedIntent === "discover_need") {
-    const normalized = topic || topicFromText(slots.need || "");
-    if (normalized) slots = mergeSlots(slots, { need: normalized });
-    else if (slots.need && slots.need.length > 60) {
-      slots = mergeSlots(slots, { need: slots.need.slice(0, 48) });
-    }
-  } else if (slots.need && slots.need.length > 60) {
+  if (slots.need && slots.need.length > 60) {
     const collapsed = topicFromText(slots.need) || slots.need.slice(0, 48);
     slots = mergeSlots(slots, { need: collapsed });
   }
+  slots = scrubWeakSlots(slots);
+
+  // Greeting / small-talk should not advance the graph as if an issue was described
+  let intentForGraph = matchedIntent;
+  if (matchedIntent === "describe_issue" && isGreetingOrAck(userText) && !topic && !slots.reason) {
+    intentForGraph = "greeting";
+  }
 
   // C. Tools + transition (graph still owns the journey)
-  const toolResults = runToolsForTurn(flow, node, matchedIntent, slots);
-  const { nextNodeId, exit } = applyTransition(node, matchedIntent, slots);
+  const toolResults = runToolsForTurn(flow, node, intentForGraph, slots);
+  const { nextNodeId, exit } = applyTransition(node, intentForGraph, slots);
   const nextNode = nextNodeId ? getCurrentNode(flow, nextNodeId) : null;
   const speakNode = exit ? node : nextNode ?? node;
   const transitioned = Boolean(nextNode && nextNode.id !== node.id);
@@ -296,7 +294,7 @@ export async function POST(request: Request) {
     ragContext,
     toolResults,
     exit,
-    matchedIntent,
+    matchedIntent: intentForGraph,
     transitioned,
   });
 
@@ -314,7 +312,7 @@ export async function POST(request: Request) {
       slots,
       toolResults,
       ragSnippets,
-      matchedIntent,
+      matchedIntent: intentForGraph,
     });
     mode = classified ? "llm" : "scripted";
     // If classify worked but speak failed, still mark llm for intent path transparency
@@ -332,7 +330,7 @@ export async function POST(request: Request) {
     userText,
     agentText,
     mode,
-    intent: matchedIntent,
+    intent: intentForGraph,
     slots,
     provider,
     exit: exit ?? null,
@@ -348,7 +346,7 @@ export async function POST(request: Request) {
     exit: exit ?? undefined,
     mode,
     debug: {
-      matchedIntent,
+      matchedIntent: intentForGraph,
       ragHits: ragHits.map((h) => ({
         title: h.title,
         heading: h.heading,

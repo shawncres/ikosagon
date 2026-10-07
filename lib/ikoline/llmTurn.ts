@@ -2,6 +2,9 @@ import { completeChat, completeJson, getProviderName } from "@/lib/llm";
 import {
   interpolate,
   interpolateLines,
+  isGreetingOrAck,
+  isWeakTopic,
+  scrubWeakSlots,
   stripPlaceholders,
 } from "@/lib/ikoline/engine";
 import type {
@@ -56,9 +59,11 @@ function sanitizeSlotUpdates(
     if (!allow.has(key)) continue;
     if (typeof value !== "string") continue;
     const trimmed = value.trim().slice(0, 200);
-    if (trimmed) out[key] = trimmed;
+    if (!trimmed) continue;
+    if ((key === "reason" || key === "need") && isWeakTopic(trimmed)) continue;
+    out[key] = trimmed;
   }
-  return out;
+  return scrubWeakSlots(out);
 }
 
 function toolFacts(tools: ToolResult[]): string {
@@ -121,6 +126,9 @@ export async function classifyTurn(opts: {
             "Return JSON: {\"intent\": string|null, \"slots\": object}.",
             "intent MUST be one of the listed intents, or null if none fit.",
             "Only fill slots you can extract from the caller text. Do not invent account numbers or amounts.",
+            "CRITICAL: greetings and acknowledgements (hi, hello, hey, thanks, ok, yes, sure) are NOT an issue reason.",
+            "Never set slots.reason or slots.need to a greeting/ack. Leave reason empty unless the caller named a real issue (shipping delay, lost package, refund, billing, login, warranty, etc.).",
+            "If the only message is a greeting and a greeting intent exists, use greeting; otherwise intent null — do not force describe_issue.",
             "Stay inside the call graph — never invent a new intent name.",
           ].join(" "),
         },
@@ -154,6 +162,31 @@ export async function classifyTurn(opts: {
   }
 }
 
+
+/** Drop a trailing mid-sentence fragment when the model hits the token cap */
+function finishUtterance(text: string): string {
+  let t = text.replace(/\s+/g, " ").trim();
+  if (!t) return t;
+  // Strip leftover "help with hi/hello" style slips
+  t = t.replace(/\bhelp with (hi|hello|hey|thanks|thank you|ok|okay)\b[.!]?/gi, "help");
+  t = t.replace(/\babout the (hi|hello|hey)\b/gi, "about your issue");
+  t = t.replace(/\bprocedures for (hi|hello|hey)\b/gi, "procedures");
+  if (/[.!?…]["')\]]?$/.test(t)) return t;
+  const ends = [t.lastIndexOf(". "), t.lastIndexOf("! "), t.lastIndexOf("? ")];
+  const cut = Math.max(
+    t.lastIndexOf("."),
+    t.lastIndexOf("!"),
+    t.lastIndexOf("?"),
+    ...ends,
+  );
+  if (cut > Math.floor(t.length * 0.45)) {
+    return t.slice(0, cut + 1).trim();
+  }
+  // Short incomplete line — close softly rather than leave "I'll set it"
+  if (!/[.!?]$/.test(t) && t.length < 280) return `${t}.`;
+  return t;
+}
+
 /**
  * LLM drafts a natural agent reply for the node being spoken
  * (destination after transition, or current if staying).
@@ -174,24 +207,35 @@ export async function speakTurn(opts: {
   if (!getProviderName()) return null;
 
   const mustSayExact = opts.speakNode.allowParaphrase === false;
+  const safeSlots = scrubWeakSlots(opts.slots);
+  const hasRealReason = Boolean(safeSlots.reason && !isWeakTopic(safeSlots.reason));
+  const callerIsGreeting = isGreetingOrAck(opts.userText);
   const scriptLines = interpolateLines(
     opts.speakNode.agentSay,
-    opts.slots,
+    safeSlots,
     opts.toolResults,
   );
   const mustLead = scriptLines[0] ?? "";
   const scriptGuide = scriptLines.join("\n");
 
   const system = [
-    "You are IkoLine, a professional contact-center agent demo for we at Ikosagon.",
-    "Stay in the current call step. Conversational, calm, concise (2–4 short sentences).",
+    "You are IkoLine, a professional contact-center agent for we at Ikosagon.",
+    "Tone: experienced support/escalations — warm, clear, confident, never robotic or chatty-filler.",
+    "Stay in the current call step. 2–4 complete short sentences. Always finish your last sentence.",
     "Never invent prices, balances, policies, or legal claims beyond POLICY NOTES and TOOL FACTS.",
     "Do not mention being an AI unless asked. Do not break character into a free chat.",
     "Never leave {{placeholders}} in your reply.",
     "Never paste markdown headers or the words POLICY NOTES / SCRIPT GUIDE. Speak as the agent.",
-    "If the caller already described the issue, acknowledge it briefly — do not quote their rant verbatim.",
+    "Never say you can help with 'hi', 'hello', 'thanks', or other greetings — those are not the issue.",
+    hasRealReason
+      ? `Acknowledge the issue topic naturally (${safeSlots.reason}) when relevant.`
+      : "If no clear issue topic is in SLOTS yet, ask what they need help with — do not invent one or echo greetings as the issue.",
+    callerIsGreeting
+      ? "Caller only greeted you — welcome them briefly and ask how you can help (or continue the current step). Do not pretend they already described a problem."
+      : "If the caller already described the issue, acknowledge it briefly — do not quote their rant verbatim.",
+    "If SCRIPT GUIDE already asked for the account number, do NOT add another sentence asking for the same number.",
     mustSayExact && mustLead
-      ? "COMPLIANCE: Your reply MUST begin with the MUST-SAY line verbatim (same words), then you may add one short natural follow-up sentence."
+      ? "COMPLIANCE: Your reply MUST begin with the MUST-SAY line verbatim (same words). Only add a follow-up if it adds new info — never repeat the same ask."
       : "Use SCRIPT GUIDE as intent and tone — say it naturally; do not dump every line robotically.",
   ]
     .filter(Boolean)
@@ -204,7 +248,7 @@ export async function speakTurn(opts: {
     `TRANSITIONED: ${opts.transitioned ? "yes" : "no"}`,
     `MATCHED_INTENT: ${opts.matchedIntent ?? "null"}`,
     opts.exit ? `EXIT: ${opts.exit.type} — ${opts.exit.label}` : "EXIT: none",
-    `SLOTS: ${JSON.stringify(opts.slots)}`,
+    `SLOTS: ${JSON.stringify(safeSlots)}`,
     `TOOL FACTS:\n${toolFacts(opts.toolResults)}`,
     `POLICY NOTES (paraphrase only; do not paste):\n${(opts.ragContext || "(none)").slice(0, 900)}`,
     mustSayExact && mustLead ? `MUST-SAY (verbatim lead):\n${mustLead}` : "",
@@ -218,15 +262,15 @@ export async function speakTurn(opts: {
 
   try {
     const result = await completeChat({
-      temperature: 0.4,
-      maxTokens: 220,
+      temperature: 0.35,
+      maxTokens: 400,
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },
       ],
     });
     if (!result) return null;
-    let text = stripPlaceholders(result.text);
+    let text = finishUtterance(stripPlaceholders(result.text));
     // Soft enforce must-say lead
     if (mustSayExact && mustLead) {
       const normalized = text.replace(/\s+/g, " ").trim();
@@ -254,10 +298,13 @@ export function mergeSlots(base: SlotMap, ...updates: SlotMap[]): SlotMap {
   const next: SlotMap = { ...base };
   for (const u of updates) {
     for (const [k, v] of Object.entries(u)) {
-      if (v?.trim()) next[k] = v.trim();
+      const trimmed = v?.trim();
+      if (!trimmed) continue;
+      if ((k === "reason" || k === "need") && isWeakTopic(trimmed)) continue;
+      next[k] = trimmed;
     }
   }
-  return next;
+  return scrubWeakSlots(next);
 }
 
 /** Debug helper: interpolate a single template the way the engine does */

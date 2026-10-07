@@ -2,7 +2,7 @@
   "id": "customer_service",
   "title": "Customer Service",
   "vertical": "customer_service",
-  "description": "Greet \u2192 verify \u2192 diagnose \u2192 policy RAG \u2192 resolve, callback, or escalate. Richer corpus for returns, shipping, billing, defects, de-escalation.",
+  "description": "Greet → verify → diagnose → policy RAG → resolve, callback, or escalate. Richer corpus for returns, shipping, billing, defects, de-escalation.",
   "start": "greet",
   "ragCorpus": "cs",
   "tools": [
@@ -16,10 +16,21 @@
       "id": "greet",
       "label": "Greet",
       "agentSay": [
-        "Thank you for calling Ikosagon Support \u2014 this is the IkoLine demo queue. I\u2019m here to help with orders, billing, login, or returns. What can I take care of for you today?"
+        "Thank you for calling Ikosagon Support — this is the IkoLine demo queue. I’m here to help with orders, billing, login, or returns. What can I take care of for you today?"
       ],
       "allowParaphrase": true,
       "listenFor": [
+        {
+          "intent": "greeting",
+          "examples": [
+            "hi",
+            "hello",
+            "hey",
+            "good morning",
+            "thanks",
+            "hi there"
+          ]
+        },
         {
           "intent": "describe_issue",
           "examples": [
@@ -45,9 +56,6 @@
           ]
         }
       ],
-      "requireSlots": [
-        "reason"
-      ],
       "transitions": [
         {
           "on": "describe_issue",
@@ -56,13 +64,6 @@
         {
           "on": "ask_policy",
           "to": "verify"
-        },
-        {
-          "on": "slots_filled",
-          "to": "verify",
-          "whenSlotsFilled": [
-            "reason"
-          ]
         }
       ]
     },
@@ -70,9 +71,9 @@
       "id": "verify",
       "label": "Verify identity",
       "agentSay": [
-        "Of course \u2014 I can help with {{reason}}. For security, may I have your demo account number? You can use 1001, 2044, or 3300."
+        "I'd be glad to help. For security, may I have your demo account number? You can use 1001, 2044, or 3300."
       ],
-      "allowParaphrase": false,
+      "allowParaphrase": true,
       "listenFor": [
         {
           "intent": "provide_account",
@@ -126,7 +127,7 @@
       "id": "diagnose",
       "label": "Diagnose",
       "agentSay": [
-        "Thank you \u2014 account {{accountId}} is on file. Tell me a little more about the {{reason}} so I can pull the right procedure. Take your time."
+        "Thank you — account {{accountId}} is on file. Tell me a little more about what happened so I can pull the right procedure."
       ],
       "allowParaphrase": true,
       "listenFor": [
@@ -186,10 +187,21 @@
       "id": "policy",
       "label": "Policy lookup",
       "agentSay": [
-        "I\u2019m checking our support procedures for {{reason}}. I\u2019ll share what applies in plain language, then we can resolve it, open a case, or escalate if you prefer."
+        "I'm checking our support procedures now. I'll share what applies in plain language, then we can resolve it, open a case, or escalate if you prefer."
       ],
       "allowParaphrase": true,
       "listenFor": [
+        {
+          "intent": "describe_issue",
+          "examples": [
+            "it's been 14 days and no package",
+            "I still haven't received it",
+            "tracking hasn't moved",
+            "I want a refund",
+            "send a replacement",
+            "charged twice on my card"
+          ]
+        },
         {
           "intent": "resolve",
           "examples": [
@@ -235,6 +247,10 @@
       ],
       "transitions": [
         {
+          "on": "describe_issue",
+          "to": "policy"
+        },
+        {
           "on": "resolve",
           "to": "resolve_close"
         },
@@ -270,7 +286,7 @@
       "id": "resolve_close",
       "label": "Resolve",
       "agentSay": [
-        "I\u2019m glad we could sort this using the published procedure. I\u2019ve logged the disposition on account {{accountId}}. Is there anything else I can help with before we wrap up?"
+        "I’m glad we could sort this using the published procedure. I’ve logged the disposition on account {{accountId}}. Is there anything else I can help with before we wrap up?"
       ],
       "allowParaphrase": true,
       "listenFor": [
@@ -312,7 +328,7 @@
       "id": "escalate_handoff",
       "label": "Escalate",
       "agentSay": [
-        "I understand \u2014 I\u2019m opening a case with a clear summary so you don\u2019t have to repeat yourself, and moving this to the escalation queue. A specialist will take the next step within the promised window."
+        "I understand — I’m opening a case with a clear summary so you don’t have to repeat yourself, and moving this to the escalation queue. A specialist will take the next step within the promised window."
       ],
       "allowParaphrase": false,
       "listenFor": [
@@ -345,7 +361,7 @@
       "id": "callback_close",
       "label": "Schedule callback",
       "agentSay": [
-        "Absolutely \u2014 I\u2019ll schedule a callback on this account and attach notes so we pick up where we left off. Would morning, afternoon, or tomorrow work better?"
+        "Absolutely — I’ll schedule a callback on this account and attach notes so we pick up where we left off. Would morning, afternoon, or tomorrow work better?"
       ],
       "allowParaphrase": true,
       "listenFor": [
