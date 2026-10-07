@@ -57,8 +57,28 @@ function synonymBoost(intent: string, text: string): number {
   const rules: Record<string, string[]> = {
     verify_identity: ["account", "verify", "it's me", "my name", "last four", "last 4"],
     provide_account: ["account", "number", "1001", "2044", "3300"],
-    describe_issue: ["broken", "not working", "problem", "issue", "error", "help"],
-    ask_policy: ["policy", "refund", "return", "warranty", "how long"],
+    describe_issue: [
+      "broken",
+      "not working",
+      "problem",
+      "issue",
+      "error",
+      "help",
+      "ship",
+      "shipping",
+      "tracking",
+      "delay",
+      "late",
+      "package",
+      "delivery",
+      "frustrated",
+      "ridiculous",
+      "still waiting",
+      "charged twice",
+      "password",
+      "login",
+    ],
+    ask_policy: ["policy", "refund", "return", "warranty", "how long", "eligible"],
     escalate: ["supervisor", "manager", "escalate", "human", "agent", "person"],
     resolve: ["thanks", "thank you", "that works", "resolved", "fixed", "done"],
     ask_balance: ["balance", "owe", "how much", "what do i owe"],
@@ -271,10 +291,10 @@ export function buildAgentTurn(opts: {
     }
   }
 
-  return lines.filter(Boolean).join("\n\n");
+  return stripPlaceholders(lines.filter(Boolean).join("\n\n"));
 }
 
-function interpolate(template: string, slots: SlotMap, tools: ToolResult[]): string {
+export function interpolate(template: string, slots: SlotMap, tools: ToolResult[] = []): string {
   let out = template;
   for (const [key, value] of Object.entries(slots)) {
     out = out.replaceAll(`{{${key}}}`, value);
@@ -291,10 +311,24 @@ function interpolate(template: string, slots: SlotMap, tools: ToolResult[]): str
   return out;
 }
 
+export function stripPlaceholders(text: string): string {
+  return text.replace(/\{\{[a-zA-Z0-9_]+\}\}/g, "").replace(/  +/g, " ").trim();
+}
+
+export function interpolateLines(
+  lines: string[],
+  slots: SlotMap,
+  tools: ToolResult[] = [],
+): string[] {
+  return lines.map((line) => stripPlaceholders(interpolate(line, slots, tools))).filter(Boolean);
+}
+
 export function openingAgentText(flow: Flow): string {
   const start = getCurrentNode(flow, flow.start);
   if (!start) return "Flow start node missing.";
-  return start.agentSay.map((line) => interpolate(line, {}, [])).join("\n\n");
+  return stripPlaceholders(
+    start.agentSay.map((line) => interpolate(line, {}, [])).join("\n\n"),
+  );
 }
 
 export function runToolsForTurn(
