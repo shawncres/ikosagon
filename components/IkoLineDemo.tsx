@@ -35,6 +35,40 @@ const VERTICALS: { id: string; label: string; blurb: string }[] = [
   },
 ];
 
+const TTS_STORAGE_KEY = "ikoline-tts-enabled";
+
+function speechSupported(): boolean {
+  return typeof window !== "undefined" && typeof window.speechSynthesis !== "undefined";
+}
+
+function cancelSpeech() {
+  if (!speechSupported()) return;
+  try {
+    window.speechSynthesis.cancel();
+  } catch {
+    /* ignore */
+  }
+}
+
+function speakAgentLine(text: string) {
+  if (!speechSupported()) return;
+  const trimmed = text.trim();
+  if (!trimmed) return;
+  try {
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(trimmed);
+    utter.rate = 1;
+    utter.pitch = 1;
+    // Prefer an English voice when the browser exposes one; otherwise default.
+    const voices = window.speechSynthesis.getVoices();
+    const en = voices.find((v) => /^en(-|_)/i.test(v.lang)) ?? voices.find((v) => v.lang.startsWith("en"));
+    if (en) utter.voice = en;
+    window.speechSynthesis.speak(utter);
+  } catch {
+    /* graceful no-op */
+  }
+}
+
 export function IkoLineDemo() {
   const [flowId, setFlowId] = useState("customer_service");
   const [nodeId, setNodeId] = useState("");
@@ -51,7 +85,11 @@ export function IkoLineDemo() {
   const [debugIntent, setDebugIntent] = useState<string | null>(null);
   const [toolResults, setToolResults] = useState<ToolResult[]>([]);
   const [flows, setFlows] = useState<FlowMeta[]>([]);
+  /** Browser TTS for agent lines — default ON; remembered in localStorage. */
+  const [ttsOn, setTtsOn] = useState(true);
+  const [ttsAvailable, setTtsAvailable] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const ttsOnRef = useRef(true);
 
   const scrollLog = () => {
     requestAnimationFrame(() => {
@@ -59,40 +97,98 @@ export function IkoLineDemo() {
     });
   };
 
-  const startFlow = useCallback(async (id: string) => {
-    setPending(true);
-    setError(null);
-    setExit(null);
-    setToolResults([]);
-    setDebugIntent(null);
-    setTurnCount(0);
-    setSlots({});
-    setInput("");
-    try {
-      const res = await fetch("/api/ikoline/turn", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ flowId: id, start: true }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        setError(data.error || "Could not start flow.");
-        setPending(false);
-        return;
-      }
-      setFlowId(id);
-      setNodeId(data.nodeId);
-      setNodeLabel(data.nodeLabel || data.nodeId);
-      setHistory([{ role: "agent", content: data.agentText }]);
-      setMode(data.mode ?? "scripted");
-      setOffline(Boolean(data.debug?.offline));
-      scrollLog();
-    } catch {
-      setError("Network error starting the demo.");
-    } finally {
-      setPending(false);
-    }
+  const speakIfEnabled = useCallback((agentText: string) => {
+    if (!ttsOnRef.current) return;
+    speakAgentLine(agentText);
   }, []);
+
+  useEffect(() => {
+    ttsOnRef.current = ttsOn;
+  }, [ttsOn]);
+
+  useEffect(() => {
+    const available = speechSupported();
+    setTtsAvailable(available);
+    if (!available) {
+      setTtsOn(false);
+      ttsOnRef.current = false;
+      return;
+    }
+    try {
+      const raw = window.localStorage.getItem(TTS_STORAGE_KEY);
+      if (raw === "0" || raw === "false") {
+        setTtsOn(false);
+        ttsOnRef.current = false;
+      } else {
+        // Default ON (including missing key)
+        setTtsOn(true);
+        ttsOnRef.current = true;
+      }
+    } catch {
+      /* private mode etc. — keep default ON */
+    }
+    // Warm voices list (Chrome/Safari populate async)
+    const warm = () => {
+      void window.speechSynthesis.getVoices();
+    };
+    warm();
+    window.speechSynthesis.addEventListener("voiceschanged", warm);
+    return () => {
+      window.speechSynthesis.removeEventListener("voiceschanged", warm);
+      cancelSpeech();
+    };
+  }, []);
+
+  function setTtsEnabled(next: boolean) {
+    if (!next) cancelSpeech();
+    setTtsOn(next);
+    ttsOnRef.current = next;
+    try {
+      window.localStorage.setItem(TTS_STORAGE_KEY, next ? "1" : "0");
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const startFlow = useCallback(
+    async (id: string) => {
+      cancelSpeech();
+      setPending(true);
+      setError(null);
+      setExit(null);
+      setToolResults([]);
+      setDebugIntent(null);
+      setTurnCount(0);
+      setSlots({});
+      setInput("");
+      try {
+        const res = await fetch("/api/ikoline/turn", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ flowId: id, start: true }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          setError(data.error || "Could not start flow.");
+          setPending(false);
+          return;
+        }
+        setFlowId(id);
+        setNodeId(data.nodeId);
+        setNodeLabel(data.nodeLabel || data.nodeId);
+        setHistory([{ role: "agent", content: data.agentText }]);
+        setMode(data.mode ?? "scripted");
+        setOffline(Boolean(data.debug?.offline));
+        speakIfEnabled(data.agentText);
+        scrollLog();
+      } catch {
+        setError("Network error starting the demo.");
+      } finally {
+        setPending(false);
+      }
+    },
+    [speakIfEnabled],
+  );
 
   useEffect(() => {
     void (async () => {
@@ -115,6 +211,7 @@ export function IkoLineDemo() {
   async function sendTurn(text: string) {
     const userText = text.trim();
     if (!userText || pending || exit) return;
+    cancelSpeech();
     setPending(true);
     setError(null);
     setInput("");
@@ -148,6 +245,7 @@ export function IkoLineDemo() {
       setDebugIntent(data.debug?.matchedIntent ?? null);
       setToolResults(Array.isArray(data.toolResults) ? data.toolResults : []);
       if (data.exit) setExit(data.exit);
+      speakIfEnabled(data.agentText);
     } catch {
       setError("Network error on this turn.");
     } finally {
@@ -165,13 +263,14 @@ export function IkoLineDemo() {
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="mb-1 font-mono text-xs text-accent">
-            IkoLine · call-flow + LLM turns · text-first
+            IkoLine · call-flow + LLM turns · browser TTS
           </p>
           <h2 className="text-xl font-semibold">Live call demo</h2>
           <p className="mt-1 max-w-2xl text-sm text-zinc-400">
             Three vertical skins on one engine. The graph owns transitions and must-say lines; Groq
             handles intent, slots, and natural replies inside each node (keyword fallback offline).
-            No live phone number. Voice is phase 2.
+            Agent lines can speak via free browser text-to-speech (not production contact-center
+            voice). No live phone number.
           </p>
         </div>
         <div className="text-right font-mono text-[10px] text-zinc-500">
@@ -179,6 +278,7 @@ export function IkoLineDemo() {
             Turn {turnCount}/20
             {mode ? ` · ${mode}` : ""}
             {offline ? " · offline keywords" : ""}
+            {ttsAvailable ? (ttsOn ? " · TTS on" : " · TTS muted") : ""}
           </p>
           {nodeLabel ? <p className="text-accent">Node: {nodeLabel}</p> : null}
           {debugIntent ? <p>Intent: {debugIntent}</p> : null}
@@ -305,22 +405,33 @@ export function IkoLineDemo() {
           >
             Restart
           </button>
-          {/* Phase 2 voice stubs */}
           <button
             type="button"
             disabled
-            title="Voice is phase 2 — not wired yet"
+            title="Microphone / STT is still phase 2"
             className="rounded-xl border border-dashed border-border px-3 py-2 text-xs text-zinc-600"
           >
             Push-to-talk (soon)
           </button>
           <button
             type="button"
-            disabled
-            title="TTS is phase 2 — not wired yet"
-            className="rounded-xl border border-dashed border-border px-3 py-2 text-xs text-zinc-600"
+            disabled={!ttsAvailable}
+            aria-pressed={ttsOn}
+            title={
+              !ttsAvailable
+                ? "Browser speechSynthesis not available"
+                : ttsOn
+                  ? "Mute agent browser TTS"
+                  : "Unmute agent browser TTS"
+            }
+            onClick={() => setTtsEnabled(!ttsOn)}
+            className={
+              ttsOn && ttsAvailable
+                ? "rounded-xl border border-accent bg-accent/15 px-3 py-2 text-xs text-accent"
+                : "rounded-xl border border-border px-3 py-2 text-xs text-zinc-300 hover:border-accent/50 disabled:opacity-40"
+            }
           >
-            Agent voice (soon)
+            {!ttsAvailable ? "TTS unavailable" : ttsOn ? "🔊 Agent voice" : "🔇 Agent muted"}
           </button>
         </div>
       </form>
@@ -335,7 +446,8 @@ export function IkoLineDemo() {
         Tip: try account <span className="text-zinc-400">1001</span>,{" "}
         <span className="text-zinc-400">2044</span>, or <span className="text-zinc-400">3300</span>.
         Collections disclosure nodes never paraphrase. Hobby deploy uses keyword matching when no
-        model key is present.
+        model key is present. Agent voice uses free browser TTS (system voices) — not a production
+        contact-center voice stack.
       </p>
     </section>
   );
