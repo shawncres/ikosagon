@@ -2,144 +2,378 @@
   "id": "customer_service",
   "title": "Customer Service",
   "vertical": "customer_service",
-  "description": "Greet → verify → diagnose → policy RAG → resolve or escalate.",
+  "description": "Greet \u2192 verify \u2192 diagnose \u2192 policy RAG \u2192 resolve, callback, or escalate. Richer corpus for returns, shipping, billing, defects, de-escalation.",
   "start": "greet",
   "ragCorpus": "cs",
-  "tools": ["lookupAccount", "createCase", "scheduleCallback", "logDisposition"],
+  "tools": [
+    "lookupAccount",
+    "createCase",
+    "scheduleCallback",
+    "logDisposition"
+  ],
   "nodes": {
     "greet": {
       "id": "greet",
       "label": "Greet",
       "agentSay": [
-        "Thanks for calling Ikosagon Support Demo. I’m the IkoLine agent for this queue. How can I help today?"
+        "Thank you for calling Ikosagon Support \u2014 this is the IkoLine demo queue. I\u2019m here to help with orders, billing, login, or returns. What can I take care of for you today?"
       ],
       "allowParaphrase": true,
       "listenFor": [
         {
           "intent": "describe_issue",
-          "examples": ["my order is late", "I need a refund", "login problem", "billing issue"]
+          "examples": [
+            "my order is late",
+            "I need a refund",
+            "login problem",
+            "billing issue",
+            "wrong item arrived",
+            "product is defective",
+            "charged twice",
+            "package never came",
+            "I want to exchange this",
+            "password reset"
+          ]
         },
         {
           "intent": "ask_policy",
-          "examples": ["what's your return policy", "warranty question"]
+          "examples": [
+            "what's your return policy",
+            "warranty question",
+            "how long is shipping",
+            "restocking fee?"
+          ]
         }
       ],
-      "requireSlots": ["reason"],
+      "requireSlots": [
+        "reason"
+      ],
       "transitions": [
-        { "on": "describe_issue", "to": "verify" },
-        { "on": "ask_policy", "to": "verify" },
-        { "on": "slots_filled", "to": "verify", "whenSlotsFilled": ["reason"] }
+        {
+          "on": "describe_issue",
+          "to": "verify"
+        },
+        {
+          "on": "ask_policy",
+          "to": "verify"
+        },
+        {
+          "on": "slots_filled",
+          "to": "verify",
+          "whenSlotsFilled": [
+            "reason"
+          ]
+        }
       ]
     },
     "verify": {
       "id": "verify",
       "label": "Verify identity",
       "agentSay": [
-        "Happy to help with {{reason}}. For security, please share your demo account number (try 1001, 2044, or 3300)."
+        "Of course \u2014 I can help with {{reason}}. For security, may I have your demo account number? You can use 1001, 2044, or 3300."
       ],
       "allowParaphrase": false,
       "listenFor": [
-        { "intent": "provide_account", "examples": ["my account is 1001", "account 2044", "3300"] },
-        { "intent": "verify_identity", "examples": ["last four 1001", "it's Alex"] }
+        {
+          "intent": "provide_account",
+          "examples": [
+            "my account is 1001",
+            "account 2044",
+            "3300",
+            "it's 1001"
+          ]
+        },
+        {
+          "intent": "verify_identity",
+          "examples": [
+            "last four 1001",
+            "it's Alex",
+            "yes I'm the account holder"
+          ]
+        }
       ],
-      "requireSlots": ["accountId"],
-      "toolsAllowed": ["lookupAccount"],
+      "requireSlots": [
+        "accountId"
+      ],
+      "toolsAllowed": [
+        "lookupAccount"
+      ],
       "transitions": [
-        { "on": "provide_account", "to": "diagnose", "whenSlotsFilled": ["accountId"] },
-        { "on": "verify_identity", "to": "diagnose", "whenSlotsFilled": ["accountId"] },
-        { "on": "slots_filled", "to": "diagnose", "whenSlotsFilled": ["accountId"] }
+        {
+          "on": "provide_account",
+          "to": "diagnose",
+          "whenSlotsFilled": [
+            "accountId"
+          ]
+        },
+        {
+          "on": "verify_identity",
+          "to": "diagnose",
+          "whenSlotsFilled": [
+            "accountId"
+          ]
+        },
+        {
+          "on": "slots_filled",
+          "to": "diagnose",
+          "whenSlotsFilled": [
+            "accountId"
+          ]
+        }
       ]
     },
     "diagnose": {
       "id": "diagnose",
       "label": "Diagnose",
       "agentSay": [
-        "Account {{accountId}} is on file. Tell me a bit more about the {{reason}} issue so I can pull the right procedure."
+        "Thank you \u2014 account {{accountId}} is on file. Tell me a little more about the {{reason}} so I can pull the right procedure. Take your time."
       ],
       "allowParaphrase": true,
       "listenFor": [
-        { "intent": "describe_issue", "examples": ["it still won't ship", "charged twice", "can't reset password"] },
-        { "intent": "ask_policy", "examples": ["what does the policy say", "am I eligible"] },
-        { "intent": "escalate", "examples": ["I want a supervisor", "transfer me"] }
+        {
+          "intent": "describe_issue",
+          "examples": [
+            "it still won't ship",
+            "charged twice",
+            "can't reset password",
+            "cracked on arrival",
+            "tracking hasn't moved",
+            "wrong color",
+            "I want a supervisor"
+          ]
+        },
+        {
+          "intent": "ask_policy",
+          "examples": [
+            "what does the policy say",
+            "am I eligible",
+            "is this under warranty"
+          ]
+        },
+        {
+          "intent": "escalate",
+          "examples": [
+            "I want a supervisor",
+            "transfer me",
+            "this is ridiculous get me a manager"
+          ]
+        }
       ],
-      "rag": { "queryHint": "customer service policy for the reported issue", "required": false },
+      "rag": {
+        "queryHint": "customer service returns shipping warranty billing login escalation",
+        "required": false
+      },
       "transitions": [
-        { "on": "ask_policy", "to": "policy" },
-        { "on": "describe_issue", "to": "policy" },
-        { "on": "escalate", "to": "escalate_handoff" },
-        { "on": "*", "to": "policy" }
+        {
+          "on": "ask_policy",
+          "to": "policy"
+        },
+        {
+          "on": "describe_issue",
+          "to": "policy"
+        },
+        {
+          "on": "escalate",
+          "to": "escalate_handoff"
+        },
+        {
+          "on": "*",
+          "to": "policy"
+        }
       ]
     },
     "policy": {
       "id": "policy",
       "label": "Policy lookup",
       "agentSay": [
-        "I’m checking the support corpus for {{reason}}. I’ll cite what applies, then we can resolve or escalate."
+        "I\u2019m checking our support procedures for {{reason}}. I\u2019ll share what applies in plain language, then we can resolve it, open a case, or escalate if you prefer."
       ],
       "allowParaphrase": true,
       "listenFor": [
-        { "intent": "resolve", "examples": ["that answers it", "thanks that works", "we're good"] },
-        { "intent": "escalate", "examples": ["still not happy", "supervisor please"] },
-        { "intent": "create_ticket", "examples": ["open a ticket", "create a case"] },
-        { "intent": "request_callback", "examples": ["call me back", "callback tomorrow"] }
+        {
+          "intent": "resolve",
+          "examples": [
+            "that answers it",
+            "thanks that works",
+            "we're good",
+            "that helps"
+          ]
+        },
+        {
+          "intent": "escalate",
+          "examples": [
+            "still not happy",
+            "supervisor please",
+            "I want a manager"
+          ]
+        },
+        {
+          "intent": "create_ticket",
+          "examples": [
+            "open a ticket",
+            "create a case",
+            "please document this"
+          ]
+        },
+        {
+          "intent": "request_callback",
+          "examples": [
+            "call me back",
+            "callback tomorrow",
+            "can someone call me afternoon"
+          ]
+        }
       ],
-      "rag": { "queryHint": "refund return warranty shipping login billing", "required": true },
-      "toolsAllowed": ["createCase", "scheduleCallback", "logDisposition"],
+      "rag": {
+        "queryHint": "refund return exchange warranty shipping delay lost package login billing duplicate charge escalation privacy",
+        "required": true
+      },
+      "toolsAllowed": [
+        "createCase",
+        "scheduleCallback",
+        "logDisposition"
+      ],
       "transitions": [
-        { "on": "resolve", "to": "resolve_close" },
-        { "on": "create_ticket", "to": "resolve_close" },
-        { "on": "escalate", "to": "escalate_handoff" },
-        { "on": "request_callback", "to": "callback_close" }
+        {
+          "on": "resolve",
+          "to": "resolve_close"
+        },
+        {
+          "on": "create_ticket",
+          "to": "resolve_close"
+        },
+        {
+          "on": "escalate",
+          "to": "escalate_handoff"
+        },
+        {
+          "on": "request_callback",
+          "to": "callback_close"
+        }
       ],
       "exits": [
-        { "type": "resolve", "label": "Resolved with policy citation" },
-        { "type": "escalate", "label": "Escalated to human queue" },
-        { "type": "callback", "label": "Callback scheduled" }
+        {
+          "type": "resolve",
+          "label": "Resolved with policy citation"
+        },
+        {
+          "type": "escalate",
+          "label": "Escalated to human queue"
+        },
+        {
+          "type": "callback",
+          "label": "Callback scheduled"
+        }
       ]
     },
     "resolve_close": {
       "id": "resolve_close",
       "label": "Resolve",
       "agentSay": [
-        "Glad we could sort this using the published procedure. I’ve logged the disposition on account {{accountId}}. Is there anything else?"
+        "I\u2019m glad we could sort this using the published procedure. I\u2019ve logged the disposition on account {{accountId}}. Is there anything else I can help with before we wrap up?"
       ],
       "allowParaphrase": true,
       "listenFor": [
-        { "intent": "resolve", "examples": ["no that's all", "thanks bye"] },
-        { "intent": "describe_issue", "examples": ["one more thing"] }
+        {
+          "intent": "resolve",
+          "examples": [
+            "no that's all",
+            "thanks bye"
+          ]
+        },
+        {
+          "intent": "describe_issue",
+          "examples": [
+            "one more thing"
+          ]
+        }
       ],
-      "toolsAllowed": ["logDisposition"],
+      "toolsAllowed": [
+        "logDisposition"
+      ],
       "transitions": [
-        { "on": "resolve", "to": "exit:resolve" },
-        { "on": "*", "to": "exit:resolve" }
+        {
+          "on": "resolve",
+          "to": "exit:resolve"
+        },
+        {
+          "on": "*",
+          "to": "exit:resolve"
+        }
       ],
-      "exits": [{ "type": "resolve", "label": "Call resolved" }]
+      "exits": [
+        {
+          "type": "resolve",
+          "label": "Call resolved"
+        }
+      ]
     },
     "escalate_handoff": {
       "id": "escalate_handoff",
       "label": "Escalate",
       "agentSay": [
-        "Understood — I’m opening a case and moving you to the escalation queue. A specialist will take the next step."
+        "I understand \u2014 I\u2019m opening a case with a clear summary so you don\u2019t have to repeat yourself, and moving this to the escalation queue. A specialist will take the next step within the promised window."
       ],
       "allowParaphrase": false,
-      "listenFor": [{ "intent": "affirm", "examples": ["ok", "please do"] }],
-      "toolsAllowed": ["createCase", "logDisposition"],
-      "transitions": [{ "on": "*", "to": "exit:escalate" }],
-      "exits": [{ "type": "escalate", "label": "Escalated to human queue" }]
+      "listenFor": [
+        {
+          "intent": "affirm",
+          "examples": [
+            "ok",
+            "please do"
+          ]
+        }
+      ],
+      "toolsAllowed": [
+        "createCase",
+        "logDisposition"
+      ],
+      "transitions": [
+        {
+          "on": "*",
+          "to": "exit:escalate"
+        }
+      ],
+      "exits": [
+        {
+          "type": "escalate",
+          "label": "Escalated to human queue"
+        }
+      ]
     },
     "callback_close": {
       "id": "callback_close",
       "label": "Schedule callback",
       "agentSay": [
-        "I’ll schedule a callback on this account. Prefer morning, afternoon, or tomorrow?"
+        "Absolutely \u2014 I\u2019ll schedule a callback on this account and attach notes so we pick up where we left off. Would morning, afternoon, or tomorrow work better?"
       ],
       "allowParaphrase": true,
       "listenFor": [
-        { "intent": "request_callback", "examples": ["afternoon", "tomorrow morning", "call me tonight"] }
+        {
+          "intent": "request_callback",
+          "examples": [
+            "afternoon",
+            "tomorrow morning",
+            "call me tonight"
+          ]
+        }
       ],
-      "toolsAllowed": ["scheduleCallback", "logDisposition"],
-      "transitions": [{ "on": "*", "to": "exit:callback" }],
-      "exits": [{ "type": "callback", "label": "Callback scheduled" }]
+      "toolsAllowed": [
+        "scheduleCallback",
+        "logDisposition"
+      ],
+      "transitions": [
+        {
+          "on": "*",
+          "to": "exit:callback"
+        }
+      ],
+      "exits": [
+        {
+          "type": "callback",
+          "label": "Callback scheduled"
+        }
+      ]
     }
   }
 }
