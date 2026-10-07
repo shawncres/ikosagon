@@ -2,134 +2,393 @@
   "id": "collections",
   "title": "Collections",
   "vertical": "collections",
-  "description": "Identity → mini-Miranda disclosure → balance → arrange or hardship escalate → disposition.",
+  "description": "Identity \u2192 mini-Miranda disclosure \u2192 balance \u2192 arrange, hardship, dispute/cease paths \u2192 disposition. Expanded compliance corpus.",
   "start": "identity",
   "ragCorpus": "collections",
-  "tools": ["lookupAccount", "checkBalance", "offerPaymentPlan", "scheduleCallback", "logDisposition", "createCase"],
+  "tools": [
+    "lookupAccount",
+    "checkBalance",
+    "offerPaymentPlan",
+    "scheduleCallback",
+    "logDisposition",
+    "createCase"
+  ],
   "nodes": {
     "identity": {
       "id": "identity",
       "label": "Identity",
       "agentSay": [
-        "Hello — this is the IkoLine collections demo line. May I confirm I’m speaking with the account holder? Please share demo account 1001, 2044, or 3300."
+        "Hello \u2014 this is the IkoLine collections demonstration line with Ikosagon. May I confirm I\u2019m speaking with the account holder? Please share demo account 1001, 2044, or 3300."
       ],
       "allowParaphrase": false,
       "listenFor": [
-        { "intent": "provide_account", "examples": ["account 2044", "this is 1001", "3300"] },
-        { "intent": "verify_identity", "examples": ["yes it's me", "I am the account holder"] },
-        { "intent": "deny", "examples": ["wrong number", "not me"] }
+        {
+          "intent": "provide_account",
+          "examples": [
+            "account 2044",
+            "this is 1001",
+            "3300",
+            "my number is 2044"
+          ]
+        },
+        {
+          "intent": "verify_identity",
+          "examples": [
+            "yes it's me",
+            "I am the account holder",
+            "speaking"
+          ]
+        },
+        {
+          "intent": "deny",
+          "examples": [
+            "wrong number",
+            "not me",
+            "you have the wrong person",
+            "never heard of this"
+          ]
+        }
       ],
-      "requireSlots": ["accountId"],
-      "toolsAllowed": ["lookupAccount"],
+      "requireSlots": [
+        "accountId"
+      ],
+      "toolsAllowed": [
+        "lookupAccount"
+      ],
       "transitions": [
-        { "on": "deny", "to": "exit:refuse" },
-        { "on": "provide_account", "to": "disclosure", "whenSlotsFilled": ["accountId"] },
-        { "on": "verify_identity", "to": "disclosure", "whenSlotsFilled": ["accountId"] },
-        { "on": "slots_filled", "to": "disclosure", "whenSlotsFilled": ["accountId"] }
+        {
+          "on": "deny",
+          "to": "exit:refuse"
+        },
+        {
+          "on": "provide_account",
+          "to": "disclosure",
+          "whenSlotsFilled": [
+            "accountId"
+          ]
+        },
+        {
+          "on": "verify_identity",
+          "to": "disclosure",
+          "whenSlotsFilled": [
+            "accountId"
+          ]
+        },
+        {
+          "on": "slots_filled",
+          "to": "disclosure",
+          "whenSlotsFilled": [
+            "accountId"
+          ]
+        }
       ],
-      "exits": [{ "type": "refuse", "label": "Wrong party — call ended" }]
+      "exits": [
+        {
+          "type": "refuse",
+          "label": "Wrong party \u2014 call ended"
+        }
+      ]
     },
     "disclosure": {
       "id": "disclosure",
       "label": "Mini-Miranda / disclosure",
       "agentSay": [
-        "This is an attempt to collect a debt. Any information obtained will be used for that purpose. This is a demonstration script for Ikosagon — not a real collection call. Do you understand?"
+        "This is an attempt to collect a debt. Any information obtained will be used for that purpose. This is a demonstration script for Ikosagon \u2014 not a real collection call. Do you understand?"
       ],
       "allowParaphrase": false,
       "listenFor": [
-        { "intent": "affirm", "examples": ["yes", "I understand", "ok"] },
-        { "intent": "deny", "examples": ["no", "I don't agree"] },
-        { "intent": "hardship", "examples": ["I can't talk about this", "hardship"] }
+        {
+          "intent": "affirm",
+          "examples": [
+            "yes",
+            "I understand",
+            "ok",
+            "yes I understand"
+          ]
+        },
+        {
+          "intent": "deny",
+          "examples": [
+            "no",
+            "I don't agree",
+            "stop"
+          ]
+        },
+        {
+          "intent": "hardship",
+          "examples": [
+            "I can't talk about this",
+            "hardship",
+            "I lost my job",
+            "medical emergency"
+          ]
+        }
       ],
       "transitions": [
-        { "on": "affirm", "to": "balance" },
-        { "on": "hardship", "to": "hardship" },
-        { "on": "deny", "to": "exit:refuse" }
+        {
+          "on": "affirm",
+          "to": "balance"
+        },
+        {
+          "on": "hardship",
+          "to": "hardship"
+        },
+        {
+          "on": "deny",
+          "to": "exit:refuse"
+        }
       ],
-      "exits": [{ "type": "refuse", "label": "Disclosure declined — call ended" }]
+      "exits": [
+        {
+          "type": "refuse",
+          "label": "Disclosure declined \u2014 call ended"
+        }
+      ]
     },
     "balance": {
       "id": "balance",
       "label": "Balance",
       "agentSay": [
-        "Thank you. I’m pulling the balance for account {{accountId}}."
+        "Thank you. I\u2019m pulling the balance for account {{accountId}} now, and then we can talk about options \u2014 including a short plan if you qualify."
       ],
       "allowParaphrase": false,
       "listenFor": [
-        { "intent": "ask_balance", "examples": ["how much do I owe", "what's my balance"] },
-        { "intent": "arrange_payment", "examples": ["I want to pay", "set up a plan", "payment plan"] },
-        { "intent": "hardship", "examples": ["I lost my job", "medical bills", "can't pay right now"] },
-        { "intent": "refuse_payment", "examples": ["I'm not paying", "dispute this debt"] }
+        {
+          "intent": "ask_balance",
+          "examples": [
+            "how much do I owe",
+            "what's my balance",
+            "what do I owe"
+          ]
+        },
+        {
+          "intent": "arrange_payment",
+          "examples": [
+            "I want to pay",
+            "set up a plan",
+            "payment plan",
+            "can I do installments"
+          ]
+        },
+        {
+          "intent": "hardship",
+          "examples": [
+            "I lost my job",
+            "medical bills",
+            "can't pay right now",
+            "natural disaster"
+          ]
+        },
+        {
+          "intent": "refuse_payment",
+          "examples": [
+            "I'm not paying",
+            "dispute this debt",
+            "I don't owe this",
+            "send validation",
+            "stop calling"
+          ]
+        }
       ],
-      "toolsAllowed": ["checkBalance"],
-      "rag": { "queryHint": "payment options hardship quiet hours", "required": false },
+      "toolsAllowed": [
+        "checkBalance"
+      ],
+      "rag": {
+        "queryHint": "payment plans hardship quiet hours dispute cease settlement",
+        "required": false
+      },
       "transitions": [
-        { "on": "arrange_payment", "to": "arrange" },
-        { "on": "ask_balance", "to": "arrange" },
-        { "on": "hardship", "to": "hardship" },
-        { "on": "refuse_payment", "to": "exit:refuse" },
-        { "on": "*", "to": "arrange" }
+        {
+          "on": "arrange_payment",
+          "to": "arrange"
+        },
+        {
+          "on": "ask_balance",
+          "to": "arrange"
+        },
+        {
+          "on": "hardship",
+          "to": "hardship"
+        },
+        {
+          "on": "refuse_payment",
+          "to": "exit:refuse"
+        },
+        {
+          "on": "*",
+          "to": "arrange"
+        }
       ],
-      "exits": [{ "type": "refuse", "label": "Payment refused — disposition logged" }]
+      "exits": [
+        {
+          "type": "refuse",
+          "label": "Payment refused \u2014 disposition logged"
+        }
+      ]
     },
     "arrange": {
       "id": "arrange",
       "label": "Arrange payment",
       "agentSay": [
-        "We can arrange a short payment plan on this demo account. Would you like a 3-month plan, or say how many months you need?"
+        "Based on the balance on file, we can arrange a short payment plan on this demo account. Would a three-month plan work, or would you like me to explain the longer option if you qualify?"
       ],
       "allowParaphrase": true,
       "listenFor": [
-        { "intent": "accept_plan", "examples": ["3 months", "I'll take the plan", "yes accept"] },
-        { "intent": "arrange_payment", "examples": ["payment plan please", "installments"] },
-        { "intent": "hardship", "examples": ["still too much", "hardship"] },
-        { "intent": "request_callback", "examples": ["call me tomorrow", "callback"] }
+        {
+          "intent": "accept_plan",
+          "examples": [
+            "3 months",
+            "I'll take the plan",
+            "yes accept",
+            "six months",
+            "sign me up for the plan"
+          ]
+        },
+        {
+          "intent": "arrange_payment",
+          "examples": [
+            "payment plan please",
+            "installments",
+            "what are my options"
+          ]
+        },
+        {
+          "intent": "hardship",
+          "examples": [
+            "still too much",
+            "hardship",
+            "I can't afford that"
+          ]
+        },
+        {
+          "intent": "request_callback",
+          "examples": [
+            "call me tomorrow",
+            "callback",
+            "it's after nine",
+            "quiet hours"
+          ]
+        }
       ],
-      "toolsAllowed": ["offerPaymentPlan", "checkBalance", "logDisposition"],
-      "rag": { "queryHint": "payment plan rules", "required": false },
+      "toolsAllowed": [
+        "offerPaymentPlan",
+        "checkBalance",
+        "logDisposition"
+      ],
+      "rag": {
+        "queryHint": "payment plan rules first installment hardship",
+        "required": false
+      },
       "transitions": [
-        { "on": "accept_plan", "to": "disposition" },
-        { "on": "arrange_payment", "to": "disposition" },
-        { "on": "hardship", "to": "hardship" },
-        { "on": "request_callback", "to": "exit:callback" }
+        {
+          "on": "accept_plan",
+          "to": "disposition"
+        },
+        {
+          "on": "arrange_payment",
+          "to": "disposition"
+        },
+        {
+          "on": "hardship",
+          "to": "hardship"
+        },
+        {
+          "on": "request_callback",
+          "to": "exit:callback"
+        }
       ],
-      "exits": [{ "type": "callback", "label": "Callback scheduled" }]
+      "exits": [
+        {
+          "type": "callback",
+          "label": "Callback scheduled"
+        }
+      ]
     },
     "hardship": {
       "id": "hardship",
       "label": "Hardship escalate",
       "agentSay": [
-        "I’m sorry you’re dealing with that. Per our hardship path, I’m escalating to a specialist and pausing standard collection prompts on this demo."
+        "I\u2019m sorry you\u2019re dealing with that. Per our hardship path, I\u2019m pausing standard collection prompts and escalating to a specialist who can review options with you."
       ],
       "allowParaphrase": false,
       "listenFor": [
-        { "intent": "affirm", "examples": ["ok", "please escalate"] },
-        { "intent": "request_callback", "examples": ["call me later"] }
+        {
+          "intent": "affirm",
+          "examples": [
+            "ok",
+            "please escalate"
+          ]
+        },
+        {
+          "intent": "request_callback",
+          "examples": [
+            "call me later"
+          ]
+        }
       ],
-      "toolsAllowed": ["createCase", "scheduleCallback", "logDisposition"],
-      "rag": { "queryHint": "hardship escalation", "required": true },
+      "toolsAllowed": [
+        "createCase",
+        "scheduleCallback",
+        "logDisposition"
+      ],
+      "rag": {
+        "queryHint": "hardship assistance escalation empathy",
+        "required": true
+      },
       "transitions": [
-        { "on": "request_callback", "to": "exit:callback" },
-        { "on": "*", "to": "exit:escalate" }
+        {
+          "on": "request_callback",
+          "to": "exit:callback"
+        },
+        {
+          "on": "*",
+          "to": "exit:escalate"
+        }
       ],
       "exits": [
-        { "type": "escalate", "label": "Hardship escalation" },
-        { "type": "callback", "label": "Callback scheduled" }
+        {
+          "type": "escalate",
+          "label": "Hardship escalation"
+        },
+        {
+          "type": "callback",
+          "label": "Callback scheduled"
+        }
       ]
     },
     "disposition": {
       "id": "disposition",
       "label": "Disposition",
       "agentSay": [
-        "Plan noted for account {{accountId}}. I’ve logged the disposition. Thank you for your time on this demonstration call."
+        "I\u2019ve noted the arrangement for account {{accountId}} and logged the disposition. Thank you for your time on this demonstration call \u2014 take care."
       ],
       "allowParaphrase": false,
       "listenFor": [
-        { "intent": "resolve", "examples": ["thanks", "goodbye", "that's all"] }
+        {
+          "intent": "resolve",
+          "examples": [
+            "thanks",
+            "goodbye",
+            "that's all"
+          ]
+        }
       ],
-      "toolsAllowed": ["logDisposition", "offerPaymentPlan"],
-      "transitions": [{ "on": "*", "to": "exit:resolve" }],
-      "exits": [{ "type": "resolve", "label": "Payment arrangement logged" }]
+      "toolsAllowed": [
+        "logDisposition",
+        "offerPaymentPlan"
+      ],
+      "transitions": [
+        {
+          "on": "*",
+          "to": "exit:resolve"
+        }
+      ],
+      "exits": [
+        {
+          "type": "resolve",
+          "label": "Payment arrangement logged"
+        }
+      ]
     }
   }
 }
