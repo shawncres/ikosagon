@@ -3,6 +3,7 @@ title: "Hardship assistance"
 ---
 
 ## Hardship triggers
+<!-- caller: When something like a job loss or medical emergency makes payment hard, we pause the usual payment steps and look at hardship options. -->
 Job loss, medical emergency, natural disaster, domestic hardship, or clear statements of inability to pay route to hardship. **Pause** standard payment prompts.
 
 ## Say this

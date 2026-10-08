@@ -3,6 +3,7 @@ title: "Billing disputes & duplicate charges"
 ---
 
 ## Duplicate charges
+<!-- caller: When two identical charges hit for the same order, we reverse the duplicate; the credit can take a few business days to show on your statement. -->
 Confirm the statement dates and amounts. If two captures match the same order id, reverse the duplicate and log `BILLING_DUP`. Do not issue extra goodwill credit without supervisor approval over **$50**.
 
 ## Say this
@@ -12,4 +13,5 @@ Confirm the statement dates and amounts. If two captures match the same order id
 Walk through date, amount, and merchant descriptor. Offer account review, password reset if compromise is suspected, and a case for fraud review.
 
 ## Subscription confusion
+<!-- caller: Cancellations take effect at the end of the current billing period. -->
 Clarify renew date, plan name, and cancel path. Cancellations take effect at period end unless policy says otherwise — do not promise immediate proration unless the corpus allows it.

@@ -3,6 +3,7 @@ title: "Trials & onboarding"
 ---
 
 ## 14-day Pro trial
+<!-- caller: Eligible teams can try Pro free for 14 days. -->
 Eligible demo conversations may offer a **14-day Pro trial**. Explain what is included and that this site does not run real billing.
 
 ## Say this

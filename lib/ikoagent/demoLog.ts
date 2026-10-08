@@ -16,6 +16,12 @@ export type DemoTurnLog = {
   provider: string | null;
   exit?: { type: string; label: string } | null;
   kind: "start" | "turn";
+  /**
+   * LLM outcome per step: "ok" | "skipped" | "off" | failure code
+   * ("rate_limited", "cooldown", "timeout", "http_401", "parse", "empty", "repeat").
+   * Explains why a turn fell back to scripts. Never contains secrets.
+   */
+  llm?: { classify?: string; speak?: string };
 };
 
 export type DemoSessionTranscript = {

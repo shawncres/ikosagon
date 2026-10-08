@@ -55,6 +55,27 @@
             "how long is shipping",
             "restocking fee?"
           ]
+        },
+        {
+          "intent": "provide_account",
+          "examples": [
+            "my account is 1001",
+            "account 2044"
+          ]
+        },
+        {
+          "intent": "provide_name",
+          "examples": [
+            "my name is Maya Chen",
+            "I'm Chris Patel"
+          ]
+        },
+        {
+          "intent": "no_account",
+          "examples": [
+            "I don't have an account",
+            "I'm a new customer"
+          ]
         }
       ],
       "transitions": [
@@ -65,8 +86,27 @@
         {
           "on": "ask_policy",
           "to": "verify"
+        },
+        {
+          "on": "provide_account",
+          "to": "verify"
+        },
+        {
+          "on": "provide_name",
+          "to": "verify"
+        },
+        {
+          "on": "no_account",
+          "to": "verify"
         }
-      ]
+      ],
+      "agentSayVariants": {
+        "greetingReply": [
+          "Hi! What can I help you with today?",
+          "Hey there! What's going on — an order, billing, a login, or a return?",
+          "Hi again! Tell me what you need and I'll take it from there."
+        ]
+      }
     },
     "verify": {
       "id": "verify",
@@ -165,8 +205,23 @@
         ],
         "reprompt": [
           "Could you share your name or your account number? If you don't have an account, I can set one up — demo accounts 1001, 2044, and 3300 also work."
+        ],
+        "accountCreated": [
+          "You're all set, {{customerName}} — I've created account {{accountId}} for you. What can I help you with today?"
+        ],
+        "accountReady": [
+          "Thanks, {{customerName}} — I've pulled up account {{accountId}}. What can I help you with today?"
+        ],
+        "needsName": [
+          "No problem — I can set up a new account for you. What name should I put on it?"
+        ],
+        "settingUp": [
+          "Thanks, {{customerName}}. I'll set up a new account for you now — what can I help you with today?"
         ]
-      }
+      },
+      "holdForSlots": [
+        "reason"
+      ]
     },
     "diagnose": {
       "id": "diagnose",

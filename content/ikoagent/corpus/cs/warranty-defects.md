@@ -3,6 +3,7 @@ title: "Warranty & product defects"
 ---
 
 ## Coverage
+<!-- caller: Hardware has a 12-month limited warranty for manufacturing defects. -->
 Hardware carries a **12-month** limited warranty for manufacturing defects. Accidental damage, liquid exposure, and unauthorized modifications are not covered unless Support Plus is active on the account.
 
 ## Defect intake

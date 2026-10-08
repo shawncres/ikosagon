@@ -3,9 +3,11 @@ title: "Returns & refunds"
 ---
 
 ## Return window
+<!-- caller: Unused items in their original packaging can be returned within 30 days of delivery. -->
 Unused items in original packaging may be returned within **30 days** of delivery. Opened consumable software licenses and personalized goods are **final sale**.
 
 ## How a return works
+<!-- caller: Once the warehouse receives a return, the refund goes back to the original payment method within 5 to 10 business days. -->
 1. Confirm eligibility against the order date and product type.
 2. Issue a prepaid return label when policy allows.
 3. Refund posts to the original payment method within **5–10 business days** after the warehouse scans the return.

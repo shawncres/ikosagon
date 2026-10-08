@@ -6,12 +6,14 @@ import {
   collectSlots,
   extractAccountId,
   getCurrentNode,
+  greetingReply,
   isGreetingOrAck,
   matchIntent,
   openingAgentText,
   runToolsForTurn,
   looksLikeInjection,
   scrubWeakSlots,
+  slotsFilled,
   topicFromText,
 } from "@/lib/ikoagent/engine";
 import {
@@ -27,8 +29,14 @@ import {
   mergeSlots,
   safeOpening,
   speakTurn,
+  type LlmStepStatus,
 } from "@/lib/ikoagent/llmTurn";
-import { formatIkoAgentContext, retrieveIkoAgent } from "@/lib/ikoagent/rag";
+import {
+  agentOnlyTexts,
+  callerPolicyLines,
+  formatIkoAgentContext,
+  retrieveIkoAgent,
+} from "@/lib/ikoagent/rag";
 import { getProviderName } from "@/lib/llm";
 import { logDemoTurn } from "@/lib/ikoagent/demoLog";
 import {
@@ -143,6 +151,63 @@ function dropInternalSlots(slots: SlotMap): SlotMap {
     out[k] = v;
   }
   return out;
+}
+
+/**
+ * Entering (or sitting on) a node that may create customers, with a captured name
+ * and "no account / I'm new" already on file → create the account now instead of
+ * asking "Do you have an account number handy?" again.
+ */
+async function ensureAccountAt(
+  node: FlowNode,
+  slots: SlotMap,
+  request: Request,
+): Promise<{ slots: SlotMap; result: ToolResult | null; limited: boolean }> {
+  if (
+    !node.toolsAllowed?.includes("createCustomer") ||
+    slots.needsAccount !== "true" ||
+    !slots.customerName ||
+    sanitizeAccountId(slots.accountId || "")
+  ) {
+    return { slots, result: null, limited: false };
+  }
+  if (!createRateLimit(clientKey(request)).ok) return { slots, result: null, limited: true };
+  const result = await runTool("createCustomer", slots);
+  return { slots: result.ok ? applyToolSlots(slots, [result]) : slots, result, limited: false };
+}
+
+/**
+ * holdForSlots: the node's required slots were only just met this turn and the
+ * extra hold slots (e.g. the issue) are still unknown → stay and ask for them.
+ */
+function holdHere(node: FlowNode, slots: SlotMap, filledBefore: boolean): boolean {
+  if (!node.holdForSlots?.length || filledBefore) return false;
+  return node.holdForSlots.some((key) => !slots[key]?.trim());
+}
+
+function createLimitedResponse(nodeId: string, slots: SlotMap) {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: "Too many new-account creates from this network. Try again later.",
+      nodeId,
+      agentText: "",
+      slots,
+    } satisfies TurnResponse,
+    { status: 429 },
+  );
+}
+
+/** Caller only greeted / acked — no issue, name, account, or "I'm new" in the text */
+function isPureGreeting(node: FlowNode, text: string): boolean {
+  return (
+    node.listenFor.some((e) => e.intent === "greeting") &&
+    isGreetingOrAck(text) &&
+    !topicFromText(text) &&
+    !extractAccountId(text) &&
+    !looksLikeNoAccount(text) &&
+    !extractCustomerName(text, { allowBare: false })
+  );
 }
 
 export async function GET() {
@@ -286,17 +351,24 @@ export async function POST(request: Request) {
 
   // A. Heuristic slots first (account numbers, etc.)
   let slots = collectSlots(userText, priorSlots, node.requireSlots);
+  const llmStatus: LlmStepStatus = {};
 
-  // B. LLM classify (intent + slot updates), keyword fallback
-  const classified = await classifyTurn({
-    flow,
-    node,
-    userText,
-    slots,
-    history,
-  });
+  // B. LLM classify (intent + slot updates), keyword fallback.
+  // A bare "hi" at a greeting node is deterministic — no LLM calls (saves free-tier TPM).
+  const pureGreeting = isPureGreeting(node, userText);
+  const classified = pureGreeting
+    ? null
+    : await classifyTurn({
+        flow,
+        node,
+        userText,
+        slots,
+        history,
+        status: llmStatus,
+      });
+  if (pureGreeting) llmStatus.classify = "skipped";
   const keyword = matchIntent(node, userText);
-  const matchedIntent = classified?.intent ?? keyword.intent;
+  const matchedIntent = pureGreeting ? "greeting" : classified?.intent ?? keyword.intent;
   if (classified?.slots) {
     slots = mergeSlots(slots, classified.slots);
   }
@@ -379,16 +451,7 @@ export async function POST(request: Request) {
     !sanitizeAccountId(slots.accountId || "");
   if (createPossible) {
     if (!createRateLimit(clientKey(request)).ok) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Too many new-account creates from this network. Try again later.",
-          nodeId: node.id,
-          agentText: "",
-          slots,
-        } satisfies TurnResponse,
-        { status: 429 },
-      );
+      return createLimitedResponse(node.id, slots);
     }
   }
 
@@ -407,6 +470,15 @@ export async function POST(request: Request) {
   slots = applyToolSlots(slots, toolResults);
   slots = scrubWeakSlots(slots);
 
+  // Name + "no account" already known while sitting on verify → create now
+  {
+    const here = await ensureAccountAt(node, slots, request);
+    if (here.limited) return createLimitedResponse(node.id, slots);
+    slots = here.slots;
+    if (here.result) toolResults = [...toolResults, here.result];
+  }
+
+  const filledBefore = slotsFilled(priorSlots, node.requireSlots) && Boolean(node.requireSlots?.length);
   let { nextNodeId, exit } = applyTransition(node, intentForGraph, slots);
   // Staying put (or self-loop like no_account → verify) but required slots are now
   // satisfied (e.g. a new account was just created) → take the slots_filled edge.
@@ -421,7 +493,19 @@ export async function POST(request: Request) {
       exit = retry.exit;
     }
   }
+  // Requirements met only this turn but the issue is still unknown → stay and ask
+  if (!exit && nextNodeId && nextNodeId !== node.id && holdHere(node, slots, filledBefore)) {
+    nextNodeId = node.id;
+  }
   let nextNode = nextNodeId ? getCurrentNode(flow, nextNodeId) : null;
+
+  // Entering verify with name + "no account" carried from greet → create on entry
+  if (!exit && nextNode && nextNode.id !== node.id) {
+    const entry = await ensureAccountAt(nextNode, slots, request);
+    if (entry.limited) return createLimitedResponse(node.id, slots);
+    slots = entry.slots;
+    if (entry.result) toolResults = [...toolResults, entry.result];
+  }
 
   // Chain through a slot-collection node whose requirements are already met
   // (e.g. caller gave name + account at greet → skip re-asking at verify).
@@ -439,7 +523,12 @@ export async function POST(request: Request) {
     if (chained.result) toolResults = [...toolResults, chained.result];
     if (chained.notFound) accountNotFound = true;
     const hop = applyTransition(nextNode, "slots_filled", slots);
-    if (hop.nextNodeId && hop.nextNodeId !== nextNode.id && !hop.exit) {
+    if (
+      hop.nextNodeId &&
+      hop.nextNodeId !== nextNode.id &&
+      !hop.exit &&
+      !holdHere(nextNode, slots, false)
+    ) {
       const hopNode = getCurrentNode(flow, hop.nextNodeId);
       if (hopNode) nextNode = hopNode;
     }
@@ -456,31 +545,47 @@ export async function POST(request: Request) {
     .join(" ");
   const ragHits =
     ragNode.rag || node.rag
-      ? await retrieveIkoAgent(flow.ragCorpus, ragQuery || userText, 3)
+      ? await retrieveIkoAgent(flow.ragCorpus, ragQuery || userText, 3, {
+          accountVerified: Boolean(sanitizeAccountId(slots.accountId || "")),
+        })
       : [];
-  const ragSnippets = ragHits.map((h) => `${h.heading}: ${h.text}`);
+  // Scripted fallback may only speak authored caller-safe lines, and only on
+  // policy nodes (rag.required). Agent-only guidance never reaches the caller.
+  const callerFacts = callerPolicyLines(ragHits);
+  const ragSnippets = speakNode.rag?.required ? callerFacts : [];
   const ragContext = formatIkoAgentContext(ragHits);
+  const greetingOnly = pureGreeting && !transitioned && !exit;
 
   // D. LLM speak for destination/current node; E. scripted fallback
-  const spoken = await speakTurn({
-    flow,
-    speakNode,
-    fromNode: node,
-    userText,
-    slots,
-    history,
-    ragContext,
-    toolResults,
-    exit,
-    matchedIntent: intentForGraph,
-    transitioned,
-    acknowledged,
-    accountNotFound,
-  });
+  if (greetingOnly) llmStatus.speak = "skipped";
+  const spoken = greetingOnly
+    ? null
+    : await speakTurn({
+        flow,
+        speakNode,
+        fromNode: node,
+        userText,
+        slots,
+        history,
+        ragContext,
+        toolResults,
+        exit,
+        matchedIntent: intentForGraph,
+        transitioned,
+        acknowledged,
+        accountNotFound,
+        agentOnlyTexts: agentOnlyTexts(ragHits),
+        callerFacts,
+        status: llmStatus,
+      });
 
   let agentText: string;
   let mode: "llm" | "scripted";
-  if (spoken) {
+  if (greetingOnly) {
+    // Never repeat the opener: short, rotating reply to a bare "hi"
+    agentText = greetingReply(node, history);
+    mode = "scripted";
+  } else if (spoken) {
     agentText = spoken.agentText;
     // Classify OR speak counts as llm mode when either succeeded
     mode = "llm";
@@ -495,6 +600,7 @@ export async function POST(request: Request) {
       matchedIntent: intentForGraph,
       accountNotFound,
       acknowledged,
+      history,
     });
     mode = classified ? "llm" : "scripted";
     // If classify worked but speak failed, still mark llm for intent path transparency
@@ -517,6 +623,7 @@ export async function POST(request: Request) {
     provider,
     exit: exit ?? null,
     kind: "turn",
+    llm: llmStatus,
   });
 
   const res: TurnResponse = {
@@ -535,6 +642,7 @@ export async function POST(request: Request) {
         score: Math.round(h.score * 100) / 100,
       })),
       offline: !provider,
+      llm: llmStatus,
     },
   };
 

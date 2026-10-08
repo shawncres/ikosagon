@@ -16,7 +16,13 @@ import {
   stripReasks,
   alreadyAcknowledged,
   scriptLinesFor,
+  greetingReply,
+  repeatsEarlierAgentLine,
+  stripAgentGuidance,
+  callerPolicyNote,
 } from "../lib/ikoagent/engine.ts";
+import { retrieveIkoAgent, callerPolicyLines, formatIkoAgentContext } from "../lib/ikoagent/rag.ts";
+import { resetLlmCooldown } from "../lib/llm.ts";
 import {
   extractCustomerName,
   looksLikeNoAccount,
@@ -77,7 +83,8 @@ const agent = buildAgentTurn({
   ragSnippets: [],
   matchedIntent: "greeting",
 });
-assert(/how can I help you/i.test(agent), `greeting re-prompt: ${agent}`);
+assert(/help you with|what can I help/i.test(agent), `greeting re-prompt: ${agent}`);
+assert(agent !== greet.agentSay[0], `greeting re-prompt differs from opener: ${agent}`);
 assert(!/Still need/i.test(agent), "no Still need on greeting");
 
 assert(/Hello there/i.test(greet.agentSay[0]), "CS greet is conversational Hello there");
@@ -181,10 +188,10 @@ for (const k of ["GROQ_API_KEY", "XAI_API_KEY", "OPENAI_API_KEY", "DATABASE_URL"
 resetCrmStoreForTests();
 const { POST } = await import("../app/api/ikoagent/turn/route.ts");
 let ipCounter = 0;
-async function call(flowId, lines) {
+async function call(flowId, lines, seedHistory = []) {
   let nodeId = JSON.parse(readFileSync(`./content/ikoagent/flows/${flowId}.json`, "utf8")).start;
   let slots = {};
-  let history = [];
+  let history = [...seedHistory];
   const turns = [];
   for (const [i, userText] of lines.entries()) {
     const req = new Request("http://local/api/ikoagent/turn", {
@@ -261,5 +268,136 @@ const miranda = JSON.parse(readFileSync("./content/ikoagent/flows/collections.js
 const F = await quiet(() => call("collections", ["account 1001"]));
 assert(F[0].nodeId === "disclosure", `F1 identity → disclosure (got ${F[0].nodeId})`);
 assert(F[0].agentText.startsWith(miranda), "F1 mini-Miranda verbatim lead");
+
+// ---------------------------------------------------------------------------
+// 2026-10-07 live follow-ups (PR: early account / opener echo / agent-only RAG / LLM fallback)
+// ---------------------------------------------------------------------------
+const OPENER = greet.agentSay[0];
+const withOpener = [{ role: "agent", content: OPENER }];
+const NO_ACCOUNT_REASK = /account number handy|do you have an account|your account number|account number\?/i;
+const AGENT_ONLY_LEAK = /quick policy note|apologize once|do not invent|log disposition|SHIP_LOST|BILLING_DUP|invite them to re-check|agent[- ]only/i;
+
+// 1. Name + "no account" before the issue (live session: stuck on verify, re-asked account)
+{
+  const r = stripReasks("Thanks, Dana. Do you have an account number handy? I'm happy to help.", { customerName: "Dana Testwell", needsAccount: "true" });
+  assert(r === "Thanks, Dana. I'm happy to help.", `needsAccount → drop 'account number handy?' re-ask: ${r}`);
+}
+const newNamed = scriptLinesFor(verify, { customerName: "Dana Testwell", needsAccount: "true" }, [], { transitioned: true }).join(" ");
+assert(!NO_ACCOUNT_REASK.test(newNamed), `new named caller script never asks for an account number: ${newNamed}`);
+const newUnnamed = scriptLinesFor(verify, { needsAccount: "true" }, [], { transitioned: true }).join(" ");
+assert(/what name/i.test(newUnnamed) && !NO_ACCOUNT_REASK.test(newUnnamed), `new caller without name → ask name only: ${newUnnamed}`);
+
+const G = await quiet(() =>
+  call("customer_service", ["hi", "My name is Dana Testwell and I don't have an account", "I need help with a late shipment on my order", "It was supposed to arrive last week"], withOpener),
+);
+assert(/^4\d{3}$/.test(G[1].slots.accountId || ""), `G2 name + no account at greet → account created (got ${G[1].slots.accountId})`);
+assert(G[1].toolResults?.some((t) => t.name === "createCustomer" && t.ok), "G2 createCustomer ran");
+assert(G[1].nodeId === "verify", `G2 holds on verify until the issue is known (got ${G[1].nodeId})`);
+assert(!NO_ACCOUNT_REASK.test(G[1].agentText), `G2 never re-asks for an account number: ${G[1].agentText}`);
+assert(/what can I help/i.test(G[1].agentText), `G2 asks what they need: ${G[1].agentText}`);
+assert((G[1].agentText.match(new RegExp(G[1].slots.accountId, "g")) || []).length === 1, `G2 states the new account once: ${G[1].agentText}`);
+assert(G[2].nodeId === "diagnose", `G3 issue arrives → diagnose (got ${G[2].nodeId})`);
+assert(G[2].slots.accountId === G[1].slots.accountId, "G3 keeps the created account (no second create)");
+assert(!G[2].toolResults?.some((t) => t.name === "createCustomer"), "G3 does not create a second account");
+assert(!/your name|account number|do you have an account/i.test(G[2].agentText), `G3 no re-ask: ${G[2].agentText}`);
+assert(G[3].nodeId === "policy", `G4 → policy (got ${G[3].nodeId})`);
+assert(G.filter((t) => NO_ACCOUNT_REASK.test(t.agentText)).length === 0, "G never asks 'account number handy?' after 'no account'");
+
+// 1b. "I'm new" first, name next → create, then issue → diagnose
+const H = await quiet(() => call("customer_service", ["I don't have an account", "Sam Ortiz", "my package never came"], withOpener));
+assert(H[0].nodeId === "verify" && /what name/i.test(H[0].agentText), `H1 new caller → asked for name only: ${H[0].agentText}`);
+assert(!NO_ACCOUNT_REASK.test(H[0].agentText), "H1 no account-number ask");
+assert(/^4\d{3}$/.test(H[1].slots.accountId || "") && H[1].nodeId === "verify", `H2 bare name → account created, holds for issue (got ${H[1].nodeId} ${H[1].slots.accountId})`);
+assert(H[2].nodeId === "diagnose" && H[2].slots.reason === "lost package", `H3 issue → diagnose (got ${H[2].nodeId} ${H[2].slots.reason})`);
+
+// 1c. Issue already known + name + no account in one breath at greet → straight to diagnose
+const I = await quiet(() => call("customer_service", ["Hi, I'm Priya Nair, I'm a new customer and I was charged twice"], withOpener));
+assert(I[0].nodeId === "diagnose" && /^4\d{3}$/.test(I[0].slots.accountId || ""), `I1 all-in-one new customer → create + diagnose (got ${I[0].nodeId})`);
+
+// 2. Start message vs reply to "hi" must differ (live: identical "Hello there — how can I help you today?")
+const J = await quiet(() => call("customer_service", ["hi", "hello"], withOpener));
+assert(J[0].nodeId === "greet", "J1 bare hi stays on greet");
+assert(!repeatsEarlierAgentLine(J[0].agentText, withOpener), `J1 reply to hi is not the opener: ${J[0].agentText}`);
+assert(J[0].agentText !== OPENER && !J[0].agentText.startsWith(OPENER), "J1 reply != start message");
+assert(J[1].agentText !== J[0].agentText && J[1].agentText !== OPENER, `J2 second greeting varies: ${J[1].agentText}`);
+assert(J[0].debug?.llm?.classify === "skipped" && J[0].debug?.llm?.speak === "skipped", "J1 bare hi spends no LLM calls");
+assert(greetingReply(greet, withOpener) !== OPENER, "greetingReply never returns the opener");
+assert(repeatsEarlierAgentLine(`${OPENER} Orders, billing, login — I'm here.`, withOpener), "detect a reply that opens with the opener");
+assert(!repeatsEarlierAgentLine("Thanks.", [{ role: "agent", content: "Thanks — account 1001 is on file." }]), "short replies are not flagged as repeats");
+
+// 3. Agent-only guidance never reaches the caller
+const leaked = "Thanks — account 4002 is all set. Quick policy note: Failed or unknown account If the number is not found, apologize once, invite them to re-check, and offer to open a general inquiry case — do not invent an account.";
+const idChunk = "If the number is not found, apologize once, invite them to re-check, and offer to open a general inquiry case — do not invent an account.";
+assert(stripAgentGuidance(leaked, [idChunk]) === "Thanks — account 4002 is all set.", `strip leaked guidance: ${stripAgentGuidance(leaked, [idChunk])}`);
+assert(
+  stripAgentGuidance("Sure. If the number is not found, apologize once, invite them to re-check today.", [idChunk]) === "Sure.",
+  "strip unlabelled 6-word copy of agent-only text",
+);
+assert(stripAgentGuidance("I've logged this as SHIP_LOST for you. A replacement is on the way.", []) === "A replacement is on the way.", "strip disposition codes");
+const csHits = await retrieveIkoAgent("cs", "account number not found unknown failed verify", 6, { accountVerified: true });
+assert(!csHits.some((h) => /identity-verification/.test(h.source)), "verified account → identity/account-failure guidance not retrieved");
+const csHitsUnverified = await retrieveIkoAgent("cs", "account number not found unknown failed verify", 6);
+assert(csHitsUnverified.some((h) => /identity-verification/.test(h.source)), "unverified → identity guidance still available to the agent");
+assert(callerPolicyLines(csHitsUnverified).every((l) => !AGENT_ONLY_LEAK.test(l)), "caller lines carry no agent-only text");
+const lostHits = await retrieveIkoAgent("cs", "lost package shipping delay", 3);
+const lostLines = callerPolicyLines(lostHits);
+assert(lostLines.length > 0 && lostLines.every((l) => !/SHIP_LOST|Log disposition|treat as lost:/i.test(l)), `authored caller lines only: ${lostLines[0]}`);
+assert(/AGENT-ONLY GUIDANCE/.test(formatIkoAgentContext(lostHits)), "LLM context labels agent-only guidance");
+assert(/^Here's what our policy says:/.test(callerPolicyNote(lostLines[0])), "caller policy note wording");
+const agentNoteTurn = buildAgentTurn({ node: flow.nodes.diagnose, nextNode: flow.nodes.policy, exit: null, slots: { accountId: "4002", reason: "shipping delay" }, toolResults: [], ragSnippets: lostLines, matchedIntent: "describe_issue" });
+assert(!AGENT_ONLY_LEAK.test(agentNoteTurn), `scripted policy turn has no agent-only text: ${agentNoteTurn}`);
+for (const t of [...G, ...H, ...I]) {
+  assert(!AGENT_ONLY_LEAK.test(t.agentText), `no agent-only guidance in caller reply @${t.nodeId}: ${t.agentText.slice(0, 90)}`);
+}
+assert(!/policy says/i.test(G[2].agentText), `diagnose (rag not required) surfaces no policy note: ${G[2].agentText}`);
+
+// 4. LLM fallback visibility + free-tier protection (mocked Groq; no network)
+const realFetch = globalThis.fetch;
+const groqBodies = [];
+let groqMode = "429";
+globalThis.fetch = async (url, init) => {
+  if (!String(url).includes("api.groq.com")) return realFetch(url, init);
+  const body = JSON.parse(init.body);
+  groqBodies.push(body);
+  if (groqMode === "429") {
+    return new Response(JSON.stringify({ error: { message: "Rate limit reached for model openai/gpt-oss-20b on tokens per minute (TPM): Limit 8000" } }), {
+      status: 429,
+      headers: { "content-type": "application/json", "retry-after": "7" },
+    });
+  }
+  if (body.response_format) {
+    const intent = /hello, how are you/i.test(init.body) ? "greeting" : null;
+    return Response.json({ choices: [{ message: { content: JSON.stringify({ intent, slots: {} }) } }] });
+  }
+  // Speak: misbehave on purpose — echo the opener, or leak agent-only guidance
+  const reply = /hello, how are you/i.test(init.body)
+    ? OPENER
+    : `Got it, thanks (reply ${groqBodies.length}). Quick policy note: If the number is not found, apologize once, invite them to re-check, and offer to open a general inquiry case — do not invent an account. What happened next?`;
+  return Response.json({ choices: [{ message: { content: reply } }] });
+};
+process.env.GROQ_API_KEY = "test-not-a-real-key";
+try {
+  resetLlmCooldown();
+  const K = await quiet(() => call("customer_service", ["my order is late", "account 1001"], withOpener));
+  assert(K[0].debug?.llm?.classify === "rate_limited", `K1 429 is reported (got ${JSON.stringify(K[0].debug?.llm)})`);
+  assert(K[0].debug?.llm?.speak === "cooldown" && K[0].mode === "scripted", "K1 speak skipped during cooldown → scripted");
+  const before = groqBodies.length;
+  assert(K[1].debug?.llm?.classify === "cooldown" && K[1].nodeId === "diagnose", "K2 within Retry-After → no provider call, flow still advances");
+  assert(groqBodies.length === before, "K2 made no Groq requests while cooling down");
+  assert(groqBodies[0].reasoning_effort === "low" && groqBodies[0].include_reasoning === false, "gpt-oss requests use low reasoning effort");
+
+  resetLlmCooldown();
+  groqMode = "ok";
+  const L = await quiet(() => call("customer_service", ["hello, how are you?"], withOpener));
+  assert(L[0].debug?.llm?.speak === "repeat", `L1 LLM echo of the opener is rejected (got ${JSON.stringify(L[0].debug?.llm)})`);
+  assert(!repeatsEarlierAgentLine(L[0].agentText, withOpener), `L1 falls back to a different greeting: ${L[0].agentText}`);
+  const M = await quiet(() => call("customer_service", ["my order is late", "account 1001"], withOpener));
+  assert(M[1].debug?.llm?.speak === "ok", `M2 LLM speak used (got ${JSON.stringify(M[1].debug?.llm)}: ${M[1].agentText})`);
+  assert(!AGENT_ONLY_LEAK.test(M[1].agentText), `M2 leaked guidance scrubbed from LLM reply: ${M[1].agentText}`);
+} finally {
+  globalThis.fetch = realFetch;
+  delete process.env.GROQ_API_KEY;
+  resetLlmCooldown();
+}
 
 console.log("\nALL CHECKS PASSED");
