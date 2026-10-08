@@ -7,7 +7,7 @@ import type {
   ToolResult,
 } from "./types";
 import { runTool, toolsForIntent } from "./tools";
-import { extractCustomerName, sanitizeAccountId } from "./crm/validate";
+import { extractCustomerName, sanitizeAccountId, withoutCallerName } from "./crm/validate";
 
 const TOKEN = /[a-z0-9]{2,}/g;
 
@@ -24,7 +24,8 @@ export function matchIntent(
   node: FlowNode,
   userText: string,
 ): { intent: string | null; score: number } {
-  const text = userText.toLowerCase().trim();
+  // Keywords inside an introduced name ("Avery Shipcheck") are not intent signals
+  const text = withoutCallerName(userText).toLowerCase().trim();
   const userTokens = new Set(tokenize(text));
   if (!text || !node.listenFor.length) return { intent: null, score: 0 };
 
@@ -86,7 +87,7 @@ function synonymBoost(intent: string, text: string): number {
     escalate: ["supervisor", "manager", "escalate", "human", "agent", "person"],
     resolve: ["thanks", "thank you", "that works", "resolved", "fixed", "done"],
     ask_balance: ["balance", "owe", "how much", "what do i owe"],
-    arrange_payment: ["pay", "payment", "plan", "installment", "arrange"],
+    arrange_payment: ["pay", "payment", "plan", "installment", "arrange", "behind on", "overdue", "past due", "catch up"],
     accept_plan: ["yes", "accept", "i'll take", "sign me up", "agree"],
     hardship: ["hardship", "can't pay", "lost job", "unemployed", "medical", "struggle"],
     refuse_payment: ["won't pay", "refuse", "not paying", "dispute"],
@@ -148,20 +149,65 @@ export function isWeakTopic(value: string | undefined | null): boolean {
 }
 
 /** Map free text to a short CS/sales topic tag (empty if nothing real) */
-export function topicFromText(text: string): string {
-  const t = text.toLowerCase();
+/**
+ * Short issue tag from caller text. Whole words only ("Shipley", "Billings", "Chargois",
+ * "Plato" are not issues), and an introduced name is removed first ("my name is Bill
+ * Carter" is not a billing issue). Pass `name` when it came from a bare reply.
+ */
+export function topicFromText(text: string, opts: { name?: string | null } = {}): string {
+  const t = withoutCallerName(text, opts.name).toLowerCase();
   if (!t.trim() || isGreetingOrAck(t)) return "";
-  if (/lost\s+(my\s+)?package|never\s+(got|received|arrived|came|showed)|haven'?t\s+received|no\s+scan/.test(t)) {
+  if (/\blost\s+(my\s+)?(package|parcel)|\bnever\s+(got|received|arrived|came|showed)|\bhaven'?t\s+received|\bno\s+scan/.test(t)) {
     return "lost package";
   }
-  if (/ship|track(ing)?|deliver|package|late|delay|still\s+waiting/.test(t)) return "shipping delay";
-  if (/refund|return|exchange/.test(t)) return "return or exchange";
-  if (/warranty|defect|broken|crack/.test(t)) return "warranty or defect";
-  if (/bill|charge|invoice|charged/.test(t)) return "billing";
-  if (/login|password|access|locked/.test(t)) return "login access";
-  if (/price|expensive|budget|cost/.test(t)) return "pricing";
-  if (/hardship|can'?t pay|cannot pay|lost (my )?job/.test(t)) return "hardship";
+  // "late" / "behind" / "overdue" follow their context: payment → billing, order → shipping,
+  // nothing nearby → no topic (the agent asks instead of assuming a shipping delay)
+  const lateTopic = lateContextTopic(t);
+  if (lateTopic) return lateTopic;
+  // (bare "late" with no context returns "" here and falls through to the other keywords)
+  if (/\b(?:ship(?:s|ping|ped|ment|ments)?|track(?:s|ing|ed)?|deliver(?:s|y|ies|ed|ing)?|packages?|parcels?|delay(?:s|ed)?)\b|\bstill\s+waiting\b/.test(t)) {
+    return "shipping delay";
+  }
+  if (/\b(?:refund(?:s|ed)?|return(?:s|ed|ing)?|exchange(?:s|d)?)\b/.test(t)) return "return or exchange";
+  if (/\b(?:warranty|defect(?:s|ive)?|broken|crack(?:s|ed)?)\b/.test(t)) return "warranty or defect";
+  if (/\b(?:bill(?:s|ed|ing)?|(?:over|double[- ]?)?charge(?:s|d)?|invoices?)\b/.test(t)) return "billing";
+  if (/\b(?:log ?in|logins?|passwords?|access|locked)\b/.test(t)) return "login access";
+  if (/\b(?:pric(?:e|es|ed|ing|ey)|expensive|budget|costs?)\b/.test(t)) return "pricing";
+  if (/\bhardship\b|\bcan'?t pay\b|\bcannot pay\b|\blost (my )?job\b/.test(t)) return "hardship";
   return "";
+}
+
+const LATE_WORD = /\b(?:late|behind|overdue|past[- ]due)\b/g;
+const PAYMENT_CONTEXT =
+  /\b(?:payments?|pay(?:ing)?|bills?|billing|rent|installments?|(?:credit |debit )?cards?|loans?|balance|dues?|subscription|invoices?|fees?|mortgage)\b/g;
+const SHIPPING_CONTEXT =
+  /\b(?:orders?|packages?|parcels?|deliver(?:s|y|ies|ed|ing)?|ship(?:s|ping|ped|ment|ments)?|tracking|arriv(?:e|ed|es|al|ing)|items?|box|courier|carrier|mail)\b/g;
+
+function nearest(text: string, re: RegExp, at: number): number {
+  let best = Infinity;
+  for (const m of text.matchAll(re)) best = Math.min(best, Math.abs((m.index ?? 0) - at));
+  return best;
+}
+
+/**
+ * Topic for "late" / "behind" / "overdue" from the nearest context word:
+ * "late on my payment", "behind on my bill", "late fee" → billing;
+ * "my package is late", "late delivery" → shipping delay; bare "it's late" → "".
+ * Returns null when no such word is present.
+ */
+export function lateContextTopic(text: string): string | null {
+  const t = text.toLowerCase();
+  if (/\blate\s+(?:fees?|charges?|payments?)\b/.test(t)) return "billing";
+  const lates = [...t.matchAll(LATE_WORD)];
+  if (!lates.length) return null;
+  let pay = Infinity;
+  let ship = Infinity;
+  for (const m of lates) {
+    pay = Math.min(pay, nearest(t, PAYMENT_CONTEXT, m.index ?? 0));
+    ship = Math.min(ship, nearest(t, SHIPPING_CONTEXT, m.index ?? 0));
+  }
+  if (pay === Infinity && ship === Infinity) return "";
+  return pay < ship ? "billing" : "shipping delay";
 }
 
 /** Drop weak reason/need so scripts never say "help with hi" */
@@ -185,7 +231,8 @@ export function collectSlots(userText: string, existing: SlotMap, required?: str
   if (last4 && !next.last4) next.last4 = last4[1];
 
   const amount = text.match(/\$?\s*(\d+(?:\.\d{1,2})?)\s*(dollars)?/i);
-  if (amount && /pay|owe|balance|amount/i.test(text)) next.amount = amount[1];
+  // Never take the account number as an amount ("account 1001, I'm late on my payment")
+  if (amount && /pay|owe|balance|amount/i.test(text) && amount[1] !== accountDigits) next.amount = amount[1];
 
   const months = text.match(/\b(\d+)\s*(?:month|mo)\b/i);
   if (months) next.planMonths = months[1];

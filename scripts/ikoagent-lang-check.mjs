@@ -21,6 +21,7 @@ import {
   stripAgentGuidance,
   callerPolicyNote,
   stripUnsupportedPromises,
+  lateContextTopic,
   dropRepeatAccountConfirm,
   accountAlreadyConfirmed,
 } from "../lib/ikoagent/engine.ts";
@@ -31,6 +32,8 @@ import {
   looksLikeNoAccount,
   sanitizeAccountId,
   sanitizeCustomerName,
+  withoutCallerName,
+  nameFromPhrase,
 } from "../lib/ikoagent/crm/validate.ts";
 import { getCrmStore, resetCrmStoreForTests } from "../lib/ikoagent/crm/store.ts";
 import { applyToolSlots, runTool } from "../lib/ikoagent/tools.ts";
@@ -415,6 +418,95 @@ assert(!/policy says/i.test(G[2].agentText), `diagnose (rag not required) surfac
     { name: "scheduleCallback", ok: true, data: { callbackId: "CB-1001-1", window: "next_business_day_afternoon" } },
   ]).join(" ");
   assert(/callback CB-1001-1 is booked for next business day afternoon/.test(bookedLine), `callback_close 'scheduled' line speaks the real id + readable window: ${bookedLine}`);
+}
+
+// 7. Names that contain issue words (live #35: "Avery Shipcheck" was rejected and became a
+// shipping issue). Whole-word issue matching; explicit intros are trusted.
+{
+  const named = [
+    ["My name is Avery Shipcheck and I don't have an account", "Avery Shipcheck"],
+    ["I'm Shipley", "Shipley"],
+    ["this is Dana Billings", "Dana Billings"],
+    ["name's Paige Returnson", "Paige Returnson"],
+    ["my name is Chargois", "Chargois"],
+    ["I'm Logan and my login broke", "Logan"],
+    ["my name is Bill Carter", "Bill Carter"],
+    ["I am Tracy Packer", "Tracy Packer"],
+  ];
+  for (const [text, want] of named) {
+    assert(extractCustomerName(text, { allowBare: false }) === want, `explicit intro trusted: ${text} → ${want}`);
+  }
+  for (const n of ["Shipley", "Avery Shipcheck", "Dana Billings", "Paige Returnson", "Chargois", "Logan", "Tracy Packer"]) {
+    assert(nameFromPhrase(n) === n, `issue word inside a name is still a name: ${n}`);
+    assert(topicFromText(n, { name: n }) === "" && topicFromText(n) === "", `name alone sets no topic: ${n}`);
+  }
+  assert(topicFromText("Bill Carter", { name: "Bill Carter" }) === "", "bare reply 'Bill Carter' is not a billing issue");
+  assert(topicFromText("Plato") === "" && topicFromText("I feel slated") === "", "'late' only as a whole word");
+  // No topic from the name; real issue words elsewhere still count
+  for (const [text, topic] of [
+    ["My name is Avery Shipcheck and I don't have an account", ""],
+    ["this is Dana Billings", ""],
+    ["my name is Chargois, calling to say hi", ""],
+    ["name's Paige Returnson, I need a refund", "return or exchange"],
+    ["I'm Logan and my login broke", "login access"],
+    ["I'm Bill and I was double charged", "billing"],
+    ["My name is Avery Shipcheck and my package is late", "shipping delay"],
+  ]) {
+    assert(topicFromText(text) === topic && (collectSlots(text, {}, []).reason ?? "") === topic, `topic for "${text}" = "${topic}"`);
+  }
+  assert(withoutCallerName("My name is Avery Shipcheck and I don't have an account") === "My name is and I don't have an account", "intro name removed before keyword checks");
+  assert(matchIntent(greet, "my name is Chargois").intent !== "describe_issue", "name keywords don't drive describe_issue");
+  // Earlier protections still hold
+  for (const text of ["I was charged twice", "I'm late on my payment", "this is about my order", "I'm having a billing problem", "this is ridiculous, get me a supervisor", "It's been 10 days", "I'm new", "no", "I'm shipping a return"]) {
+    assert(extractCustomerName(text, { allowBare: false }) === null, `not a name: ${text}`);
+  }
+  assert(extractAccountId("It's been 10 days since the 28th") === null, "dates are not account numbers");
+  assert(extractAccountId("I paid $1,250 last week") !== "1250" && extractAccountId("I owe 250 dollars") === null, "amounts are not account numbers");
+  assert(topicFromText("can't log in") === "login access" && topicFromText("I was overcharged") === "billing" && topicFromText("tracking hasn't moved") === "shipping delay", "real issue phrases still tagged");
+}
+
+// 7b. Scripted call with an issue-word name: account created for the name, no fake issue
+{
+  const A = await quiet(() => call("customer_service", ["hi", "My name is Avery Shipcheck and I don't have an account", "I need help with a late shipment on my order"], withOpener));
+  assert(A[1].slots.customerName === "Avery Shipcheck" && /^4\d{3}$/.test(A[1].slots.accountId || "") && !A[1].slots.reason, `Avery Shipcheck → account ${A[1].slots.accountId}, no reason (got ${JSON.stringify(A[1].slots)})`);
+  assert(A[1].agentText.includes(A[1].slots.accountId) && A[2].nodeId === "diagnose" && A[2].slots.reason === "shipping delay", `then the real issue moves to diagnose: ${A[2].agentText.slice(0, 80)}`);
+}
+
+// 8. "late" follows its context (was: any "late" → shipping delay, so "I'm late on my
+// payment" became a shipping issue)
+{
+  for (const t of ["I'm late on my payment", "my payment is late", "I'm behind on my bill", "my rent payment is overdue", "my card payment is past due", "late on my installment", "there's a late fee on my account", "why was I charged a late fee?"]) {
+    assert(topicFromText(t) === "billing" && collectSlots(t, {}, []).reason === "billing", `payment-late → billing: ${t}`);
+  }
+  for (const t of ["my package is late", "late delivery", "my order is running late", "the shipment is late", "my parcel is overdue", "I need help with a late shipment on my order"]) {
+    assert(topicFromText(t) === "shipping delay", `package-late → shipping: ${t}`);
+  }
+  for (const t of ["it's late", "I'm running late", "sorry, it's late here"]) {
+    assert(topicFromText(t) === "" && !collectSlots(t, {}, []).reason, `bare late → no shipping assumption: ${t}`);
+  }
+  assert(lateContextTopic("nothing relevant here") === null && lateContextTopic("it's late") === "", "lateContextTopic: null without late words, '' without context");
+  assert(topicFromText("it's late and I was charged twice") === "billing", "bare late still lets other keywords decide");
+  for (const t of ["I'm late on my payment", "I'm behind on my bill", "I'm overdue on rent"]) {
+    assert(extractCustomerName(t, { allowBare: false }) === null, `never a name: ${t}`);
+  }
+  const acctPay = collectSlots("account 1001, I'm late on my payment", {}, []);
+  assert(acctPay.accountId === "1001" && !acctPay.amount, "account number is not taken as a payment amount");
+  // Collections: payment talk at disclosure moves along the payment path; mini-Miranda stays verbatim
+  const C = await quiet(() => call("collections", ["account 1001", "I'm late on my payment", "I'm behind on my bill"]));
+  assert(C[0].nodeId === "disclosure" && C[0].agentText.startsWith(miranda), "collections: mini-Miranda verbatim at disclosure");
+  assert(C[1].nodeId === "balance" && C[1].slots.reason === "billing" && C[1].slots.customerName === "Alex Rivera", `collections 'late on my payment' → balance (got ${C[1].nodeId}, ${JSON.stringify(C[1].slots)})`);
+  assert(C[2].nodeId === "arrange" && C[2].slots.customerName === "Alex Rivera", `collections 'behind on my bill' → arrange, name kept (got ${C[2].nodeId}, ${JSON.stringify(C[2].slots)})`);
+  const C2 = await quiet(() => call("collections", ["account 1001, I'm late on my payment"]));
+  assert(C2[0].nodeId === "disclosure" && C2[0].agentText.startsWith(miranda) && !C2[0].slots.amount, "collections opener with late payment: Miranda first, no fake amount");
+  // CS: payment-late is billing, package-late is shipping, bare late asks
+  const P1 = await quiet(() => call("customer_service", ["account 1001", "I'm late on my payment"], withOpener));
+  assert(P1[1].slots.reason === "billing" && !/shipping/i.test(P1[1].agentText), `CS 'late on my payment' → billing: ${P1[1].agentText.slice(0, 90)}`);
+  const P2 = await quiet(() => call("customer_service", ["account 1001", "my package is late"], withOpener));
+  assert(P2[1].slots.reason === "shipping delay", "CS 'my package is late' → shipping delay");
+  const P3 = await quiet(() => call("customer_service", ["account 1001", "it's late"], withOpener));
+  assert(!P3[1].slots.reason && !/shipping/i.test(P3[1].agentText) && /\?|tell me/i.test(P3[1].agentText), `CS bare 'it's late' → no reason, agent asks: ${P3[1].agentText.slice(0, 90)}`);
+  // Sales: bare late is not a need
+  assert(!collectSlots("it's getting late", {}, []).need, "sales: bare late sets no need");
 }
 
 // 4. Single LLM call per turn (mocked Groq; no network). The mock answers by the
