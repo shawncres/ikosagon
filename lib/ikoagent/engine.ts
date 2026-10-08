@@ -454,8 +454,13 @@ export function buildAgentTurn(opts: {
     const booked = speakNode.agentSayVariants?.scheduled?.length && opts.toolResults.some((t) => t.name === "scheduleCallback" && t.ok);
     if (booked) lines.push(...scriptLinesFor(speakNode, opts.slots, opts.toolResults, { history: opts.history }));
     else if (say.length) lines.push(interpolate(say[0], opts.slots, opts.toolResults));
+    // Real ids from this turn's case / callback are always spoken once on the way out
     const opened = opts.toolResults.find((t) => t.name === "createCase" && t.ok && t.data.caseId);
     if (opened && !lines.some((l) => l.includes(String(opened.data.caseId)))) lines.push(`Your case number is ${opened.data.caseId}.`);
+    const cb = opts.toolResults.find((t) => t.name === "scheduleCallback" && t.ok && t.data.callbackId);
+    if (cb && !lines.some((l) => l.includes(String(cb.data.callbackId)))) {
+      lines.push(`Callback ${cb.data.callbackId} is set for ${humanWindow(String(cb.data.window ?? ""))}.`);
+    }
     lines.push(`Call outcome: ${opts.exit.label}`);
     return lines.join("\n\n");
   }

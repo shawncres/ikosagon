@@ -312,6 +312,11 @@
       "agentSay": [
         "Of course — I’ll schedule a callback so you can decide on your timeline. Would morning or afternoon work better?"
       ],
+      "agentSayVariants": {
+        "scheduled": [
+          "You’re all set — callback {{callbackId}} is booked for {{callbackWindow}}, so you can decide on your own timeline."
+        ]
+      },
       "allowParaphrase": true,
       "listenFor": [
         {

@@ -577,6 +577,59 @@ try {
   const U5 = await createTurn("I'm Lee Park and I don't have an account", plan({ intent: "no_account", reply: "Welcome, Lee Park — account {{accountId}} is ready for you. What can I help you with today?" }), "my shipment is delayed");
   assert(U5[2].mode === "scripted" && !/all set/i.test(U5[2].agentText) && !/Account on file/i.test(U5[2].agentText) && /shipping delay/.test(U5[2].agentText), `U5 scripted next turn drops the repeat confirmation: ${U5[2].agentText}`);
   resetLlmCooldown();
+  // V. Exit-before-transition on CS policy: escalate / resolve route to their close nodes
+  mockReplies.set("I want a supervisor on this", plan({ intent: "escalate", reply: "I understand — I’m opening a case with a clear summary so you don’t have to repeat yourself, and moving this to the escalation queue. A specialist will pick it up from there, and the case keeps everything we covered. Your case number is {{caseId}}." }));
+  const V1 = await quiet(() => call("customer_service", ["account 1001", "my parcel is late", "it still hasn't shown up", "I want a supervisor on this"], withOpener));
+  const case1 = V1[3].toolResults?.find((t) => t.name === "createCase")?.data?.caseId;
+  assert(V1[2].nodeId === "policy" && V1[3].nodeId === "escalate_handoff" && V1[3].exit?.type === "escalate", `V1 policy → escalate_handoff with escalate exit (got ${V1[3].nodeId} ${JSON.stringify(V1[3].exit)})`);
+  assert(case1 && countOf(V1[3].agentText, case1) === 1 && V1[3].debug?.llm?.reply === "used", `V1 model draft speaks case ${case1} once (${JSON.stringify(V1[3].debug?.llm)})`);
+  assert(V1[3].agentText.startsWith(flow.nodes.escalate_handoff.agentSay[0]), `V1 escalation line stays verbatim: ${V1[3].agentText.slice(0, 60)}`);
+  assert(V1[3].toolResults.filter((t) => t.name === "createCase").length === 1, "V1 exactly one case opened");
+  mockReplies.set("let me talk to a manager", plan({ intent: "escalate", reply: "I hear you, and that's completely fair." }));
+  const V2 = await quiet(() => call("customer_service", ["account 2044", "billing issue on my card", "it was charged twice", "let me talk to a manager"], withOpener));
+  const case2 = V2[3].toolResults?.find((t) => t.name === "createCase")?.data?.caseId;
+  assert(V2[3].nodeId === "escalate_handoff" && V2[3].debug?.llm?.reply === "missing_id", `V2 draft without the case id → scripted (got ${V2[3].nodeId} ${JSON.stringify(V2[3].debug?.llm)})`);
+  assert(case2 && countOf(V2[3].agentText, case2) === 1 && V2[3].agentText.startsWith(flow.nodes.escalate_handoff.agentSay[0]) && /Call outcome: Escalated/.test(V2[3].agentText), `V2 scripted handoff: verbatim line + case once + outcome: ${V2[3].agentText}`);
+  mockReplies.set("supervisor please, now", "429");
+  resetLlmCooldown();
+  const V3 = await quiet(() => call("customer_service", ["account 3300", "my order is late again", "still nothing arrived", "supervisor please, now"], withOpener));
+  const case3 = V3[3].toolResults?.find((t) => t.name === "createCase")?.data?.caseId;
+  assert(V3[3].nodeId === "escalate_handoff" && V3[3].exit?.type === "escalate" && case3 && countOf(V3[3].agentText, case3) === 1, `V3 model failure (${V3[3].debug?.llm?.call}) → keyword escalate still reaches handoff with case once: ${V3[3].agentText.slice(-120)}`);
+  resetLlmCooldown();
+  // V4: resolve from policy → resolve_close wrap-up (disposition logged), call continues for "anything else?"
+  mockReplies.set("ok that answers it, thanks", plan({ intent: "resolve", reply: "Glad that helped! I've logged the disposition on account {{accountId}}. Is there anything else I can help with before we wrap up?" }));
+  const V4 = await quiet(() => call("customer_service", ["account 1001", "my parcel is late", "it still hasn't shown up", "ok that answers it, thanks", "no that's all"], withOpener));
+  assert(V4[3].nodeId === "resolve_close" && !V4[3].exit && V4[3].toolResults.some((t) => t.name === "logDisposition" && t.ok), `V4 policy → resolve_close wrap-up, disposition logged (got ${V4[3].nodeId} ${JSON.stringify(V4[3].exit)})`);
+  assert(/anything else/i.test(V4[3].agentText) && /1001/.test(V4[3].agentText), `V4 wrap-up line: ${V4[3].agentText}`);
+  assert(V4[4].exit?.type === "resolve" && /Call outcome: Call resolved/.test(V4[4].agentText), `V4 next turn closes with the resolved outcome: ${V4[4].agentText.slice(-60)}`);
+  mockReplies.set("we're good, thank you", "429");
+  resetLlmCooldown();
+  const V5 = await quiet(() => call("customer_service", ["account 2044", "billing issue on my card", "it was charged twice", "we're good, thank you"], withOpener));
+  assert(V5[3].nodeId === "resolve_close" && /anything else/i.test(V5[3].agentText), `V5 scripted resolve from policy → resolve_close (got ${V5[3].nodeId}): ${V5[3].agentText.slice(0, 80)}`);
+  resetLlmCooldown();
+  // V6: escalate from diagnose (case opened there) ends on the handoff now — no extra turn repeating it
+  mockReplies.set("this is ridiculous, get me a supervisor", plan({ intent: "escalate", reply: "I understand — I’m opening a case with a clear summary so you don’t have to repeat yourself, and moving this to the escalation queue. A specialist will pick it up from there, and the case keeps everything we covered. Case {{caseId}}." }));
+  const V6 = await quiet(() => call("customer_service", ["account 1001", "my parcel is late", "this is ridiculous, get me a supervisor"], withOpener));
+  const case6 = V6[2].toolResults?.find((t) => t.name === "createCase")?.data?.caseId;
+  assert(V6[1].nodeId === "diagnose" && V6[2].nodeId === "escalate_handoff" && V6[2].exit?.type === "escalate" && case6 && countOf(V6[2].agentText, case6) === 1, `V6 diagnose → handoff ends with case once (got ${V6[1].nodeId}→${V6[2].nodeId} ${JSON.stringify(V6[2].exit)}): ${V6[2].agentText.slice(-80)}`);
+
+  // W. Collections: hardship escalation opens + speaks a case; mini-Miranda untouched
+  mockReplies.set("yes that's me", plan({ intent: "affirm", reply: "Thanks for confirming." }));
+  mockReplies.set("I lost my job and can't pay", plan({ intent: "hardship", reply: "I'm sorry you're dealing with that." }));
+  mockReplies.set("okay, thank you", plan({ intent: "affirm", reply: "Thank you — a specialist will review your options." }));
+  const W = await quiet(() => call("collections", ["account 1001", "yes that's me", "I lost my job and can't pay", "okay, thank you"]));
+  assert(W[0].agentText.startsWith(miranda), "W1 mini-Miranda verbatim lead");
+  const wCase = W.at(-1).toolResults?.find((t) => t.name === "createCase")?.data?.caseId;
+  assert(W.at(-1).exit?.type === "escalate" && wCase && countOf(W.at(-1).agentText, wCase) === 1, `W hardship escalation opens + speaks case once (path ${W.map((t) => t.nodeId).join("→")}, ${JSON.stringify(W.at(-1).debug?.llm)}): ${W.at(-1).agentText.slice(-120)}`);
+  assert(W.at(-1).toolResults.filter((t) => t.name === "createCase").length === 1, "W exactly one hardship case");
+
+  // X. Sales: callback booked from match_offer lands on the callback close and ends with the id once
+  mockReplies.set("I'm looking for a team plan", plan({ intent: "discover_need", slots: { need: "team plan" }, reply: "Got it — a team plan. What matters most to you?" }));
+  mockReplies.set("what do you offer?", plan({ intent: "ask_offer", reply: "Here's what we've got." }));
+  mockReplies.set("can you call me back tomorrow morning", plan({ intent: "request_callback", slots: { callbackWindow: "tomorrow morning" }, reply: "You're all set — callback {{callbackId}} is booked for tomorrow morning." }));
+  const X = await quiet(() => call("sales", ["I'm looking for a team plan", "what do you offer?", "can you call me back tomorrow morning"]));
+  const xCb = X.at(-1).toolResults?.find((t) => t.name === "scheduleCallback")?.data?.callbackId;
+  assert(X.at(-1).nodeId === "callback" && X.at(-1).exit?.type === "callback" && xCb && countOf(X.at(-1).agentText, xCb) === 1, `X sales callback close with id once (path ${X.map((t) => t.nodeId).join("→")}): ${X.at(-1).agentText}`);
 } finally {
   globalThis.fetch = realFetch;
   delete process.env.GROQ_API_KEY;
