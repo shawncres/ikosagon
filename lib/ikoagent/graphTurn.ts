@@ -257,6 +257,12 @@ function applySlotsDry(slots: SlotMap, results: ToolResult[]): SlotMap {
   return next;
 }
 
+/** The tool whose real id an escalation / callback outcome must carry */
+const BACKING_TOOL: Record<string, { tool: string; intent: string }> = {
+  escalate: { tool: "createCase", intent: "create_ticket" },
+  callback: { tool: "scheduleCallback", intent: "request_callback" },
+};
+
 /** Tools + transitions + hold + chain. The graph (not the model) owns the journey. */
 export async function runGraph(opts: {
   flow: Flow;
@@ -318,6 +324,46 @@ export async function runGraph(opts: {
   }
   let nextNode = nextNodeId ? getCurrentNode(flow, nextNodeId) : null;
 
+  // Exit-before-transition: applyTransition's exit shortcut (escalate / resolve /
+  // request_callback) fires before this node's own edge for that intent. When the node
+  // routes the intent to a close node that owns the same exit (CS policy → escalate_handoff,
+  // resolve_close, callback_close), go there instead of ending the call on this node.
+  if (exit && intent) {
+    const edge = node.transitions.find((t) => t.on === intent && !t.to.startsWith("exit:"));
+    const target = edge ? getCurrentNode(flow, edge.to) : null;
+    const endType = exit.type;
+    if (target && target.id !== node.id && target.exits?.some((e) => e.type === endType)) {
+      exit = null;
+      nextNode = target;
+    }
+  }
+
+  // Ending on an escalation / callback outcome without its case / booking → do it now
+  // (e.g. "*" on callback_close or collections hardship), so the real id is spoken once.
+  if (exit) {
+    const backing = BACKING_TOOL[exit.type];
+    if (backing && node.toolsAllowed?.includes(backing.tool) && !toolResults.some((t) => t.name === backing.tool)) {
+      const done = await toolsAt(flow, node, backing.intent, slots, [], mode);
+      toolResults = [...toolResults, ...done.filter((t) => t.name === backing.tool)];
+    }
+  }
+
+  // Landing on a close node whose only move is "* → exit" (escalate_handoff, callback_close,
+  // sales callback) once its case / booking already succeeded this turn → end there now with
+  // its line + the real id, instead of an extra turn that repeats the handoff line.
+  // No case / booking yet → just land; the close node does it on the next turn (guard above).
+  let closeNode: FlowNode | null = null;
+  if (!exit && nextNode && nextNode.id !== node.id) {
+    const only = nextNode.transitions.length > 0 && nextNode.transitions.every((t) => t.on === "*" && t.to.startsWith("exit:"));
+    const endType = only ? nextNode.transitions[0].to.slice(5) : "";
+    const backing = BACKING_TOOL[endType];
+    const closeExit = nextNode.exits?.find((e) => e.type === endType);
+    if (backing && closeExit && toolResults.some((t) => t.name === backing.tool && t.ok)) {
+      closeNode = nextNode;
+      exit = closeExit;
+    }
+  }
+
   // Entering verify with name + "no account" carried from greet → create on entry
   if (!exit && nextNode && nextNode.id !== node.id) {
     const entry = await ensureAccountAt(nextNode, slots, mode);
@@ -347,6 +393,9 @@ export async function runGraph(opts: {
     }
   }
 
+  if (closeNode) {
+    return { slots, toolResults, accountNotFound, nextNode: closeNode, exit, speakNode: closeNode, transitioned: true, limited: false };
+  }
   return {
     slots,
     toolResults,

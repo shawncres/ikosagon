@@ -7,7 +7,7 @@ import type {
   ToolResult,
 } from "./types";
 import { runTool, toolsForIntent } from "./tools";
-import { extractCustomerName } from "./crm/validate";
+import { extractCustomerName, sanitizeAccountId } from "./crm/validate";
 
 const TOKEN = /[a-z0-9]{2,}/g;
 
@@ -302,14 +302,21 @@ export function scriptLinesFor(
   node: FlowNode,
   slots: SlotMap,
   tools: ToolResult[] = [],
-  ctx: { transitioned?: boolean; accountNotFound?: boolean; acknowledged?: boolean } = {},
+  ctx: {
+    transitioned?: boolean;
+    accountNotFound?: boolean;
+    acknowledged?: boolean;
+    /** Prior turns: an account number already confirmed is not re-confirmed */
+    history?: HistoryTurn[];
+  } = {},
 ): string[] {
   let lines = node.agentSay ?? [];
   const v = node.allowParaphrase === false ? undefined : node.agentSayVariants;
   if (v) {
     const hasReason = Boolean(slots.reason && !isWeakTopic(slots.reason));
     const newCustomer = slots.needsAccount === "true";
-    if (ctx.accountNotFound && v.accountNotFound?.length) lines = v.accountNotFound;
+    if (v.scheduled?.length && tools.some((t) => t.name === "scheduleCallback" && t.ok)) lines = v.scheduled;
+    else if (ctx.accountNotFound && v.accountNotFound?.length) lines = v.accountNotFound;
     // Account just created / found but no issue yet → confirm and ask how to help
     else if (slots.accountId && !hasReason && slots.accountCreated === "true" && v.accountCreated?.length) {
       lines = v.accountCreated;
@@ -325,7 +332,37 @@ export function scriptLinesFor(
   if (ctx.acknowledged && node.allowParaphrase !== false && out.length) {
     out = [stripRepeatAck(out[0]), ...out.slice(1)].filter(Boolean);
   }
+  if (node.allowParaphrase !== false && accountAlreadyConfirmed(ctx.history ?? [], slots.accountId)) {
+    out = out.map((l) => dropRepeatAccountConfirm(l, slots.accountId!)).filter(Boolean);
+  }
   return out;
+}
+
+/** An earlier agent line already spoke this real account number */
+export function accountAlreadyConfirmed(history: HistoryTurn[], accountId: string | undefined): boolean {
+  const id = sanitizeAccountId(accountId || "");
+  if (!id) return false;
+  const re = new RegExp(`\\b${id}\\b`);
+  return history.some((t) => t.role === "agent" && re.test(t.content));
+}
+
+/**
+ * Drop a second "account 4004 is all set" once the number was already confirmed
+ * ("Thanks — account 4004 is all set. About the …" → "Thanks. About the …").
+ */
+export function dropRepeatAccountConfirm(text: string, accountId: string): string {
+  const id = accountId.replace(/\D/g, "");
+  if (!id) return text;
+  const clause = new RegExp(
+    `\\s*[—–-]?\\s*(?:your\\s+)?account(?:\\s+number)?\\s*#?\\s*${id}\\s+(?:is|'s)\\s+(?:all set|verified|confirmed|ready|good to go|set up|on file)(?:\\s+for you)?`,
+    "gi",
+  );
+  return text
+    .replace(clause, "")
+    .replace(/,\s*([.!?])/g, "$1")
+    .replace(/^\s*[.!?]\s*/, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 export function slotsFilled(slots: SlotMap, required?: string[]): boolean {
@@ -412,8 +449,18 @@ export function buildAgentTurn(opts: {
   const say = speakNode.agentSay ?? [];
 
   if (opts.exit) {
-    // Closing line from current node if any, then exit label framing
-    if (say.length) lines.push(interpolate(say[0], opts.slots, opts.toolResults));
+    // Closing line from current node if any (a booked callback speaks its real id),
+    // then exit label framing
+    const booked = speakNode.agentSayVariants?.scheduled?.length && opts.toolResults.some((t) => t.name === "scheduleCallback" && t.ok);
+    if (booked) lines.push(...scriptLinesFor(speakNode, opts.slots, opts.toolResults, { history: opts.history }));
+    else if (say.length) lines.push(interpolate(say[0], opts.slots, opts.toolResults));
+    // Real ids from this turn's case / callback are always spoken once on the way out
+    const opened = opts.toolResults.find((t) => t.name === "createCase" && t.ok && t.data.caseId);
+    if (opened && !lines.some((l) => l.includes(String(opened.data.caseId)))) lines.push(`Your case number is ${opened.data.caseId}.`);
+    const cb = opts.toolResults.find((t) => t.name === "scheduleCallback" && t.ok && t.data.callbackId);
+    if (cb && !lines.some((l) => l.includes(String(cb.data.callbackId)))) {
+      lines.push(`Callback ${cb.data.callbackId} is set for ${humanWindow(String(cb.data.window ?? ""))}.`);
+    }
     lines.push(`Call outcome: ${opts.exit.label}`);
     return lines.join("\n\n");
   }
@@ -426,6 +473,7 @@ export function buildAgentTurn(opts: {
         transitioned: true,
         accountNotFound: opts.accountNotFound,
         acknowledged: opts.acknowledged,
+        history: opts.history,
       }),
     );
   } else {
@@ -438,6 +486,7 @@ export function buildAgentTurn(opts: {
         transitioned: false,
         accountNotFound: opts.accountNotFound,
         acknowledged: opts.acknowledged,
+        history: opts.history,
       });
       lines.push(...(scripted.length ? scripted : ["Could you share a bit more so we can continue?"]));
     } else {
@@ -469,11 +518,11 @@ export function buildAgentTurn(opts: {
         `Plan option: ${tr.data.months} months at ${tr.data.currency ?? "USD"} ${tr.data.installment}/mo.`,
       );
     }
-    if (tr.name === "createCase" && tr.data.caseId) {
+    if (tr.name === "createCase" && tr.data.caseId && !lines.some((l) => l.includes(String(tr.data.caseId)))) {
       lines.push(`Opened case ${tr.data.caseId}.`);
     }
-    if (tr.name === "scheduleCallback" && tr.data.callbackId) {
-      lines.push(`Callback ${tr.data.callbackId} set for ${tr.data.window}.`);
+    if (tr.name === "scheduleCallback" && tr.data.callbackId && !lines.some((l) => l.includes(String(tr.data.callbackId)))) {
+      lines.push(`Callback ${tr.data.callbackId} set for ${humanWindow(String(tr.data.window ?? ""))}.`);
     }
     if (
       tr.name === "createCustomer" &&
@@ -489,7 +538,9 @@ export function buildAgentTurn(opts: {
       tr.name === "lookupAccount" &&
       tr.data.verified &&
       tr.data.name &&
-      !lines.some((l) => l.includes(String(tr.data.accountId ?? "")) || l.includes(String(tr.data.name)))
+      !lines.some((l) => l.includes(String(tr.data.accountId ?? "")) || l.includes(String(tr.data.name))) &&
+      !accountAlreadyConfirmed(opts.history ?? [], String(tr.data.accountId ?? "")) &&
+      !(opts.history ?? []).some((h) => h.role === "agent" && h.content.includes(String(tr.data.name)))
     ) {
       lines.push(`Account on file for ${tr.data.name}.`);
     }
@@ -504,11 +555,29 @@ export function buildAgentTurn(opts: {
     .join("\n\n");
 }
 
+/** "next_business_day_afternoon" → "next business day afternoon" */
+export function humanWindow(window: string): string {
+  return window.replace(/_/g, " ").trim();
+}
+
+const PENDING_MARK = "\u0000pending:";
+
 export function interpolate(template: string, slots: SlotMap, tools: ToolResult[] = []): string {
   let out = template;
   const safe: SlotMap = scrubWeakSlots(slots);
-  for (const [key, value] of Object.entries(safe)) {
-    out = out.replaceAll(`{{${key}}}`, value);
+  // Ids the tools produced this turn (case/callback) — real values in the live pass,
+  // {{placeholders}} in the dry pass
+  const callback = tools.find((t) => t.name === "scheduleCallback" && t.ok);
+  const created = tools.find((t) => t.name === "createCase" && t.ok);
+  const values: Record<string, string> = { ...safe };
+  if (callback?.data.callbackId != null) values.callbackId = String(callback.data.callbackId);
+  if (typeof callback?.data.window === "string") values.callbackWindow = humanWindow(callback.data.window);
+  if (created?.data.caseId != null) values.caseId = String(created.data.caseId);
+  for (const [key, value] of Object.entries(values)) {
+    // A dry-pass value that is itself the placeholder ({{accountId}} before the live
+    // create) must survive stripPlaceholders so the model sees where the id goes
+    const v = value === `{{${key}}}` ? `${PENDING_MARK}${key}\u0000` : value;
+    out = out.replaceAll(`{{${key}}}`, v);
   }
   const balance = tools.find((t) => t.name === "checkBalance");
   if (balance && typeof balance.data.balance === "number") {
@@ -520,7 +589,11 @@ export function interpolate(template: string, slots: SlotMap, tools: ToolResult[
     out = out.replaceAll("{{planMonths}}", String(plan.data.months ?? ""));
   }
   // stripPlaceholders removes any {{reason}} left after scrubbing weak topics
-  return stripPlaceholders(out);
+  return restorePending(stripPlaceholders(out));
+}
+
+function restorePending(text: string): string {
+  return text.replace(/\u0000pending:([a-zA-Z0-9_]+)\u0000/g, "{{$1}}");
 }
 
 /** Speak one authored caller-safe policy line (never raw corpus guidance). */
@@ -622,7 +695,7 @@ export function greetingReply(node: FlowNode, history: HistoryTurn[]): string {
 
 export function stripPlaceholders(text: string): string {
   return text
-    .replace(/\{\{[a-zA-Z0-9_]+\}\}/g, "")
+    .replace(/\{\{\s*[a-zA-Z0-9_]+\s*\}\}/g, "")
     // Collapse awkward gaps left by empty reason/need ("help with .", "about the ,")
     .replace(/\b(with|about the|for|regarding)\s*([.,;:]|$)/gi, "$2")
     .replace(/\s+([.,;:!?])/g, "$1")
@@ -636,7 +709,7 @@ export function interpolateLines(
   slots: SlotMap,
   tools: ToolResult[] = [],
 ): string[] {
-  return lines.map((line) => stripPlaceholders(interpolate(line, slots, tools))).filter(Boolean);
+  return lines.map((line) => interpolate(line, slots, tools)).filter(Boolean);
 }
 
 export function openingAgentText(flow: Flow): string {
@@ -779,4 +852,122 @@ export async function processTurn(opts: {
       { role: "agent", content: agentText },
     ],
   };
+}
+
+// ---------------------------------------------------------------------------
+// Unsupported-commitment guard
+// The demo sends no emails/texts, issues no tracking numbers, and processes no
+// refunds. Any promise must be backed by a caller-safe policy line, an authored
+// script line, or an actual tool result from this turn.
+// ---------------------------------------------------------------------------
+
+const NUMBER_WORDS: Record<string, string> = {
+  one: "1", two: "2", three: "3", four: "4", five: "5", six: "6", seven: "7",
+  eight: "8", nine: "9", ten: "10", twelve: "12", fourteen: "14", fifteen: "15",
+  thirty: "30", "twenty-four": "24", "forty-eight": "48",
+};
+
+function numbersIn(text: string): string[] {
+  const t = text.toLowerCase();
+  const digits = t.match(/\d+/g) ?? [];
+  const words = (t.match(/[a-z-]+/g) ?? []).map((w) => NUMBER_WORDS[w]).filter(Boolean);
+  return [...digits, ...words];
+}
+
+/** Commitments this demo cannot back unless a fact says so */
+const CHANNEL_PROMISE =
+  /\b(?:you(?:'ll| will)|we(?:'ll| will)|i(?:'ll| will)|it(?:'ll| will)|(?:is|are|has been|have been) (?:being )?sent)\b[^.!?]{0,80}\b(e-?mails?|texts?|text messages?|sms|letters?|notifications?|confirmations?)\b|\bconfirmation (?:e-?mail|text|sms|message|number|code)\b|\b(?:e-?mail|text|sms)(?:ed)? (?:you|a confirmation)\b/i;
+const TRACKING_PROMISE = /\b(?:new|updated|replacement|fresh) tracking\b|\btracking (?:number|link|code|id)\b/i;
+const DONE_CLAIM =
+  /\b(?:refund|replacement|credit|reversal|exchange|return label|label|shipment|order)\b[^.!?]{0,40}\b(?:has been|have been|is being|was|is now|got)\s+(?:processed|issued|submitted|sent|shipped|approved|initiated|refunded|credited|reversed|dispatched)\b|\bi(?:'ve| have)\s+(?:already\s+)?(?:processed|issued|submitted|sent|shipped|approved|initiated|refunded|credited|reversed|dispatched|ordered)\b/i;
+/** "Let me start that process" — an action no tool in this demo performs */
+const ACTION_PROMISE =
+  /\b(?:let me|i(?:'ll| will)|i'm going to|i am going to|we(?:'ll| will))\s+(?:go ahead and\s+|get\s+)?(?:start(?:ed)?|process|issue|initiate|submit|send|ship|arrange|refund|credit|reverse|expedite|file|put (?:in|through))\b/i;
+const RECEIVE_PROMISE = /\byou(?:'ll| will| should)\s+(?:receive|get|see|be getting|hear back|be contacted)\b/i;
+const TIMELINE =
+  /\b(?:within|in|over|by)\s+(?:the\s+next\s+)?(?:\d+|one|two|three|four|five|seven|ten|twenty-four|forty-eight|a few|a couple of)\s*(?:(?:-|to)\s*\d+\s*)?(?:minutes?|hours?|business days?|days?|weeks?)\b|\b(?:shortly|right away|immediately|by (?:tomorrow|tonight|end of (?:the )?(?:day|week)|monday|tuesday|wednesday|thursday|friday))\b/i;
+
+export type PromiseBacking = {
+  toolResults: ToolResult[];
+  /** Caller-safe policy lines + authored script lines for this turn */
+  facts: string[];
+};
+
+function factText(backing: PromiseBacking): string {
+  const toolBits = backing.toolResults
+    .filter((t) => t.ok)
+    .map((t) => `${t.name} ${Object.values(t.data).filter((v) => typeof v === "string" || typeof v === "number").join(" ")}`);
+  return [...backing.facts, ...toolBits].join(" \n ").toLowerCase();
+}
+
+/** Why a sentence is an unsupported commitment, or null if it is fine */
+export function unsupportedPromise(sentence: string, backing: PromiseBacking): string | null {
+  const facts = factText(backing);
+  const okTools = new Set(backing.toolResults.filter((t) => t.ok).map((t) => t.name));
+  const s = sentence.toLowerCase();
+
+  const channel = sentence.match(CHANNEL_PROMISE);
+  if (channel) {
+    const word = (channel[1] ?? channel[0]).toLowerCase().replace(/^e-?mail.*/, "email").replace(/s$/, "");
+    const stem = word.startsWith("email") ? "email" : word.split(" ")[0];
+    // Only backed when a fact itself describes that channel being used for the caller
+    if (!new RegExp(`\\b(?:by|via|send|sent|receive)\\b[^.]{0,30}\\b${stem}`).test(facts)) return `channel:${stem}`;
+  }
+  if (TRACKING_PROMISE.test(sentence) && !/\btracking (?:number|link|code|id)\b/.test(facts)) return "tracking";
+  if (DONE_CLAIM.test(sentence)) {
+    // Only tool results can make something "done"; this demo has no refund/shipping tool
+    const caseDone = /\b(?:case|ticket)\b/.test(s) && okTools.has("createCase");
+    const callbackDone = /\bcall ?back\b/.test(s) && okTools.has("scheduleCallback");
+    const accountDone = /\baccount\b/.test(s) && (okTools.has("createCustomer") || okTools.has("lookupAccount"));
+    if (!caseDone && !callbackDone && !accountDone) return "done-claim";
+  }
+  if (ACTION_PROMISE.test(sentence)) {
+    const caseAction = /\b(?:case|ticket)\b/.test(s) && okTools.has("createCase");
+    const callbackAction = /\bcall ?back\b/.test(s) && okTools.has("scheduleCallback");
+    if (!caseAction && !callbackAction) return "action";
+  }
+  const timeline = TIMELINE.test(sentence);
+  if (timeline) {
+    const nums = numbersIn(sentence);
+    const backedNums = nums.length > 0 && nums.every((n) => new RegExp(`\\b${n}\\b`).test(facts) || facts.includes(Object.entries(NUMBER_WORDS).find(([, d]) => d === n)?.[0] ?? "\u0000"));
+    const vague = /\b(shortly|right away|immediately|by (tomorrow|tonight|end of|monday|tuesday|wednesday|thursday|friday))\b/i.test(sentence);
+    const callbackWindow = okTools.has("scheduleCallback") && /\bcall ?back\b/.test(s);
+    if (!callbackWindow && (vague || !backedNums)) return "timeline";
+  }
+  if (RECEIVE_PROMISE.test(sentence)) {
+    const backedByTool =
+      (/\bcall ?back|\bcall\b/.test(s) && okTools.has("scheduleCallback")) ||
+      (/\bcase\b|\bspecialist\b/.test(s) && okTools.has("createCase"));
+    const keywords = (s.match(/\b(refund|replacement|credit|exchange|label|trial|support|seats?|analytics)\b/g) ?? []);
+    const backedByFact = keywords.length > 0 && keywords.every((k) => facts.includes(k));
+    if (!backedByTool && !backedByFact) return "receive";
+  }
+  return null;
+}
+
+/**
+ * Remove sentences that promise things no policy line, script line, or tool result
+ * backs (confirmation emails/texts, new tracking numbers, "refund processed",
+ * invented timelines). Returns the kept text and how many sentences were dropped.
+ */
+export function stripUnsupportedPromises(
+  text: string,
+  backing: PromiseBacking,
+): { text: string; removed: string[] } {
+  const removed: string[] = [];
+  const paragraphs = text.split(/\n{2,}/).map((para) =>
+    para
+      .replace(/\s+/g, " ")
+      .trim()
+      .split(/(?<=[.!?])\s+/)
+      .filter((sentence) => {
+        if (/^call outcome:/i.test(sentence)) return true;
+        const why = unsupportedPromise(sentence, backing);
+        if (why) removed.push(`${why}: ${sentence}`);
+        return !why;
+      })
+      .join(" ")
+      .trim(),
+  );
+  return { text: paragraphs.filter(Boolean).join("\n\n").trim(), removed };
 }

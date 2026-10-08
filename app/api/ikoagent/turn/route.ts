@@ -403,7 +403,8 @@ export async function POST(request: Request) {
     mode = plan ? "llm" : "scripted";
   }
 
-  const finalNodeId = exit ? node.id : nextNode?.id ?? node.id;
+  // An exit normally ends on the current node; a callback exit lands on its close node
+  const finalNodeId = exit ? speakNode.id : nextNode?.id ?? node.id;
   const finalLabel = (getCurrentNode(flow, finalNodeId) ?? speakNode).label;
 
   logDemoTurn({

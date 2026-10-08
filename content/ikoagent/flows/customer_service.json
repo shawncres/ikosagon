@@ -438,7 +438,7 @@
       "id": "escalate_handoff",
       "label": "Escalate",
       "agentSay": [
-        "I understand — I’m opening a case with a clear summary so you don’t have to repeat yourself, and moving this to the escalation queue. A specialist will take the next step within the promised window."
+        "I understand — I’m opening a case with a clear summary so you don’t have to repeat yourself, and moving this to the escalation queue. A specialist will pick it up from there, and the case keeps everything we covered."
       ],
       "allowParaphrase": false,
       "listenFor": [
@@ -473,6 +473,11 @@
       "agentSay": [
         "Absolutely — I'll schedule a callback on this account and attach notes so we pick up where we left off. Would morning, afternoon, or tomorrow work better?"
       ],
+      "agentSayVariants": {
+        "scheduled": [
+          "You’re all set — callback {{callbackId}} is booked for {{callbackWindow}}, and I’ve attached notes so we pick up right where we left off."
+        ]
+      },
       "allowParaphrase": true,
       "listenFor": [
         {
