@@ -17,11 +17,12 @@ export type DemoTurnLog = {
   exit?: { type: string; label: string } | null;
   kind: "start" | "turn";
   /**
-   * LLM outcome per step: "ok" | "skipped" | "off" | failure code
-   * ("rate_limited", "cooldown", "timeout", "http_401", "parse", "empty", "repeat").
+   * Single LLM request per turn. call: "ok" | "skipped" | "off" | failure code
+   * ("rate_limited", "cooldown", "timeout", "http_401", "parse", "empty").
+   * reply: "used" | "mismatch" | "repeat" | "unfilled" | "missing" | "skipped".
    * Explains why a turn fell back to scripts. Never contains secrets.
    */
-  llm?: { classify?: string; speak?: string };
+  llm?: { call?: string; reply?: string };
 };
 
 export type DemoSessionTranscript = {

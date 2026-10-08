@@ -18,7 +18,7 @@ Years of contact-center instinct live in the graph: stages, must-say lines, esca
 ## For employers
 
 - **Authored flows** as the artifact: versioned JSON skins for customer service, collections, and sales on one shared runtime.
-- **NLP-in-node**: Groq classifies intents, fills slots, and speaks naturally for the current/next node; compliance nodes (`allowParaphrase: false`) lead with the must-say line verbatim. Keyword fallback when offline.
+- **NLP-in-node**: one Groq request per turn classifies the intent, fills slots, and drafts a natural reply for the node the graph predicts. The graph then decides for real; if the call lands somewhere else, the scripted line plays instead of a second request. Compliance nodes (`allowParaphrase: false`) lead with the must-say line verbatim. Keyword fallback when offline.
 - **RAG** over a **substantial** policy/script corpus per vertical (returns, shipping, billing, hardship, quiet hours, ethical sales, and more); citations surface when the node asks for them.
 - **Mock CRM tools**: lookup account, balance, payment plan, case, callback, disposition — deterministic demo accounts (`1001`, `2044`, `3300`).
 - **Measured cases forthcoming**: an expanded black-box set lives in `content/ikoagent/qa-cases.md` (full runner still in progress).
