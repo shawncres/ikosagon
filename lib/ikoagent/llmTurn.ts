@@ -36,7 +36,7 @@ import type {
  *        "promise" (only unsupported promises left → scripted) |
  *        "missing_id" (new account/case/callback id not spoken → scripted line with it) |
  *        "account" (draft names an account number that isn't this caller's → scripted) |
- *        "repeat" | "disclosure" | "unfilled" | "missing" | "skipped".
+ *        "repeat" | "disclosure" | "closing" | "clarify" | "unfilled" | "missing" | "skipped".
  */
 export type LlmStepStatus = { call?: string; reply?: string };
 
@@ -367,6 +367,12 @@ export function finalizeDraft(opts: {
     if (opts.status) opts.status.reply = "disclosure";
     return null;
   }
+  // The call goes on here (unverified identity / sales greet): no goodbye, refusal or
+  // dead end — the caller must be asked something (live: "I'm unable to assist further")
+  if (opts.speakNode.askOnStay && !opts.exit && (CLOSING_TERMS.test(text) || !text.includes("?"))) {
+    if (opts.status) opts.status.reply = "closing";
+    return null;
+  }
   // A new account / case / callback id from a real tool this turn must be spoken;
   // otherwise use the scripted line, which always includes it
   const newIds = newToolIds(opts.toolResults);
@@ -389,6 +395,10 @@ export function finalizeDraft(opts: {
   if (opts.status) opts.status.reply = promised.removed.length ? "trimmed" : "used";
   return text.trim();
 }
+
+/** Close / refusal language that must not end a turn where the call continues */
+export const CLOSING_TERMS =
+  /\b(unable to (?:assist|help)|can(?:no|')t (?:assist|help) (?:you )?(?:further|any further)|thank you for your time|thanks for your time|good ?bye|have a (?:nice|good|great) day|end (?:this|the) call|nothing (?:more|further) I can do)\b/i;
 
 /** Words that would tell an unverified third party what the call is about */
 export const DISCLOSURE_TERMS =

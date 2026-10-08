@@ -734,7 +734,7 @@ try {
     const Y1 = await quiet(() => call("collections", ["I don't have an account"], seed));
     assert(!Y1[0].exit && Y1[0].nodeId === "identity" && Y1[0].debug.matchedIntent === "no_account", `Y1 exact transcript: no hang-up, read as no_account (got ${Y1[0].debug.matchedIntent} ${JSON.stringify(Y1[0].exit)})`);
     assert(!repeatsEarlierAgentLine(Y1[0].agentText, seed) && /existing demo accounts/i.test(Y1[0].agentText) && /account holder/i.test(Y1[0].agentText), `Y2 clarification, not the opener (llm ${JSON.stringify(Y1[0].debug.llm)}): ${Y1[0].agentText.slice(0, 120)}`);
-    assert(Y1[0].debug.llm?.reply === "repeat" && Y1[0].slots.needsAccount !== "true", `Y3 model's opener echo rejected as repeat; no 'new customer' slot in collections (${JSON.stringify(Y1[0].debug.llm)})`);
+    assert(Y1[0].debug.llm?.reply === "clarify" && Y1[0].slots.needsAccount !== "true", `Y3 model's opener echo not used (clarify turns are always scripted); no 'new customer' slot in collections (${JSON.stringify(Y1[0].debug.llm)})`);
     assert(!DISCLOSURE_TERMS.test(Y1[0].agentText), "Y4 clarification discloses nothing about a debt");
     mockReplies.set("account 1001", plan({ intent: "provide_account", slots: { accountId: "1001" }, reply: "Thanks." }));
     const Y5 = await quiet(() => call("collections", ["I don't have an account", "account 1001"], seed));
@@ -748,7 +748,10 @@ try {
     assert(Object.keys(Y6[1].exit).sort().join(",") === "label,type", "Y8b response exit carries only type + label (no close script / disposition code)");
     mockReplies.set("what is this about", plan({ intent: "ask_purpose", reply: "We're calling about the overdue balance on your account. Can you confirm the account number?" }));
     const Y9 = await quiet(() => call("collections", ["what is this about"], seed));
-    assert(!Y9[0].exit && Y9[0].nodeId === "identity" && Y9[0].debug.llm?.reply === "disclosure" && !DISCLOSURE_TERMS.test(Y9[0].agentText), `Y9 'what is this about': model's debt mention rejected, no disclosure (${JSON.stringify(Y9[0].debug.llm)}): ${Y9[0].agentText.slice(0, 100)}`);
+    assert(!Y9[0].exit && Y9[0].nodeId === "identity" && Y9[0].debug.llm?.reply === "clarify" && !DISCLOSURE_TERMS.test(Y9[0].agentText), `Y9 'what is this about': model's debt mention not used, scripted clarification, no disclosure (${JSON.stringify(Y9[0].debug.llm)}): ${Y9[0].agentText.slice(0, 100)}`);
+    mockReplies.set("it's me", plan({ intent: "verify_identity", reply: "Great — I'm calling about the overdue balance. What's the account number?" }));
+    const Y9b = await quiet(() => call("collections", ["it's me"], seed));
+    assert(Y9b[0].nodeId === "identity" && Y9b[0].debug.llm?.reply === "disclosure" && !DISCLOSURE_TERMS.test(Y9b[0].agentText), `Y9b non-clarify identity stay: debt mention rejected (${JSON.stringify(Y9b[0].debug.llm)})`);
     mockReplies.set("I'm not sure", plan({ intent: "unsure", reply: "No worries — are you the account holder? The account number is all I need." }));
     const Y10 = await quiet(() => call("collections", ["what is this about", "I'm not sure", "not me"], seed));
     assert(!Y10[1].exit && Y10[2].exit?.type === "refuse" && noRepeat(Y10), `Y10 ask → unsure keeps the call, then 'not me' closes (${Y10.map((t) => t.nodeId + (t.exit ? "!" : "")).join("→")})`);
@@ -761,6 +764,32 @@ try {
     mockReplies.set("I don't have an account", plan({ intent: null, reply: SALES_OPENER }));
     const Y12 = await quiet(() => call("sales", ["I don't have an account"], [{ role: "agent", content: SALES_OPENER }]));
     assert(!Y12[0].exit && !repeatsEarlierAgentLine(Y12[0].agentText, [{ role: "agent", content: SALES_OPENER }]) && /don't need an account/i.test(Y12[0].agentText), `Y12 sales no-account: no opener repeat: ${Y12[0].agentText.slice(0, 100)}`);
+
+    // Y13+. Live Oct 8 1:3x PM: the model's free reply on the clarify turn sounded like a hang-up
+    const LIVE_BAD = "I understand. Since you don't have an account with us, I'm unable to assist further. Thank you for your time.";
+    const clarifyFull = collFlow.nodes.identity.agentSayVariants.clarify[0];
+    const clarifyShort = collFlow.nodes.identity.agentSayVariants.clarifyAgain[0];
+    mockReplies.set("I don't have an account", plan({ intent: "no_account", reply: LIVE_BAD }));
+    mockReplies.set("I'm not sure", plan({ intent: "unsure", reply: LIVE_BAD }));
+    const Y13 = await quiet(() => call("collections", ["I don't have an account", "I'm not sure", "wrong number"], seed));
+    assert(!Y13[0].exit && Y13[0].agentText === clarifyFull && Y13[0].debug.llm?.reply === "clarify", `Y13 live bad reply mocked → scripted clarification spoken (${JSON.stringify(Y13[0].debug.llm)}): ${Y13[0].agentText.slice(0, 90)}`);
+    assert(!/unable to assist|thank you for your time/i.test(Y13[0].agentText) && /account holder\?/i.test(Y13[0].agentText) && /1001, 2044, or 3300/.test(Y13[0].agentText) && !DISCLOSURE_TERMS.test(Y13[0].agentText), "Y14 clarification asks if account holder, offers demo accounts, no debt words, no close language");
+    assert(!Y13[1].exit && Y13[1].agentText === clarifyShort && Y13[1].debug.llm?.reply === "clarify", `Y15 second clarification uses the short variant: ${Y13[1].agentText.slice(0, 90)}`);
+    assert(Y13[2].exit?.type === "refuse" && Y13[2].toolResults.some((t) => t.data?.disposition === "wrong_party") && !Y13[2].agentText.includes(COLL_OPENER), `Y16 wrong-party close still works: ${Y13[2].agentText.slice(0, 80)}`);
+    // Non-clarify stay at identity ("yes it's me" with no number): a goodbye / no-question draft is rejected
+    mockReplies.set("yes it's me", plan({ intent: "verify_identity", reply: "Thanks for confirming. Have a nice day." }));
+    const Y17 = await quiet(() => call("collections", ["yes it's me"], seed));
+    assert(!Y17[0].exit && Y17[0].debug.llm?.reply === "closing" && /account number/i.test(Y17[0].agentText), `Y17 identity stay: closing/no-question draft → scripted reprompt (${JSON.stringify(Y17[0].debug.llm)}): ${Y17[0].agentText.slice(0, 80)}`);
+    mockReplies.set("yes it's me", plan({ intent: "verify_identity", reply: "Thanks for confirming — what's the account number on file?" }));
+    const Y18 = await quiet(() => call("collections", ["yes it's me"], seed));
+    assert(Y18[0].debug.llm?.reply === "used", `Y18 a good asking draft at identity is still used (${JSON.stringify(Y18[0].debug.llm)})`);
+    // Sales greet no-account: same guard
+    mockReplies.set("I don't have an account", plan({ intent: null, reply: "Unfortunately I'm unable to assist without an account. Thank you for your time." }));
+    const Y19 = await quiet(() => call("sales", ["I don't have an account"], [{ role: "agent", content: SALES_OPENER }]));
+    assert(!Y19[0].exit && Y19[0].debug.llm?.reply === "closing" && /don't need an account/i.test(Y19[0].agentText), `Y19 sales greet no-account: refusal draft rejected → reprompt (${JSON.stringify(Y19[0].debug.llm)})`);
+    mockReplies.set("I don't have an account", plan({ intent: null, reply: "No account needed to look at plans! What are you hoping to solve for your team?" }));
+    const Y20 = await quiet(() => call("sales", ["I don't have an account"], [{ role: "agent", content: SALES_OPENER }]));
+    assert(Y20[0].debug.llm?.reply === "used", `Y20 sales greet: a good asking draft is still used (${JSON.stringify(Y20[0].debug.llm)})`);
   }
 
 } finally {
