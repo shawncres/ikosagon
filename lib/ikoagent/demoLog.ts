@@ -19,7 +19,7 @@ export type DemoTurnLog = {
   /**
    * Single LLM request per turn. call: "ok" | "skipped" | "off" | failure code
    * ("rate_limited", "cooldown", "timeout", "http_401", "parse", "empty").
-   * reply: "used" | "mismatch" | "repeat" | "unfilled" | "missing" | "skipped".
+   * reply: "used" | "trimmed" | "mismatch" | "promise" | "repeat" | "unfilled" | "missing" | "skipped".
    * Explains why a turn fell back to scripts. Never contains secrets.
    */
   llm?: { call?: string; reply?: string };

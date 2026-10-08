@@ -780,3 +780,121 @@ export async function processTurn(opts: {
     ],
   };
 }
+
+// ---------------------------------------------------------------------------
+// Unsupported-commitment guard
+// The demo sends no emails/texts, issues no tracking numbers, and processes no
+// refunds. Any promise must be backed by a caller-safe policy line, an authored
+// script line, or an actual tool result from this turn.
+// ---------------------------------------------------------------------------
+
+const NUMBER_WORDS: Record<string, string> = {
+  one: "1", two: "2", three: "3", four: "4", five: "5", six: "6", seven: "7",
+  eight: "8", nine: "9", ten: "10", twelve: "12", fourteen: "14", fifteen: "15",
+  thirty: "30", "twenty-four": "24", "forty-eight": "48",
+};
+
+function numbersIn(text: string): string[] {
+  const t = text.toLowerCase();
+  const digits = t.match(/\d+/g) ?? [];
+  const words = (t.match(/[a-z-]+/g) ?? []).map((w) => NUMBER_WORDS[w]).filter(Boolean);
+  return [...digits, ...words];
+}
+
+/** Commitments this demo cannot back unless a fact says so */
+const CHANNEL_PROMISE =
+  /\b(?:you(?:'ll| will)|we(?:'ll| will)|i(?:'ll| will)|it(?:'ll| will)|(?:is|are|has been|have been) (?:being )?sent)\b[^.!?]{0,80}\b(e-?mails?|texts?|text messages?|sms|letters?|notifications?|confirmations?)\b|\bconfirmation (?:e-?mail|text|sms|message|number|code)\b|\b(?:e-?mail|text|sms)(?:ed)? (?:you|a confirmation)\b/i;
+const TRACKING_PROMISE = /\b(?:new|updated|replacement|fresh) tracking\b|\btracking (?:number|link|code|id)\b/i;
+const DONE_CLAIM =
+  /\b(?:refund|replacement|credit|reversal|exchange|return label|label|shipment|order)\b[^.!?]{0,40}\b(?:has been|have been|is being|was|is now|got)\s+(?:processed|issued|submitted|sent|shipped|approved|initiated|refunded|credited|reversed|dispatched)\b|\bi(?:'ve| have)\s+(?:already\s+)?(?:processed|issued|submitted|sent|shipped|approved|initiated|refunded|credited|reversed|dispatched|ordered)\b/i;
+/** "Let me start that process" — an action no tool in this demo performs */
+const ACTION_PROMISE =
+  /\b(?:let me|i(?:'ll| will)|i'm going to|i am going to|we(?:'ll| will))\s+(?:go ahead and\s+|get\s+)?(?:start(?:ed)?|process|issue|initiate|submit|send|ship|arrange|refund|credit|reverse|expedite|file|put (?:in|through))\b/i;
+const RECEIVE_PROMISE = /\byou(?:'ll| will| should)\s+(?:receive|get|see|be getting|hear back|be contacted)\b/i;
+const TIMELINE =
+  /\b(?:within|in|over|by)\s+(?:the\s+next\s+)?(?:\d+|one|two|three|four|five|seven|ten|twenty-four|forty-eight|a few|a couple of)\s*(?:(?:-|to)\s*\d+\s*)?(?:minutes?|hours?|business days?|days?|weeks?)\b|\b(?:shortly|right away|immediately|by (?:tomorrow|tonight|end of (?:the )?(?:day|week)|monday|tuesday|wednesday|thursday|friday))\b/i;
+
+export type PromiseBacking = {
+  toolResults: ToolResult[];
+  /** Caller-safe policy lines + authored script lines for this turn */
+  facts: string[];
+};
+
+function factText(backing: PromiseBacking): string {
+  const toolBits = backing.toolResults
+    .filter((t) => t.ok)
+    .map((t) => `${t.name} ${Object.values(t.data).filter((v) => typeof v === "string" || typeof v === "number").join(" ")}`);
+  return [...backing.facts, ...toolBits].join(" \n ").toLowerCase();
+}
+
+/** Why a sentence is an unsupported commitment, or null if it is fine */
+export function unsupportedPromise(sentence: string, backing: PromiseBacking): string | null {
+  const facts = factText(backing);
+  const okTools = new Set(backing.toolResults.filter((t) => t.ok).map((t) => t.name));
+  const s = sentence.toLowerCase();
+
+  const channel = sentence.match(CHANNEL_PROMISE);
+  if (channel) {
+    const word = (channel[1] ?? channel[0]).toLowerCase().replace(/^e-?mail.*/, "email").replace(/s$/, "");
+    const stem = word.startsWith("email") ? "email" : word.split(" ")[0];
+    // Only backed when a fact itself describes that channel being used for the caller
+    if (!new RegExp(`\\b(?:by|via|send|sent|receive)\\b[^.]{0,30}\\b${stem}`).test(facts)) return `channel:${stem}`;
+  }
+  if (TRACKING_PROMISE.test(sentence) && !/\btracking (?:number|link|code|id)\b/.test(facts)) return "tracking";
+  if (DONE_CLAIM.test(sentence)) {
+    // Only tool results can make something "done"; this demo has no refund/shipping tool
+    const caseDone = /\b(?:case|ticket)\b/.test(s) && okTools.has("createCase");
+    const callbackDone = /\bcall ?back\b/.test(s) && okTools.has("scheduleCallback");
+    const accountDone = /\baccount\b/.test(s) && (okTools.has("createCustomer") || okTools.has("lookupAccount"));
+    if (!caseDone && !callbackDone && !accountDone) return "done-claim";
+  }
+  if (ACTION_PROMISE.test(sentence)) {
+    const caseAction = /\b(?:case|ticket)\b/.test(s) && okTools.has("createCase");
+    const callbackAction = /\bcall ?back\b/.test(s) && okTools.has("scheduleCallback");
+    if (!caseAction && !callbackAction) return "action";
+  }
+  const timeline = TIMELINE.test(sentence);
+  if (timeline) {
+    const nums = numbersIn(sentence);
+    const backedNums = nums.length > 0 && nums.every((n) => new RegExp(`\\b${n}\\b`).test(facts) || facts.includes(Object.entries(NUMBER_WORDS).find(([, d]) => d === n)?.[0] ?? "\u0000"));
+    const vague = /\b(shortly|right away|immediately|by (tomorrow|tonight|end of|monday|tuesday|wednesday|thursday|friday))\b/i.test(sentence);
+    const callbackWindow = okTools.has("scheduleCallback") && /\bcall ?back\b/.test(s);
+    if (!callbackWindow && (vague || !backedNums)) return "timeline";
+  }
+  if (RECEIVE_PROMISE.test(sentence)) {
+    const backedByTool =
+      (/\bcall ?back|\bcall\b/.test(s) && okTools.has("scheduleCallback")) ||
+      (/\bcase\b|\bspecialist\b/.test(s) && okTools.has("createCase"));
+    const keywords = (s.match(/\b(refund|replacement|credit|exchange|label|trial|support|seats?|analytics)\b/g) ?? []);
+    const backedByFact = keywords.length > 0 && keywords.every((k) => facts.includes(k));
+    if (!backedByTool && !backedByFact) return "receive";
+  }
+  return null;
+}
+
+/**
+ * Remove sentences that promise things no policy line, script line, or tool result
+ * backs (confirmation emails/texts, new tracking numbers, "refund processed",
+ * invented timelines). Returns the kept text and how many sentences were dropped.
+ */
+export function stripUnsupportedPromises(
+  text: string,
+  backing: PromiseBacking,
+): { text: string; removed: string[] } {
+  const removed: string[] = [];
+  const paragraphs = text.split(/\n{2,}/).map((para) =>
+    para
+      .replace(/\s+/g, " ")
+      .trim()
+      .split(/(?<=[.!?])\s+/)
+      .filter((sentence) => {
+        if (/^call outcome:/i.test(sentence)) return true;
+        const why = unsupportedPromise(sentence, backing);
+        if (why) removed.push(`${why}: ${sentence}`);
+        return !why;
+      })
+      .join(" ")
+      .trim(),
+  );
+  return { text: paragraphs.filter(Boolean).join("\n\n").trim(), removed };
+}

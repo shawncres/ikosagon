@@ -438,7 +438,7 @@
       "id": "escalate_handoff",
       "label": "Escalate",
       "agentSay": [
-        "I understand — I’m opening a case with a clear summary so you don’t have to repeat yourself, and moving this to the escalation queue. A specialist will take the next step within the promised window."
+        "I understand — I’m opening a case with a clear summary so you don’t have to repeat yourself, and moving this to the escalation queue. A specialist will pick it up from there, and the case keeps everything we covered."
       ],
       "allowParaphrase": false,
       "listenFor": [

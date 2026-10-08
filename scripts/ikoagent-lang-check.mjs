@@ -20,6 +20,7 @@ import {
   repeatsEarlierAgentLine,
   stripAgentGuidance,
   callerPolicyNote,
+  stripUnsupportedPromises,
 } from "../lib/ikoagent/engine.ts";
 import { retrieveIkoAgent, callerPolicyLines, formatIkoAgentContext } from "../lib/ikoagent/rag.ts";
 import { resetLlmCooldown } from "../lib/llm.ts";
@@ -351,6 +352,46 @@ for (const t of [...G, ...H, ...I]) {
 }
 assert(!/policy says/i.test(G[2].agentText), `diagnose (rag not required) surfaces no policy note: ${G[2].agentText}`);
 
+// 5. Unsupported promises (live session: "You'll receive a confirmation email shortly with the
+// new tracking number"). Commitments must come from caller policy lines, script lines, or tools.
+{
+  const lostFact = "If a package has had no tracking updates for 7 days past the expected delivery date, we treat it as lost and can send a replacement or issue a refund.";
+  const refundFact = "Once the warehouse receives a return, the refund goes back to the original payment method within 5 to 10 business days.";
+  const none = { toolResults: [], facts: [] };
+  const sp = (text, backing = none) => stripUnsupportedPromises(text, backing);
+  const e = sp("Thanks, Morgan. I've flagged this as a lost package. You'll receive a confirmation email shortly with the new tracking number.", { toolResults: [], facts: [lostFact] });
+  assert(e.text === "Thanks, Morgan. I've flagged this as a lost package." && e.removed.length === 1, `confirmation email + new tracking number sentence removed: ${e.text}`);
+  assert(sp("We'll text you an update once it ships. Is there anything else?").text === "Is there anything else?", "text-message promise removed");
+  assert(sp("I'll send you an SMS confirmation. Anything else?").text === "Anything else?", "SMS promise removed");
+  assert(sp("Here's your new tracking number: 1Z999. Anything else?").text === "Anything else?", "invented tracking number removed");
+  assert(sp("Your refund has been processed. Anything else I can help with?", { toolResults: [], facts: [refundFact] }).text === "Anything else I can help with?", "'refund has been processed' removed (no tool does refunds)");
+  assert(sp("Good news — your replacement has been shipped.").text === "", "'replacement has been shipped' removed");
+  assert(sp("A specialist will reach out within one business day.").text === "", "timeline not in caller facts removed (agent-only 'one business day')");
+  assert(sp("You'll get your refund within 24 hours.", { toolResults: [], facts: [refundFact] }).text === "", "timeline that contradicts policy removed");
+  const keepRefund = "Once we receive the return, your refund goes back to your card within 5 to 10 business days.";
+  assert(sp(keepRefund, { toolResults: [], facts: [refundFact] }).text === keepRefund, "policy-backed refund timeline kept");
+  const keepLost = "Since it's more than 7 days late, we can send a replacement or issue a refund. Which would you prefer?";
+  assert(sp(keepLost, { toolResults: [], facts: [lostFact] }).text === keepLost, "policy-backed replacement/refund option kept");
+  const liveTurn = "I'm sorry to hear that your package hasn't arrived yet. Since it's been more than 7 days past the expected delivery date with no tracking updates, we'll treat it as lost and can send you a replacement or issue a refund. Let me start that process for you.";
+  const lt = sp(liveTurn, { toolResults: [], facts: [lostFact] });
+  assert(lt.removed.length === 1 && !/start that process/.test(lt.text) && /replacement or issue a refund\./.test(lt.text), `live #34 turn: policy offer kept, 'Let me start that process' (no tool) removed: ${lt.text}`);
+  assert(sp("I'll send you a password reset link now.").text === "", "action no tool performs (send reset link) removed");
+  assert(sp("Let me check that for you.").text === "Let me check that for you.", "harmless 'let me check' kept");
+  assert(sp("I'll open a case for this.", { toolResults: [{ name: "createCase", ok: true, data: { caseId: "CS-1" } }], facts: [] }).removed.length === 0, "case action kept when createCase ran");
+  const caseLine = "I've opened case CS-20431 so a specialist can follow up.";
+  assert(sp(caseLine, { toolResults: [{ name: "createCase", ok: true, data: { caseId: "CS-20431" } }], facts: [] }).text === caseLine, "tool-backed case number kept");
+  const cbLine = "Your callback CB-7781 is set for tomorrow afternoon. You'll get a call back in that window.";
+  assert(sp(cbLine, { toolResults: [{ name: "scheduleCallback", ok: true, data: { callbackId: "CB-7781", window: "tomorrow afternoon" } }], facts: [] }).text === cbLine, "tool-backed callback + window kept");
+  assert(sp("You'll get a call back tomorrow.").text === "", "callback promise without a scheduleCallback result removed");
+  const sales = "Basic includes email support, and every plan starts with a 14-day trial.";
+  assert(sp(sales, { toolResults: [], facts: ["Basic includes email support. Every plan starts with a 14-day trial."] }).text === sales, "product facts mentioning email are not promises");
+  // Authored scripted lines never promise emails/texts/tracking numbers
+  const allFlows = ["customer_service", "collections", "sales"].map((id) => JSON.parse(readFileSync(`./content/ikoagent/flows/${id}.json`, "utf8")));
+  const authored = allFlows.flatMap((f) => [f.opening ?? "", ...Object.values(f.nodes).flatMap((n) => [...(n.agentSay ?? []), ...Object.values(n.agentSayVariants ?? {}).flat()])]);
+  const PROMISE_WORDS = /\b(e-?mail|text you|sms|confirmation (e-?mail|text|number)|tracking number|within the promised window)\b/i;
+  assert(authored.length > 10 && authored.every((l) => !PROMISE_WORDS.test(l)), "no authored script line promises email/text/tracking numbers or a vague window");
+}
+
 // 4. Single LLM call per turn (mocked Groq; no network). The mock answers by the
 // CALLER line in the prompt so each case can misbehave on purpose.
 const realFetch = globalThis.fetch;
@@ -450,6 +491,27 @@ try {
   mockReplies.set("account 1001", plan({ intent: "provide_account", reply: "Thanks Alex, let's talk about your balance." }));
   const R = await quiet(() => call("collections", ["account 1001"]));
   assert(R[0].nodeId === "disclosure" && R[0].agentText.startsWith(miranda), `R1 mini-Miranda verbatim lead on LLM path: ${R[0].agentText.slice(0, 80)}`);
+  // S. Unsupported promises on the LLM path (live session after #33)
+  mockReplies.set("my parcel is late, can you help", plan({ intent: "describe_issue", slots: { reason: "shipping delay" }, reply: "I'm sorry it's late, Alex. You'll receive a confirmation email shortly with the new tracking number. When was it supposed to arrive?" }));
+  mockReplies.set("It was due last week", plan({ intent: "describe_issue", reply: "We'll text you a confirmation as soon as the replacement ships." }));
+  const S = await quiet(() => call("customer_service", ["account 1001", "my parcel is late, can you help", "It was due last week"], withOpener));
+  assert(S[1].mode === "llm" && S[1].debug?.llm?.reply === "trimmed", `S2 draft used minus the promise (got ${JSON.stringify(S[1].debug?.llm)})`);
+  assert(!/e-?mail|tracking number/i.test(S[1].agentText) && /When was it supposed to arrive\?/.test(S[1].agentText), `S2 email/tracking promise stripped, question kept: ${S[1].agentText}`);
+  assert(S[2].debug?.llm?.reply === "promise" && !/\btext\b|confirmation/i.test(S[2].agentText) && S[2].agentText.length > 0, `S3 promise-only draft → scripted line (got ${JSON.stringify(S[2].debug?.llm)}): ${S[2].agentText.slice(0, 90)}`);
+  // S4: refund "processed" claim stripped; policy-backed timeline on the policy node kept
+  mockReplies.set("I sent the return back already", plan({ intent: "describe_issue", slots: { reason: "return or exchange" }, reply: "Thanks, Alex. Your refund has been processed. Once the warehouse receives a return, the refund goes back to the original payment method within 5 to 10 business days." }));
+  const S4 = await quiet(() => call("customer_service", ["account 1001", "I want to return an item for a refund", "I sent the return back already"], withOpener));
+  assert(S4[2].nodeId === "policy" && S4[2].debug?.llm?.reply === "trimmed", `S4 policy node, trimmed (got ${S4[2].nodeId} ${JSON.stringify(S4[2].debug?.llm)})`);
+  assert(!/has been processed/i.test(S4[2].agentText) && /5 to 10 business days/.test(S4[2].agentText), `S4 'processed' claim gone, policy timeline kept: ${S4[2].agentText}`);
+  // S5/S6: tool-backed case and callback numbers are still spoken
+  mockReplies.set("please open a ticket for this", plan({ intent: "create_ticket", reply: "Done — I've opened case {{caseId}} so the team has the full history." }));
+  const S5 = await quiet(() => call("customer_service", ["account 1001", "my parcel is late", "it still hasn't shown up", "please open a ticket for this"], withOpener));
+  const caseId = S5[3].toolResults?.find((t) => t.name === "createCase")?.data?.caseId;
+  assert(caseId && S5[3].agentText.includes(String(caseId)) && S5[3].debug?.llm?.reply === "used", `S5 tool-backed case number spoken (${caseId}, ${JSON.stringify(S5[3].debug?.llm)}): ${S5[3].agentText.slice(0, 100)}`);
+  mockReplies.set("can someone call me back tomorrow afternoon", plan({ intent: "request_callback", slots: { callbackWindow: "tomorrow afternoon" }, reply: "You're set — callback {{callbackId}} is booked for tomorrow afternoon. You'll get a call back in that window." }));
+  const S6 = await quiet(() => call("customer_service", ["account 1001", "my parcel is late", "it still hasn't shown up", "can someone call me back tomorrow afternoon"], withOpener));
+  const cbId = S6[3].toolResults?.find((t) => t.name === "scheduleCallback")?.data?.callbackId;
+  assert(cbId && S6[3].agentText.includes(String(cbId)) && /call back in that window/.test(S6[3].agentText) && S6[3].debug?.llm?.reply === "used", `S6 tool-backed callback spoken (${cbId}, ${JSON.stringify(S6[3].debug?.llm)}): ${S6[3].agentText.slice(0, 100)}`);
 } finally {
   globalThis.fetch = realFetch;
   delete process.env.GROQ_API_KEY;
