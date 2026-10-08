@@ -16,12 +16,13 @@ export default async function Home() {
             <h2 className="mb-3 text-3xl font-semibold">IkoAgent</h2>
             <p className="mb-4 max-w-3xl text-zinc-300">
               Author-controlled call flows for CS, collections, and sales. The graph owns the journey;
-              NLP fills intents and slots inside each node — with free browser TTS, a growing policy
-              corpus, and a secure demo CRM.
+              NLP fills intents and slots inside each node — with a growing policy corpus, a secure demo
+              CRM, and a live agent desk with flow map.
             </p>
             <p className="mb-4 max-w-3xl text-sm text-zinc-400">
-              Text-first interactive demo on the project page. Try a natural open, verify with a demo
-              account, and copy a transcript when you want language polish.
+              Pick a scenario on the project page, then talk (browser speech-to-text) or type as the
+              caller and hear free browser voice replies. Verify with a demo account and copy a
+              transcript when you want language polish.
             </p>
             <Link href="/projects/ikoagent" className="rounded-xl bg-accent px-4 py-2 font-semibold text-black">
               Open IkoAgent

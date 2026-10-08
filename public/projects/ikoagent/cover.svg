@@ -1,16 +1,84 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480" viewBox="0 0 800 480" fill="none">
-  <rect width="800" height="480" fill="#0a0a0a"/>
-  <!-- outer hex -->
-  <polygon points="400,78 548,163 548,333 400,418 252,333 252,163" stroke="#2bffe8" stroke-width="2" opacity="0.22" fill="none"/>
-  <!-- main hex -->
-  <polygon points="400,110 510,174 510,302 400,366 290,302 290,174" stroke="#2bffe8" stroke-width="3" opacity="0.95" fill="none"/>
-  <!-- handset glyph -->
-  <path d="M355 200c8-18 28-28 48-22l12 4c6 2 8 8 6 14l-8 22c-2 4-6 6-10 5l-14-4c-4 8-2 18 4 26l18 18c8 8 20 10 28 4l-2-12c-1-5 2-10 7-12l22-10c5-2 11 0 14 5l6 12c8 16-2 36-20 44-32 14-74 2-102-26s-40-70-26-102z" stroke="#2bffe8" stroke-width="2.5" fill="none" opacity="0.9"/>
-  <!-- flow nodes -->
-  <circle cx="455" cy="255" r="5" fill="#2bffe8" opacity="0.85"/>
-  <circle cx="480" cy="230" r="4" fill="#2bffe8" opacity="0.55"/>
-  <circle cx="480" cy="280" r="4" fill="#2bffe8" opacity="0.55"/>
-  <line x1="455" y1="255" x2="480" y2="230" stroke="#2bffe8" stroke-width="1.2" opacity="0.45"/>
-  <line x1="455" y1="255" x2="480" y2="280" stroke="#2bffe8" stroke-width="1.2" opacity="0.45"/>
-  <text x="400" y="440" text-anchor="middle" fill="#fafafa" font-family="Arial, sans-serif" font-size="24" font-weight="700">IkoAgent · Author-controlled call flows</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 840" width="1600" height="840" fill="none" preserveAspectRatio="xMidYMid slice">
+  <!-- Card-ratio cover (≈1.9:1). Key art stays inside the centre band (y 150–690) so an
+       object-cover crop at wider cards never cuts it; the background is full-bleed. -->
+  <defs>
+    <radialGradient id="glow" cx="0.34" cy="0.5" r="0.55">
+      <stop offset="0" stop-color="#2bffe8" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#2bffe8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="0.78" cy="0.45" r="0.45">
+      <stop offset="0" stop-color="#2bffe8" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#2bffe8" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="dots" width="40" height="40" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.6" fill="#2bffe8" opacity="0.10"/>
+    </pattern>
+    <filter id="neon" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#2bffe8"/>
+    </marker>
+  </defs>
+
+  <rect width="1600" height="840" fill="#0a0a0a"/>
+  <rect width="1600" height="840" fill="url(#dots)"/>
+  <rect width="1600" height="840" fill="url(#glow)"/>
+  <rect width="1600" height="840" fill="url(#glow2)"/>
+
+  <!-- hex + handset -->
+  <g transform="translate(470 385)">
+    <polygon points="0,-235 204,-118 204,118 0,235 -204,118 -204,-118" stroke="#2bffe8" stroke-width="2" opacity="0.18"/>
+    <polygon points="0,-200 173,-100 173,100 0,200 -173,100 -173,-100" stroke="#2bffe8" stroke-width="4" opacity="0.95" filter="url(#neon)"/>
+    <path transform="translate(-92 -92) scale(1.45)" d="M28 18c8-16 26-24 44-19l11 4c6 2 8 8 6 13l-8 20c-2 4-6 6-10 5l-13-4c-4 8-2 17 4 24l17 17c7 7 18 9 26 4l-2-11c-1-5 2-9 6-11l20-9c5-2 10 0 13 5l6 11c7 15-2 33-18 40-30 13-68 2-94-24S15 48 28 18z" stroke="#2bffe8" stroke-width="3.2" stroke-linejoin="round" opacity="0.95"/>
+    <!-- voice bars -->
+    <g fill="#2bffe8">
+      <rect x="-120" y="150" width="10" height="16" rx="3" opacity="0.5"/>
+      <rect x="-102" y="140" width="10" height="36" rx="3" opacity="0.7"/>
+      <rect x="-84" y="130" width="10" height="56" rx="3" opacity="0.9"/>
+      <rect x="-66" y="142" width="10" height="32" rx="3" opacity="0.7"/>
+      <rect x="-48" y="150" width="10" height="16" rx="3" opacity="0.5"/>
+    </g>
+  </g>
+
+  <!-- mini flow map: greet → verify → diagnose → policy (current) → resolve / escalate -->
+  <g font-family="'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace" font-size="22" text-anchor="middle">
+    <g stroke="#2bffe8" stroke-width="2.5" fill="none">
+      <path d="M1040 222 V258" marker-end="url(#arrow)"/>
+      <path d="M1040 322 V358" marker-end="url(#arrow)"/>
+      <path d="M1040 422 V458" marker-end="url(#arrow)"/>
+    </g>
+    <g stroke="#3f3f46" stroke-width="2" fill="none">
+      <path d="M1000 522 C1000 560 900 552 900 588"/>
+      <path d="M1080 522 C1080 560 1180 552 1180 588"/>
+    </g>
+    <rect x="950" y="166" width="180" height="56" rx="14" fill="#0f1716" stroke="#2bffe8" stroke-opacity="0.55" stroke-width="2"/>
+    <text x="1040" y="202" fill="#d4d4d8">Greet</text>
+    <rect x="950" y="266" width="180" height="56" rx="14" fill="#0f1716" stroke="#2bffe8" stroke-opacity="0.55" stroke-width="2"/>
+    <text x="1040" y="302" fill="#d4d4d8">Verify</text>
+    <rect x="950" y="366" width="180" height="56" rx="14" fill="#0f1716" stroke="#2bffe8" stroke-opacity="0.55" stroke-width="2"/>
+    <text x="1040" y="402" fill="#d4d4d8">Diagnose</text>
+    <rect x="950" y="466" width="180" height="56" rx="14" fill="#0b3a36" stroke="#2bffe8" stroke-width="3" filter="url(#neon)"/>
+    <text x="1040" y="502" fill="#2bffe8" font-weight="700">Policy</text>
+    <rect x="810" y="590" width="180" height="56" rx="14" fill="#0a0a0a" stroke="#27272a" stroke-width="2"/>
+    <text x="900" y="626" fill="#71717a">Resolve</text>
+    <rect x="1090" y="590" width="180" height="56" rx="14" fill="#0a0a0a" stroke="#27272a" stroke-width="2"/>
+    <text x="1180" y="626" fill="#71717a">Escalate</text>
+    <circle cx="1104" cy="604" r="5" fill="#fbbf24"/>
+  </g>
+
+  <!-- desk chips -->
+  <g font-family="'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace" font-size="20">
+    <rect x="1250" y="190" width="250" height="44" rx="22" stroke="#2bffe8" stroke-opacity="0.45" stroke-width="1.5" fill="#0a0a0a"/>
+    <text x="1375" y="219" text-anchor="middle" fill="#2bffe8">● Connected 1:24</text>
+    <rect x="1250" y="252" width="250" height="44" rx="22" stroke="#3f3f46" stroke-width="1.5" fill="#0a0a0a"/>
+    <text x="1375" y="281" text-anchor="middle" fill="#a1a1aa">Account 1001 (demo)</text>
+    <rect x="1250" y="314" width="250" height="44" rx="22" stroke="#3f3f46" stroke-width="1.5" fill="#0a0a0a"/>
+    <text x="1375" y="343" text-anchor="middle" fill="#a1a1aa">› Case opened</text>
+  </g>
+
+  <!-- wordmark -->
+  <text x="470" y="694" text-anchor="middle" fill="#fafafa" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="46" font-weight="700">IkoAgent</text>
+  <text x="1040" y="694" text-anchor="middle" fill="#a1a1aa" font-family="Inter, 'Helvetica Neue', Arial, sans-serif" font-size="30">Author-controlled call flows · live desk</text>
 </svg>

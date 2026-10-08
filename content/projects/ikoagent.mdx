@@ -1,11 +1,12 @@
 ---
 title: "IkoAgent"
 slug: "ikoagent"
-summary: "Author-controlled call flows for CS, collections, and sales. The graph owns the journey; NLP fills intents and slots inside each node. Text-first demo with free browser TTS for agent lines, mock CRM tools, and a growing policy RAG corpus — production voice is next."
+summary: "Author-controlled call flows for CS, collections, and sales. Talk (browser speech-to-text) or type as the caller; replies use free browser voice. A live agent desk and flow map show the step, details collected, policy cited, and tool results. Compliance lines stay verbatim — no unsupported promises."
 year: 2026
-updated: "2026-10-07T15:00:00-04:00"
+updated: "2026-10-08T13:35:00-04:00"
 tags: ["AI", "Call flow", "NLP", "RAG", "Product"]
-cover: "/projects/ikoagent/cover.png"
+cover: "/projects/ikoagent/cover.svg"
+coverFit: "cover"
 featured: true
 status: "In progress"
 linkLabel: "Try the call-flow demo"
@@ -29,7 +30,7 @@ A controllable agent that can run **CS / collections / sales** workflows you app
 
 ## Honesty
 
-- **Text-first** interactive demo on this page. No live inbound phone number (PSTN costs money; Hobby stays free).
+- **Interactive demo** on this page: talk or type as the caller. No live inbound phone number (PSTN costs money; Hobby stays free).
 - **Browser TTS** (Web Speech API `speechSynthesis`) optionally reads agent replies aloud — free system voices, mute toggle in the demo chrome. This is **not** production contact-center voice (no Twilio/ElevenLabs).
 - **Browser speech input** (Web Speech API `SpeechRecognition`): hold or tap the mic to talk as the caller. Only the recognized text reaches our server — no audio. Chrome and Edge run recognition in the browser vendor's cloud; Safari support is partial; Firefox has no speech input, so typing stays the fallback.
 - Conversational turns use Groq (`CHAT_MODEL` / `openai/gpt-oss-20b`) when `GROQ_API_KEY` is set; without a key the demo still advances on scripted lines + keyword intents. Rate-limited to protect Hobby quotas.

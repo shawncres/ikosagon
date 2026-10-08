@@ -1,6 +1,7 @@
 import { completeJson, getProviderName, llmErrorCode } from "@/lib/llm";
 import {
   interpolate,
+  interpolateLines,
   isGreetingOrAck,
   isWeakTopic,
   missingSlots,
@@ -35,7 +36,7 @@ import type {
  *        "promise" (only unsupported promises left → scripted) |
  *        "missing_id" (new account/case/callback id not spoken → scripted line with it) |
  *        "account" (draft names an account number that isn't this caller's → scripted) |
- *        "repeat" | "unfilled" | "missing" | "skipped".
+ *        "repeat" | "disclosure" | "unfilled" | "missing" | "skipped".
  */
 export type LlmStepStatus = { call?: string; reply?: string };
 
@@ -179,10 +180,11 @@ export async function planTurn(opts: {
     return null;
   }
   const { speakNode } = opts.predicted;
-  const mustSayExact = speakNode.allowParaphrase === false;
+  const closing = opts.predicted.exit?.say?.length ? opts.predicted.exit : null;
+  const mustSayExact = speakNode.allowParaphrase === false && !closing;
   const safeSlots = scrubWeakSlots(opts.slots);
   const hasRealReason = Boolean(safeSlots.reason && !isWeakTopic(safeSlots.reason));
-  const scriptLines = scriptLinesFor(speakNode, safeSlots, opts.predicted.toolResults, {
+  const scriptLines = replyScriptLines(speakNode, safeSlots, opts.predicted.toolResults, opts.predicted.exit, {
     transitioned: opts.predicted.transitioned,
     accountNotFound: opts.predicted.accountNotFound,
     acknowledged: opts.acknowledged,
@@ -214,6 +216,10 @@ export async function planTurn(opts: {
       ? "The caller only greeted/acknowledged: reply with ONE short prompt, never your earlier opener word for word."
       : "",
     mustSayExact && scriptLines[0] ? "COMPLIANCE: reply MUST start with MUST-SAY verbatim." : "",
+    speakNode.noDisclosure
+      ? "COMPLIANCE: the caller is NOT verified. Never mention a debt, balance, amount, payment, collection, or why we are calling beyond 'an account matter'. Never repeat your earlier lines word for word."
+      : "",
+    closing ? "The call ends after this reply: close politely in 1–2 sentences following SCRIPT GUIDE; ask no questions." : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -298,9 +304,9 @@ export function finalizeDraft(opts: {
   callerFacts: string[];
   status?: LlmStepStatus;
 }): string | null {
-  const mustSayExact = opts.speakNode.allowParaphrase === false;
+  const mustSayExact = opts.speakNode.allowParaphrase === false && !opts.exit?.say?.length;
   const safeSlots = scrubWeakSlots(opts.slots);
-  const scriptLines = scriptLinesFor(opts.speakNode, safeSlots, opts.toolResults, {
+  const scriptLines = replyScriptLines(opts.speakNode, safeSlots, opts.toolResults, opts.exit, {
     transitioned: opts.transitioned,
     accountNotFound: opts.accountNotFound,
     acknowledged: opts.acknowledged,
@@ -329,7 +335,8 @@ export function finalizeDraft(opts: {
   // Only this caller's account number may be named (the model once wrote a guessed "#4004")
   if (!opts.accountNotFound) {
     const named = [...text.matchAll(/\baccount(?:\s+(?:number|no\.?|id))?\s*#?\s*(\d{3,})\b/gi)].map((m) => m[1]);
-    if (named.some((n) => n !== opts.slots.accountId)) {
+    // (the public demo numbers the script itself offers — "account 1001, 2044, or 3300" — are fine)
+    if (named.some((n) => n !== opts.slots.accountId && !new RegExp(`\\b${n}\\b`).test(scriptGuide))) {
       if (opts.status) opts.status.reply = "account";
       return null;
     }
@@ -355,6 +362,11 @@ export function finalizeDraft(opts: {
       return null;
     }
   }
+  // Unverified caller (collections identity): nothing about a debt may be disclosed
+  if (opts.speakNode.noDisclosure && DISCLOSURE_TERMS.test(text)) {
+    if (opts.status) opts.status.reply = "disclosure";
+    return null;
+  }
   // A new account / case / callback id from a real tool this turn must be spoken;
   // otherwise use the scripted line, which always includes it
   const newIds = newToolIds(opts.toolResults);
@@ -376,6 +388,25 @@ export function finalizeDraft(opts: {
   }
   if (opts.status) opts.status.reply = promised.removed.length ? "trimmed" : "used";
   return text.trim();
+}
+
+/** Words that would tell an unverified third party what the call is about */
+export const DISCLOSURE_TERMS =
+  /\b(debts?|balances?|owe[sd]?|owing|amount due|past[- ]due|overdue|collect(ion|ions|ing|or)?|delinquen\w*|arrears|missed payments?|payments? (?:due|plan)|outstanding)\b/i;
+
+/**
+ * Script lines the reply is written / checked against: an exit's own close line when
+ * the call ends there (wrong party, declined), else the node's context-aware script.
+ */
+export function replyScriptLines(
+  node: FlowNode,
+  slots: SlotMap,
+  tools: ToolResult[],
+  exit: FlowExit | null | undefined,
+  ctx: Parameters<typeof scriptLinesFor>[3],
+): string[] {
+  if (exit?.say?.length) return interpolateLines(exit.say, slots, tools);
+  return scriptLinesFor(node, slots, tools, ctx);
 }
 
 /** Ids created by a tool this turn (not lookups) — the caller must hear them */
