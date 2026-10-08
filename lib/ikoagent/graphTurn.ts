@@ -84,7 +84,12 @@ export function deriveTurnState(opts: {
   slots = scrubWeakSlots(slots);
 
   if (extractedName) slots = mergeSlots(slots, { customerName: extractedName });
-  if (looksLikeNoAccount(userText)) slots = mergeSlots(slots, { needsAccount: "true" });
+  // "No account" means "set me up" only where the flow can create customers (CS).
+  // Elsewhere (collections identity, sales) it is just what the caller said — never a
+  // "new customer, don't ask for an account" fact.
+  const canCreate = flow.tools.includes("createCustomer");
+  const noAccount = looksLikeNoAccount(userText);
+  if (noAccount && canCreate) slots = mergeSlots(slots, { needsAccount: "true" });
 
   // Greeting / small-talk should not advance the graph as if an issue was described
   let intentForGraph = matchedIntent;
@@ -102,12 +107,11 @@ export function deriveTurnState(opts: {
     intentForGraph = "describe_issue";
   }
   if (
-    (looksLikeNoAccount(userText) ||
-      (slots.customerName && !slots.accountId && looksLikeDecline(userText))) &&
+    (noAccount || (canCreate && slots.customerName && !slots.accountId && looksLikeDecline(userText))) &&
     listenIds.has("no_account")
   ) {
     intentForGraph = "no_account";
-    slots = mergeSlots(slots, { needsAccount: "true" });
+    if (canCreate) slots = mergeSlots(slots, { needsAccount: "true" });
   } else if (accountInText && listenIds.has("provide_account")) {
     intentForGraph = "provide_account";
   } else if (extractedName && listenIds.has("provide_name") && !slots.accountId) {
@@ -326,6 +330,14 @@ export async function runGraph(opts: {
   }
   let nextNode = nextNodeId ? getCurrentNode(flow, nextNodeId) : null;
 
+  // Clarify-before-exit: staying put on a clarify intent ("I don't have an account",
+  // "what is this about", a first "not me") counts one clarification. Exits gated on
+  // that slot (wrong party) only fire on a later turn.
+  if (!exit && (!nextNode || nextNode.id === node.id) && node.clarify && intent && node.clarify.intents.includes(intent)) {
+    const key = node.clarify.slot;
+    slots = { ...slots, [key]: String((Number(slots[key]) || 0) + 1) };
+  }
+
   // Exit-before-transition: applyTransition's exit shortcut (escalate / resolve /
   // request_callback) fires before this node's own edge for that intent. When the node
   // routes the intent to a close node that owns the same exit (CS policy → escalate_handoff,
@@ -338,6 +350,12 @@ export async function runGraph(opts: {
       exit = null;
       nextNode = target;
     }
+  }
+
+  // An exit that records a disposition (collections wrong party) logs it on the way out,
+  // so "this number is marked" in the close line is backed by a tool result
+  if (exit?.disposition && node.toolsAllowed?.includes("logDisposition") && !toolResults.some((t) => t.name === "logDisposition")) {
+    toolResults = [...toolResults, await runTool("logDisposition", { ...slots, disposition: exit.disposition })];
   }
 
   // Ending on an escalation / callback outcome without its case / booking → do it now

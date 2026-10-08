@@ -5,6 +5,13 @@ export type ExitType = "resolve" | "escalate" | "transfer" | "callback" | "refus
 export type FlowExit = {
   type: ExitType;
   label: string;
+  /**
+   * Close line spoken when the call ends through this exit (instead of the node's
+   * own prompt, which the caller already heard). Paraphrasable; no must-say lead.
+   */
+  say?: string[];
+  /** logDisposition code recorded when the call ends here (node must allow the tool) */
+  disposition?: string;
 };
 
 export type ListenIntent = {
@@ -40,6 +47,17 @@ export type FlowNode = {
    */
   holdForSlots?: string[];
   /**
+   * Clarify-before-exit: when the caller's intent is one of `intents` and the node stays
+   * put, `slot` counts the clarifications given. Transitions gated with
+   * whenSlotsFilled: [slot] (e.g. wrong party → exit) only fire after one clarification.
+   */
+  clarify?: { intents: string[]; slot: string };
+  /**
+   * The caller is not verified yet: model drafts mentioning debts, balances or payments
+   * are rejected (scripted line instead), so nothing is disclosed to a third party.
+   */
+  noDisclosure?: boolean;
+  /**
    * Optional context-aware script variants (paraphrasable nodes only).
    * knownName: caller gave a name but no account yet.
    * accountNotFound: caller gave digits that did not match an account.
@@ -63,7 +81,11 @@ export type FlowNode = {
       /** Caller only greeted back after the opener */
       | "greetingReply"
       /** scheduleCallback succeeded this turn: confirm the real callback id + window */
-      | "scheduled",
+      | "scheduled"
+      /** First clarification (clarify intents), e.g. "this line is for existing accounts…" */
+      | "clarify"
+      /** Later clarification once the first one was already said */
+      | "clarifyAgain",
       string[]
     >
   >;

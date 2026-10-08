@@ -722,6 +722,47 @@ try {
   const X = await quiet(() => call("sales", ["I'm looking for a team plan", "what do you offer?", "can you call me back tomorrow morning"]));
   const xCb = X.at(-1).toolResults?.find((t) => t.name === "scheduleCallback")?.data?.callbackId;
   assert(X.at(-1).nodeId === "callback" && X.at(-1).exit?.type === "callback" && xCb && countOf(X.at(-1).agentText, xCb) === 1, `X sales callback close with id once (path ${X.map((t) => t.nodeId).join("→")}): ${X.at(-1).agentText}`);
+  // Y. Collections identity: "I don't have an account" is clarified once, never a hang-up,
+  // and no reply repeats the opener (Oct 8 live transcript: intent=deny, reply = opener)
+  {
+    const { DISCLOSURE_TERMS } = await import("../lib/ikoagent/llmTurn.ts");
+    const collFlow = JSON.parse(readFileSync("./content/ikoagent/flows/collections.json", "utf8"));
+    const COLL_OPENER = collFlow.nodes.identity.agentSay[0];
+    const seed = [{ role: "agent", content: COLL_OPENER }];
+    const noRepeat = (turns) => turns.every((t, i) => !repeatsEarlierAgentLine(t.agentText.split(/\n{2,}/)[0], [...seed, ...turns.slice(0, i).map((x) => ({ role: "agent", content: x.agentText }))]));
+    mockReplies.set("I don't have an account", plan({ intent: "deny", slots: { needsAccount: "true" }, reply: COLL_OPENER }));
+    const Y1 = await quiet(() => call("collections", ["I don't have an account"], seed));
+    assert(!Y1[0].exit && Y1[0].nodeId === "identity" && Y1[0].debug.matchedIntent === "no_account", `Y1 exact transcript: no hang-up, read as no_account (got ${Y1[0].debug.matchedIntent} ${JSON.stringify(Y1[0].exit)})`);
+    assert(!repeatsEarlierAgentLine(Y1[0].agentText, seed) && /existing demo accounts/i.test(Y1[0].agentText) && /account holder/i.test(Y1[0].agentText), `Y2 clarification, not the opener (llm ${JSON.stringify(Y1[0].debug.llm)}): ${Y1[0].agentText.slice(0, 120)}`);
+    assert(Y1[0].debug.llm?.reply === "repeat" && Y1[0].slots.needsAccount !== "true", `Y3 model's opener echo rejected as repeat; no 'new customer' slot in collections (${JSON.stringify(Y1[0].debug.llm)})`);
+    assert(!DISCLOSURE_TERMS.test(Y1[0].agentText), "Y4 clarification discloses nothing about a debt");
+    mockReplies.set("account 1001", plan({ intent: "provide_account", slots: { accountId: "1001" }, reply: "Thanks." }));
+    const Y5 = await quiet(() => call("collections", ["I don't have an account", "account 1001"], seed));
+    assert(Y5[1].nodeId === "disclosure" && Y5[1].agentText.startsWith(miranda) && countOf(Y5[1].agentText, miranda) === 1, `Y5 clarification → account 1001 → mini-Miranda verbatim once (got ${Y5[1].nodeId})`);
+    mockReplies.set("wrong number", plan({ intent: "deny", reply: COLL_OPENER }));
+    const Y6 = await quiet(() => call("collections", ["I don't have an account", "wrong number"], seed));
+    const closeLine = collFlow.nodes.identity.exits[0].say[0];
+    assert(Y6[1].exit?.type === "refuse" && /wrong party/i.test(Y6[1].exit.label) && Y6[1].agentText.startsWith(closeLine), `Y6 clarification → wrong number → wrong-party close (got ${JSON.stringify(Y6[1].exit)}): ${Y6[1].agentText.slice(0, 120)}`);
+    assert(!Y6[1].agentText.includes(COLL_OPENER) && !DISCLOSURE_TERMS.test(Y6[1].agentText) && Y6[1].toolResults.some((t) => t.name === "logDisposition" && t.data.disposition === "wrong_party"), "Y7 close: no opener, no debt words, wrong_party disposition logged");
+    assert(noRepeat(Y6), "Y8 no turn repeats an earlier agent line");
+    assert(Object.keys(Y6[1].exit).sort().join(",") === "label,type", "Y8b response exit carries only type + label (no close script / disposition code)");
+    mockReplies.set("what is this about", plan({ intent: "ask_purpose", reply: "We're calling about the overdue balance on your account. Can you confirm the account number?" }));
+    const Y9 = await quiet(() => call("collections", ["what is this about"], seed));
+    assert(!Y9[0].exit && Y9[0].nodeId === "identity" && Y9[0].debug.llm?.reply === "disclosure" && !DISCLOSURE_TERMS.test(Y9[0].agentText), `Y9 'what is this about': model's debt mention rejected, no disclosure (${JSON.stringify(Y9[0].debug.llm)}): ${Y9[0].agentText.slice(0, 100)}`);
+    mockReplies.set("I'm not sure", plan({ intent: "unsure", reply: "No worries — are you the account holder? The account number is all I need." }));
+    const Y10 = await quiet(() => call("collections", ["what is this about", "I'm not sure", "not me"], seed));
+    assert(!Y10[1].exit && Y10[2].exit?.type === "refuse" && noRepeat(Y10), `Y10 ask → unsure keeps the call, then 'not me' closes (${Y10.map((t) => t.nodeId + (t.exit ? "!" : "")).join("→")})`);
+    // A first clear denial gets one confirmation, not an instant hang-up
+    mockReplies.set("you have the wrong person", plan({ intent: "deny", reply: "Sorry about that." }));
+    const Y11 = await quiet(() => call("collections", ["you have the wrong person", "you have the wrong person"], seed));
+    assert(!Y11[0].exit && Y11[1].exit?.type === "refuse" && noRepeat(Y11), `Y11 deny → confirm once → deny → wrong-party close (${Y11.map((t) => t.nodeId + (t.exit ? "!" : "")).join("→")})`);
+    // Sales greet: "I don't have an account" never repeats the opener
+    const SALES_OPENER = JSON.parse(readFileSync("./content/ikoagent/flows/sales.json", "utf8")).nodes.greet.agentSay[0];
+    mockReplies.set("I don't have an account", plan({ intent: null, reply: SALES_OPENER }));
+    const Y12 = await quiet(() => call("sales", ["I don't have an account"], [{ role: "agent", content: SALES_OPENER }]));
+    assert(!Y12[0].exit && !repeatsEarlierAgentLine(Y12[0].agentText, [{ role: "agent", content: SALES_OPENER }]) && /don't need an account/i.test(Y12[0].agentText), `Y12 sales no-account: no opener repeat: ${Y12[0].agentText.slice(0, 100)}`);
+  }
+
 } finally {
   globalThis.fetch = realFetch;
   delete process.env.GROQ_API_KEY;
@@ -769,6 +810,42 @@ try {
   const PL = await quiet(() => call("customer_service", ["Hi, I'm Alex Rivera, account 1001 — my package never came", "it was due last week"]));
   assert(PL[0].desk.policyLine === null && PL[1].nodeId === "policy" && typeof PL[1].desk.policyLine === "string" && PL[1].desk.policyLine.length > 20, `UI13 desk.policyLine only on policy steps (${PL.map((t) => t.nodeId).join("→")})`);
   assert(!/internal|do not (say|share)|agent note|\{\{/i.test(PL[1].desk.policyLine), "UI14 cited policy line is caller-facing");
+}
+
+// ---- No verbatim repeats on exits / scripted fallbacks (offline) ----
+{
+  const { dropRepeatedLines, CLOSE_FALLBACK } = await import("../lib/ikoagent/engine.ts");
+  const countOf = (text, id) => text.split(String(id)).length - 1;
+  const coll = JSON.parse(readFileSync("./content/ikoagent/flows/collections.json", "utf8"));
+  const opener = coll.nodes.identity.agentSay[0];
+  const seed = [{ role: "agent", content: opener }];
+  const Z1 = await quiet(() => call("collections", ["I don't have an account", "I don't have an account"], seed));
+  assert(!Z1[0].exit && Z1[1].exit?.type === "refuse" && !Z1.some((t) => t.agentText.includes(opener)), "Z1 offline: no-account twice → clarify then wrong-party close, opener never repeated");
+  const Z2 = await quiet(() => call("collections", ["account 1001", "no"]));
+  assert(Z2[1].exit && countOf(Z2.map((t) => t.agentText).join(" "), miranda) === 1, "Z2 disclosure declined: close line, mini-Miranda not re-read");
+  const Z3 = await quiet(() => call("collections", ["account 1001", "yes", "I'm not paying"]));
+  assert(Z3[2].exit && !Z3[2].agentText.includes(Z3[1].agentText.split("\n\n")[0]), "Z3 payment refused: close line, not the balance line again");
+  const Z4 = await quiet(() => call("collections", ["yes it's me", "account 9999", "1001"]));
+  assert(Z4[0].nodeId === "identity" && !Z4[0].agentText.includes(opener) && /couldn't find/i.test(Z4[1].agentText) && Z4[2].nodeId === "disclosure", "Z4 identity reprompt / not-found variants instead of the opener");
+  const Z5 = await quiet(() => call("collections", ["what is this about", "I'm not sure", "hmm", "maybe"], seed));
+  const z5Texts = Z5.map((t) => t.agentText);
+  assert(!Z5.some((t) => t.exit) && new Set(z5Texts).size === z5Texts.length && !z5Texts.includes(opener), `Z5 unsure loop stays on the line with no repeated reply (${Z5.map((t) => t.debug.matchedIntent).join(",")})`);
+  // Every exit, when the node's own line was already heard, closes with something new
+  for (const fid of ["customer_service", "collections", "sales"]) {
+    const f = JSON.parse(readFileSync(`./content/ikoagent/flows/${fid}.json`, "utf8"));
+    for (const n of Object.values(f.nodes)) {
+      for (const ex of n.exits ?? []) {
+        const heard = n.agentSay.map((l) => interpolate(l, { accountId: "1001" }, []));
+        const text = buildAgentTurn({ node: n, nextNode: null, exit: ex, slots: { accountId: "1001" }, toolResults: [], ragSnippets: [], matchedIntent: null, history: heard.map((c) => ({ role: "agent", content: c })) });
+        const body = dropRepeatedLines(text, heard.map((c) => ({ role: "agent", content: c })), { ending: true });
+        assert(body.split("\n\n")[0] && !repeatsEarlierAgentLine(text.split("\n\n")[0], heard.map((c) => ({ role: "agent", content: c }))), `Z6 ${fid}/${n.id} exit '${ex.type}' close is new: ${text.split("\n\n")[0].slice(0, 70)}`);
+      }
+    }
+  }
+  assert(dropRepeatedLines(`${opener}\n\nCall outcome: X`, seed, { ending: true }).startsWith(CLOSE_FALLBACK), "Z7 repeat net swaps a repeated close for a goodbye");
+  assert(dropRepeatedLines(miranda, [{ role: "agent", content: miranda }], { keep: [miranda] }) === miranda, "Z8 repeat net keeps the verbatim mini-Miranda");
+  const { deskSlots, toolEvent } = await import("../lib/ikoagent/desk.ts");
+  assert(deskSlots({ clarified: "1" }).some((r) => r.label === "Identity" && /not confirmed/.test(r.value)) && toolEvent({ name: "logDisposition", ok: true, data: { disposition: "wrong_party" } }) === "Disposition logged · wrong party", "Z9 desk shows unconfirmed identity + wrong-party disposition");
 }
 
 console.log("\nALL CHECKS PASSED");

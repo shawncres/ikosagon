@@ -20,7 +20,7 @@
       "agentSay": [
         "Hello there — this is the IkoAgent collections demonstration line with Ikosagon. May I confirm I'm speaking with the account holder? Please share demo account 1001, 2044, or 3300."
       ],
-      "allowParaphrase": false,
+      "allowParaphrase": true,
       "listenFor": [
         {
           "intent": "provide_account",
@@ -45,7 +45,37 @@
             "wrong number",
             "not me",
             "you have the wrong person",
-            "never heard of this"
+            "never heard of this",
+            "that's not me",
+            "nobody by that name"
+          ]
+        },
+        {
+          "intent": "no_account",
+          "examples": [
+            "I don't have an account",
+            "I don't have one",
+            "I never had an account",
+            "no account"
+          ]
+        },
+        {
+          "intent": "unsure",
+          "examples": [
+            "I'm not sure",
+            "maybe",
+            "I don't know",
+            "not sure if that's me"
+          ]
+        },
+        {
+          "intent": "ask_purpose",
+          "examples": [
+            "what is this about",
+            "what's this regarding",
+            "who is this",
+            "why are you calling",
+            "what is this call about"
           ]
         }
       ],
@@ -53,12 +83,23 @@
         "accountId"
       ],
       "toolsAllowed": [
-        "lookupAccount"
+        "lookupAccount",
+        "logDisposition"
       ],
       "transitions": [
         {
           "on": "deny",
-          "to": "exit:refuse"
+          "to": "exit:refuse",
+          "whenSlotsFilled": [
+            "clarified"
+          ]
+        },
+        {
+          "on": "no_account",
+          "to": "exit:refuse",
+          "whenSlotsFilled": [
+            "clarified"
+          ]
         },
         {
           "on": "provide_account",
@@ -85,9 +126,37 @@
       "exits": [
         {
           "type": "refuse",
-          "label": "Wrong party — call ended"
+          "label": "Wrong party — number marked, call ended",
+          "disposition": "wrong_party",
+          "say": [
+            "I'm sorry for the inconvenience. I've noted that we reached the wrong person, and this number is marked on our side. Thank you for your time — goodbye."
+          ]
         }
-      ]
+      ],
+      "noDisclosure": true,
+      "clarify": {
+        "intents": [
+          "deny",
+          "no_account",
+          "unsure",
+          "ask_purpose"
+        ],
+        "slot": "clarified"
+      },
+      "agentSayVariants": {
+        "clarify": [
+          "No problem — let me explain. This line is for existing demo accounts, so I need to make sure I'm speaking with the account holder before I can share anything. Are you the account holder? If so, please share the account number or the name on the account — for this demo you can use account 1001, 2044, or 3300. If you think we've reached you in error, just tell me and I'll note it."
+        ],
+        "clarifyAgain": [
+          "Understood. If you're the account holder, the account number is all I need — for this demo, 1001, 2044, or 3300 works. If this isn't you, just say so and I'll note that we reached the wrong person."
+        ],
+        "reprompt": [
+          "Thanks. To pull up the account, please share the account number — for this demo, 1001, 2044, or 3300."
+        ],
+        "accountNotFound": [
+          "I couldn't find that account number. Could you double-check it? For this demo, try 1001, 2044, or 3300 — or tell me if you think we've reached the wrong person."
+        ]
+      }
     },
     "disclosure": {
       "id": "disclosure",
@@ -154,7 +223,10 @@
       "exits": [
         {
           "type": "refuse",
-          "label": "Disclosure declined — call ended"
+          "label": "Disclosure declined — call ended",
+          "say": [
+            "Understood — I won't go any further with this today. Thank you for your time, and goodbye."
+          ]
         }
       ]
     },
@@ -235,7 +307,10 @@
       "exits": [
         {
           "type": "refuse",
-          "label": "Payment refused — disposition logged"
+          "label": "Payment refused — disposition logged",
+          "say": [
+            "Understood — I've noted your response. Thank you for your time, and goodbye."
+          ]
         }
       ]
     },

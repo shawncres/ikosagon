@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   alreadyAcknowledged,
   buildAgentTurn,
+  dropRepeatedLines,
   collectSlots,
   extractAccountId,
   getCurrentNode,
@@ -406,6 +407,16 @@ export async function POST(request: Request) {
     mode = plan ? "llm" : "scripted";
   }
 
+  // Never repeat a line the caller already heard (only the verbatim compliance lines of a
+  // must-say node, i.e. the mini-Miranda, may be re-read)
+  agentText = dropRepeatedLines(agentText, history, {
+    keep: [node, speakNode].filter((n) => n.allowParaphrase === false).flatMap((n) => n.agentSay),
+    ending: Boolean(exit),
+  });
+
+  // Clients get the outcome only (type + label), not close scripts or disposition codes
+  const exitOut = exit ? { type: exit.type, label: exit.label } : null;
+
   // An exit normally ends on the current node; a callback exit lands on its close node
   const finalNodeId = exit ? speakNode.id : nextNode?.id ?? node.id;
   const finalLabel = (getCurrentNode(flow, finalNodeId) ?? speakNode).label;
@@ -422,7 +433,7 @@ export async function POST(request: Request) {
     intent: intentForGraph,
     slots,
     provider,
-    exit: exit ?? null,
+    exit: exitOut,
     kind: "turn",
     llm: llmStatus,
   });
@@ -433,7 +444,7 @@ export async function POST(request: Request) {
     agentText,
     slots,
     toolResults,
-    exit: exit ?? undefined,
+    exit: exitOut ?? undefined,
     mode,
     debug: {
       matchedIntent: intentForGraph,

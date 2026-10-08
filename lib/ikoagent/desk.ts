@@ -34,7 +34,7 @@ export function toolEvent(t: DeskToolResult): string | null {
     case "scheduleCallback":
       return t.ok ? `Callback ${maskInId(d.callbackId)} · ${humanWindow(d.window)}` : "Callback failed";
     case "logDisposition":
-      return t.ok ? "Disposition logged" : null;
+      return t.ok ? (d.disposition && d.disposition !== "completed" ? `Disposition logged · ${humanWindow(d.disposition)}` : "Disposition logged") : null;
     case "checkBalance":
       return t.ok ? "Balance checked" : null;
     case "offerPaymentPlan":
@@ -50,6 +50,8 @@ export function deskSlots(slots: Record<string, string>): { label: string; value
   if (slots.customerName) rows.push({ label: "Name", value: slots.customerName });
   if (slots.accountId) rows.push({ label: "Account", value: maskAccount(slots.accountId) });
   else if (slots.needsAccount === "true") rows.push({ label: "Account", value: "new customer" });
+  // Collections identity: caller hasn't given an account yet and was asked once to confirm
+  if (!slots.accountId && Number(slots.clarified) > 0) rows.push({ label: "Identity", value: "not confirmed — no details shared" });
   if (slots.reason) rows.push({ label: "Issue", value: slots.reason });
   if (slots.need) rows.push({ label: "Need", value: slots.need });
   if (slots.offer) rows.push({ label: "Offer", value: slots.offer.replace(/_/g, " ") });

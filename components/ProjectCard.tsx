@@ -17,9 +17,11 @@ export function ProjectCard({ project }: ProjectCardProps) {
           <img
             src={project.cover}
             alt=""
-            width={800}
-            height={480}
-            className="h-40 w-full object-contain object-top transition group-hover:scale-[1.02]"
+            width={project.coverFit === "cover" ? 1600 : 800}
+            height={project.coverFit === "cover" ? 840 : 480}
+            className={`h-40 w-full transition group-hover:scale-[1.02] ${
+              project.coverFit === "cover" ? "object-cover object-center" : "object-contain object-top"
+            }`}
           />
         </div>
       ) : null}

@@ -22,6 +22,11 @@ export type ProjectMeta = {
   updated: string;
   tags: string[];
   cover: string;
+  /**
+   * How the cover fills the card's 160px-tall image box. "cover" = full-bleed crop for
+   * art drawn at the card ratio (≈1.9:1, safe centre band); default "contain".
+   */
+  coverFit?: "contain" | "cover";
   featured: boolean;
   repo?: string;
   live?: string;
@@ -91,6 +96,7 @@ export async function getProjects(): Promise<Project[]> {
         updated: resolveUpdated(data.updated, stat.mtimeMs, year),
         tags: Array.isArray(data.tags) ? data.tags.map(String) : [],
         cover: String(data.cover),
+        coverFit: data.coverFit === "cover" ? "cover" : undefined,
         featured: Boolean(data.featured),
         repo: data.repo ? String(data.repo) : undefined,
         live: data.live ? String(data.live) : undefined,

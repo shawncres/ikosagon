@@ -61,7 +61,12 @@
             "need"
           ]
         }
-      ]
+      ],
+      "agentSayVariants": {
+        "reprompt": [
+          "Happy to help — you don't need an account to talk plans with us. What are you hoping to solve: a plan for your team, an upgrade, or a trial?"
+        ]
+      }
     },
     "discover": {
       "id": "discover",

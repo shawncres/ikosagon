@@ -364,6 +364,11 @@ export function scriptLinesFor(
     const newCustomer = slots.needsAccount === "true";
     if (v.scheduled?.length && tools.some((t) => t.name === "scheduleCallback" && t.ok)) lines = v.scheduled;
     else if (ctx.accountNotFound && v.accountNotFound?.length) lines = v.accountNotFound;
+    // Clarify-before-exit: first clarification, then a shorter one (never the same twice)
+    else if (node.clarify && Number(slots[node.clarify.slot]) > 0 && (v.clarify?.length || v.clarifyAgain?.length)) {
+      const said = (l: string[] | undefined) => Boolean(l?.length && repeatsEarlierAgentLine(interpolate(l[0], slots, tools), ctx.history ?? []));
+      lines = v.clarify?.length && !said(v.clarify) ? v.clarify : v.clarifyAgain?.length && !said(v.clarifyAgain) ? v.clarifyAgain : (v.reprompt ?? lines);
+    }
     // Account just created / found but no issue yet → confirm and ask how to help
     else if (slots.accountId && !hasReason && slots.accountCreated === "true" && v.accountCreated?.length) {
       lines = v.accountCreated;
@@ -496,11 +501,16 @@ export function buildAgentTurn(opts: {
   const say = speakNode.agentSay ?? [];
 
   if (opts.exit) {
-    // Closing line from current node if any (a booked callback speaks its real id),
-    // then exit label framing
+    // Closing line: the exit's own close (wrong party, declined…), else the current
+    // node's line (a booked callback speaks its real id) — but never a line the caller
+    // already heard (e.g. the identity opener), then exit label framing
     const booked = speakNode.agentSayVariants?.scheduled?.length && opts.toolResults.some((t) => t.name === "scheduleCallback" && t.ok);
-    if (booked) lines.push(...scriptLinesFor(speakNode, opts.slots, opts.toolResults, { history: opts.history }));
-    else if (say.length) lines.push(interpolate(say[0], opts.slots, opts.toolResults));
+    if (opts.exit.say?.length) lines.push(...interpolateLines(opts.exit.say, opts.slots, opts.toolResults));
+    else if (booked) lines.push(...scriptLinesFor(speakNode, opts.slots, opts.toolResults, { history: opts.history }));
+    else if (say.length) {
+      const line = interpolate(say[0], opts.slots, opts.toolResults);
+      lines.push(repeatsEarlierAgentLine(line, opts.history ?? []) ? CLOSE_FALLBACK : line);
+    }
     // Real ids from this turn's case / callback are always spoken once on the way out
     const opened = opts.toolResults.find((t) => t.name === "createCase" && t.ok && t.data.caseId);
     if (opened && !lines.some((l) => l.includes(String(opened.data.caseId)))) lines.push(`Your case number is ${opened.data.caseId}.`);
@@ -696,6 +706,46 @@ export function stripAgentGuidance(text: string, agentTexts: string[], allowed: 
     )
     .filter(Boolean);
   return out.join("\n\n").trim();
+}
+
+/** Generic close when the node's own line was already spoken */
+export const CLOSE_FALLBACK = "Thank you for your time today — goodbye.";
+
+const STAY_FALLBACKS = [
+  "Sorry — could you say that another way so I can help?",
+  "I want to make sure I get this right — could you tell me a little more?",
+  "Take your time — what would you like to do next?",
+];
+
+/**
+ * Last safety net for every reply (model draft or scripted): drop any paragraph the
+ * caller already heard word for word. `keep` lists verbatim compliance lines that may be
+ * re-read (the mini-Miranda). If nothing new is left, a short non-repeating line is used
+ * (a polite close when the call ends). "Call outcome:" framing is never dropped.
+ */
+export function dropRepeatedLines(text: string, history: HistoryTurn[], opts: { keep?: string[]; ending?: boolean } = {}): string {
+  const earlierMsgs = history.filter((h) => h.role === "agent").map((h) => normalizeLine(h.content)).filter(Boolean);
+  const earlierParas = new Set(
+    history
+      .filter((h) => h.role === "agent")
+      .flatMap((h) => h.content.split(/\n{2,}/))
+      .map(normalizeLine)
+      .filter(Boolean),
+  );
+  const keep = new Set((opts.keep ?? []).map(normalizeLine));
+  const paras = text.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  const isOutcome = (p: string) => /^call outcome:/i.test(p);
+  const kept = paras.filter((p) => {
+    if (isOutcome(p)) return true;
+    const n = normalizeLine(p);
+    if (!n || keep.has(n)) return true;
+    if (earlierParas.has(n)) return false;
+    return !earlierMsgs.some((m) => m.length >= 20 && n.startsWith(m));
+  });
+  if (kept.some((p) => !isOutcome(p))) return kept.join("\n\n");
+  const pool = opts.ending ? [CLOSE_FALLBACK, "Thanks for your time — goodbye."] : STAY_FALLBACKS;
+  const pick = pool.find((l) => !earlierParas.has(normalizeLine(l))) ?? pool[pool.length - 1];
+  return [pick, ...kept].join("\n\n");
 }
 
 const DEFAULT_GREETING_REPLIES = [
