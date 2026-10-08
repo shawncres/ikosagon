@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import {
   alreadyAcknowledged,
-  applyTransition,
   buildAgentTurn,
   collectSlots,
   extractAccountId,
@@ -10,10 +9,7 @@ import {
   isGreetingOrAck,
   matchIntent,
   openingAgentText,
-  runToolsForTurn,
   looksLikeInjection,
-  scrubWeakSlots,
-  slotsFilled,
   topicFromText,
 } from "@/lib/ikoagent/engine";
 import {
@@ -22,13 +18,13 @@ import {
   looksLikeNoAccount,
   sanitizeAccountId,
 } from "@/lib/ikoagent/crm";
-import { applyToolSlots, runTool } from "@/lib/ikoagent/tools";
+import { deriveTurnState, outcomeKey, PENDING, runGraph } from "@/lib/ikoagent/graphTurn";
 import { loadFlow, listFlows } from "@/lib/ikoagent/loadFlow";
 import {
-  classifyTurn,
+  finalizeDraft,
   mergeSlots,
+  planTurn,
   safeOpening,
-  speakTurn,
   type LlmStepStatus,
 } from "@/lib/ikoagent/llmTurn";
 import {
@@ -44,7 +40,6 @@ import {
   type FlowNode,
   type HistoryTurn,
   type SlotMap,
-  type ToolResult,
   type TurnResponse,
 } from "@/lib/ikoagent/types";
 
@@ -115,34 +110,6 @@ function sanitizeSlots(input: unknown): SlotMap {
   return out;
 }
 
-/**
- * Verify a captured account number with the CRM lookup tool at nodes that allow it.
- * Found → slots get the CRM name; not found → the bad digits are cleared so the
- * graph cannot advance on an unknown account.
- */
-async function verifyAccountAt(
-  node: FlowNode,
-  slots: SlotMap,
-): Promise<{ slots: SlotMap; result: ToolResult | null; notFound: boolean }> {
-  const id = sanitizeAccountId(slots.accountId || "");
-  if (!id || !node.toolsAllowed?.includes("lookupAccount")) {
-    return { slots, result: null, notFound: false };
-  }
-  const result = await runTool("lookupAccount", { ...slots, accountId: id });
-  if (result.ok) {
-    return { slots: applyToolSlots(slots, [result]), result, notFound: false };
-  }
-  const next: SlotMap = { ...slots };
-  delete next.accountId;
-  delete next.last4;
-  return { slots: next, result, notFound: true };
-}
-
-/** Caller declined having an account after we asked ("no", "nope", "I don't") */
-function looksLikeDecline(text: string): boolean {
-  return /^\s*(no|nope|nah|not really|i don'?t|i do not|don'?t have (one|it)|never had one)\b/i.test(text);
-}
-
 /** Strip internal/engine-only keys a client could try to inject */
 function dropInternalSlots(slots: SlotMap): SlotMap {
   const out: SlotMap = {};
@@ -151,38 +118,6 @@ function dropInternalSlots(slots: SlotMap): SlotMap {
     out[k] = v;
   }
   return out;
-}
-
-/**
- * Entering (or sitting on) a node that may create customers, with a captured name
- * and "no account / I'm new" already on file → create the account now instead of
- * asking "Do you have an account number handy?" again.
- */
-async function ensureAccountAt(
-  node: FlowNode,
-  slots: SlotMap,
-  request: Request,
-): Promise<{ slots: SlotMap; result: ToolResult | null; limited: boolean }> {
-  if (
-    !node.toolsAllowed?.includes("createCustomer") ||
-    slots.needsAccount !== "true" ||
-    !slots.customerName ||
-    sanitizeAccountId(slots.accountId || "")
-  ) {
-    return { slots, result: null, limited: false };
-  }
-  if (!createRateLimit(clientKey(request)).ok) return { slots, result: null, limited: true };
-  const result = await runTool("createCustomer", slots);
-  return { slots: result.ok ? applyToolSlots(slots, [result]) : slots, result, limited: false };
-}
-
-/**
- * holdForSlots: the node's required slots were only just met this turn and the
- * extra hold slots (e.g. the issue) are still unknown → stay and ask for them.
- */
-function holdHere(node: FlowNode, slots: SlotMap, filledBefore: boolean): boolean {
-  if (!node.holdForSlots?.length || filledBefore) return false;
-  return node.holdForSlots.some((key) => !slots[key]?.trim());
 }
 
 function createLimitedResponse(nodeId: string, slots: SlotMap) {
@@ -349,235 +284,98 @@ export async function POST(request: Request) {
     });
   }
 
-  // A. Heuristic slots first (account numbers, etc.)
-  let slots = collectSlots(userText, priorSlots, node.requireSlots);
+  // A. Heuristic slots first (account numbers, names, topics)
+  const heuristicSlots = collectSlots(userText, priorSlots, node.requireSlots);
   const llmStatus: LlmStepStatus = {};
-
-  // B. LLM classify (intent + slot updates), keyword fallback.
-  // A bare "hi" at a greeting node is deterministic — no LLM calls (saves free-tier TPM).
+  const acknowledged = alreadyAcknowledged(history);
+  const keyword = matchIntent(node, userText);
+  // A bare "hi" at a greeting node is deterministic — no LLM request at all.
   const pureGreeting = isPureGreeting(node, userText);
-  const classified = pureGreeting
+  const allowCreate = () => createRateLimit(clientKey(request)).ok;
+
+  const ragFor = async (speakAt: FlowNode, s: SlotMap, intent: string | null) => {
+    if (!speakAt.rag && !node.rag) return [];
+    const query = [speakAt.rag?.queryHint, userText, s.reason, s.need, intent].filter(Boolean).join(" ");
+    return retrieveIkoAgent(flow.ragCorpus, query || userText, 3, {
+      accountVerified: Boolean(sanitizeAccountId(s.accountId || "")) || s.accountId === PENDING.accountId,
+    });
+  };
+
+  // B. Predict where the graph will land from heuristics alone (dry run: read-only
+  // lookups are real, account creation is simulated, nothing is written).
+  const heuristicIntent = pureGreeting ? "greeting" : keyword.intent;
+  const predictedState = deriveTurnState({ flow, node, userText, slots: heuristicSlots, matchedIntent: heuristicIntent });
+  const predicted = pureGreeting
     ? null
-    : await classifyTurn({
+    : await runGraph({ flow, node, priorSlots, state: predictedState, mode: { kind: "dry" } });
+  const predictedHits = predicted ? await ragFor(predicted.speakNode, predicted.slots, heuristicIntent) : [];
+
+  // C. ONE LLM request: classify for the current node + draft the reply for the
+  // predicted node. Keyword intent is the fallback when the call fails.
+  if (pureGreeting) llmStatus.call = "skipped";
+  const plan = predicted
+    ? await planTurn({
         flow,
         node,
         userText,
-        slots,
+        slots: predicted.slots,
         history,
+        predicted,
+        ragContext: formatIkoAgentContext(predictedHits),
+        acknowledged,
         status: llmStatus,
-      });
-  if (pureGreeting) llmStatus.classify = "skipped";
-  const keyword = matchIntent(node, userText);
-  const matchedIntent = pureGreeting ? "greeting" : classified?.intent ?? keyword.intent;
-  if (classified?.slots) {
-    slots = mergeSlots(slots, classified.slots);
-  }
-  // Prefer short topic tags — never let greetings / rants land in {{reason}}/{{need}}
-  // Always overwrite a weak prior reason when the caller later describes a real issue.
-  const topic = topicFromText(userText);
-  slots = scrubWeakSlots(slots);
+      })
+    : null;
+  const matchedIntent = pureGreeting ? "greeting" : plan?.intent ?? keyword.intent;
 
-  if (topic) {
-    // Real issue phrases always win — overwrite "hi" / empty / other weak priors
-    slots = mergeSlots(slots, { reason: topic });
-    if (flow.vertical === "sales" || matchedIntent === "discover_need") {
-      slots = mergeSlots(slots, { need: topic });
-    }
-  } else if (matchedIntent === "describe_issue" && isGreetingOrAck(userText)) {
-    // LLM sometimes mislabels "hi" as describe_issue — do not keep a garbage reason
-    slots = scrubWeakSlots(slots);
-  }
-
-  // Collapse an LLM-stuffed rant without inventing a topic from noise
-  if (slots.reason && slots.reason.length > 60) {
-    const collapsed = topicFromText(slots.reason) || slots.reason.slice(0, 48);
-    slots = mergeSlots(slots, { reason: collapsed });
-  }
-  if (slots.need && slots.need.length > 60) {
-    const collapsed = topicFromText(slots.need) || slots.need.slice(0, 48);
-    slots = mergeSlots(slots, { need: collapsed });
-  }
-  slots = scrubWeakSlots(slots);
-
-  // Name / no-account heuristics (validated) — never from raw LLM SQL
-  const asksForName = node.listenFor.some((e) => e.intent === "provide_name");
-  const extractedName = extractCustomerName(userText, {
-    allowBare: asksForName && !slots.customerName,
+  // D. The graph owns the journey: re-derive with the model's intent/slots and run
+  // the live pass (real tools, real creates, rate limits).
+  const state = deriveTurnState({
+    flow,
+    node,
+    userText,
+    slots: plan?.slots ? mergeSlots(heuristicSlots, plan.slots) : heuristicSlots,
+    matchedIntent,
   });
-  if (extractedName) {
-    slots = mergeSlots(slots, { customerName: extractedName });
-  }
-  if (looksLikeNoAccount(userText)) {
-    slots = mergeSlots(slots, { needsAccount: "true" });
-  }
+  const intentForGraph = state.intentForGraph;
+  const live = await runGraph({ flow, node, priorSlots, state, mode: { kind: "live", allowCreate } });
+  if (live.limited) return createLimitedResponse(node.id, live.slots);
+  const { slots, toolResults, accountNotFound, nextNode, exit, speakNode, transitioned } = live;
 
-  // Greeting / small-talk should not advance the graph as if an issue was described
-  let intentForGraph = matchedIntent;
-  if (matchedIntent === "describe_issue" && isGreetingOrAck(userText) && !topic && !slots.reason) {
-    intentForGraph = "greeting";
-  }
-  // Prefer deterministic intents when keywords match and node listens for them
-  const listenIds = new Set(node.listenFor.map((e) => e.intent));
-  const accountInText = extractAccountId(userText);
-  if (
-    (intentForGraph === "greeting" || !intentForGraph) &&
-    listenIds.has("describe_issue") &&
-    (topic || (accountInText && slots.reason))
-  ) {
-    // "Hi, my package still hasn't shown up" is an issue, not a greeting
-    intentForGraph = "describe_issue";
-  }
-  if (
-    (looksLikeNoAccount(userText) ||
-      (slots.customerName && !slots.accountId && looksLikeDecline(userText))) &&
-    listenIds.has("no_account")
-  ) {
-    intentForGraph = "no_account";
-    slots = mergeSlots(slots, { needsAccount: "true" });
-  } else if (accountInText && listenIds.has("provide_account")) {
-    // Account digits win (name may ride along: "I'm Alex Rivera — account 1001")
-    intentForGraph = "provide_account";
-  } else if (extractedName && listenIds.has("provide_name") && !slots.accountId) {
-    // Name only → ask for the account (or create one if they already said they're new)
-    intentForGraph = "provide_name";
-  }
-
-  // C. Tools + transition (graph still owns the journey)
-  // Rate-limit account creates separately (abuse / prompt-injection spam)
-  const createPossible =
-    (intentForGraph === "provide_name" || intentForGraph === "no_account") &&
-    slots.needsAccount === "true" &&
-    Boolean(slots.customerName) &&
-    !sanitizeAccountId(slots.accountId || "");
-  if (createPossible) {
-    if (!createRateLimit(clientKey(request)).ok) {
-      return createLimitedResponse(node.id, slots);
-    }
-  }
-
-  // Verify any captured account against the CRM before the graph can advance on it
-  const verified = await verifyAccountAt(node, slots);
-  slots = verified.slots;
-  let accountNotFound = verified.notFound;
-  let toolResults: ToolResult[] = verified.result ? [verified.result] : [];
-
-  toolResults = [
-    ...toolResults,
-    ...(await runToolsForTurn(flow, node, intentForGraph, slots, {
-      skip: verified.result ? ["lookupAccount"] : [],
-    })),
-  ];
-  slots = applyToolSlots(slots, toolResults);
-  slots = scrubWeakSlots(slots);
-
-  // Name + "no account" already known while sitting on verify → create now
-  {
-    const here = await ensureAccountAt(node, slots, request);
-    if (here.limited) return createLimitedResponse(node.id, slots);
-    slots = here.slots;
-    if (here.result) toolResults = [...toolResults, here.result];
-  }
-
-  const filledBefore = slotsFilled(priorSlots, node.requireSlots) && Boolean(node.requireSlots?.length);
-  let { nextNodeId, exit } = applyTransition(node, intentForGraph, slots);
-  // Staying put (or self-loop like no_account → verify) but required slots are now
-  // satisfied (e.g. a new account was just created) → take the slots_filled edge.
-  if (
-    !exit &&
-    (!nextNodeId || nextNodeId === node.id) &&
-    node.transitions.some((tr) => tr.on === "slots_filled")
-  ) {
-    const retry = applyTransition(node, "slots_filled", slots);
-    if (retry.nextNodeId && retry.nextNodeId !== node.id) {
-      nextNodeId = retry.nextNodeId;
-      exit = retry.exit;
-    }
-  }
-  // Requirements met only this turn but the issue is still unknown → stay and ask
-  if (!exit && nextNodeId && nextNodeId !== node.id && holdHere(node, slots, filledBefore)) {
-    nextNodeId = node.id;
-  }
-  let nextNode = nextNodeId ? getCurrentNode(flow, nextNodeId) : null;
-
-  // Entering verify with name + "no account" carried from greet → create on entry
-  if (!exit && nextNode && nextNode.id !== node.id) {
-    const entry = await ensureAccountAt(nextNode, slots, request);
-    if (entry.limited) return createLimitedResponse(node.id, slots);
-    slots = entry.slots;
-    if (entry.result) toolResults = [...toolResults, entry.result];
-  }
-
-  // Chain through a slot-collection node whose requirements are already met
-  // (e.g. caller gave name + account at greet → skip re-asking at verify).
-  // Never skip compliance nodes (allowParaphrase: false) — must-say lines stay.
-  if (
-    !exit &&
-    nextNode &&
-    nextNode.id !== node.id &&
-    nextNode.allowParaphrase !== false &&
-    nextNode.requireSlots?.length &&
-    nextNode.transitions.some((tr) => tr.on === "slots_filled")
-  ) {
-    const chained = await verifyAccountAt(nextNode, slots);
-    slots = chained.slots;
-    if (chained.result) toolResults = [...toolResults, chained.result];
-    if (chained.notFound) accountNotFound = true;
-    const hop = applyTransition(nextNode, "slots_filled", slots);
-    if (
-      hop.nextNodeId &&
-      hop.nextNodeId !== nextNode.id &&
-      !hop.exit &&
-      !holdHere(nextNode, slots, false)
-    ) {
-      const hopNode = getCurrentNode(flow, hop.nextNodeId);
-      if (hopNode) nextNode = hopNode;
-    }
-  }
-
-  const speakNode = exit ? node : nextNode ?? node;
-  const transitioned = Boolean(nextNode && nextNode.id !== node.id);
-  const acknowledged = alreadyAcknowledged(history);
-
-  // RAG against speak node (or current) for reply grounding
-  const ragNode = speakNode;
-  const ragQuery = [ragNode.rag?.queryHint, userText, slots.reason, slots.need, matchedIntent]
-    .filter(Boolean)
-    .join(" ");
-  const ragHits =
-    ragNode.rag || node.rag
-      ? await retrieveIkoAgent(flow.ragCorpus, ragQuery || userText, 3, {
-          accountVerified: Boolean(sanitizeAccountId(slots.accountId || "")),
-        })
-      : [];
+  const ragHits = await ragFor(speakNode, slots, matchedIntent);
   // Scripted fallback may only speak authored caller-safe lines, and only on
   // policy nodes (rag.required). Agent-only guidance never reaches the caller.
   const callerFacts = callerPolicyLines(ragHits);
   const ragSnippets = speakNode.rag?.required ? callerFacts : [];
-  const ragContext = formatIkoAgentContext(ragHits);
   const greetingOnly = pureGreeting && !transitioned && !exit;
 
-  // D. LLM speak for destination/current node; E. scripted fallback
-  if (greetingOnly) llmStatus.speak = "skipped";
-  const spoken = greetingOnly
-    ? null
-    : await speakTurn({
-        flow,
+  // E. Use the draft only if the live graph landed where the draft was written for
+  // and tools produced the same kind of facts; otherwise scripted (no 2nd request).
+  let drafted: string | null = null;
+  if (greetingOnly) {
+    llmStatus.reply = "skipped";
+  } else if (plan && predicted) {
+    if (!plan.reply) {
+      llmStatus.reply = "missing";
+    } else if (outcomeKey(predicted) !== outcomeKey(live)) {
+      llmStatus.reply = "mismatch";
+    } else {
+      drafted = finalizeDraft({
+        reply: plan.reply,
         speakNode,
-        fromNode: node,
-        userText,
         slots,
-        history,
-        ragContext,
         toolResults,
+        history,
         exit,
-        matchedIntent: intentForGraph,
         transitioned,
         acknowledged,
         accountNotFound,
-        agentOnlyTexts: agentOnlyTexts(ragHits),
+        agentOnlyTexts: [...agentOnlyTexts(predictedHits), ...agentOnlyTexts(ragHits)],
         callerFacts,
         status: llmStatus,
       });
+    }
+  }
 
   let agentText: string;
   let mode: "llm" | "scripted";
@@ -585,9 +383,8 @@ export async function POST(request: Request) {
     // Never repeat the opener: short, rotating reply to a bare "hi"
     agentText = greetingReply(node, history);
     mode = "scripted";
-  } else if (spoken) {
-    agentText = spoken.agentText;
-    // Classify OR speak counts as llm mode when either succeeded
+  } else if (drafted) {
+    agentText = drafted;
     mode = "llm";
   } else {
     agentText = buildAgentTurn({
@@ -602,8 +399,8 @@ export async function POST(request: Request) {
       acknowledged,
       history,
     });
-    mode = classified ? "llm" : "scripted";
-    // If classify worked but speak failed, still mark llm for intent path transparency
+    // The model still classified the turn even when its draft was not used
+    mode = plan ? "llm" : "scripted";
   }
 
   const finalNodeId = exit ? node.id : nextNode?.id ?? node.id;

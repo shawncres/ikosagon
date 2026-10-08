@@ -115,7 +115,7 @@ export type TurnResponse = {
     ragHits: { title: string; heading: string; score: number }[];
     offline?: boolean;
     /** Why a turn was scripted vs LLM (see DemoTurnLog.llm) */
-    llm?: { classify?: string; speak?: string };
+    llm?: { call?: string; reply?: string };
   };
   error?: string;
 };

@@ -320,7 +320,7 @@ assert(J[0].nodeId === "greet", "J1 bare hi stays on greet");
 assert(!repeatsEarlierAgentLine(J[0].agentText, withOpener), `J1 reply to hi is not the opener: ${J[0].agentText}`);
 assert(J[0].agentText !== OPENER && !J[0].agentText.startsWith(OPENER), "J1 reply != start message");
 assert(J[1].agentText !== J[0].agentText && J[1].agentText !== OPENER, `J2 second greeting varies: ${J[1].agentText}`);
-assert(J[0].debug?.llm?.classify === "skipped" && J[0].debug?.llm?.speak === "skipped", "J1 bare hi spends no LLM calls");
+assert(J[0].debug?.llm?.call === "skipped" && J[0].debug?.llm?.reply === "skipped", "J1 bare hi spends no LLM calls");
 assert(greetingReply(greet, withOpener) !== OPENER, "greetingReply never returns the opener");
 assert(repeatsEarlierAgentLine(`${OPENER} Orders, billing, login — I'm here.`, withOpener), "detect a reply that opens with the opener");
 assert(!repeatsEarlierAgentLine("Thanks.", [{ role: "agent", content: "Thanks — account 1001 is on file." }]), "short replies are not flagged as repeats");
@@ -351,49 +351,105 @@ for (const t of [...G, ...H, ...I]) {
 }
 assert(!/policy says/i.test(G[2].agentText), `diagnose (rag not required) surfaces no policy note: ${G[2].agentText}`);
 
-// 4. LLM fallback visibility + free-tier protection (mocked Groq; no network)
+// 4. Single LLM call per turn (mocked Groq; no network). The mock answers by the
+// CALLER line in the prompt so each case can misbehave on purpose.
 const realFetch = globalThis.fetch;
 const groqBodies = [];
-let groqMode = "429";
+const mockReplies = new Map(); // caller text → raw model content (string) | "429"
 globalThis.fetch = async (url, init) => {
   if (!String(url).includes("api.groq.com")) return realFetch(url, init);
   const body = JSON.parse(init.body);
   groqBodies.push(body);
-  if (groqMode === "429") {
+  const userMsg = body.messages.at(-1).content;
+  const caller = (userMsg.match(/CALLER: ([^\n]*)$/) || [])[1] ?? "";
+  const scripted = mockReplies.get(caller);
+  if (scripted === "429") {
     return new Response(JSON.stringify({ error: { message: "Rate limit reached for model openai/gpt-oss-20b on tokens per minute (TPM): Limit 8000" } }), {
       status: 429,
       headers: { "content-type": "application/json", "retry-after": "7" },
     });
   }
-  if (body.response_format) {
-    const intent = /hello, how are you/i.test(init.body) ? "greeting" : null;
-    return Response.json({ choices: [{ message: { content: JSON.stringify({ intent, slots: {} }) } }] });
-  }
-  // Speak: misbehave on purpose — echo the opener, or leak agent-only guidance
-  const reply = /hello, how are you/i.test(init.body)
-    ? OPENER
-    : `Got it, thanks (reply ${groqBodies.length}). Quick policy note: If the number is not found, apologize once, invite them to re-check, and offer to open a general inquiry case — do not invent an account. What happened next?`;
-  return Response.json({ choices: [{ message: { content: reply } }] });
+  const content = typeof scripted === "string" ? scripted : JSON.stringify({ intent: null, slots: {}, reply: `Got it — thanks for telling me (${groqBodies.length}).` });
+  return Response.json({ choices: [{ message: { content } }] });
+};
+const plan = (o) => JSON.stringify({ intent: null, slots: {}, ...o });
+const requestsDuring = async (fn) => {
+  const before = groqBodies.length;
+  const out = await fn();
+  return { out, requests: groqBodies.length - before };
 };
 process.env.GROQ_API_KEY = "test-not-a-real-key";
 try {
+  // K. Rate limit → reported; cooldown skips the next request; graph still advances
   resetLlmCooldown();
-  const K = await quiet(() => call("customer_service", ["my order is late", "account 1001"], withOpener));
-  assert(K[0].debug?.llm?.classify === "rate_limited", `K1 429 is reported (got ${JSON.stringify(K[0].debug?.llm)})`);
-  assert(K[0].debug?.llm?.speak === "cooldown" && K[0].mode === "scripted", "K1 speak skipped during cooldown → scripted");
-  const before = groqBodies.length;
-  assert(K[1].debug?.llm?.classify === "cooldown" && K[1].nodeId === "diagnose", "K2 within Retry-After → no provider call, flow still advances");
-  assert(groqBodies.length === before, "K2 made no Groq requests while cooling down");
-  assert(groqBodies[0].reasoning_effort === "low" && groqBodies[0].include_reasoning === false, "gpt-oss requests use low reasoning effort");
+  mockReplies.set("my order is late", "429");
+  const { out: K, requests: kReq } = await requestsDuring(() => quiet(() => call("customer_service", ["my order is late", "account 1001"], withOpener)));
+  assert(K[0].debug?.llm?.call === "rate_limited" && K[0].mode === "scripted", `K1 429 reported (got ${JSON.stringify(K[0].debug?.llm)})`);
+  assert(K[1].debug?.llm?.call === "cooldown" && K[1].nodeId === "diagnose", "K2 within Retry-After → no request, flow still advances");
+  assert(kReq === 1, `K made exactly 1 request across 2 turns (got ${kReq})`);
+  assert(groqBodies.at(-1).reasoning_effort === "low" && groqBodies.at(-1).include_reasoning === false, "gpt-oss requests use low reasoning effort");
+  assert(groqBodies.at(-1).response_format?.type === "json_object", "single call uses JSON mode");
+  mockReplies.clear();
+  resetLlmCooldown();
 
-  resetLlmCooldown();
-  groqMode = "ok";
+  // N. Normal turn = ONE request; draft used; {{accountId}} placeholder filled from the live create
+  mockReplies.set("My name is Nia Park and I don't have an account", plan({ intent: null, reply: "Welcome aboard, Nia! Your new account number is {{accountId}}. What can I help you with today?" }));
+  mockReplies.set("I need help with a late shipment on my order", plan({ intent: null, slots: { reason: "shipping delay" }, reply: "Absolutely, I can help you with the shipping delay. What's happened so far?" }));
+  const { out: N, requests: nReq } = await requestsDuring(() =>
+    quiet(() => call("customer_service", ["hi", "My name is Nia Park and I don't have an account", "I need help with a late shipment on my order"], withOpener)),
+  );
+  assert(nReq === 2, `N: 3 turns → 2 requests (bare hi is free, then 1 per turn) (got ${nReq})`);
+  assert(N[1].debug?.llm?.call === "ok" && N[1].debug?.llm?.reply === "used" && N[1].mode === "llm", `N2 draft used (got ${JSON.stringify(N[1].debug?.llm)})`);
+  assert(/^4\d{3}$/.test(N[1].slots.accountId || "") && N[1].agentText.includes(N[1].slots.accountId), `N2 placeholder filled with the real new account: ${N[1].agentText}`);
+  assert(!/\{\{/.test(N[1].agentText), "N2 no raw placeholders reach the caller");
+  assert(N[1].toolResults.filter((t) => t.name === "createCustomer").length === 1, "N2 exactly one real create (dry pass never writes)");
+  assert(N[2].nodeId === "diagnose" && N[2].debug?.llm?.reply === "used", `N3 diagnose with the drafted reply (got ${N[2].nodeId} ${JSON.stringify(N[2].debug?.llm)})`);
+
+  // O. Malformed JSON → parse failure logged, keyword intent + scripted line, flow advances
+  mockReplies.set("my package never came", "Sure! {intent: describe_issue, reply: 'I can help'");
+  const { out: O, requests: oReq } = await requestsDuring(() => quiet(() => call("customer_service", ["my package never came"], withOpener)));
+  assert(O[0].debug?.llm?.call === "parse" && O[0].mode === "scripted", `O1 malformed JSON → parse (got ${JSON.stringify(O[0].debug?.llm)})`);
+  assert(O[0].nodeId === "verify" && /Would it be okay/i.test(O[0].agentText), `O1 keyword fallback still moves to verify: ${O[0].agentText}`);
+  assert(oReq === 1, "O1 no retry request after a parse failure");
+  mockReplies.set("hmm", "not json at all");
+  const O2 = await quiet(() => call("customer_service", ["hmm"], withOpener));
+  assert(O2[0].debug?.llm?.call === "parse" && O2[0].nodeId === "greet", "O2 non-JSON content → parse, stays put");
+  mockReplies.set("so here's the thing", plan({ intent: "describe_issue", reply: 42 }));
+  const O3 = await quiet(() => call("customer_service", ["so here's the thing"], withOpener));
+  assert(O3[0].debug?.llm?.reply === "missing" && O3[0].mode === "llm", `O3 JSON without a string reply → scripted line (got ${JSON.stringify(O3[0].debug?.llm)})`);
+
+  // P. Graph mismatch: heuristics predict greet, the model's intent moves the graph
+  // to verify → draft (written for greet) is NOT used; scripted verify line, 1 request
+  mockReplies.set("so I've got a question about something", plan({ intent: "describe_issue", reply: "Sure — what's the question?" }));
+  const { out: P, requests: pReq } = await requestsDuring(() => quiet(() => call("customer_service", ["so I've got a question about something"], withOpener)));
+  assert(P[0].nodeId === "verify", `P1 model intent still drives the graph (got ${P[0].nodeId})`);
+  assert(P[0].debug?.llm?.reply === "mismatch" && /Would it be okay/i.test(P[0].agentText), `P1 mismatch → scripted verify line: ${P[0].agentText}`);
+  assert(pReq === 1, `P1 no second request on mismatch (got ${pReq})`);
+  // P2: tools change the facts (unknown account) vs prediction — prediction already knows (read-only lookup is real)
+  mockReplies.set("account 9999", plan({ intent: "provide_account", reply: "Hmm, I couldn't find 9999 — could you double-check it, or I can set up a new account?" }));
+  const P2 = await quiet(() => call("customer_service", ["login problem", "account 9999"], withOpener));
+  assert(P2[1].nodeId === "verify" && P2[1].debug?.llm?.reply === "used", `P2 not-found known up front → draft still valid (got ${JSON.stringify(P2[1].debug?.llm)})`);
+
+  // Q. Placeholder the live pass cannot fill → scripted
+  mockReplies.set("it's account 2044", plan({ intent: "provide_account", reply: "Thanks! I opened case {{caseId}} for you." }));
+  const Q = await quiet(() => call("customer_service", ["billing issue", "it's account 2044"], withOpener));
+  assert(Q[1].debug?.llm?.reply === "unfilled" && !/\{\{/.test(Q[1].agentText), `Q2 unfillable placeholder → scripted (got ${JSON.stringify(Q[1].debug?.llm)})`);
+
+  // L. Draft that echoes the opener → rejected
+  mockReplies.set("hello, how are you?", plan({ intent: "greeting", reply: OPENER }));
   const L = await quiet(() => call("customer_service", ["hello, how are you?"], withOpener));
-  assert(L[0].debug?.llm?.speak === "repeat", `L1 LLM echo of the opener is rejected (got ${JSON.stringify(L[0].debug?.llm)})`);
+  assert(L[0].debug?.llm?.reply === "repeat", `L1 opener echo rejected (got ${JSON.stringify(L[0].debug?.llm)})`);
   assert(!repeatsEarlierAgentLine(L[0].agentText, withOpener), `L1 falls back to a different greeting: ${L[0].agentText}`);
-  const M = await quiet(() => call("customer_service", ["my order is late", "account 1001"], withOpener));
-  assert(M[1].debug?.llm?.speak === "ok", `M2 LLM speak used (got ${JSON.stringify(M[1].debug?.llm)}: ${M[1].agentText})`);
-  assert(!AGENT_ONLY_LEAK.test(M[1].agentText), `M2 leaked guidance scrubbed from LLM reply: ${M[1].agentText}`);
+
+  // M. Draft that leaks agent-only guidance → scrubbed
+  mockReplies.set("my order is late!", plan({ intent: "describe_issue", reply: "Got it. Quick policy note: If the number is not found, apologize once, invite them to re-check, and offer to open a general inquiry case — do not invent an account. Could you share your name or account number?" }));
+  const M = await quiet(() => call("customer_service", ["my order is late!"], withOpener));
+  assert(M[0].debug?.llm?.reply === "used" && !AGENT_ONLY_LEAK.test(M[0].agentText), `M1 leaked guidance scrubbed from the draft: ${M[0].agentText}`);
+
+  // R. Collections: mini-Miranda stays verbatim on the single-call path
+  mockReplies.set("account 1001", plan({ intent: "provide_account", reply: "Thanks Alex, let's talk about your balance." }));
+  const R = await quiet(() => call("collections", ["account 1001"]));
+  assert(R[0].nodeId === "disclosure" && R[0].agentText.startsWith(miranda), `R1 mini-Miranda verbatim lead on LLM path: ${R[0].agentText.slice(0, 80)}`);
 } finally {
   globalThis.fetch = realFetch;
   delete process.env.GROQ_API_KEY;
