@@ -61,7 +61,9 @@ export type FlowNode = {
       /** Caller is new and named; account create pending / unavailable */
       | "settingUp"
       /** Caller only greeted back after the opener */
-      | "greetingReply",
+      | "greetingReply"
+      /** scheduleCallback succeeded this turn: confirm the real callback id + window */
+      | "scheduled",
       string[]
     >
   >;

@@ -473,6 +473,11 @@
       "agentSay": [
         "Absolutely — I'll schedule a callback on this account and attach notes so we pick up where we left off. Would morning, afternoon, or tomorrow work better?"
       ],
+      "agentSayVariants": {
+        "scheduled": [
+          "You’re all set — callback {{callbackId}} is booked for {{callbackWindow}}, and I’ve attached notes so we pick up right where we left off."
+        ]
+      },
       "allowParaphrase": true,
       "listenFor": [
         {

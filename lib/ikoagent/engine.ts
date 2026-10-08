@@ -7,7 +7,7 @@ import type {
   ToolResult,
 } from "./types";
 import { runTool, toolsForIntent } from "./tools";
-import { extractCustomerName } from "./crm/validate";
+import { extractCustomerName, sanitizeAccountId } from "./crm/validate";
 
 const TOKEN = /[a-z0-9]{2,}/g;
 
@@ -302,14 +302,21 @@ export function scriptLinesFor(
   node: FlowNode,
   slots: SlotMap,
   tools: ToolResult[] = [],
-  ctx: { transitioned?: boolean; accountNotFound?: boolean; acknowledged?: boolean } = {},
+  ctx: {
+    transitioned?: boolean;
+    accountNotFound?: boolean;
+    acknowledged?: boolean;
+    /** Prior turns: an account number already confirmed is not re-confirmed */
+    history?: HistoryTurn[];
+  } = {},
 ): string[] {
   let lines = node.agentSay ?? [];
   const v = node.allowParaphrase === false ? undefined : node.agentSayVariants;
   if (v) {
     const hasReason = Boolean(slots.reason && !isWeakTopic(slots.reason));
     const newCustomer = slots.needsAccount === "true";
-    if (ctx.accountNotFound && v.accountNotFound?.length) lines = v.accountNotFound;
+    if (v.scheduled?.length && tools.some((t) => t.name === "scheduleCallback" && t.ok)) lines = v.scheduled;
+    else if (ctx.accountNotFound && v.accountNotFound?.length) lines = v.accountNotFound;
     // Account just created / found but no issue yet → confirm and ask how to help
     else if (slots.accountId && !hasReason && slots.accountCreated === "true" && v.accountCreated?.length) {
       lines = v.accountCreated;
@@ -325,7 +332,37 @@ export function scriptLinesFor(
   if (ctx.acknowledged && node.allowParaphrase !== false && out.length) {
     out = [stripRepeatAck(out[0]), ...out.slice(1)].filter(Boolean);
   }
+  if (node.allowParaphrase !== false && accountAlreadyConfirmed(ctx.history ?? [], slots.accountId)) {
+    out = out.map((l) => dropRepeatAccountConfirm(l, slots.accountId!)).filter(Boolean);
+  }
   return out;
+}
+
+/** An earlier agent line already spoke this real account number */
+export function accountAlreadyConfirmed(history: HistoryTurn[], accountId: string | undefined): boolean {
+  const id = sanitizeAccountId(accountId || "");
+  if (!id) return false;
+  const re = new RegExp(`\\b${id}\\b`);
+  return history.some((t) => t.role === "agent" && re.test(t.content));
+}
+
+/**
+ * Drop a second "account 4004 is all set" once the number was already confirmed
+ * ("Thanks — account 4004 is all set. About the …" → "Thanks. About the …").
+ */
+export function dropRepeatAccountConfirm(text: string, accountId: string): string {
+  const id = accountId.replace(/\D/g, "");
+  if (!id) return text;
+  const clause = new RegExp(
+    `\\s*[—–-]?\\s*(?:your\\s+)?account(?:\\s+number)?\\s*#?\\s*${id}\\s+(?:is|'s)\\s+(?:all set|verified|confirmed|ready|good to go|set up|on file)(?:\\s+for you)?`,
+    "gi",
+  );
+  return text
+    .replace(clause, "")
+    .replace(/,\s*([.!?])/g, "$1")
+    .replace(/^\s*[.!?]\s*/, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 export function slotsFilled(slots: SlotMap, required?: string[]): boolean {
@@ -412,8 +449,13 @@ export function buildAgentTurn(opts: {
   const say = speakNode.agentSay ?? [];
 
   if (opts.exit) {
-    // Closing line from current node if any, then exit label framing
-    if (say.length) lines.push(interpolate(say[0], opts.slots, opts.toolResults));
+    // Closing line from current node if any (a booked callback speaks its real id),
+    // then exit label framing
+    const booked = speakNode.agentSayVariants?.scheduled?.length && opts.toolResults.some((t) => t.name === "scheduleCallback" && t.ok);
+    if (booked) lines.push(...scriptLinesFor(speakNode, opts.slots, opts.toolResults, { history: opts.history }));
+    else if (say.length) lines.push(interpolate(say[0], opts.slots, opts.toolResults));
+    const opened = opts.toolResults.find((t) => t.name === "createCase" && t.ok && t.data.caseId);
+    if (opened && !lines.some((l) => l.includes(String(opened.data.caseId)))) lines.push(`Your case number is ${opened.data.caseId}.`);
     lines.push(`Call outcome: ${opts.exit.label}`);
     return lines.join("\n\n");
   }
@@ -426,6 +468,7 @@ export function buildAgentTurn(opts: {
         transitioned: true,
         accountNotFound: opts.accountNotFound,
         acknowledged: opts.acknowledged,
+        history: opts.history,
       }),
     );
   } else {
@@ -438,6 +481,7 @@ export function buildAgentTurn(opts: {
         transitioned: false,
         accountNotFound: opts.accountNotFound,
         acknowledged: opts.acknowledged,
+        history: opts.history,
       });
       lines.push(...(scripted.length ? scripted : ["Could you share a bit more so we can continue?"]));
     } else {
@@ -469,11 +513,11 @@ export function buildAgentTurn(opts: {
         `Plan option: ${tr.data.months} months at ${tr.data.currency ?? "USD"} ${tr.data.installment}/mo.`,
       );
     }
-    if (tr.name === "createCase" && tr.data.caseId) {
+    if (tr.name === "createCase" && tr.data.caseId && !lines.some((l) => l.includes(String(tr.data.caseId)))) {
       lines.push(`Opened case ${tr.data.caseId}.`);
     }
-    if (tr.name === "scheduleCallback" && tr.data.callbackId) {
-      lines.push(`Callback ${tr.data.callbackId} set for ${tr.data.window}.`);
+    if (tr.name === "scheduleCallback" && tr.data.callbackId && !lines.some((l) => l.includes(String(tr.data.callbackId)))) {
+      lines.push(`Callback ${tr.data.callbackId} set for ${humanWindow(String(tr.data.window ?? ""))}.`);
     }
     if (
       tr.name === "createCustomer" &&
@@ -489,7 +533,9 @@ export function buildAgentTurn(opts: {
       tr.name === "lookupAccount" &&
       tr.data.verified &&
       tr.data.name &&
-      !lines.some((l) => l.includes(String(tr.data.accountId ?? "")) || l.includes(String(tr.data.name)))
+      !lines.some((l) => l.includes(String(tr.data.accountId ?? "")) || l.includes(String(tr.data.name))) &&
+      !accountAlreadyConfirmed(opts.history ?? [], String(tr.data.accountId ?? "")) &&
+      !(opts.history ?? []).some((h) => h.role === "agent" && h.content.includes(String(tr.data.name)))
     ) {
       lines.push(`Account on file for ${tr.data.name}.`);
     }
@@ -504,11 +550,29 @@ export function buildAgentTurn(opts: {
     .join("\n\n");
 }
 
+/** "next_business_day_afternoon" → "next business day afternoon" */
+export function humanWindow(window: string): string {
+  return window.replace(/_/g, " ").trim();
+}
+
+const PENDING_MARK = "\u0000pending:";
+
 export function interpolate(template: string, slots: SlotMap, tools: ToolResult[] = []): string {
   let out = template;
   const safe: SlotMap = scrubWeakSlots(slots);
-  for (const [key, value] of Object.entries(safe)) {
-    out = out.replaceAll(`{{${key}}}`, value);
+  // Ids the tools produced this turn (case/callback) — real values in the live pass,
+  // {{placeholders}} in the dry pass
+  const callback = tools.find((t) => t.name === "scheduleCallback" && t.ok);
+  const created = tools.find((t) => t.name === "createCase" && t.ok);
+  const values: Record<string, string> = { ...safe };
+  if (callback?.data.callbackId != null) values.callbackId = String(callback.data.callbackId);
+  if (typeof callback?.data.window === "string") values.callbackWindow = humanWindow(callback.data.window);
+  if (created?.data.caseId != null) values.caseId = String(created.data.caseId);
+  for (const [key, value] of Object.entries(values)) {
+    // A dry-pass value that is itself the placeholder ({{accountId}} before the live
+    // create) must survive stripPlaceholders so the model sees where the id goes
+    const v = value === `{{${key}}}` ? `${PENDING_MARK}${key}\u0000` : value;
+    out = out.replaceAll(`{{${key}}}`, v);
   }
   const balance = tools.find((t) => t.name === "checkBalance");
   if (balance && typeof balance.data.balance === "number") {
@@ -520,7 +584,11 @@ export function interpolate(template: string, slots: SlotMap, tools: ToolResult[
     out = out.replaceAll("{{planMonths}}", String(plan.data.months ?? ""));
   }
   // stripPlaceholders removes any {{reason}} left after scrubbing weak topics
-  return stripPlaceholders(out);
+  return restorePending(stripPlaceholders(out));
+}
+
+function restorePending(text: string): string {
+  return text.replace(/\u0000pending:([a-zA-Z0-9_]+)\u0000/g, "{{$1}}");
 }
 
 /** Speak one authored caller-safe policy line (never raw corpus guidance). */
@@ -622,7 +690,7 @@ export function greetingReply(node: FlowNode, history: HistoryTurn[]): string {
 
 export function stripPlaceholders(text: string): string {
   return text
-    .replace(/\{\{[a-zA-Z0-9_]+\}\}/g, "")
+    .replace(/\{\{\s*[a-zA-Z0-9_]+\s*\}\}/g, "")
     // Collapse awkward gaps left by empty reason/need ("help with .", "about the ,")
     .replace(/\b(with|about the|for|regarding)\s*([.,;:]|$)/gi, "$2")
     .replace(/\s+([.,;:!?])/g, "$1")
@@ -636,7 +704,7 @@ export function interpolateLines(
   slots: SlotMap,
   tools: ToolResult[] = [],
 ): string[] {
-  return lines.map((line) => stripPlaceholders(interpolate(line, slots, tools))).filter(Boolean);
+  return lines.map((line) => interpolate(line, slots, tools)).filter(Boolean);
 }
 
 export function openingAgentText(flow: Flow): string {

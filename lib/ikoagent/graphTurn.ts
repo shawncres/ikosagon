@@ -318,6 +318,36 @@ export async function runGraph(opts: {
   }
   let nextNode = nextNodeId ? getCurrentNode(flow, nextNodeId) : null;
 
+  // Ending on "Callback scheduled" without a booking (e.g. "*" on callback_close) → book it now
+  if (
+    exit?.type === "callback" &&
+    node.toolsAllowed?.includes("scheduleCallback") &&
+    !toolResults.some((t) => t.name === "scheduleCallback")
+  ) {
+    const booked = await toolsAt(flow, node, "request_callback", slots, [], mode);
+    toolResults = [...toolResults, ...booked.filter((t) => t.name === "scheduleCallback")];
+  }
+
+  // A callback exit from a node that also routes the intent to a dedicated close node
+  // (policy --request_callback--> callback_close): land on the close node so its closing
+  // line speaks the real callback id once. No successful scheduleCallback yet → just move
+  // there (it asks for a window) instead of ending the call without a booking.
+  let closeNode: FlowNode | null = null;
+  if (exit?.type === "callback" && intent) {
+    const edge = node.transitions.find((t) => t.on === intent && !t.to.startsWith("exit:"));
+    const target = edge ? getCurrentNode(flow, edge.to) : null;
+    const closeExit = target && target.id !== node.id ? target.exits?.find((e) => e.type === "callback") : undefined;
+    if (target && closeExit) {
+      if (toolResults.some((t) => t.name === "scheduleCallback" && t.ok)) {
+        closeNode = target;
+        exit = closeExit;
+      } else {
+        exit = null;
+        nextNode = target;
+      }
+    }
+  }
+
   // Entering verify with name + "no account" carried from greet → create on entry
   if (!exit && nextNode && nextNode.id !== node.id) {
     const entry = await ensureAccountAt(nextNode, slots, mode);
@@ -347,6 +377,9 @@ export async function runGraph(opts: {
     }
   }
 
+  if (closeNode) {
+    return { slots, toolResults, accountNotFound, nextNode: closeNode, exit, speakNode: closeNode, transitioned: true, limited: false };
+  }
   return {
     slots,
     toolResults,

@@ -21,6 +21,8 @@ import {
   stripAgentGuidance,
   callerPolicyNote,
   stripUnsupportedPromises,
+  dropRepeatAccountConfirm,
+  accountAlreadyConfirmed,
 } from "../lib/ikoagent/engine.ts";
 import { retrieveIkoAgent, callerPolicyLines, formatIkoAgentContext } from "../lib/ikoagent/rag.ts";
 import { resetLlmCooldown } from "../lib/llm.ts";
@@ -392,6 +394,29 @@ assert(!/policy says/i.test(G[2].agentText), `diagnose (rag not required) surfac
   assert(authored.length > 10 && authored.every((l) => !PROMISE_WORDS.test(l)), "no authored script line promises email/text/tracking numbers or a vague window");
 }
 
+// 6. Account number on the create turn (live #34: "I've created account for you") and no
+// second "account 4004 is all set" on the next turn
+{
+  const pendingGuide = scriptLinesFor(verify, { customerName: "Morgan Livecheck", needsAccount: "true", accountId: "{{accountId}}", accountCreated: "true" }, [
+    { name: "createCustomer", ok: true, data: { accountId: "{{accountId}}", name: "Morgan Livecheck", created: true } },
+  ], { transitioned: false }).join(" ");
+  assert(/created account \{\{accountId\}\} for you/.test(pendingGuide), `dry-pass SCRIPT GUIDE keeps the {{accountId}} slot (was stripped → "created account for you"): ${pendingGuide}`);
+  assert(
+    dropRepeatAccountConfirm("Thanks — account 4004 is all set. About the shipping delay: what's happened so far?", "4004") === "Thanks. About the shipping delay: what's happened so far?",
+    "repeat 'account 4004 is all set' clause dropped",
+  );
+  const told = [{ role: "agent", content: "You're all set, Morgan — I've created account 4004 for you. What can I help you with today?" }];
+  assert(accountAlreadyConfirmed(told, "4004") && !accountAlreadyConfirmed(told, "1001"), "account confirmation detected from history");
+  const diagNext = scriptLinesFor(flow.nodes.diagnose, { accountId: "4004", reason: "shipping delay" }, [], { transitioned: true, history: told }).join(" ");
+  assert(!/all set/i.test(diagNext) && /shipping delay/.test(diagNext), `next-turn script doesn't re-confirm the account: ${diagNext}`);
+  const diagFirst = scriptLinesFor(flow.nodes.diagnose, { accountId: "1001", reason: "shipping delay" }, [], { transitioned: true, history: told }).join(" ");
+  assert(/account 1001 is all set/.test(diagFirst), `first confirmation of a different account still spoken: ${diagFirst}`);
+  const bookedLine = scriptLinesFor(flow.nodes.callback_close, { accountId: "1001" }, [
+    { name: "scheduleCallback", ok: true, data: { callbackId: "CB-1001-1", window: "next_business_day_afternoon" } },
+  ]).join(" ");
+  assert(/callback CB-1001-1 is booked for next business day afternoon/.test(bookedLine), `callback_close 'scheduled' line speaks the real id + readable window: ${bookedLine}`);
+}
+
 // 4. Single LLM call per turn (mocked Groq; no network). The mock answers by the
 // CALLER line in the prompt so each case can misbehave on purpose.
 const realFetch = globalThis.fetch;
@@ -512,6 +537,46 @@ try {
   const S6 = await quiet(() => call("customer_service", ["account 1001", "my parcel is late", "it still hasn't shown up", "can someone call me back tomorrow afternoon"], withOpener));
   const cbId = S6[3].toolResults?.find((t) => t.name === "scheduleCallback")?.data?.callbackId;
   assert(cbId && S6[3].agentText.includes(String(cbId)) && /call back in that window/.test(S6[3].agentText) && S6[3].debug?.llm?.reply === "used", `S6 tool-backed callback spoken (${cbId}, ${JSON.stringify(S6[3].debug?.llm)}): ${S6[3].agentText.slice(0, 100)}`);
+
+  // T. Callback from policy lands on callback_close (was: exit straight from policy) and
+  // speaks the real callback number exactly once — model draft and scripted fallback
+  const countOf = (text, id) => text.split(String(id)).length - 1;
+  assert(S6[3].nodeId === "callback_close" && S6[3].exit?.type === "callback", `T1 policy → callback_close with callback exit (got ${S6[3].nodeId} ${JSON.stringify(S6[3].exit)})`);
+  assert(countOf(S6[3].agentText, cbId) === 1 && /Call outcome: Callback scheduled/.test(S6[3].agentText), `T1 callback number spoken once + outcome: ${S6[3].agentText}`);
+  mockReplies.set("please have someone ring me back", plan({ intent: "request_callback", reply: "Sure thing — someone will call you back soon." }));
+  const T2 = await quiet(() => call("customer_service", ["account 2044", "billing issue on my card", "it was charged twice", "please have someone ring me back"], withOpener));
+  const cb2 = T2[3].toolResults?.find((t) => t.name === "scheduleCallback")?.data?.callbackId;
+  assert(T2[3].nodeId === "callback_close" && T2[3].debug?.llm?.reply === "missing_id", `T2 draft without the callback id → scripted (got ${T2[3].nodeId} ${JSON.stringify(T2[3].debug?.llm)})`);
+  assert(cb2 && countOf(T2[3].agentText, cb2) === 1 && /next business day afternoon/.test(T2[3].agentText) && !/_/.test(T2[3].agentText), `T2 scripted close speaks the callback number once with a readable window: ${T2[3].agentText}`);
+  // T3: model call fails on that turn → keyword intent still books + lands on close
+  mockReplies.set("call me back later please", "429");
+  resetLlmCooldown();
+  const T3 = await quiet(() => call("customer_service", ["account 3300", "my order is late again", "still nothing arrived", "call me back later please"], withOpener));
+  const cb3 = T3[3].toolResults?.find((t) => t.name === "scheduleCallback")?.data?.callbackId;
+  assert(T3[3].nodeId === "callback_close" && cb3 && countOf(T3[3].agentText, cb3) === 1, `T3 scripted path (LLM ${T3[3].debug?.llm?.call}) books and lands on close: ${T3[3].agentText}`);
+  resetLlmCooldown();
+
+  // U. Account creation turn always speaks the real new account number
+  const createTurn = async (caller, reply, next) => {
+    mockReplies.set(caller, reply);
+    return quiet(() => call("customer_service", ["hi", caller, ...(next ? [next] : [])], withOpener));
+  };
+  const U1 = await createTurn("I'm Jordan Ames and I don't have an account", plan({ intent: "no_account", reply: "You're all set, Jordan Ames — I've created account {{ accountId }} for you. What can I help you with today?" }));
+  assert(U1[1].debug?.llm?.reply === "used" && U1[1].agentText.includes(U1[1].slots.accountId) && !/\{|\}/.test(U1[1].agentText), `U1 spaced placeholder filled with the real id (${U1[1].slots.accountId}): ${U1[1].agentText}`);
+  const U2 = await createTurn("I'm Casey Nolan and I'm a new customer", plan({ intent: "no_account", reply: "You're all set, Casey Nolan — I've created your account. What can I help you with today?" }));
+  assert(U2[1].debug?.llm?.reply === "missing_id" && /^4\d{3}$/.test(U2[1].slots.accountId) && U2[1].agentText.includes(U2[1].slots.accountId), `U2 draft without the number → scripted line with ${U2[1].slots.accountId}: ${U2[1].agentText}`);
+  const U3 = await createTurn("I'm Robin Hale and I have no account", plan({ intent: "no_account", reply: "You're all set, Robin Hale — I've created account #4999 for you. What can I help you with today?" }));
+  assert(U3[1].debug?.llm?.reply === "account" && U3[1].agentText.includes(U3[1].slots.accountId) && !/4999/.test(U3[1].agentText), `U3 guessed account number rejected → real ${U3[1].slots.accountId}: ${U3[1].agentText}`);
+  // U4: next turn after the create — no second "account X is all set" (draft or scripted)
+  mockReplies.set("my delivery is running late", plan({ intent: "describe_issue", slots: { reason: "shipping delay" }, reply: "Thanks — account {{accountId}} is all set. About the shipping delay: what's happened so far, so I can pull the right procedure?" }));
+  const U4 = await createTurn("I'm Sam Ortiz and I don't have an account", plan({ intent: "no_account", reply: "Welcome, Sam Ortiz — I've created account {{accountId}} for you. What can I help you with today?" }), "my delivery is running late");
+  assert(U4[1].agentText.includes(U4[1].slots.accountId), `U4 create turn speaks ${U4[1].slots.accountId}`);
+  assert(U4[2].nodeId === "diagnose" && !/all set/i.test(U4[2].agentText) && !U4[2].agentText.includes(U4[1].slots.accountId) && /shipping delay/.test(U4[2].agentText), `U4 next turn drops the repeat confirmation (${JSON.stringify(U4[2].debug?.llm)}): ${U4[2].agentText}`);
+  mockReplies.set("my shipment is delayed", "429");
+  resetLlmCooldown();
+  const U5 = await createTurn("I'm Lee Park and I don't have an account", plan({ intent: "no_account", reply: "Welcome, Lee Park — account {{accountId}} is ready for you. What can I help you with today?" }), "my shipment is delayed");
+  assert(U5[2].mode === "scripted" && !/all set/i.test(U5[2].agentText) && !/Account on file/i.test(U5[2].agentText) && /shipping delay/.test(U5[2].agentText), `U5 scripted next turn drops the repeat confirmation: ${U5[2].agentText}`);
+  resetLlmCooldown();
 } finally {
   globalThis.fetch = realFetch;
   delete process.env.GROQ_API_KEY;

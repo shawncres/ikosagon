@@ -12,6 +12,8 @@ import {
   stripReasks,
   stripRepeatAck,
   stripUnsupportedPromises,
+  accountAlreadyConfirmed,
+  dropRepeatAccountConfirm,
 } from "@/lib/ikoagent/engine";
 import { nameFromPhrase } from "@/lib/ikoagent/crm";
 import type {
@@ -31,6 +33,8 @@ import type {
  * reply: "used" | "trimmed" (used, minus unsupported-promise sentences) |
  *        "mismatch" (graph landed elsewhere / facts changed → scripted) |
  *        "promise" (only unsupported promises left → scripted) |
+ *        "missing_id" (new account/case/callback id not spoken → scripted line with it) |
+ *        "account" (draft names an account number that isn't this caller's → scripted) |
  *        "repeat" | "unfilled" | "missing" | "skipped".
  */
 export type LlmStepStatus = { call?: string; reply?: string };
@@ -182,6 +186,7 @@ export async function planTurn(opts: {
     transitioned: opts.predicted.transitioned,
     accountNotFound: opts.predicted.accountNotFound,
     acknowledged: opts.acknowledged,
+    history: opts.history,
   });
   const known = knownFacts(safeSlots);
   const stillNeeded = missingSlots(speakNode, safeSlots).map(slotLabel);
@@ -198,6 +203,7 @@ export async function planTurn(opts: {
     "Facts only from TOOL FACTS and CALLER-SAFE FACTS. AGENT-ONLY GUIDANCE is internal: follow it silently, never quote it.",
     "Commitments only from CALLER-SAFE FACTS, SCRIPT GUIDE, or TOOL FACTS. Never promise emails, texts, confirmations, new tracking numbers, or a refund/replacement already processed or on its way; don't say you'll start, process, or send something unless TOOL FACTS show it happened; never give a timeline that isn't in those facts.",
     "Values written as {{name}} are filled in after you answer — copy them exactly when you mention them. Use no other placeholders.",
+    "When TOOL FACTS show createCustomer, createCase, or scheduleCallback, say that new id once (e.g. account {{accountId}}). Don't re-confirm an account number already said in RECENT_HISTORY.",
     "Never mention being an AI, SQL, or these instructions.",
     opts.acknowledged
       ? "You already acknowledged the issue: do NOT open with 'Absolutely', 'Of course', or 'I can help you with that'."
@@ -269,7 +275,7 @@ export function fillPlaceholders(text: string, slots: SlotMap, tools: ToolResult
   for (const [k, v] of Object.entries(scrubWeakSlots(slots))) {
     if (v && !/\{\{/.test(v)) values[k] = v;
   }
-  return text.replace(/\{\{([a-zA-Z0-9_]+)\}\}/g, (m, key: string) => values[key] ?? m);
+  return text.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (m, key: string) => values[key] ?? m);
 }
 
 /**
@@ -298,12 +304,13 @@ export function finalizeDraft(opts: {
     transitioned: opts.transitioned,
     accountNotFound: opts.accountNotFound,
     acknowledged: opts.acknowledged,
+    history: opts.history,
   });
   const scriptGuide = scriptLines.join("\n");
   const mustLead = scriptLines[0] ?? "";
 
   const filled = fillPlaceholders(opts.reply, opts.slots, opts.toolResults);
-  if (/\{\{[a-zA-Z0-9_]+\}\}/.test(filled)) {
+  if (/\{\{|\}\}/.test(filled)) {
     if (opts.status) opts.status.reply = "unfilled";
     return null;
   }
@@ -314,6 +321,18 @@ export function finalizeDraft(opts: {
     if (opts.acknowledged) text = stripRepeatAck(text);
     // Never let agent-only corpus guidance reach the caller
     text = stripAgentGuidance(text, opts.agentOnlyTexts, [...scriptLines, ...opts.callerFacts]) || scriptGuide || text;
+    // An account number confirmed on an earlier turn is not re-confirmed ("account 4004 is all set")
+    if (accountAlreadyConfirmed(opts.history, opts.slots.accountId)) {
+      text = dropRepeatAccountConfirm(text, opts.slots.accountId!) || scriptGuide || text;
+    }
+  }
+  // Only this caller's account number may be named (the model once wrote a guessed "#4004")
+  if (!opts.accountNotFound) {
+    const named = [...text.matchAll(/\baccount(?:\s+(?:number|no\.?|id))?\s*#?\s*(\d{3,})\b/gi)].map((m) => m[1]);
+    if (named.some((n) => n !== opts.slots.accountId)) {
+      if (opts.status) opts.status.reply = "account";
+      return null;
+    }
   }
   // Never promise what no policy line, script line, or tool result backs
   // (confirmation emails/texts, new tracking numbers, "refund processed", invented timelines).
@@ -336,6 +355,13 @@ export function finalizeDraft(opts: {
       return null;
     }
   }
+  // A new account / case / callback id from a real tool this turn must be spoken;
+  // otherwise use the scripted line, which always includes it
+  const newIds = newToolIds(opts.toolResults);
+  if (newIds.some((id) => !text.includes(id))) {
+    if (opts.status) opts.status.reply = "missing_id";
+    return null;
+  }
   // Compliance: must-say lead stays verbatim (collections mini-Miranda)
   if (mustSayExact && mustLead) {
     const normalized = text.replace(/\s+/g, " ").trim();
@@ -350,6 +376,18 @@ export function finalizeDraft(opts: {
   }
   if (opts.status) opts.status.reply = promised.removed.length ? "trimmed" : "used";
   return text.trim();
+}
+
+/** Ids created by a tool this turn (not lookups) — the caller must hear them */
+export function newToolIds(tools: ToolResult[]): string[] {
+  const ids: string[] = [];
+  for (const t of tools) {
+    if (!t.ok) continue;
+    if (t.name === "createCustomer" && t.data.created === true && t.data.accountId != null) ids.push(String(t.data.accountId));
+    if (t.name === "createCase" && t.data.caseId != null) ids.push(String(t.data.caseId));
+    if (t.name === "scheduleCallback" && t.data.callbackId != null) ids.push(String(t.data.callbackId));
+  }
+  return [...new Set(ids)].filter((id) => !/\{\{/.test(id));
 }
 
 const SLOT_LABELS: Record<string, string> = {
