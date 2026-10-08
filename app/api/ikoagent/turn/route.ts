@@ -19,6 +19,7 @@ import {
   sanitizeAccountId,
 } from "@/lib/ikoagent/crm";
 import { deriveTurnState, outcomeKey, PENDING, runGraph } from "@/lib/ikoagent/graphTurn";
+import { flowGraph } from "@/lib/ikoagent/flowGraph";
 import { loadFlow, listFlows } from "@/lib/ikoagent/loadFlow";
 import {
   finalizeDraft,
@@ -222,6 +223,8 @@ export async function POST(request: Request) {
       flowTitle: flow.title,
       sessionId,
       provider,
+      // Node ids/labels/edges only — for the live flow map (no scripts or corpus text)
+      graph: flowGraph(flow),
     });
   }
 
@@ -442,6 +445,7 @@ export async function POST(request: Request) {
       offline: !provider,
       llm: llmStatus,
     },
+    desk: { policyLine: speakNode.rag?.required ? (callerFacts[0] ?? null) : null },
   };
 
   return NextResponse.json({

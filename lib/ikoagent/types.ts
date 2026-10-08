@@ -119,6 +119,11 @@ export type TurnResponse = {
     /** Why a turn was scripted vs LLM (see DemoTurnLog.llm) */
     llm?: { call?: string; reply?: string };
   };
+  /**
+   * Agent desk extras. policyLine is the authored caller-facing policy line for this
+   * turn (rag.required nodes only) — never agent-only guidance or corpus notes.
+   */
+  desk?: { policyLine: string | null };
   error?: string;
 };
 
