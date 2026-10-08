@@ -30,14 +30,15 @@ A controllable agent that can run **CS / collections / sales** workflows you app
 ## Honesty
 
 - **Text-first** interactive demo on this page. No live inbound phone number (PSTN costs money; Hobby stays free).
-- **Browser TTS** (Web Speech API `speechSynthesis`) optionally reads agent replies aloud — free system voices, mute toggle in the demo chrome. This is **not** production contact-center voice (no Twilio/ElevenLabs). Push-to-talk STT remains phase 2.
+- **Browser TTS** (Web Speech API `speechSynthesis`) optionally reads agent replies aloud — free system voices, mute toggle in the demo chrome. This is **not** production contact-center voice (no Twilio/ElevenLabs).
+- **Browser speech input** (Web Speech API `SpeechRecognition`): hold or tap the mic to talk as the caller. Only the recognized text reaches our server — no audio. Chrome and Edge run recognition in the browser vendor's cloud; Safari support is partial; Firefox has no speech input, so typing stays the fallback.
 - Conversational turns use Groq (`CHAT_MODEL` / `openai/gpt-oss-20b`) when `GROQ_API_KEY` is set; without a key the demo still advances on scripted lines + keyword intents. Rate-limited to protect Hobby quotas.
 - Status is **in progress**: shared skeleton + rich corpus + live LLM turns in-node; telephony certification is not claimed.
 
 ## How to try it
 
-1. Pick a vertical skin.
-2. Walk the call in the transcript; watch the **node label** and **slot chips** update. Leave **Agent voice** on to hear browser TTS, or mute it anytime.
+1. Pick a vertical skin, then a **scenario card** (or start a blank call).
+2. Talk (hold the mic) or type as the caller. The **agent desk** shows the current step, collected details (accounts masked), the policy line cited, tool events and the outcome; the **flow map** lights the current step and traces the path. Leave **Agent voice** on to hear browser TTS, or mute it anytime.
 3. Ask policy questions (returns, hardship, plan fit) to see RAG citations.
 4. Tools fire as the graph allows. Restart anytime — turn cap is 20 per session.
 

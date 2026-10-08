@@ -728,4 +728,47 @@ try {
   resetLlmCooldown();
 }
 
+// ---- UI data: flow graph, desk helpers, scenarios, start/turn payload extensions (offline) ----
+{
+  const { flowGraph, visitedEdges } = await import("../lib/ikoagent/flowGraph.ts");
+  const { maskAccount, toolEvent, deskSlots, formatCallTime } = await import("../lib/ikoagent/desk.ts");
+  const { SCENARIOS } = await import("../lib/ikoagent/scenarios.ts");
+  for (const fid of ["customer_service", "collections", "sales"]) {
+    const f = JSON.parse(readFileSync(`./content/ikoagent/flows/${fid}.json`, "utf8"));
+    const g = flowGraph(f);
+    const ids = new Set(g.nodes.map((n) => n.id));
+    assert(g.start === f.start && g.nodes.find((n) => n.id === f.start)?.level === 0, `UI1 ${fid} graph starts at ${f.start} on level 0`);
+    assert(Object.keys(f.nodes).every((id) => ids.has(id)) && g.edges.every((e) => ids.has(e.from) && ids.has(e.to) && e.from !== e.to), `UI2 ${fid} graph has every node and only valid edges`);
+    const raw = JSON.stringify(g);
+    const leaked = Object.values(f.nodes).flatMap((n) => n.agentSay ?? []).filter((line) => line.length > 20 && raw.includes(line));
+    assert(leaked.length === 0, `UI3 ${fid} graph carries no script text`);
+  }
+  assert(visitedEdges(["greet", "verify", "diagnose", "verify"]).has("diagnose>verify") && visitedEdges(["greet"]).size === 0, "UI4 visitedEdges marks walked hops");
+  assert(maskAccount("1001") === "1001 (demo)" && maskAccount("4006") === "**06" && maskAccount("") === "", "UI5 maskAccount keeps demo ids, masks others");
+  assert(toolEvent({ name: "createCase", ok: true, data: { caseId: "CASE-4006-123456" } }) === "Case CASE-**06-123456 opened" && toolEvent({ name: "lookupAccount", ok: true, data: { accountId: "2044" } }) === "Account 2044 (demo) verified", "UI6 toolEvent masks account inside ids");
+  const rows = deskSlots({ customerName: "Maya Chen", accountId: "4123", reason: "late package", needsAccount: "false", intentHint: "x" });
+  assert(rows.map((r) => r.label).join(",") === "Name,Account,Issue" && rows[1].value === "**23", "UI7 deskSlots shows caller-facing rows only, account masked");
+  assert(formatCallTime(65_000) === "1:05" && formatCallTime(-5) === "0:00", "UI8 formatCallTime m:ss");
+  assert(
+    SCENARIOS.customer_service.length === 4 && SCENARIOS.collections.length === 2 && SCENARIOS.sales.length === 2,
+    "UI9 scenario cards: 4 CS, 2 collections, 2 sales",
+  );
+  for (const [fid, list] of Object.entries(SCENARIOS)) {
+    const start = JSON.parse(readFileSync(`./content/ikoagent/flows/${fid}.json`, "utf8")).start;
+    for (const sc of list) {
+      const [t] = await quiet(() => call(fid, [sc.firstLine]));
+      assert(t.ok && t.nodeId !== start && t.agentText.trim() && t.desk && "policyLine" in t.desk, `UI10 scenario ${fid}/${sc.id} first line advances (${start}→${t.nodeId})`);
+    }
+  }
+  assert(
+    (await quiet(() => call("collections", ["This is account 1001 — I'm behind on my bill."])))[0].agentText.startsWith(miranda),
+    "UI11 collections scenario still leads with the mini-Miranda verbatim",
+  );
+  const startRes = await (await POST(new Request("http://local/api/ikoagent/turn", { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": "10.9.9.9" }, body: JSON.stringify({ flowId: "sales", start: true, sessionId: "lang-check" }) }))).json();
+  assert(startRes.ok && startRes.graph?.start === "greet" && Array.isArray(startRes.graph.edges), "UI12 start response includes the flow graph");
+  const PL = await quiet(() => call("customer_service", ["Hi, I'm Alex Rivera, account 1001 — my package never came", "it was due last week"]));
+  assert(PL[0].desk.policyLine === null && PL[1].nodeId === "policy" && typeof PL[1].desk.policyLine === "string" && PL[1].desk.policyLine.length > 20, `UI13 desk.policyLine only on policy steps (${PL.map((t) => t.nodeId).join("→")})`);
+  assert(!/internal|do not (say|share)|agent note|\{\{/i.test(PL[1].desk.policyLine), "UI14 cited policy line is caller-facing");
+}
+
 console.log("\nALL CHECKS PASSED");
