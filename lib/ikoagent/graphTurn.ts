@@ -60,8 +60,13 @@ export function deriveTurnState(opts: {
   const { flow, node, userText, matchedIntent } = opts;
   let slots = opts.slots;
 
+  // Name / no-account heuristics (validated); the name is found first so issue words
+  // inside it ("Avery Shipcheck") never become the topic
+  const asksForName = node.listenFor.some((e) => e.intent === "provide_name");
+  const extractedName = extractCustomerName(userText, { allowBare: asksForName && !opts.slots.customerName });
+
   // Prefer short topic tags — never let greetings / rants land in {{reason}}/{{need}}
-  const topic = topicFromText(userText);
+  const topic = topicFromText(userText, { name: extractedName });
   slots = scrubWeakSlots(slots);
   if (topic) {
     slots = mergeSlots(slots, { reason: topic });
@@ -78,9 +83,6 @@ export function deriveTurnState(opts: {
   }
   slots = scrubWeakSlots(slots);
 
-  // Name / no-account heuristics (validated)
-  const asksForName = node.listenFor.some((e) => e.intent === "provide_name");
-  const extractedName = extractCustomerName(userText, { allowBare: asksForName && !slots.customerName });
   if (extractedName) slots = mergeSlots(slots, { customerName: extractedName });
   if (looksLikeNoAccount(userText)) slots = mergeSlots(slots, { needsAccount: "true" });
 

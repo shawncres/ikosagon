@@ -64,7 +64,17 @@ const NOT_A_NAME = new Set([
   "been", "being", "going", "gone", "over", "tomorrow", "today", "tonight", "morning", "afternoon",
   "evening", "refund", "replacement", "both", "either", "sounds", "perfect", "great", "cool", "all",
   "nothing", "something", "maybe", "probably", "actually", "well", "um", "uh", "hmm", "great",
+  "ridiculous", "unacceptable", "insane", "crazy", "terrible", "awful", "urgent", "annoying",
+  "unhappy", "disappointed", "furious", "worried", "concerned", "stuck", "unable", "missing",
 ]);
+
+/**
+ * Whole words that make a captured span an issue phrase, not a name ("I'm late on my
+ * payment", "this is my order"). Whole words only: "Shipley", "Billings", "Chargois",
+ * "Paige Returnson", and "Logan" are names.
+ */
+const ISSUE_WORD =
+  /\b(?:packages?|parcels?|refund(?:s|ed)?|accounts?|help|late|orders?|billing|billed|log ?in|login|passwords?|charge(?:s|d)?|ship(?:s|ping|ped|ment|ments)?|track(?:s|ing|ed)?|deliver(?:y|ies|ed)?|returns?|returned|warranty|broken|defective|invoices?|payments?|delay(?:s|ed)?|problems?|issues?)\b/i;
 
 /** Trim a captured phrase down to a plausible 1–3 word personal name, or null */
 export function nameFromPhrase(phrase: string): string | null {
@@ -84,9 +94,8 @@ export function nameFromPhrase(phrase: string): string | null {
   if (!kept.length) return null;
   const candidate = kept.join(" ");
   if (/\d/.test(candidate)) return null;
-  if (/package|refund|account|help|late|order|billing|login|password|charge|ship|track/i.test(candidate)) {
-    return null;
-  }
+  // The captured span itself reads as an issue phrase → not a name (whole words only)
+  if (ISSUE_WORD.test(candidate)) return null;
   return sanitizeCustomerName(candidate);
 }
 
@@ -106,6 +115,22 @@ export function extractCustomerName(
     if (n && n.split(" ").length === t.replace(/[.!]+$/, "").split(/\s+/).length) return n;
   }
   return null;
+}
+
+/**
+ * Caller text with an introduced name removed ("My name is Avery Shipcheck and my
+ * order is late" → "My name is and my order is late"), so issue keywords inside a name
+ * never set the topic or the intent. Pass `name` for bare replies ("Bill Carter").
+ */
+export function withoutCallerName(text: string, name?: string | null): string {
+  const found = name ?? extractCustomerName(text, { allowBare: false });
+  if (!found) return text;
+  let out = text;
+  for (const part of found.split(/\s+/)) {
+    const esc = part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out = out.replace(new RegExp(`(^|[^A-Za-z'])${esc}(?![A-Za-z'])`, "i"), "$1");
+  }
+  return out.replace(/\s{2,}/g, " ").trim();
 }
 
 export function looksLikeNoAccount(text: string): boolean {

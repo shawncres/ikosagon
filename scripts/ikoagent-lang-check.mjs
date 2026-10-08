@@ -31,6 +31,8 @@ import {
   looksLikeNoAccount,
   sanitizeAccountId,
   sanitizeCustomerName,
+  withoutCallerName,
+  nameFromPhrase,
 } from "../lib/ikoagent/crm/validate.ts";
 import { getCrmStore, resetCrmStoreForTests } from "../lib/ikoagent/crm/store.ts";
 import { applyToolSlots, runTool } from "../lib/ikoagent/tools.ts";
@@ -415,6 +417,58 @@ assert(!/policy says/i.test(G[2].agentText), `diagnose (rag not required) surfac
     { name: "scheduleCallback", ok: true, data: { callbackId: "CB-1001-1", window: "next_business_day_afternoon" } },
   ]).join(" ");
   assert(/callback CB-1001-1 is booked for next business day afternoon/.test(bookedLine), `callback_close 'scheduled' line speaks the real id + readable window: ${bookedLine}`);
+}
+
+// 7. Names that contain issue words (live #35: "Avery Shipcheck" was rejected and became a
+// shipping issue). Whole-word issue matching; explicit intros are trusted.
+{
+  const named = [
+    ["My name is Avery Shipcheck and I don't have an account", "Avery Shipcheck"],
+    ["I'm Shipley", "Shipley"],
+    ["this is Dana Billings", "Dana Billings"],
+    ["name's Paige Returnson", "Paige Returnson"],
+    ["my name is Chargois", "Chargois"],
+    ["I'm Logan and my login broke", "Logan"],
+    ["my name is Bill Carter", "Bill Carter"],
+    ["I am Tracy Packer", "Tracy Packer"],
+  ];
+  for (const [text, want] of named) {
+    assert(extractCustomerName(text, { allowBare: false }) === want, `explicit intro trusted: ${text} → ${want}`);
+  }
+  for (const n of ["Shipley", "Avery Shipcheck", "Dana Billings", "Paige Returnson", "Chargois", "Logan", "Tracy Packer"]) {
+    assert(nameFromPhrase(n) === n, `issue word inside a name is still a name: ${n}`);
+    assert(topicFromText(n, { name: n }) === "" && topicFromText(n) === "", `name alone sets no topic: ${n}`);
+  }
+  assert(topicFromText("Bill Carter", { name: "Bill Carter" }) === "", "bare reply 'Bill Carter' is not a billing issue");
+  assert(topicFromText("Plato") === "" && topicFromText("I feel slated") === "", "'late' only as a whole word");
+  // No topic from the name; real issue words elsewhere still count
+  for (const [text, topic] of [
+    ["My name is Avery Shipcheck and I don't have an account", ""],
+    ["this is Dana Billings", ""],
+    ["my name is Chargois, calling to say hi", ""],
+    ["name's Paige Returnson, I need a refund", "return or exchange"],
+    ["I'm Logan and my login broke", "login access"],
+    ["I'm Bill and I was double charged", "billing"],
+    ["My name is Avery Shipcheck and my package is late", "shipping delay"],
+  ]) {
+    assert(topicFromText(text) === topic && (collectSlots(text, {}, []).reason ?? "") === topic, `topic for "${text}" = "${topic}"`);
+  }
+  assert(withoutCallerName("My name is Avery Shipcheck and I don't have an account") === "My name is and I don't have an account", "intro name removed before keyword checks");
+  assert(matchIntent(greet, "my name is Chargois").intent !== "describe_issue", "name keywords don't drive describe_issue");
+  // Earlier protections still hold
+  for (const text of ["I was charged twice", "I'm late on my payment", "this is about my order", "I'm having a billing problem", "this is ridiculous, get me a supervisor", "It's been 10 days", "I'm new", "no", "I'm shipping a return"]) {
+    assert(extractCustomerName(text, { allowBare: false }) === null, `not a name: ${text}`);
+  }
+  assert(extractAccountId("It's been 10 days since the 28th") === null, "dates are not account numbers");
+  assert(extractAccountId("I paid $1,250 last week") !== "1250" && extractAccountId("I owe 250 dollars") === null, "amounts are not account numbers");
+  assert(topicFromText("can't log in") === "login access" && topicFromText("I was overcharged") === "billing" && topicFromText("tracking hasn't moved") === "shipping delay", "real issue phrases still tagged");
+}
+
+// 7b. Scripted call with an issue-word name: account created for the name, no fake issue
+{
+  const A = await quiet(() => call("customer_service", ["hi", "My name is Avery Shipcheck and I don't have an account", "I need help with a late shipment on my order"], withOpener));
+  assert(A[1].slots.customerName === "Avery Shipcheck" && /^4\d{3}$/.test(A[1].slots.accountId || "") && !A[1].slots.reason, `Avery Shipcheck → account ${A[1].slots.accountId}, no reason (got ${JSON.stringify(A[1].slots)})`);
+  assert(A[1].agentText.includes(A[1].slots.accountId) && A[2].nodeId === "diagnose" && A[2].slots.reason === "shipping delay", `then the real issue moves to diagnose: ${A[2].agentText.slice(0, 80)}`);
 }
 
 // 4. Single LLM call per turn (mocked Groq; no network). The mock answers by the

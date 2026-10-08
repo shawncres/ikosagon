@@ -7,7 +7,7 @@ import type {
   ToolResult,
 } from "./types";
 import { runTool, toolsForIntent } from "./tools";
-import { extractCustomerName, sanitizeAccountId } from "./crm/validate";
+import { extractCustomerName, sanitizeAccountId, withoutCallerName } from "./crm/validate";
 
 const TOKEN = /[a-z0-9]{2,}/g;
 
@@ -24,7 +24,8 @@ export function matchIntent(
   node: FlowNode,
   userText: string,
 ): { intent: string | null; score: number } {
-  const text = userText.toLowerCase().trim();
+  // Keywords inside an introduced name ("Avery Shipcheck") are not intent signals
+  const text = withoutCallerName(userText).toLowerCase().trim();
   const userTokens = new Set(tokenize(text));
   if (!text || !node.listenFor.length) return { intent: null, score: 0 };
 
@@ -148,19 +149,26 @@ export function isWeakTopic(value: string | undefined | null): boolean {
 }
 
 /** Map free text to a short CS/sales topic tag (empty if nothing real) */
-export function topicFromText(text: string): string {
-  const t = text.toLowerCase();
+/**
+ * Short issue tag from caller text. Whole words only ("Shipley", "Billings", "Chargois",
+ * "Plato" are not issues), and an introduced name is removed first ("my name is Bill
+ * Carter" is not a billing issue). Pass `name` when it came from a bare reply.
+ */
+export function topicFromText(text: string, opts: { name?: string | null } = {}): string {
+  const t = withoutCallerName(text, opts.name).toLowerCase();
   if (!t.trim() || isGreetingOrAck(t)) return "";
-  if (/lost\s+(my\s+)?package|never\s+(got|received|arrived|came|showed)|haven'?t\s+received|no\s+scan/.test(t)) {
+  if (/\blost\s+(my\s+)?(package|parcel)|\bnever\s+(got|received|arrived|came|showed)|\bhaven'?t\s+received|\bno\s+scan/.test(t)) {
     return "lost package";
   }
-  if (/ship|track(ing)?|deliver|package|late|delay|still\s+waiting/.test(t)) return "shipping delay";
-  if (/refund|return|exchange/.test(t)) return "return or exchange";
-  if (/warranty|defect|broken|crack/.test(t)) return "warranty or defect";
-  if (/bill|charge|invoice|charged/.test(t)) return "billing";
-  if (/login|password|access|locked/.test(t)) return "login access";
-  if (/price|expensive|budget|cost/.test(t)) return "pricing";
-  if (/hardship|can'?t pay|cannot pay|lost (my )?job/.test(t)) return "hardship";
+  if (/\b(?:ship(?:s|ping|ped|ment|ments)?|track(?:s|ing|ed)?|deliver(?:s|y|ies|ed|ing)?|packages?|parcels?|late|delay(?:s|ed)?)\b|\bstill\s+waiting\b/.test(t)) {
+    return "shipping delay";
+  }
+  if (/\b(?:refund(?:s|ed)?|return(?:s|ed|ing)?|exchange(?:s|d)?)\b/.test(t)) return "return or exchange";
+  if (/\b(?:warranty|defect(?:s|ive)?|broken|crack(?:s|ed)?)\b/.test(t)) return "warranty or defect";
+  if (/\b(?:bill(?:s|ed|ing)?|(?:over|double[- ]?)?charge(?:s|d)?|invoices?)\b/.test(t)) return "billing";
+  if (/\b(?:log ?in|logins?|passwords?|access|locked)\b/.test(t)) return "login access";
+  if (/\b(?:pric(?:e|es|ed|ing|ey)|expensive|budget|costs?)\b/.test(t)) return "pricing";
+  if (/\bhardship\b|\bcan'?t pay\b|\bcannot pay\b|\blost (my )?job\b/.test(t)) return "hardship";
   return "";
 }
 
