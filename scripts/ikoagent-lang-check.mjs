@@ -21,6 +21,7 @@ import {
   stripAgentGuidance,
   callerPolicyNote,
   stripUnsupportedPromises,
+  lateContextTopic,
   dropRepeatAccountConfirm,
   accountAlreadyConfirmed,
 } from "../lib/ikoagent/engine.ts";
@@ -469,6 +470,43 @@ assert(!/policy says/i.test(G[2].agentText), `diagnose (rag not required) surfac
   const A = await quiet(() => call("customer_service", ["hi", "My name is Avery Shipcheck and I don't have an account", "I need help with a late shipment on my order"], withOpener));
   assert(A[1].slots.customerName === "Avery Shipcheck" && /^4\d{3}$/.test(A[1].slots.accountId || "") && !A[1].slots.reason, `Avery Shipcheck → account ${A[1].slots.accountId}, no reason (got ${JSON.stringify(A[1].slots)})`);
   assert(A[1].agentText.includes(A[1].slots.accountId) && A[2].nodeId === "diagnose" && A[2].slots.reason === "shipping delay", `then the real issue moves to diagnose: ${A[2].agentText.slice(0, 80)}`);
+}
+
+// 8. "late" follows its context (was: any "late" → shipping delay, so "I'm late on my
+// payment" became a shipping issue)
+{
+  for (const t of ["I'm late on my payment", "my payment is late", "I'm behind on my bill", "my rent payment is overdue", "my card payment is past due", "late on my installment", "there's a late fee on my account", "why was I charged a late fee?"]) {
+    assert(topicFromText(t) === "billing" && collectSlots(t, {}, []).reason === "billing", `payment-late → billing: ${t}`);
+  }
+  for (const t of ["my package is late", "late delivery", "my order is running late", "the shipment is late", "my parcel is overdue", "I need help with a late shipment on my order"]) {
+    assert(topicFromText(t) === "shipping delay", `package-late → shipping: ${t}`);
+  }
+  for (const t of ["it's late", "I'm running late", "sorry, it's late here"]) {
+    assert(topicFromText(t) === "" && !collectSlots(t, {}, []).reason, `bare late → no shipping assumption: ${t}`);
+  }
+  assert(lateContextTopic("nothing relevant here") === null && lateContextTopic("it's late") === "", "lateContextTopic: null without late words, '' without context");
+  assert(topicFromText("it's late and I was charged twice") === "billing", "bare late still lets other keywords decide");
+  for (const t of ["I'm late on my payment", "I'm behind on my bill", "I'm overdue on rent"]) {
+    assert(extractCustomerName(t, { allowBare: false }) === null, `never a name: ${t}`);
+  }
+  const acctPay = collectSlots("account 1001, I'm late on my payment", {}, []);
+  assert(acctPay.accountId === "1001" && !acctPay.amount, "account number is not taken as a payment amount");
+  // Collections: payment talk at disclosure moves along the payment path; mini-Miranda stays verbatim
+  const C = await quiet(() => call("collections", ["account 1001", "I'm late on my payment", "I'm behind on my bill"]));
+  assert(C[0].nodeId === "disclosure" && C[0].agentText.startsWith(miranda), "collections: mini-Miranda verbatim at disclosure");
+  assert(C[1].nodeId === "balance" && C[1].slots.reason === "billing" && C[1].slots.customerName === "Alex Rivera", `collections 'late on my payment' → balance (got ${C[1].nodeId}, ${JSON.stringify(C[1].slots)})`);
+  assert(C[2].nodeId === "arrange" && C[2].slots.customerName === "Alex Rivera", `collections 'behind on my bill' → arrange, name kept (got ${C[2].nodeId}, ${JSON.stringify(C[2].slots)})`);
+  const C2 = await quiet(() => call("collections", ["account 1001, I'm late on my payment"]));
+  assert(C2[0].nodeId === "disclosure" && C2[0].agentText.startsWith(miranda) && !C2[0].slots.amount, "collections opener with late payment: Miranda first, no fake amount");
+  // CS: payment-late is billing, package-late is shipping, bare late asks
+  const P1 = await quiet(() => call("customer_service", ["account 1001", "I'm late on my payment"], withOpener));
+  assert(P1[1].slots.reason === "billing" && !/shipping/i.test(P1[1].agentText), `CS 'late on my payment' → billing: ${P1[1].agentText.slice(0, 90)}`);
+  const P2 = await quiet(() => call("customer_service", ["account 1001", "my package is late"], withOpener));
+  assert(P2[1].slots.reason === "shipping delay", "CS 'my package is late' → shipping delay");
+  const P3 = await quiet(() => call("customer_service", ["account 1001", "it's late"], withOpener));
+  assert(!P3[1].slots.reason && !/shipping/i.test(P3[1].agentText) && /\?|tell me/i.test(P3[1].agentText), `CS bare 'it's late' → no reason, agent asks: ${P3[1].agentText.slice(0, 90)}`);
+  // Sales: bare late is not a need
+  assert(!collectSlots("it's getting late", {}, []).need, "sales: bare late sets no need");
 }
 
 // 4. Single LLM call per turn (mocked Groq; no network). The mock answers by the

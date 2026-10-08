@@ -87,7 +87,7 @@ function synonymBoost(intent: string, text: string): number {
     escalate: ["supervisor", "manager", "escalate", "human", "agent", "person"],
     resolve: ["thanks", "thank you", "that works", "resolved", "fixed", "done"],
     ask_balance: ["balance", "owe", "how much", "what do i owe"],
-    arrange_payment: ["pay", "payment", "plan", "installment", "arrange"],
+    arrange_payment: ["pay", "payment", "plan", "installment", "arrange", "behind on", "overdue", "past due", "catch up"],
     accept_plan: ["yes", "accept", "i'll take", "sign me up", "agree"],
     hardship: ["hardship", "can't pay", "lost job", "unemployed", "medical", "struggle"],
     refuse_payment: ["won't pay", "refuse", "not paying", "dispute"],
@@ -160,7 +160,12 @@ export function topicFromText(text: string, opts: { name?: string | null } = {})
   if (/\blost\s+(my\s+)?(package|parcel)|\bnever\s+(got|received|arrived|came|showed)|\bhaven'?t\s+received|\bno\s+scan/.test(t)) {
     return "lost package";
   }
-  if (/\b(?:ship(?:s|ping|ped|ment|ments)?|track(?:s|ing|ed)?|deliver(?:s|y|ies|ed|ing)?|packages?|parcels?|late|delay(?:s|ed)?)\b|\bstill\s+waiting\b/.test(t)) {
+  // "late" / "behind" / "overdue" follow their context: payment → billing, order → shipping,
+  // nothing nearby → no topic (the agent asks instead of assuming a shipping delay)
+  const lateTopic = lateContextTopic(t);
+  if (lateTopic) return lateTopic;
+  // (bare "late" with no context returns "" here and falls through to the other keywords)
+  if (/\b(?:ship(?:s|ping|ped|ment|ments)?|track(?:s|ing|ed)?|deliver(?:s|y|ies|ed|ing)?|packages?|parcels?|delay(?:s|ed)?)\b|\bstill\s+waiting\b/.test(t)) {
     return "shipping delay";
   }
   if (/\b(?:refund(?:s|ed)?|return(?:s|ed|ing)?|exchange(?:s|d)?)\b/.test(t)) return "return or exchange";
@@ -170,6 +175,39 @@ export function topicFromText(text: string, opts: { name?: string | null } = {})
   if (/\b(?:pric(?:e|es|ed|ing|ey)|expensive|budget|costs?)\b/.test(t)) return "pricing";
   if (/\bhardship\b|\bcan'?t pay\b|\bcannot pay\b|\blost (my )?job\b/.test(t)) return "hardship";
   return "";
+}
+
+const LATE_WORD = /\b(?:late|behind|overdue|past[- ]due)\b/g;
+const PAYMENT_CONTEXT =
+  /\b(?:payments?|pay(?:ing)?|bills?|billing|rent|installments?|(?:credit |debit )?cards?|loans?|balance|dues?|subscription|invoices?|fees?|mortgage)\b/g;
+const SHIPPING_CONTEXT =
+  /\b(?:orders?|packages?|parcels?|deliver(?:s|y|ies|ed|ing)?|ship(?:s|ping|ped|ment|ments)?|tracking|arriv(?:e|ed|es|al|ing)|items?|box|courier|carrier|mail)\b/g;
+
+function nearest(text: string, re: RegExp, at: number): number {
+  let best = Infinity;
+  for (const m of text.matchAll(re)) best = Math.min(best, Math.abs((m.index ?? 0) - at));
+  return best;
+}
+
+/**
+ * Topic for "late" / "behind" / "overdue" from the nearest context word:
+ * "late on my payment", "behind on my bill", "late fee" → billing;
+ * "my package is late", "late delivery" → shipping delay; bare "it's late" → "".
+ * Returns null when no such word is present.
+ */
+export function lateContextTopic(text: string): string | null {
+  const t = text.toLowerCase();
+  if (/\blate\s+(?:fees?|charges?|payments?)\b/.test(t)) return "billing";
+  const lates = [...t.matchAll(LATE_WORD)];
+  if (!lates.length) return null;
+  let pay = Infinity;
+  let ship = Infinity;
+  for (const m of lates) {
+    pay = Math.min(pay, nearest(t, PAYMENT_CONTEXT, m.index ?? 0));
+    ship = Math.min(ship, nearest(t, SHIPPING_CONTEXT, m.index ?? 0));
+  }
+  if (pay === Infinity && ship === Infinity) return "";
+  return pay < ship ? "billing" : "shipping delay";
 }
 
 /** Drop weak reason/need so scripts never say "help with hi" */
@@ -193,7 +231,8 @@ export function collectSlots(userText: string, existing: SlotMap, required?: str
   if (last4 && !next.last4) next.last4 = last4[1];
 
   const amount = text.match(/\$?\s*(\d+(?:\.\d{1,2})?)\s*(dollars)?/i);
-  if (amount && /pay|owe|balance|amount/i.test(text)) next.amount = amount[1];
+  // Never take the account number as an amount ("account 1001, I'm late on my payment")
+  if (amount && /pay|owe|balance|amount/i.test(text) && amount[1] !== accountDigits) next.amount = amount[1];
 
   const months = text.match(/\b(\d+)\s*(?:month|mo)\b/i);
   if (months) next.planMonths = months[1];

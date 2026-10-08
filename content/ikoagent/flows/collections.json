@@ -122,11 +122,24 @@
             "I lost my job",
             "medical emergency"
           ]
+        },
+        {
+          "intent": "arrange_payment",
+          "examples": [
+            "I'm late on my payment",
+            "I'm behind on my bill",
+            "I want to pay",
+            "set up a payment plan"
+          ]
         }
       ],
       "transitions": [
         {
           "on": "affirm",
+          "to": "balance"
+        },
+        {
+          "on": "arrange_payment",
           "to": "balance"
         },
         {

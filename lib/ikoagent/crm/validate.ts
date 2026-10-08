@@ -66,6 +66,7 @@ const NOT_A_NAME = new Set([
   "nothing", "something", "maybe", "probably", "actually", "well", "um", "uh", "hmm", "great",
   "ridiculous", "unacceptable", "insane", "crazy", "terrible", "awful", "urgent", "annoying",
   "unhappy", "disappointed", "furious", "worried", "concerned", "stuck", "unable", "missing",
+  "behind", "overdue", "late", "past", "short", "broke", "struggling", "unemployed",
 ]);
 
 /**
