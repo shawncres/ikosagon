@@ -21,6 +21,7 @@
         "Hello there — this is the IkoAgent collections demonstration line with Ikosagon. May I confirm I'm speaking with the account holder? Please share demo account 1001, 2044, or 3300."
       ],
       "allowParaphrase": true,
+      "askOnStay": true,
       "listenFor": [
         {
           "intent": "provide_account",

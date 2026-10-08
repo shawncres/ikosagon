@@ -356,8 +356,15 @@ export async function POST(request: Request) {
   // E. Use the draft only if the live graph landed where the draft was written for
   // and tools produced the same kind of facts; otherwise scripted (no 2nd request).
   let drafted: string | null = null;
+  // Clarify turns (collections identity: no account / not sure / "what is this about"
+  // while unverified) always speak the authored clarification — never a free reply
+  const clarifyTurn = Boolean(
+    !exit && !transitioned && node.clarify && intentForGraph && node.clarify.intents.includes(intentForGraph),
+  );
   if (greetingOnly) {
     llmStatus.reply = "skipped";
+  } else if (clarifyTurn && plan) {
+    llmStatus.reply = "clarify";
   } else if (plan && predicted) {
     if (!plan.reply) {
       llmStatus.reply = "missing";

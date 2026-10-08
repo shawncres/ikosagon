@@ -58,6 +58,12 @@ export type FlowNode = {
    */
   noDisclosure?: boolean;
   /**
+   * While the call stays on this node (no exit), a model draft must ask the caller
+   * something and must not sound like a close/refusal ("unable to assist", "goodbye");
+   * otherwise the scripted line is spoken. Clarify turns always use the scripted line.
+   */
+  askOnStay?: boolean;
+  /**
    * Optional context-aware script variants (paraphrasable nodes only).
    * knownName: caller gave a name but no account yet.
    * accountNotFound: caller gave digits that did not match an account.
