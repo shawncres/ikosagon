@@ -67,6 +67,9 @@ const NOT_A_NAME = new Set([
   "ridiculous", "unacceptable", "insane", "crazy", "terrible", "awful", "urgent", "annoying",
   "unhappy", "disappointed", "furious", "worried", "concerned", "stuck", "unable", "missing",
   "behind", "overdue", "late", "past", "short", "broke", "struggling", "unemployed",
+  // sales talk ("we need SSO", "I'm shopping around", "I'm comparing plans")
+  "we", "our", "shopping", "comparing", "considering", "evaluating", "exploring", "browsing",
+  "checking", "thinking", "from", "with", "currently", "using",
 ]);
 
 /**

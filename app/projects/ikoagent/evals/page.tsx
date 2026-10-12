@@ -15,6 +15,7 @@ const FLOW_LABELS: Record<string, string> = {
   customer_service: "Customer service",
   collections: "Collections",
   sales: "Sales",
+  shared: "Shared runtime (all flows)",
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -27,12 +28,15 @@ const CATEGORY_LABELS: Record<string, string> = {
   "ui-data": "Agent desk data",
   "repeat-guard": "Repeat guards",
   "llm-orchestration": "Model orchestration",
+  "offer-matching": "Offer matching",
+  "objection-handling": "Objection handling",
+  "callback-routing": "Callback routing",
 };
 
 const GUARDS = [
   {
     name: "Unsupported-promise filter",
-    body: "A model draft can't commit to anything the policy, script, or a real tool result doesn't back. Confirmation emails, texts, tracking numbers, \"let me start that process\" and made-up timelines are removed before the caller hears them.",
+    body: "A model draft can't commit to anything the policy, script, or a real tool result doesn't back. Confirmation emails, texts, tracking numbers, discounts and fee waivers, \"let me start that process\" and made-up timelines are removed before the caller hears them.",
   },
   {
     name: "Verbatim mini-Miranda",
@@ -55,6 +59,8 @@ const GUARDS = [
 const EXAMPLES = [
   { flow: "Collections", input: "\"I don't have an account\" (before verification)", expected: "Scripted clarification, not a wrong-party hang-up. \"Account 1001\" next leads to the verbatim debt disclosure." },
   { flow: "Customer service", input: "Model draft: \"You'll get a confirmation email shortly with your new tracking number.\"", expected: "Promise removed; only policy-backed lines remain." },
+  { flow: "Sales", input: "Model draft: \"I can give you 20% off if you sign today.\"", expected: "Discount removed; the policy is trial before discount, and the demo has no pricing tool to back a concession." },
+  { flow: "Sales", input: "\"email me\" after the offer", expected: "A real callback is booked and its ID spoken once; no promise to send an email." },
   { flow: "Customer service", input: "\"My name is Avery Shipcheck\"", expected: "Read as a name and an account is created for it, not a shipping issue." },
   { flow: "Collections", input: "\"I'm late on my payment\"", expected: "Routed to billing/balance, never shipping delay, and never taken as a name." },
   { flow: "All flows", input: "Model repeats the opener or an earlier close", expected: "Repeat rejected; a new line or the scripted fallback plays instead." },
@@ -182,8 +188,8 @@ export default function IkoAgentEvalsPage() {
           <h2 className="mb-3 text-xl font-semibold">What this is not</h2>
           <p className="text-sm text-zinc-300">
             This isn&apos;t a live-model benchmark. These checks test our own logic (graph, guards, slot handling) against fixed
-            model outputs, not how often the live model gets things right. Each check is sorted into a category by keyword, so
-            the category split is approximate. Scoring the live model on recorded calls is next on our list.
+            model outputs, not how often the live model gets things right. Each test section is tagged with its flow and category
+            by hand; checks that exercise the shared runtime are counted under &ldquo;Shared runtime&rdquo;. Scoring the live model on recorded calls is next on our list.
           </p>
         </div>
       </section>

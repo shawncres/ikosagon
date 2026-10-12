@@ -1,10 +1,18 @@
 [
   {
-    "label": "PR: eval page (on main 73865c1, after #39)",
+    "label": "PR #40 first draft: eval page (on main 73865c1)",
     "baseCommit": "73865c1",
     "date": "2026-10-12",
     "total": 366,
     "passed": 366,
+    "failed": 0
+  },
+  {
+    "label": "PR #40: eval page + sales set (on main 73865c1)",
+    "baseCommit": "73865c1",
+    "date": "2026-10-12",
+    "total": 427,
+    "passed": 427,
     "failed": 0
   }
 ]
