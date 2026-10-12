@@ -62,6 +62,19 @@ export default async function ProjectDetailPage({ params }: { params: Promise<Pa
 
       {isIkoAgent ? <IkoAgentDemo /> : null}
 
+      {isIkoAgent ? (
+        <Link
+          href="/projects/ikoagent/evals"
+          className="card-surface mb-8 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-accent/40 p-5 no-underline hover:border-accent"
+        >
+          <span>
+            <span className="block font-mono text-xs text-accent">Evals</span>
+            <span className="text-zinc-200">See how we test every release: pass rates by flow, safety guards, and example cases.</span>
+          </span>
+          <span className="font-mono text-sm text-accent">View eval report →</span>
+        </Link>
+      ) : null}
+
       <div className="prose-project max-w-none">
         <MDXRemote source={project.content} />
       </div>

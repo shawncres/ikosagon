@@ -37,16 +37,45 @@ import {
 } from "../lib/ikoagent/crm/validate.ts";
 import { getCrmStore, resetCrmStoreForTests } from "../lib/ikoagent/crm/store.ts";
 import { applyToolSlots, runTool } from "../lib/ikoagent/tools.ts";
-import { readFileSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
 
 const flow = JSON.parse(readFileSync("./content/ikoagent/flows/customer_service.json", "utf8"));
 const greet = flow.nodes.greet;
 const verify = flow.nodes.verify;
 
+// ---- Eval report (EVAL_REPORT=path writes structured JSON; see scripts/ikoagent-eval-report.mjs) ----
+const evalResults = [];
+const FLOW_RULES = [
+  ["collections", /collections|miranda|debt|wrong[ -]party|payment plan|hardship|balance|late on my payment|\bZ\d/i],
+  ["sales", /\bsales\b|demo booking|pricing|quote/i],
+];
+const CATEGORY_RULES = [
+  ["safety", /promise|email|tracking|inject|drop table|guidance|policy note|internal|leak|unsupported|refus|timeline/i],
+  ["compliance-verbatim", /verbatim|miranda|must-say|disclosure/i],
+  ["close-routing", /\bexit|close|callback|escalat|resolve|goodbye|ends|hang|disposition|wrong[ -]party/i],
+  ["identity", /\bname\b|names|account|verify|identity|create|lookup|seed|sanitize/i],
+  ["repeat-guard", /repeat|opener|re-ask|reask|echo|differs|duplicate/i],
+  ["slot-extraction", /slot|topic|reason|extract|late|interpolat|placeholder/i],
+  ["llm-orchestration", /llm|groq|mock|rate|cooldown|timeout|mismatch|draft|one call|single/i],
+  ["ui-data", /desk|ui|scenario|graph|payload/i],
+];
+function classify(msg) {
+  const flow = FLOW_RULES.find(([, re]) => re.test(msg))?.[0] ?? "customer_service";
+  const category = CATEGORY_RULES.find(([, re]) => re.test(msg))?.[0] ?? "routing";
+  return { flow, category };
+}
 function assert(cond, msg) {
+  evalResults.push({ id: `c${String(evalResults.length + 1).padStart(3, "0")}`, name: String(msg).slice(0, 160), ...classify(String(msg)), pass: !!cond });
   if (!cond) throw new Error(msg);
   console.log("ok:", msg);
 }
+if (process.env.EVAL_REPORT) {
+  process.on("exit", (code) => {
+    const fs = require_fs();
+    fs.writeFileSync(process.env.EVAL_REPORT, JSON.stringify({ exitCode: code, results: evalResults }, null, 2));
+  });
+}
+function require_fs() { return { writeFileSync }; }
 
 assert(isGreetingOrAck("hi"), "hi is greeting");
 assert(isGreetingOrAck("Hello!"), "Hello is greeting");
