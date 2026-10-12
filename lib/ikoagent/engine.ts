@@ -980,6 +980,9 @@ const DONE_CLAIM =
 /** "Let me start that process" — an action no tool in this demo performs */
 const ACTION_PROMISE =
   /\b(?:let me|i(?:'ll| will)|i'm going to|i am going to|we(?:'ll| will))\s+(?:go ahead and\s+|get\s+)?(?:start(?:ed)?|process|issue|initiate|submit|send|ship|arrange|refund|credit|reverse|expedite|file|put (?:in|through))\b/i;
+// Price concessions: the demo has no pricing tool, and sales policy is "trial before discount".
+const DISCOUNT_PROMISE =
+  /\b\d+\s?(?:%|percent)\s*(?:off|discount)\b|\b(?:i|we)(?:'ll| will| can| could| would|'d)\s+(?:(?:give|offer|get|apply|extend|throw in)\s+(?:you\s+)?(?:a\s+|an\s+)?(?:special\s+|extra\s+|one-time\s+)?(?:discount|deal|price break|lower price|free months?)|waive|knock|match (?:their|the|that|your) price)\b|\byou(?:'ll| will)\s+(?:get|receive|save)\b[^.]{0,30}\b(?:discount|% off|percent off|free months?)/i;
 const RECEIVE_PROMISE = /\byou(?:'ll| will| should)\s+(?:receive|get|see|be getting|hear back|be contacted)\b/i;
 const TIMELINE =
   /\b(?:within|in|over|by)\s+(?:the\s+next\s+)?(?:\d+|one|two|three|four|five|seven|ten|twenty-four|forty-eight|a few|a couple of)\s*(?:(?:-|to)\s*\d+\s*)?(?:minutes?|hours?|business days?|days?|weeks?)\b|\b(?:shortly|right away|immediately|by (?:tomorrow|tonight|end of (?:the )?(?:day|week)|monday|tuesday|wednesday|thursday|friday))\b/i;
@@ -1003,6 +1006,7 @@ export function unsupportedPromise(sentence: string, backing: PromiseBacking): s
   const okTools = new Set(backing.toolResults.filter((t) => t.ok).map((t) => t.name));
   const s = sentence.toLowerCase();
 
+  if (DISCOUNT_PROMISE.test(sentence) && !(/\bwaive/.test(s) && /\bwaive/.test(facts))) return "discount";
   const channel = sentence.match(CHANNEL_PROMISE);
   if (channel) {
     const word = (channel[1] ?? channel[0]).toLowerCase().replace(/^e-?mail.*/, "email").replace(/s$/, "");

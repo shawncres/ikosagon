@@ -1,0 +1,3497 @@
+{
+  "generatedAt": "2026-10-12T20:48:21.938Z",
+  "suite": "scripts/ikoagent-lang-check.mjs",
+  "mode": "offline: mocked model outputs, in-memory CRM, deterministic flow graph",
+  "baseCommit": "73865c1",
+  "completed": true,
+  "durationMs": 2268,
+  "total": 427,
+  "passed": 427,
+  "failed": 0,
+  "byFlow": {
+    "customer_service": {
+      "total": 240,
+      "passed": 240
+    },
+    "shared": {
+      "total": 87,
+      "passed": 87
+    },
+    "collections": {
+      "total": 34,
+      "passed": 34
+    },
+    "sales": {
+      "total": 66,
+      "passed": 66
+    }
+  },
+  "byCategory": {
+    "slot-extraction": {
+      "total": 46,
+      "passed": 46
+    },
+    "routing": {
+      "total": 13,
+      "passed": 13
+    },
+    "repeat-guard": {
+      "total": 46,
+      "passed": 46
+    },
+    "identity": {
+      "total": 149,
+      "passed": 149
+    },
+    "safety": {
+      "total": 73,
+      "passed": 73
+    },
+    "compliance-verbatim": {
+      "total": 3,
+      "passed": 3
+    },
+    "llm-orchestration": {
+      "total": 22,
+      "passed": 22
+    },
+    "close-routing": {
+      "total": 28,
+      "passed": 28
+    },
+    "offer-matching": {
+      "total": 6,
+      "passed": 6
+    },
+    "objection-handling": {
+      "total": 7,
+      "passed": 7
+    },
+    "callback-routing": {
+      "total": 7,
+      "passed": 7
+    },
+    "ui-data": {
+      "total": 27,
+      "passed": 27
+    }
+  },
+  "results": [
+    {
+      "id": "c001",
+      "name": "hi is greeting",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c002",
+      "name": "Hello is greeting",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c003",
+      "name": "package late is not greeting",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c004",
+      "name": "hi is weak topic",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c005",
+      "name": "empty is weak",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c006",
+      "name": "shipping delay is real",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c007",
+      "name": "topic hi empty",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c008",
+      "name": "lost package topic",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c009",
+      "name": "refund topic",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c010",
+      "name": "collectSlots must not set reason from hi",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c011",
+      "name": "overwrite hi with lost package",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c012",
+      "name": "scrub removes hi keeps account",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c013",
+      "name": "greet+hi => greeting",
+      "flow": "customer_service",
+      "category": "routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c014",
+      "name": "package => describe_issue",
+      "flow": "customer_service",
+      "category": "routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c015",
+      "name": "interpolate must not say help with hi: I can help. Account 2044.",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c016",
+      "name": "keeps account",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c017",
+      "name": "strip placeholders cleaned: I can help. Next.",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c018",
+      "name": "greeting re-prompt: Hi! What can I help you with today?",
+      "flow": "customer_service",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c019",
+      "name": "greeting re-prompt differs from opener: Hi! What can I help you with today?",
+      "flow": "customer_service",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c020",
+      "name": "no Still need on greeting",
+      "flow": "customer_service",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c021",
+      "name": "CS greet is conversational Hello there",
+      "flow": "customer_service",
+      "category": "routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c022",
+      "name": "verify asks permission",
+      "flow": "customer_service",
+      "category": "routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c023",
+      "name": "verify asks name / setup",
+      "flow": "customer_service",
+      "category": "routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c024",
+      "name": "createCustomer in CS tools",
+      "flow": "customer_service",
+      "category": "routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c025",
+      "name": "sanitize account",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c026",
+      "name": "reject injection as account",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c027",
+      "name": "sanitize name",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c028",
+      "name": "reject inj name",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c029",
+      "name": "extract name",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c030",
+      "name": "no account detect",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c031",
+      "name": "injection detect",
+      "flow": "shared",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c032",
+      "name": "sql injection detect",
+      "flow": "shared",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c033",
+      "name": "verify+name => provide_name",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c034",
+      "name": "verify+no account => no_account",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c035",
+      "name": "default CRM is memory without DATABASE_URL",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c036",
+      "name": "seed 1001",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c037",
+      "name": "new account id 4001",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c038",
+      "name": "created name",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c039",
+      "name": "createCustomer tool ok",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c040",
+      "name": "applyToolSlots",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c041",
+      "name": "lookup 2044",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c042",
+      "name": "sentence is not a name",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c043",
+      "name": "'no' is not a name",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c044",
+      "name": "'I'm new' is not a name",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c045",
+      "name": "'It's been 10 days' is not a name",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c046",
+      "name": "name before em-dash account",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c047",
+      "name": "name stops at 'and'",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c048",
+      "name": "bare name gated off",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c049",
+      "name": "no fake account from 10 + 28th",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c050",
+      "name": "account from em-dash line",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c051",
+      "name": "account digits do not fill last4",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c052",
+      "name": "strip 'Absolutely, I can help you with that.'",
+      "flow": "customer_service",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c053",
+      "name": "strip em-dash variant",
+      "flow": "customer_service",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c054",
+      "name": "leave normal replies alone",
+      "flow": "customer_service",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c055",
+      "name": "detect earlier acknowledgement",
+      "flow": "customer_service",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c056",
+      "name": "greeting is not an ack",
+      "flow": "customer_service",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c057",
+      "name": "drop name re-ask: Absolutely, I can help you with that.",
+      "flow": "customer_service",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c058",
+      "name": "drop order/tracking ask: Let me pull up your shipment details.",
+      "flow": "customer_service",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c059",
+      "name": "never ask for order number / email",
+      "flow": "customer_service",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c060",
+      "name": "still ask for account when missing",
+      "flow": "customer_service",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c061",
+      "name": "name-only → ask account only",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c062",
+      "name": "unknown account → double-check prompt",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c063",
+      "name": "verify script drops opener once acknowledged",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c064",
+      "name": "A1 'Hi, my package…' is an issue → verify",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c065",
+      "name": "A2 name+account advances past Verify identity",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c066",
+      "name": "A2 slots name+account",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c067",
+      "name": "A2 no re-ask: Thanks. About the shipping delay: what's happened so far, so I can pull the right procedure?",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c068",
+      "name": "A2 no repeated opener",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c069",
+      "name": "A3 issue detail → policy",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c070",
+      "name": "A3 no re-ask: I'm checking our support procedures now. I'll share what applies in plain language, then we c…",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c071",
+      "name": "A opener used at most once",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c072",
+      "name": "B2 account-only advances",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c073",
+      "name": "B2 no bogus last4",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c074",
+      "name": "B2 does not ask for name after verified account",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c075",
+      "name": "C1 'I was charged twice' is not a name",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c076",
+      "name": "C2 name-only asks only for account",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c077",
+      "name": "C2 does not re-ask name",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c078",
+      "name": "C3 'no' → new account → diagnose",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c079",
+      "name": "C3 name kept (not overwritten by 'no')",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c080",
+      "name": "D2 unknown account cleared, stays on verify",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c081",
+      "name": "D2 double-check prompt",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c082",
+      "name": "D3 valid account advances",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c083",
+      "name": "E1 chain through verify",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c084",
+      "name": "F1 identity → disclosure",
+      "flow": "collections",
+      "category": "compliance-verbatim",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c085",
+      "name": "F1 mini-Miranda verbatim lead",
+      "flow": "collections",
+      "category": "compliance-verbatim",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c086",
+      "name": "needsAccount → drop 'account number handy?' re-ask: Thanks, Dana. I'm happy to help.",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c087",
+      "name": "new named caller script never asks for an account number",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c088",
+      "name": "new caller without name → ask name only",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c089",
+      "name": "G2 name + no account at greet → account created",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c090",
+      "name": "G2 createCustomer ran",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c091",
+      "name": "G2 holds on verify until the issue is known",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c092",
+      "name": "G2 never re-asks for an account number",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c093",
+      "name": "G2 asks what they need",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c094",
+      "name": "G2 states the new account once",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c095",
+      "name": "G3 issue arrives → diagnose",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c096",
+      "name": "G3 keeps the created account (no second create)",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c097",
+      "name": "G3 does not create a second account",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c098",
+      "name": "G3 no re-ask: Thanks. About the shipping delay: what's happened so far, so I can pull the right procedure?",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c099",
+      "name": "G4 → policy",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c100",
+      "name": "G never asks 'account number handy?' after 'no account'",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c101",
+      "name": "H1 new caller → asked for name only",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c102",
+      "name": "H1 no account-number ask",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c103",
+      "name": "H2 bare name → account created, holds for issue",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c104",
+      "name": "H3 issue → diagnose",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c105",
+      "name": "I1 all-in-one new customer → create + diagnose",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c106",
+      "name": "J1 bare hi stays on greet",
+      "flow": "customer_service",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c107",
+      "name": "J1 reply to hi is not the opener: Hi! What can I help you with today?",
+      "flow": "customer_service",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c108",
+      "name": "J1 reply != start message",
+      "flow": "customer_service",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c109",
+      "name": "J2 second greeting varies",
+      "flow": "customer_service",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c110",
+      "name": "J1 bare hi spends no LLM calls",
+      "flow": "customer_service",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c111",
+      "name": "greetingReply never returns the opener",
+      "flow": "customer_service",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c112",
+      "name": "detect a reply that opens with the opener",
+      "flow": "customer_service",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c113",
+      "name": "short replies are not flagged as repeats",
+      "flow": "customer_service",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c114",
+      "name": "strip leaked guidance: Thanks — account 4002 is all set.",
+      "flow": "shared",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c115",
+      "name": "strip unlabelled 6-word copy of agent-only text",
+      "flow": "shared",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c116",
+      "name": "strip disposition codes",
+      "flow": "shared",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c117",
+      "name": "verified account → identity/account-failure guidance not retrieved",
+      "flow": "shared",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c118",
+      "name": "unverified → identity guidance still available to the agent",
+      "flow": "shared",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c119",
+      "name": "caller lines carry no agent-only text",
+      "flow": "shared",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c120",
+      "name": "authored caller lines only",
+      "flow": "shared",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c121",
+      "name": "LLM context labels agent-only guidance",
+      "flow": "shared",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c122",
+      "name": "caller policy note wording",
+      "flow": "shared",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c123",
+      "name": "scripted policy turn has no agent-only text",
+      "flow": "shared",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c124",
+      "name": "no agent-only guidance in caller reply @greet: Hi! What can I help you with today?",
+      "flow": "shared",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c125",
+      "name": "no agent-only guidance in caller reply @verify",
+      "flow": "shared",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c126",
+      "name": "no agent-only guidance in caller reply @diagnose",
+      "flow": "shared",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c127",
+      "name": "no agent-only guidance in caller reply @policy",
+      "flow": "shared",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c128",
+      "name": "no agent-only guidance in caller reply @verify",
+      "flow": "shared",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c129",
+      "name": "no agent-only guidance in caller reply @verify",
+      "flow": "shared",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c130",
+      "name": "no agent-only guidance in caller reply @diagnose",
+      "flow": "shared",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c131",
+      "name": "no agent-only guidance in caller reply @diagnose",
+      "flow": "shared",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c132",
+      "name": "diagnose (rag not required) surfaces no policy note",
+      "flow": "shared",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c133",
+      "name": "confirmation email + new tracking number sentence removed",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c134",
+      "name": "text-message promise removed",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c135",
+      "name": "SMS promise removed",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c136",
+      "name": "invented tracking number removed",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c137",
+      "name": "'refund has been processed' removed (no tool does refunds)",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c138",
+      "name": "'replacement has been shipped' removed",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c139",
+      "name": "timeline not in caller facts removed (agent-only 'one business day')",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c140",
+      "name": "timeline that contradicts policy removed",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c141",
+      "name": "policy-backed refund timeline kept",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c142",
+      "name": "policy-backed replacement/refund option kept",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c143",
+      "name": "live #34 turn",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c144",
+      "name": "action no tool performs (send reset link) removed",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c145",
+      "name": "harmless 'let me check' kept",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c146",
+      "name": "case action kept when createCase ran",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c147",
+      "name": "tool-backed case number kept",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c148",
+      "name": "tool-backed callback + window kept",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c149",
+      "name": "callback promise without a scheduleCallback result removed",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c150",
+      "name": "product facts mentioning email are not promises",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c151",
+      "name": "no authored script line promises email/text/tracking numbers or a vague window",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c152",
+      "name": "dry-pass SCRIPT GUIDE keeps the",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c153",
+      "name": "repeat 'account 4004 is all set' clause dropped",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c154",
+      "name": "account confirmation detected from history",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c155",
+      "name": "next-turn script doesn't re-confirm the account",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c156",
+      "name": "first confirmation of a different account still spoken",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c157",
+      "name": "callback_close 'scheduled' line speaks the real id + readable window",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c158",
+      "name": "explicit intro trusted",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c159",
+      "name": "explicit intro trusted: I'm Shipley → Shipley",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c160",
+      "name": "explicit intro trusted: this is Dana Billings → Dana Billings",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c161",
+      "name": "explicit intro trusted: name's Paige Returnson → Paige Returnson",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c162",
+      "name": "explicit intro trusted: my name is Chargois → Chargois",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c163",
+      "name": "explicit intro trusted: I'm Logan and my login broke → Logan",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c164",
+      "name": "explicit intro trusted: my name is Bill Carter → Bill Carter",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c165",
+      "name": "explicit intro trusted: I am Tracy Packer → Tracy Packer",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c166",
+      "name": "issue word inside a name is still a name: Shipley",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c167",
+      "name": "name alone sets no topic: Shipley",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c168",
+      "name": "issue word inside a name is still a name: Avery Shipcheck",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c169",
+      "name": "name alone sets no topic: Avery Shipcheck",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c170",
+      "name": "issue word inside a name is still a name: Dana Billings",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c171",
+      "name": "name alone sets no topic: Dana Billings",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c172",
+      "name": "issue word inside a name is still a name: Paige Returnson",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c173",
+      "name": "name alone sets no topic: Paige Returnson",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c174",
+      "name": "issue word inside a name is still a name: Chargois",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c175",
+      "name": "name alone sets no topic: Chargois",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c176",
+      "name": "issue word inside a name is still a name: Logan",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c177",
+      "name": "name alone sets no topic: Logan",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c178",
+      "name": "issue word inside a name is still a name: Tracy Packer",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c179",
+      "name": "name alone sets no topic: Tracy Packer",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c180",
+      "name": "bare reply 'Bill Carter' is not a billing issue",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c181",
+      "name": "'late' only as a whole word",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c182",
+      "name": "topic for \"My name is Avery Shipcheck and I don't have an account\" = \"\"",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c183",
+      "name": "topic for \"this is Dana Billings\" = \"\"",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c184",
+      "name": "topic for \"my name is Chargois, calling to say hi\" = \"\"",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c185",
+      "name": "topic for \"name's Paige Returnson, I need a refund\" = \"return or exchange\"",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c186",
+      "name": "topic for \"I'm Logan and my login broke\" = \"login access\"",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c187",
+      "name": "topic for \"I'm Bill and I was double charged\" = \"billing\"",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c188",
+      "name": "topic for \"My name is Avery Shipcheck and my package is late\" = \"shipping delay\"",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c189",
+      "name": "intro name removed before keyword checks",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c190",
+      "name": "name keywords don't drive describe_issue",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c191",
+      "name": "not a name: I was charged twice",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c192",
+      "name": "not a name: I'm late on my payment",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c193",
+      "name": "not a name: this is about my order",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c194",
+      "name": "not a name: I'm having a billing problem",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c195",
+      "name": "not a name: this is ridiculous, get me a supervisor",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c196",
+      "name": "not a name: It's been 10 days",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c197",
+      "name": "not a name: I'm new",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c198",
+      "name": "not a name: no",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c199",
+      "name": "not a name: I'm shipping a return",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c200",
+      "name": "dates are not account numbers",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c201",
+      "name": "amounts are not account numbers",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c202",
+      "name": "real issue phrases still tagged",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c203",
+      "name": "Avery Shipcheck → account 4006, no reason",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c204",
+      "name": "then the real issue moves to diagnose",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c205",
+      "name": "payment-late → billing: I'm late on my payment",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c206",
+      "name": "payment-late → billing: my payment is late",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c207",
+      "name": "payment-late → billing: I'm behind on my bill",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c208",
+      "name": "payment-late → billing: my rent payment is overdue",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c209",
+      "name": "payment-late → billing: my card payment is past due",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c210",
+      "name": "payment-late → billing: late on my installment",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c211",
+      "name": "payment-late → billing: there's a late fee on my account",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c212",
+      "name": "payment-late → billing: why was I charged a late fee?",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c213",
+      "name": "package-late → shipping: my package is late",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c214",
+      "name": "package-late → shipping: late delivery",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c215",
+      "name": "package-late → shipping: my order is running late",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c216",
+      "name": "package-late → shipping: the shipment is late",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c217",
+      "name": "package-late → shipping: my parcel is overdue",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c218",
+      "name": "package-late → shipping: I need help with a late shipment on my order",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c219",
+      "name": "bare late → no shipping assumption: it's late",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c220",
+      "name": "bare late → no shipping assumption: I'm running late",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c221",
+      "name": "bare late → no shipping assumption: sorry, it's late here",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c222",
+      "name": "lateContextTopic: null without late words, '' without context",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c223",
+      "name": "bare late still lets other keywords decide",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c224",
+      "name": "never a name: I'm late on my payment",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c225",
+      "name": "never a name: I'm behind on my bill",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c226",
+      "name": "never a name: I'm overdue on rent",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c227",
+      "name": "account number is not taken as a payment amount",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c228",
+      "name": "collections: mini-Miranda verbatim at disclosure",
+      "flow": "collections",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c229",
+      "name": "collections 'late on my payment' → balance",
+      "flow": "collections",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c230",
+      "name": "collections 'behind on my bill' → arrange, name kept",
+      "flow": "collections",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c231",
+      "name": "collections opener with late payment: Miranda first, no fake amount",
+      "flow": "collections",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c232",
+      "name": "CS 'late on my payment' → billing",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c233",
+      "name": "CS 'my package is late' → shipping delay",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c234",
+      "name": "CS bare 'it's late' → no reason, agent asks",
+      "flow": "customer_service",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c235",
+      "name": "sales: bare late sets no need",
+      "flow": "sales",
+      "category": "slot-extraction",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c236",
+      "name": "K1 429 reported",
+      "flow": "shared",
+      "category": "llm-orchestration",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c237",
+      "name": "K2 within Retry-After → no request, flow still advances",
+      "flow": "shared",
+      "category": "llm-orchestration",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c238",
+      "name": "K made exactly 1 request across 2 turns",
+      "flow": "shared",
+      "category": "llm-orchestration",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c239",
+      "name": "gpt-oss requests use low reasoning effort",
+      "flow": "shared",
+      "category": "llm-orchestration",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c240",
+      "name": "single call uses JSON mode",
+      "flow": "shared",
+      "category": "llm-orchestration",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c241",
+      "name": "N: 3 turns → 2 requests (bare hi is free, then 1 per turn)",
+      "flow": "shared",
+      "category": "llm-orchestration",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c242",
+      "name": "N2 draft used",
+      "flow": "shared",
+      "category": "llm-orchestration",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c243",
+      "name": "N2 placeholder filled with the real new account",
+      "flow": "shared",
+      "category": "llm-orchestration",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c244",
+      "name": "N2 no raw placeholders reach the caller",
+      "flow": "shared",
+      "category": "llm-orchestration",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c245",
+      "name": "N2 exactly one real create (dry pass never writes)",
+      "flow": "shared",
+      "category": "llm-orchestration",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c246",
+      "name": "N3 diagnose with the drafted reply",
+      "flow": "shared",
+      "category": "llm-orchestration",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c247",
+      "name": "O1 malformed JSON → parse",
+      "flow": "shared",
+      "category": "llm-orchestration",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c248",
+      "name": "O1 keyword fallback still moves to verify",
+      "flow": "shared",
+      "category": "llm-orchestration",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c249",
+      "name": "O1 no retry request after a parse failure",
+      "flow": "shared",
+      "category": "llm-orchestration",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c250",
+      "name": "O2 non-JSON content → parse, stays put",
+      "flow": "shared",
+      "category": "llm-orchestration",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c251",
+      "name": "O3 JSON without a string reply → scripted line",
+      "flow": "shared",
+      "category": "llm-orchestration",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c252",
+      "name": "P1 model intent still drives the graph",
+      "flow": "shared",
+      "category": "llm-orchestration",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c253",
+      "name": "P1 mismatch → scripted verify line",
+      "flow": "shared",
+      "category": "llm-orchestration",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c254",
+      "name": "P1 no second request on mismatch",
+      "flow": "shared",
+      "category": "llm-orchestration",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c255",
+      "name": "P2 not-found known up front → draft still valid",
+      "flow": "shared",
+      "category": "llm-orchestration",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c256",
+      "name": "Q2 unfillable placeholder → scripted",
+      "flow": "shared",
+      "category": "llm-orchestration",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c257",
+      "name": "L1 opener echo rejected",
+      "flow": "customer_service",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c258",
+      "name": "L1 falls back to a different greeting: Hi! What can I help you with today?",
+      "flow": "customer_service",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c259",
+      "name": "M1 leaked guidance scrubbed from the draft",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c260",
+      "name": "R1 mini-Miranda verbatim lead on LLM path",
+      "flow": "collections",
+      "category": "compliance-verbatim",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c261",
+      "name": "S2 draft used minus the promise",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c262",
+      "name": "S2 email/tracking promise stripped, question kept",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c263",
+      "name": "S3 promise-only draft → scripted line",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c264",
+      "name": "S4 policy node, trimmed",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c265",
+      "name": "S4 'processed' claim gone, policy timeline kept",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c266",
+      "name": "S5 tool-backed case number spoken",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c267",
+      "name": "S6 tool-backed callback spoken",
+      "flow": "customer_service",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c268",
+      "name": "T1 policy → callback_close with callback exit",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c269",
+      "name": "T1 callback number spoken once + outcome",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c270",
+      "name": "T2 draft without the callback id → scripted",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c271",
+      "name": "T2 scripted close speaks the callback number once with a readable window",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c272",
+      "name": "T3 scripted path (LLM rate_limited) books and lands on close",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c273",
+      "name": "U1 spaced placeholder filled with the real id (4008)",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c274",
+      "name": "U2 draft without the number → scripted line with 4009",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c275",
+      "name": "U3 guessed account number rejected → real 4010",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c276",
+      "name": "U4 create turn speaks 4011",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c277",
+      "name": "U4 next turn drops the repeat confirmation",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c278",
+      "name": "U5 scripted next turn drops the repeat confirmation",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c279",
+      "name": "V1 policy → escalate_handoff with escalate exit",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c280",
+      "name": "V1 model draft speaks case CASE-1001-101534 once",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c281",
+      "name": "V1 escalation line stays verbatim",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c282",
+      "name": "V1 exactly one case opened",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c283",
+      "name": "V2 draft without the case id → scripted",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c284",
+      "name": "V2 scripted handoff",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c285",
+      "name": "V3 model failure (rate_limited) → keyword escalate still reaches handoff with case once",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c286",
+      "name": "V4 policy → resolve_close wrap-up, disposition logged",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c287",
+      "name": "V4 wrap-up line",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c288",
+      "name": "V4 next turn closes with the resolved outcome",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c289",
+      "name": "V5 scripted resolve from policy → resolve_close",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c290",
+      "name": "V6 diagnose → handoff ends with case once",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c291",
+      "name": "W1 mini-Miranda verbatim lead",
+      "flow": "collections",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c292",
+      "name": "W hardship escalation opens + speaks case once",
+      "flow": "collections",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c293",
+      "name": "W exactly one hardship case",
+      "flow": "collections",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c294",
+      "name": "X sales callback close with id once",
+      "flow": "sales",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c295",
+      "name": "Y1 exact transcript: no hang-up, read as no_account",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c296",
+      "name": "Y2 clarification, not the opener",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c297",
+      "name": "Y3 model's opener echo not used (clarify turns are always scripted); no 'new customer' slot in collections",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c298",
+      "name": "Y4 clarification discloses nothing about a debt",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c299",
+      "name": "Y5 clarification → account 1001 → mini-Miranda verbatim once",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c300",
+      "name": "Y6 clarification → wrong number → wrong-party close",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c301",
+      "name": "Y7 close: no opener, no debt words, wrong_party disposition logged",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c302",
+      "name": "Y8 no turn repeats an earlier agent line",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c303",
+      "name": "Y8b response exit carries only type + label (no close script / disposition code)",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c304",
+      "name": "Y9 'what is this about'",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c305",
+      "name": "Y9b non-clarify identity stay: debt mention rejected",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c306",
+      "name": "Y10 ask → unsure keeps the call, then 'not me' closes",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c307",
+      "name": "Y11 deny → confirm once → deny → wrong-party close",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c308",
+      "name": "Y12 sales no-account",
+      "flow": "sales",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c309",
+      "name": "Y13 live bad reply mocked → scripted clarification spoken",
+      "flow": "collections",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c310",
+      "name": "Y14 clarification asks if account holder, offers demo accounts, no debt words, no close language",
+      "flow": "collections",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c311",
+      "name": "Y15 second clarification uses the short variant",
+      "flow": "collections",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c312",
+      "name": "Y16 wrong-party close still works",
+      "flow": "collections",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c313",
+      "name": "Y17 identity stay",
+      "flow": "collections",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c314",
+      "name": "Y18 a good asking draft at identity is still used",
+      "flow": "collections",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c315",
+      "name": "Y19 sales greet no-account: refusal draft rejected → reprompt",
+      "flow": "sales",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c316",
+      "name": "Y20 sales greet: a good asking draft is still used",
+      "flow": "sales",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c317",
+      "name": "SB1 model draft's discount offer never reaches the caller",
+      "flow": "sales",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c318",
+      "name": "SB2 email + timeline promise stripped at match_offer",
+      "flow": "sales",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c319",
+      "name": "SB3 closing-reply guard",
+      "flow": "sales",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c320",
+      "name": "SB4 draft echoing the sales opener is rejected",
+      "flow": "sales",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c321",
+      "name": "SB5 good sales draft used with exactly one request",
+      "flow": "sales",
+      "category": "llm-orchestration",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c322",
+      "name": "SA discovery: 'we need SSO for a growing team' → discover (discover_need)",
+      "flow": "sales",
+      "category": "routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c323",
+      "name": "SA discovery: 'what do you offer?' → discover (ask_offer)",
+      "flow": "sales",
+      "category": "routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c324",
+      "name": "SA discovery: 'looking for a cheaper plan' → discover (discover_need)",
+      "flow": "sales",
+      "category": "routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c325",
+      "name": "SA discovery: 'need phone support' → discover (discover_need)",
+      "flow": "sales",
+      "category": "routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c326",
+      "name": "SA discovery: bare 'hi' stays on greet with a new question, not the opener",
+      "flow": "sales",
+      "category": "routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c327",
+      "name": "SA discovery: discover asks team size + must-haves",
+      "flow": "sales",
+      "category": "routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c328",
+      "name": "SA discovery: no raw or empty",
+      "flow": "sales",
+      "category": "routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c329",
+      "name": "SA offer: seat count moves discover → match_offer",
+      "flow": "sales",
+      "category": "offer-matching",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c330",
+      "name": "SA offer: match line lists Basic, Pro, trial, callback",
+      "flow": "sales",
+      "category": "offer-matching",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c331",
+      "name": "SA offer: no-pressure language kept (ethical sales)",
+      "flow": "sales",
+      "category": "offer-matching",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c332",
+      "name": "SA offer: 'compare basic and pro' → match_offer with an offer slot (basic)",
+      "flow": "sales",
+      "category": "offer-matching",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c333",
+      "name": "SA offer: 'enterprise' fills offer=enterprise",
+      "flow": "sales",
+      "category": "offer-matching",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c334",
+      "name": "SA offer: 'small team' reaches match_offer without ending the call",
+      "flow": "sales",
+      "category": "offer-matching",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c335",
+      "name": "SA objection: 'too expensive' → objection (price)",
+      "flow": "sales",
+      "category": "objection-handling",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c336",
+      "name": "SA objection: offers the 14-day Pro trial and asks what would make it a yes",
+      "flow": "sales",
+      "category": "objection-handling",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c337",
+      "name": "SA objection: no discount offered (policy: trial before discount)",
+      "flow": "sales",
+      "category": "objection-handling",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c338",
+      "name": "SA objection: 'competitor is cheaper' → price objection",
+      "flow": "sales",
+      "category": "objection-handling",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c339",
+      "name": "SA objection: 'need a discount' → objection, no percentage promised",
+      "flow": "sales",
+      "category": "objection-handling",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c340",
+      "name": "SA objection: 'not now' → timing objection",
+      "flow": "sales",
+      "category": "objection-handling",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c341",
+      "name": "SA objection: price talk never becomes a CS issue",
+      "flow": "sales",
+      "category": "objection-handling",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c342",
+      "name": "SA close: objection → 'let's do pro' → close, offer=pro",
+      "flow": "sales",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c343",
+      "name": "SA close: win path logs a disposition",
+      "flow": "sales",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c344",
+      "name": "SA close: close line says it hands off; no fake checkout",
+      "flow": "sales",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c345",
+      "name": "SA close: 'thanks' at close ends as resolve",
+      "flow": "sales",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c346",
+      "name": "SA close: 'I'll take it' at match_offer → close",
+      "flow": "sales",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c347",
+      "name": "SA close: trial accepted after an objection → close",
+      "flow": "sales",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c348",
+      "name": "SA repeat guard",
+      "flow": "sales",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c349",
+      "name": "SA callback: 'call tomorrow' at objection books + ends",
+      "flow": "sales",
+      "category": "callback-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c350",
+      "name": "SA callback: callback id spoken exactly once",
+      "flow": "sales",
+      "category": "callback-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c351",
+      "name": "SA callback: 'email me' at match_offer → booked callback, not an email promise",
+      "flow": "sales",
+      "category": "callback-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c352",
+      "name": "SA callback: close says nothing about sending an email",
+      "flow": "sales",
+      "category": "callback-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c353",
+      "name": "SA callback: 'maybe next quarter' → callback node asks morning/afternoon first",
+      "flow": "sales",
+      "category": "callback-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c354",
+      "name": "SA callback: 'afternoon' books the afternoon window and ends",
+      "flow": "sales",
+      "category": "callback-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c355",
+      "name": "SA repeat guard: objection → callback path never repeats a line",
+      "flow": "sales",
+      "category": "callback-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c356",
+      "name": "SA no-account: reassures no account is needed, call continues",
+      "flow": "sales",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c357",
+      "name": "SA no-account: next need moves to discover",
+      "flow": "sales",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c358",
+      "name": "SA no-account: no account created or looked up in sales",
+      "flow": "sales",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c359",
+      "name": "SA name: name + need in one line → name kept, moves to discover",
+      "flow": "sales",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c360",
+      "name": "SA name: need phrases are never names",
+      "flow": "sales",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c361",
+      "name": "SA name: real intro still extracted alongside sales talk",
+      "flow": "sales",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c362",
+      "name": "SA name: offer/budget phrases are never names",
+      "flow": "sales",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c363",
+      "name": "SA promise filter removes 'I can give you 20% off if you sign today.' (discount)",
+      "flow": "sales",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c364",
+      "name": "SA promise filter removes 'I'll waive the setup fee for you.' (discount)",
+      "flow": "sales",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c365",
+      "name": "SA promise filter removes 'I'll apply a discount to your account.' (discount)",
+      "flow": "sales",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c366",
+      "name": "SA promise filter removes 'We can match their price.' (discount)",
+      "flow": "sales",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c367",
+      "name": "SA promise filter removes 'I'll send you a quote by email.' (channel)",
+      "flow": "sales",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c368",
+      "name": "SA promise filter removes 'We can get you onboarded by Friday.' (timeline)",
+      "flow": "sales",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c369",
+      "name": "SA promise filter keeps policy-backed 'Pro includes SSO and phone support.'",
+      "flow": "sales",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c370",
+      "name": "SA promise filter keeps policy-backed 'Every plan starts with a 14-day trial.'",
+      "flow": "sales",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c371",
+      "name": "SA promise filter keeps policy-backed 'Before we talk discounts, would a fourteen-day Pro trial help you pr…",
+      "flow": "sales",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c372",
+      "name": "SA authored sales lines (greet) pass the promise filter",
+      "flow": "sales",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c373",
+      "name": "SA authored sales lines (discover) pass the promise filter",
+      "flow": "sales",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c374",
+      "name": "SA authored sales lines (match_offer) pass the promise filter",
+      "flow": "sales",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c375",
+      "name": "SA authored sales lines (objection) pass the promise filter",
+      "flow": "sales",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c376",
+      "name": "SA authored sales lines (close) pass the promise filter",
+      "flow": "sales",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c377",
+      "name": "SA authored sales lines (callback) pass the promise filter",
+      "flow": "sales",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c378",
+      "name": "UI1 customer_service graph starts at greet on level 0",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c379",
+      "name": "UI2 customer_service graph has every node and only valid edges",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c380",
+      "name": "UI3 customer_service graph carries no script text",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c381",
+      "name": "UI1 collections graph starts at identity on level 0",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c382",
+      "name": "UI2 collections graph has every node and only valid edges",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c383",
+      "name": "UI3 collections graph carries no script text",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c384",
+      "name": "UI1 sales graph starts at greet on level 0",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c385",
+      "name": "UI2 sales graph has every node and only valid edges",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c386",
+      "name": "UI3 sales graph carries no script text",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c387",
+      "name": "UI4 visitedEdges marks walked hops",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c388",
+      "name": "UI5 maskAccount keeps demo ids, masks others",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c389",
+      "name": "UI6 toolEvent masks account inside ids",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c390",
+      "name": "UI7 deskSlots shows caller-facing rows only, account masked",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c391",
+      "name": "UI8 formatCallTime m:ss",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c392",
+      "name": "UI9 scenario cards: 4 CS, 2 collections, 2 sales",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c393",
+      "name": "UI10 scenario customer_service/late-package first line advances",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c394",
+      "name": "UI10 scenario customer_service/charged-twice first line advances",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c395",
+      "name": "UI10 scenario customer_service/cant-log-in first line advances",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c396",
+      "name": "UI10 scenario customer_service/new-customer first line advances",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c397",
+      "name": "UI10 scenario collections/behind-on-bill first line advances",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c398",
+      "name": "UI10 scenario collections/hardship first line advances",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c399",
+      "name": "UI10 scenario sales/upgrade-plan first line advances",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c400",
+      "name": "UI10 scenario sales/free-trial first line advances",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c401",
+      "name": "UI11 collections scenario still leads with the mini-Miranda verbatim",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c402",
+      "name": "UI12 start response includes the flow graph",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c403",
+      "name": "UI13 desk.policyLine only on policy steps",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c404",
+      "name": "UI14 cited policy line is caller-facing",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c405",
+      "name": "Z1 offline: no-account twice → clarify then wrong-party close, opener never repeated",
+      "flow": "collections",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c406",
+      "name": "Z2 disclosure declined: close line, mini-Miranda not re-read",
+      "flow": "collections",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c407",
+      "name": "Z3 payment refused: close line, not the balance line again",
+      "flow": "collections",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c408",
+      "name": "Z4 identity reprompt / not-found variants instead of the opener",
+      "flow": "collections",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c409",
+      "name": "Z5 unsure loop stays on the line with no repeated reply (ask_purpose,unsure,,unsure)",
+      "flow": "collections",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c410",
+      "name": "Z6 customer_service/policy exit 'resolve' close is new: Thank you for your time today — goodbye.",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c411",
+      "name": "Z6 customer_service/policy exit 'escalate' close is new: Thank you for your time today — goodbye.",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c412",
+      "name": "Z6 customer_service/policy exit 'callback' close is new: Thank you for your time today — goodbye.",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c413",
+      "name": "Z6 customer_service/resolve_close exit 'resolve' close is new: Thank you for your time today — goodbye.",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c414",
+      "name": "Z6 customer_service/escalate_handoff exit 'escalate' close is new: Thank you for your time today — goodbye.",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c415",
+      "name": "Z6 customer_service/callback_close exit 'callback' close is new: Thank you for your time today — goodbye.",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c416",
+      "name": "Z6 collections/identity exit 'refuse' close is new",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c417",
+      "name": "Z6 collections/disclosure exit 'refuse' close is new",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c418",
+      "name": "Z6 collections/balance exit 'refuse' close is new",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c419",
+      "name": "Z6 collections/arrange exit 'callback' close is new: Thank you for your time today — goodbye.",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c420",
+      "name": "Z6 collections/hardship exit 'escalate' close is new: Thank you for your time today — goodbye.",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c421",
+      "name": "Z6 collections/hardship exit 'callback' close is new: Thank you for your time today — goodbye.",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c422",
+      "name": "Z6 collections/disposition exit 'resolve' close is new: Thank you for your time today — goodbye.",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c423",
+      "name": "Z6 sales/close exit 'resolve' close is new: Thank you for your time today — goodbye.",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c424",
+      "name": "Z6 sales/callback exit 'callback' close is new: Thank you for your time today — goodbye.",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c425",
+      "name": "Z7 repeat net swaps a repeated close for a goodbye",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c426",
+      "name": "Z8 repeat net keeps the verbatim mini-Miranda",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c427",
+      "name": "Z9 desk shows unconfirmed identity + wrong-party disposition",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    }
+  ]
+}
