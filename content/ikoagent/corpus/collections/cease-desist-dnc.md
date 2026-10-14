@@ -3,6 +3,7 @@ title: "Cease requests & do-not-contact"
 ---
 
 ## Written or clear cease
+<!-- caller: If you ask us to stop contacting you, we honor that request and end the call. -->
 Honor clear cease / stop-calling requests. In this demo, disposition code **`STOP`** ends outbound collection attempts on the account.
 
 ## Say this

@@ -38,7 +38,15 @@ export function toolEvent(t: DeskToolResult): string | null {
     case "checkBalance":
       return t.ok ? "Balance checked" : null;
     case "offerPaymentPlan":
-      return t.ok ? (d.eligible ? `Plan offered · ${String(d.months ?? "")} mo` : "Plan not eligible") : null;
+      return t.ok
+        ? d.eligible
+          ? `Plan offered · ${String(d.months ?? "")} mo`
+          : d.withinPolicy === false
+            ? `Plan outside policy · max ${String(d.maxMonths ?? "")} mo`
+            : "Plan not eligible"
+        : null;
+    case "recordPromiseToPay":
+      return t.ok ? `Promise-to-pay ${maskInId(d.ptpId)} · ${String(d.date ?? "")}` : "Promise-to-pay not recorded";
     default:
       return null;
   }
@@ -56,7 +64,16 @@ export function deskSlots(slots: Record<string, string>): { label: string; value
   if (slots.need) rows.push({ label: "Need", value: slots.need });
   if (slots.offer) rows.push({ label: "Offer", value: slots.offer.replace(/_/g, " ") });
   if (slots.amount) rows.push({ label: "Amount", value: slots.amount });
-  if (slots.planMonths) rows.push({ label: "Plan", value: `${slots.planMonths} months` });
+  if (slots.planMonths) rows.push({ label: "Plan", value: `${slots.planMonths} months${slots.planOk === "true" ? " · within policy" : slots.planOutOfPolicy === "true" ? " · outside policy" : ""}` });
+  if (slots.planMaxMonths && !slots.planMonths) rows.push({ label: "Plan limit", value: `up to ${slots.planMaxMonths} months` });
+  if (slots.promiseDate) rows.push({ label: "Promise date", value: slots.promiseDate });
+  if (slots.payAmount) rows.push({ label: "Pay amount", value: `USD ${slots.payAmount}` });
+  if (slots.hardshipType) rows.push({ label: "Hardship", value: slots.hardshipType });
+  if (slots.teamSize) rows.push({ label: "Team size", value: `${slots.teamSize} seats` });
+  if (slots.recommendedPlan) rows.push({ label: "Best fit", value: slots.recommendedPlan });
+  if (slots.objectionType) rows.push({ label: "Objection", value: slots.objectionType });
+  if (slots.repeatCaller === "true") rows.push({ label: "Repeat caller", value: "yes · priority high" });
+  if (slots.newAddress) rows.push({ label: "New address", value: slots.newAddress });
   if (slots.callbackWindow) rows.push({ label: "Callback", value: humanWindow(slots.callbackWindow) });
   return rows;
 }

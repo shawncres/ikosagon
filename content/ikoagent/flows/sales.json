@@ -73,7 +73,7 @@
       "id": "discover",
       "label": "Discover needs",
       "agentSay": [
-        "Absolutely — I can help you with {{need}}. Is this for a small team, or are you thinking enterprise scale? Any must-haves like phone support, SSO, or deeper analytics?"
+        "Absolutely — I can help you with {{need}}. Is this for a small team, or are you thinking enterprise scale? Any must-haves like phone support, SSO, or a security review?"
       ],
       "allowParaphrase": true,
       "listenFor": [
@@ -96,9 +96,34 @@
             "compare plans",
             "tell me about enterprise"
           ]
+        },
+        {
+          "intent": "book_demo",
+          "examples": [
+            "book a demo",
+            "schedule a demo",
+            "can I see a walkthrough",
+            "set up a demo",
+            "show me a demo"
+          ]
+        },
+        {
+          "intent": "objection_price",
+          "examples": [
+            "too expensive",
+            "out of budget"
+          ]
         }
       ],
       "transitions": [
+        {
+          "on": "book_demo",
+          "to": "demo_book"
+        },
+        {
+          "on": "objection_price",
+          "to": "objection"
+        },
         {
           "on": "ask_offer",
           "to": "match_offer"
@@ -110,6 +135,15 @@
         {
           "on": "*",
           "to": "match_offer"
+        }
+      ],
+      "agentSayWhen": [
+        {
+          "slot": "need",
+          "missing": true,
+          "lines": [
+            "Happy to help. Is this for a small team, or are you thinking enterprise scale? Any must-haves like phone support, SSO, or a security review?"
+          ]
         }
       ]
     },
@@ -162,7 +196,38 @@
           "examples": [
             "email me",
             "call me later",
-            "schedule a follow-up"
+            "schedule a follow-up",
+            "call me back"
+          ]
+        },
+        {
+          "intent": "objection_competitor",
+          "examples": [
+            "competitor is cheaper",
+            "we use another tool",
+            "how do you compare to others",
+            "we already have a vendor",
+            "another company quoted less"
+          ]
+        },
+        {
+          "intent": "objection_authority",
+          "examples": [
+            "I need to ask my boss",
+            "I need approval",
+            "let me check with my manager",
+            "I have to run it by my team",
+            "my director decides"
+          ]
+        },
+        {
+          "intent": "book_demo",
+          "examples": [
+            "book a demo",
+            "schedule a demo",
+            "can I see a walkthrough",
+            "set up a demo",
+            "show me a demo"
           ]
         }
       ],
@@ -171,6 +236,18 @@
         "required": true
       },
       "transitions": [
+        {
+          "on": "objection_competitor",
+          "to": "objection"
+        },
+        {
+          "on": "objection_authority",
+          "to": "objection"
+        },
+        {
+          "on": "book_demo",
+          "to": "demo_book"
+        },
         {
           "on": "objection_price",
           "to": "objection"
@@ -195,6 +272,14 @@
           "on": "*",
           "to": "objection"
         }
+      ],
+      "agentSayWhen": [
+        {
+          "slot": "recommendedPlan",
+          "lines": [
+            "Based on what you've told me, {{recommendedPlan}} looks like the best fit. {{planWhy}} You can start a fourteen-day trial, book a demo walkthrough, or take a callback — no pressure."
+          ]
+        }
       ]
     },
     "objection": {
@@ -210,7 +295,7 @@
           "examples": [
             "still too pricey",
             "need a discount",
-            "competitor is cheaper"
+            "can you do better on price"
           ]
         },
         {
@@ -242,7 +327,37 @@
           "examples": [
             "compare basic and pro",
             "what about enterprise",
-            "how do you compare to others"
+            "tell me more"
+          ]
+        },
+        {
+          "intent": "objection_competitor",
+          "examples": [
+            "competitor is cheaper",
+            "we use another tool",
+            "how do you compare to others",
+            "we already have a vendor",
+            "another company quoted less"
+          ]
+        },
+        {
+          "intent": "objection_authority",
+          "examples": [
+            "I need to ask my boss",
+            "I need approval",
+            "let me check with my manager",
+            "I have to run it by my team",
+            "my director decides"
+          ]
+        },
+        {
+          "intent": "book_demo",
+          "examples": [
+            "book a demo",
+            "schedule a demo",
+            "can I see a walkthrough",
+            "set up a demo",
+            "show me a demo"
           ]
         }
       ],
@@ -251,6 +366,18 @@
         "required": false
       },
       "transitions": [
+        {
+          "on": "book_demo",
+          "to": "demo_book"
+        },
+        {
+          "on": "objection_competitor",
+          "to": "objection"
+        },
+        {
+          "on": "objection_authority",
+          "to": "objection"
+        },
         {
           "on": "close_won",
           "to": "close"
@@ -270,6 +397,36 @@
         {
           "on": "*",
           "to": "close"
+        }
+      ],
+      "agentSayWhen": [
+        {
+          "slot": "objectionType",
+          "equals": "competitor",
+          "lines": [
+            "Fair question — I won't knock anyone else. The honest comparison is fit for your team. A fourteen-day trial is the easiest way to compare side by side. Want to start one, or book a demo walkthrough?"
+          ]
+        },
+        {
+          "slot": "objectionType",
+          "equals": "timing",
+          "lines": [
+            "No rush at all. I can schedule a callback for when the timing is better, or you can start a fourteen-day trial whenever you're ready. Which would you prefer?"
+          ]
+        },
+        {
+          "slot": "objectionType",
+          "equals": "authority",
+          "lines": [
+            "That makes sense — who else should weigh in? I can book a demo walkthrough for you and your manager, or schedule a callback once you've talked it over."
+          ]
+        },
+        {
+          "slot": "objectionType",
+          "equals": "price",
+          "lines": [
+            "Budget matters. Before we talk price, would a fourteen-day Pro trial help you prove the value? If not, Basic keeps costs lower and you can move up later. What would make this a yes for you?"
+          ]
         }
       ]
     },
@@ -310,6 +467,14 @@
           "type": "resolve",
           "label": "Closed — demo win path"
         }
+      ],
+      "agentSayWhen": [
+        {
+          "slot": "upsellNote",
+          "lines": [
+            "Wonderful — I'm marking this demo as a close path. One honest note, no pressure: {{upsellNote}} In production this would hand off to checkout or a human AE. Thanks for walking the flow with me."
+          ]
+        }
       ]
     },
     "callback": {
@@ -347,6 +512,55 @@
         {
           "type": "callback",
           "label": "Sales callback scheduled"
+        }
+      ]
+    },
+    "demo_book": {
+      "id": "demo_book",
+      "label": "Book demo",
+      "agentSay": [
+        "Happy to set up a demo walkthrough. Would morning or afternoon work better?"
+      ],
+      "agentSayWhen": [
+        {
+          "slot": "callbackWindow",
+          "lines": [
+            "I can book that walkthrough for {{callbackWindow}} — shall I lock it in?"
+          ]
+        }
+      ],
+      "agentSayVariants": {
+        "scheduled": [
+          "You're booked — demo walkthrough {{callbackId}} is set for {{callbackWindow}}. Thanks for your time today."
+        ]
+      },
+      "allowParaphrase": true,
+      "listenFor": [
+        {
+          "intent": "request_callback",
+          "examples": [
+            "morning",
+            "afternoon",
+            "tomorrow morning",
+            "yes lock it in",
+            "sounds good"
+          ]
+        }
+      ],
+      "toolsAllowed": [
+        "scheduleCallback",
+        "logDisposition"
+      ],
+      "transitions": [
+        {
+          "on": "*",
+          "to": "exit:callback"
+        }
+      ],
+      "exits": [
+        {
+          "type": "callback",
+          "label": "Demo walkthrough booked"
         }
       ]
     }

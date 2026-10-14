@@ -165,6 +165,48 @@
       "transitions": [
         {
           "on": "provide_account",
+          "to": "retention",
+          "whenSlotsFilled": [
+            "cancelRequest"
+          ]
+        },
+        {
+          "on": "provide_account",
+          "to": "address_update",
+          "whenSlotsFilled": [
+            "addressChange"
+          ]
+        },
+        {
+          "on": "verify_identity",
+          "to": "retention",
+          "whenSlotsFilled": [
+            "cancelRequest"
+          ]
+        },
+        {
+          "on": "verify_identity",
+          "to": "address_update",
+          "whenSlotsFilled": [
+            "addressChange"
+          ]
+        },
+        {
+          "on": "slots_filled",
+          "to": "retention",
+          "whenSlotsFilled": [
+            "cancelRequest"
+          ]
+        },
+        {
+          "on": "slots_filled",
+          "to": "address_update",
+          "whenSlotsFilled": [
+            "addressChange"
+          ]
+        },
+        {
+          "on": "provide_account",
           "to": "diagnose",
           "whenSlotsFilled": [
             "accountId"
@@ -258,6 +300,22 @@
             "transfer me",
             "this is ridiculous get me a manager"
           ]
+        },
+        {
+          "intent": "cancel_service",
+          "examples": [
+            "I want to cancel",
+            "cancel my subscription",
+            "close my account"
+          ]
+        },
+        {
+          "intent": "update_address",
+          "examples": [
+            "change my address",
+            "I moved",
+            "update my shipping address"
+          ]
         }
       ],
       "rag": {
@@ -265,6 +323,28 @@
         "required": false
       },
       "transitions": [
+        {
+          "on": "cancel_service",
+          "to": "retention"
+        },
+        {
+          "on": "update_address",
+          "to": "address_update"
+        },
+        {
+          "on": "*",
+          "to": "retention",
+          "whenSlotsFilled": [
+            "cancelRequest"
+          ]
+        },
+        {
+          "on": "*",
+          "to": "address_update",
+          "whenSlotsFilled": [
+            "addressChange"
+          ]
+        },
         {
           "on": "ask_policy",
           "to": "policy"
@@ -286,7 +366,15 @@
         "knownReason": [
           "Thanks — account {{accountId}} is all set. About the {{reason}}: what's happened so far, so I can pull the right procedure?"
         ]
-      }
+      },
+      "agentSayWhen": [
+        {
+          "slot": "repeatCaller",
+          "lines": [
+            "I'm sorry you've had to call back about this — let's get it sorted this time. Account {{accountId}} is on file. Tell me where things stand, and I'll make sure it's documented so you don't have to repeat yourself."
+          ]
+        }
+      ]
     },
     "policy": {
       "id": "policy",
@@ -503,6 +591,141 @@
         {
           "type": "callback",
           "label": "Callback scheduled"
+        }
+      ]
+    },
+    "retention": {
+      "id": "retention",
+      "label": "Cancellation / retention",
+      "agentSay": [
+        "I'm sorry to hear you're thinking about cancelling. Before I note anything, may I ask what's driving it? If it's cost or a specific problem, there may be an option that fixes it — and if you'd still like to cancel, that's completely your call."
+      ],
+      "allowParaphrase": true,
+      "askOnStay": true,
+      "listenFor": [
+        {
+          "intent": "confirm_cancel",
+          "examples": [
+            "just cancel it",
+            "I still want to cancel",
+            "yes cancel",
+            "please cancel",
+            "no just cancel"
+          ]
+        },
+        {
+          "intent": "describe_issue",
+          "examples": [
+            "it's too expensive",
+            "the app keeps crashing",
+            "I'm not using it",
+            "shipping is always late"
+          ]
+        },
+        {
+          "intent": "accept_save",
+          "examples": [
+            "what are my options",
+            "tell me more",
+            "ok I'll hear it",
+            "maybe I'll stay"
+          ]
+        },
+        {
+          "intent": "escalate",
+          "examples": [
+            "I want a supervisor",
+            "get me a manager"
+          ]
+        }
+      ],
+      "toolsAllowed": [
+        "logDisposition",
+        "createCase"
+      ],
+      "rag": {
+        "queryHint": "cancellation retention save options",
+        "required": true
+      },
+      "transitions": [
+        {
+          "on": "confirm_cancel",
+          "to": "exit:resolve:cancel"
+        },
+        {
+          "on": "describe_issue",
+          "to": "policy"
+        },
+        {
+          "on": "accept_save",
+          "to": "policy"
+        },
+        {
+          "on": "escalate",
+          "to": "escalate_handoff"
+        }
+      ],
+      "exits": [
+        {
+          "type": "resolve",
+          "key": "cancel",
+          "label": "Cancellation request logged",
+          "disposition": "cancel_requested",
+          "say": [
+            "Understood — I've logged your cancellation request on account {{accountId}}. I'm sorry to see you go, and thank you for being a customer."
+          ]
+        }
+      ]
+    },
+    "address_update": {
+      "id": "address_update",
+      "label": "Address change",
+      "agentSay": [
+        "Happy to update that. What's the new street address and postal code? For this demo, the address itself isn't stored."
+      ],
+      "allowParaphrase": true,
+      "askOnStay": true,
+      "requireSlots": [
+        "newAddress"
+      ],
+      "listenFor": [
+        {
+          "intent": "provide_address",
+          "examples": [
+            "123 Main Street",
+            "my new address is",
+            "it's 45 King Street West"
+          ]
+        },
+        {
+          "intent": "escalate",
+          "examples": [
+            "supervisor please"
+          ]
+        }
+      ],
+      "toolsAllowed": [
+        "logDisposition"
+      ],
+      "transitions": [
+        {
+          "on": "slots_filled",
+          "to": "exit:resolve:address"
+        },
+        {
+          "on": "escalate",
+          "to": "escalate_handoff"
+        }
+      ],
+      "exits": [
+        {
+          "type": "resolve",
+          "key": "address",
+          "label": "Address change request logged",
+          "disposition": "address_change",
+          "say": [
+            "Thanks — I've noted the address change request on account {{accountId}}. Thanks for calling, and take care."
+          ]
         }
       ]
     }

@@ -12,7 +12,19 @@ export type FlowExit = {
   say?: string[];
   /** logDisposition code recorded when the call ends here (node must allow the tool) */
   disposition?: string;
+  /**
+   * Distinguishes several exits of the same type on one node (cease vs attorney vs
+   * third party are all "refuse"). Transitions target them as `exit:<type>:<key>`.
+   */
+  key?: string;
 };
+
+/**
+ * Slot-driven script variant (paraphrasable nodes only): the first entry whose
+ * condition holds replaces agentSay. `missing` = slot empty; `equals` = exact value;
+ * otherwise the slot just has to be set.
+ */
+export type SlotVariant = { slot: string; equals?: string; missing?: boolean; lines: string[] };
 
 export type ListenIntent = {
   intent: string;
@@ -63,6 +75,8 @@ export type FlowNode = {
    * otherwise the scripted line is spoken. Clarify turns always use the scripted line.
    */
   askOnStay?: boolean;
+  /** Slot-driven variants, checked after scheduled / not-found / clarify variants */
+  agentSayWhen?: SlotVariant[];
   /**
    * Optional context-aware script variants (paraphrasable nodes only).
    * knownName: caller gave a name but no account yet.

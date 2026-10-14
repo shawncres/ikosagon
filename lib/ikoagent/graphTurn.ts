@@ -22,6 +22,20 @@ import { extractCustomerName, looksLikeNoAccount, sanitizeAccountId } from "./cr
 import { applyToolSlots, runTool } from "./tools";
 import { mergeSlots } from "./llmTurn";
 import type { Flow, FlowExit, FlowNode, SlotMap, ToolResult } from "./types";
+import {
+  extractPayAmount,
+  extractPromiseDate,
+  hardshipKind,
+  hasAddress,
+  looksLikeAddressChange,
+  looksLikeCancel,
+  looksLikeRepeatCaller,
+  needFromText,
+  objectionType,
+  recommendPlan,
+  teamSizeFromText,
+  upsellNote,
+} from "./domain";
 
 /** Caller declined having an account after we asked ("no", "nope", "I don't") */
 export function looksLikeDecline(text: string): boolean {
@@ -70,9 +84,14 @@ export function deriveTurnState(opts: {
   slots = scrubWeakSlots(slots);
   if (topic) {
     slots = mergeSlots(slots, { reason: topic });
-    if (flow.vertical === "sales" || matchedIntent === "discover_need") {
+    if ((flow.vertical === "sales" || matchedIntent === "discover_need") && !slots.need) {
       slots = mergeSlots(slots, { need: topic });
     }
+  }
+  // Sales discovery: a short, speakable need ("we need SSO" → "SSO") beats a topic tag
+  if (flow.vertical === "sales") {
+    const need = needFromText(withoutName(userText, extractedName));
+    if (need) slots = mergeSlots(slots, { need });
   }
   // Collapse an LLM-stuffed rant without inventing a topic from noise
   if (slots.reason && slots.reason.length > 60) {
@@ -118,6 +137,55 @@ export function deriveTurnState(opts: {
     intentForGraph = "provide_name";
   }
 
+  // ---- Vertical-specific deterministic slots (never taken from the model) ----
+  slots = { ...slots };
+  if (flow.vertical === "collections") {
+    const date = extractPromiseDate(userText);
+    if (date) slots.promiseDate = date;
+    const amount = extractPayAmount(userText);
+    if (amount) slots.payAmount = amount;
+    if (slots.payAmount) slots.payAmountText = `USD ${Number(slots.payAmount).toFixed(2)}`;
+    else if (slots.promiseDate) slots.payAmountText = "a payment";
+    const kind = hardshipKind(userText);
+    if (kind) slots = { ...slots, hardshipType: kind, reason: `hardship (${kind})` };
+    if (intentForGraph === "dispute") slots.reason = "dispute";
+    if (intentForGraph === "already_paid") slots.reason = "already-paid review";
+    // A pay date at a node that takes promises is a promise-to-pay ("Friday", "I get paid on the 15th")
+    const callbackTalk = /\bcall\b|\bcallback\b|\bring\b/i.test(userText);
+    const confirmsKnownDate = !date && Boolean(slots.promiseDate) && !slots.ptpId && intentForGraph === "affirm";
+    if (
+      (date || confirmsKnownDate) &&
+      !callbackTalk &&
+      listenIds.has("promise_to_pay") &&
+      (!intentForGraph || ["affirm", "arrange_payment", "accept_plan", "partial_payment", "promise_to_pay"].includes(intentForGraph))
+    ) {
+      intentForGraph = "promise_to_pay";
+    } else if (amount && !date && listenIds.has("partial_payment") && (!intentForGraph || ["arrange_payment", "accept_plan", "affirm"].includes(intentForGraph))) {
+      intentForGraph = "partial_payment";
+    }
+  }
+  if (flow.vertical === "sales") {
+    const seats = teamSizeFromText(userText);
+    if (seats) slots.teamSize = seats;
+    const objection = objectionType(intentForGraph);
+    if (objection) slots.objectionType = objection;
+    const rec = recommendPlan(slots);
+    if (rec) slots = { ...slots, recommendedPlan: rec.plan, planWhy: rec.why };
+    const note = upsellNote(slots);
+    if (note) slots.upsellNote = note;
+    else delete slots.upsellNote;
+  }
+  if (flow.vertical === "customer_service") {
+    if (looksLikeRepeatCaller(userText)) slots = { ...slots, repeatCaller: "true", priority: "high" };
+    if (looksLikeCancel(userText)) slots.cancelRequest = "true";
+    if (looksLikeAddressChange(userText)) slots.addressChange = "true";
+    // Address itself is never stored in this demo — only that one was given
+    if (listenIds.has("provide_address") && hasAddress(userText)) {
+      slots.newAddress = "provided (not stored)";
+      intentForGraph = "provide_address";
+    }
+  }
+
   const createPossible =
     (intentForGraph === "provide_name" || intentForGraph === "no_account") &&
     slots.needsAccount === "true" &&
@@ -125,6 +193,11 @@ export function deriveTurnState(opts: {
     !sanitizeAccountId(slots.accountId || "");
 
   return { intentForGraph, slots, topic, createPossible };
+}
+
+function withoutName(text: string, name: string | null): string {
+  if (!name) return text;
+  return name.split(/\s+/).reduce((t, part) => t.replace(new RegExp(`\\b${part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i"), ""), text);
 }
 
 export type GraphOutcome = {
@@ -375,7 +448,7 @@ export async function runGraph(opts: {
   let closeNode: FlowNode | null = null;
   if (!exit && nextNode && nextNode.id !== node.id) {
     const only = nextNode.transitions.length > 0 && nextNode.transitions.every((t) => t.on === "*" && t.to.startsWith("exit:"));
-    const endType = only ? nextNode.transitions[0].to.slice(5) : "";
+    const endType = only ? nextNode.transitions[0].to.slice(5).split(":")[0] : "";
     const backing = BACKING_TOOL[endType];
     const closeExit = nextNode.exits?.find((e) => e.type === endType);
     if (backing && closeExit && toolResults.some((t) => t.name === backing.tool && t.ok)) {
