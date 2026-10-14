@@ -156,12 +156,12 @@ export function deriveTurnState(opts: {
     if (
       (date || confirmsKnownDate) &&
       !callbackTalk &&
-      listenIds.has("promise_to_pay") &&
-      (!intentForGraph || ["affirm", "arrange_payment", "accept_plan", "partial_payment", "promise_to_pay"].includes(intentForGraph))
+      listenIds.has("promise_date") &&
+      (!intentForGraph || ["affirm", "arrange_payment", "accept_plan", "partial_amount", "promise_date"].includes(intentForGraph))
     ) {
-      intentForGraph = "promise_to_pay";
-    } else if (amount && !date && listenIds.has("partial_payment") && (!intentForGraph || ["arrange_payment", "accept_plan", "affirm"].includes(intentForGraph))) {
-      intentForGraph = "partial_payment";
+      intentForGraph = "promise_date";
+    } else if (amount && !date && listenIds.has("partial_amount") && (!intentForGraph || ["arrange_payment", "accept_plan", "affirm"].includes(intentForGraph))) {
+      intentForGraph = "partial_amount";
     }
   }
   if (flow.vertical === "sales") {
@@ -178,6 +178,8 @@ export function deriveTurnState(opts: {
   if (flow.vertical === "customer_service") {
     if (looksLikeRepeatCaller(userText)) slots = { ...slots, repeatCaller: "true", priority: "high" };
     if (looksLikeCancel(userText)) slots.cancelRequest = "true";
+    // A save conversation stays about the cancellation (policy lookup finds the retention policy)
+    if (slots.cancelRequest === "true") slots.reason = "cancellation";
     if (looksLikeAddressChange(userText)) slots.addressChange = "true";
     // Address itself is never stored in this demo — only that one was given
     if (listenIds.has("provide_address") && hasAddress(userText)) {
@@ -427,6 +429,10 @@ export async function runGraph(opts: {
 
   // An exit that records a disposition (collections wrong party) logs it on the way out,
   // so "this number is marked" in the close line is backed by a tool result
+  if (exit?.disposition && node.toolsAllowed?.includes("logDisposition")) {
+    // A generic "completed" log from the intent is replaced by the exit's own code (PLAN, PTP, STOP…)
+    toolResults = toolResults.filter((t) => !(t.name === "logDisposition" && t.data.disposition === "completed"));
+  }
   if (exit?.disposition && node.toolsAllowed?.includes("logDisposition") && !toolResults.some((t) => t.name === "logDisposition")) {
     toolResults = [...toolResults, await runTool("logDisposition", { ...slots, disposition: exit.disposition })];
   }

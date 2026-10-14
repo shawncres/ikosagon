@@ -233,7 +233,7 @@
       ],
       "rag": {
         "queryHint": "plan comparison Basic Pro Enterprise trial pricing features SSO",
-        "required": true
+        "required": false
       },
       "transitions": [
         {

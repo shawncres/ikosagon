@@ -89,8 +89,22 @@ function synonymBoost(intent: string, text: string): number {
     resolve: ["thanks", "thank you", "that works", "resolved", "fixed", "done"],
     ask_balance: ["balance", "owe", "how much", "what do i owe"],
     arrange_payment: ["pay", "payment", "plan", "installment", "arrange", "behind on", "overdue", "past due", "catch up"],
-    accept_plan: ["yes", "accept", "i'll take", "sign me up", "agree"],
-    hardship: ["hardship", "can't pay", "lost job", "unemployed", "medical", "struggle"],
+    accept_plan: ["yes", "accept", "i'll take", "sign me up", "agree", "months", "month plan"],
+    hardship: ["hardship", "can't pay", "lost job", "lost my job", "laid off", "unemployed", "medical", "struggle"],
+    attorney: ["lawyer", "attorney", "represented", "counsel"],
+    cease_contact: ["stop calling", "do not call", "don't call", "cease", "stop contacting", "leave me alone"],
+    dispute: ["don't owe", "do not owe", "not my debt", "dispute", "validation", "validate"],
+    already_paid: ["already paid", "paid it off", "paid this off", "been paid", "paid in full"],
+    third_party: ["not here", "not home", "his wife", "her husband", "my husband", "my wife", "take a message", "calling for my", "he's at work", "she's at work"],
+    ask_settlement: ["settle", "settlement", "least you", "take less", "take half"],
+    partial_amount: ["partial", "part of it", "only pay", "only do", "some of it"],
+    promise_date: ["payday", "get paid", "i can pay on", "i'll pay on", "i will pay on"],
+    objection_competitor: ["competitor", "another vendor", "other vendor", "another tool", "other tool", "already have a", "quoted less"],
+    objection_authority: ["boss", "manager", "approval", "approve", "director", "run it by", "check with"],
+    book_demo: ["demo", "walkthrough", "walk-through"],
+    confirm_cancel: ["cancel", "just close it"],
+    cancel_service: ["cancel", "close my account", "unsubscribe"],
+    update_address: ["address", "i moved", "i've moved"],
     refuse_payment: ["won't pay", "refuse", "not paying", "dispute"],
     discover_need: ["need", "looking for", "want", "interested", "help with"],
     ask_offer: ["price", "plan", "package", "offer", "features", "what's included"],
@@ -1007,6 +1021,9 @@ const SETTLEMENT_PROMISE =
 // Never threaten (FDCPA-style): arrest, lawsuits, garnishment, credit damage, employer contact
 const THREAT =
   /\b(?:arrest(?:ed)?|jail|prison|sue you|lawsuit|legal action|take you to court|garnish(?:ed|ment)?|seize|repossess|ruin your credit|damage your credit|report you|contact your employer|call your (?:employer|boss|family))\b/i;
+/** "I've set up your plan" / "your arrangement is in place" — only a tool result makes it true */
+const SETUP_CLAIM =
+  /\b(?:i|we)(?:'ve| have)\s+(?:just\s+)?(?:set up|arranged|created|put in place|scheduled|booked|recorded|logged)\b|\b(?:plan|arrangement|promise|callback|demo|case)\b[^.!?]{0,30}\b(?:is|has been)\s+(?:set up|in place|active|confirmed|recorded|booked)\b/i;
 const RECEIVE_PROMISE = /\byou(?:'ll| will| should)\s+(?:receive|get|see|be getting|hear back|be contacted)\b/i;
 const TIMELINE =
   /\b(?:within|in|over|by)\s+(?:the\s+next\s+)?(?:\d+|one|two|three|four|five|seven|ten|twenty-four|forty-eight|a few|a couple of)\s*(?:(?:-|to)\s*\d+\s*)?(?:minutes?|hours?|business days?|days?|weeks?)\b|\b(?:shortly|right away|immediately|by (?:tomorrow|tonight|end of (?:the )?(?:day|week)|monday|tuesday|wednesday|thursday|friday))\b/i;
@@ -1049,6 +1066,17 @@ export function unsupportedPromise(sentence: string, backing: PromiseBacking): s
     const promiseDone = /\b(?:promise|payment)\b/.test(s) && okTools.has("recordPromiseToPay");
     const planDone = /\b(?:plan|arrangement)\b/.test(s) && backing.toolResults.some((t) => t.name === "offerPaymentPlan" && t.ok && t.data.eligible);
     if (!caseDone && !callbackDone && !accountDone && !promiseDone && !planDone) return "done-claim";
+  }
+  if (SETUP_CLAIM.test(sentence)) {
+    const eligiblePlan = backing.toolResults.some((t) => t.name === "offerPaymentPlan" && t.ok && t.data.eligible);
+    const backed =
+      (/\b(?:plan|arrangement|installments?)\b/.test(s) && eligiblePlan) ||
+      (/\bpromise\b/.test(s) && okTools.has("recordPromiseToPay")) ||
+      (/\b(?:call ?back|demo|walkthrough)\b/.test(s) && okTools.has("scheduleCallback")) ||
+      (/\b(?:case|ticket)\b/.test(s) && okTools.has("createCase")) ||
+      (/\baccount\b/.test(s) && (okTools.has("createCustomer") || okTools.has("lookupAccount"))) ||
+      (/\b(?:disposition|request|note)\b/.test(s) && okTools.has("logDisposition"));
+    if (!backed) return "done-claim";
   }
   if (ACTION_PROMISE.test(sentence)) {
     const caseAction = /\b(?:case|ticket)\b/.test(s) && okTools.has("createCase");

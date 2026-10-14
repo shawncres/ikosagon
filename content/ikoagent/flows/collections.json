@@ -95,11 +95,11 @@
         {
           "intent": "cease_contact",
           "examples": [
-            "stop calling me",
-            "do not call me again",
+            "stop calling",
+            "do not call again",
             "cease and desist",
             "take me off your list",
-            "don't contact me anymore"
+            "stop contacting me"
           ]
         }
       ],
@@ -239,7 +239,8 @@
             "I can't talk about this",
             "hardship",
             "I lost my job",
-            "medical emergency"
+            "medical emergency",
+            "medical bills"
           ]
         },
         {
@@ -275,21 +276,20 @@
         {
           "intent": "cease_contact",
           "examples": [
-            "stop calling me",
-            "do not call me again",
+            "stop calling",
+            "do not call again",
             "cease and desist",
             "take me off your list",
-            "don't contact me anymore"
+            "stop contacting me"
           ]
         },
         {
           "intent": "attorney",
           "examples": [
-            "I have a lawyer",
-            "talk to my attorney",
-            "I'm represented by an attorney",
-            "my lawyer handles this",
-            "contact my attorney"
+            "lawyer",
+            "attorney",
+            "represented by counsel",
+            "legal representation"
           ]
         }
       ],
@@ -381,7 +381,9 @@
             "I want to pay",
             "set up a plan",
             "payment plan",
-            "can I do installments"
+            "can I do installments",
+            "I'm behind on my bill",
+            "catch up on my payments"
           ]
         },
         {
@@ -426,39 +428,38 @@
         {
           "intent": "cease_contact",
           "examples": [
-            "stop calling me",
-            "do not call me again",
+            "stop calling",
+            "do not call again",
             "cease and desist",
             "take me off your list",
-            "don't contact me anymore"
+            "stop contacting me"
           ]
         },
         {
           "intent": "attorney",
           "examples": [
-            "I have a lawyer",
-            "talk to my attorney",
-            "I'm represented by an attorney",
-            "my lawyer handles this",
-            "contact my attorney"
+            "lawyer",
+            "attorney",
+            "represented by counsel",
+            "legal representation"
           ]
         },
         {
-          "intent": "promise_to_pay",
+          "intent": "promise_date",
           "examples": [
-            "I can pay on Friday",
-            "I'll pay next Friday",
-            "I get paid on the 15th",
-            "I can pay it on payday",
-            "I'll make a payment tomorrow"
+            "Friday",
+            "next Friday",
+            "the 15th",
+            "payday",
+            "tomorrow"
           ]
         },
         {
-          "intent": "partial_payment",
+          "intent": "partial_amount",
           "examples": [
-            "I can pay $50 now",
-            "can I make a partial payment",
-            "I can only do 100 dollars",
+            "$50 now",
+            "partial payment",
+            "only 100 dollars",
             "part of it now"
           ]
         },
@@ -512,11 +513,11 @@
           "to": "exit:refuse:attorney"
         },
         {
-          "on": "promise_to_pay",
+          "on": "promise_date",
           "to": "promise"
         },
         {
-          "on": "partial_payment",
+          "on": "partial_amount",
           "to": "promise"
         },
         {
@@ -561,7 +562,10 @@
         },
         {
           "type": "callback",
-          "label": "Callback scheduled"
+          "label": "Callback scheduled",
+          "say": [
+            "Of course — I've scheduled a callback so we can pick this up at a better time. Thank you, and goodbye."
+          ]
         },
         {
           "type": "refuse",
@@ -616,25 +620,27 @@
           "examples": [
             "still too much",
             "hardship",
-            "I can't afford that"
+            "I can't afford that",
+            "I lost my job",
+            "medical bills"
           ]
         },
         {
-          "intent": "promise_to_pay",
+          "intent": "promise_date",
           "examples": [
-            "I can pay on Friday",
-            "I'll pay next Friday",
-            "I get paid on the 15th",
-            "I can pay it on payday",
-            "I'll make a payment tomorrow"
+            "Friday",
+            "next Friday",
+            "the 15th",
+            "payday",
+            "tomorrow"
           ]
         },
         {
-          "intent": "partial_payment",
+          "intent": "partial_amount",
           "examples": [
-            "I can pay $50 now",
-            "can I make a partial payment",
-            "I can only do 100 dollars",
+            "$50 now",
+            "partial payment",
+            "only 100 dollars",
             "part of it now"
           ]
         },
@@ -672,21 +678,20 @@
         {
           "intent": "cease_contact",
           "examples": [
-            "stop calling me",
-            "do not call me again",
+            "stop calling",
+            "do not call again",
             "cease and desist",
             "take me off your list",
-            "don't contact me anymore"
+            "stop contacting me"
           ]
         },
         {
           "intent": "attorney",
           "examples": [
-            "I have a lawyer",
-            "talk to my attorney",
-            "I'm represented by an attorney",
-            "my lawyer handles this",
-            "contact my attorney"
+            "lawyer",
+            "attorney",
+            "represented by counsel",
+            "legal representation"
           ]
         },
         {
@@ -732,11 +737,11 @@
           ]
         },
         {
-          "on": "promise_to_pay",
+          "on": "promise_date",
           "to": "promise"
         },
         {
-          "on": "partial_payment",
+          "on": "partial_amount",
           "to": "promise"
         },
         {
@@ -771,7 +776,10 @@
       "exits": [
         {
           "type": "callback",
-          "label": "Callback scheduled"
+          "label": "Callback scheduled",
+          "say": [
+            "Of course — I've scheduled a callback so we can pick this up at a better time. Thank you, and goodbye."
+          ]
         },
         {
           "type": "refuse",
@@ -841,21 +849,21 @@
           ]
         },
         {
-          "intent": "promise_to_pay",
+          "intent": "promise_date",
           "examples": [
-            "I can pay on Friday",
-            "I'll pay next Friday",
-            "I get paid on the 15th",
-            "I can pay it on payday",
-            "I'll make a payment tomorrow"
+            "Friday",
+            "next Friday",
+            "the 15th",
+            "payday",
+            "tomorrow"
           ]
         },
         {
-          "intent": "partial_payment",
+          "intent": "partial_amount",
           "examples": [
-            "I can pay $50 now",
-            "can I make a partial payment",
-            "I can only do 100 dollars",
+            "$50 now",
+            "partial payment",
+            "only 100 dollars",
             "part of it now"
           ]
         },
@@ -889,21 +897,20 @@
         {
           "intent": "cease_contact",
           "examples": [
-            "stop calling me",
-            "do not call me again",
+            "stop calling",
+            "do not call again",
             "cease and desist",
             "take me off your list",
-            "don't contact me anymore"
+            "stop contacting me"
           ]
         },
         {
           "intent": "attorney",
           "examples": [
-            "I have a lawyer",
-            "talk to my attorney",
-            "I'm represented by an attorney",
-            "my lawyer handles this",
-            "contact my attorney"
+            "lawyer",
+            "attorney",
+            "represented by counsel",
+            "legal representation"
           ]
         }
       ],
@@ -925,7 +932,7 @@
           "to": "ptp_close"
         },
         {
-          "on": "promise_to_pay",
+          "on": "promise_date",
           "to": "ptp_close",
           "whenSlotsFilled": [
             "ptpId"
@@ -955,7 +962,10 @@
       "exits": [
         {
           "type": "callback",
-          "label": "Callback scheduled"
+          "label": "Callback scheduled",
+          "say": [
+            "Of course — I've scheduled a callback so we can pick this up at a better time. Thank you, and goodbye."
+          ]
         },
         {
           "type": "refuse",
@@ -1032,21 +1042,21 @@
           ]
         },
         {
-          "intent": "promise_to_pay",
+          "intent": "promise_date",
           "examples": [
-            "I can pay on Friday",
-            "I'll pay next Friday",
-            "I get paid on the 15th",
-            "I can pay it on payday",
-            "I'll make a payment tomorrow"
+            "Friday",
+            "next Friday",
+            "the 15th",
+            "payday",
+            "tomorrow"
           ]
         },
         {
-          "intent": "partial_payment",
+          "intent": "partial_amount",
           "examples": [
-            "I can pay $50 now",
-            "can I make a partial payment",
-            "I can only do 100 dollars",
+            "$50 now",
+            "partial payment",
+            "only 100 dollars",
             "part of it now"
           ]
         },
@@ -1063,27 +1073,27 @@
           "intent": "hardship",
           "examples": [
             "I really can't afford it",
-            "I lost my job"
+            "I lost my job",
+            "medical bills"
           ]
         },
         {
           "intent": "cease_contact",
           "examples": [
-            "stop calling me",
-            "do not call me again",
+            "stop calling",
+            "do not call again",
             "cease and desist",
             "take me off your list",
-            "don't contact me anymore"
+            "stop contacting me"
           ]
         },
         {
           "intent": "attorney",
           "examples": [
-            "I have a lawyer",
-            "talk to my attorney",
-            "I'm represented by an attorney",
-            "my lawyer handles this",
-            "contact my attorney"
+            "lawyer",
+            "attorney",
+            "represented by counsel",
+            "legal representation"
           ]
         }
       ],
@@ -1103,11 +1113,11 @@
           "to": "arrange"
         },
         {
-          "on": "promise_to_pay",
+          "on": "promise_date",
           "to": "promise"
         },
         {
-          "on": "partial_payment",
+          "on": "partial_amount",
           "to": "promise"
         },
         {
@@ -1130,7 +1140,10 @@
       "exits": [
         {
           "type": "callback",
-          "label": "Specialist callback — settlement review"
+          "label": "Specialist callback — settlement review",
+          "say": [
+            "Of course — I've scheduled a callback so we can pick this up at a better time. Thank you, and goodbye."
+          ]
         },
         {
           "type": "refuse",
@@ -1176,21 +1189,20 @@
         {
           "intent": "cease_contact",
           "examples": [
-            "stop calling me",
-            "do not call me again",
+            "stop calling",
+            "do not call again",
             "cease and desist",
             "take me off your list",
-            "don't contact me anymore"
+            "stop contacting me"
           ]
         },
         {
           "intent": "attorney",
           "examples": [
-            "I have a lawyer",
-            "talk to my attorney",
-            "I'm represented by an attorney",
-            "my lawyer handles this",
-            "contact my attorney"
+            "lawyer",
+            "attorney",
+            "represented by counsel",
+            "legal representation"
           ]
         }
       ],

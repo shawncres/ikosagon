@@ -95,7 +95,7 @@ const NUMBER_WORDS: Record<string, number> = {
 
 /** "about ten seats", "team of 8", "12 people" → "10" / "8" / "12" */
 export function teamSizeFromText(text: string): string | null {
-  const m = text.match(/\b(\d{1,4}|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|hundred)\s*(?:\+\s*)?(?:seats?|users?|people|employees|agents|person team|-person|reps?)\b|\bteam of (\d{1,4}|[a-z]+)\b/i);
+  const m = text.match(/\b(\d{1,4}|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|fifty|hundred)\s*(?:\+\s*)?(?:seats?|users?|people|employees|agents|person team|-person|reps?)\b|\bteam of (?:about |around |roughly |maybe )?(\d{1,4}|[a-z]+)\b/i);
   const raw = (m?.[1] ?? m?.[2])?.toLowerCase();
   if (!raw) return null;
   const n = /^\d+$/.test(raw) ? Number(raw) : NUMBER_WORDS[raw];

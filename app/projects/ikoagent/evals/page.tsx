@@ -31,6 +31,15 @@ const CATEGORY_LABELS: Record<string, string> = {
   "offer-matching": "Offer matching",
   "objection-handling": "Objection handling",
   "callback-routing": "Callback routing",
+  "plan-negotiation": "Plan negotiation (policy bounds)",
+  "promise-to-pay": "Promise-to-pay & partial payment",
+  compliance: "Collections compliance (dispute, cease, attorney, third party)",
+  "settlement-hardship": "Settlement boundary & hardship",
+  discovery: "Sales discovery",
+  "booking-upsell": "Demo booking & honest upsell",
+  retention: "Cancellation & retention",
+  "address-change": "Address change",
+  "de-escalation": "Repeat-caller de-escalation",
 };
 
 const GUARDS = [
@@ -51,6 +60,10 @@ const GUARDS = [
     body: "Retrieved policy passages carry agent-only guidance. Only caller-facing lines can be spoken; internal notes stay on the agent desk.",
   },
   {
+    name: "No threats, no settlement figures",
+    body: "Collections drafts that mention arrest, lawsuits, garnishment or contacting an employer are removed, and so are settlement amounts or percentages, which need specialist authority. A claim that a plan is \"set up\" only stands when the plan tool says it fits policy.",
+  },
+  {
     name: "Grounded IDs",
     body: "Account, case, and callback numbers are placeholders filled from real tool results, so the model can't invent one.",
   },
@@ -60,6 +73,8 @@ const EXAMPLES = [
   { flow: "Collections", input: "\"I don't have an account\" (before verification)", expected: "Scripted clarification, not a wrong-party hang-up. \"Account 1001\" next leads to the verbatim debt disclosure." },
   { flow: "Customer service", input: "Model draft: \"You'll get a confirmation email shortly with your new tracking number.\"", expected: "Promise removed; only policy-backed lines remain." },
   { flow: "Sales", input: "Model draft: \"I can give you 20% off if you sign today.\"", expected: "Discount removed; the policy is trial before discount, and the demo has no pricing tool to back a concession." },
+  { flow: "Collections", input: "\"Can I spread this over twelve months?\" on a $912 balance", expected: "Plan tool says 6 months is the policy limit; the agent counter-offers 6 months at USD 152.00 instead of agreeing." },
+  { flow: "Collections", input: "\"He's not here — this is his wife.\"", expected: "Third-party close with no mention of a debt; no-disclosure disposition logged." },
   { flow: "Sales", input: "\"email me\" after the offer", expected: "A real callback is booked and its ID spoken once; no promise to send an email." },
   { flow: "Customer service", input: "\"My name is Avery Shipcheck\"", expected: "Read as a name and an account is created for it, not a shipping issue." },
   { flow: "Collections", input: "\"I'm late on my payment\"", expected: "Routed to billing/balance, never shipping delay, and never taken as a name." },
