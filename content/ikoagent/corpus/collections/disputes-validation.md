@@ -3,6 +3,7 @@ title: "Disputes & validation requests"
 ---
 
 ## Dispute signals
+<!-- caller: When you dispute a debt, we note the dispute and stop collection prompts while it's reviewed. -->
 "I do not owe this," "send validation," or "this is not my debt" are dispute / validation signals. Stop payment pressure.
 
 ## Say this

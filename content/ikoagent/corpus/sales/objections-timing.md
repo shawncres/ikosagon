@@ -3,6 +3,7 @@ title: "Timing objections"
 ---
 
 ## "Not now" is valid
+<!-- caller: No pressure on timing — we can schedule a callback, or you can start the fourteen-day trial whenever you're ready. -->
 Schedule a callback; do not pressure for same-day close. Log **`CALLBACK`** with the preferred window.
 
 ## Say this

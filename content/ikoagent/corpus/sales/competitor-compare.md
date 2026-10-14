@@ -3,6 +3,7 @@ title: "Competitor comparisons"
 ---
 
 ## Principles
+<!-- caller: We don't knock other vendors — a fourteen-day trial is the fairest side-by-side comparison. -->
 Compare on capabilities you can cite. Stay respectful. Never invent competitor pricing or claim "we are always cheaper."
 
 ## Say this

@@ -5,6 +5,7 @@ import {
   type CustomerRecord,
 } from "@/lib/ikoagent/crm";
 import type { SlotMap, ToolResult } from "./types";
+import { planMaxMonths, promiseSummary } from "./domain";
 
 export const TOOL_NAMES = [
   "lookupAccount",
@@ -14,7 +15,14 @@ export const TOOL_NAMES = [
   "offerPaymentPlan",
   "checkBalance",
   "logDisposition",
+  "recordPromiseToPay",
 ] as const;
+
+/** Short numeric suffix for ids; callers without an account get no "unknown" in the id */
+function idFor(prefix: string, accountId: string | null | undefined, digits: number): string {
+  const tail = String(Date.now()).slice(-digits);
+  return accountId ? `${prefix}-${accountId}-${tail}` : `${prefix}-${tail}`;
+}
 
 export type ToolName = (typeof TOOL_NAMES)[number];
 
@@ -140,29 +148,60 @@ export async function runTool(
         return { name, ok: false, data: { error: "Account not found." } };
       }
       const balance = account.balance;
-      const months = Number(extra?.months ?? slots.planMonths ?? 3);
-      const safeMonths = Number.isFinite(months) ? Math.min(24, Math.max(1, Math.floor(months))) : 3;
-      const installment = Math.round((balance / Math.max(1, safeMonths)) * 100) / 100;
+      const maxMonths = planMaxMonths(balance);
+      const asked = Number(extra?.months ?? slots.planMonths ?? 0);
+      const requested = Number.isFinite(asked) && asked > 0 ? Math.floor(asked) : 0;
+      // Standard plans only (payment-plans policy); no request → the longest standard plan
+      const months = requested || maxMonths || 3;
+      const withinPolicy = account.planEligible && maxMonths > 0 && months <= maxMonths;
+      const eligible = withinPolicy && balance > 0;
+      const installment = Math.round((balance / Math.max(1, months)) * 100) / 100;
       return {
         name,
         ok: account.planEligible && balance > 0,
         data: {
-          eligible: account.planEligible && balance > 0,
-          months: safeMonths,
-          installment,
+          eligible,
+          withinPolicy,
+          months,
+          maxMonths,
+          installment: eligible ? installment : null,
+          maxInstallment: maxMonths > 0 ? Math.round((balance / maxMonths) * 100) / 100 : null,
           currency: account.currency,
           total: balance,
         },
       };
     }
+    case "recordPromiseToPay": {
+      const account = await resolveCustomer(slots);
+      const date = (slots.promiseDate || "").slice(0, 40);
+      if (!account || !date) {
+        return { name, ok: false, data: { error: !account ? "Account not found." : "A pay date is required." } };
+      }
+      const amount = Number(slots.payAmount || 0);
+      const capped = amount > 0 ? Math.min(amount, account.balance) : null;
+      // Deterministic id (same in the predicted and live pass): account + date
+      const key = [...date.toLowerCase()].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 9000, 7) + 1000;
+      return {
+        name,
+        ok: account.balance > 0,
+        data: {
+          ptpId: `PTP-${account.accountId}-${key}`,
+          date,
+          amount: capped,
+          partial: capped != null && capped < account.balance,
+          currency: account.currency,
+          summary: promiseSummary(capped != null ? String(capped) : null, date, account.currency),
+        },
+      };
+    }
     case "createCase": {
       const account = await resolveCustomer(slots);
-      const accountId = account?.accountId ?? sanitizeAccountId(slots.accountId || "") ?? "unknown";
+      const accountId = account?.accountId ?? sanitizeAccountId(slots.accountId || "");
       return {
         name,
         ok: true,
         data: {
-          caseId: `CASE-${accountId}-${String(Date.now()).slice(-6)}`,
+          caseId: idFor("CASE", accountId, 6),
           reason: slots.reason || String(extra?.reason ?? "general").slice(0, 80),
           priority: slots.priority || "normal",
           status: "open",
@@ -171,12 +210,12 @@ export async function runTool(
     }
     case "scheduleCallback": {
       const account = await resolveCustomer(slots);
-      const accountId = account?.accountId ?? sanitizeAccountId(slots.accountId || "") ?? "unknown";
+      const accountId = account?.accountId ?? sanitizeAccountId(slots.accountId || "");
       return {
         name,
         ok: true,
         data: {
-          callbackId: `CB-${accountId}-${String(Date.now()).slice(-5)}`,
+          callbackId: idFor("CB", accountId, 5),
           window: slots.callbackWindow || "next_business_day_afternoon",
           phone: slots.phone || "(demo) on file",
         },
@@ -214,7 +253,11 @@ export function toolsForIntent(
     no_account: [],
     ask_balance: ["checkBalance"],
     arrange_payment: ["offerPaymentPlan", "checkBalance"],
-    accept_plan: ["offerPaymentPlan", "logDisposition"],
+    accept_plan: ["offerPaymentPlan"],
+    promise_date: ["recordPromiseToPay"],
+    partial_amount: ["recordPromiseToPay"],
+    dispute: ["createCase"],
+    already_paid: ["createCase"],
     create_ticket: ["createCase"],
     request_callback: ["scheduleCallback"],
     escalate: ["createCase", "logDisposition"],
@@ -239,6 +282,28 @@ export function applyToolSlots(slots: SlotMap, tools: ToolResult[]): SlotMap {
       if (tr.name === "createCustomer" && tr.data.created === true) {
         next.accountCreated = "true";
       }
+    }
+    // Plan policy facts → slots the scripts branch on (never set by the model)
+    if (tr.name === "checkBalance" && typeof tr.data.balance === "number") {
+      const max = planMaxMonths(tr.data.balance);
+      if (max > 0) next.planMaxMonths = String(max);
+    }
+    if (tr.name === "offerPaymentPlan") {
+      if (Number(tr.data.maxMonths) > 0) next.planMaxMonths = String(tr.data.maxMonths);
+      if (tr.data.eligible) {
+        next.planOk = "true";
+        next.planMonths = String(tr.data.months);
+        next.planInstallment = `${tr.data.currency ?? "USD"} ${Number(tr.data.installment).toFixed(2)}`;
+        delete next.planOutOfPolicy;
+      } else {
+        delete next.planOk;
+        if (tr.data.withinPolicy === false) next.planOutOfPolicy = "true";
+        if (tr.data.maxInstallment != null) next.planMaxInstallment = `${tr.data.currency ?? "USD"} ${Number(tr.data.maxInstallment).toFixed(2)}`;
+      }
+    }
+    if (tr.name === "recordPromiseToPay") {
+      next.ptpId = String(tr.data.ptpId);
+      next.promiseSummary = String(tr.data.summary);
     }
   }
   return next;

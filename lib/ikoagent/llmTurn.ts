@@ -148,6 +148,9 @@ const SLOT_KEYS = [
   "offer",
   "objection",
   "notes",
+  "promiseDate",
+  "payAmount",
+  "teamSize",
 ];
 
 /**

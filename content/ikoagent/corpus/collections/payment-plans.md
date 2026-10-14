@@ -3,6 +3,7 @@ title: "Payment plans & arrangements"
 ---
 
 ## Standard plans
+<!-- caller: Balances under $500 qualify for up to a three-month plan, and balances from $500 to $1,500 for up to six months. Anything longer goes to a specialist. -->
 - Balances under **$500**: up to a **3-month** plan.
 - Balances **$500–$1,500**: up to **6 months**, with a first installment due when the arrangement is set.
 - Above that range: escalate to a specialist for options — do not invent custom settlements on the agent line.
@@ -11,6 +12,7 @@ title: "Payment plans & arrangements"
 "Based on the balance on file, we can set a short payment plan. Would a three-month arrangement work, or would you like me to explain the six-month option if you qualify?"
 
 ## First installment
+<!-- caller: The first installment is due when the arrangement is set. -->
 Be clear that the first payment is due at arrangement in this demo. Confirm the amount in plain language before logging acceptance.
 
 ## Changing a plan

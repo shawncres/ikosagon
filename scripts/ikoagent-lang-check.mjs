@@ -874,6 +874,29 @@ try {
     assert(Y20[0].debug.llm?.reply === "used", `Y20 sales greet: a good asking draft is still used (${JSON.stringify(Y20[0].debug.llm)})`);
   }
 
+  // SC. Broadened flows on the single-call path: unsafe drafts never reach the caller
+  tag("collections", "compliance");
+  {
+    const CO = JSON.parse(readFileSync("./content/ikoagent/flows/collections.json", "utf8")).nodes.identity.agentSay[0];
+    const cseed = [{ role: "agent", content: CO }];
+    resetLlmCooldown();
+    mockReplies.set("I can't pay this month", plan({ intent: "hardship", reply: "If you don't pay, we may take legal action and garnish your wages. Let's look at options — what happened?" }));
+    const SC1 = await quiet(() => call("collections", ["account 1001", "yes", "I can't pay this month"], cseed));
+    assert(!/legal action|garnish/i.test(SC1[2].agentText), `SC1 threat in a model draft never reaches the caller: ${SC1[2].agentText.slice(0, 90)}`);
+    mockReplies.set("can we settle", plan({ intent: "ask_settlement", reply: "Sure — we can settle for $400 today, or 50% of the balance. Which works?" }));
+    const SC2 = await quiet(() => call("collections", ["account 2044", "yes", "can we settle"], cseed));
+    assert(!/\$400|50%/.test(SC2[2].agentText) && SC2[2].nodeId === "settlement", `SC2 settlement figures in a draft are stripped: ${SC2[2].agentText.slice(0, 90)}`);
+    mockReplies.set("twelve months please", plan({ intent: "accept_plan", slots: { planMonths: "12" }, reply: "Done — I've set up your 12-month plan. Anything else?" }));
+    const SC3 = await quiet(() => call("collections", ["account 2044", "yes", "ok", "twelve months please"], cseed));
+    assert(SC3[3].nodeId === "arrange" && !/I've set up your 12-month plan/.test(SC3[3].agentText), `SC3 out-of-policy 'plan set up' claim is not spoken: ${SC3[3].agentText.slice(0, 90)}`);
+    mockReplies.set("he's not home", plan({ intent: "third_party", reply: "No problem — please tell him he owes $912 on his account." }));
+    const SC4 = await quiet(() => call("collections", ["he's not home"], cseed));
+    assert(SC4[0].exit?.type === "refuse" && !/\$912|owes/.test(SC4[0].agentText), `SC4 third party: a disclosing draft never reaches the caller: ${SC4[0].agentText.slice(0, 90)}`);
+    mockReplies.clear();
+    resetLlmCooldown();
+  }
+  tag(null);
+
   // SB. Sales on the single-call path: bad drafts are caught, good drafts are used
   tag("sales", "safety");
   {
@@ -938,7 +961,7 @@ try {
   tag("sales", "offer-matching");
   const M1 = await run(["need better support", "about ten seats"]);
   assert(M1[1].nodeId === "match_offer", `SA offer: seat count moves discover → match_offer (${path(M1)})`);
-  assert(/Basic/.test(M1[1].agentText) && /Pro/.test(M1[1].agentText) && /trial/i.test(M1[1].agentText) && /callback/i.test(M1[1].agentText), "SA offer: match line lists Basic, Pro, trial, callback");
+  assert(/(Basic|Pro|Enterprise) looks like the best fit/.test(M1[1].agentText) && /trial/i.test(M1[1].agentText) && /callback/i.test(M1[1].agentText), "SA offer: match line recommends a plan and offers trial, demo or callback");
   assert(/no pressure/i.test(M1[1].agentText), "SA offer: no-pressure language kept (ethical sales)");
   const M2 = await run(["need phone support", "compare basic and pro"]);
   assert(M2[1].nodeId === "match_offer" && M2[1].debug.matchedIntent === "ask_offer" && !!M2[1].slots.offer, `SA offer: 'compare basic and pro' → match_offer with an offer slot (${M2[1].slots.offer})`);
@@ -953,7 +976,7 @@ try {
   assert(/fourteen-day Pro trial/i.test(O1[2].agentText) && /\?/.test(O1[2].agentText), "SA objection: offers the 14-day Pro trial and asks what would make it a yes");
   assert(!/\b\d+\s?%|discount|waive|free month/i.test(O1[2].agentText), "SA objection: no discount offered (policy: trial before discount)");
   const O2 = await run(["need phone support", "compare basic and pro", "competitor is cheaper"]);
-  assert(O2[2].nodeId === "objection" && O2[2].debug.matchedIntent === "objection_price", "SA objection: 'competitor is cheaper' → price objection");
+  assert(O2[2].nodeId === "objection" && O2[2].debug.matchedIntent === "objection_competitor", "SA objection: 'competitor is cheaper' → competitor objection");
   const O3 = await run(["need better support", "small team", "need a discount"]);
   assert(O3[2].nodeId === "objection" && !/\b\d+\s?%/.test(O3[2].agentText), "SA objection: 'need a discount' → objection, no percentage promised");
   const O4 = await run(["looking for a cheaper plan", "enterprise", "not now"]);
@@ -1022,6 +1045,162 @@ try {
 }
 tag(null);
 
+// ---- Broadened flows (Oct 14): collections negotiation / compliance paths, sales fit + objections, CS gaps ----
+{
+  const load = (id) => JSON.parse(readFileSync(`./content/ikoagent/flows/${id}.json`, "utf8"));
+  const coll = load("collections");
+  const sales = load("sales");
+  const cs = load("customer_service");
+  const runF = (fid, lines) => quiet(() => call(fid, lines, [{ role: "agent", content: load(fid).nodes[load(fid).start].agentSay[0] }]));
+  const countOf = (text, id) => text.split(String(id)).length - 1;
+  const tool = (t, n) => (t.toolResults ?? []).find((x) => x.name === n);
+  const MIR = coll.nodes.disclosure.agentSay[0];
+  const DEBT = /\b(debt|balance|owe|owed|collect|past due|overdue|payment)\b/i;
+  const noRepeat = (turns) => turns.every((t, i) => !repeatsEarlierAgentLine(t.agentText.split(/\n{2,}/)[0], turns.slice(0, i).map((x) => ({ role: "agent", content: x.agentText }))));
+  const { planMaxMonths, extractPromiseDate, extractPayAmount, teamSizeFromText, needFromText, recommendPlan, upsellNote, hardshipKind, looksLikeRepeatCaller, looksLikeCancel, hasAddress } = await import("../lib/ikoagent/domain.ts");
+
+  // Collections — plan policy
+  tag("collections", "plan-negotiation");
+  assert(planMaxMonths(248.5) === 3 && planMaxMonths(912) === 6 && planMaxMonths(2400) === 0 && planMaxMonths(0) === 0, "CB policy: <$500 → 3 mo, $500–1,500 → 6 mo, above/zero → specialist");
+  const P1 = await runF("collections", ["This is account 2044. Can I spread this over twelve months?", "yes", "ok", "twelve months", "ok six months then", "thanks"]);
+  assert(P1[3].nodeId === "arrange" && !P1[3].exit && tool(P1[3], "offerPaymentPlan")?.data.withinPolicy === false, "CB plan: 12 months on a $912 balance is outside policy → stays on arrange");
+  assert(/longest standard plan is 6 months/.test(P1[3].agentText) && /USD 152\.00/.test(P1[3].agentText), "CB plan: counter-offer names the 6-month policy limit and its installment");
+  assert(P1[4].nodeId === "disposition" && P1[4].slots.planOk === "true" && P1[4].slots.planMonths === "6", "CB plan: 6 months accepted within policy → disposition");
+  assert(/Plan option: 6 months at USD 152/.test(P1[4].agentText), "CB plan: accepted plan is read back from the tool");
+  assert(P1[5].exit?.type === "resolve" && tool(P1[5], "logDisposition")?.data.disposition === "PLAN", "CB plan: call ends with a PLAN disposition");
+  const P2 = await runF("collections", ["account 1001", "yes", "what do I owe"]);
+  assert(P2[2].nodeId === "arrange" && /longest standard plan I can set up is 3 months/.test(P2[2].agentText) && /248\.50/.test(P2[2].agentText), "CB plan: $248.50 balance → offers up to 3 months, balance read from the tool");
+  const P3 = await runF("collections", ["account 1001", "yes", "what do I owe", "three months"]);
+  assert(P3[3].nodeId === "disposition" && P3[3].slots.planMonths === "3", "CB plan: 'three months' (words) accepted on a 3-month-eligible balance");
+  const P4 = await runF("collections", ["account 1001", "yes", "what do I owe", "6 months"]);
+  assert(P4[3].nodeId === "arrange" && P4[3].slots.planOutOfPolicy === "true" && !P4[3].slots.planOk, "CB plan: 6 months on a sub-$500 balance is refused with the policy limit");
+  assert(noRepeat(P1), "CB repeat guard: plan negotiation never repeats a line");
+
+  tag("collections", "promise-to-pay");
+  assert(extractPromiseDate("I can pay on Friday") === "Friday" && extractPromiseDate("the 15th works") === "the 15th" && extractPromiseDate("next friday") === "next Friday" && extractPromiseDate("Oct 20") === "oct 20", "CB dates: Friday / the 15th / next Friday / Oct 20");
+  assert(extractPromiseDate("I can pay 50 dollars") === null && extractPromiseDate("account 1001") === null, "CB dates: amounts and accounts are not dates");
+  assert(extractPayAmount("I can pay $100") === "100.00" && extractPayAmount("only 50 dollars") === "50.00" && extractPayAmount("account 1001") === null && extractPayAmount("six months") === null, "CB amounts: $100 / 50 dollars; never account numbers or months");
+  const T1 = await runF("collections", ["Account 1001 — I can pay $100 on Friday.", "yes", "ok", "yes", "no that's all"]);
+  assert(T1[0].nodeId === "disclosure" && T1[0].agentText.startsWith(MIR), "CB PTP: opener with a promise still hears the mini-Miranda first");
+  assert(T1[2].nodeId === "promise" && /USD 100\.00 on Friday/.test(T1[2].agentText) && /\?/.test(T1[2].agentText), "CB PTP: date + amount carried from the opener are confirmed back before recording");
+  const ptp = tool(T1[3], "recordPromiseToPay");
+  assert(T1[3].nodeId === "ptp_close" && ptp?.ok && T1[3].agentText.includes(ptp.data.ptpId), "CB PTP: 'yes' records the promise and speaks its reference");
+  assert(T1[4].exit?.type === "resolve" && tool(T1[4], "logDisposition")?.data.disposition === "PTP", "CB PTP: close logs a PTP disposition");
+  const T2 = await runF("collections", ["account 1001", "yes", "I can only pay 50 dollars", "the 15th", "thanks"]);
+  assert(T2[2].nodeId === "promise" && /what date/i.test(T2[2].agentText), "CB partial: amount without a date → asks for the date");
+  assert(T2[3].nodeId === "ptp_close" && tool(T2[3], "recordPromiseToPay")?.data.partial === true && /USD 50\.00 on the 15th/.test(T2[3].agentText), "CB partial: date → partial promise recorded ($50 on the 15th)");
+  const T3 = await runF("collections", ["account 1001", "yes", "what do I owe", "I can pay on Friday"]);
+  assert(T3[3].nodeId === "ptp_close" && tool(T3[3], "recordPromiseToPay")?.ok, "CB PTP: 'I can pay on Friday' at the plan step records directly");
+  const T4 = await runF("collections", ["account 1001", "yes", "what do I owe", "call me tomorrow"]);
+  assert(T4[3].exit?.type === "callback" && !tool(T4[3], "recordPromiseToPay") && tool(T4[3], "scheduleCallback")?.ok, "CB PTP: 'call me tomorrow' is a callback, not a promise to pay tomorrow");
+  assert(/scheduled a callback/i.test(T4[3].agentText) && !T4[3].agentText.includes(P2[2].agentText.split("\n\n")[0]), "CB callback: callback close line, not the plan question again");
+
+  tag("collections", "compliance");
+  const D1 = await runF("collections", ["account 1001", "yes", "I don't owe this"]);
+  assert(D1[2].exit?.type === "escalate" && /Dispute noted/.test(D1[2].exit.label) && tool(D1[2], "createCase")?.ok, "CB dispute: 'I don't owe this' → dispute case, call ends");
+  assert(/won't discuss the balance/i.test(D1[2].agentText) && /doesn't mail one/i.test(D1[2].agentText) && !/\$|USD/.test(D1[2].agentText), "CB dispute: stops debt talk, honest about the validation notice, no amounts");
+  assert(tool(D1[2], "createCase")?.data.reason === "dispute", "CB dispute: case reason recorded as dispute");
+  const D2 = await runF("collections", ["account 1001", "I don't owe this"]);
+  assert(D2[1].exit?.type === "escalate" && D2[1].nodeId === "dispute", "CB dispute: also honored right after the mini-Miranda");
+  const D3 = await runF("collections", ["account 1001", "I already paid this"]);
+  assert(D3[1].exit?.type === "escalate" && /Already-paid/.test(D3[1].exit.label) && /won't ask you for a payment/i.test(D3[1].agentText), "CB paid: already-paid → review case, no payment ask");
+  const X1 = await runF("collections", ["He's not here — this is his wife. Can I take a message?"]);
+  assert(X1[0].exit?.type === "refuse" && /Third party/.test(X1[0].exit.label) && tool(X1[0], "logDisposition")?.data.disposition === "third_party_no_disclosure", "CB third party: ends with a no-disclosure disposition");
+  assert(!DEBT.test(X1[0].agentText.split("Call outcome")[0]), "CB third party: close discloses nothing about a debt");
+  const X2 = await runF("collections", ["I'm calling for my mother, she's at work"]);
+  assert(X2[0].exit?.type === "refuse" && !DEBT.test(X2[0].agentText.split("Call outcome")[0]), "CB third party: 'calling for my mother' also ends without disclosure");
+  const S1 = await runF("collections", ["account 2044", "yes", "stop calling me"]);
+  assert(S1[2].exit?.type === "refuse" && tool(S1[2], "logDisposition")?.data.disposition === "STOP" && /stop request/i.test(S1[2].agentText), "CB cease: 'stop calling me' → STOP logged, call ends");
+  const S2 = await runF("collections", ["stop calling me"]);
+  assert(S2[0].exit?.type === "refuse" && !DEBT.test(S2[0].agentText.split("Call outcome")[0]), "CB cease: honored before identity with no disclosure");
+  const S3 = await runF("collections", ["account 2044", "yes", "I have a lawyer"]);
+  assert(S3[2].exit?.type === "refuse" && tool(S3[2], "logDisposition")?.data.disposition === "ATTORNEY" && /represented/i.test(S3[2].agentText), "CB attorney: represented → ATTORNEY logged, no further discussion");
+  const S4 = await runF("collections", ["account 2044", "yes", "what do I owe", "talk to my attorney"]);
+  assert(S4[3].exit?.type === "refuse" && S4[3].exit.label.includes("Attorney"), "CB attorney: honored at the plan step too");
+  const S5 = await runF("collections", ["account 2044", "yes", "I lost my job", "stop contacting me"]);
+  assert(S5[3].exit?.type === "refuse" && tool(S5[3], "logDisposition")?.data.disposition === "STOP", "CB cease: honored during the hardship path");
+  for (const n of Object.values(coll.nodes)) {
+    for (const l of [...n.agentSay, ...(n.exits ?? []).flatMap((e) => e.say ?? []), ...(n.agentSayWhen ?? []).flatMap((w) => w.lines)]) {
+      assert(!/\b(arrest|jail|sue|lawsuit|garnish|credit bureau|employer)\b/i.test(l), `CB no threats in authored ${n.id} line`);
+    }
+  }
+  assert(D1.concat(S1, S3).every((t) => countOf(t.agentText, MIR) <= 1), "CB compliance: mini-Miranda never read twice in one turn");
+
+  tag("collections", "settlement-hardship");
+  const ST = await runF("collections", ["account 2044", "yes", "can I settle for less", "have someone call me tomorrow"]);
+  assert(ST[2].nodeId === "settlement" && /can't quote a settlement amount/i.test(ST[2].agentText) && !/\d+\s?%|\$\d/.test(ST[2].agentText.split("Here's what")[0]), "CB settlement: no amount quoted; specialist review explained");
+  assert(ST[3].exit?.type === "callback" && /settlement review/.test(ST[3].exit.label) && tool(ST[3], "scheduleCallback")?.ok, "CB settlement: specialist callback booked with a real id");
+  const ST2 = await runF("collections", ["account 2044", "yes", "can I settle for less", "the payment plan"]);
+  assert(ST2[3].nodeId === "arrange", "CB settlement: caller can switch to a standard plan");
+  const H1 = await runF("collections", ["account 2044", "yes", "I lost my job", "ok"]);
+  assert(H1[2].nodeId === "hardship" && H1[2].slots.hardshipType === "job loss" && H1[3].exit?.type === "escalate", "CB hardship: job loss captured and escalated with a case");
+  assert(tool(H1[3], "createCase")?.data.reason === "hardship (job loss)", "CB hardship: case notes the hardship type");
+  assert(hardshipKind("I had surgery and medical bills") === "medical" && hardshipKind("we got laid off") === "job loss" && hardshipKind("my order is late") === null, "CB hardship: medical / job loss detected; others not");
+
+  // Sales
+  tag("sales", "discovery");
+  assert(needFromText("we need SSO") === "SSO" && needFromText("security questionnaire from IT") === "a security review" && needFromText("hi") === "", "SC need: SSO / security review / none");
+  assert(teamSizeFromText("a team of about twelve people") === "12" && teamSizeFromText("40 seats") === "40" && teamSizeFromText("account 1001") === null, "SC team size from words and digits; never account numbers");
+  const N1 = await runF("sales", ["We need SSO for a team of about twelve people."]);
+  assert(N1[0].nodeId === "discover" && N1[0].slots.need === "SSO" && N1[0].slots.teamSize === "12" && /help you with SSO\./.test(N1[0].agentText), "SC discovery: need + team size captured; the line names the need");
+  const N2 = await runF("sales", ["what do you offer?"]);
+  assert(N2[0].nodeId === "discover" && !/I can help you\./.test(N2[0].agentText) && /^Happy to help/.test(N2[0].agentText), "SC discovery: no need yet → no empty 'I can help you.' line");
+  tag("sales", "offer-matching");
+  assert(recommendPlan({ need: "SSO", teamSize: "12" })?.plan === "Pro" && recommendPlan({ teamSize: "40" })?.plan === "Enterprise" && recommendPlan({ need: "a lower-cost plan", teamSize: "3" })?.plan === "Basic" && recommendPlan({ need: "a security review" })?.plan === "Enterprise", "SC fit: SSO/12 → Pro, 40 seats → Enterprise, budget/3 → Basic, security review → Enterprise");
+  assert(recommendPlan({}) === null, "SC fit: nothing known → no recommendation");
+  const F1 = await runF("sales", ["We need SSO for a team of about twelve people.", "about twelve seats"]);
+  assert(F1[1].nodeId === "match_offer" && /Pro looks like the best fit/.test(F1[1].agentText) && F1[1].agentText.includes("Pro adds priority chat and phone support, 15 seats, and an optional SSO add-on."), "SC fit: recommendation spoken with the corpus plan facts");
+  const F2 = await runF("sales", ["looking for a cheaper plan", "3 people"]);
+  assert(/Basic looks like the best fit/.test(F2[1].agentText), "SC fit: budget-minded 3-seat team → Basic");
+  const F3 = await runF("sales", ["we need a security review for 200 users", "enterprise"]);
+  assert(/Enterprise looks like the best fit/.test(F3[1].agentText), "SC fit: security review at scale → Enterprise");
+  tag("sales", "objection-handling");
+  const O1 = await runF("sales", ["We need SSO for a team of about twelve people.", "about twelve seats", "competitor is cheaper"]);
+  assert(O1[2].nodeId === "objection" && O1[2].slots.objectionType === "competitor" && /won't knock anyone/i.test(O1[2].agentText), "SC objection: competitor → honest fit + trial comparison");
+  const O2 = await runF("sales", ["need better support", "small team", "I need to ask my boss"]);
+  assert(O2[2].slots.objectionType === "authority" && /manager/i.test(O2[2].agentText) && /\?/.test(O2[2].agentText), "SC objection: needs approval → offers a walkthrough with the manager");
+  const O3 = await runF("sales", ["we need SSO", "5 seats", "not now"]);
+  assert(O3[2].slots.objectionType === "timing" && /No rush/.test(O3[2].agentText), "SC objection: timing → no-pressure callback or trial");
+  const O4 = await runF("sales", ["need better support", "small team", "too expensive"]);
+  assert(O4[2].slots.objectionType === "price" && /fourteen-day Pro trial/.test(O4[2].agentText) && !/\d+\s?%|discount/i.test(O4[2].agentText), "SC objection: price → trial before discount, no discount offered");
+  assert([O1, O2, O3, O4].every(noRepeat), "SC repeat guard: no objection path repeats a line");
+  tag("sales", "booking-upsell");
+  const B1 = await runF("sales", ["We need SSO for a team of about twelve people.", "about twelve seats", "book a demo", "afternoon"]);
+  assert(B1[2].nodeId === "demo_book" && /morning or afternoon/i.test(B1[2].agentText), "SC demo: 'book a demo' asks for a window");
+  const demoId = tool(B1[3], "scheduleCallback")?.data.callbackId;
+  assert(B1[3].exit?.type === "callback" && /Demo walkthrough booked/.test(B1[3].exit.label) && B1[3].agentText.includes(demoId) && /afternoon/.test(B1[3].agentText), "SC demo: booked with a real id and the window");
+  assert(/^CB-\d{5}$/.test(String(demoId)) && !/unknown/i.test(B1[3].agentText), "SC no-account ids: 'CB-unknown-' is never spoken");
+  const B2 = await runF("sales", ["need better support", "small team", "email me"]);
+  assert(!/unknown/i.test(B2[2].agentText) && /^CB-\d{5}$/.test(String(tool(B2[2], "scheduleCallback")?.data.callbackId)), "SC callback without an account: clean id");
+  assert(upsellNote({ offer: "basic", need: "SSO" }).includes("Pro") && upsellNote({ offer: "pro", need: "SSO" }) === "" && upsellNote({ offer: "basic", teamSize: "8" }).includes("3 seats"), "SC upsell: only when the chosen plan misses a stated need");
+  const U1 = await runF("sales", ["we need SSO", "3 people", "basic please, I'll take it"]);
+  assert(U1[2].nodeId === "close" && /no pressure: SSO isn't part of Basic/.test(U1[2].agentText) && !/\d+\s?%|discount|free month/i.test(U1[2].agentText), "SC upsell: Basic + SSO need → honest no-pressure note, no discount");
+  const U2 = await runF("sales", ["need phone support", "10 seats", "I'll take pro"]);
+  assert(U2[2].nodeId === "close" && !/One honest note/.test(U2[2].agentText), "SC upsell: no note when the plan already fits");
+
+  // Customer service
+  tag("customer_service", "retention");
+  assert(looksLikeCancel("I want to cancel my subscription") && !looksLikeCancel("my order is late"), "CS cancel intent detection");
+  const R1 = await runF("customer_service", ["I want to cancel my subscription. My account is 1001.", "just cancel it"]);
+  assert(R1[0].nodeId === "retention" && /what's driving it/i.test(R1[0].agentText), "CS retention: verified cancel request → one save question");
+  assert(R1[1].exit?.type === "resolve" && tool(R1[1], "logDisposition")?.data.disposition === "cancel_requested" && /cancellation request on account 1001/.test(R1[1].agentText), "CS retention: repeated request is honored and logged — no second save");
+  const R2 = await runF("customer_service", ["I want to cancel my subscription. My account is 1001.", "it's too expensive"]);
+  assert(R2[1].nodeId === "policy" && !R2[1].exit && R2[1].slots.reason === "cancellation", "CS retention: reason given → policy path, still about the cancellation");
+  assert(!/\d+\s?%|discount|free month/i.test(R2.map((t) => t.agentText).join(" ")), "CS retention: no invented discounts");
+  tag("customer_service", "address-change");
+  const A1 = await runF("customer_service", ["I need to change my address, account 1001", "45 King Street West, M5H 1J9"]);
+  assert(A1[0].nodeId === "address_update" && /street address and postal code/.test(A1[0].agentText), "CS address: verified caller → asks for the new address");
+  assert(A1[1].exit?.type === "resolve" && tool(A1[1], "logDisposition")?.data.disposition === "address_change" && A1[1].slots.accountId === "1001", "CS address: address logged; its digits never replace the account");
+  assert(!A1[1].agentText.includes("King") && A1[1].slots.newAddress === "provided (not stored)", "CS address: the address itself is not stored or echoed");
+  assert(hasAddress("123 Main Street") && hasAddress("M5H 1J9") && !hasAddress("my order is late"), "CS address detection");
+  tag("customer_service", "de-escalation");
+  assert(looksLikeRepeatCaller("this is the third time I'm calling") && looksLikeRepeatCaller("I already called about this") && !looksLikeRepeatCaller("call me tomorrow"), "CS repeat-caller detection");
+  const RC = await runF("customer_service", ["This is the third time I'm calling about my package — account 2044.", "still nothing", "I want a manager"]);
+  assert(RC[0].nodeId === "diagnose" && /sorry you've had to call back/i.test(RC[0].agentText) && RC[0].slots.priority === "high", "CS repeat caller: acknowledged up front, priority set high");
+  assert(RC[2].exit?.type === "escalate" && tool(RC[2], "createCase")?.data.priority === "high", "CS repeat caller: escalation case opened at high priority");
+}
+tag(null);
+
 tag("shared", "ui-data");
 // ---- UI data: flow graph, desk helpers, scenarios, start/turn payload extensions (offline) ----
 {
@@ -1045,14 +1224,14 @@ tag("shared", "ui-data");
   assert(rows.map((r) => r.label).join(",") === "Name,Account,Issue" && rows[1].value === "**23", "UI7 deskSlots shows caller-facing rows only, account masked");
   assert(formatCallTime(65_000) === "1:05" && formatCallTime(-5) === "0:00", "UI8 formatCallTime m:ss");
   assert(
-    SCENARIOS.customer_service.length === 4 && SCENARIOS.collections.length === 2 && SCENARIOS.sales.length === 2,
-    "UI9 scenario cards: 4 CS, 2 collections, 2 sales",
+    SCENARIOS.customer_service.length === 6 && SCENARIOS.collections.length === 6 && SCENARIOS.sales.length === 4,
+    "UI9 scenario cards: 6 CS, 6 collections, 4 sales",
   );
   for (const [fid, list] of Object.entries(SCENARIOS)) {
     const start = JSON.parse(readFileSync(`./content/ikoagent/flows/${fid}.json`, "utf8")).start;
     for (const sc of list) {
       const [t] = await quiet(() => call(fid, [sc.firstLine]));
-      assert(t.ok && t.nodeId !== start && t.agentText.trim() && t.desk && "policyLine" in t.desk, `UI10 scenario ${fid}/${sc.id} first line advances (${start}→${t.nodeId})`);
+      assert(t.ok && (t.nodeId !== start || Boolean(t.exit)) && t.agentText.trim() && t.desk && "policyLine" in t.desk, `UI10 scenario ${fid}/${sc.id} first line advances or ends cleanly (${start}→${t.nodeId}${t.exit ? "!" : ""})`);
     }
   }
   assert(

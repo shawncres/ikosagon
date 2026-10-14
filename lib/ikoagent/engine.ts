@@ -1,3 +1,4 @@
+import { looksLikeStreetAddress } from "./domain";
 import type {
   Flow,
   FlowExit,
@@ -88,8 +89,22 @@ function synonymBoost(intent: string, text: string): number {
     resolve: ["thanks", "thank you", "that works", "resolved", "fixed", "done"],
     ask_balance: ["balance", "owe", "how much", "what do i owe"],
     arrange_payment: ["pay", "payment", "plan", "installment", "arrange", "behind on", "overdue", "past due", "catch up"],
-    accept_plan: ["yes", "accept", "i'll take", "sign me up", "agree"],
-    hardship: ["hardship", "can't pay", "lost job", "unemployed", "medical", "struggle"],
+    accept_plan: ["yes", "accept", "i'll take", "sign me up", "agree", "months", "month plan"],
+    hardship: ["hardship", "can't pay", "lost job", "lost my job", "laid off", "unemployed", "medical", "struggle"],
+    attorney: ["lawyer", "attorney", "represented", "counsel"],
+    cease_contact: ["stop calling", "do not call", "don't call", "cease", "stop contacting", "leave me alone"],
+    dispute: ["don't owe", "do not owe", "not my debt", "dispute", "validation", "validate"],
+    already_paid: ["already paid", "paid it off", "paid this off", "been paid", "paid in full"],
+    third_party: ["not here", "not home", "his wife", "her husband", "my husband", "my wife", "take a message", "calling for my", "he's at work", "she's at work"],
+    ask_settlement: ["settle", "settlement", "least you", "take less", "take half"],
+    partial_amount: ["partial", "part of it", "only pay", "only do", "some of it"],
+    promise_date: ["payday", "get paid", "i can pay on", "i'll pay on", "i will pay on"],
+    objection_competitor: ["competitor", "another vendor", "other vendor", "another tool", "other tool", "already have a", "quoted less"],
+    objection_authority: ["boss", "manager", "approval", "approve", "director", "run it by", "check with"],
+    book_demo: ["demo", "walkthrough", "walk-through"],
+    confirm_cancel: ["cancel", "just close it"],
+    cancel_service: ["cancel", "close my account", "unsubscribe"],
+    update_address: ["address", "i moved", "i've moved"],
     refuse_payment: ["won't pay", "refuse", "not paying", "dispute"],
     discover_need: ["need", "looking for", "want", "interested", "help with"],
     ask_offer: ["price", "plan", "package", "offer", "features", "what's included"],
@@ -173,7 +188,9 @@ export function topicFromText(text: string, opts: { name?: string | null } = {})
   if (/\b(?:bill(?:s|ed|ing)?|(?:over|double[- ]?)?charge(?:s|d)?|invoices?)\b/.test(t)) return "billing";
   if (/\b(?:log ?in|logins?|passwords?|access|locked)\b/.test(t)) return "login access";
   if (/\b(?:pric(?:e|es|ed|ing|ey)|expensive|budget|costs?)\b/.test(t)) return "pricing";
-  if (/\bhardship\b|\bcan'?t pay\b|\bcannot pay\b|\blost (my )?job\b/.test(t)) return "hardship";
+  if (/\bhardship\b|\bcan'?t pay\b|\bcannot pay\b|\blost (my )?job\b|\blaid off\b|\bmedical (?:bills?|emergency)\b/.test(t)) return "hardship";
+  if (/\b(?:cancel(?:l?ing|led|lation)?|unsubscribe)\b|\bclose my account\b/.test(t)) return "cancellation";
+  if (/\b(?:change|update|new)\b[^.?!]{0,20}\baddress\b|\bi(?:'ve| have)? moved\b/.test(t)) return "address change";
   return "";
 }
 
@@ -223,7 +240,8 @@ export function collectSlots(userText: string, existing: SlotMap, required?: str
   const next: SlotMap = { ...existing };
   const text = userText.trim();
 
-  const accountDigits = extractAccountId(text);
+  // A street address / postal code carries digits that are never an account number
+  const accountDigits = looksLikeStreetAddress(text) ? null : extractAccountId(text);
   if (accountDigits) next.accountId = accountDigits;
 
   // Only an explicit "last four" phrase fills last4 — account digits are not a card's last 4
@@ -234,8 +252,11 @@ export function collectSlots(userText: string, existing: SlotMap, required?: str
   // Never take the account number as an amount ("account 1001, I'm late on my payment")
   if (amount && /pay|owe|balance|amount/i.test(text) && amount[1] !== accountDigits) next.amount = amount[1];
 
-  const months = text.match(/\b(\d+)\s*(?:month|mo)\b/i);
-  if (months) next.planMonths = months[1];
+  const months = text.match(/\b(\d+|two|three|four|five|six|nine|twelve|eighteen|twenty-four)[\s-]*(?:months?|mos?)\b/i);
+  if (months) {
+    const words: Record<string, string> = { two: "2", three: "3", four: "4", five: "5", six: "6", nine: "9", twelve: "12", eighteen: "18", "twenty-four": "24" };
+    next.planMonths = words[months[1].toLowerCase()] ?? months[1];
+  }
 
   // Prefer short topic tags — never stash greetings as the issue reason
   const topic = topicFromText(text);
@@ -358,7 +379,16 @@ export function scriptLinesFor(
   } = {},
 ): string[] {
   let lines = node.agentSay ?? [];
-  const v = node.allowParaphrase === false ? undefined : node.agentSayVariants;
+  const when =
+    node.allowParaphrase === false
+      ? undefined
+      : node.agentSayWhen?.find((w) => {
+          const val = slots[w.slot]?.trim();
+          if (w.missing) return !val;
+          if (w.equals != null) return val === w.equals;
+          return Boolean(val);
+        });
+  const v = node.allowParaphrase === false ? undefined : (node.agentSayVariants ?? (when ? {} : undefined));
   if (v) {
     const hasReason = Boolean(slots.reason && !isWeakTopic(slots.reason));
     const newCustomer = slots.needsAccount === "true";
@@ -369,6 +399,7 @@ export function scriptLinesFor(
       const said = (l: string[] | undefined) => Boolean(l?.length && repeatsEarlierAgentLine(interpolate(l[0], slots, tools), ctx.history ?? []));
       lines = v.clarify?.length && !said(v.clarify) ? v.clarify : v.clarifyAgain?.length && !said(v.clarifyAgain) ? v.clarifyAgain : (v.reprompt ?? lines);
     }
+    else if (when) lines = when.lines;
     // Account just created / found but no issue yet → confirm and ask how to help
     else if (slots.accountId && !hasReason && slots.accountCreated === "true" && v.accountCreated?.length) {
       lines = v.accountCreated;
@@ -428,17 +459,17 @@ export function applyTransition(
   slots: SlotMap,
 ): { nextNodeId: string | null; exit: FlowExit | null } {
   // Explicit exit intents
-  if (intent === "escalate" && node.exits?.some((e) => e.type === "escalate")) {
-    return { nextNodeId: null, exit: node.exits.find((e) => e.type === "escalate")! };
+  if (intent === "escalate" && node.exits?.some((e) => e.type === "escalate" && !e.key)) {
+    return { nextNodeId: null, exit: node.exits.find((e) => e.type === "escalate" && !e.key)! };
   }
-  if (intent === "resolve" && node.exits?.some((e) => e.type === "resolve")) {
-    return { nextNodeId: null, exit: node.exits.find((e) => e.type === "resolve")! };
+  if (intent === "resolve" && node.exits?.some((e) => e.type === "resolve" && !e.key)) {
+    return { nextNodeId: null, exit: node.exits.find((e) => e.type === "resolve" && !e.key)! };
   }
-  if (intent === "request_callback" && node.exits?.some((e) => e.type === "callback")) {
-    return { nextNodeId: null, exit: node.exits.find((e) => e.type === "callback")! };
+  if (intent === "request_callback" && node.exits?.some((e) => e.type === "callback" && !e.key)) {
+    return { nextNodeId: null, exit: node.exits.find((e) => e.type === "callback" && !e.key)! };
   }
-  if (intent === "refuse_payment" && node.exits?.some((e) => e.type === "refuse")) {
-    return { nextNodeId: null, exit: node.exits.find((e) => e.type === "refuse")! };
+  if (intent === "refuse_payment" && node.exits?.some((e) => e.type === "refuse" && !e.key)) {
+    return { nextNodeId: null, exit: node.exits.find((e) => e.type === "refuse" && !e.key)! };
   }
 
   const filled = slotsFilled(slots, node.requireSlots);
@@ -468,8 +499,9 @@ export function applyTransition(
 
   const target = chosen.to;
   if (target.startsWith("exit:")) {
-    const type = target.slice(5) as FlowExit["type"];
-    const exit = node.exits?.find((e) => e.type === type) ?? {
+    // exit:<type> or exit:<type>:<key> (several exits of one type on a node)
+    const [type, key] = target.slice(5).split(":") as [FlowExit["type"], string | undefined];
+    const exit = (key ? node.exits?.find((e) => e.type === type && e.key === key) : node.exits?.find((e) => e.type === type && !e.key) ?? node.exits?.find((e) => e.type === type)) ?? {
       type,
       label: type,
     };
@@ -983,6 +1015,15 @@ const ACTION_PROMISE =
 // Price concessions: the demo has no pricing tool, and sales policy is "trial before discount".
 const DISCOUNT_PROMISE =
   /\b\d+\s?(?:%|percent)\s*(?:off|discount)\b|\b(?:i|we)(?:'ll| will| can| could| would|'d)\s+(?:(?:give|offer|get|apply|extend|throw in)\s+(?:you\s+)?(?:a\s+|an\s+)?(?:special\s+|extra\s+|one-time\s+)?(?:discount|deal|price break|lower price|free months?)|waive|knock|match (?:their|the|that|your) price)\b|\byou(?:'ll| will)\s+(?:get|receive|save)\b[^.]{0,30}\b(?:discount|% off|percent off|free months?)/i;
+// Collections: settlement figures need specialist authority (settlement-offers.md)
+const SETTLEMENT_PROMISE =
+  /\bsettle(?:ment)?\b[^.!?]{0,30}(?:\$\s?\d|\b\d+\s?(?:%|percent|dollars))|\b\d+\s?(?:%|percent) of (?:the|your) (?:balance|debt)\b|\baccept\s+\$?\s?\d[^.!?]{0,30}\b(?:in full|to (?:settle|close))/i;
+// Never threaten (FDCPA-style): arrest, lawsuits, garnishment, credit damage, employer contact
+const THREAT =
+  /\b(?:arrest(?:ed)?|jail|prison|sue you|lawsuit|legal action|take you to court|garnish(?:ed|ment)?|seize|repossess|ruin your credit|damage your credit|report you|contact your employer|call your (?:employer|boss|family))\b/i;
+/** "I've set up your plan" / "your arrangement is in place" — only a tool result makes it true */
+const SETUP_CLAIM =
+  /\b(?:i|we)(?:'ve| have)\s+(?:just\s+)?(?:set up|arranged|created|put in place|scheduled|booked|recorded|logged)\b|\b(?:plan|arrangement|promise|callback|demo|case)\b[^.!?]{0,30}\b(?:is|has been)\s+(?:set up|in place|active|confirmed|recorded|booked)\b/i;
 const RECEIVE_PROMISE = /\byou(?:'ll| will| should)\s+(?:receive|get|see|be getting|hear back|be contacted)\b/i;
 const TIMELINE =
   /\b(?:within|in|over|by)\s+(?:the\s+next\s+)?(?:\d+|one|two|three|four|five|seven|ten|twenty-four|forty-eight|a few|a couple of)\s*(?:(?:-|to)\s*\d+\s*)?(?:minutes?|hours?|business days?|days?|weeks?)\b|\b(?:shortly|right away|immediately|by (?:tomorrow|tonight|end of (?:the )?(?:day|week)|monday|tuesday|wednesday|thursday|friday))\b/i;
@@ -1006,6 +1047,8 @@ export function unsupportedPromise(sentence: string, backing: PromiseBacking): s
   const okTools = new Set(backing.toolResults.filter((t) => t.ok).map((t) => t.name));
   const s = sentence.toLowerCase();
 
+  if (THREAT.test(sentence)) return "threat";
+  if (SETTLEMENT_PROMISE.test(sentence)) return "settlement";
   if (DISCOUNT_PROMISE.test(sentence) && !(/\bwaive/.test(s) && /\bwaive/.test(facts))) return "discount";
   const channel = sentence.match(CHANNEL_PROMISE);
   if (channel) {
@@ -1020,7 +1063,20 @@ export function unsupportedPromise(sentence: string, backing: PromiseBacking): s
     const caseDone = /\b(?:case|ticket)\b/.test(s) && okTools.has("createCase");
     const callbackDone = /\bcall ?back\b/.test(s) && okTools.has("scheduleCallback");
     const accountDone = /\baccount\b/.test(s) && (okTools.has("createCustomer") || okTools.has("lookupAccount"));
-    if (!caseDone && !callbackDone && !accountDone) return "done-claim";
+    const promiseDone = /\b(?:promise|payment)\b/.test(s) && okTools.has("recordPromiseToPay");
+    const planDone = /\b(?:plan|arrangement)\b/.test(s) && backing.toolResults.some((t) => t.name === "offerPaymentPlan" && t.ok && t.data.eligible);
+    if (!caseDone && !callbackDone && !accountDone && !promiseDone && !planDone) return "done-claim";
+  }
+  if (SETUP_CLAIM.test(sentence)) {
+    const eligiblePlan = backing.toolResults.some((t) => t.name === "offerPaymentPlan" && t.ok && t.data.eligible);
+    const backed =
+      (/\b(?:plan|arrangement|installments?)\b/.test(s) && eligiblePlan) ||
+      (/\bpromise\b/.test(s) && okTools.has("recordPromiseToPay")) ||
+      (/\b(?:call ?back|demo|walkthrough)\b/.test(s) && okTools.has("scheduleCallback")) ||
+      (/\b(?:case|ticket)\b/.test(s) && okTools.has("createCase")) ||
+      (/\baccount\b/.test(s) && (okTools.has("createCustomer") || okTools.has("lookupAccount"))) ||
+      (/\b(?:disposition|request|note)\b/.test(s) && okTools.has("logDisposition"));
+    if (!backed) return "done-claim";
   }
   if (ACTION_PROMISE.test(sentence)) {
     const caseAction = /\b(?:case|ticket)\b/.test(s) && okTools.has("createCase");
@@ -1033,7 +1089,8 @@ export function unsupportedPromise(sentence: string, backing: PromiseBacking): s
     const backedNums = nums.length > 0 && nums.every((n) => new RegExp(`\\b${n}\\b`).test(facts) || facts.includes(Object.entries(NUMBER_WORDS).find(([, d]) => d === n)?.[0] ?? "\u0000"));
     const vague = /\b(shortly|right away|immediately|by (tomorrow|tonight|end of|monday|tuesday|wednesday|thursday|friday))\b/i.test(sentence);
     const callbackWindow = okTools.has("scheduleCallback") && /\bcall ?back\b/.test(s);
-    if (!callbackWindow && (vague || !backedNums)) return "timeline";
+    const promiseWindow = okTools.has("recordPromiseToPay") && /\b(?:payment|promise|pay)\b/.test(s);
+    if (!callbackWindow && !promiseWindow && (vague || !backedNums)) return "timeline";
   }
   if (RECEIVE_PROMISE.test(sentence)) {
     const backedByTool =

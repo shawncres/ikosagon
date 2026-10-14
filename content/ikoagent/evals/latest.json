@@ -1,29 +1,29 @@
 {
-  "generatedAt": "2026-10-12T20:48:21.938Z",
+  "generatedAt": "2026-10-14T17:41:16.816Z",
   "suite": "scripts/ikoagent-lang-check.mjs",
   "mode": "offline: mocked model outputs, in-memory CRM, deterministic flow graph",
-  "baseCommit": "73865c1",
+  "baseCommit": "bb0b18c",
   "completed": true,
-  "durationMs": 2268,
-  "total": 427,
-  "passed": 427,
+  "durationMs": 72700,
+  "total": 575,
+  "passed": 575,
   "failed": 0,
   "byFlow": {
     "customer_service": {
-      "total": 240,
-      "passed": 240
+      "total": 252,
+      "passed": 252
     },
     "shared": {
-      "total": 87,
-      "passed": 87
+      "total": 118,
+      "passed": 118
     },
     "collections": {
-      "total": 34,
-      "passed": 34
+      "total": 117,
+      "passed": 117
     },
     "sales": {
-      "total": 66,
-      "passed": 66
+      "total": 88,
+      "passed": 88
     }
   },
   "byCategory": {
@@ -36,16 +36,16 @@
       "passed": 13
     },
     "repeat-guard": {
-      "total": 46,
-      "passed": 46
+      "total": 69,
+      "passed": 69
     },
     "identity": {
       "total": 149,
       "passed": 149
     },
     "safety": {
-      "total": 73,
-      "passed": 73
+      "total": 74,
+      "passed": 74
     },
     "compliance-verbatim": {
       "total": 3,
@@ -59,21 +59,57 @@
       "total": 28,
       "passed": 28
     },
+    "compliance": {
+      "total": 55,
+      "passed": 55
+    },
     "offer-matching": {
-      "total": 6,
-      "passed": 6
+      "total": 11,
+      "passed": 11
     },
     "objection-handling": {
-      "total": 7,
-      "passed": 7
+      "total": 12,
+      "passed": 12
     },
     "callback-routing": {
       "total": 7,
       "passed": 7
     },
+    "plan-negotiation": {
+      "total": 10,
+      "passed": 10
+    },
+    "promise-to-pay": {
+      "total": 12,
+      "passed": 12
+    },
+    "settlement-hardship": {
+      "total": 6,
+      "passed": 6
+    },
+    "discovery": {
+      "total": 4,
+      "passed": 4
+    },
+    "booking-upsell": {
+      "total": 7,
+      "passed": 7
+    },
+    "retention": {
+      "total": 5,
+      "passed": 5
+    },
+    "address-change": {
+      "total": 4,
+      "passed": 4
+    },
+    "de-escalation": {
+      "total": 3,
+      "passed": 3
+    },
     "ui-data": {
-      "total": 27,
-      "passed": 27
+      "total": 35,
+      "passed": 35
     }
   },
   "results": [
@@ -2311,7 +2347,7 @@
     },
     {
       "id": "c280",
-      "name": "V1 model draft speaks case CASE-1001-101534 once",
+      "name": "V1 model draft speaks case CASE-1001-674935 once",
       "flow": "customer_service",
       "category": "close-routing",
       "tagged": true,
@@ -2607,6 +2643,38 @@
     },
     {
       "id": "c317",
+      "name": "SC1 threat in a model draft never reaches the caller",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c318",
+      "name": "SC2 settlement figures in a draft are stripped: Which works?",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c319",
+      "name": "SC3 out-of-policy 'plan set up' claim is not spoken: Anything else?",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c320",
+      "name": "SC4 third party",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c321",
       "name": "SB1 model draft's discount offer never reaches the caller",
       "flow": "sales",
       "category": "safety",
@@ -2614,7 +2682,7 @@
       "pass": true
     },
     {
-      "id": "c318",
+      "id": "c322",
       "name": "SB2 email + timeline promise stripped at match_offer",
       "flow": "sales",
       "category": "safety",
@@ -2622,7 +2690,7 @@
       "pass": true
     },
     {
-      "id": "c319",
+      "id": "c323",
       "name": "SB3 closing-reply guard",
       "flow": "sales",
       "category": "identity",
@@ -2630,7 +2698,7 @@
       "pass": true
     },
     {
-      "id": "c320",
+      "id": "c324",
       "name": "SB4 draft echoing the sales opener is rejected",
       "flow": "sales",
       "category": "repeat-guard",
@@ -2638,7 +2706,7 @@
       "pass": true
     },
     {
-      "id": "c321",
+      "id": "c325",
       "name": "SB5 good sales draft used with exactly one request",
       "flow": "sales",
       "category": "llm-orchestration",
@@ -2646,7 +2714,7 @@
       "pass": true
     },
     {
-      "id": "c322",
+      "id": "c326",
       "name": "SA discovery: 'we need SSO for a growing team' → discover (discover_need)",
       "flow": "sales",
       "category": "routing",
@@ -2654,7 +2722,7 @@
       "pass": true
     },
     {
-      "id": "c323",
+      "id": "c327",
       "name": "SA discovery: 'what do you offer?' → discover (ask_offer)",
       "flow": "sales",
       "category": "routing",
@@ -2662,7 +2730,7 @@
       "pass": true
     },
     {
-      "id": "c324",
+      "id": "c328",
       "name": "SA discovery: 'looking for a cheaper plan' → discover (discover_need)",
       "flow": "sales",
       "category": "routing",
@@ -2670,7 +2738,7 @@
       "pass": true
     },
     {
-      "id": "c325",
+      "id": "c329",
       "name": "SA discovery: 'need phone support' → discover (discover_need)",
       "flow": "sales",
       "category": "routing",
@@ -2678,7 +2746,7 @@
       "pass": true
     },
     {
-      "id": "c326",
+      "id": "c330",
       "name": "SA discovery: bare 'hi' stays on greet with a new question, not the opener",
       "flow": "sales",
       "category": "routing",
@@ -2686,7 +2754,7 @@
       "pass": true
     },
     {
-      "id": "c327",
+      "id": "c331",
       "name": "SA discovery: discover asks team size + must-haves",
       "flow": "sales",
       "category": "routing",
@@ -2694,7 +2762,7 @@
       "pass": true
     },
     {
-      "id": "c328",
+      "id": "c332",
       "name": "SA discovery: no raw or empty",
       "flow": "sales",
       "category": "routing",
@@ -2702,7 +2770,7 @@
       "pass": true
     },
     {
-      "id": "c329",
+      "id": "c333",
       "name": "SA offer: seat count moves discover → match_offer",
       "flow": "sales",
       "category": "offer-matching",
@@ -2710,40 +2778,8 @@
       "pass": true
     },
     {
-      "id": "c330",
-      "name": "SA offer: match line lists Basic, Pro, trial, callback",
-      "flow": "sales",
-      "category": "offer-matching",
-      "tagged": true,
-      "pass": true
-    },
-    {
-      "id": "c331",
-      "name": "SA offer: no-pressure language kept (ethical sales)",
-      "flow": "sales",
-      "category": "offer-matching",
-      "tagged": true,
-      "pass": true
-    },
-    {
-      "id": "c332",
-      "name": "SA offer: 'compare basic and pro' → match_offer with an offer slot (basic)",
-      "flow": "sales",
-      "category": "offer-matching",
-      "tagged": true,
-      "pass": true
-    },
-    {
-      "id": "c333",
-      "name": "SA offer: 'enterprise' fills offer=enterprise",
-      "flow": "sales",
-      "category": "offer-matching",
-      "tagged": true,
-      "pass": true
-    },
-    {
       "id": "c334",
-      "name": "SA offer: 'small team' reaches match_offer without ending the call",
+      "name": "SA offer: match line recommends a plan and offers trial, demo or callback",
       "flow": "sales",
       "category": "offer-matching",
       "tagged": true,
@@ -2751,6 +2787,38 @@
     },
     {
       "id": "c335",
+      "name": "SA offer: no-pressure language kept (ethical sales)",
+      "flow": "sales",
+      "category": "offer-matching",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c336",
+      "name": "SA offer: 'compare basic and pro' → match_offer with an offer slot (basic)",
+      "flow": "sales",
+      "category": "offer-matching",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c337",
+      "name": "SA offer: 'enterprise' fills offer=enterprise",
+      "flow": "sales",
+      "category": "offer-matching",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c338",
+      "name": "SA offer: 'small team' reaches match_offer without ending the call",
+      "flow": "sales",
+      "category": "offer-matching",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c339",
       "name": "SA objection: 'too expensive' → objection (price)",
       "flow": "sales",
       "category": "objection-handling",
@@ -2758,7 +2826,7 @@
       "pass": true
     },
     {
-      "id": "c336",
+      "id": "c340",
       "name": "SA objection: offers the 14-day Pro trial and asks what would make it a yes",
       "flow": "sales",
       "category": "objection-handling",
@@ -2766,7 +2834,7 @@
       "pass": true
     },
     {
-      "id": "c337",
+      "id": "c341",
       "name": "SA objection: no discount offered (policy: trial before discount)",
       "flow": "sales",
       "category": "objection-handling",
@@ -2774,15 +2842,15 @@
       "pass": true
     },
     {
-      "id": "c338",
-      "name": "SA objection: 'competitor is cheaper' → price objection",
+      "id": "c342",
+      "name": "SA objection: 'competitor is cheaper' → competitor objection",
       "flow": "sales",
       "category": "objection-handling",
       "tagged": true,
       "pass": true
     },
     {
-      "id": "c339",
+      "id": "c343",
       "name": "SA objection: 'need a discount' → objection, no percentage promised",
       "flow": "sales",
       "category": "objection-handling",
@@ -2790,7 +2858,7 @@
       "pass": true
     },
     {
-      "id": "c340",
+      "id": "c344",
       "name": "SA objection: 'not now' → timing objection",
       "flow": "sales",
       "category": "objection-handling",
@@ -2798,7 +2866,7 @@
       "pass": true
     },
     {
-      "id": "c341",
+      "id": "c345",
       "name": "SA objection: price talk never becomes a CS issue",
       "flow": "sales",
       "category": "objection-handling",
@@ -2806,7 +2874,7 @@
       "pass": true
     },
     {
-      "id": "c342",
+      "id": "c346",
       "name": "SA close: objection → 'let's do pro' → close, offer=pro",
       "flow": "sales",
       "category": "close-routing",
@@ -2814,7 +2882,7 @@
       "pass": true
     },
     {
-      "id": "c343",
+      "id": "c347",
       "name": "SA close: win path logs a disposition",
       "flow": "sales",
       "category": "close-routing",
@@ -2822,7 +2890,7 @@
       "pass": true
     },
     {
-      "id": "c344",
+      "id": "c348",
       "name": "SA close: close line says it hands off; no fake checkout",
       "flow": "sales",
       "category": "close-routing",
@@ -2830,7 +2898,7 @@
       "pass": true
     },
     {
-      "id": "c345",
+      "id": "c349",
       "name": "SA close: 'thanks' at close ends as resolve",
       "flow": "sales",
       "category": "close-routing",
@@ -2838,7 +2906,7 @@
       "pass": true
     },
     {
-      "id": "c346",
+      "id": "c350",
       "name": "SA close: 'I'll take it' at match_offer → close",
       "flow": "sales",
       "category": "close-routing",
@@ -2846,7 +2914,7 @@
       "pass": true
     },
     {
-      "id": "c347",
+      "id": "c351",
       "name": "SA close: trial accepted after an objection → close",
       "flow": "sales",
       "category": "close-routing",
@@ -2854,7 +2922,7 @@
       "pass": true
     },
     {
-      "id": "c348",
+      "id": "c352",
       "name": "SA repeat guard",
       "flow": "sales",
       "category": "close-routing",
@@ -2862,7 +2930,7 @@
       "pass": true
     },
     {
-      "id": "c349",
+      "id": "c353",
       "name": "SA callback: 'call tomorrow' at objection books + ends",
       "flow": "sales",
       "category": "callback-routing",
@@ -2870,7 +2938,7 @@
       "pass": true
     },
     {
-      "id": "c350",
+      "id": "c354",
       "name": "SA callback: callback id spoken exactly once",
       "flow": "sales",
       "category": "callback-routing",
@@ -2878,7 +2946,7 @@
       "pass": true
     },
     {
-      "id": "c351",
+      "id": "c355",
       "name": "SA callback: 'email me' at match_offer → booked callback, not an email promise",
       "flow": "sales",
       "category": "callback-routing",
@@ -2886,7 +2954,7 @@
       "pass": true
     },
     {
-      "id": "c352",
+      "id": "c356",
       "name": "SA callback: close says nothing about sending an email",
       "flow": "sales",
       "category": "callback-routing",
@@ -2894,7 +2962,7 @@
       "pass": true
     },
     {
-      "id": "c353",
+      "id": "c357",
       "name": "SA callback: 'maybe next quarter' → callback node asks morning/afternoon first",
       "flow": "sales",
       "category": "callback-routing",
@@ -2902,7 +2970,7 @@
       "pass": true
     },
     {
-      "id": "c354",
+      "id": "c358",
       "name": "SA callback: 'afternoon' books the afternoon window and ends",
       "flow": "sales",
       "category": "callback-routing",
@@ -2910,7 +2978,7 @@
       "pass": true
     },
     {
-      "id": "c355",
+      "id": "c359",
       "name": "SA repeat guard: objection → callback path never repeats a line",
       "flow": "sales",
       "category": "callback-routing",
@@ -2918,7 +2986,7 @@
       "pass": true
     },
     {
-      "id": "c356",
+      "id": "c360",
       "name": "SA no-account: reassures no account is needed, call continues",
       "flow": "sales",
       "category": "identity",
@@ -2926,7 +2994,7 @@
       "pass": true
     },
     {
-      "id": "c357",
+      "id": "c361",
       "name": "SA no-account: next need moves to discover",
       "flow": "sales",
       "category": "identity",
@@ -2934,7 +3002,7 @@
       "pass": true
     },
     {
-      "id": "c358",
+      "id": "c362",
       "name": "SA no-account: no account created or looked up in sales",
       "flow": "sales",
       "category": "identity",
@@ -2942,7 +3010,7 @@
       "pass": true
     },
     {
-      "id": "c359",
+      "id": "c363",
       "name": "SA name: name + need in one line → name kept, moves to discover",
       "flow": "sales",
       "category": "identity",
@@ -2950,7 +3018,7 @@
       "pass": true
     },
     {
-      "id": "c360",
+      "id": "c364",
       "name": "SA name: need phrases are never names",
       "flow": "sales",
       "category": "identity",
@@ -2958,7 +3026,7 @@
       "pass": true
     },
     {
-      "id": "c361",
+      "id": "c365",
       "name": "SA name: real intro still extracted alongside sales talk",
       "flow": "sales",
       "category": "identity",
@@ -2966,7 +3034,7 @@
       "pass": true
     },
     {
-      "id": "c362",
+      "id": "c366",
       "name": "SA name: offer/budget phrases are never names",
       "flow": "sales",
       "category": "identity",
@@ -2974,7 +3042,7 @@
       "pass": true
     },
     {
-      "id": "c363",
+      "id": "c367",
       "name": "SA promise filter removes 'I can give you 20% off if you sign today.' (discount)",
       "flow": "sales",
       "category": "safety",
@@ -2982,7 +3050,7 @@
       "pass": true
     },
     {
-      "id": "c364",
+      "id": "c368",
       "name": "SA promise filter removes 'I'll waive the setup fee for you.' (discount)",
       "flow": "sales",
       "category": "safety",
@@ -2990,7 +3058,7 @@
       "pass": true
     },
     {
-      "id": "c365",
+      "id": "c369",
       "name": "SA promise filter removes 'I'll apply a discount to your account.' (discount)",
       "flow": "sales",
       "category": "safety",
@@ -2998,7 +3066,7 @@
       "pass": true
     },
     {
-      "id": "c366",
+      "id": "c370",
       "name": "SA promise filter removes 'We can match their price.' (discount)",
       "flow": "sales",
       "category": "safety",
@@ -3006,7 +3074,7 @@
       "pass": true
     },
     {
-      "id": "c367",
+      "id": "c371",
       "name": "SA promise filter removes 'I'll send you a quote by email.' (channel)",
       "flow": "sales",
       "category": "safety",
@@ -3014,7 +3082,7 @@
       "pass": true
     },
     {
-      "id": "c368",
+      "id": "c372",
       "name": "SA promise filter removes 'We can get you onboarded by Friday.' (timeline)",
       "flow": "sales",
       "category": "safety",
@@ -3022,7 +3090,7 @@
       "pass": true
     },
     {
-      "id": "c369",
+      "id": "c373",
       "name": "SA promise filter keeps policy-backed 'Pro includes SSO and phone support.'",
       "flow": "sales",
       "category": "safety",
@@ -3030,7 +3098,7 @@
       "pass": true
     },
     {
-      "id": "c370",
+      "id": "c374",
       "name": "SA promise filter keeps policy-backed 'Every plan starts with a 14-day trial.'",
       "flow": "sales",
       "category": "safety",
@@ -3038,7 +3106,7 @@
       "pass": true
     },
     {
-      "id": "c371",
+      "id": "c375",
       "name": "SA promise filter keeps policy-backed 'Before we talk discounts, would a fourteen-day Pro trial help you pr…",
       "flow": "sales",
       "category": "safety",
@@ -3046,7 +3114,7 @@
       "pass": true
     },
     {
-      "id": "c372",
+      "id": "c376",
       "name": "SA authored sales lines (greet) pass the promise filter",
       "flow": "sales",
       "category": "safety",
@@ -3054,7 +3122,7 @@
       "pass": true
     },
     {
-      "id": "c373",
+      "id": "c377",
       "name": "SA authored sales lines (discover) pass the promise filter",
       "flow": "sales",
       "category": "safety",
@@ -3062,7 +3130,7 @@
       "pass": true
     },
     {
-      "id": "c374",
+      "id": "c378",
       "name": "SA authored sales lines (match_offer) pass the promise filter",
       "flow": "sales",
       "category": "safety",
@@ -3070,7 +3138,7 @@
       "pass": true
     },
     {
-      "id": "c375",
+      "id": "c379",
       "name": "SA authored sales lines (objection) pass the promise filter",
       "flow": "sales",
       "category": "safety",
@@ -3078,7 +3146,7 @@
       "pass": true
     },
     {
-      "id": "c376",
+      "id": "c380",
       "name": "SA authored sales lines (close) pass the promise filter",
       "flow": "sales",
       "category": "safety",
@@ -3086,7 +3154,7 @@
       "pass": true
     },
     {
-      "id": "c377",
+      "id": "c381",
       "name": "SA authored sales lines (callback) pass the promise filter",
       "flow": "sales",
       "category": "safety",
@@ -3094,7 +3162,911 @@
       "pass": true
     },
     {
-      "id": "c378",
+      "id": "c382",
+      "name": "SA authored sales lines (demo_book) pass the promise filter",
+      "flow": "sales",
+      "category": "safety",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c383",
+      "name": "CB policy: <$500 → 3 mo, $500–1,500 → 6 mo, above/zero → specialist",
+      "flow": "collections",
+      "category": "plan-negotiation",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c384",
+      "name": "CB plan: 12 months on a $912 balance is outside policy → stays on arrange",
+      "flow": "collections",
+      "category": "plan-negotiation",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c385",
+      "name": "CB plan: counter-offer names the 6-month policy limit and its installment",
+      "flow": "collections",
+      "category": "plan-negotiation",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c386",
+      "name": "CB plan: 6 months accepted within policy → disposition",
+      "flow": "collections",
+      "category": "plan-negotiation",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c387",
+      "name": "CB plan: accepted plan is read back from the tool",
+      "flow": "collections",
+      "category": "plan-negotiation",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c388",
+      "name": "CB plan: call ends with a PLAN disposition",
+      "flow": "collections",
+      "category": "plan-negotiation",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c389",
+      "name": "CB plan: $248.50 balance → offers up to 3 months, balance read from the tool",
+      "flow": "collections",
+      "category": "plan-negotiation",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c390",
+      "name": "CB plan: 'three months' (words) accepted on a 3-month-eligible balance",
+      "flow": "collections",
+      "category": "plan-negotiation",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c391",
+      "name": "CB plan: 6 months on a sub-$500 balance is refused with the policy limit",
+      "flow": "collections",
+      "category": "plan-negotiation",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c392",
+      "name": "CB repeat guard: plan negotiation never repeats a line",
+      "flow": "collections",
+      "category": "plan-negotiation",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c393",
+      "name": "CB dates: Friday / the 15th / next Friday / Oct 20",
+      "flow": "collections",
+      "category": "promise-to-pay",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c394",
+      "name": "CB dates: amounts and accounts are not dates",
+      "flow": "collections",
+      "category": "promise-to-pay",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c395",
+      "name": "CB amounts: $100 / 50 dollars; never account numbers or months",
+      "flow": "collections",
+      "category": "promise-to-pay",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c396",
+      "name": "CB PTP: opener with a promise still hears the mini-Miranda first",
+      "flow": "collections",
+      "category": "promise-to-pay",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c397",
+      "name": "CB PTP: date + amount carried from the opener are confirmed back before recording",
+      "flow": "collections",
+      "category": "promise-to-pay",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c398",
+      "name": "CB PTP: 'yes' records the promise and speaks its reference",
+      "flow": "collections",
+      "category": "promise-to-pay",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c399",
+      "name": "CB PTP: close logs a PTP disposition",
+      "flow": "collections",
+      "category": "promise-to-pay",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c400",
+      "name": "CB partial: amount without a date → asks for the date",
+      "flow": "collections",
+      "category": "promise-to-pay",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c401",
+      "name": "CB partial: date → partial promise recorded ($50 on the 15th)",
+      "flow": "collections",
+      "category": "promise-to-pay",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c402",
+      "name": "CB PTP: 'I can pay on Friday' at the plan step records directly",
+      "flow": "collections",
+      "category": "promise-to-pay",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c403",
+      "name": "CB PTP: 'call me tomorrow' is a callback, not a promise to pay tomorrow",
+      "flow": "collections",
+      "category": "promise-to-pay",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c404",
+      "name": "CB callback: callback close line, not the plan question again",
+      "flow": "collections",
+      "category": "promise-to-pay",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c405",
+      "name": "CB dispute: 'I don't owe this' → dispute case, call ends",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c406",
+      "name": "CB dispute: stops debt talk, honest about the validation notice, no amounts",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c407",
+      "name": "CB dispute: case reason recorded as dispute",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c408",
+      "name": "CB dispute: also honored right after the mini-Miranda",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c409",
+      "name": "CB paid: already-paid → review case, no payment ask",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c410",
+      "name": "CB third party: ends with a no-disclosure disposition",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c411",
+      "name": "CB third party: close discloses nothing about a debt",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c412",
+      "name": "CB third party",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c413",
+      "name": "CB cease: 'stop calling me' → STOP logged, call ends",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c414",
+      "name": "CB cease: honored before identity with no disclosure",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c415",
+      "name": "CB attorney: represented → ATTORNEY logged, no further discussion",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c416",
+      "name": "CB attorney: honored at the plan step too",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c417",
+      "name": "CB cease: honored during the hardship path",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c418",
+      "name": "CB no threats in authored identity line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c419",
+      "name": "CB no threats in authored identity line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c420",
+      "name": "CB no threats in authored identity line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c421",
+      "name": "CB no threats in authored identity line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c422",
+      "name": "CB no threats in authored disclosure line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c423",
+      "name": "CB no threats in authored disclosure line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c424",
+      "name": "CB no threats in authored disclosure line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c425",
+      "name": "CB no threats in authored disclosure line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c426",
+      "name": "CB no threats in authored balance line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c427",
+      "name": "CB no threats in authored balance line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c428",
+      "name": "CB no threats in authored balance line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c429",
+      "name": "CB no threats in authored balance line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c430",
+      "name": "CB no threats in authored balance line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c431",
+      "name": "CB no threats in authored arrange line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c432",
+      "name": "CB no threats in authored arrange line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c433",
+      "name": "CB no threats in authored arrange line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c434",
+      "name": "CB no threats in authored arrange line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c435",
+      "name": "CB no threats in authored arrange line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c436",
+      "name": "CB no threats in authored arrange line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c437",
+      "name": "CB no threats in authored promise line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c438",
+      "name": "CB no threats in authored promise line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c439",
+      "name": "CB no threats in authored promise line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c440",
+      "name": "CB no threats in authored promise line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c441",
+      "name": "CB no threats in authored promise line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c442",
+      "name": "CB no threats in authored promise line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c443",
+      "name": "CB no threats in authored ptp_close line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c444",
+      "name": "CB no threats in authored ptp_close line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c445",
+      "name": "CB no threats in authored settlement line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c446",
+      "name": "CB no threats in authored settlement line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c447",
+      "name": "CB no threats in authored settlement line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c448",
+      "name": "CB no threats in authored settlement line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c449",
+      "name": "CB no threats in authored hardship line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c450",
+      "name": "CB no threats in authored hardship line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c451",
+      "name": "CB no threats in authored hardship line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c452",
+      "name": "CB no threats in authored dispute line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c453",
+      "name": "CB no threats in authored paid_review line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c454",
+      "name": "CB no threats in authored disposition line",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c455",
+      "name": "CB compliance: mini-Miranda never read twice in one turn",
+      "flow": "collections",
+      "category": "compliance",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c456",
+      "name": "CB settlement: no amount quoted; specialist review explained",
+      "flow": "collections",
+      "category": "settlement-hardship",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c457",
+      "name": "CB settlement: specialist callback booked with a real id",
+      "flow": "collections",
+      "category": "settlement-hardship",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c458",
+      "name": "CB settlement: caller can switch to a standard plan",
+      "flow": "collections",
+      "category": "settlement-hardship",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c459",
+      "name": "CB hardship: job loss captured and escalated with a case",
+      "flow": "collections",
+      "category": "settlement-hardship",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c460",
+      "name": "CB hardship: case notes the hardship type",
+      "flow": "collections",
+      "category": "settlement-hardship",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c461",
+      "name": "CB hardship: medical / job loss detected; others not",
+      "flow": "collections",
+      "category": "settlement-hardship",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c462",
+      "name": "SC need: SSO / security review / none",
+      "flow": "sales",
+      "category": "discovery",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c463",
+      "name": "SC team size from words and digits; never account numbers",
+      "flow": "sales",
+      "category": "discovery",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c464",
+      "name": "SC discovery: need + team size captured; the line names the need",
+      "flow": "sales",
+      "category": "discovery",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c465",
+      "name": "SC discovery: no need yet → no empty 'I can help you.' line",
+      "flow": "sales",
+      "category": "discovery",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c466",
+      "name": "SC fit: SSO/12 → Pro, 40 seats → Enterprise, budget/3 → Basic, security review → Enterprise",
+      "flow": "sales",
+      "category": "offer-matching",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c467",
+      "name": "SC fit: nothing known → no recommendation",
+      "flow": "sales",
+      "category": "offer-matching",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c468",
+      "name": "SC fit: recommendation spoken with the corpus plan facts",
+      "flow": "sales",
+      "category": "offer-matching",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c469",
+      "name": "SC fit: budget-minded 3-seat team → Basic",
+      "flow": "sales",
+      "category": "offer-matching",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c470",
+      "name": "SC fit: security review at scale → Enterprise",
+      "flow": "sales",
+      "category": "offer-matching",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c471",
+      "name": "SC objection: competitor → honest fit + trial comparison",
+      "flow": "sales",
+      "category": "objection-handling",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c472",
+      "name": "SC objection: needs approval → offers a walkthrough with the manager",
+      "flow": "sales",
+      "category": "objection-handling",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c473",
+      "name": "SC objection: timing → no-pressure callback or trial",
+      "flow": "sales",
+      "category": "objection-handling",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c474",
+      "name": "SC objection: price → trial before discount, no discount offered",
+      "flow": "sales",
+      "category": "objection-handling",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c475",
+      "name": "SC repeat guard: no objection path repeats a line",
+      "flow": "sales",
+      "category": "objection-handling",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c476",
+      "name": "SC demo: 'book a demo' asks for a window",
+      "flow": "sales",
+      "category": "booking-upsell",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c477",
+      "name": "SC demo: booked with a real id and the window",
+      "flow": "sales",
+      "category": "booking-upsell",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c478",
+      "name": "SC no-account ids: 'CB-unknown-' is never spoken",
+      "flow": "sales",
+      "category": "booking-upsell",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c479",
+      "name": "SC callback without an account: clean id",
+      "flow": "sales",
+      "category": "booking-upsell",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c480",
+      "name": "SC upsell: only when the chosen plan misses a stated need",
+      "flow": "sales",
+      "category": "booking-upsell",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c481",
+      "name": "SC upsell: Basic + SSO need → honest no-pressure note, no discount",
+      "flow": "sales",
+      "category": "booking-upsell",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c482",
+      "name": "SC upsell: no note when the plan already fits",
+      "flow": "sales",
+      "category": "booking-upsell",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c483",
+      "name": "CS cancel intent detection",
+      "flow": "customer_service",
+      "category": "retention",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c484",
+      "name": "CS retention: verified cancel request → one save question",
+      "flow": "customer_service",
+      "category": "retention",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c485",
+      "name": "CS retention: repeated request is honored and logged — no second save",
+      "flow": "customer_service",
+      "category": "retention",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c486",
+      "name": "CS retention: reason given → policy path, still about the cancellation",
+      "flow": "customer_service",
+      "category": "retention",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c487",
+      "name": "CS retention: no invented discounts",
+      "flow": "customer_service",
+      "category": "retention",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c488",
+      "name": "CS address: verified caller → asks for the new address",
+      "flow": "customer_service",
+      "category": "address-change",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c489",
+      "name": "CS address: address logged; its digits never replace the account",
+      "flow": "customer_service",
+      "category": "address-change",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c490",
+      "name": "CS address: the address itself is not stored or echoed",
+      "flow": "customer_service",
+      "category": "address-change",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c491",
+      "name": "CS address detection",
+      "flow": "customer_service",
+      "category": "address-change",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c492",
+      "name": "CS repeat-caller detection",
+      "flow": "customer_service",
+      "category": "de-escalation",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c493",
+      "name": "CS repeat caller: acknowledged up front, priority set high",
+      "flow": "customer_service",
+      "category": "de-escalation",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c494",
+      "name": "CS repeat caller: escalation case opened at high priority",
+      "flow": "customer_service",
+      "category": "de-escalation",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c495",
       "name": "UI1 customer_service graph starts at greet on level 0",
       "flow": "shared",
       "category": "ui-data",
@@ -3102,7 +4074,7 @@
       "pass": true
     },
     {
-      "id": "c379",
+      "id": "c496",
       "name": "UI2 customer_service graph has every node and only valid edges",
       "flow": "shared",
       "category": "ui-data",
@@ -3110,7 +4082,7 @@
       "pass": true
     },
     {
-      "id": "c380",
+      "id": "c497",
       "name": "UI3 customer_service graph carries no script text",
       "flow": "shared",
       "category": "ui-data",
@@ -3118,7 +4090,7 @@
       "pass": true
     },
     {
-      "id": "c381",
+      "id": "c498",
       "name": "UI1 collections graph starts at identity on level 0",
       "flow": "shared",
       "category": "ui-data",
@@ -3126,7 +4098,7 @@
       "pass": true
     },
     {
-      "id": "c382",
+      "id": "c499",
       "name": "UI2 collections graph has every node and only valid edges",
       "flow": "shared",
       "category": "ui-data",
@@ -3134,7 +4106,7 @@
       "pass": true
     },
     {
-      "id": "c383",
+      "id": "c500",
       "name": "UI3 collections graph carries no script text",
       "flow": "shared",
       "category": "ui-data",
@@ -3142,7 +4114,7 @@
       "pass": true
     },
     {
-      "id": "c384",
+      "id": "c501",
       "name": "UI1 sales graph starts at greet on level 0",
       "flow": "shared",
       "category": "ui-data",
@@ -3150,7 +4122,7 @@
       "pass": true
     },
     {
-      "id": "c385",
+      "id": "c502",
       "name": "UI2 sales graph has every node and only valid edges",
       "flow": "shared",
       "category": "ui-data",
@@ -3158,7 +4130,7 @@
       "pass": true
     },
     {
-      "id": "c386",
+      "id": "c503",
       "name": "UI3 sales graph carries no script text",
       "flow": "shared",
       "category": "ui-data",
@@ -3166,7 +4138,7 @@
       "pass": true
     },
     {
-      "id": "c387",
+      "id": "c504",
       "name": "UI4 visitedEdges marks walked hops",
       "flow": "shared",
       "category": "ui-data",
@@ -3174,7 +4146,7 @@
       "pass": true
     },
     {
-      "id": "c388",
+      "id": "c505",
       "name": "UI5 maskAccount keeps demo ids, masks others",
       "flow": "shared",
       "category": "ui-data",
@@ -3182,7 +4154,7 @@
       "pass": true
     },
     {
-      "id": "c389",
+      "id": "c506",
       "name": "UI6 toolEvent masks account inside ids",
       "flow": "shared",
       "category": "ui-data",
@@ -3190,7 +4162,7 @@
       "pass": true
     },
     {
-      "id": "c390",
+      "id": "c507",
       "name": "UI7 deskSlots shows caller-facing rows only, account masked",
       "flow": "shared",
       "category": "ui-data",
@@ -3198,7 +4170,7 @@
       "pass": true
     },
     {
-      "id": "c391",
+      "id": "c508",
       "name": "UI8 formatCallTime m:ss",
       "flow": "shared",
       "category": "ui-data",
@@ -3206,79 +4178,143 @@
       "pass": true
     },
     {
-      "id": "c392",
-      "name": "UI9 scenario cards: 4 CS, 2 collections, 2 sales",
+      "id": "c509",
+      "name": "UI9 scenario cards: 6 CS, 6 collections, 4 sales",
       "flow": "shared",
       "category": "ui-data",
       "tagged": true,
       "pass": true
     },
     {
-      "id": "c393",
-      "name": "UI10 scenario customer_service/late-package first line advances",
+      "id": "c510",
+      "name": "UI10 scenario customer_service/late-package first line advances or ends cleanly",
       "flow": "shared",
       "category": "ui-data",
       "tagged": true,
       "pass": true
     },
     {
-      "id": "c394",
-      "name": "UI10 scenario customer_service/charged-twice first line advances",
+      "id": "c511",
+      "name": "UI10 scenario customer_service/charged-twice first line advances or ends cleanly",
       "flow": "shared",
       "category": "ui-data",
       "tagged": true,
       "pass": true
     },
     {
-      "id": "c395",
-      "name": "UI10 scenario customer_service/cant-log-in first line advances",
+      "id": "c512",
+      "name": "UI10 scenario customer_service/cant-log-in first line advances or ends cleanly",
       "flow": "shared",
       "category": "ui-data",
       "tagged": true,
       "pass": true
     },
     {
-      "id": "c396",
-      "name": "UI10 scenario customer_service/new-customer first line advances",
+      "id": "c513",
+      "name": "UI10 scenario customer_service/new-customer first line advances or ends cleanly",
       "flow": "shared",
       "category": "ui-data",
       "tagged": true,
       "pass": true
     },
     {
-      "id": "c397",
-      "name": "UI10 scenario collections/behind-on-bill first line advances",
+      "id": "c514",
+      "name": "UI10 scenario customer_service/cancel first line advances or ends cleanly",
       "flow": "shared",
       "category": "ui-data",
       "tagged": true,
       "pass": true
     },
     {
-      "id": "c398",
-      "name": "UI10 scenario collections/hardship first line advances",
+      "id": "c515",
+      "name": "UI10 scenario customer_service/repeat-caller first line advances or ends cleanly",
       "flow": "shared",
       "category": "ui-data",
       "tagged": true,
       "pass": true
     },
     {
-      "id": "c399",
-      "name": "UI10 scenario sales/upgrade-plan first line advances",
+      "id": "c516",
+      "name": "UI10 scenario collections/behind-on-bill first line advances or ends cleanly",
       "flow": "shared",
       "category": "ui-data",
       "tagged": true,
       "pass": true
     },
     {
-      "id": "c400",
-      "name": "UI10 scenario sales/free-trial first line advances",
+      "id": "c517",
+      "name": "UI10 scenario collections/hardship first line advances or ends cleanly",
       "flow": "shared",
       "category": "ui-data",
       "tagged": true,
       "pass": true
     },
     {
-      "id": "c401",
+      "id": "c518",
+      "name": "UI10 scenario collections/plan-negotiation first line advances or ends cleanly",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c519",
+      "name": "UI10 scenario collections/promise-to-pay first line advances or ends cleanly",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c520",
+      "name": "UI10 scenario collections/dispute first line advances or ends cleanly",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c521",
+      "name": "UI10 scenario collections/third-party first line advances or ends cleanly",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c522",
+      "name": "UI10 scenario sales/upgrade-plan first line advances or ends cleanly",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c523",
+      "name": "UI10 scenario sales/free-trial first line advances or ends cleanly",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c524",
+      "name": "UI10 scenario sales/sso-team first line advances or ends cleanly",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c525",
+      "name": "UI10 scenario sales/boss-approval first line advances or ends cleanly",
+      "flow": "shared",
+      "category": "ui-data",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c526",
       "name": "UI11 collections scenario still leads with the mini-Miranda verbatim",
       "flow": "shared",
       "category": "ui-data",
@@ -3286,7 +4322,7 @@
       "pass": true
     },
     {
-      "id": "c402",
+      "id": "c527",
       "name": "UI12 start response includes the flow graph",
       "flow": "shared",
       "category": "ui-data",
@@ -3294,7 +4330,7 @@
       "pass": true
     },
     {
-      "id": "c403",
+      "id": "c528",
       "name": "UI13 desk.policyLine only on policy steps",
       "flow": "shared",
       "category": "ui-data",
@@ -3302,7 +4338,7 @@
       "pass": true
     },
     {
-      "id": "c404",
+      "id": "c529",
       "name": "UI14 cited policy line is caller-facing",
       "flow": "shared",
       "category": "ui-data",
@@ -3310,7 +4346,7 @@
       "pass": true
     },
     {
-      "id": "c405",
+      "id": "c530",
       "name": "Z1 offline: no-account twice → clarify then wrong-party close, opener never repeated",
       "flow": "collections",
       "category": "repeat-guard",
@@ -3318,7 +4354,7 @@
       "pass": true
     },
     {
-      "id": "c406",
+      "id": "c531",
       "name": "Z2 disclosure declined: close line, mini-Miranda not re-read",
       "flow": "collections",
       "category": "repeat-guard",
@@ -3326,7 +4362,7 @@
       "pass": true
     },
     {
-      "id": "c407",
+      "id": "c532",
       "name": "Z3 payment refused: close line, not the balance line again",
       "flow": "collections",
       "category": "repeat-guard",
@@ -3334,7 +4370,7 @@
       "pass": true
     },
     {
-      "id": "c408",
+      "id": "c533",
       "name": "Z4 identity reprompt / not-found variants instead of the opener",
       "flow": "collections",
       "category": "repeat-guard",
@@ -3342,7 +4378,7 @@
       "pass": true
     },
     {
-      "id": "c409",
+      "id": "c534",
       "name": "Z5 unsure loop stays on the line with no repeated reply (ask_purpose,unsure,,unsure)",
       "flow": "collections",
       "category": "repeat-guard",
@@ -3350,7 +4386,7 @@
       "pass": true
     },
     {
-      "id": "c410",
+      "id": "c535",
       "name": "Z6 customer_service/policy exit 'resolve' close is new: Thank you for your time today — goodbye.",
       "flow": "shared",
       "category": "repeat-guard",
@@ -3358,7 +4394,7 @@
       "pass": true
     },
     {
-      "id": "c411",
+      "id": "c536",
       "name": "Z6 customer_service/policy exit 'escalate' close is new: Thank you for your time today — goodbye.",
       "flow": "shared",
       "category": "repeat-guard",
@@ -3366,7 +4402,7 @@
       "pass": true
     },
     {
-      "id": "c412",
+      "id": "c537",
       "name": "Z6 customer_service/policy exit 'callback' close is new: Thank you for your time today — goodbye.",
       "flow": "shared",
       "category": "repeat-guard",
@@ -3374,7 +4410,7 @@
       "pass": true
     },
     {
-      "id": "c413",
+      "id": "c538",
       "name": "Z6 customer_service/resolve_close exit 'resolve' close is new: Thank you for your time today — goodbye.",
       "flow": "shared",
       "category": "repeat-guard",
@@ -3382,7 +4418,7 @@
       "pass": true
     },
     {
-      "id": "c414",
+      "id": "c539",
       "name": "Z6 customer_service/escalate_handoff exit 'escalate' close is new: Thank you for your time today — goodbye.",
       "flow": "shared",
       "category": "repeat-guard",
@@ -3390,7 +4426,7 @@
       "pass": true
     },
     {
-      "id": "c415",
+      "id": "c540",
       "name": "Z6 customer_service/callback_close exit 'callback' close is new: Thank you for your time today — goodbye.",
       "flow": "shared",
       "category": "repeat-guard",
@@ -3398,7 +4434,23 @@
       "pass": true
     },
     {
-      "id": "c416",
+      "id": "c541",
+      "name": "Z6 customer_service/retention exit 'resolve' close is new",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c542",
+      "name": "Z6 customer_service/address_update exit 'resolve' close is new",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c543",
       "name": "Z6 collections/identity exit 'refuse' close is new",
       "flow": "shared",
       "category": "repeat-guard",
@@ -3406,7 +4458,23 @@
       "pass": true
     },
     {
-      "id": "c417",
+      "id": "c544",
+      "name": "Z6 collections/identity exit 'refuse' close is new",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c545",
+      "name": "Z6 collections/identity exit 'refuse' close is new",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c546",
       "name": "Z6 collections/disclosure exit 'refuse' close is new",
       "flow": "shared",
       "category": "repeat-guard",
@@ -3414,7 +4482,23 @@
       "pass": true
     },
     {
-      "id": "c418",
+      "id": "c547",
+      "name": "Z6 collections/disclosure exit 'refuse' close is new",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c548",
+      "name": "Z6 collections/disclosure exit 'refuse' close is new",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c549",
       "name": "Z6 collections/balance exit 'refuse' close is new",
       "flow": "shared",
       "category": "repeat-guard",
@@ -3422,15 +4506,111 @@
       "pass": true
     },
     {
-      "id": "c419",
-      "name": "Z6 collections/arrange exit 'callback' close is new: Thank you for your time today — goodbye.",
+      "id": "c550",
+      "name": "Z6 collections/balance exit 'callback' close is new",
       "flow": "shared",
       "category": "repeat-guard",
       "tagged": true,
       "pass": true
     },
     {
-      "id": "c420",
+      "id": "c551",
+      "name": "Z6 collections/balance exit 'refuse' close is new",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c552",
+      "name": "Z6 collections/balance exit 'refuse' close is new",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c553",
+      "name": "Z6 collections/arrange exit 'callback' close is new",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c554",
+      "name": "Z6 collections/arrange exit 'refuse' close is new",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c555",
+      "name": "Z6 collections/arrange exit 'refuse' close is new",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c556",
+      "name": "Z6 collections/promise exit 'callback' close is new",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c557",
+      "name": "Z6 collections/promise exit 'refuse' close is new",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c558",
+      "name": "Z6 collections/promise exit 'refuse' close is new",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c559",
+      "name": "Z6 collections/ptp_close exit 'resolve' close is new",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c560",
+      "name": "Z6 collections/settlement exit 'callback' close is new",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c561",
+      "name": "Z6 collections/settlement exit 'refuse' close is new",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c562",
+      "name": "Z6 collections/settlement exit 'refuse' close is new",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c563",
       "name": "Z6 collections/hardship exit 'escalate' close is new: Thank you for your time today — goodbye.",
       "flow": "shared",
       "category": "repeat-guard",
@@ -3438,7 +4618,7 @@
       "pass": true
     },
     {
-      "id": "c421",
+      "id": "c564",
       "name": "Z6 collections/hardship exit 'callback' close is new: Thank you for your time today — goodbye.",
       "flow": "shared",
       "category": "repeat-guard",
@@ -3446,7 +4626,39 @@
       "pass": true
     },
     {
-      "id": "c422",
+      "id": "c565",
+      "name": "Z6 collections/hardship exit 'refuse' close is new",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c566",
+      "name": "Z6 collections/hardship exit 'refuse' close is new",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c567",
+      "name": "Z6 collections/dispute exit 'escalate' close is new: Thank you for your time today — goodbye.",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c568",
+      "name": "Z6 collections/paid_review exit 'escalate' close is new: Thank you for your time today — goodbye.",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c569",
       "name": "Z6 collections/disposition exit 'resolve' close is new: Thank you for your time today — goodbye.",
       "flow": "shared",
       "category": "repeat-guard",
@@ -3454,7 +4666,7 @@
       "pass": true
     },
     {
-      "id": "c423",
+      "id": "c570",
       "name": "Z6 sales/close exit 'resolve' close is new: Thank you for your time today — goodbye.",
       "flow": "shared",
       "category": "repeat-guard",
@@ -3462,7 +4674,7 @@
       "pass": true
     },
     {
-      "id": "c424",
+      "id": "c571",
       "name": "Z6 sales/callback exit 'callback' close is new: Thank you for your time today — goodbye.",
       "flow": "shared",
       "category": "repeat-guard",
@@ -3470,7 +4682,15 @@
       "pass": true
     },
     {
-      "id": "c425",
+      "id": "c572",
+      "name": "Z6 sales/demo_book exit 'callback' close is new: Thank you for your time today — goodbye.",
+      "flow": "shared",
+      "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c573",
       "name": "Z7 repeat net swaps a repeated close for a goodbye",
       "flow": "shared",
       "category": "repeat-guard",
@@ -3478,7 +4698,7 @@
       "pass": true
     },
     {
-      "id": "c426",
+      "id": "c574",
       "name": "Z8 repeat net keeps the verbatim mini-Miranda",
       "flow": "shared",
       "category": "repeat-guard",
@@ -3486,7 +4706,7 @@
       "pass": true
     },
     {
-      "id": "c427",
+      "id": "c575",
       "name": "Z9 desk shows unconfirmed identity + wrong-party disposition",
       "flow": "shared",
       "category": "repeat-guard",

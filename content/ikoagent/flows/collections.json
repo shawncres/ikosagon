@@ -2,7 +2,7 @@
   "id": "collections",
   "title": "Collections",
   "vertical": "collections",
-  "description": "Identity → mini-Miranda disclosure → balance → arrange, hardship, dispute/cease paths → disposition. Expanded compliance corpus.",
+  "description": "Identity → mini-Miranda disclosure → balance → plan within policy, promise-to-pay, partial payment, settlement boundary, hardship, dispute / already-paid, cease / attorney, third-party paths → disposition.",
   "start": "identity",
   "ragCorpus": "collections",
   "tools": [
@@ -11,7 +11,8 @@
     "offerPaymentPlan",
     "scheduleCallback",
     "logDisposition",
-    "createCase"
+    "createCase",
+    "recordPromiseToPay"
   ],
   "nodes": {
     "identity": {
@@ -78,6 +79,28 @@
             "why are you calling",
             "what is this call about"
           ]
+        },
+        {
+          "intent": "third_party",
+          "examples": [
+            "he's not here",
+            "she's not home",
+            "this is his wife",
+            "I'm calling for my mother",
+            "can I take a message",
+            "he's at work",
+            "I'm her husband"
+          ]
+        },
+        {
+          "intent": "cease_contact",
+          "examples": [
+            "stop calling",
+            "do not call again",
+            "cease and desist",
+            "take me off your list",
+            "stop contacting me"
+          ]
         }
       ],
       "requireSlots": [
@@ -88,6 +111,14 @@
         "logDisposition"
       ],
       "transitions": [
+        {
+          "on": "third_party",
+          "to": "exit:refuse:third_party"
+        },
+        {
+          "on": "cease_contact",
+          "to": "exit:refuse:cease"
+        },
         {
           "on": "deny",
           "to": "exit:refuse",
@@ -131,6 +162,24 @@
           "disposition": "wrong_party",
           "say": [
             "I'm sorry for the inconvenience. I've noted that we reached the wrong person, and this number is marked on our side. Thank you for your time — goodbye."
+          ]
+        },
+        {
+          "type": "refuse",
+          "key": "third_party",
+          "label": "Third party — no details shared",
+          "disposition": "third_party_no_disclosure",
+          "say": [
+            "Thank you. I can only discuss this with the account holder, so I won't share any details. Please ask them to call the IkoAgent demo line back. Goodbye."
+          ]
+        },
+        {
+          "type": "refuse",
+          "key": "cease",
+          "label": "Stop request — contact stopped",
+          "disposition": "STOP",
+          "say": [
+            "Understood — I've noted your request to stop these calls. Thank you, and goodbye."
           ]
         }
       ],
@@ -190,7 +239,8 @@
             "I can't talk about this",
             "hardship",
             "I lost my job",
-            "medical emergency"
+            "medical emergency",
+            "medical bills"
           ]
         },
         {
@@ -201,9 +251,65 @@
             "I want to pay",
             "set up a payment plan"
           ]
+        },
+        {
+          "intent": "dispute",
+          "examples": [
+            "I don't owe this",
+            "this isn't my debt",
+            "I dispute this",
+            "send me validation",
+            "that's not my debt",
+            "I want this validated"
+          ]
+        },
+        {
+          "intent": "already_paid",
+          "examples": [
+            "I already paid this",
+            "I paid it off",
+            "this was paid last month",
+            "I sent the payment already",
+            "it's been paid"
+          ]
+        },
+        {
+          "intent": "cease_contact",
+          "examples": [
+            "stop calling",
+            "do not call again",
+            "cease and desist",
+            "take me off your list",
+            "stop contacting me"
+          ]
+        },
+        {
+          "intent": "attorney",
+          "examples": [
+            "lawyer",
+            "attorney",
+            "represented by counsel",
+            "legal representation"
+          ]
         }
       ],
       "transitions": [
+        {
+          "on": "dispute",
+          "to": "dispute"
+        },
+        {
+          "on": "already_paid",
+          "to": "paid_review"
+        },
+        {
+          "on": "cease_contact",
+          "to": "exit:refuse:cease"
+        },
+        {
+          "on": "attorney",
+          "to": "exit:refuse:attorney"
+        },
         {
           "on": "affirm",
           "to": "balance"
@@ -228,7 +334,29 @@
           "say": [
             "Understood — I won't go any further with this today. Thank you for your time, and goodbye."
           ]
+        },
+        {
+          "type": "refuse",
+          "key": "cease",
+          "label": "Cease request — contact stopped",
+          "disposition": "STOP",
+          "say": [
+            "I understand you want us to stop contacting you about this. I've logged a stop request on this demo account and I'm ending this call now. Goodbye."
+          ]
+        },
+        {
+          "type": "refuse",
+          "key": "attorney",
+          "label": "Attorney-represented — contact stopped",
+          "disposition": "ATTORNEY",
+          "say": [
+            "Thank you for letting me know you're represented. I've noted that on the account, and I won't discuss it with you further. Goodbye."
+          ]
         }
+      ],
+      "toolsAllowed": [
+        "logDisposition",
+        "createCase"
       ]
     },
     "balance": {
@@ -253,7 +381,9 @@
             "I want to pay",
             "set up a plan",
             "payment plan",
-            "can I do installments"
+            "can I do installments",
+            "I'm behind on my bill",
+            "catch up on my payments"
           ]
         },
         {
@@ -269,21 +399,131 @@
           "intent": "refuse_payment",
           "examples": [
             "I'm not paying",
-            "dispute this debt",
+            "I won't pay this",
+            "I refuse to pay",
+            "not going to pay"
+          ]
+        },
+        {
+          "intent": "dispute",
+          "examples": [
             "I don't owe this",
-            "send validation",
-            "stop calling"
+            "this isn't my debt",
+            "I dispute this",
+            "send me validation",
+            "that's not my debt",
+            "I want this validated"
+          ]
+        },
+        {
+          "intent": "already_paid",
+          "examples": [
+            "I already paid this",
+            "I paid it off",
+            "this was paid last month",
+            "I sent the payment already",
+            "it's been paid"
+          ]
+        },
+        {
+          "intent": "cease_contact",
+          "examples": [
+            "stop calling",
+            "do not call again",
+            "cease and desist",
+            "take me off your list",
+            "stop contacting me"
+          ]
+        },
+        {
+          "intent": "attorney",
+          "examples": [
+            "lawyer",
+            "attorney",
+            "represented by counsel",
+            "legal representation"
+          ]
+        },
+        {
+          "intent": "promise_date",
+          "examples": [
+            "Friday",
+            "next Friday",
+            "the 15th",
+            "payday",
+            "tomorrow"
+          ]
+        },
+        {
+          "intent": "partial_amount",
+          "examples": [
+            "$50 now",
+            "partial payment",
+            "only 100 dollars",
+            "part of it now"
+          ]
+        },
+        {
+          "intent": "ask_settlement",
+          "examples": [
+            "can I settle for less",
+            "what's the least you'll take",
+            "can we settle this",
+            "settlement offer",
+            "would you take half"
+          ]
+        },
+        {
+          "intent": "request_callback",
+          "examples": [
+            "call me tomorrow",
+            "call me back later",
+            "callback please",
+            "can you call me in the afternoon"
           ]
         }
       ],
       "toolsAllowed": [
-        "checkBalance"
+        "checkBalance",
+        "logDisposition",
+        "createCase",
+        "scheduleCallback",
+        "recordPromiseToPay",
+        "offerPaymentPlan"
       ],
       "rag": {
         "queryHint": "payment plans hardship quiet hours dispute cease settlement",
         "required": false
       },
       "transitions": [
+        {
+          "on": "dispute",
+          "to": "dispute"
+        },
+        {
+          "on": "already_paid",
+          "to": "paid_review"
+        },
+        {
+          "on": "cease_contact",
+          "to": "exit:refuse:cease"
+        },
+        {
+          "on": "attorney",
+          "to": "exit:refuse:attorney"
+        },
+        {
+          "on": "promise_date",
+          "to": "promise"
+        },
+        {
+          "on": "partial_amount",
+          "to": "promise"
+        },
+        {
+          "on": "ask_settlement",
+          "to": "settlement"
+        },
         {
           "on": "arrange_payment",
           "to": "arrange"
@@ -302,6 +542,13 @@
         },
         {
           "on": "*",
+          "to": "promise",
+          "whenSlotsFilled": [
+            "promiseDate"
+          ]
+        },
+        {
+          "on": "*",
           "to": "arrange"
         }
       ],
@@ -312,6 +559,31 @@
           "say": [
             "Understood — I've noted your response. Thank you for your time, and goodbye."
           ]
+        },
+        {
+          "type": "callback",
+          "label": "Callback scheduled",
+          "say": [
+            "Of course — I've scheduled a callback so we can pick this up at a better time. Thank you, and goodbye."
+          ]
+        },
+        {
+          "type": "refuse",
+          "key": "cease",
+          "label": "Cease request — contact stopped",
+          "disposition": "STOP",
+          "say": [
+            "I understand you want us to stop contacting you about this. I've logged a stop request on this demo account and I'm ending this call now. Goodbye."
+          ]
+        },
+        {
+          "type": "refuse",
+          "key": "attorney",
+          "label": "Attorney-represented — contact stopped",
+          "disposition": "ATTORNEY",
+          "say": [
+            "Thank you for letting me know you're represented. I've noted that on the account, and I won't discuss it with you further. Goodbye."
+          ]
         }
       ]
     },
@@ -319,7 +591,7 @@
       "id": "arrange",
       "label": "Arrange payment",
       "agentSay": [
-        "Based on the balance on file, we can arrange a short payment plan on this demo account. Would a three-month plan work, or would you like me to explain the longer option if you qualify?"
+        "Based on the balance on file, we can set up a standard payment plan on this demo account. Would a three-month plan work, or would you like me to explain the longer option if you qualify?"
       ],
       "allowParaphrase": true,
       "listenFor": [
@@ -330,7 +602,9 @@
             "I'll take the plan",
             "yes accept",
             "six months",
-            "sign me up for the plan"
+            "sign me up for the plan",
+            "the 6 month plan",
+            "that works"
           ]
         },
         {
@@ -346,23 +620,97 @@
           "examples": [
             "still too much",
             "hardship",
-            "I can't afford that"
+            "I can't afford that",
+            "I lost my job",
+            "medical bills"
+          ]
+        },
+        {
+          "intent": "promise_date",
+          "examples": [
+            "Friday",
+            "next Friday",
+            "the 15th",
+            "payday",
+            "tomorrow"
+          ]
+        },
+        {
+          "intent": "partial_amount",
+          "examples": [
+            "$50 now",
+            "partial payment",
+            "only 100 dollars",
+            "part of it now"
+          ]
+        },
+        {
+          "intent": "ask_settlement",
+          "examples": [
+            "can I settle for less",
+            "what's the least you'll take",
+            "can we settle this",
+            "settlement offer",
+            "would you take half"
+          ]
+        },
+        {
+          "intent": "dispute",
+          "examples": [
+            "I don't owe this",
+            "this isn't my debt",
+            "I dispute this",
+            "send me validation",
+            "that's not my debt",
+            "I want this validated"
+          ]
+        },
+        {
+          "intent": "already_paid",
+          "examples": [
+            "I already paid this",
+            "I paid it off",
+            "this was paid last month",
+            "I sent the payment already",
+            "it's been paid"
+          ]
+        },
+        {
+          "intent": "cease_contact",
+          "examples": [
+            "stop calling",
+            "do not call again",
+            "cease and desist",
+            "take me off your list",
+            "stop contacting me"
+          ]
+        },
+        {
+          "intent": "attorney",
+          "examples": [
+            "lawyer",
+            "attorney",
+            "represented by counsel",
+            "legal representation"
           ]
         },
         {
           "intent": "request_callback",
           "examples": [
             "call me tomorrow",
-            "callback",
-            "it's after nine",
-            "quiet hours"
+            "call me back later",
+            "callback please",
+            "can you call me in the afternoon"
           ]
         }
       ],
       "toolsAllowed": [
         "offerPaymentPlan",
         "checkBalance",
-        "logDisposition"
+        "logDisposition",
+        "recordPromiseToPay",
+        "createCase",
+        "scheduleCallback"
       ],
       "rag": {
         "queryHint": "payment plan rules first installment hardship",
@@ -371,11 +719,50 @@
       "transitions": [
         {
           "on": "accept_plan",
-          "to": "disposition"
+          "to": "disposition",
+          "whenSlotsFilled": [
+            "planOk"
+          ]
+        },
+        {
+          "on": "accept_plan",
+          "to": "arrange"
         },
         {
           "on": "arrange_payment",
-          "to": "disposition"
+          "to": "disposition",
+          "whenSlotsFilled": [
+            "planOk",
+            "planMonths"
+          ]
+        },
+        {
+          "on": "promise_date",
+          "to": "promise"
+        },
+        {
+          "on": "partial_amount",
+          "to": "promise"
+        },
+        {
+          "on": "ask_settlement",
+          "to": "settlement"
+        },
+        {
+          "on": "dispute",
+          "to": "dispute"
+        },
+        {
+          "on": "already_paid",
+          "to": "paid_review"
+        },
+        {
+          "on": "cease_contact",
+          "to": "exit:refuse:cease"
+        },
+        {
+          "on": "attorney",
+          "to": "exit:refuse:attorney"
         },
         {
           "on": "hardship",
@@ -389,7 +776,392 @@
       "exits": [
         {
           "type": "callback",
-          "label": "Callback scheduled"
+          "label": "Callback scheduled",
+          "say": [
+            "Of course — I've scheduled a callback so we can pick this up at a better time. Thank you, and goodbye."
+          ]
+        },
+        {
+          "type": "refuse",
+          "key": "cease",
+          "label": "Cease request — contact stopped",
+          "disposition": "STOP",
+          "say": [
+            "I understand you want us to stop contacting you about this. I've logged a stop request on this demo account and I'm ending this call now. Goodbye."
+          ]
+        },
+        {
+          "type": "refuse",
+          "key": "attorney",
+          "label": "Attorney-represented — contact stopped",
+          "disposition": "ATTORNEY",
+          "say": [
+            "Thank you for letting me know you're represented. I've noted that on the account, and I won't discuss it with you further. Goodbye."
+          ]
+        }
+      ],
+      "agentSayWhen": [
+        {
+          "slot": "planOutOfPolicy",
+          "lines": [
+            "I can't set a plan that long on this account — the longest standard plan is {{planMaxMonths}} months, about {{planMaxInstallment}} a month. Would that work, or would a promise-to-pay date be easier? If it's still too much, I can look at hardship options."
+          ]
+        },
+        {
+          "slot": "planMaxMonths",
+          "lines": [
+            "Based on the balance on file, the longest standard plan I can set up is {{planMaxMonths}} months. Would that work, or would you prefer a shorter plan? I can also note a promise-to-pay date if that's easier."
+          ]
+        }
+      ],
+      "askOnStay": true
+    },
+    "promise": {
+      "id": "promise",
+      "label": "Promise to pay",
+      "agentSay": [
+        "Thanks — what date can you make that payment, and how much will it be?"
+      ],
+      "agentSayWhen": [
+        {
+          "slot": "promiseDate",
+          "lines": [
+            "Just to confirm: {{payAmountText}} on {{promiseDate}}. Shall I record that promise-to-pay?"
+          ]
+        },
+        {
+          "slot": "payAmount",
+          "lines": [
+            "Thanks — a partial payment helps. What date can you make it?"
+          ]
+        }
+      ],
+      "allowParaphrase": true,
+      "askOnStay": true,
+      "listenFor": [
+        {
+          "intent": "affirm",
+          "examples": [
+            "yes",
+            "that's right",
+            "record it",
+            "correct"
+          ]
+        },
+        {
+          "intent": "promise_date",
+          "examples": [
+            "Friday",
+            "next Friday",
+            "the 15th",
+            "payday",
+            "tomorrow"
+          ]
+        },
+        {
+          "intent": "partial_amount",
+          "examples": [
+            "$50 now",
+            "partial payment",
+            "only 100 dollars",
+            "part of it now"
+          ]
+        },
+        {
+          "intent": "hardship",
+          "examples": [
+            "I can't pay anything",
+            "I lost my job",
+            "medical bills"
+          ]
+        },
+        {
+          "intent": "ask_settlement",
+          "examples": [
+            "can I settle for less",
+            "what's the least you'll take",
+            "can we settle this",
+            "settlement offer",
+            "would you take half"
+          ]
+        },
+        {
+          "intent": "request_callback",
+          "examples": [
+            "call me tomorrow",
+            "call me back later",
+            "callback please",
+            "can you call me in the afternoon"
+          ]
+        },
+        {
+          "intent": "cease_contact",
+          "examples": [
+            "stop calling",
+            "do not call again",
+            "cease and desist",
+            "take me off your list",
+            "stop contacting me"
+          ]
+        },
+        {
+          "intent": "attorney",
+          "examples": [
+            "lawyer",
+            "attorney",
+            "represented by counsel",
+            "legal representation"
+          ]
+        }
+      ],
+      "requireSlots": [
+        "ptpId"
+      ],
+      "toolsAllowed": [
+        "recordPromiseToPay",
+        "scheduleCallback",
+        "logDisposition"
+      ],
+      "rag": {
+        "queryHint": "promise to pay date partial payment",
+        "required": false
+      },
+      "transitions": [
+        {
+          "on": "slots_filled",
+          "to": "ptp_close"
+        },
+        {
+          "on": "promise_date",
+          "to": "ptp_close",
+          "whenSlotsFilled": [
+            "ptpId"
+          ]
+        },
+        {
+          "on": "hardship",
+          "to": "hardship"
+        },
+        {
+          "on": "ask_settlement",
+          "to": "settlement"
+        },
+        {
+          "on": "cease_contact",
+          "to": "exit:refuse:cease"
+        },
+        {
+          "on": "attorney",
+          "to": "exit:refuse:attorney"
+        },
+        {
+          "on": "request_callback",
+          "to": "exit:callback"
+        }
+      ],
+      "exits": [
+        {
+          "type": "callback",
+          "label": "Callback scheduled",
+          "say": [
+            "Of course — I've scheduled a callback so we can pick this up at a better time. Thank you, and goodbye."
+          ]
+        },
+        {
+          "type": "refuse",
+          "key": "cease",
+          "label": "Cease request — contact stopped",
+          "disposition": "STOP",
+          "say": [
+            "I understand you want us to stop contacting you about this. I've logged a stop request on this demo account and I'm ending this call now. Goodbye."
+          ]
+        },
+        {
+          "type": "refuse",
+          "key": "attorney",
+          "label": "Attorney-represented — contact stopped",
+          "disposition": "ATTORNEY",
+          "say": [
+            "Thank you for letting me know you're represented. I've noted that on the account, and I won't discuss it with you further. Goodbye."
+          ]
+        }
+      ]
+    },
+    "ptp_close": {
+      "id": "ptp_close",
+      "label": "Promise recorded",
+      "agentSay": [
+        "Thank you — I've recorded promise-to-pay {{ptpId}}: {{promiseSummary}}. Is there anything else I can help with today?"
+      ],
+      "allowParaphrase": true,
+      "listenFor": [
+        {
+          "intent": "resolve",
+          "examples": [
+            "no that's all",
+            "thanks",
+            "goodbye"
+          ]
+        }
+      ],
+      "toolsAllowed": [
+        "logDisposition"
+      ],
+      "transitions": [
+        {
+          "on": "*",
+          "to": "exit:resolve"
+        }
+      ],
+      "exits": [
+        {
+          "type": "resolve",
+          "label": "Promise-to-pay recorded",
+          "disposition": "PTP",
+          "say": [
+            "Thanks again — your promise-to-pay is on the account. Take care, and goodbye."
+          ]
+        }
+      ]
+    },
+    "settlement": {
+      "id": "settlement",
+      "label": "Settlement request",
+      "agentSay": [
+        "I can't quote a settlement amount on this line — settlements need specialist review. I can set up a standard payment plan if you qualify, take a promise-to-pay date, or schedule a specialist callback. Which would you prefer?"
+      ],
+      "allowParaphrase": true,
+      "askOnStay": true,
+      "listenFor": [
+        {
+          "intent": "arrange_payment",
+          "examples": [
+            "payment plan",
+            "the plan",
+            "installments"
+          ]
+        },
+        {
+          "intent": "promise_date",
+          "examples": [
+            "Friday",
+            "next Friday",
+            "the 15th",
+            "payday",
+            "tomorrow"
+          ]
+        },
+        {
+          "intent": "partial_amount",
+          "examples": [
+            "$50 now",
+            "partial payment",
+            "only 100 dollars",
+            "part of it now"
+          ]
+        },
+        {
+          "intent": "request_callback",
+          "examples": [
+            "specialist callback",
+            "have someone call me",
+            "call me tomorrow",
+            "callback"
+          ]
+        },
+        {
+          "intent": "hardship",
+          "examples": [
+            "I really can't afford it",
+            "I lost my job",
+            "medical bills"
+          ]
+        },
+        {
+          "intent": "cease_contact",
+          "examples": [
+            "stop calling",
+            "do not call again",
+            "cease and desist",
+            "take me off your list",
+            "stop contacting me"
+          ]
+        },
+        {
+          "intent": "attorney",
+          "examples": [
+            "lawyer",
+            "attorney",
+            "represented by counsel",
+            "legal representation"
+          ]
+        }
+      ],
+      "toolsAllowed": [
+        "offerPaymentPlan",
+        "recordPromiseToPay",
+        "scheduleCallback",
+        "logDisposition"
+      ],
+      "rag": {
+        "queryHint": "settlement specialist review authority",
+        "required": true
+      },
+      "transitions": [
+        {
+          "on": "arrange_payment",
+          "to": "arrange"
+        },
+        {
+          "on": "promise_date",
+          "to": "promise"
+        },
+        {
+          "on": "partial_amount",
+          "to": "promise"
+        },
+        {
+          "on": "hardship",
+          "to": "hardship"
+        },
+        {
+          "on": "cease_contact",
+          "to": "exit:refuse:cease"
+        },
+        {
+          "on": "attorney",
+          "to": "exit:refuse:attorney"
+        },
+        {
+          "on": "request_callback",
+          "to": "exit:callback"
+        }
+      ],
+      "exits": [
+        {
+          "type": "callback",
+          "label": "Specialist callback — settlement review",
+          "say": [
+            "Of course — I've scheduled a callback so we can pick this up at a better time. Thank you, and goodbye."
+          ]
+        },
+        {
+          "type": "refuse",
+          "key": "cease",
+          "label": "Cease request — contact stopped",
+          "disposition": "STOP",
+          "say": [
+            "I understand you want us to stop contacting you about this. I've logged a stop request on this demo account and I'm ending this call now. Goodbye."
+          ]
+        },
+        {
+          "type": "refuse",
+          "key": "attorney",
+          "label": "Attorney-represented — contact stopped",
+          "disposition": "ATTORNEY",
+          "say": [
+            "Thank you for letting me know you're represented. I've noted that on the account, and I won't discuss it with you further. Goodbye."
+          ]
         }
       ]
     },
@@ -413,6 +1185,25 @@
           "examples": [
             "call me later"
           ]
+        },
+        {
+          "intent": "cease_contact",
+          "examples": [
+            "stop calling",
+            "do not call again",
+            "cease and desist",
+            "take me off your list",
+            "stop contacting me"
+          ]
+        },
+        {
+          "intent": "attorney",
+          "examples": [
+            "lawyer",
+            "attorney",
+            "represented by counsel",
+            "legal representation"
+          ]
         }
       ],
       "toolsAllowed": [
@@ -425,6 +1216,14 @@
         "required": true
       },
       "transitions": [
+        {
+          "on": "cease_contact",
+          "to": "exit:refuse:cease"
+        },
+        {
+          "on": "attorney",
+          "to": "exit:refuse:attorney"
+        },
         {
           "on": "request_callback",
           "to": "exit:callback"
@@ -442,6 +1241,96 @@
         {
           "type": "callback",
           "label": "Callback scheduled"
+        },
+        {
+          "type": "refuse",
+          "key": "cease",
+          "label": "Cease request — contact stopped",
+          "disposition": "STOP",
+          "say": [
+            "I understand you want us to stop contacting you about this. I've logged a stop request on this demo account and I'm ending this call now. Goodbye."
+          ]
+        },
+        {
+          "type": "refuse",
+          "key": "attorney",
+          "label": "Attorney-represented — contact stopped",
+          "disposition": "ATTORNEY",
+          "say": [
+            "Thank you for letting me know you're represented. I've noted that on the account, and I won't discuss it with you further. Goodbye."
+          ]
+        }
+      ]
+    },
+    "dispute": {
+      "id": "dispute",
+      "label": "Dispute / validation",
+      "agentSay": [
+        "Thank you for letting me know you dispute this. I've noted the dispute on the account and opened a validation review, and I won't discuss the balance any further on this call. In production, a written validation notice would follow — this demo doesn't mail one."
+      ],
+      "allowParaphrase": false,
+      "listenFor": [
+        {
+          "intent": "affirm",
+          "examples": [
+            "ok",
+            "thanks"
+          ]
+        }
+      ],
+      "toolsAllowed": [
+        "createCase",
+        "logDisposition"
+      ],
+      "rag": {
+        "queryHint": "dispute validation",
+        "required": false
+      },
+      "transitions": [
+        {
+          "on": "*",
+          "to": "exit:escalate"
+        }
+      ],
+      "exits": [
+        {
+          "type": "escalate",
+          "label": "Dispute noted — validation review",
+          "disposition": "DISPUTE"
+        }
+      ]
+    },
+    "paid_review": {
+      "id": "paid_review",
+      "label": "Already-paid review",
+      "agentSay": [
+        "Thank you for letting me know. I've noted that you believe this balance was already paid and opened a review so a specialist can match the payment. I won't ask you for a payment while that review is open."
+      ],
+      "allowParaphrase": false,
+      "listenFor": [
+        {
+          "intent": "affirm",
+          "examples": [
+            "ok",
+            "thanks"
+          ]
+        }
+      ],
+      "toolsAllowed": [
+        "createCase",
+        "logDisposition"
+      ],
+      "transitions": [
+        {
+          "on": "*",
+          "to": "exit:escalate"
+        }
+      ],
+      "exits": [
+        {
+          "type": "escalate",
+          "label": "Already-paid review opened",
+          "disposition": "PAID_REVIEW"
         }
       ]
     },
@@ -449,7 +1338,7 @@
       "id": "disposition",
       "label": "Disposition",
       "agentSay": [
-        "I’ve noted the arrangement for account {{accountId}} and logged the disposition. Thank you for your time on this demonstration call — take care."
+        "I've noted the arrangement for account {{accountId}} and logged the disposition. Thank you for your time on this demonstration call — take care."
       ],
       "allowParaphrase": false,
       "listenFor": [
@@ -475,7 +1364,8 @@
       "exits": [
         {
           "type": "resolve",
-          "label": "Payment arrangement logged"
+          "label": "Payment arrangement logged",
+          "disposition": "PLAN"
         }
       ]
     }
