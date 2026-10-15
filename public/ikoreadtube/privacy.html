@@ -7,6 +7,9 @@
   <meta name="color-scheme" content="light">
   <title>IKOREADTUBE - PRIVACY</title>
   <script>
+    try { if (localStorage.getItem("ikoreadtube.theme") === "dark") document.documentElement.setAttribute("data-theme", "dark"); } catch (e) {}
+  </script>
+  <script>
     /* Same trick as index.html: /ikoreadtube/privacy (no .html) still finds styles.css in this folder. */
     (function () {
       document.write('<link rel="stylesheet" href="' + (location.pathname.replace(/[^/]*$/, "")) + 'styles.css">');
@@ -37,7 +40,7 @@
     <p class="box">WE DO NOT HAVE ACCOUNTS AND WE NEVER ASK YOU TO SIGN IN TO GOOGLE OR YOUTUBE. WE DO NOT ACCESS ANY PRIVATE YOUTUBE DATA.</p>
 
     <h2 class="sect">WHAT STAYS ON YOUR DEVICE</h2>
-    <p class="box">YOUR RECENTLY READ LIST (VIDEO ID, TITLE, CHANNEL) AND YOUR THUMBNAILS SETTING ARE SAVED IN YOUR BROWSER'S LOCALSTORAGE. THEY NEVER LEAVE YOUR DEVICE. NO COOKIES, NO ANALYTICS, NO ADS.</p>
+    <p class="box">YOUR RECENTLY READ LIST (VIDEO ID, TITLE, CHANNEL), YOUR THUMBNAILS SETTING AND YOUR DARK MODE SETTING ARE SAVED IN YOUR BROWSER'S LOCALSTORAGE. THEY NEVER LEAVE YOUR DEVICE. NO COOKIES, NO ANALYTICS, NO ADS.</p>
     <button type="button" class="btn wide" id="clear">CLEAR MY SAVED DATA</button>
     <p class="src" id="clear-msg" role="status"></p>
 
@@ -45,7 +48,7 @@
     <p class="box">WHEN YOU OPEN THE LIST, SEARCH OR OPEN A VIDEO, OUR SERVER ASKS YOUTUBE FOR PUBLIC VIDEO DATA. WE KEEP THAT DATA ONLY IN SHORT-LIVED CACHES (MINUTES TO A FEW DAYS, NEVER LONGER THAN 30 DAYS). YOUR IP ADDRESS IS USED IN MEMORY TO LIMIT ABUSE AND IS NOT STORED. WE DO NOT DOWNLOAD OR STORE VIDEO.</p>
 
     <h2 class="sect">AI SUMMARIES</h2>
-    <p class="box">TO SUMMARIZE A VIDEO WE SEND ITS PUBLIC YOUTUBE LINK TO GOOGLE'S GEMINI API. ON THE FREE TIER GOOGLE MAY USE THAT CONTENT TO IMPROVE ITS PRODUCTS. IF YOU USE PASTE TRANSCRIPT, THE TEXT YOU PASTE IS SENT TO GROQ TO WRITE THE SUMMARY AND IS NOT STORED BY US. DO NOT PASTE ANYTHING PRIVATE. SUMMARIES ARE WRITTEN BY AI, NOT BY YOUTUBE, AND CAN BE WRONG.</p>
+    <p class="box">TO SUMMARIZE A VIDEO WE SEND ITS PUBLIC YOUTUBE LINK TO GOOGLE'S GEMINI API. IF YOU OPEN A VIDEO FROM A SEARCH, OR SET A FOCUS, THE SEARCH WORDS OR FOCUS ARE SENT WITH IT. IF YOU USE ASK, YOUR QUESTION (AND YOUR LAST ONE OR TWO QUESTIONS AND ANSWERS FOR CONTEXT) GO TO GEMINI TOO. YOUR CONVERSATION IS KEPT IN YOUR BROWSER'S MEMORY ONLY AND DISAPPEARS WHEN YOU CLOSE THE PAGE. ON THE FREE TIER GOOGLE MAY USE THAT CONTENT TO IMPROVE ITS PRODUCTS. IF YOU USE PASTE TRANSCRIPT, THE TEXT YOU PASTE IS SENT TO GROQ TO WRITE THE SUMMARY AND IS NOT STORED BY US. DO NOT TYPE OR PASTE ANYTHING PRIVATE. SUMMARIES ARE WRITTEN BY AI, NOT BY YOUTUBE, AND CAN BE WRONG.</p>
 
     <h2 class="sect">QUESTIONS</h2>
     <p class="box">WRITE TO US AT IKOSAGON.COM.</p>
@@ -62,6 +65,7 @@
       try {
         localStorage.removeItem("ikoreadtube.recent");
         localStorage.removeItem("ikoreadtube.thumbs");
+        localStorage.removeItem("ikoreadtube.theme");
       } catch (e) { /* nothing to clear */ }
       document.getElementById("clear-msg").textContent = "DONE. SAVED DATA CLEARED.";
     });

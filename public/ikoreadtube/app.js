@@ -13,6 +13,10 @@
   var LEVEL_LABEL = { less: "LESS", standard: "STANDARD", more: "MORE" };
   var RECENT_KEY = "ikoreadtube.recent";
   var THUMBS_KEY = "ikoreadtube.thumbs";
+  var THEME_KEY = "ikoreadtube.theme";
+  var ASK_TIMEOUT_MS = 58000;
+  var ASK_TURNS_KEPT = 3;
+  var ASK_MIN = 3;
   var RECENT_MAX = 8;
   var MIN_GEN_MS = 600;
   var REQUEST_TIMEOUT_MS = 20000;
@@ -31,15 +35,30 @@
     failed: "AI COULD NOT READ THIS VIDEO"
   };
 
+  var ASK_REASONS = {
+    off: "ASK IS OFF RIGHT NOW",
+    "long": "THIS VIDEO IS TOO LONG TO ASK ABOUT",
+    "short": "THIS VIDEO IS TOO SHORT TO ASK ABOUT",
+    live: "THIS IS A LIVE VIDEO",
+    budget: "TODAY'S AI LIMIT IS REACHED",
+    busy: "AI IS BUSY, TRY AGAIN IN A MINUTE",
+    failed: "AI COULD NOT READ THIS VIDEO",
+    ip_rate: "TOO MANY QUESTIONS, WAIT A MINUTE"
+  };
+
   var $ = function (id) { return document.getElementById(id); };
   var el = {
     feed: $("feed"), recent: $("recent"), recentWrap: $("recent-wrap"), empty: $("empty"), feedTitle: $("feed-title"), notice: $("notice"),
-    q: $("q"), searchbar: $("searchbar"), thumbs: $("btn-thumbs"), searchYt: $("search-yt"), searchYtBtn: $("btn-search-yt"),
+    q: $("q"), searchbar: $("searchbar"), thumbs: $("btn-thumbs"), theme: $("btn-theme"), searchYt: $("search-yt"), searchYtBtn: $("btn-search-yt"),
     sFeed: $("screen-feed"), sGen: $("screen-gen"), sDetail: $("screen-detail"),
     genStep: $("gen-step"), genText: $("gen-text"), genNote: $("gen-note"),
     back: $("btn-back"), less: $("btn-less"), more: $("btn-more"),
     dTitle: $("d-title"), dChan: $("d-chan"), dWatch: $("d-watch"), dThumbWrap: $("d-thumb-wrap"), dThumb: $("d-thumb"),
     dLevel: $("d-level"), dText: $("d-text"), dSrc: $("d-src"),
+    focus: $("focus"), focusLine: $("focus-line"), focusText: $("focus-text"), focusEdit: $("btn-focus-edit"), focusClear: $("btn-focus-clear"),
+    focusForm: $("focus-form"), focusInput: $("focus-input"), focusCancel: $("btn-focus-cancel"),
+    bar: $("bar"), barLevel: $("bar-level"), barRow2: $("bar-row2"), barAsk: $("btn-ask"), barWatch: $("bar-watch"),
+    askPanel: $("ask-panel"), askLog: $("ask-log"), askForm: $("ask-form"), askQ: $("ask-q"), askGo: $("ask-go"), askMsg: $("ask-msg"),
     paste: $("btn-paste"), pastePanel: $("paste-panel"), pasteText: $("paste-text"), pasteHelp: $("paste-help"),
     pasteGo: $("btn-paste-go"), pasteCancel: $("btn-paste-cancel")
   };
@@ -51,7 +70,9 @@
   var screen = "feed";
   var feedScroll = 0;
   var selectedId = null;
-  var current = null;      // { id, level }
+  var current = null;      // { id, level, focus }
+  var asks = {};           // video id -> [{ q, a, ts }] (last few turns, browser memory only)
+  var ASK_HELP = el.askMsg.textContent;
   var sum = {};            // id -> { kind, levels: { level: { text, ai, reason } }, ... }
   var token = 0;           // cancels stale generations
   var cameFromFeed = false;
@@ -71,6 +92,9 @@
   }
   function isReal(id) { return ID_RE.test(id) && !window.IkoData.isSample(id); }
   function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  // Summary cache key: video + normalized focus ("" = general summary).
+  function skey(id, focus) { return id + "|" + String(focus || "").toLowerCase().replace(/\s+/g, " ").trim(); }
+  function cleanFocus(f) { return String(f || "").replace(/[\u0000-\u001f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80); }
   function cssEsc(s) { return String(s).replace(/["\\]/g, "\\$&"); }
 
   function fmtDur(sec) {
@@ -117,9 +141,22 @@
     try { localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_MAX))); } catch { /* private mode: fine */ }
   }
   function loadThumbsPref() {
+    paintTheme();
     try { thumbsOn = localStorage.getItem(THUMBS_KEY) === "1"; } catch { thumbsOn = false; }
     paintThumbsBtn();
   }
+  function paintTheme() {
+    var dark = document.documentElement.getAttribute("data-theme") === "dark";
+    el.theme.textContent = "DARK: " + (dark ? "ON" : "OFF");
+    el.theme.setAttribute("aria-pressed", String(dark));
+  }
+  el.theme.addEventListener("click", function () {
+    var dark = document.documentElement.getAttribute("data-theme") === "dark";
+    if (dark) document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", "dark");
+    try { localStorage.setItem(THEME_KEY, dark ? "light" : "dark"); } catch { /* fine */ }
+    paintTheme();
+  });
   function paintThumbsBtn() {
     el.thumbs.textContent = "THUMBS: " + (thumbsOn ? "ON" : "OFF");
     el.thumbs.setAttribute("aria-pressed", String(thumbsOn));
@@ -225,6 +262,8 @@
     markSelected();
   }
 
+  function hashFor(id, focus) { return "#/read/" + encodeURIComponent(id) + (focus ? "?f=" + encodeURIComponent(focus) : ""); }
+
   function items() { return Array.prototype.slice.call(document.querySelectorAll("#screen-feed .item")); }
 
   function markSelected() {
@@ -248,7 +287,9 @@
     if (!b) return;
     select(b);
     cameFromFeed = true;
-    location.hash = "#/read/" + encodeURIComponent(b.getAttribute("data-id"));
+    // Opened from a YouTube search: the search words are the focus of the summary.
+    var f = sr && isReal(b.getAttribute("data-id")) ? cleanFocus(sr.q) : "";
+    location.hash = hashFor(b.getAttribute("data-id"), f);
   });
   el.sFeed.addEventListener("mouseover", function (e) {
     var b = e.target.closest ? e.target.closest(".item") : null;
@@ -341,6 +382,8 @@
     el.sGen.hidden = name !== "gen";
     el.sDetail.hidden = name !== "detail";
     el.searchbar.hidden = name !== "feed";
+    el.bar.hidden = name !== "detail";
+    document.body.classList.toggle("has-bar", name === "detail");
     if (name === "feed") {
       window.scrollTo(0, feedScroll);
       var sel = selectedId && document.querySelector('#screen-feed .item[data-id="' + cssEsc(selectedId) + '"]');
@@ -355,14 +398,14 @@
   function entry(text, ai, reason) { return { text: text, ai: ai, reason: reason || "" }; }
 
   // Gemini route: one call returns all three levels (or the channel's description when AI can't run). Never rejects.
-  function fetchSummary(v) {
+  function fetchSummary(v, focus) {
     var fail = function (reason) {
       var t = "WE COULD NOT GET A SUMMARY (" + reason + "). YOU CAN WATCH THE VIDEO ON YOUTUBE OR PASTE ITS TRANSCRIPT BELOW.";
       var levels = {};
       LEVELS.forEach(function (l) { levels[l] = entry(t, false, reason); });
       return { kind: "error", levels: levels, reason: reason };
     };
-    return timeoutFetch(API + "/summary?id=" + encodeURIComponent(v.id), { headers: { Accept: "application/json" } }, SUMMARY_TIMEOUT_MS)
+    return timeoutFetch(API + "/summary?id=" + encodeURIComponent(v.id) + (focus ? "&focus=" + encodeURIComponent(focus) : ""), { headers: { Accept: "application/json" } }, SUMMARY_TIMEOUT_MS)
       .then(function (res) {
         return res.json().then(function (body) { return { status: res.status, body: body || {} }; }, function () { return { status: res.status, body: {} }; });
       })
@@ -376,8 +419,8 @@
           var ai = b.source === "gemini";
           var levels = {};
           LEVELS.forEach(function (l) { levels[l] = entry(lv[l], ai, b.reason); });
-          var s = { kind: ai ? "gemini" : "description", reason: String(b.reason || ""), levels: levels };
-          sum[v.id] = s;
+          var s = { kind: ai ? "gemini" : "description", reason: String(b.reason || ""), levels: levels, focus: focus || "", covered: b.covered !== false };
+          sum[skey(v.id, focus)] = s;
           return s;
         }
         if (r.status === 404) return fail("VIDEO NOT FOUND OR NOT PUBLIC");
@@ -428,6 +471,7 @@
   }
 
   function labelFor(s, e) {
+    if (s.kind === "gemini" && s.focus) return s.covered ? "AI SUMMARY BY GEMINI, FOCUSED ON YOUR SEARCH. NOT FROM YOUTUBE. CAN BE WRONG." : "AI CHECK BY GEMINI. THE VIDEO DOES NOT ADDRESS YOUR FOCUS. NOT FROM YOUTUBE. CAN BE WRONG.";
     if (s.kind === "gemini") return "AI SUMMARY BY GEMINI. NOT FROM YOUTUBE. CAN BE WRONG.";
     if (s.kind === "description") return "VIDEO DESCRIPTION FROM THE CHANNEL, NOT A SUMMARY (" + (REASONS[s.reason] || "AI SUMMARY NOT AVAILABLE") + ")";
     if (s.kind === "groq") {
@@ -455,6 +499,17 @@
     el.dLevel.textContent = "DETAIL " + (i + 1) + "/3: " + LEVEL_LABEL[level];
     el.dText.textContent = e.text;
     el.dSrc.textContent = labelFor(s, e);
+    el.barLevel.textContent = "[" + LEVEL_LABEL[level] + "]\n" + (i + 1) + "/3";
+    var real = isReal(v.id);
+    var f = current ? current.focus : "";
+    el.focus.hidden = !real;
+    el.focusText.textContent = f ? "FOCUS: " + f : "FOCUS: GENERAL SUMMARY";
+    el.focusEdit.textContent = f ? "EDIT" : "SET FOCUS";
+    el.focusClear.hidden = !f;
+    el.focusForm.hidden = true;
+    el.focusLine.hidden = false;
+    el.barRow2.hidden = !real;
+    if (real) el.barWatch.href = WATCH_URL + encodeURIComponent(v.id);
     el.less.disabled = i === 0;
     el.more.disabled = i === LEVELS.length - 1;
     el.less.setAttribute("aria-disabled", String(i === 0));
@@ -474,10 +529,14 @@
     opts = opts || {};
     var my = ++token;
     clearTimeout(stageTimer);
-    current = { id: id, level: level };
+    var focus = isReal(id) ? cleanFocus(opts.focus) : "";
+    var sameVideo = current && current.id === id;
+    current = { id: id, level: level, focus: focus };
+    if (!sameVideo) { renderAsk(id); el.askPanel.hidden = !(asks[id] && asks[id].length); el.askMsg.textContent = ASK_HELP; }
     pushRecent(v);
     closePaste();
-    var s = sum[id];
+    var k = skey(id, focus);
+    var s = sum[k];
     if (s && s.levels[level]) {
       paintDetail(v, s, level);
       show("detail");
@@ -489,7 +548,7 @@
     var real = isReal(id) && !s;
     el.genStep.textContent = "STEP 1 OF 2";
     el.genText.firstChild.nodeValue = real ? "OPENING THE VIDEO..." : "READING TRANSCRIPT...";
-    el.genNote.textContent = real ? "AI IS WATCHING IT FOR YOU. THIS CAN TAKE UP TO 30 SECONDS." : "";
+    el.genNote.textContent = real ? (focus ? "LOOKING FOR: " + focus + ". " : "") + "AI IS WATCHING IT FOR YOU. THIS CAN TAKE UP TO 30 SECONDS." : "";
     show("gen");
     var started = Date.now();
     stageTimer = setTimeout(function () {
@@ -499,10 +558,10 @@
     }, real ? 4000 : 300);
 
     var work;
-    if (real) work = fetchSummary(v);
+    if (real) work = fetchSummary(v, focus);
     else {
       if (!s) {
-        s = sum[id] = { kind: "groq", pasted: false, levels: {}, transcript: v.transcript || "", preset: v.summaries || null };
+        s = sum[k] = { kind: "groq", pasted: false, levels: {}, transcript: v.transcript || "", preset: v.summaries || null };
       }
       work = groqLevel(v, s, level);
     }
@@ -522,11 +581,13 @@
     if (!current) return;
     var i = LEVELS.indexOf(current.level) + delta;
     if (i < 0 || i >= LEVELS.length) return;
-    read(current.id, LEVELS[i], { keepFocus: true });
+    read(current.id, LEVELS[i], { keepFocus: true, focus: current.focus });
   }
 
   function forgetPasted() {
-    if (current && sum[current.id] && sum[current.id].pasted) delete sum[current.id]; // pasted text never outlives the screen
+    if (!current) return;
+    var k = skey(current.id, current.focus);
+    if (sum[k] && sum[k].pasted) delete sum[k]; // pasted text never outlives the screen
   }
 
   function back() {
@@ -554,9 +615,77 @@
       return;
     }
     if (!current) return;
-    sum[current.id] = { kind: "groq", pasted: true, levels: {}, transcript: text.slice(0, 9000) };
+    sum[skey(current.id, current.focus)] = { kind: "groq", pasted: true, levels: {}, transcript: text.slice(0, 9000) };
     el.pasteText.value = "";
-    read(current.id, "standard");
+    read(current.id, "standard", { focus: current.focus });
+  });
+
+  /* ---------- focus: what the reader wants from this video ---------- */
+  function applyFocus(f) {
+    if (!current) return;
+    f = cleanFocus(f);
+    var id = current.id;
+    try { history.replaceState(null, "", hashFor(id, f)); } catch { /* fine */ }
+    read(id, current.level, { focus: f });
+  }
+  el.focusEdit.addEventListener("click", function () {
+    el.focusInput.value = current ? current.focus : "";
+    el.focusForm.hidden = false;
+    el.focusLine.hidden = true;
+    el.focusInput.focus();
+  });
+  el.focusClear.addEventListener("click", function () { applyFocus(""); });
+  el.focusCancel.addEventListener("click", function () { el.focusForm.hidden = true; el.focusLine.hidden = false; el.focusEdit.focus(); });
+  el.focusForm.addEventListener("submit", function (e) { e.preventDefault(); applyFocus(el.focusInput.value); });
+
+  /* ---------- ask this video ---------- */
+  var askBusy = false;
+  function renderAsk(id) {
+    el.askLog.textContent = "";
+    (asks[id] || []).forEach(function (t) {
+      var d = node("div", "turn");
+      d.appendChild(node("p", "tq", "Q: " + t.q));
+      d.appendChild(node("p", "ta", t.a));
+      if (!t.answered) d.appendChild(node("p", "tt", "THE VIDEO DOES NOT ANSWER THIS."));
+      else if (t.ts && t.ts.length) d.appendChild(node("p", "tt", "AROUND " + t.ts.join(", ")));
+      el.askLog.appendChild(d);
+    });
+  }
+  el.barAsk.addEventListener("click", function () {
+    el.askPanel.hidden = false;
+    el.askQ.focus();
+  });
+  el.askForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (askBusy || !current || !isReal(current.id)) return;
+    var q = el.askQ.value.replace(/[\u0000-\u001f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
+    if (q.length < ASK_MIN) { el.askMsg.textContent = "TYPE A QUESTION FIRST."; el.askQ.focus(); return; }
+    var id = current.id;
+    var past = (asks[id] || []).slice(-2).map(function (t) { return { q: t.q, a: t.a }; });
+    askBusy = true;
+    el.askGo.disabled = true;
+    el.askMsg.textContent = "ASKING THE VIDEO... THIS CAN TAKE UP TO 30 SECONDS.";
+    var fail = function (reason) { el.askMsg.textContent = "NO ANSWER (" + reason + ")."; };
+    timeoutFetch(API + "/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ id: id, q: q, history: past })
+    }, ASK_TIMEOUT_MS).then(function (res) {
+      return res.json().then(function (b) { return { status: res.status, body: b || {} }; }, function () { return { status: res.status, body: {} }; });
+    }).then(function (r) {
+      if (r.status === 200 && r.body.ok && typeof r.body.answer === "string") {
+        asks[id] = (asks[id] || []).concat([{ q: q, a: r.body.answer, answered: r.body.answered !== false, ts: Array.isArray(r.body.timestamps) ? r.body.timestamps : [] }]).slice(-ASK_TURNS_KEPT);
+        if (current && current.id === id) renderAsk(id);
+        el.askQ.value = "";
+        el.askMsg.textContent = "AI ANSWER FROM THE VIDEO BY GEMINI. NOT FROM YOUTUBE. CAN BE WRONG.";
+      } else if (r.status === 200 && r.body.ok === false) fail(ASK_REASONS[r.body.reason] || "AI COULD NOT ANSWER");
+      else if (r.status === 429) fail(ASK_REASONS.ip_rate);
+      else if (r.status === 404) fail("VIDEO NOT FOUND OR NOT PUBLIC");
+      else fail("ASK IS NOT AVAILABLE RIGHT NOW");
+    }).catch(function () { fail("OFFLINE OR TOO SLOW"); }).then(function () {
+      askBusy = false;
+      el.askGo.disabled = false;
+    });
   });
 
   document.addEventListener("keydown", function (e) {
@@ -576,11 +705,13 @@
 
   /* ---------- routing ---------- */
   function route() {
-    var m = /^#\/read\/([^/?]+)/.exec(location.hash);
+    var m = /^#\/read\/([^/?]+)(?:\?f=([^&]*))?/.exec(location.hash);
     if (m) {
       var id = decodeURIComponent(m[1]);
+      var f = "";
+      try { f = m[2] ? decodeURIComponent(m[2]) : ""; } catch { f = ""; }
       if (current && current.id === id && screen !== "feed") return;
-      read(id, "standard");
+      read(id, "standard", { focus: f });
       return;
     }
     token++;
