@@ -1,9 +1,10 @@
 /*
  * IKOREADTUBE data module.
- * The whole app reads videos ONLY through window.IkoData.loadVideos().
- * To use real data, replace the body of loadVideos() (fetch your own JSON, a feed, etc.) and keep this shape:
- *   { id, title, channel, thumb (optional url or ""), transcript (optional text the proxy can summarize),
- *     summaries: { less, standard, more } }   <- summaries are the offline fallback
+ * The whole app reads videos ONLY through window.IkoData.loadVideos(), which resolves to
+ *   { source: "youtube" | "sample", videos: [...] }
+ * "youtube": the server feed (GET /api/ikoreadtube/feed, YouTube Data API v3): { id, title, channel, published, duration }.
+ * "sample": the built-in demo videos below, used when the feed is unreachable, over quota, or not configured
+ *   (for example the static PHP/GoDaddy build). Samples also carry { thumb, transcript, summaries: { less, standard, more } }.
  * Everything below is ORIGINAL sample text written for this demo. The channels are made up.
  * No real video, channel or transcript is used or implied.
  */
@@ -133,10 +134,38 @@
     }
   ];
 
+  var SAMPLE_IDS = {};
+  SAMPLES.forEach(function (v) { SAMPLE_IDS[v.id] = true; });
+
+  var API = (window.IKOREADTUBE_API || "/api/ikoreadtube").replace(/\/$/, "");
+
+  function samples(reason) {
+    return { source: "sample", reason: reason || "", videos: SAMPLES.slice() };
+  }
+
   window.IkoData = {
-    /** The single place the app gets videos from. Return a Promise of an array. */
-    loadVideos: function () {
-      return Promise.resolve(SAMPLES.slice());
+    api: API,
+    isSample: function (id) { return SAMPLE_IDS[id] === true; },
+    sampleVideos: function () { return SAMPLES.slice(); },
+    /** The single place the app gets videos from. Never rejects: any failure resolves to the samples. */
+    loadVideos: function (timeoutMs) {
+      if (typeof fetch !== "function") return Promise.resolve(samples("NO FETCH"));
+      var ctrl = typeof AbortController === "function" ? new AbortController() : null;
+      var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, timeoutMs || 20000);
+      return fetch(API + "/feed", { headers: { Accept: "application/json" }, signal: ctrl ? ctrl.signal : undefined })
+        .then(function (res) {
+          if (!res.ok) throw new Error("status " + res.status);
+          return res.json();
+        })
+        .then(function (data) {
+          var list = data && Array.isArray(data.videos) ? data.videos.filter(function (v) {
+            return v && typeof v.id === "string" && typeof v.title === "string";
+          }) : [];
+          if (!list.length) throw new Error("empty");
+          return { source: "youtube", reason: "", videos: list };
+        })
+        .catch(function () { return samples("YOUTUBE FEED IS NOT AVAILABLE"); })
+        .then(function (r) { clearTimeout(timer); return r; });
     }
   };
 })();

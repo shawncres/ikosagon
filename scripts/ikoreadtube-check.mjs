@@ -5,6 +5,13 @@ import vm from "node:vm";
 import {
   LIMITS, parseInput, buildMessages, cleanSummary, createLimiter, handleSummarize, originOk, corsHeaders, estimateTokens, SYSTEM_PROMPT,
 } from "../lib/ikoreadtube/summarize.ts";
+import {
+  YT_LIMITS, YouTubeError, parseDuration, uploadsPlaylist, fetchFeed, cleanQuery, isVideoId, createTtlCache, resolveChannels,
+} from "../lib/ikoreadtube/youtube.ts";
+import { GEMINI_LIMITS, GEMINI_SYSTEM, GEMINI_PROMPT, buildGeminiBody, parseLevels, summarizeVideoWithGemini } from "../lib/ikoreadtube/gemini.ts";
+import {
+  createFeedState, createSearchState, createSummaryState, handleFeed, handleSearch, handleVideoSummary, excerpt, createRateLimiter, quotaStats, searchBudgetLeft,
+} from "../lib/ikoreadtube/service.ts";
 
 let pass = 0;
 const fails = [];
@@ -105,7 +112,7 @@ ok(/untrusted/.test(SYSTEM_PROMPT), "prompt-injection guard present");
 
 // ---- static assets ----
 const dir = "public/ikoreadtube";
-for (const f of ["index.html", "styles.css", "app.js", "data.js", "README.md", "api/summarize.php", "api/config.sample.php", "api/.htaccess"]) ok(fs.existsSync(`${dir}/${f}`), `file exists: ${f}`);
+for (const f of ["index.html", "styles.css", "app.js", "data.js", "privacy.html", "README.md", "api/summarize.php", "api/config.sample.php", "api/.htaccess"]) ok(fs.existsSync(`${dir}/${f}`), `file exists: ${f}`);
 const html = fs.readFileSync(`${dir}/index.html`, "utf8");
 const css = fs.readFileSync(`${dir}/styles.css`, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 const js = fs.readFileSync(`${dir}/app.js`, "utf8");
@@ -130,7 +137,9 @@ ok(/localStorage/.test(js) && /RECENT_MAX = 8/.test(js), "recently read uses loc
 
 const ctx = { window: {} };
 vm.runInNewContext(fs.readFileSync(`${dir}/data.js`, "utf8"), ctx);
-const vids = await ctx.window.IkoData.loadVideos();
+const loaded = await ctx.window.IkoData.loadVideos();
+ok(loaded.source === "sample", "without a feed the page falls back to samples");
+const vids = loaded.videos;
 ok(vids.length >= 6 && vids.length <= 8, "6-8 sample videos", String(vids.length));
 ok(new Set(vids.map((v) => v.id)).size === vids.length && vids.every((v) => /^[A-Za-z0-9_-]{11}$/.test(v.id)), "unique 11-char ids");
 ok(vids.every((v) => v.title && v.channel && v.transcript && v.transcript.length >= LIMITS.transcriptMinChars && v.transcript.length <= LIMITS.transcriptChars), "every sample has title, channel and an in-limits transcript");
@@ -138,6 +147,280 @@ ok(vids.every((v) => ["less", "standard", "more"].every((k) => typeof v.summarie
 ok(vids.every((v) => v.summaries.less.length < v.summaries.standard.length && v.summaries.standard.length < v.summaries.more.length), "summary detail grows less < standard < more");
 ok(vids.every((v) => !v.thumb || fs.existsSync(`${dir}/${v.thumb}`)), "thumbnails exist locally");
 ok(vids.every((v) => !/https?:\/\//.test(JSON.stringify(v))), "no external URLs in sample data");
+
+// ============ real YouTube + Gemini (all mocked, no network) ============
+const YT_KEY = "YT-SECRET-KEY-123";
+const GEM_KEY = "GEM-SECRET-KEY-456";
+const cid = (n) => "UC" + String(n).repeat(22);
+const vid = (c, j) => `v${c}${j}`.padEnd(11, "_");
+const NOW = Date.parse("2026-10-15T18:00:00Z");
+const iso = (daysAgo) => new Date(NOW - daysAgo * 86_400_000).toISOString();
+const json = (status, body) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
+
+// Mock Data API: 4 uploads per channel; j=3 is a 30 s Short, j=2 of channel 2 is a live stream; channel 3 has 5 normal ones.
+function makeYt(opts = {}) {
+  const calls = [];
+  const fn = async (url, init = {}) => {
+    const u = new URL(url);
+    calls.push({ path: u.pathname.replace("/youtube/v3/", ""), params: Object.fromEntries(u.searchParams), headers: init.headers || {}, url: String(url) });
+    const path = u.pathname.replace("/youtube/v3/", "");
+    if (opts.fail && opts.fail(path, u)) return opts.fail(path, u);
+    if (path === "channels") return json(200, { items: [{ id: cid(7) }] });
+    if (path === "playlistItems") {
+      const c = u.searchParams.get("playlistId").slice(2, 3);
+      if (c === "9") return json(500, {});
+      return json(200, { items: [0, 1, 2, 3, 4].map((j) => ({ contentDetails: { videoId: vid(c, j) } })) });
+    }
+    if (path === "search") return json(200, { items: [{ id: { videoId: vid("s", 0) } }, { id: { videoId: vid("s", 1) } }] });
+    if (path === "videos") {
+      const ids = u.searchParams.get("id").split(",");
+      return json(200, {
+        items: ids.filter((id) => !(opts.missing || []).includes(id)).map((id) => {
+          const c = id[1], j = Number(id[2]);
+          const short = j === 3 || opts.duration?.[id] === "PT30S";
+          return {
+            id,
+            snippet: { title: `Title ${id}`, channelTitle: `Channel ${c}`, publishedAt: iso((Number(c) || c.charCodeAt(0) % 20) + j), description: opts.desc?.[id] ?? `Description for ${id}.\nSecond line.`, liveBroadcastContent: c === "2" && j === 2 ? "live" : opts.live?.includes(id) ? "live" : "none" },
+            contentDetails: { duration: opts.duration?.[id] ?? (short ? "PT30S" : "PT10M30S") },
+            status: { privacyStatus: opts.privacy?.[id] ?? "public" },
+          };
+        }),
+      });
+    }
+    return json(404, {});
+  };
+  fn.calls = calls;
+  return fn;
+}
+
+eq([parseDuration("PT1H2M3S"), parseDuration("PT45S"), parseDuration("PT10M"), parseDuration("P1DT1H"), parseDuration("bad"), parseDuration(undefined)], [3723, 45, 600, 90000, 0, 0], "ISO 8601 durations parse");
+eq(uploadsPlaylist(cid(1)), "UU" + "1".repeat(22), "uploads playlist id = UC -> UU");
+ok(uploadsPlaylist("nope") === null, "bad channel id has no playlist");
+ok(isVideoId("tidepool001") && !isVideoId("short") && !isVideoId("../../etc/pas") && !isVideoId(null), "video id validation");
+eq(cleanQuery("  hello\u0000   world \n"), "hello world", "query cleaned");
+ok(cleanQuery("x".repeat(500)).length === YT_LIMITS.queryMax, "query capped");
+
+const chans = [{ handle: "@a", category: "tech", id: cid(1) }, { handle: "@b", category: "science", id: cid(2) }, { handle: "@c", category: "news", id: cid(3) }, { handle: "@broken", category: "news", id: cid(9) }];
+const yt1 = makeYt();
+const feed = await fetchFeed(YT_KEY, yt1, NOW, chans);
+ok(yt1.calls.filter((c) => c.path === "playlistItems").length === 4 && yt1.calls.filter((c) => c.path === "videos").length === 1 && !yt1.calls.some((c) => c.path === "channels" || c.path === "search"), "feed = 1 playlistItems per channel + batched videos.list, no search, no channel lookups when ids are known");
+ok(yt1.calls.every((c) => c.headers["x-goog-api-key"] === YT_KEY && !c.url.includes(YT_KEY)), "API key is sent in a header, never in the URL");
+ok(yt1.calls.filter((c) => c.path === "playlistItems").every((c) => c.params.part === "contentDetails" && Number(c.params.maxResults) === YT_LIMITS.perChannel), "playlistItems asks for contentDetails only");
+ok(feed.every((v) => v.duration >= YT_LIMITS.minSeconds), "Shorts-length clips dropped");
+ok(!feed.some((v) => v.id === vid("2", 2)), "live streams dropped");
+ok(feed.length > 3 && feed.slice(0, 3).every((v, i, a) => i === 0 || Date.parse(a[i - 1].published) >= Date.parse(v.published)), "within a round, newest first");
+ok(new Set(feed.slice(0, 3).map((v) => v.channel)).size === 3, "round-robin: first items come from different channels");
+ok(Object.values(feed.reduce((a, v) => ((a[v.channel] = (a[v.channel] || 0) + 1), a), {})).every((n) => n <= YT_LIMITS.shownPerChannel), "at most 2 per channel");
+ok(feed.length > 0 && feed.every((v) => v.id && v.title && v.channel && v.published && v.duration === 630) && !feed.some((v) => v.channel === "Channel 9"), "items carry real title/channel/published/duration; a failing channel is skipped");
+eq(Object.keys(feed[0]).sort(), ["channel", "duration", "id", "published", "title"], "feed items expose only id/title/channel/published/duration");
+const ytQuota = makeYt({ fail: (p) => (p === "playlistItems" ? json(403, { error: { errors: [{ reason: "quotaExceeded" }] } }) : null) });
+let qerr = null;
+try { await fetchFeed(YT_KEY, ytQuota, NOW, chans); } catch (e) { qerr = e; }
+ok(qerr instanceof YouTubeError && qerr.code === "quota", "quotaExceeded -> YouTubeError quota");
+const ytBad = makeYt({ fail: (p) => (p === "playlistItems" ? json(400, { error: { errors: [{ reason: "keyInvalid" }] } }) : null) });
+qerr = null;
+try { await fetchFeed(YT_KEY, ytBad, NOW, chans); } catch (e) { qerr = e; }
+ok(qerr instanceof YouTubeError && qerr.code === "key_rejected", "invalid key -> key_rejected");
+const ytRes = makeYt();
+const resolvedCh = await resolveChannels([{ handle: "@x", category: "tech" }, { handle: "@a", category: "tech", id: cid(1) }], YT_KEY, ytRes, NOW);
+ok(resolvedCh.length === 2 && ytRes.calls.length === 1 && ytRes.calls[0].path === "channels" && ytRes.calls[0].params.forHandle === "@x" && resolvedCh[0].id === cid(7), "channels.list forHandle only for handles without an id");
+await resolveChannels([{ handle: "@x", category: "tech" }], YT_KEY, ytRes, NOW);
+ok(ytRes.calls.length === 1, "resolved channel ids are cached in memory");
+
+const cache = createTtlCache(1000, 2, () => NOW);
+cache.set("a", 1);
+ok(cache.get("a") === 1, "ttl cache hit");
+const cache2 = createTtlCache(1000, 2, (() => { let n = 0; return () => (n += 1200); })());
+cache2.set("a", 1);
+ok(cache2.get("a") === undefined, "ttl cache expires");
+
+// ---- feed route logic ----
+const out = JSON.stringify;
+const noKeyFeed = await handleFeed({ env: {}, state: createFeedState(() => NOW) });
+ok(noKeyFeed.status === 503 && noKeyFeed.body.error === "no_key" && noKeyFeed.headers["Cache-Control"] === "no-store", "feed without YOUTUBE_API_KEY -> 503 no_key (page falls back to samples)");
+const fy = makeYt();
+const fstate = createFeedState(() => NOW);
+const f1 = await handleFeed({ env: { YOUTUBE_API_KEY: YT_KEY }, state: fstate, fetchImpl: fy, now: () => NOW });
+ok(f1.status === 200 && f1.body.source === "youtube" && f1.body.videos.length > 0, "feed success");
+ok(/s-maxage=900/.test(f1.headers["Cache-Control"]) && /stale-while-revalidate/.test(f1.headers["Cache-Control"]), "feed edge cache: s-maxage=900 + stale-while-revalidate");
+ok(!out(f1).includes(YT_KEY), "feed response never contains the API key");
+const callsAfterFirst = fy.calls.length;
+await handleFeed({ env: { YOUTUBE_API_KEY: YT_KEY }, state: fstate, fetchImpl: fy, now: () => NOW });
+ok(fy.calls.length === callsAfterFirst, "second feed request is served from the in-memory cache (0 quota)");
+const fstate2 = createFeedState(() => NOW);
+const failing = makeYt({ fail: () => json(500, {}) });
+const f3 = await handleFeed({ env: { YOUTUBE_API_KEY: YT_KEY }, state: fstate2, fetchImpl: makeYt({ fail: (p) => (p === "playlistItems" ? json(403, { error: { errors: [{ reason: "quotaExceeded" }] } }) : null) }), now: () => NOW });
+ok(f3.status === 503 && f3.body.error === "quota", "quota failure -> 503 (no last good copy)");
+fstate2.last = { videos: f1.body.videos, at: NOW - 1000 };
+const f4 = await handleFeed({ env: { YOUTUBE_API_KEY: YT_KEY }, state: fstate2, fetchImpl: makeYt({ fail: (p) => (p === "playlistItems" ? json(403, { error: { errors: [{ reason: "quotaExceeded" }] } }) : null) }), now: () => NOW });
+ok(f4.status === 200 && f4.body.stale === true && f4.body.videos.length === f1.body.videos.length, "quota failure with a previous copy -> serves it marked stale");
+void failing;
+
+// ---- search route logic ----
+const sNow = NOW;
+const sstate = createSearchState(() => sNow);
+const sy = makeYt();
+ok((await handleSearch({ q: "a", ip: "1.1.1.1", env: { YOUTUBE_API_KEY: YT_KEY }, state: sstate, fetchImpl: sy, now: () => sNow })).status === 400, "too-short search -> 400");
+ok((await handleSearch({ q: "tides", ip: "1.1.1.1", env: {}, state: sstate, fetchImpl: sy, now: () => sNow })).status === 503, "search without key -> 503");
+searchBudgetLeft(sNow);
+quotaStats.searches = 0;
+const s1 = await handleSearch({ q: "Tide pools", ip: "1.1.1.1", env: { YOUTUBE_API_KEY: YT_KEY }, state: sstate, fetchImpl: sy, now: () => sNow });
+ok(s1.status === 200 && s1.body.videos.length === 2 && /s-maxage=3600/.test(s1.headers["Cache-Control"]), "search success, cached 1 h at the edge (far below the 30 day limit)");
+ok(sy.calls[0].path === "search" && sy.calls[0].params.type === "video" && sy.calls[0].params.q === "Tide pools" && sy.calls[1].path === "videos", "search.list then videos.list for durations");
+ok(quotaStats.searches === 1, "daily search counter incremented");
+await handleSearch({ q: "tide pools", ip: "1.1.1.1", env: { YOUTUBE_API_KEY: YT_KEY }, state: sstate, fetchImpl: sy, now: () => sNow });
+ok(sy.calls.length === 2 && quotaStats.searches === 1, "repeat query (any case) served from cache, no extra search.list call");
+quotaStats.searches = YT_LIMITS.searchDailyCap;
+const s3 = await handleSearch({ q: "another one", ip: "2.2.2.2", env: { YOUTUBE_API_KEY: YT_KEY }, state: sstate, fetchImpl: sy, now: () => sNow });
+ok(s3.status === 429 && s3.body.error === "limit" && sy.calls.length === 2, "daily cap reached -> graceful 'limit' answer without calling YouTube");
+quotaStats.searches = 0;
+const s4 = await handleSearch({ q: "quota query", ip: "3.3.3.3", env: { YOUTUBE_API_KEY: YT_KEY }, state: sstate, fetchImpl: makeYt({ fail: (p) => (p === "search" ? json(403, { error: { errors: [{ reason: "quotaExceeded" }] } }) : null) }), now: () => sNow });
+ok(s4.status === 429 && s4.body.error === "limit", "Google quotaExceeded on search -> same graceful 'limit' answer");
+quotaStats.searches = 0;
+let lastS;
+for (let i = 0; i < 7; i += 1) lastS = await handleSearch({ q: `query ${i}`, ip: "4.4.4.4", env: { YOUTUBE_API_KEY: YT_KEY }, state: sstate, fetchImpl: sy, now: () => sNow });
+ok(lastS.status === 429 && lastS.body.error === "ip_rate" && Number(lastS.headers["Retry-After"]) > 0, "per-IP search rate limit");
+ok(!out(s1).includes(YT_KEY), "search response never contains the API key");
+
+// ---- Gemini ----
+const LEVELS_JSON = { less: "A short take on the video.", standard: "A paragraph that explains the main idea in other words, clearly.", more: "First paragraph of detail.\n\nSecond paragraph with the key points and steps." };
+const geminiOk = (text = JSON.stringify(LEVELS_JSON), extra = {}) => json(200, { candidates: [{ content: { parts: [{ text }] }, finishReason: "STOP" }], usageMetadata: { promptTokenCount: 6000, candidatesTokenCount: 300, totalTokenCount: 6300 }, ...extra });
+function makeGem(handler) {
+  const calls = [];
+  const fn = async (url, init) => { calls.push({ url: String(url), init, body: JSON.parse(init.body) }); return handler(calls.length, String(url)); };
+  fn.calls = calls;
+  return fn;
+}
+// combined fetch: YouTube mock + Gemini mock
+const combo = (yt, gem) => async (url, init) => (String(url).includes("generativelanguage") ? gem(url, init) : yt(url, init));
+const body0 = buildGeminiBody("abcdefghijk");
+ok(body0.contents[0].parts[0].file_data.file_uri === "https://www.youtube.com/watch?v=abcdefghijk", "Gemini request carries the YouTube URL as file_data.file_uri");
+ok(body0.contents[0].parts.length === 2 && body0.contents[0].parts[1].text === GEMINI_PROMPT, "video part first, text prompt second");
+ok(body0.generationConfig.responseMimeType === "application/json" && body0.generationConfig.responseSchema.required.join() === "less,standard,more", "one call returns all three levels as JSON");
+ok(/own words/.test(GEMINI_SYSTEM) && /Never reproduce the transcript/i.test(GEMINI_SYSTEM) && /untrusted/.test(GEMINI_SYSTEM) && /Plain text only/.test(GEMINI_SYSTEM), "Gemini prompt: own words, no transcript copying, injection guard, plain text");
+ok(!JSON.stringify(body0).includes("Description for"), "no YouTube API data (title/description) is fed to the LLM");
+eq(parseLevels("```json\n" + JSON.stringify(LEVELS_JSON) + "\n```"), LEVELS_JSON, "parseLevels accepts fenced JSON");
+ok(parseLevels(JSON.stringify({ less: "x", standard: "y" })) === null && parseLevels("not json") === null && parseLevels("") === null, "parseLevels rejects incomplete/invalid output");
+eq(parseLevels(JSON.stringify({ less: "**Bold** take on it.", standard: "- bullet one is here ok", more: "More text here for the third level." })).less, "Bold take on it.", "parseLevels strips markdown");
+ok(parseLevels(JSON.stringify({ less: "word ".repeat(200), standard: "word ".repeat(300), more: "word ".repeat(600) })).less.length <= GEMINI_LIMITS.levelChars.less + 3, "levels are length-capped");
+
+const direct = makeGem(() => geminiOk());
+const gd = await summarizeVideoWithGemini("abcdefghijk", { GEMINI_API_KEY: GEM_KEY }, direct);
+ok(gd.ok && gd.model === "gemini-3.5-flash-lite" && direct.calls[0].url.includes("/models/gemini-3.5-flash-lite:generateContent") && direct.calls[0].init.headers["x-goog-api-key"] === GEM_KEY && !direct.calls[0].url.includes(GEM_KEY), "Gemini call: default free-tier lite model, key in header only");
+ok(gd.usage?.promptTokens === 6000, "token usage reported");
+ok((await summarizeVideoWithGemini("abcdefghijk", {}, direct)).code === "no_key", "no Gemini key -> no_key");
+const fb = makeGem((n) => (n === 1 ? json(503, {}) : geminiOk()));
+const gfb = await summarizeVideoWithGemini("abcdefghijk", { GEMINI_API_KEY: GEM_KEY }, fb);
+ok(gfb.ok && fb.calls.length === 2 && fb.calls[1].url.includes("gemini-3.1-flash-lite"), "503 on the first model retries once on the fallback model");
+ok((await summarizeVideoWithGemini("abcdefghijk", { GEMINI_API_KEY: GEM_KEY }, makeGem(() => json(429, {})))).code === "busy", "Gemini 429 -> busy");
+ok((await summarizeVideoWithGemini("abcdefghijk", { GEMINI_API_KEY: GEM_KEY }, makeGem(() => geminiOk("garbage")))).code === "empty", "unparseable answer -> empty");
+ok((await summarizeVideoWithGemini("abcdefghijk", { GEMINI_API_KEY: GEM_KEY }, async () => { throw new Error("net"); })).code === "upstream", "network error -> upstream");
+const abort = async () => { const e = new Error("aborted"); e.name = "AbortError"; throw e; };
+ok((await summarizeVideoWithGemini("abcdefghijk", { GEMINI_API_KEY: GEM_KEY }, abort)).code === "timeout", "abort -> timeout");
+ok((await summarizeVideoWithGemini("abcdefghijk", { GEMINI_API_KEY: GEM_KEY, GEMINI_MODEL: "models/gemini-2.5-flash" }, direct)).model === "gemini-2.5-flash", "GEMINI_MODEL override");
+
+// ---- summary route logic ----
+const ENV = { YOUTUBE_API_KEY: YT_KEY, GEMINI_API_KEY: GEM_KEY };
+const ID1 = "v11aaaaaaaa";
+const sum = (over = {}) => handleVideoSummary({ id: ID1, ip: "5.5.5.5", env: ENV, state: createSummaryState(() => NOW), now: () => NOW, ...over });
+ok((await sum({ id: "bad" })).status === 400 && (await sum({ id: undefined })).status === 400, "bad video id -> 400");
+ok((await sum({ env: { GEMINI_API_KEY: GEM_KEY } })).status === 503, "summary without YOUTUBE_API_KEY -> 503");
+const g1 = makeGem(() => geminiOk());
+const y1 = makeYt({ desc: { [ID1]: "Channel description line one.\nLine two with more words." } });
+const sstate1 = createSummaryState(() => NOW);
+const r1 = await sum({ state: sstate1, fetchImpl: combo(y1, g1) });
+ok(r1.status === 200 && r1.body.source === "gemini" && eq(Object.keys(r1.body.levels), ["less", "standard", "more"], "levels keys") !== false, "summary success from Gemini");
+eq(r1.body.levels, LEVELS_JSON, "all three levels returned as plain text");
+ok(/s-maxage=86400/.test(r1.headers["Cache-Control"]) && /stale-while-revalidate=604800/.test(r1.headers["Cache-Control"]), "Gemini summary: long CDN cache (s-maxage 1 day, SWR 7 days)");
+ok(!out(r1).includes(YT_KEY) && !out(r1).includes(GEM_KEY), "summary response never contains API keys");
+ok(g1.calls.length === 1 && g1.calls[0].body.contents[0].parts[0].file_data.file_uri.endsWith(ID1), "exactly one Gemini call for all three levels");
+const r1b = await sum({ state: sstate1, fetchImpl: combo(y1, g1) });
+ok(r1b.status === 200 && g1.calls.length === 1 && r1b.body.source === "gemini", "second request served from the id cache (no new Gemini or YouTube call)");
+
+const gFail = makeGem(() => geminiOk("not json"));
+const r2 = await sum({ fetchImpl: combo(makeYt({ desc: { [ID1]: "Channel description line one.\nLine two with more words." } }), gFail) });
+ok(r2.status === 200 && r2.body.source === "description" && r2.body.reason === "failed" && /s-maxage=300/.test(r2.headers["Cache-Control"]), "bad Gemini output -> description fallback, short cache");
+ok(r2.body.levels.standard === "Channel description line one.\nLine two with more words.", "fallback shows the description as-is (no rewrite)");
+const r3 = await sum({ env: { YOUTUBE_API_KEY: YT_KEY }, fetchImpl: combo(makeYt(), makeGem(() => geminiOk())) });
+ok(r3.body.source === "description" && r3.body.reason === "off", "no Gemini key -> description with reason 'off'");
+const gNever = makeGem(() => geminiOk());
+const r4 = await sum({ fetchImpl: combo(makeYt({ duration: { [ID1]: "PT1H" } }), gNever) });
+ok(r4.body.reason === "long" && gNever.calls.length === 0, "over 40 min -> description, Gemini not called");
+ok((await sum({ fetchImpl: combo(makeYt({ live: [ID1] }), gNever) })).body.reason === "live" && gNever.calls.length === 0, "live video -> description, Gemini not called");
+ok((await sum({ fetchImpl: combo(makeYt({ duration: { [ID1]: "PT10S" } }), gNever) })).body.reason === "short" && gNever.calls.length === 0, "very short video -> description");
+ok((await sum({ env: { ...ENV, GEMINI_DAILY_VIDEO_SECONDS: "100" }, fetchImpl: combo(makeYt(), gNever) })).body.reason === "budget" && gNever.calls.length === 0, "daily video-seconds budget guard stops Gemini calls");
+const bstate = createSummaryState(() => NOW);
+const gB = makeGem(() => geminiOk());
+await sum({ state: bstate, env: { ...ENV, GEMINI_DAILY_VIDEO_SECONDS: "1000" }, fetchImpl: combo(makeYt(), gB) });
+const rb2 = await sum({ id: "v14bbbbbbbb", state: bstate, env: { ...ENV, GEMINI_DAILY_VIDEO_SECONDS: "1000" }, fetchImpl: combo(makeYt(), gB) });
+ok(gB.calls.length === 1 && rb2.body.reason === "budget" && bstate.budget.seconds === 630, "budget counts successful video seconds across requests");
+const bstate2 = createSummaryState(() => NOW);
+await sum({ state: bstate2, fetchImpl: combo(makeYt(), makeGem(() => geminiOk("junk"))) });
+ok(bstate2.budget.seconds === 0, "failed Gemini calls do not use up the budget");
+const cstate = createSummaryState(() => NOW);
+const g429 = makeGem(() => json(429, {}));
+const rc = await sum({ state: cstate, fetchImpl: combo(makeYt(), g429) });
+const rc2 = await sum({ id: "v14cccccccc", state: cstate, fetchImpl: combo(makeYt(), g429) });
+ok(rc.body.reason === "busy" && rc2.body.reason === "busy" && g429.calls.length === 1, "Gemini 429 -> description + 60 s cooldown (no hammering)");
+const nf = await sum({ fetchImpl: combo(makeYt({ missing: [ID1] }), makeGem(() => geminiOk())) });
+ok(nf.status === 404 && nf.body.error === "not_found", "unknown video -> 404");
+ok((await sum({ fetchImpl: combo(makeYt({ privacy: { [ID1]: "private" } }), makeGem(() => geminiOk())) })).status === 404, "private video -> 404");
+const gSlow = makeGem(async () => { await new Promise((r) => setTimeout(r, 30)); return geminiOk(); });
+const dstate = createSummaryState(() => NOW);
+const dy = combo(makeYt(), gSlow);
+const [da, db] = await Promise.all([sum({ state: dstate, fetchImpl: dy }), sum({ state: dstate, fetchImpl: dy, ip: "6.6.6.6" })]);
+ok(da.body.source === "gemini" && db.body.source === "gemini" && gSlow.calls.length === 1, "concurrent requests for one video share a single Gemini call");
+const rstate = createSummaryState(() => NOW);
+let rl429;
+for (let i = 0; i < GEMINI_LIMITS.perIpPerMinute + 1; i += 1) rl429 = await sum({ id: String(i).repeat(11), state: rstate, fetchImpl: combo(makeYt(), makeGem(() => geminiOk())) });
+ok(rl429.status === 429 && rl429.body.error === "ip_rate", "per-IP summary rate limit");
+eq(excerpt("  one   two\n\n\n\nthree ", 100), "one two\n\nthree", "excerpt collapses whitespace only");
+ok(excerpt("word ".repeat(100), 50).endsWith("...") && excerpt("word ".repeat(100), 50).length <= 54 && excerpt("", 10) === "", "excerpt cuts on a word boundary");
+const rr = createRateLimiter({ perIpPerMinute: 2, perIpPerHour: 100, globalPerMinute: 3 }, () => NOW);
+ok(rr.check("a").ok && rr.check("a").ok && !rr.check("a").ok && rr.check("b").ok && !rr.check("c").ok, "rate limiter: per-IP and global per-minute");
+
+// ---- channels config ----
+const channelCfg = JSON.parse(fs.readFileSync("lib/ikoreadtube/channels.json", "utf8"));
+ok(channelCfg.length >= 15 && channelCfg.length <= 20, "15-20 curated channels", String(channelCfg.length));
+ok(channelCfg.every((c) => /^@[\w.-]+$/.test(c.handle) && /^UC[\w-]{22}$/.test(c.id) && c.category), "every channel has a handle, a resolved channel id and a category");
+ok(new Set(channelCfg.map((c) => c.id)).size === channelCfg.length, "channel ids unique");
+ok(channelCfg.every((c) => Object.keys(c).sort().join() === "category,handle,id"), "config stores identifiers only (no API titles or text: 30 day storage rule)");
+ok(new Set(channelCfg.map((c) => c.category)).size >= 4, "channels span several categories");
+
+// ---- frontend wiring ----
+const pageMjs = fs.readFileSync(`${dir}/index.html`, "utf8");
+const privacy = fs.readFileSync(`${dir}/privacy.html`, "utf8");
+ok(/https:\/\/www\.youtube\.com\/t\/terms/.test(pageMjs) && /https:\/\/policies\.google\.com\/privacy/.test(pageMjs) && /href="privacy\.html"/.test(pageMjs), "footer links: YouTube ToS, Google Privacy Policy, privacy page");
+ok(/YOUTUBE API SERVICES/.test(pageMjs) && /NOT AFFILIATED/.test(pageMjs), "footer: YouTube attribution + not-affiliated notice");
+ok(/YouTube API Services|YOUTUBE API SERVICES/.test(privacy) && /https:\/\/policies\.google\.com\/privacy/.test(privacy) && /https:\/\/www\.youtube\.com\/t\/terms/.test(privacy) && /NO ACCOUNTS/.test(privacy) && /LOCALSTORAGE/.test(privacy) && /noindex/.test(privacy), "privacy page: API Services, Google policy, YouTube ToS, no accounts, localStorage, noindex");
+ok(/WATCH ON YOUTUBE/.test(js) && /youtube\.com\/watch\?v=/.test(js) && /id="d-watch"/.test(pageMjs) && /rel="noopener noreferrer"/.test(pageMjs), "WATCH ON YOUTUBE link-out on items and detail");
+ok(/var thumbsOn = false/.test(js) && /THUMBS: OFF/.test(pageMjs) && /default\.jpg/.test(js) && !/hqdefault|maxresdefault|mqdefault/.test(js), "thumbnails default OFF; only default.jpg is used");
+ok(/PASTE TRANSCRIPT/.test(pageMjs) && /maxlength="9000"/.test(pageMjs), "paste transcript option present");
+ok(/\.watch\b/.test(css) && /\.ftr\b/.test(css), "styles for watch links and footer");
+ok(!/AIza[0-9A-Za-z_-]{20,}/.test(html + js + fs.readFileSync(`${dir}/data.js`, "utf8") + privacy), "no API key patterns in the static page");
+ok(!/GEMINI_API_KEY|YOUTUBE_API_KEY/.test(html + js + fs.readFileSync(`${dir}/data.js`, "utf8")), "frontend never references the server key names");
+{
+  // No secret value may appear in any source file (checked only when the env vars are set; values are never printed).
+  const secrets = [process.env.YOUTUBE_API_KEY, process.env.GEMINI_API_KEY].filter((v) => v && v.length > 12);
+  const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.name === "node_modules" || e.name === ".next" || e.name === ".git" ? [] : e.isDirectory() ? walk(`${d}/${e.name}`) : [`${d}/${e.name}`]));
+  const files = ["lib", "app", "public", "scripts", "components"].filter((d) => fs.existsSync(d)).flatMap(walk).filter((f) => /\.(ts|tsx|js|mjs|json|html|css|md|php)$/.test(f));
+  const leaked = files.filter((f) => { const c = fs.readFileSync(f, "utf8"); return secrets.some((sv) => c.includes(sv)) || /AIza[0-9A-Za-z_-]{30,}/.test(c); });
+  ok(leaked.length === 0, "no API key value in source files", leaked.join(","));
+}
+{
+  const c2 = { window: {}, setTimeout, clearTimeout };
+  vm.runInNewContext(fs.readFileSync(`${dir}/data.js`, "utf8"), c2);
+  const apiVideos = [{ id: "abcdefghijk", title: "T", channel: "C", published: "2026-10-01T00:00:00Z", duration: 600 }];
+  c2.fetch = async (url) => ({ ok: true, status: 200, json: async () => ({ videos: apiVideos }), url });
+  const rYt = await c2.window.IkoData.loadVideos();
+  ok(rYt.source === "youtube" && rYt.videos.length === 1, "loadVideos uses the server feed when it answers");
+  c2.fetch = async () => ({ ok: false, status: 503, json: async () => ({}) });
+  ok((await c2.window.IkoData.loadVideos()).source === "sample", "feed error -> samples");
+  c2.fetch = async () => { throw new Error("offline"); };
+  ok((await c2.window.IkoData.loadVideos()).source === "sample", "offline -> samples");
+  c2.fetch = async () => ({ ok: true, status: 200, json: async () => ({ videos: [] }) });
+  ok((await c2.window.IkoData.loadVideos()).source === "sample", "empty feed -> samples");
+}
 
 console.log(`ikoreadtube-check: ${pass} passed, ${fails.length} failed`);
 if (fails.length) {
