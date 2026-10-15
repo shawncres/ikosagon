@@ -65,8 +65,8 @@ When `YOUTUBE_API_KEY` is set, the list is a live feed from YouTube; without it 
 
 | Route | What it does | Cost / cache |
 | --- | --- | --- |
-| `GET /api/ikoreadtube/feed` | Data API v3 `playlistItems.list` on the uploads playlist of each channel in `lib/ikoreadtube/channels.json` (about 18), then one batched `videos.list` for duration and live status. Drops Shorts-length and live items, interleaves channels, returns `{id,title,channel,published,duration}` | about 21 quota units per refresh; edge cache `s-maxage=900, stale-while-revalidate` plus a 15 min in-memory copy. At most ~96 refreshes/day = ~2,000 of the 10,000 free units |
-| `GET /api/ikoreadtube/search?q=` | `search.list` + `videos.list`. Triggered only by Enter / the SEARCH YOUTUBE button | search.list has its own 100 calls/day bucket; we stop at 90 and show "limit reached". Cached 1 h per query (policy allows at most 30 days) |
+| `GET /api/ikoreadtube/feed` | Data API v3 `playlistItems.list` on the uploads playlist of each channel in `lib/ikoreadtube/channels.json` (about 18), then one batched `videos.list` for duration and live status. Drops Shorts-length and live items, sorts **newest first across all channels** (max 3 per channel), returns `{fetchedAt, videos:[{id,title,channel,published,duration}]}` | about 21 quota units per refresh; edge cache `s-maxage=300, stale-while-revalidate=300` plus a 5 min in-memory copy. See "Home feed freshness" for the quota math |
+| `GET /api/ikoreadtube/search?q=` | `search.list` + `videos.list`. Triggered only by Enter / the SEARCH YOUTUBE button | **search.list costs 100 units from the same 10,000/day pool** (an older note here said it had its own bucket; it does not). We stop at 30 searches/day (3,000 units) and show "limit reached". Cached 1 h per query (policy allows at most 30 days) |
 | `GET /api/ikoreadtube/summary?id=` | `videos.list` (1 unit) for title, length and description, then ONE Gemini call that reads the public YouTube URL (`file_data.file_uri`) and returns less / standard / more as JSON. The server parses it and returns plain text | cached by video id (memory 7 days, CDN `s-maxage=86400` + 7 days SWR). Daily guard: at most 6 h of video per Pacific day (Google's free tier allows 8 h), videos over 40 min skip AI |
 | `GET /api/ikoreadtube/summary?id=&focus=` | same, with the focus (see below) | cache key includes the normalized focus |
 | `POST /api/ikoreadtube/ask` | one question about one video (see below) | 1 h in-memory cache, per-IP and global limits, shared budget |
@@ -107,6 +107,28 @@ The check script computes these ratios and fails below 7:1 (borders must stay at
 Thumbnails (off by default) and emoji in real titles are the only non-palette pixels in principle; they are tone-mapped into the theme with small inline SVG filters (`#tone-*` in `index.html`): a straight ink-to-paper ramp in LIGHT and DARK, and a 4-shade snap to the DMG green shades in GAMEBOY. Emoji in titles use the two end colours only. Sample 1-bit pictures show their strokes in the ink colour.
 
 **Detail layout.** There is no fixed or sticky bar. Top to bottom: BACK, title, channel, FOCUS line, then **`- LESS  [STANDARD] 2/3  MORE +`** inline (48 px high targets, scrolls with the page), the summary, the ASK section (hidden for the built-in sample videos), PASTE TRANSCRIPT, and last a small underlined **WATCH ON YOUTUBE** text link with a 44 px high hit area.
+
+## Home feed freshness (why a refresh looked the same, and what we changed)
+
+**Root causes.** (1) *Cache stacking:* a 15 min in-memory copy on the server, behind a 15 min edge cache (`s-maxage=900`), plus `stale-while-revalidate=3600`, so a visitor could be shown a list up to ~90 min old and a reload within 15 min was identical by design. (2) *Ordering:* the list was built in rounds (every channel's newest upload first, then every channel's second-newest), so a fresh second upload from a busy channel sat below a months-old "newest" video from a quiet one; the top of the page barely moved when something new was posted. (3) *No client refresh:* the page fetched the list once on load; coming back to the list (the title, BACK) never re-fetched. There is no localStorage/sessionStorage cache of the feed (only recent list, thumbs and theme live there).
+
+**What it does now.**
+- **Freshest first:** the list is strictly newest to oldest across all channels, at most 3 per channel, 36 items; the home screen shows 24: the 12 newest are always pinned on top and the other 12 slots are a random draw from the next-newest ones (shown newest first). So a refresh "feels alive" with zero extra quota (the whole pool arrives in the same response).
+- **Shorter cache:** edge `s-maxage=300, stale-while-revalidate=300` and a 5 min in-memory copy: a visitor sees data at most ~10 min old, usually under 5.
+- **REFRESH button** (under "NEW FROM YOUTUBE") next to a line like `UPDATED 4:41 PM (3 MIN AGO)`. It re-asks the server with `cache: "no-store"` (bypasses the browser's HTTP cache) and re-draws the rotation. It cannot bypass the server/edge copy on purpose (anyone could otherwise burn the quota), so within 5 min it may show the same videos in a new rotation, and the age line says so honestly.
+- Coming back to the list after 5+ minutes (title link, BACK, restored tab) quietly refetches it.
+- **Title link:** the app name in the header is a link to `#/` from every screen (also on the privacy page): clears search, filter and focus, scrolls to the top. 44 px tall, themed, keyboard focusable. Ctrl/Cmd-click still opens a new tab.
+
+**Quota math (YouTube Data API, ONE pool of 10,000 units/day, resets midnight Pacific).**
+
+| Call | Units | Notes |
+| --- | --- | --- |
+| `playlistItems.list` | 1 each | 18 channels = 18 per feed refresh (1 unit however many items) |
+| `videos.list` | 1 per call (up to 50 ids) | about 3 per refresh, also 1 per summary/ASK metadata lookup |
+| feed refresh | ~21 | 18 + 3 |
+| `search.list` | **100** | plus 1 for `videos.list` |
+
+Worst case (someone keeps the page busy all day, so every 5 min window refreshes): 288 refreshes x 21 = **6,048** units. Searches are capped at 30/day = **3,000**. Total about **9,050**, under our soft cap of 9,000 + a small margin, and below Google's 10,000. Real traffic is far lower (a refresh happens only when a visitor arrives after the 5 min copy expired; ~21 units each, e.g. 40 refreshes/day = ~840 units). Guards: above 7,500 units spent today the feed goes into *economy mode* (same list held for 30 min); at 9,000 it serves the last list marked stale (or 503 `quota` if there is none) and searches stop. Counters are per server instance (best effort); Google's own quota remains the hard limit and is handled (`quotaExceeded` -> stale list / "limit reached").
 
 ## Limits and abuse guard (both proxies, same rules)
 

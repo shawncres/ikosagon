@@ -14,7 +14,7 @@ import {
 } from "../lib/ikoreadtube/gemini.ts";
 import { cleanFocus, focusKey, focusQuestion, FOCUS_MAX } from "../lib/ikoreadtube/focus.ts";
 import {
-  createFeedState, createSearchState, createSummaryState, handleFeed, handleSearch, handleVideoSummary, handleAsk, cleanQuestion, cleanHistory, notCoveredLevels, NOT_COVERED, excerpt, createRateLimiter, quotaStats, searchBudgetLeft,
+  createFeedState, createSearchState, createSummaryState, handleFeed, handleSearch, handleVideoSummary, handleAsk, cleanQuestion, cleanHistory, notCoveredLevels, NOT_COVERED, excerpt, createRateLimiter, quotaStats, searchBudgetLeft, unitsToday,
 } from "../lib/ikoreadtube/service.ts";
 
 let pass = 0;
@@ -219,9 +219,11 @@ ok(yt1.calls.every((c) => c.headers["x-goog-api-key"] === YT_KEY && !c.url.inclu
 ok(yt1.calls.filter((c) => c.path === "playlistItems").every((c) => c.params.part === "contentDetails" && Number(c.params.maxResults) === YT_LIMITS.perChannel), "playlistItems asks for contentDetails only");
 ok(feed.every((v) => v.duration >= YT_LIMITS.minSeconds), "Shorts-length clips dropped");
 ok(!feed.some((v) => v.id === vid("2", 2)), "live streams dropped");
-ok(feed.length > 3 && feed.slice(0, 3).every((v, i, a) => i === 0 || Date.parse(a[i - 1].published) >= Date.parse(v.published)), "within a round, newest first");
-ok(new Set(feed.slice(0, 3).map((v) => v.channel)).size === 3, "round-robin: first items come from different channels");
-ok(Object.values(feed.reduce((a, v) => ((a[v.channel] = (a[v.channel] || 0) + 1), a), {})).every((n) => n <= YT_LIMITS.shownPerChannel), "at most 2 per channel");
+ok(feed.length > 3 && feed.every((v, i, a) => i === 0 || Date.parse(a[i - 1].published) >= Date.parse(v.published)), "freshest first: the whole feed is strictly newest -> oldest across channels (publishedAt desc)");
+const posOf = (id) => feed.findIndex((v) => v.id === id);
+ok(posOf(vid("1", 1)) > -1 && posOf(vid("3", 0)) > -1 && posOf(vid("1", 1)) < posOf(vid("3", 0)), "a channel's second-newest upload (2 days old) is listed before another channel's newest (3 days old): fresh uploads are no longer buried");
+ok(new Set(feed.slice(0, 3).map((v) => v.channel)).size >= 2, "the top of the feed still mixes channels");
+ok(YT_LIMITS.shownPerChannel === 3 && Object.values(feed.reduce((a, v) => ((a[v.channel] = (a[v.channel] || 0) + 1), a), {})).every((n) => n <= YT_LIMITS.shownPerChannel), "at most 3 per channel");
 ok(feed.length > 0 && feed.every((v) => v.id && v.title && v.channel && v.published && v.duration === 630) && !feed.some((v) => v.channel === "Channel 9"), "items carry real title/channel/published/duration; a failing channel is skipped");
 eq(Object.keys(feed[0]).sort(), ["channel", "duration", "id", "published", "title"], "feed items expose only id/title/channel/published/duration");
 const ytQuota = makeYt({ fail: (p) => (p === "playlistItems" ? json(403, { error: { errors: [{ reason: "quotaExceeded" }] } }) : null) });
@@ -253,7 +255,8 @@ const fy = makeYt();
 const fstate = createFeedState(() => NOW);
 const f1 = await handleFeed({ env: { YOUTUBE_API_KEY: YT_KEY }, state: fstate, fetchImpl: fy, now: () => NOW });
 ok(f1.status === 200 && f1.body.source === "youtube" && f1.body.videos.length > 0, "feed success");
-ok(/s-maxage=900/.test(f1.headers["Cache-Control"]) && /stale-while-revalidate/.test(f1.headers["Cache-Control"]), "feed edge cache: s-maxage=900 + stale-while-revalidate");
+ok(/s-maxage=300\b/.test(f1.headers["Cache-Control"]) && /stale-while-revalidate=300\b/.test(f1.headers["Cache-Control"]) && YT_LIMITS.feedTtlMs === 300_000, "feed edge cache: s-maxage=300 + stale-while-revalidate=300, 5 min in-memory copy (was 900 + 3600 and 15 min)");
+ok(typeof f1.body.fetchedAt === "number" && f1.body.fetchedAt === NOW, "feed reports fetchedAt so the page can show how old the list is");
 ok(!out(f1).includes(YT_KEY), "feed response never contains the API key");
 const callsAfterFirst = fy.calls.length;
 await handleFeed({ env: { YOUTUBE_API_KEY: YT_KEY }, state: fstate, fetchImpl: fy, now: () => NOW });
@@ -266,6 +269,41 @@ fstate2.last = { videos: f1.body.videos, at: NOW - 1000 };
 const f4 = await handleFeed({ env: { YOUTUBE_API_KEY: YT_KEY }, state: fstate2, fetchImpl: makeYt({ fail: (p) => (p === "playlistItems" ? json(403, { error: { errors: [{ reason: "quotaExceeded" }] } }) : null) }), now: () => NOW });
 ok(f4.status === 200 && f4.body.stale === true && f4.body.videos.length === f1.body.videos.length, "quota failure with a previous copy -> serves it marked stale");
 void failing;
+
+// ---- quota math: one shared 10,000 units/day pool ----
+unitsToday(NOW);
+quotaStats.units = 0;
+const qy = makeYt();
+const qstate = createFeedState(() => NOW);
+await handleFeed({ env: { YOUTUBE_API_KEY: YT_KEY }, state: qstate, fetchImpl: qy, now: () => NOW });
+ok(quotaStats.units === qy.calls.length && qy.calls.length <= YT_LIMITS.feedUnitEstimate, "a feed refresh costs 1 unit per call (18 channels = 18 playlistItems + ~3 videos.list ~ 21 units)");
+ok(288 * YT_LIMITS.feedUnitEstimate + YT_LIMITS.searchDailyCap * YT_LIMITS.searchUnits <= YT_LIMITS.dailyUnitCap + 100 && YT_LIMITS.dailyUnitCap <= 9_000, "worst case: 288 five-minute refreshes (6,048) + 30 searches (3,000) stays near our 9,000 soft cap, 1,000 under Google's 10,000", String(288 * YT_LIMITS.feedUnitEstimate + YT_LIMITS.searchDailyCap * YT_LIMITS.searchUnits));
+quotaStats.units = 0; quotaStats.searches = 0;
+await handleSearch({ q: "quota math", ip: "9.9.9.9", env: { YOUTUBE_API_KEY: YT_KEY }, state: createSearchState(() => NOW), fetchImpl: makeYt(), now: () => NOW });
+ok(quotaStats.units === YT_LIMITS.searchUnits + 1, "a search costs 100 units (search.list) + 1 (videos.list), not 0");
+quotaStats.units = YT_LIMITS.dailyUnitCap - 50; quotaStats.searches = 0;
+ok(searchBudgetLeft(NOW) === false, "searches stop when fewer than 100 units remain under the soft cap");
+quotaStats.units = 100; ok(searchBudgetLeft(NOW) === true, "searches allowed with plenty of units left");
+// economy mode: many units spent -> hold the last list for 30 min instead of refreshing every 5
+const econ = createFeedState(() => NOW + 10 * 60_000);
+econ.last = { videos: f1.body.videos, at: NOW };
+quotaStats.units = YT_LIMITS.economyUnits + 10;
+const econCalls = makeYt();
+const fe = await handleFeed({ env: { YOUTUBE_API_KEY: YT_KEY }, state: econ, fetchImpl: econCalls, now: () => NOW + 10 * 60_000 });
+ok(fe.status === 200 && fe.body.economy === true && econCalls.calls.length === 0 && /s-maxage=1800/.test(fe.headers["Cache-Control"]), "economy mode (>7,500 units today): keeps serving the last list for 30 min with 0 quota");
+const econOld = createFeedState(() => NOW + 40 * 60_000);
+econOld.last = { videos: f1.body.videos, at: NOW };
+const feo = await handleFeed({ env: { YOUTUBE_API_KEY: YT_KEY }, state: econOld, fetchImpl: makeYt(), now: () => NOW + 40 * 60_000 });
+ok(feo.status === 200 && !feo.body.economy && feo.body.videos.length > 0, "economy mode ends after 30 min (list refreshed)");
+quotaStats.units = YT_LIMITS.dailyUnitCap - 5;
+const hardCalls = makeYt();
+const fh = await handleFeed({ env: { YOUTUBE_API_KEY: YT_KEY }, state: createFeedState(() => NOW), fetchImpl: hardCalls, now: () => NOW });
+ok(fh.status === 503 && fh.body.error === "quota" && hardCalls.calls.length === 0, "soft cap reached and no previous list: 503 quota, YouTube not called");
+const hardSt = createFeedState(() => NOW);
+hardSt.last = { videos: f1.body.videos, at: NOW - 3_600_000 };
+const fh2 = await handleFeed({ env: { YOUTUBE_API_KEY: YT_KEY }, state: hardSt, fetchImpl: makeYt(), now: () => NOW });
+ok(fh2.status === 200 && fh2.body.stale === true, "soft cap reached with a previous list: serves it marked stale");
+quotaStats.units = 0; quotaStats.searches = 0;
 
 // ---- search route logic ----
 const sNow = NOW;
@@ -609,7 +647,7 @@ ok(/privacy/.test(html) && /QUESTION/.test(privacy) && /FOCUS/.test(privacy), "p
     const early = String(savedTheme || "").toLowerCase();
     if (early === "gameboy" || early === "dark") html5.attrs["data-theme"] = early; // what the inline head script does before first paint
     vm.runInNewContext(js, ctx);
-    return { els, store, html5 };
+    return { els, store, html5, ctx };
   };
   const click = (r) => r.els["btn-theme"].handlers.click[0]();
   const a = run(null);
@@ -634,6 +672,46 @@ ok(/privacy/.test(html) && /QUESTION/.test(privacy) && /FOCUS/.test(privacy), "p
   ok(junk.els["btn-theme"].textContent === "THEME: LIGHT" && junk.store.get("ikoreadtube.theme") === "light" && !junk.html5.attrs["data-theme"], "migration: an unknown saved value falls back to LIGHT and is rewritten");
   const upper = run("DARK");
   ok(upper.els["btn-theme"].textContent === "THEME: DARK" && upper.store.get("ikoreadtube.theme") === "dark", "migration: 'DARK' (any case) is normalised to 'dark'");
+  // fake DOM: the title link goes home from a detail screen and clears search/filter
+  const h = run(null);
+  let prevented = 0;
+  h.ctx.location.hash = "#/read/abcdefghijk?f=ufc%20picks";
+  h.els["q"].value = "ufc picks";
+  h.els["home-link"].handlers.click[0]({ preventDefault() { prevented += 1; } });
+  ok(prevented === 1 && h.ctx.location.hash === "#/" && h.els["q"].value === "", "title link from a detail screen: goes to #/ (focus lives in the hash and is dropped) and clears the search box");
+  h.els["home-link"].handlers.click[0]({ preventDefault() { prevented += 1; }, ctrlKey: true });
+  ok(prevented === 1, "ctrl/cmd-click on the title still opens a new tab (not hijacked)");
+  h.els["q"].value = "something";
+  h.ctx.location.hash = "#/";
+  h.els["home-link"].handlers.click[0]({ preventDefault() {} });
+  ok(h.els["q"].value === "" && h.ctx.location.hash === "#/", "title link on the home screen clears the filter/search too");
+}
+
+// ---- home: title link, refresh, rotation ----
+{
+  const logoLink = /<h1 class="logo"><a href="#\/" id="home-link"[^>]*>IKOREADTUBE<\/a><\/h1>/.test(html);
+  ok(logoLink && /aria-label="IkoReadTube home"/.test(html), "header title is a real link (<a href=\"#/\">) with an accessible name: keyboard focusable, Enter activates");
+  ok(/\.logo a\s*\{[^}]*min-height:\s*44px/.test(css) && /\.logo a\s*\{[^}]*color:\s*var\(--ink\)/.test(css) && /\.logo a:hover, \.logo a:focus-visible\s*\{[^}]*background:\s*var\(--ink\)/.test(css), "title link: 44px tall tap target, themed colours, visible hover/focus state");
+  ok(/<h1 class="logo"><a href="\.\/"/.test(privacy), "the privacy page title links back to the app too");
+  const pickSrc = /function pickHome\(list\) \{[\s\S]*?\n  \}/.exec(js)?.[0];
+  const mk = (seed) => { let x = seed; const rnd = () => ((x = (x * 16807) % 2147483647) / 2147483647); return new Function("HOME_PINNED", "HOME_SHOWN", "Math", `${pickSrc}; return pickHome;`)(12, 24, { random: rnd }); };
+  const pool = Array.from({ length: 36 }, (_, i) => ({ id: `p${i}` }));
+  const a1 = mk(7)(pool), a2 = mk(99)(pool);
+  const idsOf = (l) => l.map((v) => v.id);
+  ok(a1.length === 24 && new Set(idsOf(a1)).size === 24, "home shows 24 of the 36-item pool, no duplicates");
+  ok(idsOf(a1).slice(0, 12).join() === idsOf(pool).slice(0, 12).join() && idsOf(a2).slice(0, 12).join() === idsOf(pool).slice(0, 12).join(), "the 12 newest uploads are always pinned on top, in order");
+  ok(idsOf(a1).join() !== idsOf(a2).join() && idsOf(a1).slice(12).every((id, i, arr) => i === 0 || Number(id.slice(1)) > Number(arr[i - 1].slice(1))) && idsOf(a1).slice(12).every((id) => Number(id.slice(1)) >= 12), "the other 12 slots are a random draw from the rest of the pool (differs per refresh), still shown newest first");
+  ok(mk(1)(pool.slice(0, 20)).length === 20 && mk(1)(pool.slice(0, 20)).map((v) => v.id).join() === pool.slice(0, 20).map((v) => v.id).join(), "a short list is shown whole, untouched");
+  ok(/id="btn-refresh"/.test(html) && /id="feed-age"/.test(html) && /min-height:\s*44px/.test(/#btn-refresh\s*\{[^}]*\}/.exec(css)?.[0] || ""), "REFRESH button (44px) and the 'updated ... min ago' line exist");
+  ok(/loadVideos\(20000, \{ fresh: true \}\)/.test(js) && /cache: opts && opts\.fresh \? "no-store" : "default"/.test(fs.readFileSync(`${dir}/data.js`, "utf8")), "REFRESH asks the server again and bypasses the browser HTTP cache (the server/edge copy is still 5 min, so no extra quota)");
+  ok(/STALE_MS = 5 \* 60000/.test(js) && /Date\.now\(\) - loadedAt > STALE_MS\) refreshFeed\(false\)/.test(js), "coming back to the list after 5+ minutes refetches it quietly");
+  // data.js: fresh option + fetchedAt passthrough
+  const calls2 = [];
+  const ctx2 = { window: {}, setTimeout, clearTimeout, AbortController, Promise, JSON, fetch: async (u, init) => { calls2.push(init); return { ok: true, json: async () => ({ videos: [{ id: "abcdefghijk", title: "T" }], fetchedAt: 1234 }) }; } };
+  vm.runInNewContext(fs.readFileSync(`${dir}/data.js`, "utf8"), ctx2);
+  const r1 = await ctx2.window.IkoData.loadVideos();
+  const r2 = await ctx2.window.IkoData.loadVideos(5000, { fresh: true });
+  ok(r1.source === "youtube" && r1.fetchedAt === 1234 && calls2[0].cache === "default" && calls2[1].cache === "no-store", "data.js: fetchedAt passed through; fresh -> cache: no-store, normal load -> default");
 }
 
 console.log(`ikoreadtube-check: ${pass} passed, ${fails.length} failed`);

@@ -14,6 +14,7 @@ import {
   parseDuration,
   quotaStats,
   searchBudgetLeft,
+  unitsToday,
   searchVideos,
   videoDetails,
   type FeedVideo,
@@ -71,7 +72,11 @@ export function createFeedState(now: () => number = () => Date.now()): FeedState
   return { cache: createTtlCache<FeedVideo[]>(YT_LIMITS.feedTtlMs, 2, now), last: null, inflight: null };
 }
 
-const FEED_HEADERS = { "Cache-Control": "public, s-maxage=900, stale-while-revalidate=3600" };
+/** 5 min at the edge (+5 min stale-while-revalidate); with the 5 min in-memory copy a visitor sees data at most ~10 min old. */
+const FEED_HEADERS = { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=300" };
+/** Economy mode (many units already spent today): hold the same list for 30 min. */
+const ECONOMY_HEADERS = { "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=1800" };
+const ECONOMY_HOLD_MS = 30 * 60_000;
 
 export async function handleFeed(opts: { env: Env; state: FeedState; fetchImpl?: typeof fetch; now?: () => number }): Promise<Out> {
   const now = opts.now ?? (() => Date.now());
@@ -79,6 +84,16 @@ export async function handleFeed(opts: { env: Env; state: FeedState; fetchImpl?:
   if (!key) return json(503, { error: "no_key" });
   const hit = opts.state.cache.get("feed");
   if (hit) return json(200, { source: "youtube", fetchedAt: opts.state.last?.at ?? now(), videos: hit }, FEED_HEADERS);
+  // Quota guard: this refresh costs ~21 units of the shared 10,000/day pool.
+  const used = unitsToday(now());
+  const last = opts.state.last;
+  if (last && used >= YT_LIMITS.economyUnits && now() - last.at < ECONOMY_HOLD_MS) {
+    return json(200, { source: "youtube", economy: true, fetchedAt: last.at, videos: last.videos }, ECONOMY_HEADERS);
+  }
+  if (used + YT_LIMITS.feedUnitEstimate > YT_LIMITS.dailyUnitCap) {
+    if (last) return json(200, { source: "youtube", stale: true, fetchedAt: last.at, videos: last.videos }, { "Cache-Control": "public, s-maxage=600, stale-while-revalidate=600" });
+    return json(503, { error: "quota" });
+  }
   try {
     opts.state.inflight ??= fetchFeed(key, opts.fetchImpl ?? fetch, now()).finally(() => {
       opts.state.inflight = null;
@@ -391,4 +406,4 @@ export async function handleAsk(opts: {
   return json(200, payload);
 }
 
-export { quotaStats, searchBudgetLeft };
+export { quotaStats, searchBudgetLeft, unitsToday };

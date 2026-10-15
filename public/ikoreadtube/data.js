@@ -148,11 +148,11 @@
     isSample: function (id) { return SAMPLE_IDS[id] === true; },
     sampleVideos: function () { return SAMPLES.slice(); },
     /** The single place the app gets videos from. Never rejects: any failure resolves to the samples. */
-    loadVideos: function (timeoutMs) {
+    loadVideos: function (timeoutMs, opts) {
       if (typeof fetch !== "function") return Promise.resolve(samples("NO FETCH"));
       var ctrl = typeof AbortController === "function" ? new AbortController() : null;
       var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, timeoutMs || 20000);
-      return fetch(API + "/feed", { headers: { Accept: "application/json" }, signal: ctrl ? ctrl.signal : undefined })
+      return fetch(API + "/feed", { headers: { Accept: "application/json" }, signal: ctrl ? ctrl.signal : undefined, cache: opts && opts.fresh ? "no-store" : "default" })
         .then(function (res) {
           if (!res.ok) throw new Error("status " + res.status);
           return res.json();
@@ -162,7 +162,7 @@
             return v && typeof v.id === "string" && typeof v.title === "string";
           }) : [];
           if (!list.length) throw new Error("empty");
-          return { source: "youtube", reason: "", videos: list };
+          return { source: "youtube", reason: "", videos: list, fetchedAt: Number(data.fetchedAt) || 0 };
         })
         .catch(function () { return samples("YOUTUBE FEED IS NOT AVAILABLE"); })
         .then(function (r) { clearTimeout(timer); return r; });
