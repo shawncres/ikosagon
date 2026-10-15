@@ -42,7 +42,7 @@
   <header class="hdr">
     <div class="wrap">
       <button type="button" class="btn small theme" id="btn-theme" aria-label="Colour theme">THEME: LIGHT</button>
-      <h1 class="logo">IKOREADTUBE</h1>
+      <h1 class="logo"><a href="#/" id="home-link" aria-label="IkoReadTube home">IKOREADTUBE</a></h1>
       <p class="tag">READ THE VIDEO<span class="cursor" aria-hidden="true"></span></p>
       <div class="search" id="searchbar">
         <label class="sr" for="q">Filter videos</label>
@@ -63,6 +63,7 @@
       </div>
       <p class="box" id="notice" hidden></p>
       <h2 class="sect" id="feed-title">VIDEOS</h2>
+      <p class="feedmeta" id="feed-meta" hidden><button type="button" class="btn small" id="btn-refresh">REFRESH</button> <span id="feed-age"></span></p>
       <div id="search-yt" hidden><button type="button" class="btn wide" id="btn-search-yt"></button></div>
       <ul class="menu" id="feed"></ul>
       <p class="box" id="empty" hidden>NO MATCH.</p>

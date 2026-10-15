@@ -49,7 +49,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var el = {
     feed: $("feed"), recent: $("recent"), recentWrap: $("recent-wrap"), empty: $("empty"), feedTitle: $("feed-title"), notice: $("notice"),
-    q: $("q"), searchbar: $("searchbar"), thumbs: $("btn-thumbs"), theme: $("btn-theme"), searchYt: $("search-yt"), searchYtBtn: $("btn-search-yt"),
+    q: $("q"), searchbar: $("searchbar"), home: $("home-link"), feedMeta: $("feed-meta"), feedAge: $("feed-age"), refresh: $("btn-refresh"), thumbs: $("btn-thumbs"), theme: $("btn-theme"), searchYt: $("search-yt"), searchYtBtn: $("btn-search-yt"),
     sFeed: $("screen-feed"), sGen: $("screen-gen"), sDetail: $("screen-detail"),
     genStep: $("gen-step"), genText: $("gen-text"), genNote: $("gen-note"),
     back: $("btn-back"), less: $("btn-less"), more: $("btn-more"),
@@ -68,6 +68,11 @@
   var byId = {};
   var screen = "feed";
   var feedScroll = 0;
+  var home = [];           // what the home list shows: the newest items pinned, the rest a light rotation of the pool
+  var fetchedAt = 0;       // server timestamp of the list (when the server asked YouTube)
+  var loadedAt = 0;        // when this page last got a list
+  var refreshing = false;
+  var HOME_PINNED = 12, HOME_SHOWN = 24, STALE_MS = 5 * 60000;
   var selectedId = null;
   var current = null;      // { id, level, focus }
   var asks = {};           // video id -> [{ q, a, ts }] (last few turns, browser memory only)
@@ -223,6 +228,46 @@
     return a;
   }
 
+  /* Freshest first. The 12 newest uploads are always on top; the other slots are a random draw from the next-newest
+     uploads of the same list (shown newest first), so a refresh feels alive without any extra YouTube quota. */
+  function pickHome(list) {
+    if (list.length <= HOME_SHOWN) return list.slice();
+    var rest = list.slice(HOME_PINNED).map(function (v, i) { return { v: v, i: i, r: Math.random() }; });
+    rest.sort(function (a, b) { return a.r - b.r; });
+    var chosen = rest.slice(0, HOME_SHOWN - HOME_PINNED).sort(function (a, b) { return a.i - b.i; });
+    return list.slice(0, HOME_PINNED).concat(chosen.map(function (x) { return x.v; }));
+  }
+  function ageText() {
+    if (!fetchedAt) return "";
+    var mins = Math.max(0, Math.round((Date.now() - fetchedAt) / 60000));
+    var clock = new Date(fetchedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }).toUpperCase();
+    return "UPDATED " + clock + (mins < 1 ? " (JUST NOW)" : " (" + mins + " MIN AGO)");
+  }
+  function refreshFeed(manual) {
+    if (refreshing || source !== "youtube") return;
+    refreshing = true;
+    if (manual) { el.refresh.disabled = true; el.refresh.textContent = "REFRESHING..."; }
+    var failed = false;
+    window.IkoData.loadVideos(20000, { fresh: true }).then(function (r) {
+      if (r && r.source === "youtube" && r.videos.length) {
+        videos = r.videos.map(addVideo);
+        fetchedAt = r.fetchedAt || Date.now();
+        loadedAt = Date.now();
+        home = pickHome(videos);
+        if (manual) feedScroll = 0;
+      } else failed = true;
+    }).catch(function () { failed = true; }).then(function () {
+      refreshing = false;
+      el.refresh.disabled = false;
+      el.refresh.textContent = "REFRESH";
+      if (screen === "feed" && !sr) {
+        renderFeed();
+        if (failed && manual) el.feedAge.textContent = "COULD NOT REFRESH. SHOWING THE LAST LIST.";
+      }
+      if (manual && !failed && screen === "feed") window.scrollTo(0, 0);
+    });
+  }
+
   function renderFeed() {
     var q = el.q.value.trim();
     var ql = q.toLowerCase();
@@ -233,6 +278,7 @@
     el.empty.textContent = "NO MATCH.";
 
     if (sr) {
+      el.feedMeta.hidden = true;
       el.recentWrap.hidden = true;
       el.feedTitle.hidden = false;
       el.feedTitle.textContent = "YOUTUBE SEARCH: " + sr.q;
@@ -246,9 +292,11 @@
       return;
     }
 
-    var shown = videos.filter(function (v) {
-      return !ql || ((v.title || "") + " " + (v.channel || "")).toLowerCase().indexOf(ql) !== -1;
-    });
+    var shown = ql ? videos.filter(function (v) {
+      return ((v.title || "") + " " + (v.channel || "")).toLowerCase().indexOf(ql) !== -1;
+    }) : home;
+    el.feedMeta.hidden = !(source === "youtube" && !ql && shown.length);
+    el.feedAge.textContent = ageText();
     shown.forEach(function (v) {
       el.feed.appendChild(makeItem(v, { thumb: thumbsOn, sub: source === "youtube" ? metaLine(v) : v.channel }));
     });
@@ -723,9 +771,26 @@
     current = null;
     renderFeed();
     show("feed");
+    // Back on the list after a while: quietly fetch it again (the server keeps it for 5 min, so this costs no extra quota).
+    if (source === "youtube" && !sr && loadedAt && Date.now() - loadedAt > STALE_MS) refreshFeed(false);
   }
+  /* The app name is a link home from any screen: clears search, focus and filter, scrolls to the top. */
+  function goHome() {
+    sr = null; searchToken++;
+    el.q.value = "";
+    feedScroll = 0;
+    var h = location.hash;
+    if (h && h !== "#/" && h !== "#") location.hash = "#/"; // hashchange -> route()
+    else { route(); window.scrollTo(0, 0); }
+  }
+  el.home.addEventListener("click", function (e) {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return; // new tab etc. keep working
+    e.preventDefault();
+    goHome();
+  });
+  el.refresh.addEventListener("click", function () { refreshFeed(true); });
   window.addEventListener("hashchange", route);
-  window.addEventListener("pageshow", function (e) { if (e.persisted && screen === "feed") renderFeed(); });
+  window.addEventListener("pageshow", function (e) { if (e.persisted && screen === "feed") { renderFeed(); if (source === "youtube" && !sr && Date.now() - loadedAt > STALE_MS) refreshFeed(false); } });
 
   /* ---------- start ---------- */
   loadThumbsPref();
@@ -734,6 +799,9 @@
   window.IkoData.loadVideos().then(function (r) {
     source = r && r.source === "youtube" ? "youtube" : "sample";
     videos = (r && Array.isArray(r.videos) ? r.videos : []).map(addVideo);
+    fetchedAt = (r && r.fetchedAt) || 0;
+    loadedAt = Date.now();
+    home = source === "youtube" ? pickHome(videos) : videos.slice();
     route();
   }).catch(function () {
     el.empty.textContent = "COULD NOT LOAD VIDEOS.";

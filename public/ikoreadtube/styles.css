@@ -113,6 +113,8 @@ body {
   font-weight: 400;
   letter-spacing: 0;
 }
+.logo a { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink); text-decoration: none; }
+.logo a:hover, .logo a:focus-visible { background: var(--ink); color: var(--paper); outline: none; }
 .tag {
   font-size: calc(var(--u) * 2);
   line-height: calc(var(--u) * 4);
@@ -156,6 +158,10 @@ body {
 }
 .box.big { padding: calc(var(--u) * 6) calc(var(--u) * 4); margin-top: calc(var(--u) * 8); }
 #gen-step { font-size: calc(var(--u) * 2); margin-bottom: calc(var(--u) * 4); }
+
+/* Feed status line: REFRESH button + how old the list is */
+.feedmeta { display: flex; align-items: center; gap: calc(var(--u) * 2); flex-wrap: wrap; font-size: calc(var(--u) * 2); line-height: calc(var(--u) * 4); margin-bottom: calc(var(--u) * 2); }
+#btn-refresh { margin-top: 0; min-height: 44px; padding: 0 calc(var(--u) * 3); }
 
 /* Menu list */
 .menu { list-style: none; }

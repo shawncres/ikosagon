@@ -3,8 +3,8 @@
  * IkoReadTube real-YouTube feed + search, using ONLY the official YouTube Data API v3 (no scraping).
  * Pure logic with an injectable fetch so scripts/ikoreadtube-check.mjs can test it with mocked responses.
  *
- * Quota (default project quota): playlistItems.list and videos.list cost 1 unit each; search.list has its own
- * bucket of 100 calls/day. A feed refresh over 18 channels is 18 playlist calls + about 3 videos.list calls.
+ * Quota (default project quota, 10,000 units/day, ONE pool): playlistItems.list and videos.list cost 1 unit each;
+ * search.list costs 100 units. A feed refresh over 18 channels is 18 playlist calls + about 3 videos.list calls (~21 units).
  * YouTube API data is cached for minutes to hours only (the API policy allows at most 30 days).
  */
 import channelsFile from "./channels.json";
@@ -25,14 +25,18 @@ export type FeedVideo = {
 };
 
 export const YT_LIMITS = {
-  perChannel: 6, // newest uploads fetched per channel
-  shownPerChannel: 2, // keep the feed varied
+  perChannel: 6, // newest uploads fetched per channel (1 unit however many items)
+  shownPerChannel: 3, // cap per channel so one busy channel cannot take the whole list
   feedMax: 36,
   minSeconds: 61, // drops Shorts-length clips
-  feedTtlMs: 15 * 60_000,
+  feedTtlMs: 5 * 60_000, // 5 min: worst case 288 refreshes/day * ~21 units = ~6,000 units
+  feedUnitEstimate: 21, // 18 playlistItems + 3 videos.list
+  searchUnits: 100, // search.list cost
+  dailyUnitCap: 9_000, // soft cap on our own spending (of Google's 10,000/day): keeps 1,000 units spare
+  economyUnits: 7_500, // above this the feed stops refreshing more often than every 30 min
   searchTtlMs: 60 * 60_000,
   searchMax: 12,
-  searchDailyCap: 90, // Data API gives 100 search calls/day; keep a margin
+  searchDailyCap: 30, // 30 * 100 = 3,000 units/day at most
   queryMin: 2,
   queryMax: 60,
   timeoutMs: 10_000,
@@ -181,18 +185,15 @@ export async function fetchFeed(key: string, fetchImpl: FetchImpl = fetch, now =
   const ids = Array.from(new Set(lists.flat()));
   if (!ids.length) return [];
   const details = (await videoDetails(ids, key, fetchImpl, now)).map(toFeedVideo).filter((v): v is FeedVideo => Boolean(v));
-  // Round-robin across channels (each channel's newest first) so a busy news channel cannot crowd out the rest.
-  const byChannel = new Map<string, FeedVideo[]>();
-  for (const v of details.sort((x, y) => Date.parse(y.published) - Date.parse(x.published))) {
-    byChannel.set(v.channel, [...(byChannel.get(v.channel) || []), v]);
-  }
+  // Freshest first: strictly newest-to-oldest across all channels, at most `shownPerChannel` per channel so one busy
+  // channel (news) cannot take over the list. (Older versions listed every channel's newest first, which buried fresh uploads.)
+  const perChannel = new Map<string, number>();
   const out: FeedVideo[] = [];
-  for (let round = 0; round < YT_LIMITS.shownPerChannel; round += 1) {
-    const layer = Array.from(byChannel.values())
-      .map((list) => list[round])
-      .filter((v): v is FeedVideo => Boolean(v))
-      .sort((x, y) => Date.parse(y.published) - Date.parse(x.published));
-    out.push(...layer);
+  for (const v of details.sort((x, y) => Date.parse(y.published) - Date.parse(x.published))) {
+    const n = perChannel.get(v.channel) || 0;
+    if (n >= YT_LIMITS.shownPerChannel) continue;
+    perChannel.set(v.channel, n + 1);
+    out.push(v);
   }
   return out.slice(0, YT_LIMITS.feedMax);
 }
@@ -205,10 +206,16 @@ export function cleanQuery(q: unknown): string {
     .slice(0, YT_LIMITS.queryMax);
 }
 
-/** Daily guard for search.list (Data API: 100 calls/day). True when another search may be spent. */
+/** Units this server instance has spent today (Pacific day, like Google's reset). Best effort: counters are per instance. */
+export function unitsToday(now = Date.now()): number {
+  rollDay(now);
+  return quotaStats.units;
+}
+
+/** Daily guard for search.list (100 units each, shared 10,000/day pool). True when another search may be spent. */
 export function searchBudgetLeft(now = Date.now()): boolean {
   rollDay(now);
-  return quotaStats.searches < YT_LIMITS.searchDailyCap;
+  return quotaStats.searches < YT_LIMITS.searchDailyCap && quotaStats.units + YT_LIMITS.searchUnits <= YT_LIMITS.dailyUnitCap;
 }
 
 export async function searchVideos(q: string, key: string, fetchImpl: FetchImpl = fetch, now = Date.now()): Promise<FeedVideo[]> {
@@ -219,7 +226,7 @@ export async function searchVideos(q: string, key: string, fetchImpl: FetchImpl 
     { part: "snippet", type: "video", q, maxResults: String(YT_LIMITS.searchMax), safeSearch: "moderate" },
     key,
     fetchImpl,
-    0,
+    YT_LIMITS.searchUnits,
     now,
   );
   const ids = ((data.items as any[]) || []).map((i) => String(i?.id?.videoId || "")).filter(isVideoId);
