@@ -1,47 +1,60 @@
 ---
 title: "IkoReadTube"
 slug: "ikoreadtube"
-summary: "We at Ikosagon built IkoReadTube for e-ink screens: a light way to get the gist of a video without a heavy player. Pure black and white, no video, no animation to fight the screen, and a plain-text summary at three levels of detail. About 17 KB of its own files on a first load. The demo runs on sample videos."
+summary: "A retro, Game Boy-style way to browse YouTube and get the point of a video as text. Search for what you want and the summary answers that, ask the video a question, and step the detail LESS or MORE. Designed for low-spec screens: about 42 KB, no video player."
 year: 2026
-updated: "2026-10-15T14:30:00-04:00"
-tags: ["E-ink", "AI", "Reading", "Prototype"]
-cover: "/projects/ikoreadtube/cover.svg"
-featured: false
-unlisted: true
-status: "Prototype"
+updated: "2026-10-15T18:00:00-04:00"
+tags: ["AI", "Retro UI", "Low-spec", "Reading", "Product"]
+cover: "/projects/ikoreadtube/cover.png"
+coverFit: "cover"
+featured: true
+status: "Live demo"
 demo: "/ikoreadtube/"
-linkLabel: "Open the demo"
+linkLabel: "Open IkoReadTube"
 ---
 
-## Problem
-Video is a heavy way to get a small piece of information. A player, autoplay, animation and a busy page are a poor fit for an e-ink reader, an old phone, or a slow connection. Often what you want is the gist.
+IkoReadTube is a retro, Game Boy-style way to browse YouTube and get the point of a video as text. No video player, no autoplay, no feed that tries to keep you there. [Open IkoReadTube](/ikoreadtube/).
 
-## What this product is
-IkoReadTube is a **tiny reading page for video summaries**. You pick a video from a plain menu list, we show a short text summary, and you step it **LESS** or **MORE** across three levels of detail. There is no video player, no account, and nothing to install.
+## Why we built it
 
-[Open the demo](/ikoreadtube/)
+A lot of screens cannot play video well. E-ink readers, small watch browsers, a Raspberry Pi on a shelf, an old phone with a slow connection. Most of what people want from a video is the point of it, and the point fits in a few lines of text. We at Ikosagon wanted a page that gives you that, on almost any screen, and then gets out of the way.
 
-## Built for e-ink
-- **Pure black and white.** Only `#000` and `#fff`: no greys, gradients, shadows or rounded corners.
-- **One pixel font, hard edges.** Press Start 2P with chunky borders in a Game Boy style menu, so text stays crisp on a low-resolution panel.
-- **No motion that fights the screen.** The only animation is one steady blinking cursor on the loading screen, and it turns off when the device asks for reduced motion.
-- **Small and static.** Plain HTML, CSS and vanilla JavaScript: no framework and no build step.
-- **Works in any browser.** Large touch targets, full keyboard use, and the same layout on a phone or a desktop.
+## What you get
 
-## How big is it
-We measured the live page on a first load with an empty cache (Oct 15, 2026): about **17.0 KB** of the page's own files over the network (HTML, CSS, two scripts, eight tiny 1-bit thumbnails and the menu arrow), plus about **14.1 KB** for the Press Start 2P font from Google Fonts. That is roughly **31 KB** in total, and pages after the first reuse the cache.
+- **A tiny page.** About 42 KB on a first visit with an empty cache, including the pixel font and the video list. About 28 KB of that is our own code. It is plain HTML, CSS and JavaScript: no player, no framework, no tracking scripts.
+- **Three themes.** Sepia paper (the default), Game Boy green and a grey dark mode. One button cycles them and the page remembers your choice. Each one keeps text well above the usual contrast guidance, so it stays readable on dim or washed-out screens.
+- **Summaries that answer what you searched for.** Search "how tide pools survive" and the summary is about that, not a generic recap. If the video does not cover your topic, it says so instead of making something up.
+- **An ask-the-video box.** Type a question and get a short answer taken from that video, with timestamps to check it against. If the video does not say, the answer says that.
+- **LESS and MORE.** Step the detail down to a couple of lines, or up to a fuller read, right where you are.
+- **A way back to the video.** Every page has a small WATCH ON YOUTUBE link. We link out to YouTube and never re-host video.
+
+It is guest-only. There are no accounts and no sign-in. Your theme, thumbnail setting and recent list stay in your own browser.
+
+## Built for low-spec screens
+
+The design choices all follow from one idea: assume a slow, small, low-contrast screen.
+
+- Big tap targets and a single column.
+- No animation that needs a fast screen to look right.
+- Thumbnails are off unless you switch them on.
+- Flat, high-contrast colours and no animation, so a slow-refreshing display has less to redraw.
+
+We say "designed for" on purpose. We have tested IkoReadTube in desktop and phone-sized browsers. We have not tested it yet on a physical e-ink reader, a watch or a Raspberry Pi, and we will say so here when we have.
 
 ## How it works
-1. Pick a video. The page sends the transcript text to our small proxy.
-2. The proxy asks a free-tier Groq model to condense it to the level you chose and returns **plain text only**.
-3. If the service is off, busy or offline, the page shows a written-by-hand preset summary and says so on screen.
 
-The proxy has length caps, a per-visitor rate limit and limited cross-origin access. It also ships as a PHP version for ordinary shared hosting.
+1. The home list comes from a set of channels we picked, fetched with the free YouTube Data API and kept for a few minutes so the page stays quick and inside the free quota. Search uses the same API.
+2. When you open a video, Gemini reads the public YouTube link and writes the summary, focused on your search words if you have any. The ask box uses the same video.
+3. Very long videos (over 40 minutes) and very short ones (under 20 seconds) fall back to the channel description instead of an AI summary.
+4. Our API keys stay on our server. The page only talks to our own small API routes.
+
+## What to know
+
+- Summaries and answers are written by AI. They can be wrong or miss a detail, so each one is labelled, and the video is one tap away.
+- We run this on free tiers, so there are daily limits. When one is reached, the page tells you plainly instead of failing quietly.
+- IkoReadTube is an independent project. It is not made by or affiliated with YouTube or Google.
+- The page asks search engines not to index it, so it is a demo you open from here, not something you will find in a search.
 
 ## Status
-Prototype, built to test the idea.
-- The videos are **eight sample videos with made-up channels and original transcripts**. We do not yet pull transcripts from YouTube, and we do not claim to ingest full YouTube content.
-- Summaries are built from **transcript text**, using the Groq free tier, so they can be rate limited and are not guaranteed to be perfect. Always treat them as a gist.
-- We have tested it in desktop and phone-sized browsers. We have not yet tested it on a physical e-ink reader.
 
-Next: connect real transcripts, and try it on e-ink hardware.
+A live demo on real YouTube data. It is small and still changing. Next up is testing on real low-spec hardware, and we will report what we find, good or bad.
