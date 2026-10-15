@@ -7,6 +7,10 @@
   <meta name="color-scheme" content="light">
   <title>IKOREADTUBE - READ THE VIDEO</title>
   <script>
+    /* Saved theme before first paint (no flash). Default is light: that is the e-ink look. */
+    try { if (localStorage.getItem("ikoreadtube.theme") === "dark") document.documentElement.setAttribute("data-theme", "dark"); } catch (e) {}
+  </script>
+  <script>
     /* Makes /ikoreadtube (no trailing slash) load styles.css, app.js and api/ from the folder. Works in any subfolder. */
     (function () {
       var p = location.pathname;
@@ -27,6 +31,7 @@
 
   <header class="hdr">
     <div class="wrap">
+      <button type="button" class="btn small theme" id="btn-theme" aria-pressed="false">DARK: OFF</button>
       <h1 class="logo">IKOREADTUBE</h1>
       <p class="tag">READ THE VIDEO<span class="cursor" aria-hidden="true"></span></p>
       <div class="search" id="searchbar">
@@ -69,13 +74,20 @@
       <p class="vchan" id="d-chan"></p>
       <a class="btn wide" id="d-watch" href="https://www.youtube.com/" target="_blank" rel="noopener noreferrer" hidden>WATCH ON YOUTUBE</a>
       <div class="thumb-big" id="d-thumb-wrap" hidden><img id="d-thumb" alt="" width="64" height="36"></div>
+      <div class="focus" id="focus">
+        <p id="focus-line"><span id="focus-text"></span>
+          <button type="button" class="btn small" id="btn-focus-edit">EDIT</button>
+          <button type="button" class="btn small" id="btn-focus-clear" aria-label="Clear focus">X</button>
+        </p>
+        <form id="focus-form" hidden>
+          <label class="sr" for="focus-input">Focus: what you want from this video</label>
+          <input id="focus-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="80" placeholder="WHAT DO YOU WANT FROM IT?">
+          <div class="row"><button type="submit" class="btn" id="btn-focus-go">GO</button><button type="button" class="btn" id="btn-focus-cancel">CANCEL</button></div>
+        </form>
+      </div>
       <p class="lvl" id="d-level"></p>
       <div class="box" id="d-text" aria-live="polite"></div>
       <p class="src" id="d-src"></p>
-      <div class="row">
-        <button type="button" class="btn" id="btn-less">- LESS</button>
-        <button type="button" class="btn" id="btn-more">MORE +</button>
-      </div>
       <button type="button" class="btn wide" id="btn-paste">PASTE TRANSCRIPT</button>
       <div id="paste-panel" hidden>
         <p class="src" id="paste-help">PASTE THE TRANSCRIPT TEXT BELOW. WE SEND IT TO GROQ TO SUMMARIZE. WE DO NOT STORE IT.</p>
@@ -86,8 +98,30 @@
           <button type="button" class="btn" id="btn-paste-cancel">CANCEL</button>
         </div>
       </div>
+      <section id="ask-panel" aria-label="Ask about this video" hidden>
+        <h2 class="sect">ASK THIS VIDEO</h2>
+        <div id="ask-log" aria-live="polite"></div>
+        <form id="ask-form">
+          <label class="sr" for="ask-q">Your question about this video</label>
+          <input id="ask-q" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="200" placeholder="ASK A QUESTION...">
+          <button type="submit" class="btn wide" id="ask-go">ASK</button>
+        </form>
+        <p class="src" id="ask-msg" role="status">WE SEND YOUR QUESTION AND THE VIDEO LINK TO GEMINI. ANSWERS COME FROM THE VIDEO ONLY.</p>
+      </section>
     </section>
   </main>
+
+  <nav class="bar" id="bar" aria-label="Summary controls" hidden>
+    <div class="bar-row">
+      <button type="button" class="btn" id="btn-less">- LESS</button>
+      <p class="bar-level" id="bar-level" aria-live="polite"></p>
+      <button type="button" class="btn" id="btn-more">MORE +</button>
+    </div>
+    <div class="bar-row" id="bar-row2">
+      <button type="button" class="btn" id="btn-ask">ASK</button>
+      <a class="btn" id="bar-watch" href="https://www.youtube.com/" target="_blank" rel="noopener noreferrer">WATCH ON YOUTUBE</a>
+    </div>
+  </nav>
 
   <footer class="ftr">
     <div class="wrap">

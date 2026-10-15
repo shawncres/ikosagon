@@ -13,6 +13,10 @@
 @media (min-width: 720px) {
   :root { --u: 6px; }
 }
+/* Dark mode = the same two colours swapped (white on black). --black is "ink", --white is "paper". Never any grey. */
+html[data-theme="dark"] { --black: #fff; --white: #000; }
+html[data-theme="dark"] .item .arrow { filter: invert(1); }
+html[data-theme="dark"] .item .th:not(.yt), html[data-theme="dark"] .thumb-big:not(.yt) img { filter: invert(1) grayscale(100%) contrast(200%); }
 
 *, *::before, *::after {
   box-sizing: border-box;
@@ -99,7 +103,7 @@ body {
   margin-top: var(--u);
 }
 .search { margin-top: calc(var(--u) * 3); }
-.search input {
+.search input, #focus-input, #ask-q {
   width: 100%;
   height: calc(var(--u) * 12);
   padding: 0 calc(var(--u) * 3);
@@ -114,8 +118,8 @@ body {
   caret-color: var(--black);
   outline: none;
 }
-.search input::placeholder { color: var(--black); opacity: 1; }
-.search input:focus { border-style: solid; border-width: calc(var(--u) * 2); }
+.search input::placeholder, #focus-input::placeholder, #ask-q::placeholder { color: var(--black); opacity: 1; }
+.search input:focus, #focus-input:focus, #ask-q:focus { border-style: solid; border-width: calc(var(--u) * 2); }
 
 /* Section titles + boxes (Game Boy text box feel) */
 .sect {
@@ -252,6 +256,41 @@ a.btn { text-decoration: none; }
 .thumb-big.yt img { width: calc(var(--u) * 30); image-rendering: auto; filter: grayscale(100%); }
 .lvl { font-size: calc(var(--u) * 2); line-height: calc(var(--u) * 4); margin-top: calc(var(--u) * 4); }
 .src { font-size: calc(var(--u) * 2); line-height: calc(var(--u) * 4); }
+
+/* Theme toggle (header, top right) */
+.hdr .wrap { position: relative; }
+.theme { position: absolute; top: 0; right: calc(var(--u) * 3); margin: 0; }
+
+/* Focus line + form (detail) */
+.focus { margin-top: calc(var(--u) * 4); font-size: calc(var(--u) * 2); line-height: calc(var(--u) * 4); }
+.focus .btn.small { margin: calc(var(--u) * 1) calc(var(--u) * 1) 0 calc(var(--u) * 1); }
+#focus-form { margin-top: calc(var(--u) * 2); }
+#focus-input, #ask-q { width: 100%; height: calc(var(--u) * 12); padding: 0 calc(var(--u) * 3); }
+#focus-form .row { margin: calc(var(--u) * 2) 0 0; }
+
+/* Ask this video */
+#ask-panel { margin-top: calc(var(--u) * 6); }
+#ask-form { margin-top: calc(var(--u) * 3); }
+.turn { border: var(--u) solid var(--black); padding: calc(var(--u) * 3); margin-top: calc(var(--u) * 3); white-space: pre-wrap; }
+.turn .tq { font-size: calc(var(--u) * 2); line-height: calc(var(--u) * 4); }
+.turn .ta { margin-top: calc(var(--u) * 2); }
+.turn .tt { margin-top: calc(var(--u) * 2); font-size: calc(var(--u) * 2); line-height: calc(var(--u) * 4); }
+#ask-msg { margin-top: calc(var(--u) * 3); }
+
+/* Fixed bottom bar on the detail screen: big touch targets, current level always visible */
+body.has-bar { padding-bottom: 140px; }
+.bar {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 15;
+  background: var(--white);
+  border-top: calc(var(--u) * 2) solid var(--black);
+  padding-top: calc(var(--u) * 2);
+}
+.bar-row { display: flex; gap: calc(var(--u) * 2); max-width: calc(var(--u) * 120); margin: 0 auto; padding: 0 calc(var(--u) * 3) calc(var(--u) * 2); }
+.bar .btn { flex: 1; min-height: 48px; padding: 0 var(--u); display: flex; align-items: center; justify-content: center; }
+.bar-level { flex: 0.8; align-self: center; text-align: center; white-space: pre-line; font-size: calc(var(--u) * 2); line-height: calc(var(--u) * 4); }
+#bar-watch { flex: 2; font-size: calc(var(--u) * 2); }
 
 /* Paste transcript */
 #paste-panel { margin-top: calc(var(--u) * 4); }
