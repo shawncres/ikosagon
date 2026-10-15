@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { sanitizeFreeText } from "@/lib/music/taste/sanitize";
+import { getLastfm } from "@/lib/music/lastfm";
 import { tagOnlyVector } from "@/lib/music/taste/vector";
 
 export const runtime = "nodejs";
@@ -30,27 +31,34 @@ export async function GET(request: Request) {
     if (!res.ok) return NextResponse.json({ ok: false, error: "Artist lookup unavailable right now." }, { status: 502 });
     const json = (await res.json()) as { artists?: MbArtist[] };
     const top = (json.artists || []).find((a) => (a.score ?? 0) >= 90 && a.name);
-    if (!top?.name) return NextResponse.json({ ok: true, found: false });
-    const tags = (top.tags || [])
+
+    // Last.fm (free key, server-side, cached) gives richer crowd tags than MusicBrainz. Optional: MusicBrainz alone still works.
+    const lf = await getLastfm().enrich(top?.name || name);
+    const lfTags = lf.status === "ok" ? lf.data.tags : [];
+    if (!top?.name && !lfTags.length) return NextResponse.json({ ok: true, found: false });
+
+    const mbTags = (top?.tags || [])
       .slice()
       .sort((a, b) => (b.count ?? 0) - (a.count ?? 0))
       .map((t) => String(t.name || ""))
       .filter(Boolean)
       .slice(0, 10);
+    const tags = [...new Set([...lfTags, ...mbTags])].slice(0, 14);
     const { vector, matched, known } = tagOnlyVector(tags);
-    const begin = Number(String(top["life-span"]?.begin || "").slice(0, 4));
+    const begin = Number(String(top?.["life-span"]?.begin || "").slice(0, 4));
     const peak = Number.isFinite(begin) && begin > 1900 ? Math.max(1960, Math.min(2025, begin + 8)) : 2015;
     const confident = matched.length >= 2 && known >= 3;
     return NextResponse.json({
       ok: true,
       found: true,
-      name: sanitizeFreeText(top.name, 60),
+      name: sanitizeFreeText(top?.name || name, 60),
       tags: tags.map((t) => sanitizeFreeText(t, 30).toLowerCase()).filter(Boolean),
       matchedTags: matched,
       confident,
       vector: confident ? vector : null,
       peak,
-      source: "MusicBrainz tags (free, community-edited)",
+      source: lfTags.length ? "Last.fm + MusicBrainz tags (free, community-edited)" : "MusicBrainz tags (free, community-edited)",
+      lastfm: lfTags.length,
     });
   } catch {
     return NextResponse.json({ ok: false, error: "Artist lookup timed out." }, { status: 504 });

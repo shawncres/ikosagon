@@ -5,6 +5,7 @@ import {
   type Dim,
   type Level,
   type SeedArtist,
+  type PickTrack,
   type SeedTrack,
   type Vector,
 } from "./types";
@@ -18,7 +19,10 @@ export type Pickable = {
   region: string;
   peak: number;
   vector: Vector;
+  /** Seed tracks (the source of theme tags). Empty for free-text artists. */
   tracks: SeedTrack[];
+  /** Lean candidates from Last.fm, when enrichment was applied. Falls back to `tracks`. */
+  topTracks?: PickTrack[];
   custom: boolean;
 };
 
@@ -135,7 +139,7 @@ export function targetVector(anchor: Pickable, answers: Partial<Record<Dim, Leve
 }
 
 export type PickBand = "near" | "step" | "far" | "wild";
-export type PickOption = { artist: SeedArtist; band: PickBand; label: string; distance: number };
+export type PickOption = { artist: SeedArtist; band: PickBand; label: string; distance: number; /** True when Last.fm lists this artist as similar to the anchor. */ similar?: boolean };
 
 function meanDistance(x: SeedArtist, chosen: Pickable[]): number {
   return chosen.reduce((s, c) => s + distance(x.vector, c.vector, x.peak, c.peak), 0) / Math.max(1, chosen.length);
@@ -152,6 +156,8 @@ export function suggestNext(
   target: Vector,
   genres: string[],
   era: string | null,
+  /** Seed ids Last.fm lists as similar to the anchor, best match first. Only used for the second pick. */
+  similarIds: string[] = [],
 ): PickOption[] {
   if (!chosen.length) return [];
   const chosenIds = new Set(chosen.map((c) => c.id));
@@ -173,13 +179,28 @@ export function suggestNext(
     b === "near" ? `Close to ${anchorName}` : b === "step" ? "A step away" : b === "far" ? "Different angle" : "Wildcard";
   const plan: Array<[PickBand, number]> = stage === 2 ? [["near", 4], ["step", 2]] : [["step", 2], ["far", 3], ["wild", 1]];
 
-  const out: PickOption[] = [];
-  for (const [b, take] of plan) {
-    for (const row of buckets[b].slice(0, take)) {
-      out.push({ artist: row.a, band: b, label: labelFor(b), distance: Math.round(row.d * 100) / 100 });
+  // Last.fm "similar artists" (second pick only): up to two seed artists lead the list, labelled as such.
+  const lead: PickOption[] = [];
+  if (stage === 2 && similarIds.length) {
+    const byId = new Map(sorted.map((r, i) => [r.a.id, { ...r, band: band(i) }]));
+    for (const id of similarIds) {
+      const row = byId.get(id);
+      if (!row || lead.length >= 2) continue;
+      lead.push({ artist: row.a, band: row.band, label: `Last.fm: similar to ${anchorName}`, distance: Math.round(row.d * 100) / 100, similar: true });
     }
   }
-  return out;
+  const leadIds = new Set(lead.map((o) => o.artist.id));
+  const out: PickOption[] = [...lead];
+  for (const [b, take] of plan) {
+    let n2 = 0;
+    for (const row of buckets[b]) {
+      if (n2 >= take) break;
+      if (leadIds.has(row.a.id)) continue;
+      out.push({ artist: row.a, band: b, label: labelFor(b), distance: Math.round(row.d * 100) / 100 });
+      n2 += 1;
+    }
+  }
+  return stage === 2 ? out.slice(0, 6) : out;
 }
 
 export type ContrastOption = { dim: Dim; favors: string; label: string };

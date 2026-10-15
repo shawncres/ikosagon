@@ -1,11 +1,13 @@
 import { SEED_AS_OF } from "./seed";
+import { applyEnrichment } from "./enrich";
 import { resolveArtists, type Pickable } from "./tree";
 import {
   DIMS,
   type Dim,
   type Lean,
   type ProfileInput,
-  type SeedTrack,
+  type ArtistEnrichment,
+  type PickTrack,
   type SongBrief,
   type ThemeId,
   type TrendingContext,
@@ -30,15 +32,15 @@ export const THEME_LABEL: Record<ThemeId, string> = {
 
 export type TrackRow = {
   artist: Pickable;
-  track: SeedTrack;
+  track: PickTrack;
   vector: Vector;
   id: string;
 };
 
-export function trackVector(artist: Pickable, track: SeedTrack): Vector {
+export function trackVector(artist: Pickable, track: PickTrack): Vector {
   const v = { ...artist.vector };
   if (track.tweak) {
-    for (const d of Object.keys(track.tweak) as Array<keyof NonNullable<SeedTrack["tweak"]>>) {
+    for (const d of Object.keys(track.tweak) as Array<keyof NonNullable<PickTrack["tweak"]>>) {
       const val = track.tweak[d];
       if (val != null) v[d] = clamp01(val);
     }
@@ -49,7 +51,7 @@ export function trackVector(artist: Pickable, track: SeedTrack): Vector {
 export function tracksOf(artists: Pickable[]): TrackRow[] {
   const rows: TrackRow[] = [];
   for (const a of artists) {
-    for (const t of a.tracks) {
+    for (const t of a.topTracks ?? a.tracks) {
       rows.push({ artist: a, track: t, vector: trackVector(a, t), id: `${a.id}:${t.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}` });
     }
   }
@@ -143,6 +145,20 @@ function poss(name: string): string {
   return /s$/i.test(name) ? `${name}'` : `${name}'s`;
 }
 
+function compact(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1).replace(/\.0$/, "")}M`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
+  return String(n);
+}
+
+/** How a pick is described in a `why`. Last.fm picks quote Last.fm's own order and listener count; seed picks stay labelled as editorial. */
+function roleText(r: TrackRow, asOf: string): string {
+  const lf = r.track.lastfm;
+  if (!lf) return `${poss(r.artist.name)} ${r.track.role}.`;
+  const reach = lf.listeners != null ? ` (${compact(lf.listeners)} Last.fm listeners, as of ${asOf})` : ` (as of ${asOf})`;
+  return `Last.fm lists it #${lf.rank} among ${poss(r.artist.name)} most-played tracks${reach}.`;
+}
+
 function themeList(ts: ThemeId[]): string {
   return ts.map((t) => THEME_LABEL[t].toLowerCase()).join(" / ");
 }
@@ -157,6 +173,7 @@ export function pickLeans(
   center: Vector,
   range: SongBrief["range"],
   themes: ThemeId[],
+  asOf: string = SEED_AS_OF,
 ): Lean[] {
   const rows = tracksOf(artists);
   if (!rows.length) return [];
@@ -170,13 +187,17 @@ export function pickLeans(
     title: r.track.title,
     artist: r.artist.name,
     album: r.track.album && r.track.album !== "Single" ? r.track.album : undefined,
-    year: String(r.track.year),
+    year: r.track.year ? String(r.track.year) : undefined,
     genre: r.artist.genres[0],
     why,
     kind,
     trackRole: r.track.role,
     themes: r.track.themes,
-    assumed: true,
+    source: r.track.lastfm ? "Last.fm" : "editorial seed",
+    assumed: !r.track.lastfm,
+    ...(r.track.lastfm
+      ? { lastfm: { rank: r.track.lastfm.rank, listeners: r.track.lastfm.listeners, plays: r.track.lastfm.plays, url: r.track.lastfm.url } }
+      : {}),
   });
 
   const themeBit = (r: TrackRow) => {
@@ -193,7 +214,7 @@ export function pickLeans(
     mk(
       first,
       "overlap",
-      `Sits closest to the center of your range (${pct(dist(first))} points off) and ${themeBit(first)}. ${poss(first.artist.name)} ${first.track.role}.`,
+      `Sits closest to the center of your range (${pct(dist(first))} points off) and ${themeBit(first)}. ${roleText(first, asOf)}`,
     ),
   );
 
@@ -235,7 +256,7 @@ export function pickLeans(
         mk(
           r,
           high ? "edge-high" : "edge-low",
-          `Pushes to the ${high ? "high" : "low"} edge of your range on ${copy.name} (${pct(r.vector[d])} vs your center ${pct(center[d])})${trait ? `: ${trait}` : ""}; ${themeBit(r)}. ${poss(r.artist.name)} ${r.track.role}.`,
+          `Pushes to the ${high ? "high" : "low"} edge of your range on ${copy.name} (${pct(r.vector[d])} vs your center ${pct(center[d])})${trait ? `: ${trait}` : ""}; ${themeBit(r)}. ${roleText(r, asOf)}`,
         ),
       );
     }
@@ -243,8 +264,15 @@ export function pickLeans(
   return leans;
 }
 
-export function buildBrief(profile: ProfileInput, opts: { trending?: TrendingContext | null } = {}): SongBrief {
-  const artists = resolveArtists(profile.artistIds, profile.custom);
+export function buildBrief(
+  profile: ProfileInput,
+  opts: { trending?: TrendingContext | null; enrichment?: Record<string, ArtistEnrichment | undefined> } = {},
+): SongBrief {
+  const base0 = resolveArtists(profile.artistIds, profile.custom);
+  const enrichment = opts.enrichment || {};
+  const artists = applyEnrichment(base0, enrichment);
+  const used = base0.map((a) => enrichment[a.id]).filter((e): e is ArtistEnrichment => Boolean(e && e.topTracks.length));
+  const lfAsOf = used.map((e) => e.asOf).sort().pop() || null;
   const { vector, eraYear: pickedEra } = centerOf(artists, profile.answers, profile.contrast);
   const eraYear = pickedEra ?? (profile.era ? (ERA_YEAR[profile.era] ?? null) : null);
   const range = rangeOf(artists);
@@ -261,18 +289,34 @@ export function buildBrief(profile: ProfileInput, opts: { trending?: TrendingCon
     if (!blend.includes(t)) blend.push(t);
   }
 
-  const leans = pickLeans(artists, vector, range, chosenThemes);
+  const leans = pickLeans(artists, vector, range, chosenThemes, lfAsOf || SEED_AS_OF);
 
   const caveats = [
-    "Artist numbers, theme tags and the three best tracks per artist are our editorial estimates, not measured audio features or stream data.",
+    "Artist sound numbers and theme tags are our editorial estimates, not measured audio features or stream data.",
   ];
+  const lfNames = used.map((e) => e.name);
+  const editorialLean = leans.some((l) => l.source === "editorial seed");
+  if (used.length) {
+    caveats.push(
+      `Best-track picks for ${lfNames.join(", ")} come from Last.fm's public most-played data (as of ${lfAsOf}); that is Last.fm scrobble data, not stream totals across services.${editorialLean ? " Other picks are our editorial seed picks for the artists Last.fm didn't cover." : ""}`,
+    );
+  } else {
+    caveats.push("Best tracks per artist are our editorial picks (no live track data was used for this brief).");
+  }
   const customCount = artists.filter((a) => a.custom).length;
-  if (customCount) caveats.push(`${customCount} free-text artist(s) were sized from free MusicBrainz tags only; leans are drawn from catalog artists.`);
+  if (customCount) {
+    const withTracks = artists.filter((a) => a.custom && a.topTracks?.length).length;
+    caveats.push(
+      withTracks === customCount
+        ? `${customCount} free-text artist(s) were sized from crowd-sourced tags and are approximate; their tracks come from Last.fm.`
+        : `${customCount} free-text artist(s) were sized from crowd-sourced tags only and are approximate; they can't supply leans without Last.fm track data.`,
+    );
+  }
   if (artists.length < 3) caveats.push(`Only ${artists.length} artist(s) chosen, so the range is ${artists.length < 2 ? "not defined" : "narrow"}.`);
   if (opts.trending) caveats.push(opts.trending.note);
 
   return {
-    version: 1,
+    version: 2,
     asOf: SEED_AS_OF,
     artists: artists.map((a) => ({ id: a.id, name: a.name, custom: a.custom, themes: artistThemes(a) })),
     center: { vector: Object.fromEntries(DIMS.map((d) => [d, round2(vector[d])])) as Vector, eraYear, summary: describeCenter(vector, eraYear) },
@@ -287,6 +331,12 @@ export function buildBrief(profile: ProfileInput, opts: { trending?: TrendingCon
     audience: profile.audience,
     leans,
     notes: profile.extras,
+    lastfm: used.length
+      ? {
+          asOf: lfAsOf as string,
+          artists: used.map((e) => ({ name: e.name, url: e.url, tags: e.tags.slice(0, 6), similar: e.similar.slice(0, 6) })),
+        }
+      : null,
     caveats,
   };
 }
@@ -312,7 +362,8 @@ export function briefLines(b: SongBrief): string[] {
   } else {
     lines.push("Audience: skipped");
   }
-  b.leans.forEach((l, i) => lines.push(`Lean ${i + 1} [${l.kind}]: ${l.title} - ${l.artist} (${l.trackRole}). Why: ${l.why}`));
+  if (b.lastfm) lines.push(`Track data: Last.fm (last.fm), as of ${b.lastfm.asOf}, for ${b.lastfm.artists.map((a) => a.name).join(", ")}`);
+  b.leans.forEach((l, i) => lines.push(`Lean ${i + 1} [${l.kind}]: ${l.title} - ${l.artist} (${l.trackRole}; source: ${l.source}). Why: ${l.why}`));
   for (const [k, v] of Object.entries(b.notes)) lines.push(`Note (${k}): ${v}`);
   return lines;
 }

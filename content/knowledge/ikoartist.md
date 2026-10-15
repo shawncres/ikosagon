@@ -18,11 +18,11 @@ Ikosagon’s **IkoArtist** (formerly AI Recording Artist) is a **web product** f
 - **Song brief** on the finish screen: center, range, themes, audience, and **three track leans** (one from the overlap, one from each edge of the range) with a plain “why”. The structured brief is included in the Resend summary (readable section plus a `song-brief.json` attachment).
 - **Anonymous finish is enough** — brief + picks go to the agentic song pipeline via `/api/talent-intake`; visitor email is **optional** (opportunities only)
 - Optional voice / photo add-ons
-- **Data honesty:** artist numbers, theme tags and the three assumed best tracks per artist are our hand-written editorial estimates (about 80 artists), not measured audio features, and not stream or chart data. Free sources only: iTunes public RSS chart context and MusicBrainz tags for free-text artists (no keys, no paid vendors). Dated with an **as of** date.
+- **Data honesty:** artist sound numbers and theme tags are our hand-written editorial estimates (about 175 artists), not measured audio features, and not stream or chart data. Free sources only: iTunes public RSS chart context, MusicBrainz tags for free-text artists, and, when that connection is switched on, Last.fm’s free public API for an artist’s most-played tracks, tags and similar artists (non-commercial terms; credited and linked on the page). Every brief says which source its three track picks came from: Last.fm’s most-played order with an as-of date, or our own editorial picks when Last.fm isn’t available. Last.fm counts are scrobble data, not stream totals across services, and we never show chart ranks. Dated with an **as of** date.
 
 ## Employer-facing stack (light)
 
-Next.js on Vercel Hobby; Resend for backend intake email; free music backends (iTunes public RSS, MusicBrainz tags) with an editorial seed fallback.
+Next.js on Vercel Hobby; Resend for backend intake email; free music backends (iTunes public RSS, MusicBrainz tags, optional Last.fm free API) with an editorial seed fallback.
 
 ## What is not public yet
 

@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StepId } from "@/components/talentIntakeConfig";
 import { buildBrief, THEME_LABEL, themeTally } from "@/lib/music/taste/brief";
+import { parseEnrichmentMap } from "@/lib/music/taste/enrich";
 import { sanitizeFreeText, sanitizeProfile, sanitizeTrending } from "@/lib/music/taste/sanitize";
 import {
   anchorOptions,
@@ -15,6 +16,7 @@ import {
 } from "@/lib/music/taste/tree";
 import {
   AUDIENCE_AGE_BANDS,
+  type ArtistEnrichment,
   type Audience,
   type CustomArtist,
   type Dim,
@@ -53,6 +55,9 @@ export function useTasteProfile({ genres, era, region, goTo, pushUser, pushBot, 
   const [audience, setAudience] = useState<Audience>(EMPTY_AUDIENCE);
   const [extras, setExtras] = useState<Extras>({});
   const [trending, setTrending] = useState<TrendingContext | null>(null);
+  const [enrichment, setEnrichment] = useState<Record<string, ArtistEnrichment>>({});
+  // false once the server says it has no Last.fm key, so we stop asking. Kept in a ref: it never drives rendering.
+  const lastfmOff = useRef(false);
   const [lookupBusy, setLookupBusy] = useState(false);
   const [lookupNote, setLookupNote] = useState<string | null>(null);
 
@@ -73,6 +78,33 @@ export function useTasteProfile({ genres, era, region, goTo, pushUser, pushBot, 
   }, []);
 
   const picked = useMemo(() => resolveArtists(artistIds, custom), [artistIds, custom]);
+
+  // Optional Last.fm detail (top tracks, similar artists). Fetched through our server so the key never reaches the browser.
+  const enrichKey = useMemo(() => {
+    const seedIds = picked.filter((a) => !a.custom).map((a) => a.id);
+    const names = picked.filter((a) => a.custom).map((a) => a.name);
+    return JSON.stringify([seedIds, names]);
+  }, [picked]);
+  useEffect(() => {
+    const [seedIds, names] = JSON.parse(enrichKey) as [string[], string[]];
+    if (!seedIds.length && !names.length) return;
+    if (lastfmOff.current) return;
+    const controller = new AbortController();
+    (async () => {
+      try {
+        const qs = new URLSearchParams({ ids: seedIds.join(","), custom: names.join("|") });
+        const res = await fetch(`/api/music-artist-enrich?${qs.toString()}`, { signal: controller.signal });
+        const json = await res.json();
+        if (!json?.ok) return;
+        if (!json.enabled) lastfmOff.current = true;
+        else setEnrichment((cur) => ({ ...cur, ...parseEnrichmentMap(json.artists) }));
+      } catch {
+        // Optional: the brief falls back to our editorial seed picks.
+      }
+    })();
+    return () => controller.abort();
+  }, [enrichKey]);
+
   const anchor = picked[0] ?? null;
   const target = useMemo(() => (anchor ? targetVector(anchor, answers) : null), [anchor, answers]);
 
@@ -81,8 +113,8 @@ export function useTasteProfile({ genres, era, region, goTo, pushUser, pushBot, 
     [genres, era, region, anchorPage],
   );
   const secondOptions = useMemo(
-    () => (anchor && target ? suggestNext(2, [anchor], target, genres, era) : []),
-    [anchor, target, genres, era],
+    () => (anchor && target ? suggestNext(2, [anchor], target, genres, era, enrichment[anchor.id]?.similarSeedIds || []) : []),
+    [anchor, target, genres, era, enrichment],
   );
   const thirdOptions = useMemo(
     () => (picked.length && target ? suggestNext(3, picked.slice(0, 2), target, genres, era) : []),
@@ -107,7 +139,7 @@ export function useTasteProfile({ genres, era, region, goTo, pushUser, pushBot, 
       }),
     [genres, era, region, artistIds, answers, contrast, themes, audience, extras, custom],
   );
-  const brief = useMemo(() => buildBrief(profile, { trending }), [profile, trending]);
+  const brief = useMemo(() => buildBrief(profile, { trending, enrichment }), [profile, trending, enrichment]);
 
   const artistThemeHint = useMemo(
     () =>
@@ -406,6 +438,7 @@ export function useTasteProfile({ genres, era, region, goTo, pushUser, pushBot, 
     extras,
     setExtra,
     trending,
+    enrichment,
     artistThemeHint,
     profile,
     brief,

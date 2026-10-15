@@ -105,6 +105,10 @@ function sanitizeVector(raw: unknown): Vector | null {
   return out;
 }
 
+export function customIdFor(name: string): string {
+  return `custom:${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "artist"}`;
+}
+
 export function sanitizeCustomArtists(raw: unknown): CustomArtist[] {
   if (!Array.isArray(raw)) return [];
   const out: CustomArtist[] = [];
@@ -114,7 +118,7 @@ export function sanitizeCustomArtists(raw: unknown): CustomArtist[] {
     const name = sanitizeFreeText(src.name, 60);
     const vector = sanitizeVector(src.vector);
     if (!name || !vector) continue;
-    const id = `custom:${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "artist"}`;
+    const id = customIdFor(name);
     const peakN = Number(src.peak);
     const peak = Number.isFinite(peakN) ? Math.max(1950, Math.min(2030, Math.round(peakN))) : 2015;
     const tags = Array.isArray(src.tags)
