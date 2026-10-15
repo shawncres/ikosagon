@@ -165,6 +165,8 @@ export type SummaryPayload = {
   focus: string;
   /** Focused summaries only: false when the video does not address the focus. */
   covered?: boolean;
+  /** false when the video has no meaningful speech or lyrics (levels then carry the NO SPOKEN CONTENT text). */
+  spoken?: false;
   levels: Levels;
 };
 
@@ -220,6 +222,15 @@ export const NOT_COVERED = "NOT COVERED IN THIS VIDEO.";
 /** Same text on all three levels: the plain verdict plus one line on what the video is about. */
 export function notCoveredLevels(about: string): Levels {
   const t = `${NOT_COVERED}\n\nThis video is about: ${about.replace(/^this video is (?:about|mainly about)\s*:?\s*/i, "")}`;
+  return { less: t, standard: t, more: t };
+}
+
+export const NO_SPOKEN = "NO SPOKEN CONTENT TO SUMMARIZE.";
+
+/** Same text on all three levels: the plain verdict plus a short note about the audio (never a description of visuals). */
+export function noSpokenLevels(note: string): Levels {
+  const n = note.trim();
+  const t = n ? `${NO_SPOKEN}\n\n${n}` : NO_SPOKEN;
   return { less: t, standard: t, more: t };
 }
 
@@ -322,6 +333,11 @@ export async function handleVideoSummary(opts: {
       return fallback(result.code === "busy" ? "busy" : "failed");
     }
     st.budget.calls += 1;
+    if (result.spoken === false) {
+      const payload: SummaryPayload = { ...base, source: "gemini", spoken: false, ...(focus ? { covered: false } : {}), levels: noSpokenLevels(result.note || "") };
+      st.cache.set(ck, payload);
+      return json(200, payload, LONG_HEADERS);
+    }
     const covered = focus ? result.covered !== false : undefined;
     const levels = focus && covered === false ? notCoveredLevels(result.about || meta.title || "something else") : result.levels;
     const payload: SummaryPayload = { ...base, source: "gemini", ...(covered === undefined ? {} : { covered }), levels };

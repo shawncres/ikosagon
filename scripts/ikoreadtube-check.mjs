@@ -9,12 +9,12 @@ import {
   YT_LIMITS, YouTubeError, parseDuration, uploadsPlaylist, fetchFeed, cleanQuery, isVideoId, createTtlCache, resolveChannels,
 } from "../lib/ikoreadtube/youtube.ts";
 import {
-  GEMINI_LIMITS, GEMINI_SYSTEM, GEMINI_PROMPT, buildGeminiBody, parseLevels, summarizeVideoWithGemini,
+  GEMINI_LIMITS, GEMINI_SYSTEM, GEMINI_PROMPT, GEMINI_FOCUS_PROMPT, GEMINI_VIDEO_FPS, buildGeminiBody, parseLevels, parseSummary, summarizeVideoWithGemini,
   ASK_LIMITS, ASK_SYSTEM, buildAskBody, parseAnswer, parseFocusLevels,
 } from "../lib/ikoreadtube/gemini.ts";
 import { cleanFocus, focusKey, focusQuestion, FOCUS_MAX } from "../lib/ikoreadtube/focus.ts";
 import {
-  createFeedState, createSearchState, createSummaryState, handleFeed, handleSearch, handleVideoSummary, handleAsk, cleanQuestion, cleanHistory, notCoveredLevels, NOT_COVERED, excerpt, createRateLimiter, quotaStats, searchBudgetLeft, unitsToday,
+  createFeedState, createSearchState, createSummaryState, handleFeed, handleSearch, handleVideoSummary, handleAsk, cleanQuestion, cleanHistory, notCoveredLevels, NOT_COVERED, noSpokenLevels, NO_SPOKEN, excerpt, createRateLimiter, quotaStats, searchBudgetLeft, unitsToday,
 } from "../lib/ikoreadtube/service.ts";
 
 let pass = 0;
@@ -345,7 +345,7 @@ const combo = (yt, gem) => async (url, init) => (String(url).includes("generativ
 const body0 = buildGeminiBody("abcdefghijk");
 ok(body0.contents[0].parts[0].file_data.file_uri === "https://www.youtube.com/watch?v=abcdefghijk", "Gemini request carries the YouTube URL as file_data.file_uri");
 ok(body0.contents[0].parts.length === 2 && body0.contents[0].parts[1].text === GEMINI_PROMPT, "video part first, text prompt second");
-ok(body0.generationConfig.responseMimeType === "application/json" && body0.generationConfig.responseSchema.required.join() === "less,standard,more", "one call returns all three levels as JSON");
+ok(body0.generationConfig.responseMimeType === "application/json" && body0.generationConfig.responseSchema.required.join() === "spoken,note,less,standard,more", "one call returns all three levels as JSON (plus the spoken flag)");
 ok(/own words/.test(GEMINI_SYSTEM) && /Never reproduce the transcript/i.test(GEMINI_SYSTEM) && /untrusted/.test(GEMINI_SYSTEM) && /Plain text only/.test(GEMINI_SYSTEM), "Gemini prompt: own words, no transcript copying, injection guard, plain text");
 ok(!JSON.stringify(body0).includes("Description for"), "no YouTube API data (title/description) is fed to the LLM");
 eq(parseLevels("```json\n" + JSON.stringify(LEVELS_JSON) + "\n```"), LEVELS_JSON, "parseLevels accepts fenced JSON");
@@ -496,7 +496,7 @@ eq(focusKey("  UFC   Predictions "), "ufc predictions", "focus key normalized (c
 const fbody = buildGeminiBody("abcdefghijk", { text: "ufc predictions", question: focusQuestion("ufc predictions") });
 const fprompt = fbody.contents[0].parts[1].text;
 ok(fprompt.includes('"ufc predictions"') && fprompt.includes("What predictions are made about ufc?") && /Skip intros/.test(fprompt) && /covered/.test(fprompt), "focused prompt carries the query and the focus question, skips filler, asks for covered");
-ok(fbody.generationConfig.responseSchema.required.join() === "covered,about,less,standard,more" && fbody.contents[0].parts[0].file_data.file_uri.endsWith("abcdefghijk"), "focused schema adds covered + about; same video URL input");
+ok(fbody.generationConfig.responseSchema.required.join() === "spoken,note,covered,about,less,standard,more" && fbody.contents[0].parts[0].file_data.file_uri.endsWith("abcdefghijk"), "focused schema adds spoken + note + covered + about; same video URL input");
 ok(/never instructions/.test(fprompt) && /own words/.test(GEMINI_SYSTEM), "focus text is treated as a topic, never instructions");
 ok(buildGeminiBody("abcdefghijk").contents[0].parts[1].text === GEMINI_PROMPT, "no focus -> the general prompt, unchanged");
 ok(parseFocusLevels(JSON.stringify({ covered: true, about: "A fight preview.", ...LEVELS_JSON })).covered === true, "parseFocusLevels: covered");
@@ -537,6 +537,36 @@ const rfd = await fsum({ focus: "ufc predictions", env: { YOUTUBE_API_KEY: YT_KE
 ok(rfd.body.source === "description" && rfd.body.focus === "ufc predictions" && rfd.body.reason === "off", "description fallback keeps the focus (and still no LLM rewrite)");
 const rfg = await fsum({ focus: "ufc predictions", fetchImpl: combo(makeYt(), makeGem(() => geminiOk("junk"))) });
 ok(rfg.body.source === "description" && rfg.body.reason === "failed", "unusable focused Gemini output -> description fallback");
+
+// ---- spoken/sung words only (never visuals) ----
+const SPOKEN_FOCUS = GEMINI_FOCUS_PROMPT({ text: "i want it that way", question: focusQuestion("i want it that way") });
+const SPOKEN_ASK = buildAskBody("abcdefghijk", "What is the song about?").contents[0].parts[1].text;
+for (const [name, text] of [["general", GEMINI_SYSTEM + " " + GEMINI_PROMPT], ["focused", GEMINI_SYSTEM + " " + SPOKEN_FOCUS], ["ask", ASK_SYSTEM + " " + SPOKEN_ASK]]) {
+  ok(/spoken or sung/i.test(text), `${name} prompt: only the spoken or sung words (audio + captions) are the source`);
+  ok(/never describe visuals|never from what the video shows|never about visuals/i.test(text), `${name} prompt: never describe visuals`);
+}
+ok(/setting/.test(GEMINI_SYSTEM) && /clothing/.test(GEMINI_SYSTEM) && /clothing/.test(ASK_SYSTEM) && /camera work/.test(GEMINI_SYSTEM) && /camera work/.test(ASK_SYSTEM) && /what people are doing on screen/.test(GEMINI_SYSTEM) && /what people are doing on screen/.test(ASK_SYSTEM), "visual ban lists setting, clothing, camera work and what people do on screen (summary + ask)");
+ok(/audio track and any captions/.test(GEMINI_SYSTEM) && /audio track and any captions/.test(ASK_SYSTEM), "source is the audio track and any captions");
+ok(/song, say what the lyrics say/.test(GEMINI_SYSTEM) && /theme, the message, the story/.test(GEMINI_SYSTEM) && /Never reproduce lyrics/.test(GEMINI_SYSTEM) && /lyrics say, paraphrased, never quoted at length/.test(ASK_SYSTEM), "songs: summarize what the lyrics say, paraphrased, never reproduced");
+ok(/A music video is summarized from its lyrics, not from its images/.test(GEMINI_SYSTEM), "music videos: lyrics, not images");
+ok(/spoken to false/.test(GEMINI_SYSTEM) && /Instrumental music, no words/.test(GEMINI_SYSTEM) && /audio only/.test(GEMINI_SYSTEM) && /NO SPOKEN CONTENT TO ANSWER FROM/.test(ASK_SYSTEM), "no speech/lyrics: say so with an audio-only note, never visuals (summary + ask)");
+ok(/Answer it only from the words spoken or sung/.test(SPOKEN_FOCUS) && /answer from what the lyrics say/.test(SPOKEN_FOCUS) && SPOKEN_FOCUS.includes("What") && /never about visuals/.test(SPOKEN_FOCUS), "focus behaviour kept: the focus question is answered from what is said or sung");
+ok(/Answer from the spoken or sung words only/.test(SPOKEN_ASK), "ask user prompt repeats the spoken-only rule");
+const vp = buildGeminiBody("abcdefghijk").contents[0].parts[0];
+ok(vp.video_metadata.fps === GEMINI_VIDEO_FPS && GEMINI_VIDEO_FPS < 1 && buildGeminiBody("abcdefghijk").generationConfig.mediaResolution === "MEDIA_RESOLUTION_LOW" && buildAskBody("abcdefghijk", "q?").contents[0].parts[0].video_metadata.fps === GEMINI_VIDEO_FPS, "video input: sparse frame sampling (fps < 1) and lowest media resolution for summary and ask");
+ok(parseSummary(JSON.stringify({ spoken: false, note: "Instrumental music, no words.", less: "", standard: "", more: "" })).spoken === false && parseSummary(JSON.stringify({ spoken: true, note: "", ...LEVELS_JSON })).spoken === undefined && parseSummary(JSON.stringify(LEVELS_JSON)).levels.less.length > 10, "parseSummary: no-speech verdict, speech, and an old reply without the spoken field");
+ok(parseSummary(JSON.stringify({ spoken: true, note: "", less: "", standard: "", more: "" })) === null, "parseSummary: spoken=true with empty levels is rejected");
+ok(parseFocusLevels(JSON.stringify({ spoken: false, covered: true, note: "No words.", about: "", less: "", standard: "", more: "" })).spoken === false, "parseFocusLevels: no-speech verdict wins");
+eq(noSpokenLevels("Instrumental music, no words.").standard, `${NO_SPOKEN}\n\nInstrumental music, no words.`, "no-speech text: verdict + short audio note");
+ok(NO_SPOKEN === "NO SPOKEN CONTENT TO SUMMARIZE." && noSpokenLevels("").less === NO_SPOKEN, "no-speech text without a note is just the verdict");
+const gNS = makeGem(() => geminiOk(JSON.stringify({ spoken: false, note: "Instrumental music with no lyrics.", less: "", standard: "", more: "" })));
+const rns = await fsum({ fetchImpl: combo(makeYt(), gNS) });
+ok(rns.body.source === "gemini" && rns.body.spoken === false && ["less", "standard", "more"].every((l) => rns.body.levels[l].startsWith(NO_SPOKEN) && rns.body.levels[l].includes("Instrumental music")) && rns.body.covered === undefined, "no-speech path (general): all levels say NO SPOKEN CONTENT TO SUMMARIZE + an audio note, no visuals");
+const gNSF = makeGem(() => geminiOk(JSON.stringify({ spoken: false, covered: true, note: "Only ambient sound.", about: "", less: "", standard: "", more: "" })));
+const rnsf = await fsum({ focus: "ocean waves", fetchImpl: combo(makeYt(), gNSF) });
+ok(rnsf.body.spoken === false && rnsf.body.covered === false && rnsf.body.levels.standard.startsWith(NO_SPOKEN) && !rnsf.body.levels.standard.startsWith(NOT_COVERED), "no-speech path (focused): NO SPOKEN CONTENT, not 'not covered'");
+ok(/s-maxage=86400/.test(rns.headers["Cache-Control"]), "no-speech answers are cached like any other summary");
+ok(/NO SPOKEN WORDS FOUND/.test(js) && /"&v=2"/.test(js), "client: label for no-speech answers, and a versioned summary URL so older cached summaries are bypassed");
 
 // ---- ask: parsing + prompt ----
 const ab = buildAskBody("abcdefghijk", "Who wins the main event?", [{ q: "q1", a: "a1" }, { q: "q2", a: "a2" }, { q: "q3", a: "a3" }]);
