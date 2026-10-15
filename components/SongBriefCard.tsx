@@ -18,7 +18,10 @@ export function SongBriefCard({ brief }: { brief: SongBrief }) {
     <div className="space-y-4 rounded-xl border border-accent/30 bg-black/30 p-4" aria-label="Your song brief">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-base font-semibold text-zinc-100">Your song brief</h3>
-        <p className="font-mono text-[10px] text-zinc-500">Editorial taste map as of {brief.asOf}</p>
+        <p className="font-mono text-[10px] text-zinc-500">
+          Editorial taste map as of {brief.asOf}
+          {brief.lastfm ? ` · Last.fm track data as of ${brief.lastfm.asOf}` : ""}
+        </p>
       </div>
 
       <section>
@@ -114,9 +117,17 @@ export function SongBriefCard({ brief }: { brief: SongBrief }) {
                   {i + 1}. {l.title} <span className="text-zinc-400">— {l.artist}</span>
                 </p>
                 <p className="font-mono text-[10px] text-zinc-500">
-                  {KIND_LABEL[l.kind]} · {l.trackRole}
+                  {KIND_LABEL[l.kind]} · {l.source === "Last.fm" && l.lastfm ? `Last.fm top track #${l.lastfm.rank}` : `${l.trackRole} (our pick)`}
                   {l.album ? ` · ${l.album}` : ""}
                   {l.year ? ` · ${l.year}` : ""}
+                  {l.lastfm?.url ? (
+                    <>
+                      {" · "}
+                      <a href={l.lastfm.url} target="_blank" rel="noopener noreferrer" className="text-accent underline-offset-2 hover:underline">
+                        Last.fm ↗
+                      </a>
+                    </>
+                  ) : null}
                 </p>
                 <p className="mt-1 text-xs text-accent">Why: {l.why}</p>
               </li>
@@ -126,6 +137,24 @@ export function SongBriefCard({ brief }: { brief: SongBrief }) {
           <p className="mt-1 text-xs text-zinc-500">Pick at least one artist to get leans.</p>
         )}
       </section>
+
+      {brief.lastfm ? (
+        <p className="text-[10px] text-zinc-500">
+          Track data from{" "}
+          <a href="https://www.last.fm" target="_blank" rel="noopener noreferrer" className="text-accent underline-offset-2 hover:underline">
+            Last.fm
+          </a>
+          , as of {brief.lastfm.asOf}:{" "}
+          {brief.lastfm.artists.map((x, i) => (
+            <span key={x.url}>
+              {i ? ", " : ""}
+              <a href={x.url} target="_blank" rel="noopener noreferrer" className="text-accent underline-offset-2 hover:underline">
+                {x.name}
+              </a>
+            </span>
+          ))}
+        </p>
+      ) : null}
 
       <ul className="space-y-0.5 text-[10px] text-zinc-600">
         {brief.caveats.map((c) => (

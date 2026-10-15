@@ -6,7 +6,7 @@ import {
   type MediaPayload,
   type StepId,
 } from "@/components/talentIntakeConfig";
-import type { ProfileInput, SongBrief, TrendingContext } from "@/lib/music/taste/types";
+import type { ProfileInput, TrendingContext } from "@/lib/music/taste/types";
 
 type Contact = { name: string; email: string; phone: string };
 
@@ -17,7 +17,6 @@ type SubmitDeps = {
   voice: MediaPayload;
   photo: MediaPayload;
   profile: ProfileInput;
-  brief: SongBrief;
   trending: TrendingContext | null;
   setPending: (value: boolean) => void;
   setError: (value: string | null) => void;
@@ -56,7 +55,6 @@ export function useTalentIntakeSubmit({
   voice,
   photo,
   profile,
-  brief,
   trending,
   setPending,
   setError,
@@ -72,33 +70,15 @@ export function useTalentIntakeSubmit({
   };
 
   const postIntake = async (answersPayload: AnswerRow[], contactPayload: Contact | Record<string, never>) => {
-    const tastePath = {
-      genres: profile.genres,
-      mood: null,
-      era: profile.era,
-      region: profile.region,
-      artists: brief.artists.map((a) => a.name),
-      albums: [] as string[],
-    };
     const response = await fetch("/api/talent-intake", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contact: contactPayload,
         answers: answersPayload,
-        tastePath,
         // The server rebuilds the brief from this profile with the same pure functions, so it never has to trust client text.
         profile,
         trending,
-        recommendations: brief.leans.map((l) => ({
-          id: l.id,
-          title: l.title,
-          artist: l.artist,
-          album: l.album,
-          year: l.year,
-          genre: l.genre,
-          why: l.why,
-        })),
         ...mediaBody(voice, photo),
       }),
     });

@@ -2,6 +2,10 @@ import { THEME_LABEL } from "./brief";
 import { DIMS, type SongBrief } from "./types";
 import { DIM_COPY, pct } from "./vector";
 
+function lastfmHref(url: string | null | undefined): string | null {
+  return url && /^https:\/\/www\.last\.fm\/[^\s"'<>]*$/.test(url) ? url : null;
+}
+
 function escapeHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -22,7 +26,10 @@ export function renderBriefHtml(b: SongBrief): string {
     ? b.leans
         .map(
           (l, i) =>
-            `${i + 1}. <strong>${escapeHtml(l.title)}</strong> - ${escapeHtml(l.artist)} <span style="color:#9ca3af;">(${escapeHtml(l.kind)}, ${escapeHtml(l.trackRole)})</span><br/><span style="color:#2bffe8;font-size:12px;">Why: ${escapeHtml(l.why)}</span>`,
+            `${i + 1}. <strong>${escapeHtml(l.title)}</strong> - ${escapeHtml(l.artist)} <span style="color:#9ca3af;">(${escapeHtml(l.kind)}, ${escapeHtml(l.trackRole)}; ${escapeHtml(l.source)})</span>${(() => {
+              const href = lastfmHref(l.lastfm?.url);
+              return href ? ` <a href="${escapeHtml(href)}" style="color:#2bffe8;font-size:12px;">Last.fm</a>` : "";
+            })()}<br/><span style="color:#2bffe8;font-size:12px;">Why: ${escapeHtml(l.why)}</span>`,
         )
         .join("<br/><br/>")
     : "No leans (not enough artists picked).";
@@ -36,6 +43,14 @@ export function renderBriefHtml(b: SongBrief): string {
   const notes = Object.entries(b.notes)
     .map(([k, v]) => `${escapeHtml(k)}: ${escapeHtml(String(v))}`)
     .join("<br/>");
+  const lf = b.lastfm
+    ? `Track data from Last.fm, as of ${escapeHtml(b.lastfm.asOf)}: ${b.lastfm.artists
+        .map((x) => {
+          const href = lastfmHref(x.url);
+          return href ? `<a href="${escapeHtml(href)}" style="color:#2bffe8;">${escapeHtml(x.name)}</a>` : escapeHtml(x.name);
+        })
+        .join(", ")}`
+    : "";
   return `<h2 style="font-size:16px;margin:24px 0 8px;color:#2bffe8;">Song brief</h2>
     <table style="width:100%;border-collapse:collapse;background:#111;border-radius:12px;overflow:hidden;">
       ${row("Artists", escapeHtml(b.artists.map((x) => x.name).join(" | ") || "-"))}
@@ -46,6 +61,7 @@ export function renderBriefHtml(b: SongBrief): string {
       ${t ? row("Chart context", escapeHtml(`${t.source}, as of ${t.asOf}: ${t.themes.map((x) => THEME_LABEL[x.theme]).join(", ") || "no theme read"} (${t.matched}/${t.total} rows matched)`)) : ""}
       ${row("Audience", audience)}
       ${row("3 leans", leans)}
+      ${lf ? row("Track data", lf) : ""}
       ${notes ? row("Notes", notes) : ""}
       ${row("Caveats", escapeHtml(b.caveats.join(" ")))}
     </table>`;

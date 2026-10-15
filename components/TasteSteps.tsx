@@ -30,7 +30,7 @@ function OwnArtist({ stage, taste }: { stage: "anchor" | "second" | "third"; tas
     <div className="space-y-1">
       <label className="block text-xs">
         <span className="mb-1 block font-mono text-[11px] text-zinc-400">
-          Type an artist <span className="text-zinc-600">· optional · we read free MusicBrainz tags to size the sound</span>
+          Type an artist <span className="text-zinc-600">· optional · we read free Last.fm and MusicBrainz tags to size the sound</span>
         </span>
         <div className="flex gap-2">
           <input
@@ -146,6 +146,15 @@ export function TasteSteps({
               ))}
           </Group>
         ))}
+        {options.some((o) => o.similar) ? (
+          <p className="text-[10px] text-zinc-500">
+            “Similar” matches are from{" "}
+            <a href="https://www.last.fm" target="_blank" rel="noopener noreferrer" className="text-accent underline-offset-2 hover:underline">
+              Last.fm
+            </a>
+            .
+          </p>
+        ) : null}
         <SkipButton onClick={onSkip} />
         <OwnArtist stage={step} taste={taste} />
         <AddYourOwn stepKey={step} value={taste.extras[step] || ""} onChange={taste.setExtra} label="Why this one?" placeholder="e.g. the way they write hooks" />

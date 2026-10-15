@@ -1,5 +1,6 @@
-import type { SeedArtist, SeedTrack, ThemeId, TrackRole } from "./types";
-import { vec } from "./vector";
+import { EXTRA_ARTISTS } from "./seedMore";
+import { A, AF, GM, LA, NA, UK } from "./seedKit";
+import type { SeedArtist } from "./types";
 
 /**
  * IkoArtist editorial taste map.
@@ -11,46 +12,10 @@ import { vec } from "./vector";
  *
  * Vector order: energy, acoustic, lyric, polish, mainstream, tempo (all 0..1).
  */
-export const SEED_AS_OF = "2026-10-14";
+export const SEED_AS_OF = "2026-10-15";
 export const SEED_SOURCE = "Ikosagon editorial seed (hand-written estimates, not measured audio features)";
 
-type T = [title: string, album: string, year: number, themes: string, tweak?: SeedTrack["tweak"]];
-const ROLES: TrackRole[] = ["signature hit", "fan favorite", "deep cut"];
-
-function A(
-  id: string,
-  name: string,
-  genres: string[],
-  region: string,
-  peak: number,
-  v: [number, number, number, number, number, number],
-  tracks: [T, T, T],
-): SeedArtist {
-  return {
-    id,
-    name,
-    genres,
-    region,
-    peak,
-    vector: vec(...v),
-    tracks: tracks.map(([title, album, year, themes, tweak], i) => ({
-      title,
-      album,
-      year,
-      themes: themes.split(",") as ThemeId[],
-      role: ROLES[i],
-      ...(tweak ? { tweak } : {}),
-    })),
-  };
-}
-
-const NA = "North America";
-const UK = "UK / Ireland";
-const AF = "Afrobeats / Africa diaspora";
-const LA = "Latin America / Spain";
-const GM = "Global mix";
-
-export const SEED_ARTISTS: SeedArtist[] = [
+const CORE_ARTISTS: SeedArtist[] = [
   // Pop
   A("taylor-swift", "Taylor Swift", ["Pop", "Country / Folk"], NA, 2014, [0.55, 0.35, 0.85, 0.85, 0.98, 0.55], [
     ["Shake It Off", "1989", 2014, "party,resilience"],
@@ -488,6 +453,8 @@ export const SEED_ARTISTS: SeedArtist[] = [
     ["Flume", "For Emma, Forever Ago", 2007, "introspection,escapism"],
   ]),
 ];
+
+export const SEED_ARTISTS: SeedArtist[] = [...CORE_ARTISTS, ...EXTRA_ARTISTS];
 
 const BY_ID = new Map(SEED_ARTISTS.map((a) => [a.id, a]));
 export function seedArtist(id: string): SeedArtist | undefined {

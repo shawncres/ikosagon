@@ -3,6 +3,7 @@
 import { TalentIntakeControls } from "@/components/TalentIntakeControls";
 import { useEffect, useRef } from "react";
 import { useTalentIntake } from "@/components/useTalentIntake";
+import { SEED_ARTISTS } from "@/lib/music/taste/seed";
 
 export function TalentIntakeChat() {
   const listRef = useRef<HTMLDivElement>(null);
@@ -30,7 +31,7 @@ export function TalentIntakeChat() {
             anytime.
           </p>
           <p className="mt-2 font-mono text-[10px] text-zinc-500">
-            Taste map: Ikosagon editorial seed as of {intake.seedAsOf} · estimates, not measured audio features
+            Taste map: Ikosagon editorial seed of {SEED_ARTISTS.length} artists as of {intake.seedAsOf} · estimates, not measured audio features{Object.keys(intake.taste.enrichment).length ? " · track data from Last.fm" : ""}
           </p>
         </div>
         <p className="font-mono text-xs text-zinc-500" aria-live="polite">

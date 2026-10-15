@@ -16,6 +16,14 @@ import {
 } from "../lib/music/taste/sanitize.ts";
 import { parseChart, trendingFromChart } from "../lib/music/taste/trending.ts";
 import { renderBriefHtml } from "../lib/music/taste/emailHtml.ts";
+import { applyEnrichment, similarSeedIds, parseEnrichmentMap } from "../lib/music/taste/enrich.ts";
+import { titleKey } from "../lib/music/taste/titleKey.ts";
+import {
+  parseTopTracks, parseTopTags, parseSimilar, parseApiError, artistUrl, createLastfmClient,
+} from "../lib/music/lastfm.ts";
+import fs from "node:fs";
+import path from "node:path";
+import { enrichTargets, targetsFrom } from "../lib/music/enrichArtists.ts";
 
 let pass = 0;
 const fails = [];
@@ -30,7 +38,7 @@ const GENRES = ["Pop", "Hip-hop / Rap", "R&B / Soul", "Afrobeats", "Rock / Alt",
 const REGIONS = ["North America", "UK / Ireland", "Afrobeats / Africa diaspora", "Latin America / Spain", "Global mix"];
 
 // ---- Seed integrity ----
-ok(SEED_ARTISTS.length >= 60, "seed has at least 60 artists", String(SEED_ARTISTS.length));
+ok(SEED_ARTISTS.length >= 150, "seed has at least 150 artists", String(SEED_ARTISTS.length));
 ok(new Set(SEED_ARTISTS.map((a) => a.id)).size === SEED_ARTISTS.length, "seed ids unique");
 ok(new Set(SEED_ARTISTS.map((a) => a.name)).size === SEED_ARTISTS.length, "seed names unique");
 ok(/^\d{4}-\d{2}-\d{2}$/.test(SEED_AS_OF), "seed has an as-of date");
@@ -40,7 +48,7 @@ for (const a of SEED_ARTISTS) {
   ok(a.tracks.length === 3, `3 tracks: ${a.id}`);
   eq(a.tracks.map((t) => t.role), ["signature hit", "fan favorite", "deep cut"], `roles in order: ${a.id}`);
   ok(a.tracks.every((t) => t.themes.length >= 1 && t.themes.every((th) => THEME_IDS.includes(th))), `valid theme tags: ${a.id}`);
-  ok(a.tracks.every((t) => t.title && t.year >= 1930 && t.year <= 2026), `track metadata sane: ${a.id}`);
+  ok(a.tracks.every((t) => t.title && (t.year === null || (t.year >= 1930 && t.year <= 2026))), `track metadata sane: ${a.id}`);
   ok(a.genres.every((g) => GENRES.includes(g)), `known genres: ${a.id}`);
   ok(REGIONS.includes(a.region), `known region: ${a.id}`);
   ok(a.peak >= 1930 && a.peak <= 2026, `peak year sane: ${a.id}`);
@@ -200,7 +208,7 @@ ok(brief.leans.length === 3, "brief has 3 leans");
 ok(new Set(brief.leans.map((l) => l.id)).size === 3, "leans are distinct tracks");
 ok(new Set(brief.leans.map((l) => l.artist)).size >= 2, "leans span at least two artists");
 eq(brief.leans.map((l) => l.kind), ["overlap", "edge-high", "edge-low"], "lean kinds: overlap + both edges");
-ok(brief.leans.every((l) => l.why.length > 40 && l.assumed === true), "every lean has a why and is flagged as assumed");
+ok(brief.leans.every((l) => l.why.length > 40 && l.assumed === true && l.source === "editorial seed" && !l.lastfm), "every seed lean has a why and is flagged as assumed");
 ok(brief.leans[0].why.includes("center of your range"), "overlap lean explains center");
 ok(brief.leans.slice(1).every((l) => /edge of your range on /.test(l.why)), "edge leans explain the edge");
 ok(brief.leans[0].themes.some((t) => ["heartbreak", "nostalgia"].includes(t)), "overlap lean favours the visitor's themes");
@@ -342,6 +350,213 @@ ok(DIMS.every((d) => typeof brief.center.vector[d] === "number"), "brief center 
 ok(typeof brief.center.summary === "string" && brief.center.summary.endsWith("."), "center summary is a sentence");
 ok(JSON.stringify(brief).length < 8000, "brief JSON stays small for the email payload", String(JSON.stringify(brief).length));
 ok(briefLines(brief).length >= 8, "brief lines cover center/range/themes/audience/leans");
+
+// ---- Last.fm (mocked responses only; this script never touches the network) ----
+const lfTracksJson = {
+  toptracks: {
+    track: [
+      { name: "Anti-Hero", playcount: "9000000", listeners: "3100000", url: "https://www.last.fm/music/Taylor+Swift/_/Anti-Hero", "@attr": { rank: "1" } },
+      { name: "Anti-Hero - Live", playcount: "800", listeners: "400", url: "https://www.last.fm/music/x" },
+      { name: "Anti-Hero (Remastered 2024)", playcount: "700", listeners: "300", url: "https://www.last.fm/music/x" },
+      { name: "Shake It Off", playcount: "8000000", listeners: "2900000", url: "https://evil.example/phish" },
+      { name: "Cruel Summer (feat. Someone)", playcount: "7000000", listeners: "2500000", url: "https://www.last.fm/music/Taylor+Swift/_/Cruel+Summer" },
+      { name: "Bad Blood (Karaoke)", playcount: "5", listeners: "2", url: "" },
+      { name: "<script>alert(1)</script> Song", playcount: "bad", listeners: "-3", url: "https://www.last.fm/music/y" },
+      { name: "Blank Space", playcount: "6000000", listeners: "2400000", url: "https://www.last.fm/music/Taylor+Swift/_/Blank+Space" },
+      { name: "Love Story", playcount: "5000000", listeners: "2000000", url: "https://www.last.fm/music/Taylor+Swift/_/Love+Story" },
+      { name: "Lover", playcount: "4000000", listeners: "1000000", url: "https://www.last.fm/music/Taylor+Swift/_/Lover" },
+    ],
+  },
+};
+const parsedTracks = parseTopTracks(lfTracksJson);
+ok(parsedTracks.length === 5, "top tracks capped at 5", String(parsedTracks.length));
+eq(parsedTracks.map((t) => t.title).slice(0, 3), ["Anti-Hero", "Shake It Off", "Cruel Summer (feat. Someone)"], "live/remaster/karaoke duplicates dropped, order kept");
+ok(!parsedTracks.some((t) => /live|karaoke|remaster/i.test(t.title)), "no live/karaoke/remaster rows");
+eq(parsedTracks.map((t) => t.rank), [1, 2, 3, 4, 5], "ranks are 1..n after filtering");
+ok(parsedTracks[0].listeners === 3100000 && parsedTracks[0].plays === 9000000, "string counts parsed to numbers");
+ok(parsedTracks[1].url === null, "non-last.fm track urls are dropped");
+ok(parsedTracks.every((t) => !/[<>]/.test(t.title)), "track titles are sanitized (no angle brackets)");
+ok(parsedTracks.some((t) => t.plays === null && t.listeners === null), "garbage counts become null, not numbers");
+eq(parseTopTracks({ toptracks: { track: { name: "Solo", playcount: "1", listeners: "1" } } }).map((t) => t.title), ["Solo"], "single-object track payload is accepted");
+eq(parseTopTracks({}), [], "empty payload -> no tracks");
+eq(parseTopTracks(null), [], "null payload -> no tracks");
+eq(parseTopTags({ toptags: { tag: [{ name: "Pop", count: 100 }, { name: "seen live", count: 90 }, { name: "indie pop", count: "70" }, { name: "rare", count: 3 }, { name: "pop", count: 50 }] } }), ["pop", "indie pop"], "tags: lowercased, noise/low-count dropped, de-duplicated");
+eq(parseSimilar({ similarartists: { artist: [{ name: "B", match: "0.5" }, { name: "A", match: "0.9" }] } }), ["A", "B"], "similar artists sorted by match");
+eq(parseApiError({ error: 6, message: "The artist you supplied could not be found" }), { code: 6, message: "The artist you supplied could not be found" }, "api error parsed");
+ok(parseApiError({ toptracks: {} }) === null, "no error on a normal body");
+eq(artistUrl("Florence + The Machine"), "https://www.last.fm/music/Florence+%2B+The+Machine", "artist url encodes spaces as + and plus as %2B");
+ok(titleKey("Hey Ya! (Radio Edit)") === titleKey("hey ya!") && titleKey("Éclair - Remastered 2011") === "eclair", "titleKey ignores edits/remasters/accents");
+ok(titleKey("Song (feat. X)") === titleKey("Song"), "titleKey ignores feat.");
+
+function mockFetch(handler) {
+  const calls = [];
+  const fn = async (url) => {
+    const u = new URL(String(url));
+    calls.push({ method: u.searchParams.get("method"), artist: u.searchParams.get("artist"), key: u.searchParams.get("api_key"), url: String(url) });
+    const out = await handler(u, calls.length);
+    if (out instanceof Error) throw out;
+    return { ok: out.status ? out.status < 400 : true, status: out.status || 200, json: async () => out.body };
+  };
+  return { fn, calls };
+}
+const goodBody = (u) =>
+  u.searchParams.get("method") === "artist.getTopTracks" ? lfTracksJson
+  : u.searchParams.get("method") === "artist.getTopTags" ? { toptags: { tag: [{ name: "pop", count: 100 }, { name: "singer-songwriter", count: 60 }] } }
+  : { similarartists: { artist: [{ name: "Olivia Rodrigo", match: "0.8" }, { name: "Nobody Known", match: "0.7" }, { name: "Sabrina Carpenter", match: "0.6" }] } };
+let clock = 1_800_000_000_000;
+const waits = [];
+const base = (fn, extra = {}) => createLastfmClient({ apiKey: "KEY", base: "https://mock.invalid/2.0/", fetchImpl: fn, now: () => clock, wait: async (ms) => { waits.push(ms); clock += ms; }, ...extra });
+
+const noKey = createLastfmClient({ apiKey: "", fetchImpl: async () => { throw new Error("must not be called"); } });
+ok(noKey.enabled === false && (await noKey.enrich("Adele")).status === "disabled", "no key -> disabled, no network call");
+
+const m1 = mockFetch((u) => ({ body: goodBody(u) }));
+const c1 = base(m1.fn);
+const r1 = await c1.enrich("Taylor Swift");
+ok(r1.status === "ok" && r1.data.topTracks.length === 5 && r1.data.tags[0] === "pop" && r1.data.similar[0] === "Olivia Rodrigo", "client returns tracks, tags and similar artists");
+ok(m1.calls.length === 3 && new Set(m1.calls.map((c) => c.method)).size === 3, "one artist = exactly three API calls");
+ok(m1.calls.every((c) => c.key === "KEY" && c.artist === "Taylor Swift" && c.url.startsWith("https://mock.invalid/2.0/")), "key and artist sent server-side to the configured base");
+ok(r1.data.asOf === new Date(clock).toISOString().slice(0, 10) && r1.data.url === "https://www.last.fm/music/Taylor+Swift", "result carries as-of date and the Last.fm artist link");
+await c1.enrich("taylor swift");
+ok(m1.calls.length === 3, "second lookup (any casing) is served from cache");
+clock += 7 * 60 * 60 * 1000;
+await c1.enrich("Taylor Swift");
+ok(m1.calls.length === 6, "cache expires after the TTL");
+const mDup = mockFetch(async (u) => { await Promise.resolve(); return { body: goodBody(u) }; });
+const cDup = base(mDup.fn);
+await Promise.all([cDup.enrich("Adele"), cDup.enrich("Adele"), cDup.enrich("ADELE")]);
+ok(mDup.calls.length === 3, "concurrent lookups of one artist share one set of calls");
+const waitsBefore = waits.length;
+const mGap = mockFetch((u) => ({ body: goodBody(u) }));
+const frozen = 1_900_000_000_000;
+const cGap = createLastfmClient({ apiKey: "K", fetchImpl: mGap.fn, now: () => frozen, wait: async (ms) => { waits.push(ms); }, minGapMs: 200 });
+await cGap.enrich("Adele");
+ok(waits.slice(waitsBefore).sort((a, b) => a - b).join(",") === "200,400", "rate limiter spaces request starts by the minimum gap", waits.slice(waitsBefore).join(","));
+
+const mNf = mockFetch((u) => ({ status: 200, body: u.searchParams.get("method") === "artist.getTopTracks" ? { error: 6, message: "The artist you supplied could not be found" } : { toptags: { tag: [] } } }));
+const cNf = base(mNf.fn);
+ok((await cNf.enrich("Zzzz Qqqq")).status === "notfound", "unknown artist -> notfound");
+const nfCalls = mNf.calls.length;
+await cNf.enrich("Zzzz Qqqq");
+ok(mNf.calls.length === nfCalls, "notfound is negatively cached");
+
+const mRl = mockFetch(() => ({ status: 429, body: { error: 29, message: "Rate Limit Exceeded" } }));
+const cRl = base(mRl.fn);
+ok((await cRl.enrich("Adele")).status === "unavailable", "rate limit reply -> unavailable");
+const rlCalls = mRl.calls.length;
+const rlAgain = await cRl.enrich("Drake");
+ok(rlAgain.status === "unavailable" && mRl.calls.length === rlCalls && cRl.stats().breakerOpen, "rate limit opens the breaker: no further calls");
+clock += 31 * 60 * 1000;
+ok(!cRl.stats().breakerOpen, "breaker closes after its pause");
+
+const mKey = mockFetch(() => ({ status: 403, body: { error: 10, message: "Invalid API key" } }));
+const cKey = base(mKey.fn);
+const rk = await cKey.enrich("Adele");
+ok(rk.status === "unavailable" && rk.reason === "key rejected", "invalid key -> unavailable (key rejected)");
+ok(!JSON.stringify(rk).includes("KEY"), "results never echo the key");
+
+const mTmp = mockFetch(() => new Error("network down"));
+const cTmp = base(mTmp.fn, { breakerFailures: 2 });
+await cTmp.enrich("A1 Artist");
+ok(!cTmp.stats().breakerOpen, "one transient failure does not open the breaker");
+await cTmp.enrich("B2 Artist");
+ok(cTmp.stats().breakerOpen, "repeated transient failures open the breaker");
+
+const cBad = base(async () => ({ ok: false, status: 502, json: async () => { throw new Error("not json"); } }));
+ok((await cBad.enrich("Adele")).status === "unavailable", "non-JSON error page -> unavailable, no throw");
+
+const cEvict = base(mockFetch((u) => ({ body: goodBody(u) })).fn, { maxEntries: 2 });
+await cEvict.enrich("One One"); await cEvict.enrich("Two Two"); await cEvict.enrich("Three Three");
+ok(cEvict.stats().cached === 2, "cache is bounded");
+ok((await base(mockFetch(() => ({ body: {} })).fn).enrich("x")).status === "notfound", "one-character names are not looked up");
+
+// ---- Enrichment applied to the brief ----
+const taylor = A("taylor-swift");
+const seedTitle = taylor.tracks[0].title;
+const enr = (id, name, titles, extra = {}) => ({
+  id, name, source: "Last.fm", asOf: "2026-10-15", url: artistUrl(name), tags: ["pop"], similar: [], similarSeedIds: [],
+  topTracks: titles.map((t, i) => ({ title: t, rank: i + 1, listeners: 1_200_000 - i * 1000, plays: 5_000_000, url: `https://www.last.fm/music/x/_/${i}` })),
+  ...extra,
+});
+const picks3 = ["taylor-swift", "kendrick-lamar", "miles-davis"];
+const prof3 = { genres: [], era: null, region: null, artistIds: picks3, answers: {}, contrast: null, themes: ["heartbreak"], audience: null, extras: {}, custom: [] };
+const plain = buildBrief(prof3);
+ok(plain.lastfm === null && plain.version === 2, "no enrichment -> lastfm is null (no credit, no claims)");
+ok(plain.caveats.some((c) => /editorial picks/.test(c)) && !plain.caveats.some((c) => /Last\.fm/.test(c)), "no-enrichment caveat says editorial picks and never mentions Last.fm");
+const enrichedMap = {
+  "taylor-swift": enr("taylor-swift", "Taylor Swift", [seedTitle, "A Brand New Taylor Song", "Another Taylor Song"]),
+  "kendrick-lamar": enr("kendrick-lamar", "Kendrick Lamar", ["K One", "K Two", "K Three"]),
+};
+const rich = buildBrief(prof3, { enrichment: enrichedMap });
+ok(rich.lastfm && rich.lastfm.asOf === "2026-10-15" && rich.lastfm.artists.length === 2, "brief records which artists used Last.fm and the as-of date");
+ok(rich.lastfm.artists.every((a) => a.url.startsWith("https://www.last.fm/")), "brief carries Last.fm links for credit");
+ok(rich.leans.length === 3 && new Set(rich.leans.map((l) => l.id)).size === 3, "enriched brief still has 3 distinct leans");
+ok(rich.leans.filter((l) => l.source === "Last.fm").every((l) => l.assumed === false && l.lastfm && l.trackRole === "Last.fm top track" && /Last\.fm lists it #\d among .* most-played tracks/.test(l.why) && l.why.includes("2026-10-15")), "Last.fm leans say so, quote Last.fm's own order, and carry the as-of date");
+ok(rich.leans.filter((l) => l.source === "editorial seed").every((l) => l.assumed === true), "seed leans stay flagged as assumed");
+ok(rich.leans.every((l) => l.source === "Last.fm" ? ["taylor-swift", "kendrick-lamar"].includes(picks3.find((id) => A(id).name === l.artist)) : l.artist === "Miles Davis"), "Last.fm picks only for enriched artists; the rest fall back to the seed");
+ok(rich.caveats.some((c) => /Last\.fm/.test(c) && /2026-10-15/.test(c) && /not stream totals/.test(c)), "caveat names Last.fm, the as-of date, and that it is not stream data");
+ok(!/#\d.*chart|chart.*#\d|number one/i.test(rich.leans.map((l) => l.why).join(" ")), "no chart-rank claims in leans");
+eq(rich.themes, { ...plain.themes }, "themes and overlap are identical with or without Last.fm (editorial tags drive them)");
+eq(rich.center, plain.center, "center is identical with or without Last.fm");
+const applied = applyEnrichment([fromSeed(taylor)], enrichedMap);
+const matched = applied[0].topTracks.find((t) => t.title === seedTitle);
+ok(matched && matched.themes.length >= 1 && matched.year === taylor.tracks[0].year, "a Last.fm track that matches a seed track keeps its theme tags and year");
+const unmatched = applied[0].topTracks.find((t) => t.title === "A Brand New Taylor Song");
+ok(unmatched && unmatched.themes.length === 0 && unmatched.year === null && unmatched.album === "", "an unmatched Last.fm track gets no invented themes, year or album");
+ok(applyEnrichment([P("miles-davis")], enrichedMap)[0].topTracks === undefined, "artists without enrichment are left alone");
+ok(applyEnrichment([P("taylor-swift")], { "taylor-swift": enr("taylor-swift", "Taylor Swift", []) })[0].topTracks === undefined, "an empty Last.fm answer falls back to the seed");
+const custom1 = { id: "custom:some-band", name: "Some Band", vector: { energy: 0.6, acoustic: 0.3, lyric: 0.5, polish: 0.5, mainstream: 0.3, tempo: 0.5 }, peak: 2016, tags: ["indie"] };
+const profC = { ...prof3, artistIds: ["custom:some-band", "kendrick-lamar"], custom: [custom1] };
+const noTracks = buildBrief(profC);
+ok(noTracks.leans.every((l) => l.artist !== "Some Band") && noTracks.caveats.some((c) => /can't supply leans without Last\.fm/.test(c)), "free-text artist without Last.fm yields no leans and says why");
+const withTracks = buildBrief(profC, { enrichment: { "custom:some-band": enr("custom:some-band", "Some Band", ["Band One", "Band Two"]) } });
+ok(withTracks.leans.some((l) => l.artist === "Some Band" && l.source === "Last.fm"), "free-text artist can supply Last.fm leans");
+ok(withTracks.caveats.some((c) => /their tracks come from Last\.fm/.test(c)), "free-text caveat updates when Last.fm supplied their tracks");
+ok(briefLines(rich).some((l) => /^Track data: Last\.fm/.test(l)) && briefLines(rich).some((l) => /source: Last\.fm/.test(l)), "plain-text rows credit Last.fm");
+ok(!briefLines(plain).some((l) => /Last\.fm/.test(l)), "plain-text rows never mention Last.fm without Last.fm data");
+ok(JSON.stringify(rich).length < 9000, "enriched brief JSON stays small", String(JSON.stringify(rich).length));
+const richHtml = renderBriefHtml(rich);
+ok(richHtml.includes('href="https://www.last.fm/') && richHtml.includes("Track data from Last.fm"), "email html credits and links Last.fm");
+const badLink = { ...rich, lastfm: { ...rich.lastfm, artists: [{ name: "X", url: "javascript:alert(1)", tags: [], similar: [] }] } };
+ok(!renderBriefHtml(badLink).includes("javascript:"), "email html refuses non-last.fm links");
+ok(!renderBriefHtml(plain).includes("last.fm"), "email html has no Last.fm text without Last.fm data");
+
+// ---- Similar artists ----
+eq(similarSeedIds(["The Weeknd", "Nobody Known", "olivia rodrigo", "Taylor Swift", "Olivia Rodrigo"], "taylor-swift"), ["the-weeknd", "olivia-rodrigo"], "similar names map to seed ids (accents/case/dupes/self ignored)");
+const tTarget = targetVector(P("taylor-swift"), {});
+const base2 = suggestNext(2, [P("taylor-swift")], tTarget, [], null);
+const sim2 = suggestNext(2, [P("taylor-swift")], tTarget, [], null, ["olivia-rodrigo", "sabrina-carpenter", "adele"]);
+ok(base2.every((o) => !o.similar) && base2.length === 6, "no similar ids -> unchanged second-pick list");
+eq(sim2.slice(0, 2).map((o) => o.artist.id), ["olivia-rodrigo", "sabrina-carpenter"], "up to two Last.fm-similar artists lead the second pick, in Last.fm order");
+ok(sim2.slice(0, 2).every((o) => o.similar && o.label === "Last.fm: similar to Taylor Swift"), "similar picks are labelled as coming from Last.fm");
+ok(sim2.length === 6 && new Set(sim2.map((o) => o.artist.id)).size === 6, "second pick stays six distinct options");
+ok(!sim2.some((o) => o.artist.id === "taylor-swift"), "the anchor is never offered as its own similar artist");
+ok(suggestNext(3, [P("taylor-swift"), P("kendrick-lamar")], tTarget, [], null, ["olivia-rodrigo"]).every((o) => !o.similar), "similar boost applies to the second pick only");
+
+// ---- Enrichment endpoint helpers / validation ----
+eq(targetsFrom(["taylor-swift", "nope", "taylor-swift", "kendrick-lamar"], ["Some Band", "x", " Another  Band "]).map((t) => t.id), ["taylor-swift", "kendrick-lamar", "custom:some-band"], "targets: unknown ids skipped, duplicates removed, capped at 3");
+eq(targetsFrom(["taylor-swift"], []).map((t) => t.name), ["Taylor Swift"], "seed targets use OUR seed name, not client text");
+const cleanMap = parseEnrichmentMap({ "taylor-swift": enrichedMap["taylor-swift"], bad: { source: "Last.fm", name: "X", url: "https://evil.example", topTracks: [] }, other: "x" });
+eq(Object.keys(cleanMap), ["taylor-swift"], "client-side parse drops entries with non-last.fm links or bad shape");
+ok(parseEnrichmentMap(null) && Object.keys(parseEnrichmentMap(undefined)).length === 0, "client-side parse tolerates garbage");
+const offOut = await enrichTargets(targetsFrom(["taylor-swift"], []), { client: noKey });
+ok(offOut.enabled === false && Object.keys(offOut.artists).length === 0 && offOut.missing[0] === "taylor-swift", "enrichTargets with no key reports disabled and falls back");
+const mOn = mockFetch((u) => ({ body: goodBody(u) }));
+const onOut = await enrichTargets(targetsFrom(["taylor-swift", "kendrick-lamar"], []), { client: base(mOn.fn) });
+ok(onOut.enabled && Object.keys(onOut.artists).length === 2 && onOut.missing.length === 0, "enrichTargets returns both artists");
+eq(onOut.artists["taylor-swift"].similarSeedIds, ["olivia-rodrigo", "sabrina-carpenter"], "enrichTargets maps similar artists to seed ids");
+const slow = createLastfmClient({ apiKey: "K", fetchImpl: () => new Promise(() => {}), timeoutMs: 150 });
+const slowOut = await enrichTargets(targetsFrom(["taylor-swift"], []), { client: slow, budgetMs: 25 });
+ok(slowOut.missing.includes("taylor-swift") && Object.keys(slowOut.artists).length === 0, "a slow Last.fm is cut off by the budget and the seed is used");
+
+// ---- Key hygiene + removed routes (static) ----
+const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]));
+const clientFiles = [...walk("components"), ...walk("app").filter((f) => !f.includes(`${path.sep}api${path.sep}`))].filter((f) => /\.(ts|tsx)$/.test(f));
+ok(clientFiles.every((f) => !/LASTFM_API_KEY|lib\/music\/lastfm"|lib\/music\/enrichArtists"/.test(fs.readFileSync(f, "utf8"))), "no client/page file imports the Last.fm client or reads the key");
+ok(!/NEXT_PUBLIC_LASTFM/.test(walk(".").filter((f) => !/node_modules|\.next|\.git[\\/]/.test(f)).filter((f) => /\.(ts|tsx|mjs|md|mdx|example)$/.test(f) && !f.includes("ikoartist-taste-check")).map((f) => fs.readFileSync(f, "utf8")).join("\n")), "the key is never exposed as NEXT_PUBLIC_*");
+ok(/LASTFM_API_KEY/.test(fs.readFileSync(".env.example", "utf8")), ".env.example documents LASTFM_API_KEY");
+ok(!fs.existsSync("app/api/music-recommend") && !fs.existsSync("app/api/music-catalog") && !fs.existsSync("lib/music/recommend.ts") && !fs.existsSync("data/music-catalog.json"), "old music-recommend / music-catalog routes and data are gone");
+ok(!/api\/music-(recommend|catalog)/.test(clientFiles.map((f) => fs.readFileSync(f, "utf8")).join("\n")), "nothing calls the removed routes");
 
 console.log(`ikoartist-taste-check: ${pass} passed, ${fails.length} failed`);
 if (fails.length) {

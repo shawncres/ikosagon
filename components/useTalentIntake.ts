@@ -143,7 +143,6 @@ export function useTalentIntake() {
     voice: media.voice,
     photo: media.photo,
     profile: taste.profile,
-    brief: taste.brief,
     trending: taste.trending,
     setPending,
     setError,

@@ -25,7 +25,7 @@ export type TrackRole = "signature hit" | "fan favorite" | "deep cut";
 export type SeedTrack = {
   title: string;
   album: string;
-  year: number;
+  year: number | null;
   themes: ThemeId[];
   role: TrackRole;
   /** Optional per-track nudges where a track clearly differs from the artist's usual sound. */
@@ -41,6 +41,39 @@ export type SeedArtist = {
   peak: number;
   vector: Vector;
   tracks: SeedTrack[];
+};
+
+/** One of an artist's most-played tracks according to Last.fm (public scrobble data, not stream totals). */
+export type LastfmTrack = {
+  title: string;
+  /** Position in Last.fm's own most-played order for this artist, after we drop live/remaster duplicates. */
+  rank: number;
+  listeners: number | null;
+  plays: number | null;
+  url: string | null;
+};
+
+/** What the free Last.fm API told us about one artist. Server-built; the client may display it but the server never trusts the client's copy. */
+export type ArtistEnrichment = {
+  id: string;
+  name: string;
+  source: "Last.fm";
+  /** YYYY-MM-DD the data was fetched. */
+  asOf: string;
+  /** Link back to the artist's Last.fm page (required credit). */
+  url: string;
+  tags: string[];
+  /** Names Last.fm lists as similar. */
+  similar: string[];
+  /** Subset of `similar` that exists in our seed, as seed ids. */
+  similarSeedIds: string[];
+  topTracks: LastfmTrack[];
+};
+
+/** A track we can lean on: one of our editorial seed tracks, or a Last.fm top track. */
+export type PickTrack = Omit<SeedTrack, "role"> & {
+  role: TrackRole | "Last.fm top track";
+  lastfm?: LastfmTrack;
 };
 
 export type Level = "low" | "mid" | "high" | "any";
@@ -141,14 +174,17 @@ export type Lean = {
   genre?: string;
   why: string;
   kind: "overlap" | "edge-high" | "edge-low";
-  trackRole: TrackRole;
+  trackRole: TrackRole | "Last.fm top track";
   themes: ThemeId[];
-  /** Our editorial assumption of the artist's best tracks, not stream data. */
-  assumed: true;
+  /** Where the pick came from. Seed picks are our editorial assumption, not stream data. */
+  source: "editorial seed" | "Last.fm";
+  /** True for editorial seed picks (an assumption); false when Last.fm supplied the track. */
+  assumed: boolean;
+  lastfm?: { rank: number; listeners: number | null; plays: number | null; url: string | null };
 };
 
 export type SongBrief = {
-  version: 1;
+  version: 2;
   asOf: string;
   artists: Array<{ id: string; name: string; custom: boolean; themes: ThemeId[] }>;
   center: { vector: Vector; eraYear: number | null; summary: string };
@@ -169,5 +205,10 @@ export type SongBrief = {
   audience: Audience | null;
   leans: Lean[];
   notes: Extras;
+  /** Present only when Last.fm data was actually used for this brief. */
+  lastfm: {
+    asOf: string;
+    artists: Array<{ name: string; url: string; tags: string[]; similar: string[] }>;
+  } | null;
   caveats: string[];
 };

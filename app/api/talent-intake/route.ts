@@ -3,7 +3,11 @@ import { Resend } from "resend";
 import { briefLines, buildBrief } from "@/lib/music/taste/brief";
 import { renderBriefHtml } from "@/lib/music/taste/emailHtml";
 import { sanitizeProfile, sanitizeTrending } from "@/lib/music/taste/sanitize";
+import { enrichTargets, targetsFrom } from "@/lib/music/enrichArtists";
 import type { SongBrief } from "@/lib/music/taste/types";
+
+export const runtime = "nodejs";
+export const maxDuration = 30;
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const contactToEmail = process.env.CONTACT_TO_EMAIL || "shawn@ikosagon.com";
@@ -22,25 +26,6 @@ type AttachmentInput = {
   durationSeconds?: number;
 };
 
-type TastePath = {
-  genres?: string[];
-  mood?: string | null;
-  era?: string | null;
-  region?: string | null;
-  artists?: string[];
-  albums?: string[];
-};
-
-type RecommendationInput = {
-  id?: string;
-  title?: string;
-  artist?: string;
-  album?: string;
-  year?: string | null;
-  genre?: string;
-  why?: string;
-};
-
 type IntakePayload = {
   contact?: {
     name?: string;
@@ -48,12 +33,9 @@ type IntakePayload = {
     phone?: string;
   };
   answers?: Array<{ question: string; answer: string }>;
-  tastePath?: TastePath;
-  recommendations?: RecommendationInput[];
   /** Raw visitor choices. The brief is rebuilt here with the same pure functions; client text is never trusted. */
   profile?: unknown;
   trending?: unknown;
-  catalogAsOf?: string;
   voice?: AttachmentInput | null;
   photo?: AttachmentInput | null;
 };
@@ -101,34 +83,20 @@ export async function POST(request: Request) {
       }))
     : [];
 
-  const tastePath = body.tastePath || {};
-  const pathGenres = Array.isArray(tastePath.genres) ? tastePath.genres.map((v) => clip(v, 80)).filter(Boolean).slice(0, 12) : [];
-  const pathArtists = Array.isArray(tastePath.artists) ? tastePath.artists.map((v) => clip(v, 120)).filter(Boolean).slice(0, 16) : [];
-  const pathAlbums = Array.isArray(tastePath.albums) ? tastePath.albums.map((v) => clip(v, 160)).filter(Boolean).slice(0, 16) : [];
-  const pathMood = clip(tastePath.mood, 80);
-  const pathEra = clip(tastePath.era, 80);
-  const pathRegion = clip(tastePath.region, 80);
-  const catalogAsOf = clip(body.catalogAsOf, 40);
-  const recommendations = Array.isArray(body.recommendations)
-    ? body.recommendations.slice(0, 5).map((item) => ({
-        title: clip(item?.title, 160),
-        artist: clip(item?.artist, 160),
-        album: clip(item?.album, 160),
-        year: clip(item?.year, 12),
-        genre: clip(item?.genre, 80),
-        why: clip(item?.why, 400),
-      }))
-    : [];
-
   let brief: SongBrief | null = null;
-  if (body.profile) {
-    const profile = sanitizeProfile(body.profile);
-    if (profile.artistIds.length || profile.themes.length || profile.audience) {
-      brief = buildBrief(profile, { trending: sanitizeTrending(body.trending) });
-    }
+  const profile = body.profile ? sanitizeProfile(body.profile) : null;
+  if (profile && (profile.artistIds.length || profile.themes.length || profile.audience)) {
+    // Track data is fetched here on the server (free Last.fm key, cached, rate-limited) and never taken from the client.
+    // If Last.fm is off, slow or down, the brief falls back to our editorial seed picks.
+    const targets = targetsFrom(
+      profile.artistIds,
+      profile.custom.filter((c) => profile.artistIds.includes(c.id)).map((c) => c.name),
+    );
+    const enrichment = await enrichTargets(targets, { budgetMs: 3500 });
+    brief = buildBrief(profile, { trending: sanitizeTrending(body.trending), enrichment: enrichment.artists });
   }
 
-  if (!email && !name && !phone && answers.length === 0 && recommendations.length === 0 && !brief) {
+  if (!email && !name && !phone && answers.length === 0 && !brief) {
     return NextResponse.json(
       { ok: false, error: "Share at least contact info or a few answers before submitting." },
       { status: 400 },
@@ -221,15 +189,6 @@ export async function POST(request: Request) {
     ? `<ul>${mediaNotes.map((note) => `<li style="margin-bottom:6px;">${escapeHtml(note)}</li>`).join("")}</ul>`
     : `<p style="color:#9ca3af;">No voice or photo submitted.</p>`;
 
-  const recsHtml = recommendations.length
-    ? recommendations
-        .map(
-          (item, index) =>
-            `<tr><td style="padding:8px 12px;border-bottom:1px solid #222;color:#9ca3af;vertical-align:top;">${index + 1}</td><td style="padding:8px 12px;border-bottom:1px solid #222;color:#fafafa;"><strong>${escapeHtml(item.title || "-")}</strong> - ${escapeHtml(item.artist || "-")}${item.album ? ` <span style="color:#9ca3af;">(${escapeHtml(item.album)}${item.year ? ` | ${escapeHtml(item.year)}` : ""})</span>` : ""}<br/><span style="color:#2bffe8;font-size:12px;">Why: ${escapeHtml(item.why || "from click path")}</span></td></tr>`,
-        )
-        .join("")
-    : `<tr><td style="padding:12px;color:#9ca3af;">No track picks generated (user skipped early).</td></tr>`;
-
   const briefHtml = brief ? renderBriefHtml(brief) : "";
 
   const html = `<!DOCTYPE html>
@@ -249,16 +208,11 @@ export async function POST(request: Request) {
 ${briefHtml}
     <h2 style="font-size:16px;margin:24px 0 8px;color:#2bffe8;">Taste path</h2>
     <table style="width:100%;border-collapse:collapse;background:#111;border-radius:12px;overflow:hidden;">
-      <tr><td style="padding:8px 12px;color:#9ca3af;width:140px;">Genres</td><td style="padding:8px 12px;">${escapeHtml(pathGenres.join(", ") || "-")}</td></tr>
-      <tr><td style="padding:8px 12px;color:#9ca3af;">Mood</td><td style="padding:8px 12px;">${escapeHtml(pathMood || "-")}</td></tr>
-      <tr><td style="padding:8px 12px;color:#9ca3af;">Era</td><td style="padding:8px 12px;">${escapeHtml(pathEra || "-")}</td></tr>
-      <tr><td style="padding:8px 12px;color:#9ca3af;">Region</td><td style="padding:8px 12px;">${escapeHtml(pathRegion || "-")}</td></tr>
-      <tr><td style="padding:8px 12px;color:#9ca3af;">Artists</td><td style="padding:8px 12px;">${escapeHtml(pathArtists.join(", ") || "-")}</td></tr>
-      <tr><td style="padding:8px 12px;color:#9ca3af;">Albums</td><td style="padding:8px 12px;">${escapeHtml(pathAlbums.join(", ") || "-")}</td></tr>
-      <tr><td style="padding:8px 12px;color:#9ca3af;">Catalog as of</td><td style="padding:8px 12px;">${escapeHtml(catalogAsOf || "-")}</td></tr>
+      <tr><td style="padding:8px 12px;color:#9ca3af;width:140px;">Genres</td><td style="padding:8px 12px;">${escapeHtml(profile?.genres.join(", ") || "-")}</td></tr>
+      <tr><td style="padding:8px 12px;color:#9ca3af;">Era</td><td style="padding:8px 12px;">${escapeHtml(profile?.era || "-")}</td></tr>
+      <tr><td style="padding:8px 12px;color:#9ca3af;">Region</td><td style="padding:8px 12px;">${escapeHtml(profile?.region || "-")}</td></tr>
+      <tr><td style="padding:8px 12px;color:#9ca3af;">Seed as of</td><td style="padding:8px 12px;">${escapeHtml(brief?.asOf || "-")}${brief?.lastfm ? ` · Last.fm as of ${escapeHtml(brief.lastfm.asOf)}` : ""}</td></tr>
     </table>
-    <h2 style="font-size:16px;margin:24px 0 8px;color:#2bffe8;">3 suggested tracks</h2>
-    <table style="width:100%;border-collapse:collapse;background:#111;border-radius:12px;overflow:hidden;">${recsHtml}</table>
     <h2 style="font-size:16px;margin:24px 0 8px;color:#2bffe8;">Media</h2>
     <div style="background:#111;border-radius:12px;padding:12px 16px;">${mediaHtml}</div>
     <p style="margin-top:24px;font-size:12px;color:#6b7280;">Reply only if the visitor left email for opportunity follow-up. Anonymous paths are expected and valid.</p>
@@ -273,23 +227,12 @@ ${briefHtml}
     `Phone: ${phone || "-"}`,
     "",
     "Taste path:",
-    `Genres: ${pathGenres.join(", ") || "-"}`,
-    `Mood: ${pathMood || "-"}`,
-    `Era: ${pathEra || "-"}`,
-    `Region: ${pathRegion || "-"}`,
-    `Artists: ${pathArtists.join(", ") || "-"}`,
-    `Albums: ${pathAlbums.join(", ") || "-"}`,
-    `Catalog as of: ${catalogAsOf || "-"}`,
+    `Genres: ${profile?.genres.join(", ") || "-"}`,
+    `Era: ${profile?.era || "-"}`,
+    `Region: ${profile?.region || "-"}`,
+    `Seed as of: ${brief?.asOf || "-"}${brief?.lastfm ? ` | Last.fm as of ${brief.lastfm.asOf}` : ""}`,
     "",
     ...(brief ? ["Song brief:", ...briefLines(brief), ""] : []),
-    "3 suggested tracks:",
-    ...(recommendations.length
-      ? recommendations.map(
-          (item, index) =>
-            `${index + 1}. ${item.title || "-"} - ${item.artist || "-"}${item.why ? ` | Why: ${item.why}` : ""}`,
-        )
-      : ["None"]),
-    "",
     "Transcript:",
     ...answers.map((item, index) => `${index + 1}. ${item.question}\n   ${item.answer}`),
     "",
