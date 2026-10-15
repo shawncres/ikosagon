@@ -462,7 +462,7 @@
       LEVELS.forEach(function (l) { levels[l] = entry(t, false, reason); });
       return { kind: "error", levels: levels, reason: reason };
     };
-    return timeoutFetch(API + "/summary?id=" + encodeURIComponent(v.id) + (focus ? "&focus=" + encodeURIComponent(focus) : ""), { headers: { Accept: "application/json" } }, SUMMARY_TIMEOUT_MS)
+    return timeoutFetch(API + "/summary?id=" + encodeURIComponent(v.id) + (focus ? "&focus=" + encodeURIComponent(focus) : "") + "&v=2", { headers: { Accept: "application/json" } }, SUMMARY_TIMEOUT_MS)
       .then(function (res) {
         return res.json().then(function (body) { return { status: res.status, body: body || {} }; }, function () { return { status: res.status, body: {} }; });
       })
@@ -476,7 +476,7 @@
           var ai = b.source === "gemini";
           var levels = {};
           LEVELS.forEach(function (l) { levels[l] = entry(lv[l], ai, b.reason); });
-          var s = { kind: ai ? "gemini" : "description", reason: String(b.reason || ""), levels: levels, focus: focus || "", covered: b.covered !== false };
+          var s = { kind: ai ? "gemini" : "description", reason: String(b.reason || ""), levels: levels, focus: focus || "", covered: b.covered !== false, spoken: b.spoken !== false };
           sum[skey(v.id, focus)] = s;
           return s;
         }
@@ -528,6 +528,7 @@
   }
 
   function labelFor(s, e) {
+    if (s.kind === "gemini" && s.spoken === false) return "AI CHECK BY GEMINI. NO SPOKEN WORDS FOUND. NOT FROM YOUTUBE. CAN BE WRONG.";
     if (s.kind === "gemini" && s.focus) return s.covered ? "AI SUMMARY BY GEMINI, FOCUSED ON YOUR SEARCH. NOT FROM YOUTUBE. CAN BE WRONG." : "AI CHECK BY GEMINI. THE VIDEO DOES NOT ADDRESS YOUR FOCUS. NOT FROM YOUTUBE. CAN BE WRONG.";
     if (s.kind === "gemini") return "AI SUMMARY BY GEMINI. NOT FROM YOUTUBE. CAN BE WRONG.";
     if (s.kind === "description") return "VIDEO DESCRIPTION FROM THE CHANNEL, NOT A SUMMARY (" + (REASONS[s.reason] || "AI SUMMARY NOT AVAILABLE") + ")";
