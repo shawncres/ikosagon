@@ -13,7 +13,7 @@ import { blobToBase64 } from "@/components/talentIntakeUtils";
 type MediaDeps = {
   setError: (value: string | null) => void;
   pushUser: (content: string) => void;
-  recordAnswer: (questionKey: StepId, answer: string) => void;
+  recordAnswer: (questionKey: string, answer: string) => void;
   goTo: (next: StepId) => void;
 };
 

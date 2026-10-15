@@ -79,10 +79,22 @@ Optional tiny lavfi demos can still be materialized with `node scripts/ensure-de
 Public page `/projects/ikoartist` — almost anonymous song participation (no account):
 
 1. Top tracks player (proof / featured results)
-2. Click-path taste intake (genre → mood → era → geo-ish → artists → albums)
-3. Three track leans (`POST /api/music-recommend`) with short “why” copy
-4. Finish anonymously (path + picks still email Shawn via `/api/talent-intake` for the song workflow)
-5. Optional voice / photo / email — email only if the visitor wants opportunity follow-up
+2. **Sound** — a deductive tree to isolate three favorite artists: genre/era/region → anchor pick → up to three discriminating questions (picked from what the anchor can't explain) → second pick (mostly close) → third pick (further out) → a contrast question
+3. **Themes** — tap lyrical themes; overlap with theme tags on the artists' top tracks; optional chart context
+4. **Audience** — optional, skippable, bands only (never in the transcript)
+5. **Song brief** — center, range, themes, audience and three track leans with a "why" each; finish anonymously (brief + path email via `/api/talent-intake` for the song workflow)
+6. Optional voice / photo / email — email only if the visitor wants opportunity follow-up
+
+Pure logic lives in `lib/music/taste/*` (vectors, tree, range, leans, brief, sanitizers, chart parsing) and is
+covered by `npm run check:ikoartist` (deterministic, no network). The server rebuilds the brief from the raw
+choices in `/api/talent-intake`, so client text is never trusted.
+
+### Taste data (free, honest)
+
+- `lib/music/taste/seed.ts` — hand-written editorial estimates (energy, acousticness, lyric weight, polish, reach, tempo + era) and theme tags for ~80 artists, plus our assumed signature hit / fan favorite / deep cut each. **Not measured audio features, not stream data.**
+- Free tags: `GET /api/music-artist-lookup?name=` reads MusicBrainz tags (no key, ~1 req/s) to size a free-text artist; falls back to a note.
+- Chart context: `GET /api/music-trending` reads the public iTunes Top Songs RSS (no key), cached 1h, shows an as-of date and never shows ranks.
+- Older routes `/api/music-recommend` and `/api/music-catalog` remain but the intake no longer calls them.
 
 ### Catalog freshness (free backends)
 

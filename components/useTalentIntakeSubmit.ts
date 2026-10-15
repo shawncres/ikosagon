@@ -5,19 +5,10 @@ import {
   type AnswerRow,
   type MediaPayload,
   type StepId,
-  type TrackRecommendation,
 } from "@/components/talentIntakeConfig";
+import type { ProfileInput, SongBrief, TrendingContext } from "@/lib/music/taste/types";
 
 type Contact = { name: string; email: string; phone: string };
-
-type TastePath = {
-  genres: string[];
-  mood: string | null;
-  era: string | null;
-  region: string | null;
-  artists: string[];
-  albums: string[];
-};
 
 type SubmitDeps = {
   contact: Contact;
@@ -25,9 +16,9 @@ type SubmitDeps = {
   setAnswers: (value: AnswerRow[]) => void;
   voice: MediaPayload;
   photo: MediaPayload;
-  recommendations: TrackRecommendation[];
-  tastePath: TastePath;
-  catalogAsOf: string | null;
+  profile: ProfileInput;
+  brief: SongBrief;
+  trending: TrendingContext | null;
   setPending: (value: boolean) => void;
   setError: (value: string | null) => void;
   setSubmitted: (value: boolean) => void;
@@ -64,9 +55,9 @@ export function useTalentIntakeSubmit({
   setAnswers,
   voice,
   photo,
-  recommendations,
-  tastePath,
-  catalogAsOf,
+  profile,
+  brief,
+  trending,
   setPending,
   setError,
   setSubmitted,
@@ -81,6 +72,14 @@ export function useTalentIntakeSubmit({
   };
 
   const postIntake = async (answersPayload: AnswerRow[], contactPayload: Contact | Record<string, never>) => {
+    const tastePath = {
+      genres: profile.genres,
+      mood: null,
+      era: profile.era,
+      region: profile.region,
+      artists: brief.artists.map((a) => a.name),
+      albums: [] as string[],
+    };
     const response = await fetch("/api/talent-intake", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -88,8 +87,18 @@ export function useTalentIntakeSubmit({
         contact: contactPayload,
         answers: answersPayload,
         tastePath,
-        recommendations,
-        catalogAsOf,
+        // The server rebuilds the brief from this profile with the same pure functions, so it never has to trust client text.
+        profile,
+        trending,
+        recommendations: brief.leans.map((l) => ({
+          id: l.id,
+          title: l.title,
+          artist: l.artist,
+          album: l.album,
+          year: l.year,
+          genre: l.genre,
+          why: l.why,
+        })),
         ...mediaBody(voice, photo),
       }),
     });
