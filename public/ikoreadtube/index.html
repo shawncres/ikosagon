@@ -32,6 +32,7 @@
       <div class="search" id="searchbar">
         <label class="sr" for="q">Filter videos</label>
         <input id="q" type="text" inputmode="search" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="60" placeholder="SEARCH..." aria-controls="feed">
+        <button type="button" class="btn small" id="btn-thumbs" aria-pressed="false">THUMBS: OFF</button>
       </div>
     </div>
   </header>
@@ -45,7 +46,9 @@
         <h2 class="sect">RECENTLY READ</h2>
         <ul class="menu" id="recent"></ul>
       </div>
+      <p class="box" id="notice" hidden></p>
       <h2 class="sect" id="feed-title">VIDEOS</h2>
+      <div id="search-yt" hidden><button type="button" class="btn wide" id="btn-search-yt"></button></div>
       <ul class="menu" id="feed"></ul>
       <p class="box" id="empty" hidden>NO MATCH.</p>
     </section>
@@ -55,6 +58,7 @@
       <div class="box big" role="status" aria-live="polite">
         <p id="gen-step">STEP 1 OF 2</p>
         <p id="gen-text">READING TRANSCRIPT...<span class="cursor" aria-hidden="true"></span></p>
+        <p id="gen-note" class="src"></p>
       </div>
     </section>
 
@@ -63,6 +67,7 @@
       <button type="button" class="btn" id="btn-back">&lt; BACK</button>
       <h2 class="vtitle" id="d-title" tabindex="-1"></h2>
       <p class="vchan" id="d-chan"></p>
+      <a class="btn wide" id="d-watch" href="https://www.youtube.com/" target="_blank" rel="noopener noreferrer" hidden>WATCH ON YOUTUBE</a>
       <div class="thumb-big" id="d-thumb-wrap" hidden><img id="d-thumb" alt="" width="64" height="36"></div>
       <p class="lvl" id="d-level"></p>
       <div class="box" id="d-text" aria-live="polite"></div>
@@ -71,8 +76,30 @@
         <button type="button" class="btn" id="btn-less">- LESS</button>
         <button type="button" class="btn" id="btn-more">MORE +</button>
       </div>
+      <button type="button" class="btn wide" id="btn-paste">PASTE TRANSCRIPT</button>
+      <div id="paste-panel" hidden>
+        <p class="src" id="paste-help">PASTE THE TRANSCRIPT TEXT BELOW. WE SEND IT TO GROQ TO SUMMARIZE. WE DO NOT STORE IT.</p>
+        <label class="sr" for="paste-text">Transcript text</label>
+        <textarea id="paste-text" rows="8" maxlength="9000" spellcheck="false" placeholder="PASTE HERE..."></textarea>
+        <div class="row">
+          <button type="button" class="btn" id="btn-paste-go">SUMMARIZE</button>
+          <button type="button" class="btn" id="btn-paste-cancel">CANCEL</button>
+        </div>
+      </div>
     </section>
   </main>
+
+  <footer class="ftr">
+    <div class="wrap">
+      <p>VIDEO DATA AND LINKS COME FROM YOUTUBE. THIS SITE USES YOUTUBE API SERVICES AND IS NOT AFFILIATED WITH OR ENDORSED BY YOUTUBE.</p>
+      <p>SUMMARIES ARE WRITTEN BY AI, NOT BY YOUTUBE, AND CAN BE WRONG.</p>
+      <p>
+        <a href="privacy.html">PRIVACY</a>
+        <a href="https://www.youtube.com/t/terms" target="_blank" rel="noopener noreferrer">YOUTUBE TERMS OF SERVICE</a>
+        <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">GOOGLE PRIVACY POLICY</a>
+      </p>
+    </div>
+  </footer>
 
   <script>document.write('<script src="data.js"><\/script><script src="app.js"><\/script>');</script>
   <noscript><p class="box">THIS PAGE NEEDS JAVASCRIPT.</p></noscript>

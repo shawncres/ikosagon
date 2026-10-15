@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
     return [
       { source: "/ikoreadtube", destination: "/ikoreadtube/index.html" },
       { source: "/ikoreadtube/", destination: "/ikoreadtube/index.html" },
+      { source: "/ikoreadtube/privacy", destination: "/ikoreadtube/privacy.html" },
     ];
   },
   async headers() {
