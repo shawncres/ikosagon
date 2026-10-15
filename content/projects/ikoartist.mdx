@@ -1,9 +1,9 @@
 ---
 title: "IkoArtist"
 slug: "ikoartist"
-summary: "Discover tastes and songs you might like — answer as many questions as you want. The agentic Ikosagon engine produces the hit; tracks compete on a view-ranked leaderboard. Intake, leans, and anonymous finish are on the page. Generation runs in the pipeline, not as a live spend."
+summary: "We at Ikosagon build a song brief from your clicks: three favorite artists, the themes you gravitate toward, and optionally who it’s for. The agentic Ikosagon engine produces the hit; tracks compete on a view-ranked leaderboard. Intake, brief, and anonymous finish are on the page. Generation runs in the pipeline, not as a live spend."
 year: 2026
-updated: "2026-09-26T20:14:00-04:00"
+updated: "2026-10-14T23:30:00-04:00"
 tags: ["AI", "Audio", "Music", "Product"]
 cover: "/projects/ikoartist/cover.svg"
 featured: true
@@ -30,9 +30,12 @@ People should discover music they’d actually want to hear — and help shape a
 A low-friction web product for **almost anonymous song participation**, powered by the **agentic Ikosagon engine**:
 
 1. **Listen** — a **leaderboard-style playlist** ranked by views. Better tracks rise as people listen.
-2. **Share your taste** — answer as many questions as you want (genre → mood → era → geo-ish → related artists → albums). Low commitment: enough signal to understand what you’d want to hear — no pressure to finish every step.
-3. **Get 3 track leans** — songs you might like, with a short “why” from your clicks
-4. **Finish anonymously** — no email needed. Your taste path still feeds the agentic engine so a song can get made. It takes some time: curated choices plus adapting agentic processes produce the hit. Leave email only if you want opportunity follow-ups
+2. **Build your song brief** — click-first, in three layers, each step skippable with an optional “add your own”:
+   - **Sound**: a short question tree to find your **three favorite artists**. You pick an anchor, answer a few questions about what that pick can’t explain (raw vs polished, words vs groove, mainstream vs underground, instrumentation, energy and tempo), then add a second artist close to the first and a third further out, and say what one has that another doesn’t. From that we compute a **center** (where your taste sits) and a **range** (how far your three picks spread).
+   - **Themes**: tap the lyrical themes you gravitate toward (heartbreak, hustle, nostalgia, faith, party, escapism, social commentary and more). We compare them with theme tags on your artists’ best-known tracks and add a clearly dated chart context when a free public chart is reachable.
+   - **Audience** (optional): coarse bands only — age band, region, language, listening contexts — with a plain note on why we ask. No account, nothing exact, and it stays out of the transcript.
+3. **Get 3 track leans** — one from the overlap of your three artists, one from each edge of your range, each with a written “why” built from the numbers
+4. **Finish anonymously** — no email needed. Your brief still feeds the agentic engine so a song can get made. It takes some time: curated choices plus adapting agentic processes produce the hit. Leave email only if you want opportunity follow-ups
 
 Optional voice / photo are add-ons. Skip anytime. More answers → clearer signal. This page does not auto-spend on Suno / ElevenLabs / Gemini when you finish — generation and leaderboard ranking run in the product pipeline, not as a live click-to-generate meter here.
 
@@ -42,11 +45,12 @@ Optional voice / photo are add-ons. Skip anytime. More answers → clearer signa
 - No account required; anonymous path works end-to-end
 - Agentic Ikosagon engine produces the hit (takes some time); curated choices + adapting processes
 - Leaderboard-style playlist by views — better tracks rise
-- Click web every step; free-text walls avoided
-- Fresh-enough free catalog (iTunes Search seed + optional live refresh; MusicBrainz best-effort) with an **as of** date — no Chartmetric / Spotify premium, no invented chart ranks
+- Click web every step; free-text walls avoided (each step has an optional, length-capped “add your own”, sanitized, never required)
+- Honest data: the sound map is **our editorial estimates**, not measured audio features; the three “best tracks” per artist are our assumption, not stream data. Chart context comes from a free public iTunes feed, shows an **as of** date, and never shows ranks — no Chartmetric / Spotify premium, no invented chart ranks
+- Audience answers are bands only, anonymous, and kept out of the transcript
 - Anonymous finish is enough for the song path; email is optional (opportunities only)
 
 ## Status
-In progress. Leaderboard playlist player, click-path intake, 3 leans, and anonymous finish (Resend summary for the song pipeline) are on this page. The agentic engine producing hits and view-ranked leaderboard behavior are what visitors should expect — not a claim that every finish triggers live generation on this page.
+In progress. Leaderboard playlist player, the three-layer song-brief intake (sound, themes, optional audience), 3 leans with reasons, and anonymous finish (Resend summary with the structured brief for the song pipeline) are on this page. The taste map covers about 80 artists we wrote up by hand, so it is a starting point rather than a full catalog. The agentic engine producing hits and view-ranked leaderboard behavior are what visitors should expect — not a claim that every finish triggers live generation on this page.
 
 Formerly listed as “AI Recording Artist”; product slug is now `/projects/ikoartist`.

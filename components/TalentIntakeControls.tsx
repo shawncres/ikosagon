@@ -1,90 +1,39 @@
 "use client";
-import type { RefObject } from "react";
+import { useRef } from "react";
 import { Camera, Mic, MicOff, SkipForward, Upload } from "lucide-react";
+import { AddYourOwn } from "@/components/AddYourOwn";
+import { TasteSteps } from "@/components/TasteSteps";
+import { btn, Chip, SkipButton } from "@/components/talentIntakeUi";
 import {
   ERA_OPTIONS,
   GENRE_OPTIONS,
-  MOOD_OPTIONS,
   REGION_OPTIONS,
   type MediaPayload,
   type StepId,
-  type TrackRecommendation,
 } from "@/components/talentIntakeConfig";
+import type { TasteApi } from "@/components/useTasteProfile";
 type Contact = { name: string; email: string; phone: string };
-function Chip({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={`rounded-full border px-3 py-1.5 text-sm transition ${
-        active
-          ? "border-accent/60 bg-accent/15 text-accent"
-          : "border-border text-zinc-300 hover:border-accent/40"
-      }`}
-    >
-      {label}
-    </button>
-  );
-}
-function SkipButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className="inline-flex items-center gap-1 rounded-xl border border-border px-4 py-2 text-sm text-zinc-300 hover:border-accent/40 disabled:opacity-50"
-    >
-      <SkipForward className="h-4 w-4" /> Skip
-    </button>
-  );
-}
-const btn =
-  "rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-black disabled:opacity-50";
-const btnGhost =
-  "rounded-xl border border-border px-4 py-2 text-sm text-zinc-300 hover:border-accent/40 disabled:opacity-50";
 export type TalentIntakeControlsProps = {
   step: StepId;
   submitted: boolean;
   pending: boolean;
-  loadingRecs: boolean;
   selectedGenres: string[];
-  selectedMood: string | null;
   selectedEra: string | null;
   selectedRegion: string | null;
-  selectedArtists: string[];
-  selectedAlbums: string[];
-  artistOptions: string[];
-  albumOptions: Array<{ label: string; album: string }>;
-  recommendations: TrackRecommendation[];
-  catalogAsOf: string | null;
+  taste: TasteApi;
   contact: Contact;
   voice: MediaPayload;
   photo: MediaPayload;
   recording: boolean;
   recordSeconds: number;
-  fileInputRef: RefObject<HTMLInputElement | null>;
   onContactChange: (next: Contact) => void;
   onToggleGenre: (genre: string) => void;
-  onToggleArtist: (artist: string) => void;
-  onToggleAlbum: (album: string) => void;
   onAdvanceFromIntro: () => void;
   onSkip: () => void;
   onSubmitGenres: () => void;
-  onSubmitMood: (value?: string) => void;
-  onSubmitEra: (value?: string) => void;
-  onSubmitRegion: (value?: string) => void;
-  onSubmitArtists: () => void;
-  onSubmitAlbums: () => void;
-  onContinueAfterRecs: () => void;
+  onSubmitEra: (value: string) => void;
+  onSubmitRegion: (value: string) => void;
+  onContinueAfterBrief: () => void;
   onFinishAnonymous: () => void;
   onStartRecording: () => void;
   onStopRecording: () => void;
@@ -94,6 +43,59 @@ export type TalentIntakeControlsProps = {
   onSubmitIntake: () => void;
   onSubmitContactSkip: () => void;
 };
+function PhotoStep({
+  photo,
+  onPhotoSelected,
+  onConfirmPhoto,
+  onSkip,
+}: {
+  photo: MediaPayload;
+  onPhotoSelected: (file: File | null) => void;
+  onConfirmPhoto: () => void;
+  onSkip: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  return (
+    <div className="space-y-3">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="sr-only"
+        onChange={(e) => onPhotoSelected(e.target.files?.[0] ?? null)}
+      />
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className={`inline-flex items-center gap-2 ${btn}`}
+        >
+          <Camera className="h-4 w-4" /> Choose photo
+        </button>
+        {photo ? (
+          <button
+            type="button"
+            onClick={onConfirmPhoto}
+            className="inline-flex items-center gap-2 rounded-xl border border-accent/50 px-4 py-2 text-sm text-accent"
+          >
+            <Upload className="h-4 w-4" /> Use this photo
+          </button>
+        ) : null}
+        <SkipButton onClick={onSkip} />
+      </div>
+      <p className="text-xs text-zinc-500">
+        Prefer under ~1.2 MB so Hobby email can attach. Larger files are noted without attach.
+      </p>
+      {photo ? (
+        <p className="font-mono text-xs text-accent" role="status">
+          {photo.filename} | {Math.round(photo.sizeBytes / 1024)} KB
+          {photo.base64 ? "" : " | attach skipped"}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export function TalentIntakeControls(p: TalentIntakeControlsProps) {
   if (p.submitted || p.step === "done") {
     return (
@@ -130,18 +132,13 @@ export function TalentIntakeControls(p: TalentIntakeControlsProps) {
           </button>
           <SkipButton onClick={p.onSkip} />
         </div>
-      </div>
-    );
-  }
-  if (p.step === "mood") {
-    return (
-      <div className="space-y-3">
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Mood options">
-          {MOOD_OPTIONS.map((m) => (
-            <Chip key={m} label={m} active={p.selectedMood === m} onClick={() => p.onSubmitMood(m)} />
-          ))}
-        </div>
-        <SkipButton onClick={p.onSkip} />
+        <AddYourOwn
+          stepKey="genres"
+          value={p.taste.extras.genres || ""}
+          onChange={p.taste.setExtra}
+          label="Another genre"
+          placeholder="e.g. highlife, bossa nova"
+        />
       </div>
     );
   }
@@ -169,107 +166,16 @@ export function TalentIntakeControls(p: TalentIntakeControlsProps) {
       </div>
     );
   }
-  if (p.step === "artists") {
-    const opts = p.artistOptions.length ? p.artistOptions : ["Catalog loading..."];
+  if (["anchor", "sound", "second", "third", "contrast", "themes", "audience", "brief"].includes(p.step)) {
     return (
-      <div className="space-y-3">
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Artist options">
-          {opts.map((a) => (
-            <Chip
-              key={a}
-              label={a}
-              active={p.selectedArtists.includes(a)}
-              onClick={() => {
-                if (a !== "Catalog loading...") p.onToggleArtist(a);
-              }}
-            />
-          ))}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={p.onSubmitArtists} className={btn}>
-            Continue
-          </button>
-          <SkipButton onClick={p.onSkip} />
-        </div>
-      </div>
-    );
-  }
-  if (p.step === "albums") {
-    const opts = p.albumOptions.length
-      ? p.albumOptions
-      : [{ label: "Catalog loading...", album: "__loading__" }];
-    return (
-      <div className="space-y-3">
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Album options">
-          {opts.map((row) => (
-            <Chip
-              key={row.label}
-              label={row.label}
-              active={p.selectedAlbums.includes(row.album)}
-              onClick={() => {
-                if (row.album !== "__loading__") p.onToggleAlbum(row.album);
-              }}
-            />
-          ))}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" disabled={p.loadingRecs} onClick={p.onSubmitAlbums} className={btn}>
-            {p.loadingRecs ? "Matching..." : "Show 3 track leans"}
-          </button>
-          <SkipButton onClick={p.onSkip} disabled={p.loadingRecs} />
-        </div>
-      </div>
-    );
-  }
-  if (p.step === "recommendations") {
-    return (
-      <div className="space-y-3">
-        {p.loadingRecs ? (
-          <p className="text-sm text-zinc-400">Scoring your click path against the catalog...</p>
-        ) : (
-          <ul className="space-y-2">
-            {p.recommendations.map((pick, i) => (
-              <li key={pick.id} className="rounded-xl border border-border/80 bg-black/30 px-3 py-2 text-sm">
-                <p className="font-medium text-zinc-100">
-                  {i + 1}. {pick.title} <span className="text-zinc-400">- {pick.artist}</span>
-                </p>
-                <p className="mt-1 text-xs text-accent">Why: {pick.why}</p>
-                {pick.album ? (
-                  <p className="mt-0.5 font-mono text-[10px] text-zinc-500">
-                    {pick.album}
-                    {pick.year ? ` | ${pick.year}` : ""}
-                  </p>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
-        {p.catalogAsOf ? (
-          <p className="font-mono text-[10px] text-zinc-500">Catalog as of {p.catalogAsOf}</p>
-        ) : null}
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={p.loadingRecs || p.pending}
-            onClick={p.onFinishAnonymous}
-            className={btn}
-          >
-            {p.pending ? "Sending..." : "Finish anonymously"}
-          </button>
-          <button
-            type="button"
-            disabled={p.loadingRecs || p.pending}
-            onClick={p.onContinueAfterRecs}
-            className={btnGhost}
-          >
-            Optional voice / photo / email
-          </button>
-        </div>
-        <p className="text-xs text-zinc-500">
-          Anonymous is fine — your path + 3 leans still feed the agentic Ikosagon engine so a song
-          can get made (takes some time). Leave email only if you want opportunity follow-ups.
-        </p>
-      </div>
+      <TasteSteps
+        step={p.step}
+        taste={p.taste}
+        pending={p.pending}
+        onSkip={p.onSkip}
+        onFinishAnonymous={p.onFinishAnonymous}
+        onContinueAfterBrief={p.onContinueAfterBrief}
+      />
     );
   }
   if (p.step === "voice") {
@@ -310,43 +216,12 @@ export function TalentIntakeControls(p: TalentIntakeControlsProps) {
   }
   if (p.step === "photo") {
     return (
-      <div className="space-y-3">
-        <input
-          ref={p.fileInputRef}
-          type="file"
-          accept="image/*"
-          className="sr-only"
-          onChange={(e) => p.onPhotoSelected(e.target.files?.[0] ?? null)}
-        />
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => p.fileInputRef.current?.click()}
-            className={`inline-flex items-center gap-2 ${btn}`}
-          >
-            <Camera className="h-4 w-4" /> Choose photo
-          </button>
-          {p.photo ? (
-            <button
-              type="button"
-              onClick={p.onConfirmPhoto}
-              className="inline-flex items-center gap-2 rounded-xl border border-accent/50 px-4 py-2 text-sm text-accent"
-            >
-              <Upload className="h-4 w-4" /> Use this photo
-            </button>
-          ) : null}
-          <SkipButton onClick={p.onSkip} />
-        </div>
-        <p className="text-xs text-zinc-500">
-          Prefer under ~1.2 MB so Hobby email can attach. Larger files are noted without attach.
-        </p>
-        {p.photo ? (
-          <p className="font-mono text-xs text-accent" role="status">
-            {p.photo.filename} | {Math.round(p.photo.sizeBytes / 1024)} KB
-            {p.photo.base64 ? "" : " | attach skipped"}
-          </p>
-        ) : null}
-      </div>
+      <PhotoStep
+        photo={p.photo}
+        onPhotoSelected={p.onPhotoSelected}
+        onConfirmPhoto={p.onConfirmPhoto}
+        onSkip={p.onSkip}
+      />
     );
   }
   if (p.step === "contact") {
@@ -354,7 +229,7 @@ export function TalentIntakeControls(p: TalentIntakeControlsProps) {
       <div className="space-y-3">
         <p className="text-xs text-zinc-500">
           Email is optional (opportunities only). Finish anonymously anytime — your path still reaches
-          the agentic Ikosagon engine. You already have your 3 leans.
+          the agentic Ikosagon engine. You already have your song brief.
         </p>
         <div className="grid gap-2 md:grid-cols-3">
           {(

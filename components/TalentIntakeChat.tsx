@@ -1,10 +1,17 @@
 "use client";
 
 import { TalentIntakeControls } from "@/components/TalentIntakeControls";
+import { useEffect, useRef } from "react";
 import { useTalentIntake } from "@/components/useTalentIntake";
 
 export function TalentIntakeChat() {
+  const listRef = useRef<HTMLDivElement>(null);
   const intake = useTalentIntake();
+  const { messages, pending, error } = intake;
+
+  useEffect(() => {
+    listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages, pending, error]);
 
   return (
     <section
@@ -16,16 +23,15 @@ export function TalentIntakeChat() {
           <p className="mb-1 font-mono text-xs text-accent">IkoArtist · leaderboard playlist · anonymous OK</p>
           <h2 className="text-xl font-semibold">IkoArtist — discover your sound, get a song made</h2>
           <p className="mt-1 max-w-2xl text-sm text-zinc-400">
-            Answer as many questions as you want — enough signal to understand what you’d want to
-            hear. The agentic Ikosagon engine produces the hit (takes some time); tracks compete on a
-            view-ranked leaderboard. Finish without email anytime; leave contact only for opportunities.
+            We at Ikosagon turn your clicks into a song brief: your three favorite artists (the
+            sound), the themes you gravitate toward, and — only if you want — who it’s for. Every
+            step has a skip and an optional “add your own”. The agentic Ikosagon engine produces the
+            hit (takes some time); tracks compete on a view-ranked leaderboard. Finish without email
+            anytime.
           </p>
-          {intake.catalogAsOf ? (
-            <p className="mt-2 font-mono text-[10px] text-zinc-500">
-              Music catalog as of {intake.catalogAsOf}
-              {intake.catalogNote ? ` · ${intake.catalogNote}` : ""}
-            </p>
-          ) : null}
+          <p className="mt-2 font-mono text-[10px] text-zinc-500">
+            Taste map: Ikosagon editorial seed as of {intake.seedAsOf} · estimates, not measured audio features
+          </p>
         </div>
         <p className="font-mono text-xs text-zinc-500" aria-live="polite">
           {intake.progress}%
@@ -40,7 +46,7 @@ export function TalentIntakeChat() {
       </div>
 
       <div
-        ref={intake.listRef}
+        ref={listRef}
         className="mb-4 max-h-[22rem] space-y-3 overflow-y-auto rounded-xl border border-border/80 bg-black/30 p-3"
         role="log"
         aria-live="polite"
@@ -68,36 +74,23 @@ export function TalentIntakeChat() {
           step={intake.step}
           submitted={intake.submitted}
           pending={intake.pending}
-          loadingRecs={intake.loadingRecs}
           selectedGenres={intake.selectedGenres}
-          selectedMood={intake.selectedMood}
           selectedEra={intake.selectedEra}
           selectedRegion={intake.selectedRegion}
-          selectedArtists={intake.selectedArtists}
-          selectedAlbums={intake.selectedAlbums}
-          artistOptions={intake.artistOptions}
-          albumOptions={intake.albumOptions}
-          recommendations={intake.recommendations}
-          catalogAsOf={intake.catalogAsOf}
+          taste={intake.taste}
           contact={intake.contact}
           voice={intake.voice}
           photo={intake.photo}
           recording={intake.recording}
           recordSeconds={intake.recordSeconds}
-          fileInputRef={intake.fileInputRef}
           onContactChange={intake.setContact}
           onToggleGenre={intake.toggleGenre}
-          onToggleArtist={intake.toggleArtist}
-          onToggleAlbum={intake.toggleAlbum}
           onAdvanceFromIntro={intake.advanceFromIntro}
           onSkip={intake.skip}
           onSubmitGenres={intake.submitGenres}
-          onSubmitMood={intake.submitMood}
           onSubmitEra={intake.submitEra}
           onSubmitRegion={intake.submitRegion}
-          onSubmitArtists={intake.submitArtists}
-          onSubmitAlbums={intake.submitAlbums}
-          onContinueAfterRecs={intake.continueAfterRecs}
+          onContinueAfterBrief={intake.continueAfterBrief}
           onFinishAnonymous={() => void intake.finishAnonymous()}
           onStartRecording={() => void intake.startRecording()}
           onStopRecording={intake.stopRecording}
