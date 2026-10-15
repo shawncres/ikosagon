@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="color-scheme" content="light">
+  <title>IKOREADTUBE - READ THE VIDEO</title>
+  <script>
+    /* Makes /ikoreadtube (no trailing slash) load styles.css, app.js and api/ from the folder. Works in any subfolder. */
+    (function () {
+      var p = location.pathname;
+      if (location.protocol.indexOf("http") === 0 && !/\/$|\.[a-z0-9]+$/i.test(p)) {
+        document.write('<base href="' + p + '/">');
+      }
+      /* Written after the base so the browser never requests them from the wrong folder. */
+      document.write('<link rel="stylesheet" href="styles.css">');
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&amp;display=swap">
+  <noscript><link rel="stylesheet" href="styles.css"></noscript>
+</head>
+<body>
+  <a class="skip" href="#main">SKIP TO LIST</a>
+
+  <header class="hdr">
+    <div class="wrap">
+      <h1 class="logo">IKOREADTUBE</h1>
+      <p class="tag">READ THE VIDEO<span class="cursor" aria-hidden="true"></span></p>
+      <div class="search" id="searchbar">
+        <label class="sr" for="q">Filter videos</label>
+        <input id="q" type="text" inputmode="search" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="60" placeholder="SEARCH..." aria-controls="feed">
+      </div>
+    </div>
+  </header>
+
+  <main id="main" class="wrap">
+    <noscript><p class="box">THIS PAGE NEEDS JAVASCRIPT.</p></noscript>
+
+    <!-- 1. FEED -->
+    <section id="screen-feed" aria-label="Video list">
+      <div id="recent-wrap" hidden>
+        <h2 class="sect">RECENTLY READ</h2>
+        <ul class="menu" id="recent"></ul>
+      </div>
+      <h2 class="sect" id="feed-title">VIDEOS</h2>
+      <ul class="menu" id="feed"></ul>
+      <p class="box" id="empty" hidden>NO MATCH.</p>
+    </section>
+
+    <!-- 2. GENERATING -->
+    <section id="screen-gen" aria-label="Generating summary" hidden>
+      <div class="box big" role="status" aria-live="polite">
+        <p id="gen-step">STEP 1 OF 2</p>
+        <p id="gen-text">READING TRANSCRIPT...<span class="cursor" aria-hidden="true"></span></p>
+      </div>
+    </section>
+
+    <!-- 3. DETAIL -->
+    <section id="screen-detail" aria-label="Summary" hidden>
+      <button type="button" class="btn" id="btn-back">&lt; BACK</button>
+      <h2 class="vtitle" id="d-title" tabindex="-1"></h2>
+      <p class="vchan" id="d-chan"></p>
+      <div class="thumb-big" id="d-thumb-wrap" hidden><img id="d-thumb" alt="" width="64" height="36"></div>
+      <p class="lvl" id="d-level"></p>
+      <div class="box" id="d-text" aria-live="polite"></div>
+      <p class="src" id="d-src"></p>
+      <div class="row">
+        <button type="button" class="btn" id="btn-less">- LESS</button>
+        <button type="button" class="btn" id="btn-more">MORE +</button>
+      </div>
+    </section>
+  </main>
+
+  <script>document.write('<script src="data.js"><\/script><script src="app.js"><\/script>');</script>
+  <noscript><p class="box">THIS PAGE NEEDS JAVASCRIPT.</p></noscript>
+</body>
+</html>

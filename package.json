@@ -10,7 +10,8 @@
     "format": "prettier --write .",
     "eval:ikoagent": "node scripts/ikoagent-eval-report.mjs",
     "check:ikoagent": "npx tsx --tsconfig tsconfig.json scripts/ikoagent-lang-check.mjs",
-    "check:ikoartist": "npx tsx --tsconfig tsconfig.json scripts/ikoartist-taste-check.mjs"
+    "check:ikoartist": "npx tsx --tsconfig tsconfig.json scripts/ikoartist-taste-check.mjs",
+    "check:ikoreadtube": "npx tsx --tsconfig tsconfig.json scripts/ikoreadtube-check.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
