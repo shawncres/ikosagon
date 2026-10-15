@@ -57,7 +57,6 @@
     dLevel: $("d-level"), dText: $("d-text"), dSrc: $("d-src"),
     focus: $("focus"), focusLine: $("focus-line"), focusText: $("focus-text"), focusEdit: $("btn-focus-edit"), focusClear: $("btn-focus-clear"),
     focusForm: $("focus-form"), focusInput: $("focus-input"), focusCancel: $("btn-focus-cancel"),
-    bar: $("bar"), barLevel: $("bar-level"), barRow2: $("bar-row2"), barAsk: $("btn-ask"), barWatch: $("bar-watch"),
     askPanel: $("ask-panel"), askLog: $("ask-log"), askForm: $("ask-form"), askQ: $("ask-q"), askGo: $("ask-go"), askMsg: $("ask-msg"),
     paste: $("btn-paste"), pastePanel: $("paste-panel"), pasteText: $("paste-text"), pasteHelp: $("paste-help"),
     pasteGo: $("btn-paste-go"), pasteCancel: $("btn-paste-cancel")
@@ -141,20 +140,32 @@
     try { localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, RECENT_MAX))); } catch { /* private mode: fine */ }
   }
   function loadThumbsPref() {
+    var raw = null;
+    try { raw = localStorage.getItem(THEME_KEY); } catch { /* fine */ }
+    var saved = applyTheme(raw); // old 2-way values stay valid; unknown ones become light
+    try { if (raw !== null && raw !== saved) localStorage.setItem(THEME_KEY, saved); } catch { /* fine */ }
     paintTheme();
     try { thumbsOn = localStorage.getItem(THUMBS_KEY) === "1"; } catch { thumbsOn = false; }
     paintThumbsBtn();
   }
+  /* Themes cycle LIGHT -> GAMEBOY -> DARK. Saved values "light" and "dark" from the old 2-way toggle stay valid; anything unknown is light. */
+  var THEMES = ["light", "gameboy", "dark"];
+  function normTheme(t) { t = String(t || "").toLowerCase(); return THEMES.indexOf(t) >= 0 ? t : "light"; }
+  function currentTheme() { return normTheme(document.documentElement.getAttribute("data-theme")); }
+  function applyTheme(t) {
+    t = normTheme(t);
+    if (t === "light") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", t);
+    return t;
+  }
   function paintTheme() {
-    var dark = document.documentElement.getAttribute("data-theme") === "dark";
-    el.theme.textContent = "DARK: " + (dark ? "ON" : "OFF");
-    el.theme.setAttribute("aria-pressed", String(dark));
+    var t = currentTheme();
+    el.theme.textContent = "THEME: " + t.toUpperCase();
+    el.theme.setAttribute("aria-label", "Colour theme: " + t + ". Tap for the next one.");
   }
   el.theme.addEventListener("click", function () {
-    var dark = document.documentElement.getAttribute("data-theme") === "dark";
-    if (dark) document.documentElement.removeAttribute("data-theme");
-    else document.documentElement.setAttribute("data-theme", "dark");
-    try { localStorage.setItem(THEME_KEY, dark ? "light" : "dark"); } catch { /* fine */ }
+    var next = applyTheme(THEMES[(THEMES.indexOf(currentTheme()) + 1) % THEMES.length]);
+    try { localStorage.setItem(THEME_KEY, next); } catch { /* fine */ }
     paintTheme();
   });
   function paintThumbsBtn() {
@@ -382,8 +393,6 @@
     el.sGen.hidden = name !== "gen";
     el.sDetail.hidden = name !== "detail";
     el.searchbar.hidden = name !== "feed";
-    el.bar.hidden = name !== "detail";
-    document.body.classList.toggle("has-bar", name === "detail");
     if (name === "feed") {
       window.scrollTo(0, feedScroll);
       var sel = selectedId && document.querySelector('#screen-feed .item[data-id="' + cssEsc(selectedId) + '"]');
@@ -496,10 +505,9 @@
     } else {
       el.dThumbWrap.hidden = true;
     }
-    el.dLevel.textContent = "DETAIL " + (i + 1) + "/3: " + LEVEL_LABEL[level];
+    el.dLevel.textContent = "[" + LEVEL_LABEL[level] + "]\n" + (i + 1) + "/3";
     el.dText.textContent = e.text;
     el.dSrc.textContent = labelFor(s, e);
-    el.barLevel.textContent = "[" + LEVEL_LABEL[level] + "]\n" + (i + 1) + "/3";
     var real = isReal(v.id);
     var f = current ? current.focus : "";
     el.focus.hidden = !real;
@@ -508,8 +516,7 @@
     el.focusClear.hidden = !f;
     el.focusForm.hidden = true;
     el.focusLine.hidden = false;
-    el.barRow2.hidden = !real;
-    if (real) el.barWatch.href = WATCH_URL + encodeURIComponent(v.id);
+    el.askPanel.hidden = !real;
     el.less.disabled = i === 0;
     el.more.disabled = i === LEVELS.length - 1;
     el.less.setAttribute("aria-disabled", String(i === 0));
@@ -532,7 +539,7 @@
     var focus = isReal(id) ? cleanFocus(opts.focus) : "";
     var sameVideo = current && current.id === id;
     current = { id: id, level: level, focus: focus };
-    if (!sameVideo) { renderAsk(id); el.askPanel.hidden = !(asks[id] && asks[id].length); el.askMsg.textContent = ASK_HELP; }
+    if (!sameVideo) { renderAsk(id); el.askMsg.textContent = ASK_HELP; }
     pushRecent(v);
     closePaste();
     var k = skey(id, focus);
@@ -651,10 +658,6 @@
       el.askLog.appendChild(d);
     });
   }
-  el.barAsk.addEventListener("click", function () {
-    el.askPanel.hidden = false;
-    el.askQ.focus();
-  });
   el.askForm.addEventListener("submit", function (e) {
     e.preventDefault();
     if (askBusy || !current || !isReal(current.id)) return;

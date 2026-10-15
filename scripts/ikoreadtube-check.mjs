@@ -1,4 +1,4 @@
-// Deterministic checks for IkoReadTube: proxy logic (mocked Groq, no network) + static asset rules (pure black/white, noindex, data shape).
+// Deterministic checks for IkoReadTube: proxy logic (mocked Groq, no network) + static asset rules (three fixed theme palettes, noindex, data shape).
 // Run: npm run check:ikoreadtube
 import fs from "node:fs";
 import vm from "node:vm";
@@ -126,7 +126,14 @@ ok(!/<script[^>]+src="https?:/.test(html), "no external scripts");
 ok(!/react|vue|jquery|angular/i.test(html + js), "no frameworks");
 ok(/<script src="data\.js">/.test(html) && /<script src="app\.js">/.test(html), "plain script tags (no build step)");
 const colors = css.match(/#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\)/g) || [];
-ok(colors.every((c) => ["#000", "#fff"].includes(c.toLowerCase())), "CSS uses only #000 / #fff colors", colors.filter((c) => !["#000", "#fff"].includes(c.toLowerCase())).join(","));
+const PALETTES = {
+  light: { paper: "#f4ecd8", surface: "#fbf6e8", ink: "#3b2a1a", line: "#3b2a1a", rule: "#3b2a1a", mid: "#f4ecd8" },
+  gameboy: { paper: "#9bbc0f", surface: "#9bbc0f", ink: "#0a2a0a", line: "#0a2a0a", rule: "#306230", mid: "#8bac0f" },
+  dark: { paper: "#0e0e0e", surface: "#1a1a1a", ink: "#e5e5e5", line: "#6b6b6b", rule: "#6b6b6b", mid: "#1a1a1a" },
+};
+const ALLOWED = new Set(Object.values(PALETTES).flatMap((p) => Object.values(p)));
+ok(colors.every((c) => ALLOWED.has(c.toLowerCase())), "CSS uses only the three theme palettes' colours", colors.filter((c) => !ALLOWED.has(c.toLowerCase())).join(","));
+ok(!/#[0-9a-fA-F]{3,8}\b/.test(css.replace(/--(?:paper|surface|ink|line|rule|mid):\s*#[0-9a-fA-F]{6};/g, "")), "colour literals appear only in the theme variable declarations; everything else uses var(--...)");
 ok(!/gradient|\bblur\(/i.test(css) && !/(box|text)-shadow\s*:\s*(?!\s|none)/.test(css), "no gradients, shadows or blur");
 ok(!/border-radius\s*:\s*[1-9]/.test(css), "no rounded corners");
 ok(!/font-family:[^;]*(Arial|Helvetica|Inter|Roboto|system-ui|sans-serif|serif(?!\s*;))/i.test(css.replace(/monospace/g, "")), "no modern/system fonts besides the monospace fallback");
@@ -539,14 +546,45 @@ let lastA;
 for (let i = 0; i < 6; i += 1) lastA = await ask({ state: rlA, question: `question number ${i}`, fetchImpl: combo(makeYt(), makeGem(askOk)) });
 ok(lastA.status === 429 && lastA.body.error === "ip_rate" && Number(lastA.headers["Retry-After"]) > 0, "ask per-IP rate limit (4 per minute)");
 
-// ---- frontend: dark mode, bottom bar, focus, ask (static + fake DOM) ----
-const darkRule = /html\[data-theme="dark"\]\s*\{\s*--black:\s*#fff;\s*--white:\s*#000;\s*\}/.test(css);
-ok(darkRule, "dark mode = the same two colours swapped (--black:#fff; --white:#000)");
-ok(!/\bgrey\b|\bgray\b|opacity\s*:\s*0?\.\d/.test(css), "no greys / translucency anywhere in the CSS (dark mode included)");
-ok(!/data-theme/.test(html.replace(/<script>[\s\S]*?<\/script>/g, "")) && /ikoreadtube\.theme/.test(html) && /<html lang="en">/.test(html), "default is the light e-ink look; saved theme is applied before first paint");
-ok(/ikoreadtube\.theme/.test(privacy) && /localStorage\.removeItem\("ikoreadtube\.theme"\)/.test(privacy), "privacy page follows the theme and 'clear my data' also clears it");
-ok(/\.bar\s*\{[^}]*position:\s*fixed[^}]*bottom:\s*0/.test(css) && /\.bar \.btn\s*\{[^}]*min-height:\s*48px/.test(css), "LESS/MORE live in a fixed bottom bar with 48px touch targets");
-ok(/id="bar"/.test(html) && /id="btn-less"/.test(html) && /id="btn-more"/.test(html) && /id="btn-ask"/.test(html) && /id="bar-watch"/.test(html) && /id="bar-level"/.test(html), "bottom bar holds LESS, level, MORE, ASK and WATCH ON YOUTUBE");
+// ---- frontend: themes, inline controls, focus, ask (static + fake DOM) ----
+const rawCss = fs.readFileSync(`${dir}/styles.css`, "utf8");
+const themeBlock = (name) => {
+  const m = (name === "light" ? /:root\s*\{[^}]*\}/ : new RegExp(`html\\[data-theme="${name}"\\]\\s*\\{[^}]*\\}`)).exec(rawCss);
+  const g = (v) => (m && new RegExp(`--${v}:\\s*(#[0-9a-fA-F]{6})`).exec(m[0])?.[1].toLowerCase()) || null;
+  return { paper: g("paper"), surface: g("surface"), ink: g("ink"), line: g("line"), rule: g("rule"), mid: g("mid") };
+};
+const lum = (h) => { const c = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return (x + 0.05) / (y + 0.05); };
+for (const name of ["light", "gameboy", "dark"]) {
+  const t = themeBlock(name);
+  ok(JSON.stringify(t) === JSON.stringify(PALETTES[name]), `theme ${name}: variables are exactly the planned palette`, JSON.stringify(t));
+  const cp = contrast(t.ink, t.paper), cs = contrast(t.ink, t.surface);
+  ok(cp >= 7 && cs >= 7, `theme ${name}: body text contrast >= 7:1 (ink/paper ${cp.toFixed(2)}, ink/surface ${cs.toFixed(2)})`);
+  ok(contrast(t.line, t.paper) >= 3 && contrast(t.rule, t.paper) >= 3, `theme ${name}: borders >= 3:1 against the page (line ${contrast(t.line, t.paper).toFixed(2)}, rule ${contrast(t.rule, t.paper).toFixed(2)})`);
+}
+ok(themeBlock("light").paper !== "#ffffff" && themeBlock("light").ink !== "#000000" && !/\bgrey\b|\bgray\b|opacity\s*:\s*0?\.\d/.test(css), "light is sepia paper (no pure black/white, no translucency)");
+{
+  // the SVG tone maps (thumbnails/emoji) only produce palette colours at their end points
+  const hex = (r, g, b) => "#" + [r, g, b].map((x) => Math.round(Number(x) * 255).toString(16).padStart(2, "0")).join("");
+  const f = (id) => { const m = new RegExp(`<filter id="${id}"[\\s\\S]*?</filter>`).exec(html)?.[0] || ""; const t = (c) => (new RegExp(`Func${c} type="\\w+" tableValues="([^"]+)"`).exec(m)?.[1] || "").split(" "); return t("R").map((_, i) => hex(t("R")[i], t("G")[i], t("B")[i])); };
+  const P = PALETTES;
+  ok(JSON.stringify(f("tone-light")) === JSON.stringify([P.light.ink, P.light.paper]) && JSON.stringify(f("tone-text-light")) === JSON.stringify([P.light.ink, P.light.paper]), "light tone maps end at ink / paper");
+  ok(JSON.stringify(f("tone-gameboy")) === JSON.stringify([P.gameboy.ink, P.gameboy.rule, P.gameboy.mid, P.gameboy.paper]), "gameboy thumbnails snap to the 4 shades (ink, #306230, #8bac0f, #9bbc0f)");
+  ok(JSON.stringify(f("tone-dark")) === JSON.stringify([P.dark.paper, P.dark.ink]) && JSON.stringify(f("tone-dark-art")) === JSON.stringify([P.dark.ink, P.dark.paper]), "dark tone maps end at paper / ink");
+}
+ok(/--tone-text/.test(rawCss) && !/grayscale\(|contrast\(|invert\(/.test(css), "emoji/thumbnails are tone-mapped into the theme colours (no grayscale/contrast/invert filters)");
+ok(/<html lang="en">/.test(html) && !/<html[^>]*data-theme/.test(html) && /ikoreadtube\.theme/.test(html) && /"gameboy"/.test(html), "default is the light theme; saved theme is applied before first paint");
+ok(/ikoreadtube\.theme/.test(privacy) && /localStorage\.removeItem\("ikoreadtube\.theme"\)/.test(privacy) && /GAMEBOY/.test(privacy), "privacy page follows the theme (all 3) and 'clear my data' also clears it");
+{
+  const noStyle = html;
+  const detail = noStyle.slice(noStyle.indexOf('id="screen-detail"'), noStyle.indexOf("</main>"));
+  const pos = (id) => detail.indexOf(`id="${id}"`);
+  ok(!/id="bar"|class="bar"|bar-row|has-bar/.test(html + css + js) && !/position:\s*fixed/.test(css) && !/\.bar\b/.test(css), "no fixed/sticky bottom bar anywhere (page, css, js)");
+  ok(pos("focus") < pos("btn-less") && pos("btn-less") < pos("d-text") && pos("d-text") < pos("ask-panel") && pos("ask-panel") < pos("btn-paste") && pos("btn-paste") < pos("d-watch") && pos("btn-more") > pos("btn-less"), "detail order: focus line, LESS/level/MORE, summary, ASK section, paste, WATCH ON YOUTUBE last");
+  ok(/\.lvlrow \.btn\s*\{[^}]*min-height:\s*48px/.test(css) && /\.watchlink\s*\{[^}]*min-height:\s*44px/.test(css) && /\.watchlink\s*\{[^}]*font-size:\s*calc\(var\(--u\) \* 2\)/.test(css) && /\.watchlink\s*\{[^}]*text-decoration:\s*underline/.test(css), "inline LESS/MORE targets 48px; WATCH is a small underlined link with a 44px hit area");
+  ok(!/id="d-watch"[^>]*class="btn/.test(html) && /id="d-watch"/.test(html) && /id="d-level"/.test(html) && /id="ask-form"/.test(html), "WATCH is text-style (not a .btn); level label and ask form present");
+  ok(/ask-panel[^>]*aria-label[^>]*hidden/.test(html) && /el\.askPanel\.hidden = !real/.test(js), "ASK section is inline for real videos (hidden for samples)");
+}
 ok(/id="focus"/.test(html) && /id="btn-focus-clear"/.test(html) && /id="ask-form"/.test(html) && /maxlength="200"/.test(html), "focus line + ask form present");
 ok(/focus=/.test(js) && /\?f=/.test(js) && /skey\(/.test(js), "frontend passes the focus to the summary route and keeps focus in the URL hash and cache key");
 ok(/sr && isReal\(/.test(js), "focus comes from the YouTube search query (none when opened from the plain feed)");
@@ -568,20 +606,34 @@ ok(/privacy/.test(html) && /QUESTION/.test(privacy) && /FOCUS/.test(privacy), "p
       localStorage: { getItem: (k) => (store.has(k) ? store.get(k) : null), setItem: (k, v) => store.set(k, String(v)) },
       history: { replaceState() {} }, location: { hash: "", replace() {} }, setTimeout, clearTimeout, Promise, JSON, Date, encodeURIComponent, decodeURIComponent, fetch: async () => { throw new Error("no network"); },
     };
-    if (savedTheme === "dark") html5.attrs["data-theme"] = "dark"; // what the inline head script does before first paint
+    const early = String(savedTheme || "").toLowerCase();
+    if (early === "gameboy" || early === "dark") html5.attrs["data-theme"] = early; // what the inline head script does before first paint
     vm.runInNewContext(js, ctx);
     return { els, store, html5 };
   };
+  const click = (r) => r.els["btn-theme"].handlers.click[0]();
   const a = run(null);
-  ok(a.els["btn-theme"].textContent === "DARK: OFF" && a.els["btn-theme"].attrs["aria-pressed"] === "false" && !a.html5.attrs["data-theme"], "theme: starts light (DARK: OFF) with nothing saved");
-  a.els["btn-theme"].handlers.click[0]();
-  ok(a.html5.attrs["data-theme"] === "dark" && a.store.get("ikoreadtube.theme") === "dark" && a.els["btn-theme"].textContent === "DARK: ON" && a.els["btn-theme"].attrs["aria-pressed"] === "true", "theme toggle -> dark, persisted in localStorage");
-  a.els["btn-theme"].handlers.click[0]();
-  ok(!a.html5.attrs["data-theme"] && a.store.get("ikoreadtube.theme") === "light" && a.els["btn-theme"].textContent === "DARK: OFF", "theme toggle back -> light, persisted");
-  const saved = run("dark");
-  ok(saved.els["btn-theme"].textContent === "DARK: ON" && saved.store.get("ikoreadtube.theme") === "dark", "saved dark preference: button shows DARK: ON at load, storage untouched");
-  saved.els["btn-theme"].handlers.click[0]();
-  ok(!saved.html5.attrs["data-theme"] && saved.store.get("ikoreadtube.theme") === "light", "toggling from a saved dark theme goes back to light");
+  ok(a.els["btn-theme"].textContent === "THEME: LIGHT" && !a.html5.attrs["data-theme"], "theme: starts LIGHT with nothing saved");
+  click(a);
+  ok(a.html5.attrs["data-theme"] === "gameboy" && a.store.get("ikoreadtube.theme") === "gameboy" && a.els["btn-theme"].textContent === "THEME: GAMEBOY", "cycle 1: LIGHT -> GAMEBOY, persisted");
+  click(a);
+  ok(a.html5.attrs["data-theme"] === "dark" && a.store.get("ikoreadtube.theme") === "dark" && a.els["btn-theme"].textContent === "THEME: DARK", "cycle 2: GAMEBOY -> DARK, persisted");
+  click(a);
+  ok(!a.html5.attrs["data-theme"] && a.store.get("ikoreadtube.theme") === "light" && a.els["btn-theme"].textContent === "THEME: LIGHT", "cycle 3: DARK -> LIGHT, persisted");
+  for (const [saved, label] of [["gameboy", "THEME: GAMEBOY"], ["dark", "THEME: DARK"], ["light", "THEME: LIGHT"]]) {
+    const r = run(saved);
+    ok(r.els["btn-theme"].textContent === label && r.store.get("ikoreadtube.theme") === saved, `saved '${saved}' is restored at load and left untouched`);
+  }
+  const old = run("dark"); // value written by the old 2-way toggle
+  click(old);
+  ok(!old.html5.attrs["data-theme"] && old.store.get("ikoreadtube.theme") === "light", "migration: an old saved 'dark' loads as DARK and the next tap continues the cycle (-> LIGHT)");
+  const oldLight = run("light");
+  click(oldLight);
+  ok(oldLight.html5.attrs["data-theme"] === "gameboy", "migration: an old saved 'light' loads as LIGHT (sepia) and the next tap -> GAMEBOY");
+  const junk = run("purple");
+  ok(junk.els["btn-theme"].textContent === "THEME: LIGHT" && junk.store.get("ikoreadtube.theme") === "light" && !junk.html5.attrs["data-theme"], "migration: an unknown saved value falls back to LIGHT and is rewritten");
+  const upper = run("DARK");
+  ok(upper.els["btn-theme"].textContent === "THEME: DARK" && upper.store.get("ikoreadtube.theme") === "dark", "migration: 'DARK' (any case) is normalised to 'dark'");
 }
 
 console.log(`ikoreadtube-check: ${pass} passed, ${fails.length} failed`);

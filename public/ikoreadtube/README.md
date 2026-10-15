@@ -1,7 +1,7 @@
 # IKOREADTUBE
 
 Barebones, mobile-first "read the video" page: a menu list of videos, and a plain-text summary at three detail levels (LESS / STANDARD / MORE).
-Pure HTML + CSS + vanilla JS. No frameworks, no build step, no video player, no accounts. Pure `#000` / `#fff`, **Press Start 2P**
+Pure HTML + CSS + vanilla JS. No frameworks, no build step, no video player, no accounts. Three fixed colour themes (LIGHT sepia paper, GAMEBOY, DARK grey; each a tiny palette, see "Themes"), **Press Start 2P**
 from Google Fonts, no rounded corners, gradients, shadows or transitions (the only motion is one steady blinking cursor, off under
 `prefers-reduced-motion`). Built to read on an e-ink screen.
 
@@ -11,11 +11,11 @@ On ikosagon.com it lives at **/ikoreadtube/** (and `/ikoreadtube` works too). It
 
 | File | What it is |
 | --- | --- |
-| `index.html` | the page: header + three screens (feed, generating, detail), shown/hidden by JS |
+| `index.html` | the page: header + three screens (feed, generating, detail), shown/hidden by JS, plus the tiny SVG tone filters |
 | `styles.css` | all styling (`--u` is one UI "pixel": 4px phone, 6px desktop; fonts are 16px/24px, multiples of the font's 8px grid) |
 | `app.js` | UI + routing (`#/` feed, `#/read/<id>` detail), localStorage "recently read", calls the proxy, falls back to presets |
 | `data.js` | **the one data module** - `window.IkoData.loadVideos()` returns the videos |
-| `img/` | 1-bit pixel-art thumbnails + the menu arrow (pure black/white PNGs) |
+| `img/` | 1-bit pixel-art thumbnails + the menu arrow (black/white PNGs, recoloured to the theme by the tone filters) |
 | `api/summarize.php` | example PHP proxy for GoDaddy / any PHP host |
 | `api/config.sample.php`, `api/.htaccess` | where the PHP proxy's key goes, and the rule that hides it |
 
@@ -76,13 +76,13 @@ Summary fallbacks, in order: Gemini answer -> (if Gemini is off, busy, over budg
 
 Channel IDs are resolved once with `node scripts/ikoreadtube-channels.mjs` (`channels.list?forHandle`, 1 unit per handle) and only the handle -> ID mapping is committed (identifiers, not API content). Titles and everything else are fetched live and never stored for more than minutes/days.
 
-Compliance notes: WATCH ON YOUTUBE (link to `youtube.com/watch?v=`) on every item and detail screen; footer attribution + links to the YouTube Terms of Service and Google Privacy Policy; `privacy.html` (also at `/ikoreadtube/privacy`) states we use YouTube API Services; thumbnails are OFF by default and, when on, are `default.jpg` shown whole with a grayscale filter; no accounts, localStorage only (recent list, thumbs setting, theme); the API key is read from env on the server only, sent in a header, and never reaches the page. AI summaries are labelled as not coming from YouTube.
+Compliance notes: WATCH ON YOUTUBE (link to `youtube.com/watch?v=`) on every item and at the bottom of every real-video detail screen; footer attribution + links to the YouTube Terms of Service and Google Privacy Policy; `privacy.html` (also at `/ikoreadtube/privacy`) states we use YouTube API Services; thumbnails are OFF by default and, when on, are `default.jpg` shown whole with a grayscale filter; no accounts, localStorage only (recent list, thumbs setting, theme); the API key is read from env on the server only, sent in a header, and never reaches the page. AI summaries are labelled as not coming from YouTube.
 
 Env vars (names only, set in Vercel Production + Preview): `YOUTUBE_API_KEY`, `GEMINI_API_KEY`, optional `GEMINI_MODEL`, `GEMINI_DAILY_VIDEO_SECONDS`. Counters (search cap, video-seconds budget, rate limits) are per server instance: best effort; Google's own quotas are the hard limit and are handled (quotaExceeded -> "limit reached" / description fallback).
 
 Caveats: Gemini YouTube-URL input is a preview feature (free, public videos only, limits can change); on the Gemini free tier Google may use prompts and outputs to improve its products (the privacy page says so); the PHP/GoDaddy build has no feed route, so it stays on the samples.
 
-## Focus, ASK, dark mode and the bottom bar
+## Focus, ASK, themes and the detail layout
 
 **FOCUS (the search words steer the summary).** When you search and open a result, the words you searched become the *focus*. The summary route gets `focus=<words>`; the detail screen shows `FOCUS: ufc predictions [EDIT] [X]`. EDIT changes it, X clears it (general summary), and a video opened from the plain feed starts with no focus (typing in the feed filter box does not count as a search). The focus rides in the hash (`#/read/<id>?f=...`) so reload and back keep it.
 
@@ -90,11 +90,23 @@ Caveats: Gemini YouTube-URL input is a preview feature (free, public videos only
 - Gemini (same video-URL input) gets one extra instruction block, and returns `{covered, about, less, standard, more}`: it extracts only the claims that answer the question (no intros, sponsors, filler), in its own words, same three levels. If `covered` is false the server writes `NOT COVERED IN THIS VIDEO.` plus one line "This video is about: ..." on all three levels (it cannot pad an answer; if the model leaves `about` empty the video title is used).
 - Cache key = `videoId|normalized focus` (memory 7 days + CDN). Every focus variant is its own Gemini call and is charged to the same 6 h/day video-seconds budget, so the guards are unchanged. The description fallback (no AI) ignores the focus.
 
-**ASK this video.** ASK in the bottom bar opens a box: one short question about the open video. `POST /api/ikoreadtube/ask` with `{id, q, history}` (6 KB body max, question 3..200 chars, last 2 Q/A as context, 300 chars each). Same video-URL Gemini input, answers of at most ~80 words, plain text, "not in the video" said plainly (`answered:false`). Timestamps are shown only when they look like m:ss, fall inside the video and the model is confident (max 3, else none). Per IP 4/min and 20/h, shares the global Gemini limiter, the cooldown after a Google 429, the length caps (20 s..40 min) and the daily video-seconds budget with summaries; a failed call refunds its reservation. Answers to a question without history are cached 1 h in memory (never at the CDN, `no-store`); nothing else is stored on the server. The last 3 Q/A live only in the page's memory and vanish on reload.
+**ASK this video.** The ASK section sits inline under the summary: one short question about the open video. `POST /api/ikoreadtube/ask` with `{id, q, history}` (6 KB body max, question 3..200 chars, last 2 Q/A as context, 300 chars each). Same video-URL Gemini input, answers of at most ~80 words, plain text, "not in the video" said plainly (`answered:false`). Timestamps are shown only when they look like m:ss, fall inside the video and the model is confident (max 3, else none). Per IP 4/min and 20/h, shares the global Gemini limiter, the cooldown after a Google 429, the length caps (20 s..40 min) and the daily video-seconds budget with summaries; a failed call refunds its reservation. Answers to a question without history are cached 1 h in memory (never at the CDN, `no-store`); nothing else is stored on the server. The last 3 Q/A live only in the page's memory and vanish on reload.
 
-**Dark mode.** Header button `DARK: OFF/ON`. Dark is the same two colors swapped (`--black:#fff; --white:#000` on `html[data-theme=dark]`), so it is still strictly `#000`/`#fff`, no grays (sample thumbnails and the arrow are inverted with `filter:invert(1)`). The choice is saved in `localStorage` (`ikoreadtube.theme`) and applied by a tiny inline script in `<head>` before first paint. **The default is light and it does not follow `prefers-color-scheme`**, on purpose: black-on-white is the e-ink look the page is built for (most e-ink browsers report "light" anyway, but a phone in dark mode should not silently turn a reading page into a white-on-black one that e-ink renders as a smeared negative). Switching is one tap and remembered.
+**Themes.** One header button cycles **LIGHT -> GAMEBOY -> DARK** and shows the current one (`THEME: LIGHT`). The choice is saved in `localStorage` (`ikoreadtube.theme` = `light` | `gameboy` | `dark`) and applied by a tiny inline script in `<head>` before first paint. The old 2-way toggle stored `light`/`dark`: both are still valid (an old `dark` loads as DARK, an old `light` as LIGHT, which is now sepia); any unknown value falls back to LIGHT and is rewritten. Everything is drawn from CSS variables (`--paper`, `--surface`, `--ink`, `--line`, `--rule`, `--mid`) set per theme on `<html data-theme>`, so the feed, search, detail, ASK and privacy pages all follow it; no colour literal appears outside those declarations.
 
-**Bottom bar.** On the detail screen a fixed bar shows `- LESS  [STANDARD] 2/3  MORE +` and, below it, `ASK` and `WATCH ON YOUTUBE`. Targets are 48 px high on phones (60 px on desktop), pure monochrome, no motion. LESS/MORE stay at the end of the range as no-ops. The row with ASK and WATCH is hidden on the sample videos (no real video to ask about).
+| Theme | paper | surface | ink | line / rule | body text contrast |
+| --- | --- | --- | --- | --- | --- |
+| LIGHT (default, sepia paper) | `#f4ecd8` | `#fbf6e8` | `#3b2a1a` | `#3b2a1a` | **11.64:1** on paper, 12.69:1 on surface |
+| GAMEBOY (DMG green) | `#9bbc0f` | `#9bbc0f` | `#0a2a0a` | `#0a2a0a` / `#306230` (+ `#8bac0f` for thumbnail frames) | **7.11:1** on paper and surface |
+| DARK (neutral grey, xAI-like) | `#0e0e0e` | `#1a1a1a` | `#e5e5e5` | `#6b6b6b` | **15.32:1** on paper, 13.82:1 on surface |
+
+The check script computes these ratios and fails below 7:1 (borders must stay at 3:1 or better). GAMEBOY note: the classic DMG ink `#0f380f` on `#9bbc0f` is only 6.02:1 (that is the best contrast the four canonical shades can give), so we darkened the ink to `#0a2a0a` (7.11:1) and kept the other three shades. DARK uses soft grey (`#6b6b6b`, 3.6:1) borders instead of bold ink ones, so it is the least "boxy" theme.
+
+**E-ink.** LIGHT is the default on purpose and it does not follow `prefers-color-scheme`: warm paper with dark brown ink is the e-ink-friendly look (high contrast, no glare, no big dark areas that e-ink renders as a smeared negative). Keep contrast high if you tune a palette (7:1 for body text). GAMEBOY and DARK are one tap away and remembered.
+
+Thumbnails (off by default) and emoji in real titles are the only non-palette pixels in principle; they are tone-mapped into the theme with small inline SVG filters (`#tone-*` in `index.html`): a straight ink-to-paper ramp in LIGHT and DARK, and a 4-shade snap to the DMG green shades in GAMEBOY. Emoji in titles use the two end colours only. Sample 1-bit pictures show their strokes in the ink colour.
+
+**Detail layout.** There is no fixed or sticky bar. Top to bottom: BACK, title, channel, FOCUS line, then **`- LESS  [STANDARD] 2/3  MORE +`** inline (48 px high targets, scrolls with the page), the summary, the ASK section (hidden for the built-in sample videos), PASTE TRANSCRIPT, and last a small underlined **WATCH ON YOUTUBE** text link with a 44 px high hit area.
 
 ## Limits and abuse guard (both proxies, same rules)
 
@@ -110,4 +122,4 @@ Caveats: Gemini YouTube-URL input is a preview feature (free, public videos only
 ## Checks
 
 `npm run check:ikoreadtube` (repo root): proxy logic with mocked Groq (no network), CORS/limits, plus static rules for the page
-(only `#000`/`#fff` in CSS, no gradients/shadows/rounded corners/transitions, one animation, noindex, data shape).
+(only the three theme palettes in CSS, contrast ratios per theme, no gradients/shadows/rounded corners/transitions, one animation, noindex, data shape).
