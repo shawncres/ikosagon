@@ -79,6 +79,7 @@ async function readDirMarkdown(dir: string, prefix: string): Promise<RagChunk[]>
       const filePath = path.join(dir, file.name);
       const raw = await fs.readFile(filePath, "utf8");
       const { data, content } = matter(raw);
+      if (data.unlisted === true) return []; // unlisted projects stay out of the chat knowledge base
       const title = String(data.title ?? file.name.replace(/\.mdx?$/, ""));
       const source = `${prefix}/${file.name}`;
       return chunkMarkdown(`# ${title}\n\n${content}`, title, source);
