@@ -102,6 +102,11 @@ export default async function ProjectDetailPage({ params }: { params: Promise<Pa
             Repository
           </a>
         ) : null}
+        {project.demo ? (
+          <a href={project.demo} className="text-accent">
+            Open the demo
+          </a>
+        ) : null}
         {project.live ? (
           <a href={project.live} target="_blank" rel="noreferrer" className="text-accent">
             Live Site

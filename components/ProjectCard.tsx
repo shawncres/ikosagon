@@ -38,16 +38,39 @@ export function ProjectCard({ project }: ProjectCardProps) {
           </span>
         ))}
       </div>
-      <Link
-        href={`/projects/${project.slug}`}
-        className="inline-flex items-center gap-2 text-sm text-accent after:absolute after:inset-0 after:rounded-2xl after:content-['']"
-        aria-label={`${linkLabel}: ${project.title}`}
-      >
-        <span className="relative z-10 inline-flex items-center gap-2">
-          {linkLabel}
-          <ArrowUpRight className="h-4 w-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-        </span>
-      </Link>
+      {project.demo ? (
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          {/* Plain anchors: the demo is a static page outside the Next router. The overlay anchor makes the whole card open it. */}
+          <a
+            href={project.demo}
+            className="inline-flex items-center gap-2 text-sm text-accent after:absolute after:inset-0 after:rounded-2xl after:content-['']"
+            aria-label={`${linkLabel}: ${project.title}`}
+          >
+            <span className="relative z-10 inline-flex items-center gap-2">
+              {linkLabel}
+              <ArrowUpRight className="h-4 w-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+            </span>
+          </a>
+          <Link
+            href={`/projects/${project.slug}`}
+            className="relative z-10 text-sm text-zinc-300 underline-offset-4 hover:text-accent hover:underline"
+            aria-label={`Read the notes: ${project.title}`}
+          >
+            Read the notes
+          </Link>
+        </div>
+      ) : (
+        <Link
+          href={`/projects/${project.slug}`}
+          className="inline-flex items-center gap-2 text-sm text-accent after:absolute after:inset-0 after:rounded-2xl after:content-['']"
+          aria-label={`${linkLabel}: ${project.title}`}
+        >
+          <span className="relative z-10 inline-flex items-center gap-2">
+            {linkLabel}
+            <ArrowUpRight className="h-4 w-4 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+          </span>
+        </Link>
+      )}
     </article>
   );
 }
