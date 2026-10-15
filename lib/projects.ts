@@ -30,6 +30,11 @@ export type ProjectMeta = {
   featured: boolean;
   repo?: string;
   live?: string;
+  /**
+   * Optional standalone demo URL (e.g. a static page in public/). When set, the card's main link opens it
+   * and the case study stays reachable from a secondary "Read the notes" link.
+   */
+  demo?: string;
   status: string;
   /** Optional ProjectCard CTA label (defaults to "View case study"). */
   linkLabel?: string;
@@ -100,6 +105,7 @@ export async function getProjects(): Promise<Project[]> {
         featured: Boolean(data.featured),
         repo: data.repo ? String(data.repo) : undefined,
         live: data.live ? String(data.live) : undefined,
+        demo: typeof data.demo === "string" && data.demo.startsWith("/") ? data.demo : undefined,
         status: String(data.status ?? "In progress"),
         linkLabel: data.linkLabel ? String(data.linkLabel) : undefined,
         tracks: parseTracks(data.tracks),

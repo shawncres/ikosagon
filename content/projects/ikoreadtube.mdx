@@ -1,0 +1,46 @@
+---
+title: "IkoReadTube"
+slug: "ikoreadtube"
+summary: "We at Ikosagon built IkoReadTube for e-ink screens: a light way to get the gist of a video without a heavy player. Pure black and white, no video, no animation to fight the screen, and a plain-text summary at three levels of detail. About 17 KB of its own files on a first load. The demo runs on sample videos."
+year: 2026
+updated: "2026-10-15T14:30:00-04:00"
+tags: ["E-ink", "AI", "Reading", "Prototype"]
+cover: "/projects/ikoreadtube/cover.svg"
+featured: true
+status: "Prototype"
+demo: "/ikoreadtube/"
+linkLabel: "Open the demo"
+---
+
+## Problem
+Video is a heavy way to get a small piece of information. A player, autoplay, animation and a busy page are a poor fit for an e-ink reader, an old phone, or a slow connection. Often what you want is the gist.
+
+## What this product is
+IkoReadTube is a **tiny reading page for video summaries**. You pick a video from a plain menu list, we show a short text summary, and you step it **LESS** or **MORE** across three levels of detail. There is no video player, no account, and nothing to install.
+
+[Open the demo](/ikoreadtube/)
+
+## Built for e-ink
+- **Pure black and white.** Only `#000` and `#fff`: no greys, gradients, shadows or rounded corners.
+- **One pixel font, hard edges.** Press Start 2P with chunky borders in a Game Boy style menu, so text stays crisp on a low-resolution panel.
+- **No motion that fights the screen.** The only animation is one steady blinking cursor on the loading screen, and it turns off when the device asks for reduced motion.
+- **Small and static.** Plain HTML, CSS and vanilla JavaScript: no framework and no build step.
+- **Works in any browser.** Large touch targets, full keyboard use, and the same layout on a phone or a desktop.
+
+## How big is it
+We measured the live page on a first load with an empty cache (Oct 15, 2026): about **17.0 KB** of the page's own files over the network (HTML, CSS, two scripts, eight tiny 1-bit thumbnails and the menu arrow), plus about **14.1 KB** for the Press Start 2P font from Google Fonts. That is roughly **31 KB** in total, and pages after the first reuse the cache.
+
+## How it works
+1. Pick a video. The page sends the transcript text to our small proxy.
+2. The proxy asks a free-tier Groq model to condense it to the level you chose and returns **plain text only**.
+3. If the service is off, busy or offline, the page shows a written-by-hand preset summary and says so on screen.
+
+The proxy has length caps, a per-visitor rate limit and limited cross-origin access. It also ships as a PHP version for ordinary shared hosting.
+
+## Status
+Prototype, built to test the idea.
+- The videos are **eight sample videos with made-up channels and original transcripts**. We do not yet pull transcripts from YouTube, and we do not claim to ingest full YouTube content.
+- Summaries are built from **transcript text**, using the Groq free tier, so they can be rate limited and are not guaranteed to be perfect. Always treat them as a gist.
+- We have tested it in desktop and phone-sized browsers. We have not yet tested it on a physical e-ink reader.
+
+Next: connect real transcripts, and try it on e-ink hardware.
