@@ -1,0 +1,239 @@
+/*
+ * IKOREADTUBE - pure #000 / #fff only, e-ink friendly.
+ * No gradients, shadows, rounded corners, transitions or smooth scrolling.
+ * The only motion is one steady blinking cursor, switched off by prefers-reduced-motion.
+ * --u is one "pixel" of the UI: 4px on phones, 6px on desktop. Font sizes are 4u (16px / 24px),
+ * i.e. multiples of the 8px grid that Press Start 2P is drawn on, so text stays crisp.
+ */
+:root {
+  --u: 4px;
+  --black: #000;
+  --white: #fff;
+}
+@media (min-width: 720px) {
+  :root { --u: 6px; }
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+  text-shadow: none;
+  transition: none;
+  animation: none;
+  scroll-behavior: auto;
+}
+
+html {
+  background: var(--white);
+  color: var(--black);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--white);
+  color: var(--black);
+  font-family: "Press Start 2P", monospace;
+  font-size: calc(var(--u) * 4);
+  line-height: calc(var(--u) * 6);
+  font-weight: 400;
+  font-synthesis: none;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: unset;
+  font-smooth: never;
+  text-rendering: optimizeSpeed;
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+  overflow-wrap: anywhere;
+  min-height: 100vh;
+  scrollbar-color: var(--black) var(--white);
+}
+
+::selection { background: var(--black); color: var(--white); }
+
+[hidden] { display: none !important; }
+
+.wrap {
+  width: 100%;
+  max-width: calc(var(--u) * 120);
+  margin: 0 auto;
+  padding: 0 calc(var(--u) * 3);
+}
+
+.sr {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.skip {
+  position: absolute;
+  left: calc(var(--u) * -1000);
+  background: var(--white);
+  color: var(--black);
+  padding: var(--u);
+}
+.skip:focus { left: 0; top: 0; z-index: 20; border: var(--u) solid var(--black); }
+
+/* Header */
+.hdr {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--white);
+  border-bottom: calc(var(--u) * 2) solid var(--black);
+  padding: calc(var(--u) * 3) 0;
+}
+.logo {
+  font-size: calc(var(--u) * 4);
+  line-height: calc(var(--u) * 6);
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.tag {
+  font-size: calc(var(--u) * 2);
+  line-height: calc(var(--u) * 4);
+  margin-top: var(--u);
+}
+.search { margin-top: calc(var(--u) * 3); }
+.search input {
+  width: 100%;
+  height: calc(var(--u) * 12);
+  padding: 0 calc(var(--u) * 3);
+  font: inherit;
+  font-size: calc(var(--u) * 4);
+  color: var(--black);
+  background: var(--white);
+  border: calc(var(--u) * 3) double var(--black);
+  border-radius: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  caret-color: var(--black);
+  outline: none;
+}
+.search input::placeholder { color: var(--black); opacity: 1; }
+.search input:focus { border-style: solid; border-width: calc(var(--u) * 2); }
+
+/* Section titles + boxes (Game Boy text box feel) */
+.sect {
+  font-size: calc(var(--u) * 2);
+  line-height: calc(var(--u) * 4);
+  font-weight: 400;
+  margin: calc(var(--u) * 5) 0 calc(var(--u) * 2);
+  padding-bottom: var(--u);
+  border-bottom: var(--u) solid var(--black);
+}
+.box {
+  border: calc(var(--u) * 3) double var(--black);
+  padding: calc(var(--u) * 3);
+  background: var(--white);
+  color: var(--black);
+  margin: calc(var(--u) * 3) 0;
+  white-space: pre-wrap;
+}
+.box.big { padding: calc(var(--u) * 6) calc(var(--u) * 4); margin-top: calc(var(--u) * 8); }
+#gen-step { font-size: calc(var(--u) * 2); margin-bottom: calc(var(--u) * 4); }
+
+/* Menu list */
+.menu { list-style: none; }
+.menu li { border-bottom: var(--u) solid var(--black); }
+.item {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--u) * 2);
+  width: 100%;
+  min-height: calc(var(--u) * 16);
+  padding: calc(var(--u) * 3) calc(var(--u) * 1);
+  font: inherit;
+  color: var(--black);
+  background: var(--white);
+  border: 0;
+  text-align: left;
+  cursor: pointer;
+}
+.item .arrow {
+  flex: none;
+  width: calc(var(--u) * 4);
+  height: calc(var(--u) * 4);
+  background: url("img/arrow.png") 0 0 / 100% 100% no-repeat;
+  image-rendering: pixelated;
+  visibility: hidden;
+}
+.item.is-sel .arrow, .item:focus .arrow { visibility: visible; }
+.item:focus, .item:focus-visible { outline: none; }
+.item.is-sel, .item:focus { outline: var(--u) solid var(--black); outline-offset: calc(var(--u) * -1); }
+.item .txt { flex: 1; min-width: 0; }
+.item .t { display: block; font-size: calc(var(--u) * 4); line-height: calc(var(--u) * 6); }
+.item .c { display: block; font-size: calc(var(--u) * 2); line-height: calc(var(--u) * 4); margin-top: var(--u); }
+.item .th {
+  flex: none;
+  width: calc(var(--u) * 16);
+  height: calc(var(--u) * 9);
+  border: var(--u) solid var(--black);
+  background: var(--white);
+  image-rendering: pixelated;
+  filter: grayscale(100%) contrast(200%);
+}
+
+/* Buttons */
+.btn {
+  display: inline-block;
+  min-height: calc(var(--u) * 14);
+  padding: calc(var(--u) * 3) calc(var(--u) * 4);
+  font: inherit;
+  font-size: calc(var(--u) * 4);
+  line-height: calc(var(--u) * 6);
+  color: var(--black);
+  background: var(--white);
+  border: calc(var(--u) * 2) solid var(--black);
+  cursor: pointer;
+  text-align: center;
+}
+.btn:hover, .btn:active, .btn:focus-visible { background: var(--black); color: var(--white); outline: none; }
+/* disabled: thin solid border (dotted/dashed borders and strike-through anti-alias to grey) */
+.btn[disabled] { border-width: var(--u); padding: calc(var(--u) * 4) calc(var(--u) * 5); cursor: default; background: var(--white); color: var(--black); }
+.btn[disabled]:hover { background: var(--white); color: var(--black); }
+.row { display: flex; gap: calc(var(--u) * 3); margin: calc(var(--u) * 4) 0 calc(var(--u) * 8); }
+.row .btn { flex: 1; }
+
+/* Detail */
+#btn-back { margin-top: calc(var(--u) * 4); }
+.vtitle {
+  font-size: calc(var(--u) * 4);
+  line-height: calc(var(--u) * 6);
+  font-weight: 400;
+  margin-top: calc(var(--u) * 5);
+  outline: none;
+}
+.vchan { font-size: calc(var(--u) * 2); line-height: calc(var(--u) * 4); margin-top: calc(var(--u) * 2); }
+.thumb-big { margin-top: calc(var(--u) * 4); border: calc(var(--u) * 2) solid var(--black); background: var(--white); }
+.thumb-big img {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+  filter: grayscale(100%) contrast(200%);
+}
+.lvl { font-size: calc(var(--u) * 2); line-height: calc(var(--u) * 4); margin-top: calc(var(--u) * 4); }
+.src { font-size: calc(var(--u) * 2); line-height: calc(var(--u) * 4); }
+
+/* The one allowed motion: a steady blinking cursor. */
+.cursor {
+  display: inline-block;
+  width: calc(var(--u) * 3);
+  height: calc(var(--u) * 4);
+  margin-left: var(--u);
+  vertical-align: baseline;
+  background: var(--black);
+  animation: ikoblink 1s steps(1, end) infinite;
+}
+@keyframes ikoblink { 50% { background: var(--white); } }
+@media (prefers-reduced-motion: reduce) {
+  .cursor { animation: none; background: var(--black); }
+}
+
+::-webkit-scrollbar { width: calc(var(--u) * 3); height: calc(var(--u) * 3); background: var(--white); }
+::-webkit-scrollbar-thumb { background: var(--black); }

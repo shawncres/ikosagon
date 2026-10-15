@@ -1,0 +1,5 @@
+# Keep the key file and rate-limit state private. (Apache / GoDaddy cPanel)
+<FilesMatch "^(config\.php|config\.sample\.php)$">
+  Require all denied
+</FilesMatch>
+Options -Indexes

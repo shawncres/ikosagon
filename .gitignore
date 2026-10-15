@@ -39,3 +39,6 @@ next-env.d.ts
 
 # Optional local regenerations of tiny lavfi demos (real tracks are committed)
 public/projects/ai-recording-artist/demo-*.mp3
+
+# IkoReadTube PHP proxy: real key file (never commit)
+public/ikoreadtube/api/config.php
