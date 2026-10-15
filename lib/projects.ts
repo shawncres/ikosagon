@@ -28,6 +28,11 @@ export type ProjectMeta = {
    */
   coverFit?: "contain" | "cover";
   featured: boolean;
+  /**
+   * Unlisted projects keep their content and notes page (reachable by direct URL, noindex) but are left out of
+   * every listing: homepage cards, /projects grid, sitemap, prev/next links and the chat knowledge base.
+   */
+  unlisted?: boolean;
   repo?: string;
   live?: string;
   /**
@@ -82,7 +87,8 @@ function byUpdatedDesc(a: ProjectMeta, b: ProjectMeta) {
   return b.year - a.year;
 }
 
-export async function getProjects(): Promise<Project[]> {
+/** Every project including unlisted ones. Only for direct-URL pages; listings use `getProjects()`. */
+export async function getAllProjects(): Promise<Project[]> {
   const entries = await fs.readdir(projectsDir, { withFileTypes: true });
   const mdxFiles = entries.filter((entry) => entry.isFile() && entry.name.endsWith(".mdx"));
 
@@ -103,6 +109,7 @@ export async function getProjects(): Promise<Project[]> {
         cover: String(data.cover),
         coverFit: data.coverFit === "cover" ? "cover" : undefined,
         featured: Boolean(data.featured),
+        unlisted: data.unlisted === true ? true : undefined,
         repo: data.repo ? String(data.repo) : undefined,
         live: data.live ? String(data.live) : undefined,
         demo: typeof data.demo === "string" && data.demo.startsWith("/") ? data.demo : undefined,
@@ -117,8 +124,14 @@ export async function getProjects(): Promise<Project[]> {
   return projects.sort(byUpdatedDesc);
 }
 
+/** Listed projects only (homepage, /projects, sitemap, prev/next). */
+export async function getProjects(): Promise<Project[]> {
+  return (await getAllProjects()).filter((project) => !project.unlisted);
+}
+
+/** Finds any project by slug, including unlisted ones (direct URL). */
 export async function getProjectBySlug(slug: string) {
-  const projects = await getProjects();
+  const projects = await getAllProjects();
   return projects.find((project) => project.slug === slug) ?? null;
 }
 

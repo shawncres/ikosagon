@@ -5,12 +5,12 @@ import { MDXRemote } from "next-mdx-remote/rsc";
 import { AudioPlaylist } from "@/components/AudioPlaylist";
 import { TalentIntakeChat } from "@/components/TalentIntakeChat";
 import { IkoAgentDemo } from "@/components/IkoAgentDemo";
-import { getProjectBySlug, getProjects } from "@/lib/projects";
+import { getAllProjects, getProjectBySlug, getProjects } from "@/lib/projects";
 
 type Params = { slug: string };
 
 export async function generateStaticParams() {
-  const projects = await getProjects();
+  const projects = await getAllProjects();
   return projects.map((project) => ({ slug: project.slug }));
 }
 
@@ -21,18 +21,20 @@ export async function generateMetadata({ params }: { params: Promise<Params> }):
   return {
     title: project.title,
     description: project.summary,
+    ...(project.unlisted ? { robots: { index: false, follow: false } } : {}),
   };
 }
 
 export default async function ProjectDetailPage({ params }: { params: Promise<Params> }) {
   const { slug } = await params;
   const projects = await getProjects();
-  const project = projects.find((entry) => entry.slug === slug);
+  const project = await getProjectBySlug(slug);
   if (!project) notFound();
 
-  const index = projects.findIndex((entry) => entry.slug === slug);
+  // Unlisted pages are not part of the prev/next sequence.
+  const index = project.unlisted ? -1 : projects.findIndex((entry) => entry.slug === slug);
   const prev = index > 0 ? projects[index - 1] : null;
-  const next = index < projects.length - 1 ? projects[index + 1] : null;
+  const next = index >= 0 && index < projects.length - 1 ? projects[index + 1] : null;
   const isIkoArtist = project.slug === "ikoartist";
   const isIkoAgent = project.slug === "ikoagent";
 
