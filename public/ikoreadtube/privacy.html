@@ -7,7 +7,7 @@
   <meta name="color-scheme" content="light">
   <title>IKOREADTUBE - PRIVACY</title>
   <script>
-    try { if (localStorage.getItem("ikoreadtube.theme") === "dark") document.documentElement.setAttribute("data-theme", "dark"); } catch (e) {}
+    try { var t = String(localStorage.getItem("ikoreadtube.theme") || "").toLowerCase(); if (t === "gameboy" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) {}
   </script>
   <script>
     /* Same trick as index.html: /ikoreadtube/privacy (no .html) still finds styles.css in this folder. */
@@ -40,7 +40,7 @@
     <p class="box">WE DO NOT HAVE ACCOUNTS AND WE NEVER ASK YOU TO SIGN IN TO GOOGLE OR YOUTUBE. WE DO NOT ACCESS ANY PRIVATE YOUTUBE DATA.</p>
 
     <h2 class="sect">WHAT STAYS ON YOUR DEVICE</h2>
-    <p class="box">YOUR RECENTLY READ LIST (VIDEO ID, TITLE, CHANNEL), YOUR THUMBNAILS SETTING AND YOUR DARK MODE SETTING ARE SAVED IN YOUR BROWSER'S LOCALSTORAGE. THEY NEVER LEAVE YOUR DEVICE. NO COOKIES, NO ANALYTICS, NO ADS.</p>
+    <p class="box">YOUR RECENTLY READ LIST (VIDEO ID, TITLE, CHANNEL), YOUR THUMBNAILS SETTING AND YOUR COLOUR THEME (LIGHT, GAMEBOY OR DARK) ARE SAVED IN YOUR BROWSER'S LOCALSTORAGE. THEY NEVER LEAVE YOUR DEVICE. NO COOKIES, NO ANALYTICS, NO ADS.</p>
     <button type="button" class="btn wide" id="clear">CLEAR MY SAVED DATA</button>
     <p class="src" id="clear-msg" role="status"></p>
 

@@ -7,8 +7,8 @@
   <meta name="color-scheme" content="light">
   <title>IKOREADTUBE - READ THE VIDEO</title>
   <script>
-    /* Saved theme before first paint (no flash). Default is light: that is the e-ink look. */
-    try { if (localStorage.getItem("ikoreadtube.theme") === "dark") document.documentElement.setAttribute("data-theme", "dark"); } catch (e) {}
+    /* Saved theme before first paint (no flash). Default is light (sepia paper): the e-ink look. Old values "light"/"dark" are still valid; anything else is light. */
+    try { var t = String(localStorage.getItem("ikoreadtube.theme") || "").toLowerCase(); if (t === "gameboy" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) {}
   </script>
   <script>
     /* Makes /ikoreadtube (no trailing slash) load styles.css, app.js and api/ from the folder. Works in any subfolder. */
@@ -27,11 +27,21 @@
   <noscript><link rel="stylesheet" href="styles.css"></noscript>
 </head>
 <body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+    <!-- Tone maps: grey level of a picture -> the theme's own colours (thumbnails and emoji only). -->
+    <filter id="tone-light" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncR type="table" tableValues="0.232941 0.958431"/><feFuncG type="table" tableValues="0.166275 0.927059"/><feFuncB type="table" tableValues="0.103529 0.848627"/></feComponentTransfer></filter>
+    <filter id="tone-gameboy" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncR type="discrete" tableValues="0.040784 0.189804 0.546667 0.609412"/><feFuncG type="discrete" tableValues="0.166275 0.385882 0.676078 0.738824"/><feFuncB type="discrete" tableValues="0.040784 0.189804 0.060392 0.060392"/></feComponentTransfer></filter>
+    <filter id="tone-dark" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncR type="table" tableValues="0.056471 0.899608"/><feFuncG type="table" tableValues="0.056471 0.899608"/><feFuncB type="table" tableValues="0.056471 0.899608"/></feComponentTransfer></filter>
+    <filter id="tone-dark-art" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncR type="table" tableValues="0.899608 0.056471"/><feFuncG type="table" tableValues="0.899608 0.056471"/><feFuncB type="table" tableValues="0.899608 0.056471"/></feComponentTransfer></filter>
+    <filter id="tone-text-light" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncR type="discrete" tableValues="0.232941 0.958431"/><feFuncG type="discrete" tableValues="0.166275 0.927059"/><feFuncB type="discrete" tableValues="0.103529 0.848627"/></feComponentTransfer></filter>
+    <filter id="tone-text-gameboy" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncR type="discrete" tableValues="0.040784 0.609412"/><feFuncG type="discrete" tableValues="0.166275 0.738824"/><feFuncB type="discrete" tableValues="0.040784 0.060392"/></feComponentTransfer></filter>
+    <filter id="tone-text-dark" color-interpolation-filters="sRGB"><feColorMatrix type="saturate" values="0"/><feComponentTransfer><feFuncR type="discrete" tableValues="0.056471 0.899608"/><feFuncG type="discrete" tableValues="0.056471 0.899608"/><feFuncB type="discrete" tableValues="0.056471 0.899608"/></feComponentTransfer></filter>
+  </defs></svg>
   <a class="skip" href="#main">SKIP TO LIST</a>
 
   <header class="hdr">
     <div class="wrap">
-      <button type="button" class="btn small theme" id="btn-theme" aria-pressed="false">DARK: OFF</button>
+      <button type="button" class="btn small theme" id="btn-theme" aria-label="Colour theme">THEME: LIGHT</button>
       <h1 class="logo">IKOREADTUBE</h1>
       <p class="tag">READ THE VIDEO<span class="cursor" aria-hidden="true"></span></p>
       <div class="search" id="searchbar">
@@ -72,7 +82,6 @@
       <button type="button" class="btn" id="btn-back">&lt; BACK</button>
       <h2 class="vtitle" id="d-title" tabindex="-1"></h2>
       <p class="vchan" id="d-chan"></p>
-      <a class="btn wide" id="d-watch" href="https://www.youtube.com/" target="_blank" rel="noopener noreferrer" hidden>WATCH ON YOUTUBE</a>
       <div class="thumb-big" id="d-thumb-wrap" hidden><img id="d-thumb" alt="" width="64" height="36"></div>
       <div class="focus" id="focus">
         <p id="focus-line"><span id="focus-text"></span>
@@ -85,19 +94,13 @@
           <div class="row"><button type="submit" class="btn" id="btn-focus-go">GO</button><button type="button" class="btn" id="btn-focus-cancel">CANCEL</button></div>
         </form>
       </div>
-      <p class="lvl" id="d-level"></p>
+      <div class="lvlrow" id="lvlrow">
+        <button type="button" class="btn" id="btn-less">- LESS</button>
+        <p class="lvlnow" id="d-level" aria-live="polite"></p>
+        <button type="button" class="btn" id="btn-more">MORE +</button>
+      </div>
       <div class="box" id="d-text" aria-live="polite"></div>
       <p class="src" id="d-src"></p>
-      <button type="button" class="btn wide" id="btn-paste">PASTE TRANSCRIPT</button>
-      <div id="paste-panel" hidden>
-        <p class="src" id="paste-help">PASTE THE TRANSCRIPT TEXT BELOW. WE SEND IT TO GROQ TO SUMMARIZE. WE DO NOT STORE IT.</p>
-        <label class="sr" for="paste-text">Transcript text</label>
-        <textarea id="paste-text" rows="8" maxlength="9000" spellcheck="false" placeholder="PASTE HERE..."></textarea>
-        <div class="row">
-          <button type="button" class="btn" id="btn-paste-go">SUMMARIZE</button>
-          <button type="button" class="btn" id="btn-paste-cancel">CANCEL</button>
-        </div>
-      </div>
       <section id="ask-panel" aria-label="Ask about this video" hidden>
         <h2 class="sect">ASK THIS VIDEO</h2>
         <div id="ask-log" aria-live="polite"></div>
@@ -108,20 +111,20 @@
         </form>
         <p class="src" id="ask-msg" role="status">WE SEND YOUR QUESTION AND THE VIDEO LINK TO GEMINI. ANSWERS COME FROM THE VIDEO ONLY.</p>
       </section>
+      <button type="button" class="btn wide" id="btn-paste">PASTE TRANSCRIPT</button>
+      <div id="paste-panel" hidden>
+        <p class="src" id="paste-help">PASTE THE TRANSCRIPT TEXT BELOW. WE SEND IT TO GROQ TO SUMMARIZE. WE DO NOT STORE IT.</p>
+        <label class="sr" for="paste-text">Transcript text</label>
+        <textarea id="paste-text" rows="8" maxlength="9000" spellcheck="false" placeholder="PASTE HERE..."></textarea>
+        <div class="row">
+          <button type="button" class="btn" id="btn-paste-go">SUMMARIZE</button>
+          <button type="button" class="btn" id="btn-paste-cancel">CANCEL</button>
+        </div>
+      </div>
+      <p class="watchbox"><a class="watchlink" id="d-watch" href="https://www.youtube.com/" target="_blank" rel="noopener noreferrer" hidden>WATCH ON YOUTUBE</a></p>
     </section>
   </main>
 
-  <nav class="bar" id="bar" aria-label="Summary controls" hidden>
-    <div class="bar-row">
-      <button type="button" class="btn" id="btn-less">- LESS</button>
-      <p class="bar-level" id="bar-level" aria-live="polite"></p>
-      <button type="button" class="btn" id="btn-more">MORE +</button>
-    </div>
-    <div class="bar-row" id="bar-row2">
-      <button type="button" class="btn" id="btn-ask">ASK</button>
-      <a class="btn" id="bar-watch" href="https://www.youtube.com/" target="_blank" rel="noopener noreferrer">WATCH ON YOUTUBE</a>
-    </div>
-  </nav>
 
   <footer class="ftr">
     <div class="wrap">
