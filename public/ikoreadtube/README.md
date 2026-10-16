@@ -1,6 +1,6 @@
 # IKOREADTUBE
 
-Barebones, mobile-first "read the video" page: a menu list of videos, and a plain-text summary at three detail levels (LESS / STANDARD / MORE).
+READ THE VIDEO. A text view of YouTube for low-bandwidth, low-spec screens (designed for e-paper readers, watches, Raspberry Pis, old phones, slow connections; not yet tested on that hardware): a menu list of videos, and a plain-text summary at three detail levels (LESS / STANDARD / MORE), with FOCUS from your search and an ASK box.
 Pure HTML + CSS + vanilla JS. No frameworks, no build step, no video player, no accounts. Three fixed colour themes (LIGHT sepia paper, GAMEBOY, DARK grey; each a tiny palette, see "Themes"), **Press Start 2P**
 from Google Fonts, no rounded corners, gradients, shadows or transitions (the only motion is one steady blinking cursor, off under
 `prefers-reduced-motion`). Built to read on an e-ink screen.

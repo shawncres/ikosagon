@@ -1,10 +1,10 @@
 ---
 title: "IkoReadTube"
 slug: "ikoreadtube"
-summary: "A retro, Game Boy-style way to browse YouTube and get the point of a video as text. Search for what you want and the summary answers that, ask the video a question, and step the detail LESS or MORE. Designed for low-spec screens: about 42 KB, no video player."
+summary: "We at Ikosagon built IkoReadTube to bring the point of a YouTube video to screens that can't play it: e-paper readers, watches, Raspberry Pis, old phones, slow connections. Set a FOCUS, read the answer, go LESS or MORE, ASK the video. About 42 KB, no video player."
 year: 2026
-updated: "2026-10-15T18:00:00-04:00"
-tags: ["AI", "Retro UI", "Low-spec", "Reading", "Product"]
+updated: "2026-10-15T20:00:00-04:00"
+tags: ["E-paper", "Low-bandwidth", "Accessibility", "AI", "Reading"]
 cover: "/projects/ikoreadtube/cover.png"
 coverFit: "cover"
 featured: true
@@ -13,47 +13,57 @@ demo: "/ikoreadtube/"
 linkLabel: "Open IkoReadTube"
 ---
 
-IkoReadTube is a retro, Game Boy-style way to browse YouTube and get the point of a video as text. No video player, no autoplay, no feed that tries to keep you there. [Open IkoReadTube](/ikoreadtube/).
+READ THE VIDEO. IkoReadTube turns a YouTube video into a few lines of text, for screens that were never going to play it. About 42 KB, no video player, no autoplay. [Open IkoReadTube](/ikoreadtube/).
 
-## Why we built it
+## The problem: big source, small screen
 
-A lot of screens cannot play video well. E-ink readers, small watch browsers, a Raspberry Pi on a shelf, an old phone with a slow connection. Most of what people want from a video is the point of it, and the point fits in a few lines of text. We at Ikosagon wanted a page that gives you that, on almost any screen, and then gets out of the way.
+YouTube is a high-bandwidth source. E-paper readers, watch browsers, a Raspberry Pi on a shelf, an old phone, a slow or metered connection: all low-bandwidth, low-spec, or both. Most of the time you do not need the video. You need the point of it. We at Ikosagon built a way to get the crucial part across, in text, at a size almost any device can load.
 
-## What you get
+## How you use it
 
-- **A tiny page.** About 42 KB on a first visit with an empty cache, including the pixel font and the video list. About 28 KB of that is our own code. It is plain HTML, CSS and JavaScript: no player, no framework, no tracking scripts.
-- **Three themes.** Sepia paper (the default), Game Boy green and a grey dark mode. One button cycles them and the page remembers your choice. Each one keeps text well above the usual contrast guidance, so it stays readable on dim or washed-out screens.
-- **Summaries that answer what you searched for.** Search "how tide pools survive" and the summary is about that, not a generic recap. If the video does not cover your topic, it says so instead of making something up.
-- **An ask-the-video box.** Type a question and get a short answer taken from that video, with timestamps to check it against. If the video does not say, the answer says that.
-- **LESS and MORE.** Step the detail down to a couple of lines, or up to a fuller read, right where you are.
-- **A way back to the video.** Every page has a small WATCH ON YOUTUBE link. We link out to YouTube and never re-host video.
+- **FOCUS.** Search for what you want and open a result. The summary answers that, not a generic recap. If the video does not cover it, the page says NOT COVERED IN THIS VIDEO.
+- **LESS / MORE.** Step the detail down to a couple of lines, or up to a fuller read, in place.
+- **ASK.** Type one question about the video and get a short answer taken from it. If the video does not say, the answer says that.
+- **WATCH ON YOUTUBE.** One small link at the bottom of every video. We link out and never re-host video.
 
-It is guest-only. There are no accounts and no sign-in. Your theme, thumbnail setting and recent list stay in your own browser.
+Guest only. No accounts, no sign-in. Your theme, thumbnail setting and recent list stay in your own browser.
 
-## Built for low-spec screens
+## Built for e-paper and low-spec screens
 
-The design choices all follow from one idea: assume a slow, small, low-contrast screen.
+- **Tiny.** About 42 KB on a first visit with an empty cache, including the pixel font and the video list; about 28 KB of that is our own code. Plain HTML, CSS and JavaScript. No player, no framework, no tracking scripts.
+- **Text first.** Thumbnails are off unless you switch them on. One column, big tap targets.
+- **Calm.** Flat colours, no gradients or shadows, no transitions. The one blinking cursor stops if your device asks for reduced motion.
 
-- Big tap targets and a single column.
-- No animation that needs a fast screen to look right.
-- Thumbnails are off unless you switch them on.
-- Flat, high-contrast colours and no animation, so a slow-refreshing display has less to redraw.
+We say "designed for" on purpose. We have tested IkoReadTube in desktop and phone-sized browsers. We have not tested it on a physical e-ink reader, a watch or a Raspberry Pi yet, and we will say so here when we have.
 
-We say "designed for" on purpose. We have tested IkoReadTube in desktop and phone-sized browsers. We have not tested it yet on a physical e-ink reader, a watch or a Raspberry Pi, and we will say so here when we have.
+## Accessibility
+
+High contrast, plain text, and as little to load as we can manage: that is the accessibility case as much as the bandwidth one.
+
+- Three themes (sepia paper, Game Boy green, grey dark), each with body text at 7:1 contrast or better.
+- Large type and tap targets of at least 44 px.
+- Usable from the keyboard: Escape or Backspace goes BACK, the left and right arrow keys step LESS and MORE, and the search and ask boxes are plain form fields.
+- Reading a short text answer instead of watching and listening can help on a slow connection, on a small screen, or when sound is not an option. It does not replace captions or a transcript for people who are deaf or hard of hearing, and the summary is not a transcript.
+
+We have not run a formal accessibility audit or tested with screen readers yet. If something is hard to use on your device, tell us.
 
 ## How it works
 
-1. The home list comes from a set of channels we picked, fetched with the free YouTube Data API and kept for a few minutes so the page stays quick and inside the free quota. Search uses the same API.
-2. When you open a video, Gemini reads the public YouTube link and writes the summary, focused on your search words if you have any. The ask box uses the same video.
-3. Very long videos (over 40 minutes) and very short ones (under 20 seconds) fall back to the channel description instead of an AI summary.
+1. The home list comes from channels we picked, fetched with the free YouTube Data API and kept for a few minutes so the page stays quick and inside the free quota. Search uses the same API.
+2. When you open a video, Gemini listens to its audio and writes the summary, answering your FOCUS if you set one. ASK uses the same video. For a song, the summary is about what the lyrics say, never a description of the picture.
+3. Very long videos (over 40 minutes) and very short ones (under 20 seconds) show the channel description instead of an AI summary.
 4. Our API keys stay on our server. The page only talks to our own small API routes.
 
 ## What to know
 
-- Summaries and answers are written by AI. They can be wrong or miss a detail, so each one is labelled, and the video is one tap away.
-- We run this on free tiers, so there are daily limits. When one is reached, the page tells you plainly instead of failing quietly.
+- SOURCE matters. Summaries and answers are written by AI (Gemini), not by YouTube, and can be wrong or miss a detail. Each one is labelled, and the video is one tap away.
+- We run on free tiers, so there are daily limits. When one is reached, the page tells you plainly instead of failing quietly.
 - IkoReadTube is an independent project. It is not made by or affiliated with YouTube or Google.
-- The page asks search engines not to index it, so it is a demo you open from here, not something you will find in a search.
+- The page asks search engines not to index it, so it is a demo you open from here.
+
+## Design note: three themes
+
+The look is deliberately plain. One button cycles sepia paper (the default), Game Boy green and grey dark, and the page remembers your choice. The Game Boy theme is a nod to small handheld screens, not the point of the product.
 
 ## Status
 
