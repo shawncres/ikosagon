@@ -2,6 +2,7 @@
 // mocked Gemini (no network, no key), persistence, and static asset rules.
 // Run: npm run check:ikolearn
 import fs from "node:fs";
+import zlib from "node:zlib";
 import { createRequire } from "node:module";
 import {
   LEARN_LIMITS, CLOUD_OPEN, CLOUD_CLOSE, cleanName, cleanLabel, cleanMessages, parseLearnInput, SYSTEM_BASE, companionSystem, noticeSystem,
@@ -20,6 +21,7 @@ const L = require("../public/ikolearn/lesson.js");
 const D = require("../public/ikolearn/deck.js");
 const RK = require("../public/ikolearn/rank.js");
 const P = require("../public/ikolearn/orchestrator.js");
+const CAM = require("../public/ikolearn/camera.js");
 const DAYMS = 86400000;
 
 let pass = 0;
@@ -181,7 +183,7 @@ const seeded = (name, t) => {
   // v1 -> v2 migration without loss
   const v1raw = fs.readFileSync("scripts/fixtures/ikolearn-cloud-v1.json", "utf8"), v1 = JSON.parse(v1raw);
   const mig = C.deserialize(v1raw);
-  ok(mig && mig.v === C.VERSION && C.VERSION === 7, "v1 cloud migrates forward (to v7)");
+  ok(mig && mig.v === C.VERSION && C.VERSION === 8, "v1 cloud migrates forward (to v8)");
   const migCs = C.subjects(mig).find((x) => x.label === "Computer Science"), csKeys = C.CS_TOPICS.map(C.norm), seedKeys = C.OLD_SEEDS.map(C.norm);
   const keptV1 = v1.order.filter((id) => mig.nodes[id]), goneV1 = v1.order.filter((id) => !mig.nodes[id]);
   ok(keptV1.every((id) => mig.nodes[id].label === v1.nodes[id].label && mig.nodes[id].ghost === v1.nodes[id].ghost &&
@@ -508,7 +510,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(C.growthOf(c, cnt.id).stage === 2 && C.growthOf(c, cnt.id).confirmed === 3, "\"I've got it\" confirms learning too (counts 2)");
   C.confirm(c, cnt.id, true, T0 + 11); C.confirm(c, cnt.id, true, T0 + 12); C.joinDeck(c, T0 + 13);
   const st = C.growthOf(c, cnt.id).stage;
-  ok(st === 3 && !C.growthOf(c, cnt.id).achieved && C.growthOf(c, cnt.id).toNext === 0, "bright, but not achieved until the branch ends", String(st));
+  ok(st === 4 && C.growthOf(c, cnt.id).achieved && !C.growthOf(c, cnt.id).ended && C.growthOf(c, cnt.id).tierKey === "achieved" && C.growthOf(c, cnt.id).toNext === 0, "completed and confirmed (3 right answers): the Achieved tier, in full colour, though its branch has not ended", String(st));
   for (let i = 0; i < 6; i++) C.engage(c, cnt.id, "tricky", T0 + 14 + i);
   cnt.mastery = 0; cnt.correct = 0; C.joinDeck(c, T0 + 20);
   ok(C.growthOf(c, cnt.id).stage === st && C.deckEntry(c, cnt.id).best === st, "a card's colour never goes back down");
@@ -591,16 +593,16 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   // migration: v2 (PR #56) and v1 saves move to v3; topics past the threshold backfill the deck
   const v2raw = fs.readFileSync("scripts/fixtures/ikolearn-cloud-v2.json", "utf8"), v2 = JSON.parse(v2raw);
   const m2 = C.deserialize(v2raw);
-  ok(m2 && v2.v === 2 && m2.v === 7, "v2 cloud migrates to v7");
+  ok(m2 && v2.v === 2 && m2.v === 8, "v2 cloud migrates to v8");
   ok(v2.n.every((a) => m2.nodes[a[0]] ? m2.nodes[a[0]].label === a[1] && (m2.nodes[a[0]].spent || 0) === (a[10] || 0) : C.OLD_SEEDS.map(C.norm).includes(C.norm(a[1])) && !(a[10] > 0)), "migration keeps every v2 node with its time spent (only untouched old seeds are pruned)");
   const mc = C.findTopic(m2, "Counting"), mnb = C.findTopic(m2, "Number Bonds");
-  ok(C.inDeck(m2, mc.id) && C.growthOf(m2, mc.id).stage === 1 && !C.inDeck(m2, mnb.id), "backfill: Counting (4 min, got it) joins with its first colour; Number Bonds (30 s) not yet");
+  ok(C.inDeck(m2, mc.id) && C.growthOf(m2, mc.id).stage === 2 && C.growthOf(m2, mc.id).tierKey === "tinted" && !C.inDeck(m2, mnb.id), "backfill: Counting (4 min, got it) joins as a Tinted card (completed); Number Bonds (30 s) not yet");
   ok(C.findTopic(m2, "Counting to 20").end && C.findTopic(m2, "Fractions").path.ids.length === 2, "migration keeps branch ends and paths");
   eq(C.deserialize(C.serialize(m2)).deck, m2.deck, "migrated deck round-trips");
-  ok(C.deserialize(fs.readFileSync("scripts/fixtures/ikolearn-cloud-v1.json", "utf8")).v === 7, "v1 still migrates (to v7)");
+  ok(C.deserialize(fs.readFileSync("scripts/fixtures/ikolearn-cloud-v1.json", "utf8")).v === 8, "v1 still migrates (to v8)");
   // v3 (PR #57) -> v4 without loss: every node, the deck with its best stages, forks, draws and sessions
   const v3raw = fs.readFileSync("scripts/fixtures/ikolearn-cloud-v3.json", "utf8"), v3 = JSON.parse(v3raw), m3 = C.deserialize(v3raw);
-  ok(m3 && v3.v === 3 && m3.v === 7, "v3 cloud migrates to v7");
+  ok(m3 && v3.v === 3 && m3.v === 8, "v3 cloud migrates to v8");
   ok(v3.n.every((a) => m3.nodes[a[0]] ? m3.nodes[a[0]].label === a[1] && m3.nodes[a[0]].spent === a[10] && m3.nodes[a[0]].engaged === a[11] : C.OLD_SEEDS.map(C.norm).includes(C.norm(a[1])) && !(a[10] > 0) && !(a[11] > 0)), "migration keeps every v3 node with its time and engagement (only untouched old seeds are pruned)");
   ok(v3.k.every((e) => C.deckEntry(m3, e[0]) && C.deckEntry(m3, e[0]).best >= e[5]), "migration keeps the deck and each card's best stage");
   eq(m3.draws, v3.g, "migration keeps the draw log"); ok(m3.sessions === v3.ss, "and the session count");
@@ -657,20 +659,22 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   let opened = null, src = null;
   const el = D.render(doc, sp, { onOpen: (id, e) => { opened = id; src = e; } });
   const svg = el.kids[0].kids[0];
-  const texts = el.kids.map((k) => k.className + "=" + k.textContent);
+  const flat = (e) => [e].concat((e.kids || []).flatMap(flat));
+  const txt = (e) => (e.textContent || "") + (e.kids || []).map(txt).join("");
+  const texts = flat(el).map((k) => k.className + "=" + txt(k));
   ok(el.tag === "button" && el.className.includes("gcard") && el.className.includes("size-tile") && el.className.includes("stage-" + sp.stage) && svg.tag === "svg" && svg.ns === "http://www.w3.org/2000/svg", "render: a button card with an SVG landscape");
-  ok(el.kids[0].className === "gc-art" && texts.includes("gc-chain=Math") && texts.includes("gc-title=Counting") && texts.includes("gc-mark=" + sp.stageName) && el.style.props["--card-ink"] === sp.color.ink && el.style.props["--card-wash"] === sp.color.wash, "render: landscape first (top-left), then chain, title, a quiet text mark; colours from the model");
+  ok(el.kids[0].className === "gc-art" && texts.includes("gc-chain=Math") && texts.includes("gc-title=Counting") && texts.includes("gc-mark=" + sp.tierName) && el.className.includes("tier-" + sp.tierKey) && el.style.props["--card-ink"] === sp.color.ink && el.style.props["--card-wash"] === sp.color.wash, "render: landscape first (top-left), then chain, title, a quiet text mark; colours from the model");
   el.listeners.click({ stopPropagation() {} });
   ok(opened === t.id && src === el, "render: tapping opens the topic (and hands over the card for the slide into the holder)");
   const full = D.render(doc, sp, { size: "full" });
-  ok(full.kids.some((k) => k.className === "gc-desc" && k.textContent === sp.blurb) && full.kids.some((k) => k.className === "gc-chain" && k.textContent === "Math → Counting") && full.kids.some((k) => k.className === "gc-rule"), "render: the full card has the whole chain, a rule and the description");
-  ok(D.render(doc, sp, { size: "mini" }).kids.length === 1, "render: mini card is the landscape only");
+  ok(full.kids.some((k) => k.className === "gc-desc" && k.textContent === sp.blurb) && full.kids.some((k) => k.className === "gc-chain" && txt(k) === "Math › Counting" && k.kids.filter((x) => /gc-link/.test(x.className)).length === 2 && /last/.test(k.kids[k.kids.length - 1].className)) && full.kids.some((k) => k.className === "gc-rule"), "render: the full card has the whole chain, a rule and the description");
+  ok(D.render(doc, sp, { size: "mini" }).kids[0].className === "gc-art" && !flat(D.render(doc, sp, { size: "mini" })).some((k) => /gc-title|gc-chain|gc-mark/.test(k.className)), "render: mini card is the landscape only (plus its colour layer)");
   const count = (e, tag) => (e.tag === tag ? 1 : 0) + (e.kids || []).reduce((n, k) => n + count(k, tag), 0);
   ok(count(svg, "path") >= sp.art.layers.length * 2 + sp.art.trees.length + sp.art.birds.length && count(svg, "line") >= sp.art.hatch.length, "render: ridges (fill + line), trees, birds and hatching are drawn");
   const all = JSON.stringify(full, (k, v) => (k === "ns" ? undefined : v));
   ok(!/"tag":"(img|image|use|i|picture)"|href|https?:/.test(all) && !/\p{Extended_Pictographic}/u.test(all), "no images, icons or emoji: text and line drawing only");
-  const ach = Object.assign({}, sp, { achieved: true, stage: 4, stageName: "Achieved" });
-  ok(D.render(doc, ach, {}).className.includes("achieved") && D.render(doc, ach, {}).kids.some((k) => k.className === "gc-mark" && k.textContent === "Achieved"), "render: achieved cards carry a small text-only Achieved mark");
+  const ach = Object.assign({}, sp, { achieved: true, stage: 4, stageName: "Achieved", tier: 3, tierKey: "achieved", tierName: "Achieved", pips: 3 });
+  ok(D.render(doc, ach, {}).className.includes("achieved") && flat(D.render(doc, ach, {})).some((k) => k.className === "gc-mark" && k.textContent === "Achieved"), "render: achieved cards carry a small text-only Achieved mark");
 
   // weights
   const y = seeded("Maya", T0);
@@ -1011,9 +1015,12 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/type = "radio"/.test(app) && /mk\("fieldset"/.test(app) && /C\.confirm\(/.test(app), "questions are real radio groups; answers confirm learning in the model");
   const rankJs = fs.readFileSync("public/ikolearn/rank.js", "utf8");
   ok(!/innerHTML|fetch\(|localStorage/.test(rankJs), "rank.js: pure, no network or storage of its own");
-  const files = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js", "rank.js", "orchestrator.js"];
+  /* v8 adds tiers, merging, the camera and the corpus (about +30 KB raw, +8 KB gzip); the budget is 330 KB raw / 100 KB gzip */
+  const files = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js", "rank.js", "orchestrator.js", "camera.js", "icon.svg"];
   const bytes = files.reduce((n, f) => n + fs.statSync("public/ikolearn/" + f).size, 0);
-  ok(bytes < 280_000, "app weight under 280 KB uncompressed", String(bytes));
+  const gz = files.reduce((n, f) => n + zlib.gzipSync(fs.readFileSync("public/ikolearn/" + f), { level: 9 }).length, 0);
+  ok(bytes < 330_000, "app weight under 330 KB uncompressed", String(bytes));
+  ok(gz < 100_000, "app weight under 100 KB gzipped", String(gz));
 }
 
 /* ================= the flow pass: chains, Computer Science, orchestrator, children, tests ================= */
@@ -1057,7 +1064,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   // v4 -> v6 migration: nothing the learner used is lost; untouched old seeds are pruned; CS topics move across
   const v4raw = fs.readFileSync("scripts/fixtures/ikolearn-cloud-v4.json", "utf8"), v4 = JSON.parse(v4raw);
   const m5 = C.deserialize(v4raw), seedKeys = C.OLD_SEEDS.map(C.norm);
-  ok(v4.v === 4 && m5 && m5.v === 7, "v4 cloud migrates to v7");
+  ok(v4.v === 4 && m5 && m5.v === 8, "v4 cloud migrates to v8");
   const gone = v4.n.filter((row) => !m5.nodes[row[0]]);
   ok(gone.length > 10 && gone.every((row) => seedKeys.includes(C.norm(row[1])) && !(row[3] & 2) && !(row[10] > 0) && !(row[11] > 0) && !(row[5] > 0)), "v4 -> v6: only untouched seed nodes are pruned (never opened, no time, no engagement, no mastery)", gone.map((r) => r[1]).join());
   ok(["Number Bonds", "Poetry", "Robots"].every((l) => !C.findTopic(m5, l)), "v4 -> v6: untouched Math (and other) seed ghosts are gone");
@@ -1219,7 +1226,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/\.env\.local/.test(deploy) && /VERCEL_ORG_ID/.test(deploy) && /VERCEL_PROJECT_ID/.test(deploy) && /deploy --prod/.test(deploy) && !/^[^#]*vercel[^\n]*\b(link|env pull|dev)\b/m.test(deploy), "deploy script: ids from env, never links, pulls env or runs dev, and refuses an .env.local");
   // procedural start: no seeded map; a few questions, then one creation call builds the first parents
   const fresh = C.create("Mia", T0);
-  ok(Object.keys(fresh.nodes).length === 0 && fresh.v === 7 && !C.STARTERS && !C.KNOWN_CHAINS && !RK.POPULAR, "a new learner starts with an empty cloud (no seeded subjects, chains or popularity list)");
+  ok(Object.keys(fresh.nodes).length === 0 && fresh.v === 8 && !C.STARTERS && !C.KNOWN_CHAINS && !RK.POPULAR, "a new learner starts with an empty cloud (no seeded subjects, chains or popularity list)");
   ok(Array.isArray(C.PALETTE) && C.PALETTE.every((p) => typeof p.hue === "number" && typeof p.label === "string") && C.PALETTE.length <= 8 && C.paletteHue("Math") === 28, "only a small data-only palette of broad subjects and hues remains");
   ok(P.needsOnboarding(fresh) && !P.needsOnboarding(seeded("Old", T0)), "onboarding runs for an empty cloud, not for an existing one");
   const ob = P.onboarding(fresh, true), ob2 = P.onboarding(fresh, false);
@@ -1392,7 +1399,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const tr2 = P.testRequest(rv, dn.id).material.map((m) => m.label);
   ok(["Fossils", "Dino Types", "Extinction", "Dino Art"].every((l) => tr2.includes(l)) && tr2.indexOf("Dino Art") > tr2.indexOf("Extinction") && !tr2.includes("Museums"), "tests: completed core material first, plus completed side paths (never unfinished ones)");
   const rv2 = C.deserialize(C.serialize(rv));
-  ok(rv2.v === 7 && rv2.nodes[RV("Dino Art").id].role === "optional" && rv2.nodes[RV("Dino Art").id].off === RV("Dino Types").id && rv2.nodes[dn.id].made && rv2.nodes[RV("Fossils").id].role === "core", "roles, side-path steps and made round-trip (v7)");
+  ok(rv2.v === 8 && rv2.nodes[RV("Dino Art").id].role === "optional" && rv2.nodes[RV("Dino Art").id].off === RV("Dino Types").id && rv2.nodes[dn.id].made && rv2.nodes[RV("Fossils").id].role === "core", "roles, side-path steps and made round-trip (v7)");
 
   const lp2 = C.create("Mia", T0); C.applyTopics(lp2, [{ name: "Fractions", parent: "Math", signal: "curious", chain: ["Math"] }], T0);
   const fr = C.findTopic(lp2, "Fractions"); C.applyPath(lp2, fr.id, ["Halves", "Quarters"], "Halves", T0);
@@ -1400,19 +1407,19 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   // migrating v5 and v6 saves forward
   const old5 = JSON.parse(C.serialize(rv)); old5.v = 5; old5.n = old5.n.map((a) => a.slice(0, 19)); delete old5.pr;
   const m7 = C.deserialize(JSON.stringify(old5));
-  ok(m7 && m7.v === 7 && Object.values(m7.nodes).every((n) => n.role === "" || n.role === "core") && Object.values(m7.nodes).some((n) => n.role === "core"), "v5 -> v7: path steps become core, everything else keeps no role (shown as before)");
+  ok(m7 && m7.v === 8 && Object.values(m7.nodes).every((n) => n.role === "" || n.role === "core") && Object.values(m7.nodes).some((n) => n.role === "core"), "v5 -> v7: path steps become core, everything else keeps no role (shown as before)");
   ok(Object.values(m7.nodes).filter((n) => n.role === "core").every((n) => m7.nodes[n.parent].path.ids.includes(n.id)) && !Object.values(m7.nodes).some((n) => n.role === "optional" || n.off || n.absorbedInto), "v5 -> v7: no side paths invented, no absorb links");
   const old6 = JSON.parse(C.serialize(rv)); old6.v = 6; old6.n = old6.n.map((a) => a.slice(0, 23));
   const m6 = C.deserialize(JSON.stringify(old6));
-  ok(m6.v === 7 && Object.keys(m6.nodes).length === Object.keys(rv.nodes).length && m6.nodes[RV("Fossils").id].role === "core" && m6.nodes[RV("Dino Art").id].role === "", "v6 -> v7: every node kept; path steps become core");
-  ok(C.deserialize(C.serialize(m7)).v === 7 && C.serialize(C.deserialize(C.serialize(m7))) === C.serialize(m7), "a migrated cloud round-trips exactly");
+  ok(m6.v === 8 && Object.keys(m6.nodes).length === Object.keys(rv.nodes).length && m6.nodes[RV("Fossils").id].role === "core" && m6.nodes[RV("Dino Art").id].role === "", "v6 -> v7: every node kept; path steps become core");
+  ok(C.deserialize(C.serialize(m7)).v === 8 && C.serialize(C.deserialize(C.serialize(m7))) === C.serialize(m7), "a migrated cloud round-trips exactly");
 
   // groundwork for powerful cards (not built): fields only
   const ab = C.deserialize(C.serialize(rv));
   ab.nodes[dn.id].absorbed = [RV("Fossils").id, "n999"]; ab.nodes[RV("Fossils").id].absorbedInto = dn.id;
   const ab2 = C.deserialize(C.serialize(ab));
   ok(ab2.nodes[dn.id].absorbed.join() === RV("Fossils").id && ab2.nodes[RV("Fossils").id].absorbedInto === dn.id, "absorb fields round-trip; links to missing nodes are dropped");
-  ok(C.absorbable(rv, dn.id).length === 3 && Object.values(rv.nodes).every((n) => !n.absorbedInto && !n.absorbed.length) && !/absorb/.test(fs.readFileSync("public/ikolearn/app.js", "utf8")), "nothing absorbs yet: the data model is ready, no collapse feature or UI");
+  ok(C.absorbable(rv, dn.id).length === 3 && Object.values(rv.nodes).every((n) => !n.absorbedInto && !n.absorbed.length) , "absorbable: completed core children not yet merged (nothing merges until the orchestrator says so)");
 
   // bridging: procedural in-between steps, one call only when there's a gap, cached
   const bq = C.create("Sam", T0);
@@ -1457,6 +1464,211 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(C.deserialize(C.serialize(bq)).nodes[bsets.id].bridged === Math.round((T0 + 2) / 1000) * 1000, "the bridge cache survives a reload");
   ok(/function runBridge/.test(app) && /P\.needsBridge\(/.test(app) && /C\.applyBridge\(/.test(app) && /runBridge\(\);/.test(app) && /bridgeQueue/.test(app), "the app bridges after the chat reply, one call, only when needed");
   ok(/Side paths/.test(app) && /P\.sidePaths\(/.test(app) && /n\.role === "optional" && n\.off/.test(fs.readFileSync("public/ikolearn/cloud-view.js", "utf8")), "side paths: a quiet list on the card and faint twigs off their step on the cloud");
+  }
+}
+
+/* ================= the collectible pass (v8): tiers, merging, corpus, repair, camera ================= */
+{
+  const app = fs.readFileSync("public/ikolearn/app.js", "utf8"), css = fs.readFileSync("public/ikolearn/styles.css", "utf8"), html = fs.readFileSync("public/ikolearn/index.html", "utf8");
+  const view = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8"), camJs = fs.readFileSync("public/ikolearn/camera.js", "utf8");
+  const KIDS = ["Fossils", "Eras", "Diets", "Habitats", "Footprints"];
+  const fixture = () => {
+    const c = C.create("Sam", T0);
+    C.applyTopics(c, [{ name: "Dinosaurs", parent: "Science", signal: "explored", chain: ["Science"] }], T0);
+    KIDS.forEach((nm) => C.applyTopics(c, [{ name: nm, parent: "Dinosaurs", signal: "explored", chain: ["Science", "Dinosaurs"] }], T0));
+    return { c, d: C.findTopic(c, "Dinosaurs"), k: (nm) => C.findTopic(c, nm) };
+  };
+  const right = (c, id, n, t) => { for (let i = 0; i < n; i++) C.confirm(c, id, true, t + i); };
+
+  // the tier ladder: Sketch -> Inked -> Tinted -> Achieved (-> Merged), monotonic, colour earned on the card
+  {
+    const { c, k } = fixture(), f = k("Fossils");
+    C.applyTopics(c, [{ name: "Bones", parent: "Fossils", signal: "explored", chain: ["Science", "Dinosaurs", "Fossils"] }], T0); /* a child of its own, so the branch has not ended and the tiers come from answers */
+    const tiers = [];
+    tiers.push(C.tierOf(c, f.id).key);
+    right(c, f.id, 1, T0 + 10); tiers.push(C.tierOf(c, f.id).key);
+    right(c, f.id, 1, T0 + 20); tiers.push(C.tierOf(c, f.id).key);
+    right(c, f.id, 1, T0 + 30); tiers.push(C.tierOf(c, f.id).key);
+    eq(tiers, ["sketch", "inked", "tinted", "achieved"], "tiers: 0 right Sketch, 1 Inked, 2 (done) Tinted, 3 Achieved");
+    const g = C.growthOf(c, f.id);
+    ok(g.stage === 4 && g.achieved && !g.ended && g.tierName === "Achieved", "an Achieved card is in full colour (the colour is earned on the card as its tier rises)");
+    ok(C.TIER_STAGE.every((st, i) => i === 0 || st >= C.TIER_STAGE[i - 1]), "colour stage never falls as the tier rises");
+    C.joinDeck(c, T0 + 40);
+    f.mastery = 0; f.correct = 0; f.confirmed = 0;
+    ok(C.tierOf(c, f.id).rank === 3, "monotonic: the deck keeps the best tier (tb) even if the topic's numbers drop");
+    const sp = D.cardSpec(c, f.id);
+    ok(sp.tier === 3 && sp.pips === 3 && D.pipsFor(4, 2) === 5 && D.pipsFor(0, 0) === 0 && D.evolveKey({ tier: 4, stage: 4, level: 2 }) > D.evolveKey({ tier: 4, stage: 4, level: 1 }) && D.evolveKey({ tier: 3, stage: 4, level: 0 }) > D.evolveKey({ tier: 2, stage: 4, level: 0 }), "rarity: corner pips by tier and level; the evolve key only rises");
+    ok(C.roman(1) === "I" && C.roman(4) === "IV" && C.roman(9) === "IX" && C.roman(0) === "", "merge levels in Roman numerals");
+  }
+
+  // merging: form at >= 3 achieved core children, idempotent, repeatable upgrade, deepest first, test trigger
+  {
+    const { c, d, k } = fixture();
+    ["Fossils", "Eras"].forEach((nm, i) => right(c, k(nm).id, 3, T0 + 100 * i));
+    ok(P.mergePlan(c, d.id) === null && P.settleMerges(c, T0 + 300).length === 0, "no merge with only 2 achieved core children (MERGE.first = 3)");
+    right(c, k("Diets").id, 3, T0 + 400);
+    const plan = P.mergePlan(c, d.id);
+    ok(plan && plan.why === "core" && plan.ids.length === 3, "the orchestrator plans a merge once 3 core children are achieved", JSON.stringify(plan));
+    const nodesBefore = Object.keys(c.nodes).length, evBefore = (c.events || []).length;
+    const m1 = P.settleMerges(c, T0 + 500);
+    ok(m1.length === 1 && m1[0].id === d.id && m1[0].level === 1 && d.ml === 1 && d.mergedAt === T0 + 500 && ["Fossils", "Eras", "Diets"].every((nm) => k(nm).absorbedInto === d.id) && d.absorbed.length === 3, "settleMerges forms Merged I: children absorbed, the parent's level 1");
+    ok(Object.keys(c.nodes).length === nodesBefore && c.events.length === evBefore + 1 && c.events[c.events.length - 1].k === "merge" && c.events[c.events.length - 1].ids.length === 3, "children are never lost (same nodes); one event logged");
+    ok(C.inDeck(c, d.id) && C.tierOf(c, d.id).key === "merged" && C.tierOf(c, d.id).name === "Merged I" && D.cardSpec(c, d.id).corpus.length === 3, "the merged parent is in the deck as a Merged I card with its corpus");
+    const snap = C.serialize(c);
+    ok(C.mergeInto(c, d.id, ["Fossils", "Eras", "Diets"].map((nm) => k(nm).id), T0 + 600) === null && P.settleMerges(c, T0 + 600).length === 0 && C.serialize(c) === snap, "idempotent: applying the same merge again (or settling again) changes nothing");
+    right(c, k("Habitats").id, 3, T0 + 700);
+    ok(P.settleMerges(c, T0 + 800).length === 0, "one newly achieved child does not upgrade yet (MERGE.batch = 2) while the core is unfinished");
+    right(c, k("Footprints").id, 3, T0 + 900);
+    const m2 = P.settleMerges(c, T0 + 1000);
+    ok(m2.length === 1 && m2[0].level === 2 && m2[0].ids.length === 2 && d.ml === 2 && d.absorbed.length === 5 && C.tierOf(c, d.id).name === "Merged II", "repeatable: the next batch upgrades it to Merged II");
+    ok(D.cardSpec(c, k("Fossils").id).absorbedInto === d.id && !P.draw(c, { now: T0 + DAYMS, seed: 1 }).picks?.some?.((x) => x.id === k("Fossils").id), "absorbed cards show their parent (and are not drawn loose)");
+    const dk = D.weigh ? D.weigh(c, T0 + DAYMS) : null;
+    ok(!dk || !dk.some((x) => (x.id || x) === k("Fossils").id), "deck weighting skips absorbed cards whose parent is in the deck");
+
+    // persistence: v8 round trip keeps merge, corpus, events and tiers; children removed later stay in the corpus
+    const back = C.deserialize(C.serialize(c));
+    ok(JSON.parse(C.serialize(back)).v === 8 && back.nodes[d.id].ml === 2 && back.nodes[d.id].absorbed.length === 5 && back.nodes[k("Eras").id].absorbedInto === d.id && back.events.length === c.events.length && C.tierOf(back, d.id).name === "Merged II", "v8 round trip: merge level, absorbed links, events and tiers survive a reload");
+    const foss = k("Fossils").id;
+    delete back.nodes[foss]; back.order = back.order.filter((x) => x !== foss); /* a topic gone from the cloud */
+    C.joinDeck(back, T0 + 2000);
+    const cp = C.corpusOf(back, d.id);
+    ok(cp.length === 5 && cp.some((x) => x.id === foss && x.label === "Fossils" && !x.live), "the corpus keeps a removed child's label (never lost)");
+  }
+
+  // deepest first: a child merges its own subtopics, then counts as achieved for its parent
+  {
+    const { c, d, k } = fixture(), f = k("Fossils");
+    ["Bones", "Teeth", "Amber"].forEach((nm, i) => { C.applyTopics(c, [{ name: nm, parent: "Fossils", signal: "explored", chain: ["Science", "Dinosaurs", "Fossils"] }], T0); right(c, k(nm).id, 3, T0 + i * 10); });
+    right(c, k("Eras").id, 3, T0 + 100); right(c, k("Diets").id, 3, T0 + 110);
+    const ms = P.settleMerges(c, T0 + 200);
+    ok(ms.length === 2 && ms[0].id === f.id && ms[1].id === d.id && f.ml === 1 && d.ml === 1 && f.absorbedInto === d.id, "settleMerges runs deepest first: Fossils merges its subtopics, then Dinosaurs takes Fossils, Eras and Diets", JSON.stringify(ms.map((m) => [m.id, m.level])));
+  }
+
+  // a passed test triggers (or upgrades) a merge
+  {
+    const { c, d, k } = fixture();
+    right(c, k("Fossils").id, 2, T0); right(c, k("Eras").id, 2, T0 + 10);
+    ok(P.settleMerges(c, T0 + 20).length === 0, "two completed (Tinted) children alone do not merge");
+    const tr = C.recordTest(c, d.id, [{ id: k("Fossils").id, right: true }, { id: k("Eras").id, right: true }], T0 + 30);
+    const mt = P.settleMerges(c, T0 + 40);
+    ok(tr.passed && C.testOf(c, d.id).passAt === T0 + 30 && mt.length === 1 && mt[0].why === "test" && d.ml === 1 && d.absorbed.length === 2, "a passed test merges its completed children (why: test)");
+    ok(P.settleMerges(c, T0 + 50).length === 0, "the same pass never merges twice (passAt <= mergedAt)");
+    C.recordTest(c, d.id, [{ id: k("Fossils").id, right: false }, { id: k("Eras").id, right: false }], T0 + 60);
+    ok(P.settleMerges(c, T0 + 70).length === 0, "a failed test triggers nothing");
+    ok(C.deserialize(C.serialize(c)).tests[d.id].passAt === Math.round((T0 + 30) / 1000) * 1000, "passAt survives a reload");
+  }
+
+  // migration: a v7 save loads as v8 (no merges), then settles from existing progress on load (0 calls)
+  {
+    const { c, d, k } = fixture();
+    ["Fossils", "Eras", "Diets"].forEach((nm, i) => right(c, k(nm).id, 3, T0 + i));
+    const v8 = JSON.parse(C.serialize(c));
+    const v7 = JSON.parse(JSON.stringify(v8));
+    v7.v = 7; delete v7.ev;
+    if (Array.isArray(v7.n)) v7.n = v7.n.map((a) => (Array.isArray(a) ? a.slice(0, 29) : a));
+    const old = C.deserialize(JSON.stringify(v7));
+    ok(old && JSON.parse(C.serialize(old)).v === 8 && Object.values(old.nodes).every((n) => n.ml === 0 && !n.absorbedInto && n.repaired === 0) && Array.isArray(old.events), "v7 -> v8: new fields default (ml 0, no absorbs, not repaired, empty event log)");
+    const mm = P.settleMerges(old, T0 + 100);
+    ok(mm.length === 1 && old.nodes[d.id].ml === 1, "an existing save forms its merges from progress it already has");
+  }
+
+  // the cloud: absorbed children sit in a tighter constellation round a brighter parent
+  {
+    const { c, d, k } = fixture();
+    const lay0 = C.layout ? C.layout(c) : null;
+    ["Fossils", "Eras", "Diets"].forEach((nm, i) => right(c, k(nm).id, 3, T0 + i));
+    P.settleMerges(c, T0 + 100);
+    const lay1 = C.layout ? C.layout(c) : null;
+    if (lay0 && lay1) {
+      const dist = (L, a, b) => Math.hypot(L[a].x - L[b].x, L[a].y - L[b].y, L[a].z - L[b].z);
+      const f = k("Fossils").id;
+      ok(dist(lay1, d.id, f) < dist(lay0, d.id, f) * 0.6, "layout: an absorbed child sits much closer to its parent", `${dist(lay0, d.id, f)} -> ${dist(lay1, d.id, f)}`);
+    }
+    ok(/1 \+ 0\.16 \* /.test(view) && /absorbedInto/.test(view) && /strokeText/.test(view), "cloud view: merged nodes are larger with rings, absorbed ones quieter, labels have a paper halo");
+  }
+
+  // the bridge validation pass and the one-time repair (no table, max 1 extra call per topic, ever)
+  {
+    const bq = C.create("Sam", T0);
+    C.applyTopics(bq, [{ name: "Sets", parent: "Computer Science", signal: "curious", chain: ["Computer Science"] }], T0);
+    const sets = C.findTopic(bq, "Sets");
+    C.applyBridge(bq, sets.id, { items: [{ node: { name: "Sets", chain: ["Computer Science", "Python"] }, card: {}, children: [], links: [{ name: "Python", blurb: "A friendly language." }] }] }, T0 + 1);
+    const py = C.findTopic(bq, "Python");
+    ok(C.chainOf(bq, sets.id).join(" > ") === "Computer Science > Python > Sets" && P.needsRepair(bq, sets.id), "a bridged chain that skipped a level (Computer Science > Python > Sets) is still shallow: needs one repair");
+    const cc = C.checkChain(bq, sets.id, ["Computer Science", "Programming", "Sets", "Python", "Python", "Sam"]);
+    ok(cc.chain.join() === "Computer Science,Programming,Python" && cc.dropped.length >= 2 && !cc.shallow, "checkChain: drops the topic, duplicates and the name; aliases of the subject are allowed as levels", JSON.stringify(cc));
+    const rq = P.repairRequest(bq, sets.id);
+    ok(rq.kind === "bridge" && rq.repair === true && rq.trail.includes("Python") && rq.focus === "Sets", "repairRequest: the bridge request plus repair and the chain so far");
+    const RI = parseLearnInput({ mode: "notice", name: "Sam", messages: [], ...rq });
+    const rsys = createSystem(RI);
+    ok(RI.repair && /A first pass placed it as: .*Python.*Sets/.test(rsys) && /skipped/.test(rsys) && !/Programming/.test(rsys), "repair prompt: names the chain so far, asks for a skipped level (nothing named for it)");
+    ok(!parseLearnInput({ mode: "notice", name: "Sam", messages: [], kind: "bridge", repair: "yes" }).repair && !/A first pass/.test(createSystem(parseLearnInput({ mode: "notice", name: "Sam", messages: [], kind: "bridge", focus: "Sets" }))), "repair only when repair === true");
+    const rraw = { items: [{ node: { name: "Sets", chain: ["Computer Science", "Programming", "Python"] }, card: { title: "Sets", blurb: "Groups of unique items.", goal: "" }, children: [], links: [{ name: "Programming", blurb: "Writing instructions for computers." }, { name: "Python", blurb: "A friendly language." }] }] };
+    const rf = fakeFetch([() => res(200, { candidates: [{ content: { parts: [{ text: JSON.stringify(rraw) }] } }] })]);
+    const ro = await createFor(RI, ENV, rf);
+    ok(ro.status === 200 && rf.calls.length === 1 && /Was a level skipped\?/.test(rf.calls[0].init.body), "createFor(repair): one call with the repair ask");
+    const rf2 = fakeFetch([() => res(200, {})]);
+    ok((await createFor(parseLearnInput({ mode: "notice", name: "Sam", messages: [], kind: "bridge", repair: true }), ENV, rf2)).status === 422 && rf2.calls.length === 0, "createFor(repair) without a topic: no call");
+    sets.repaired = T0 + 2; /* the app sets this before the call */
+    ok(!P.needsRepair(bq, sets.id), "capped: once repaired is set (before the call), never asked again");
+    const pyId = py.id, setsId = sets.id;
+    const rr = C.applyRepair(bq, sets.id, ro.body, T0 + 3);
+    ok(rr.moved && C.chainOf(bq, sets.id).join(" > ") === "Computer Science > Programming > Python > Sets" && C.findTopic(bq, "Python").id === pyId && C.findTopic(bq, "Sets").id === setsId, "applyRepair inserts the missing level above Python (ids kept, Python moves with its branch)", C.chainOf(bq, sets.id).join(" > "));
+    ok(C.findTopic(bq, "Programming").blurb === "Writing instructions for computers." && !P.needsRepair(bq, sets.id) && !P.needsBridge(bq, sets.id, 1), "the new level gets its card line; nothing more is asked");
+    const snap = C.serialize(bq);
+    C.applyRepair(bq, sets.id, ro.body, T0 + 4);
+    ok(C.serialize(bq) === snap, "applying the same repair again changes nothing");
+    ok(C.deserialize(C.serialize(bq)).nodes[sets.id].repaired > 0, "the repair cap survives a reload");
+    const deep = C.create("Sam", T0);
+    C.applyTopics(deep, [{ name: "Chords", parent: "Art & Music", signal: "curious", chain: ["Art & Music"] }], T0);
+    const ch = C.findTopic(deep, "Chords");
+    C.applyBridge(deep, ch.id, { items: [{ node: { name: "Chords", chain: ["Art & Music", "Instruments", "Guitar"] }, card: {}, children: [] }] }, T0 + 1);
+    ok(!P.needsRepair(deep, ch.id), "a chain that is already deep enough needs no repair (0 extra calls)");
+    ok(/function runRepair/.test(app) && /n\.repaired = Date\.now\(\);\s*save\(\);/.test(app) && /P\.repairRequest\(/.test(app) && /C\.applyRepair\(/.test(app) && /return runRepair\(id\)/.test(app), "the app: repair after the bridge, capped before the call");
+  }
+
+  // camera maths: input map, easing, focus, inertia, zoom
+  {
+    ok(CAM.gestureFor({ button: 0 }) === "pan" && CAM.gestureFor({ button: 2 }) === "rotate" && CAM.gestureFor({ button: 0, shift: true }) === "rotate" && CAM.gestureFor({ pointers: 2 }) === "pinch", "input map: drag pans, right/Shift-drag turns, two fingers pinch");
+    ok(/Drag to move/.test(CAM.hint(true)) && /Pinch/.test(CAM.hint(true)) && /Scroll/.test(CAM.hint(false)) && /Right-drag/.test(CAM.hint(false)), "the hint line documents the input map for touch and mouse");
+    ok(CAM.easeInOutCubic(0) === 0 && CAM.easeInOutCubic(1) === 1 && Math.abs(CAM.easeInOutCubic(0.5) - 0.5) < 1e-12 && CAM.easeInOutCubic(0.25) < 0.25 && CAM.easeInOutCubic(0.75) > 0.75 && CAM.easeInOutCubic(2) === 1, "easeInOutCubic: 0 -> 1, symmetric, slow at both ends, clamped");
+    ok(Math.abs(CAM.wrap(3 * Math.PI) - Math.PI) < 1e-9 && Math.abs(CAM.wrap(-Math.PI / 2) + Math.PI / 2) < 1e-12, "wrap into (-π, π]");
+    const lv = CAM.lerpView({ zoom: 1, panX: 0, panY: 0, yaw: 3, pitch: 0 }, { zoom: 4, panX: 10, panY: -10, yaw: -3, pitch: 0.2 }, 0.5);
+    ok(Math.abs(lv.zoom - 2) < 1e-9 && lv.panX === 5 && lv.panY === -5 && lv.yaw > 3 && Math.abs(lv.pitch - 0.1) < 1e-12, "lerpView: zoom in log space (halfway from 1 to 4 is 2), yaw by the shortest arc");
+    let worst = 0;
+    [[1, 0.3], [-0.4, 2], [0.2, -1], [-1, -1], [0, 1]].forEach(([x, z]) => {
+      const y = CAM.forwardYaw({ x, z }), xr = x * Math.cos(y) - z * Math.sin(y), zr = x * Math.sin(y) + z * Math.cos(y);
+      worst = Math.max(worst, Math.abs(xr), Math.abs(zr + Math.hypot(x, z)));
+    });
+    ok(worst < 1e-9 && CAM.forwardYaw({ x: 0, z: 0 }) === null, "forwardYaw brings a point to the front: x' = 0, z' = -r (the nearest side)");
+    const z1 = CAM.fitZoom({ x0: -50, x1: 50, y0: -25, y1: 25 }, 1000, 600, 0.6, 60, 0.5);
+    ok(Math.abs(z1 - 5) < 1e-9 && CAM.fitZoom({ x0: -50, x1: 50, y0: -25, y1: 25 }, 1000, 600, 0.6, 2, 0.5) === 2 && CAM.fitZoom({ x0: -5000, x1: 5000, y0: 0, y1: 1 }, 1000, 600, 1.5, 60) === 1.5, "fitZoom frames the branch box, within the legibility bounds");
+    let v = 1, d = 0;
+    for (let i = 0; i < 200; i++) { const g = CAM.glide(v, 16, 260); v = g.v; d += g.d; }
+    const one = CAM.glide(1, 3200, 260);
+    ok(Math.abs(d - one.d) < 1e-9 && Math.abs(d - 260 * (1 - Math.exp(-3200 / 260))) < 1e-9 && d < 260 && v < 1e-5, "inertia: exponential glide, frame-rate independent, total distance -> v·τ");
+    ok(Math.abs(CAM.velocity(0, 10, 10, 1) - 1) < 1e-12 && CAM.velocity(0.5, 10, 0) === 0.5, "pointer velocity: a smoothed px/ms, ignores zero-time samples");
+    ok(Math.abs(CAM.twist({ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 1 }) - Math.PI / 2) < 1e-12, "a two-finger twist turns by the angle between the finger pairs");
+    const za = CAM.zoomAbout({ zoom: 1, panX: 20, panY: -10 }, 2, { x: 700, y: 200 }, 1000, 600);
+    const before = { x: (700 - 500 - 20) / 1, y: (200 - 300 + 10) / 1 }, after = { x: (700 - 500 - za.panX) / za.zoom, y: (200 - 300 - za.panY) / za.zoom };
+    ok(za.zoom === 2 && Math.abs(before.x - after.x) < 1e-9 && Math.abs(before.y - after.y) < 1e-9 && CAM.zoomAbout({ zoom: 59, panX: 0, panY: 0 }, 10).zoom === 60, "zoomAbout keeps the point under the cursor fixed; zoom clamped");
+    ok(CAM.wheelFactor(-10000) === CAM.CAM.wheelStep[1] && CAM.wheelFactor(10000) === CAM.CAM.wheelStep[0] && CAM.wheelFactor(-100) > 1 && CAM.wheelFactor(100) < 1, "wheel zoom is deliberate: one capped step per event");
+    ok(!/document\.|window\.|addEventListener/.test(camJs.replace(/window\.IkoCamera|root\.IkoCamera/g, "")), "camera.js is pure (no DOM)");
+    ok(html.indexOf("camera.js") > 0 && html.indexOf("camera.js") < html.indexOf("cloud-view.js") && /root\.IkoCamera/.test(view), "camera.js loads before the view that uses it");
+    ok(/CAM\.gestureFor\(/.test(view) && /CAM\.glide\(/.test(view) && /CAM\.lerpView\(/.test(view) && /CAM\.forwardYaw\(/.test(view) && /CAM\.fitZoom\(/.test(view) && /CAM\.wheelFactor\(/.test(view) && /recentre: /.test(view) && /onView/.test(view), "the view: pan by default, glide, eased focus with forward turn and fit, deliberate wheel, recentre, view callback");
+    ok(/big\.recentre\(\)/.test(app) && /Recentre/.test(html) && /CAM\.hint\(/.test(app) && /ikolearn\.v1\.view/.test(app) && /onView: saveView/.test(app) && /big\.setView\(\{ yaw: state\.view\.y/.test(app), "the app: Recentre, the input-map hint, and the view (with focus) persisted and restored");
+  }
+
+  // rough edges: the 404 (favicon), the phone branches strip, wiring
+  {
+    ok(/<link rel="icon" href="\/ikolearn\/icon\.svg" type="image\/svg\+xml">/.test(html) && fs.existsSync("public/ikolearn/icon.svg") && /<svg/.test(fs.readFileSync("public/ikolearn/icon.svg", "utf8")), "the 404 on open: the page has its own icon, so the browser never asks for /favicon.ico");
+    ok(/mk\("details", "h-fold"\)/.test(app) && /mk\("summary", "h-sum"\)/.test(app) && /window\.innerWidth >= 900/.test(app) && /\.h-lists \{ max-height: 44vh; overflow: auto;/.test(css) && !/\.h-kids \{[^}]*text-overflow: ellipsis/.test(css), "phone branches: a disclosure with a readable summary (core, side paths, next), opening to a scrollable list (no ellipsis cut)");
+    ok(/D\.renderCorpus\(/.test(app) && /corpus-fold/.test(app) && /\.corpus-row/.test(css), "corpus view under the holder card and in the deck");
+    ok((app.match(/settleMerges\(\)[;.]/g) || []).length >= 5 && /var merged = settleMerges\(\)/.test(app) && /function settleMerges\(\) \{\s*var done = P\.settleMerges\(state\.cloud\)/.test(app), "merges settle after answers, I've got it, lesson ready, tests and on load (0 calls)");
+    ok(/function markEvolve/.test(app) && /D\.evolveKey\(/.test(app) && /ikolearn\.v1\.seen/.test(app) && /@keyframes ink-bleed/.test(css) && /prefers-reduced-motion[\s\S]*\.gcard\.evolve \.gc-bleed/.test(css), "the evolution transition: an ink wash, once per rise, still under reduced motion");
+    ok(/\.gcard\.tier-merged/.test(css) && /\.gcard\.tier-achieved/.test(css) && /\.gc-sheen/.test(css) && /\.gc-pips \.pip/.test(css) && !/<img|icon-/.test(fs.readFileSync("public/ikolearn/deck.js", "utf8")), "tiers: frame weight, paper texture, sheen, pips; no icons");
+    ok(/C\.absorbedInto\(state\.cloud, e\.id\)/.test(app), "the deck grid shows absorbed cards inside their parent");
+    ok(/getAttribute\("data-sig"\) !== sig/.test(app), "the holder card is only rebuilt when its spec changed (a transition is not cut short by a later redraw)");
   }
 }
 

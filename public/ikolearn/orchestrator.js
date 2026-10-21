@@ -190,6 +190,63 @@
     var n = nodeOf(cloud, id), subj = n ? C.ancestry(cloud, id).map(function (x) { return cloud.nodes[x]; })[0] : null;
     return n ? { kind: "bridge", focus: n.label, focusParent: subj ? subj.label : "", trail: C.trail(cloud, id), parents: C.subjectLabels(cloud).slice(0, 12) } : null;
   }
+  /*
+   * The one-time repair after a bridge: when the bridged chain is still shallow (fewer than 2 links between the subject
+   * and the topic: Computer Science > Python > Sets), ask once more whether a level was skipped. At most once per
+   * topic, ever (node.repaired is set before the call and stored).
+   */
+  function needsRepair(cloud, id) {
+    var n = nodeOf(cloud, id);
+    if (!n || !n.parent || n.ghost || !n.bridged || n.repaired) return false;
+    return C.checkChain(cloud, id, C.chainOf(cloud, id).slice(0, -1)).shallow;
+  }
+  function repairRequest(cloud, id) {
+    var b = bridgeRequest(cloud, id);
+    return b ? Object.assign(b, { repair: true }) : null;
+  }
+
+  /*
+   * Merging: when a parent is ready to form (or upgrade) a higher-valued card. No calls, deterministic.
+   *   form     >= MERGE.first core children at the Achieved tier (or merged themselves), not yet absorbed
+   *   upgrade  a merged parent takes the next batch: >= MERGE.batch newly achieved children, or the last ones that
+   *            complete its whole core sequence
+   *   test     a test passed since the last merge absorbs every completed child not yet absorbed (>= 1)
+   * Plans run deepest first, so a child can merge its own subtopics and then count as achieved for its parent.
+   */
+  var MERGE = { first: 3, batch: 2 };
+  function mergePlan(cloud, pid) {
+    var p = nodeOf(cloud, pid);
+    if (!p || !p.parent || p.ghost) return null;
+    var kids = C.childrenOf(cloud, pid).filter(function (c) { return !c.ghost && !c.absorbedInto; });
+    var ready = kids.filter(function (c) { var t = C.tierOf(cloud, c.id); return t && t.rank >= 3; });
+    var t = C.testOf(cloud, pid);
+    if (t && t.passAt && t.passAt > (p.mergedAt || 0)) {
+      var done = kids.filter(function (c) { return C.isDone(cloud, c.id); });
+      if (done.length) return { id: pid, ids: done.map(function (c) { return c.id; }), why: "test" };
+    }
+    if (!ready.length) return null;
+    var core = ready.filter(function (c) { return c.role !== "optional"; });
+    if (!p.ml) return core.length >= MERGE.first ? { id: pid, ids: ready.map(function (c) { return c.id; }), why: "core" } : null;
+    var coreLeft = C.coreChildren(cloud, pid).filter(function (c) { return !c.ghost && !c.absorbedInto && ready.indexOf(c) < 0; }).length;
+    return ready.length >= MERGE.batch || (core.length && !coreLeft) ? { id: pid, ids: ready.map(function (c) { return c.id; }), why: "batch" } : null;
+  }
+  function mergePlans(cloud) {
+    return cloud.order.filter(function (id) { var n = cloud.nodes[id]; return n && n.parent; })
+      .sort(function (a, b) { return C.depthOf(cloud, b) - C.depthOf(cloud, a); })
+      .map(function (id) { return mergePlan(cloud, id); }).filter(Boolean);
+  }
+  /* Applies every ready merge (deepest first, re-planning after each, so recursion settles in one pass). -> [{ id, level, ids, why }] */
+  function settleMerges(cloud, t) {
+    var out = [], guard = 0, plan;
+    while (guard++ < 50 && (plan = mergePlans(cloud)[0])) {
+      var r = C.mergeInto(cloud, plan.id, plan.ids, t, plan.why);
+      if (!r) break;
+      r.why = plan.why;
+      out.push(r);
+    }
+    return out;
+  }
+
   /* Parents ready for "what comes next", highest ranked first. */
   function readyNext(cloud, now) {
     var sc = scores(cloud, now);
@@ -343,7 +400,8 @@
   }
 
   var api = {
-    PLAN: PLAN, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, nextChild: nextChild,
+    PLAN: PLAN, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, needsRepair: needsRepair, repairRequest: repairRequest,
+    MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
     suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf,
     onboarding: onboarding, interestChips: interestChips, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics,

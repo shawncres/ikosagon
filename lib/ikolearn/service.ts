@@ -260,7 +260,9 @@ export async function createFor(input: LearnInput, env: Env, fetchImpl: typeof f
   if ((input.kind === "next" || input.kind === "bridge") && !input.focus) return json(422, { ok: false, reason: "focus" });
   const user =
     input.kind === "bridge"
-      ? `Where does ${input.focus} fit under ${input.focusParent || "its subject"}? Give the steps in between.${bridgeAsk(input)}`
+      ? input.repair
+        ? `Check the chain for ${input.focus}: ${input.trail || input.focusParent}. Was a level skipped? Give the corrected chain.${bridgeAsk(input)}`
+        : `Where does ${input.focus} fit under ${input.focusParent || "its subject"}? Give the steps in between.${bridgeAsk(input)}`
       : input.kind === "next"
       ? `What should come next in ${input.focus}?`
       : `Build my ${input.kind === "start" ? "first" : "new"} learning topics.${input.interests.length ? ` I enjoy: ${input.interests.join(", ")}.` : ""}`;

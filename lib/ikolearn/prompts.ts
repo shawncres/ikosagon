@@ -97,6 +97,8 @@ export type LearnInput = {
   /** Create only: what the learner said they enjoy, what the creation is for, and their top-ranked topics (to steer what comes next). */
   interests: string[];
   kind: (typeof CREATE_KINDS)[number];
+  /** Bridge only: the one-time validation re-ask (the chain so far is in trail and still looks shallow). */
+  repair: boolean;
   favorites: string[];
 };
 /** chain: broader topics from the subject down to the parent (only for a new topic that sits deeper), e.g. ["Computer Science","Programming","Python"]. */
@@ -166,6 +168,7 @@ export function parseLearnInput(raw: unknown): LearnInput | { error: string } {
     trail: cleanText(b.trail, LEARN_LIMITS.trailChars).replace(/>{2,}/g, " ").replace(/[\n\r"<{}[\]`*_#|\\]/g, " ").replace(/\s+/g, " ").trim(),
     known: (Array.isArray(b.known) ? b.known : []).map(cleanLabel).filter(Boolean).slice(0, LEARN_LIMITS.known),
     wantPath: b.wantPath === true,
+    repair: b.repair === true,
     ahead: cleanLabel(b.ahead),
     material: (Array.isArray(b.material) ? b.material : [])
       .filter((m) => m && typeof m === "object")
@@ -395,6 +398,13 @@ export function createSystem(i: LearnInput): string {
     "and after (for an optional child only: the name of the core child it branches off). Order the core children first. ";
   const card =
     "card: title (the topic, at most 4 words), blurb (one line under 12 words saying what it is, never the learner's name) and goal (one short line: what the learner can do once they have finished it). ";
+  /* the repair re-ask: a first bridge left the chain shallow; check each step for a skipped level (no built-in table) */
+  const repair =
+    i.kind === "bridge" && i.repair
+      ? `A first pass placed it as: ${i.trail || `${i.focusParent} > ${i.focus}`}. That chain looks short, so a level was probably skipped. ` +
+        "Walk it from the broad subject down: for each step, is it really directly inside the one above, or is there a broader field or skill it belongs to that a learner would meet first? " +
+        "Add every skipped level, broadest first, and give each a link. Keep the same chain only if every step truly sits directly inside the one above. "
+      : "";
   if (i.kind === "bridge")
     return (
       `${SYSTEM_BASE}\n\nRole: create, bridge. The learner's topic "${i.focus}" sits directly under the broad subject "${i.focusParent || "(unknown)"}", which is probably too shallow. ` +
@@ -403,6 +413,7 @@ export function createSystem(i: LearnInput): string {
       "When the learner asked about the topic within something specific (a language, a tool, an instrument, a place, a period), that thing is a step of the chain, right above the topic. " +
       "Do not skip levels: keep the field between the broad subject and that thing (like Art & Music > Instruments > Guitar > Chords). " +
       `If "${i.focus}" truly belongs right under the subject, node.chain is just ["${i.focusParent || "the subject"}"]. ` +
+      repair +
       "links: one entry per chain topic below the subject, { name, blurb } with a one-line card description under 12 words. card: title, blurb and goal for the topic itself. children: an empty list.\n" +
       `Existing subjects: ${i.parents.join(", ") || "(none yet)"}.\n\n${profile(i)}`
     );
