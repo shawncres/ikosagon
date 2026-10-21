@@ -7,10 +7,18 @@ const nextConfig: NextConfig = {
       { source: "/ikoreadtube", destination: "/ikoreadtube/index.html" },
       { source: "/ikoreadtube/", destination: "/ikoreadtube/index.html" },
       { source: "/ikoreadtube/privacy", destination: "/ikoreadtube/privacy.html" },
+      // IkoLearn: standalone static app in public/ikolearn/ (unlisted, single-user testing).
+      { source: "/ikolearn", destination: "/ikolearn/index.html" },
+      { source: "/ikolearn/", destination: "/ikolearn/index.html" },
+      { source: "/ikolearn/privacy", destination: "/ikolearn/privacy.html" },
     ];
   },
   async headers() {
-    return [{ source: "/ikoreadtube/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] }];
+    return [
+      { source: "/ikoreadtube/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
+      { source: "/ikolearn", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
+      { source: "/ikolearn/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
+    ];
   },
   async redirects() {
     return [
