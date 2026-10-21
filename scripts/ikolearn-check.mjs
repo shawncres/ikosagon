@@ -7,13 +7,12 @@ import {
   LEARN_LIMITS, CLOUD_OPEN, CLOUD_CLOSE, cleanName, cleanLabel, cleanMessages, parseLearnInput, SYSTEM_BASE, companionSystem, noticeSystem,
   buildContents, cardSystem, adjacentSystem, plainReply, parseCloudBlock, parseCard, parseAdjacent, createBlockSplitter,
   PATH_OPEN, PATH_CLOSE, lessonSystem, lessonContents, pathSystem, PATH_SCHEMA, CARD_SCHEMA, parsePath, parseChoices, parseLessonBlock, parseQuestions, parseBlurb, parseChain,
-  parseTest, testSystem, TEST_SCHEMA,
+  parseTest, testSystem, TEST_SCHEMA, createSystem, parseCreate, CREATE_SCHEMA, AGE_BANDS, cleanRegion,
 } from "../lib/ikolearn/prompts.ts";
-import { KNOWN_CHAINS, chainHint, deepenChain, fillChain } from "../lib/ikolearn/chains.ts";
 import { DEFAULT_MODEL, FALLBACK_MODEL, GEMINI_BASE, chatBody, jsonBody, readSse } from "../lib/ikolearn/gemini.ts";
 import { MODEL_LIMITS, streamText, generateJson, llmConfig, llmReady } from "../lib/ikolearn/llm.ts";
 import { toMessages } from "../lib/ikolearn/openai-compatible.ts";
-import { LEARN_GUARDS, createLearnState, prepare, chatEvents, eventStream, cardFor, adjacentFor, lessonEvents, pathFor, testFor } from "../lib/ikolearn/service.ts";
+import { LEARN_GUARDS, createLearnState, prepare, chatEvents, eventStream, cardFor, adjacentFor, lessonEvents, pathFor, testFor, createFor } from "../lib/ikolearn/service.ts";
 
 const require = createRequire(import.meta.url);
 const C = require("../public/ikolearn/cloud-model.js");
@@ -29,12 +28,24 @@ const ok = (c, name, d = "") => (c ? (pass += 1) : fails.push(`${name}${d ? ` ->
 const eq = (a, b, n) => ok(JSON.stringify(a) === JSON.stringify(b), n, `${JSON.stringify(a)} != ${JSON.stringify(b)}`);
 const ENV = { GEMINI_API_KEY: "test-key" };
 const T0 = Date.UTC(2026, 9, 21, 16);
+/*
+ * New learners start empty (v6). Most model tests need a rich cloud, so they build one explicitly from the old starter
+ * map, kept as a test fixture only (scripts/fixtures/ikolearn-starters.json), through the same public IkoCloud.plant.
+ */
+const STARTERS = JSON.parse(fs.readFileSync("scripts/fixtures/ikolearn-starters.json", "utf8")).starters;
+const seeded = (name, t) => {
+  const c = C.create(name, t);
+  STARTERS.forEach((s) => C.plant(c, s, null, 0, false));
+  const m = C.findSubject(c, "Math");
+  c.next = m ? C.nextFor(c, m.id) : null;
+  return c;
+};
 
 /* ================= cloud model (recursive tree, v2) ================= */
 {
-  const c = C.create("Maya", T0);
+  const c = seeded("Maya", T0);
   const ss = C.subjects(c);
-  eq(ss.map((p) => p.label), C.STARTERS.map((s) => s.label), "starters: subjects in order");
+  eq(ss.map((p) => p.label), STARTERS.map((s) => s.label), "fixture: subjects in order");
   ok(new Set(ss.map((p) => p.hue)).size === ss.length, "starters: each subject has its own hue");
   eq(c.name, "Maya", "create keeps name");
   ok(C.create("", T0).name === "Me", "create: empty name -> Me");
@@ -143,7 +154,7 @@ const T0 = Date.UTC(2026, 9, 21, 16);
   ok(C.levelScale(1) === 1 && C.levelScale(3) < C.levelScale(2), "levelScale shrinks per level");
 
   // caps and pruning
-  const big = C.create("Ann", T0);
+  const big = seeded("Ann", T0);
   for (let i = 0; i < 20; i++) C.applyTopics(big, [{ name: "Subject Topic " + i, parent: "New Subject " + i }], T0 + i);
   ok(C.subjects(big).length === C.LIMITS.subjects, "subject cap holds");
   let at = "Counting";
@@ -170,13 +181,15 @@ const T0 = Date.UTC(2026, 9, 21, 16);
   // v1 -> v2 migration without loss
   const v1raw = fs.readFileSync("scripts/fixtures/ikolearn-cloud-v1.json", "utf8"), v1 = JSON.parse(v1raw);
   const mig = C.deserialize(v1raw);
-  ok(mig && mig.v === 5, "v1 cloud migrates forward (to v5)");
-  const migCs = C.subjects(mig).find((x) => x.label === "Computer Science"), csKeys = C.CS_TOPICS.map(C.norm);
-  ok(v1.order.every((id) => mig.nodes[id] && mig.nodes[id].label === v1.nodes[id].label && mig.nodes[id].ghost === v1.nodes[id].ghost &&
-    mig.nodes[id].parent === (v1.nodes[id].parent && csKeys.includes(C.norm(v1.nodes[id].label)) ? migCs.id : v1.nodes[id].parent || null)), "migration keeps every v1 node, id, parent (CS topics move to Computer Science) and ghost flag");
-  ok(v1.order.every((id) => Math.abs(mig.nodes[id].weight - v1.nodes[id].weight) < 1e-9 && mig.nodes[id].mastery === v1.nodes[id].mastery), "migration keeps weights and mastery");
+  ok(mig && mig.v === C.VERSION && C.VERSION === 6, "v1 cloud migrates forward (to v6)");
+  const migCs = C.subjects(mig).find((x) => x.label === "Computer Science"), csKeys = C.CS_TOPICS.map(C.norm), seedKeys = C.OLD_SEEDS.map(C.norm);
+  const keptV1 = v1.order.filter((id) => mig.nodes[id]), goneV1 = v1.order.filter((id) => !mig.nodes[id]);
+  ok(keptV1.every((id) => mig.nodes[id].label === v1.nodes[id].label && mig.nodes[id].ghost === v1.nodes[id].ghost &&
+    mig.nodes[id].parent === (v1.nodes[id].parent && csKeys.includes(C.norm(v1.nodes[id].label)) ? migCs.id : v1.nodes[id].parent || null)), "migration keeps v1 nodes with their id, parent (CS topics move to Computer Science) and ghost flag");
+  ok(goneV1.every((id) => seedKeys.includes(C.norm(v1.nodes[id].label)) && !(v1.nodes[id].mastery > 0)) && goneV1.length > 0, "only untouched old seeds are pruned from a v1 save", goneV1.map((id) => v1.nodes[id].label).join());
+  ok(keptV1.every((id) => Math.abs(mig.nodes[id].weight - v1.nodes[id].weight) < 1e-9 && mig.nodes[id].mastery === v1.nodes[id].mastery), "migration keeps weights and mastery");
   ok(mig.cards.length === 1 && mig.nodes[mig.cards[0].node].label === "Fractions", "migration keeps cards on their node");
-  ok(C.findSubject(mig, "Math").path && C.findTopic(mig, "Number Bonds")?.ghost && C.findTopic(mig, "Counting")?.ghost, "migration adds the new Math seeds as ghosts only");
+  ok(mig.order.filter((id) => !v1.order.includes(id)).every((id) => mig.nodes[id].label === "Computer Science" && !mig.nodes[id].parent), "migration adds no seeds (only the Computer Science subject, to hold moved topics)");
   ok(C.findTopic(mig, "Numbers") && !C.findTopic(mig, "Numbers").ghost, "migration does not touch explored v1 topics");
   ok(mig.seq >= v1.seq && !mig.order.slice(v1.order.length).some((id) => v1.order.includes(id)), "migration never reuses ids");
   eq(C.deserialize(C.serialize(mig)).order, mig.order, "migrated cloud round-trips");
@@ -439,7 +452,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(out.body.card.path?.[0] === "Pairs To 10" && f.calls.length === 1, "cardFor returns the path in the same call");
 
   // the client applies what the server returns (lesson path -> model)
-  const c = C.create("Sam", T0);
+  const c = seeded("Sam", T0);
   const add = C.findTopic(c, "Addition");
   const r = C.applyPath(c, add.id, ["Adding Within 10", "Doubles"], "Doubles", T0 + 1);
   ok(r.ids[0] === C.findTopic(c, "Adding Within 10").id && c.nodes[r.next].label === "Doubles", "a lesson's path reuses the seeded branch and adds new steps");
@@ -447,7 +460,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
 
 /* ================= hooks for later features (time, engagement, branch ends, colour) ================= */
 {
-  const c = C.create("Sam", T0);
+  const c = seeded("Sam", T0);
   const cnt = C.findTopic(c, "Counting"), c20 = C.findTopic(c, "Counting to 20");
   eq(C.activity(c, cnt.id), { spent: 0, engaged: 0, correct: 0, mastery: 0, opened: false, end: false, achieved: false, cards: 0, subject: C.findSubject(c, "Math").id, hue: C.findSubject(c, "Math").hue }, "activity: one place to read per-node state");
   const rev = c.rev;
@@ -473,7 +486,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
 
 /* ================= growth, deck, forks (model) ================= */
 {
-  const c = C.create("Maya", T0);
+  const c = seeded("Maya", T0);
   const math = C.findSubject(c, "Math"), cnt = C.findTopic(c, "Counting"), sci = C.findSubject(c, "Science");
   eq(C.GROWTH.stages, [0, 3, 8, 16, 30], "growth (detail) stages");
   eq(C.GROWTH.confirm, [0, 1, 3, 5], "colour stages by confirmed learning");
@@ -568,7 +581,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const lost = C.deserialize(raw);
   ok(!lost.nodes[cnt.id] && C.inDeck(lost, cnt.id) && C.deckEntry(lost, cnt.id).label === "Counting" && C.growthOf(lost, cnt.id).stage >= 3 && C.chainOf(lost, cnt.id).join(">") === "Math>Counting", "a deck card stays (colour and chain) even if its topic is gone");
   // prune never drops a deck card
-  const big = C.create("Ann", T0);
+  const big = seeded("Ann", T0);
   const keep = C.findTopic(big, "Shapes");
   C.engage(big, keep.id, "open"); C.engage(big, keep.id, "got"); C.joinDeck(big);
   for (let i = 0; i < 900; i++) C.applyTopics(big, [{ name: "Thing " + i, parent: "Art & Music" }], T0 + i);
@@ -578,17 +591,17 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   // migration: v2 (PR #56) and v1 saves move to v3; topics past the threshold backfill the deck
   const v2raw = fs.readFileSync("scripts/fixtures/ikolearn-cloud-v2.json", "utf8"), v2 = JSON.parse(v2raw);
   const m2 = C.deserialize(v2raw);
-  ok(m2 && v2.v === 2 && m2.v === 5, "v2 cloud migrates to v5");
-  ok(v2.n.every((a) => m2.nodes[a[0]] && m2.nodes[a[0]].label === a[1] && (m2.nodes[a[0]].spent || 0) === (a[10] || 0)), "migration keeps every v2 node with its time spent");
+  ok(m2 && v2.v === 2 && m2.v === 6, "v2 cloud migrates to v6");
+  ok(v2.n.every((a) => m2.nodes[a[0]] ? m2.nodes[a[0]].label === a[1] && (m2.nodes[a[0]].spent || 0) === (a[10] || 0) : C.OLD_SEEDS.map(C.norm).includes(C.norm(a[1])) && !(a[10] > 0)), "migration keeps every v2 node with its time spent (only untouched old seeds are pruned)");
   const mc = C.findTopic(m2, "Counting"), mnb = C.findTopic(m2, "Number Bonds");
   ok(C.inDeck(m2, mc.id) && C.growthOf(m2, mc.id).stage === 1 && !C.inDeck(m2, mnb.id), "backfill: Counting (4 min, got it) joins with its first colour; Number Bonds (30 s) not yet");
   ok(C.findTopic(m2, "Counting to 20").end && C.findTopic(m2, "Fractions").path.ids.length === 2, "migration keeps branch ends and paths");
   eq(C.deserialize(C.serialize(m2)).deck, m2.deck, "migrated deck round-trips");
-  ok(C.deserialize(fs.readFileSync("scripts/fixtures/ikolearn-cloud-v1.json", "utf8")).v === 5, "v1 still migrates (to v5)");
+  ok(C.deserialize(fs.readFileSync("scripts/fixtures/ikolearn-cloud-v1.json", "utf8")).v === 6, "v1 still migrates (to v6)");
   // v3 (PR #57) -> v4 without loss: every node, the deck with its best stages, forks, draws and sessions
   const v3raw = fs.readFileSync("scripts/fixtures/ikolearn-cloud-v3.json", "utf8"), v3 = JSON.parse(v3raw), m3 = C.deserialize(v3raw);
-  ok(m3 && v3.v === 3 && m3.v === 5, "v3 cloud migrates to v5");
-  ok(v3.n.every((a) => m3.nodes[a[0]] && m3.nodes[a[0]].label === a[1] && m3.nodes[a[0]].spent === a[10] && m3.nodes[a[0]].engaged === a[11]), "migration keeps every v3 node with its time and engagement");
+  ok(m3 && v3.v === 3 && m3.v === 6, "v3 cloud migrates to v6");
+  ok(v3.n.every((a) => m3.nodes[a[0]] ? m3.nodes[a[0]].label === a[1] && m3.nodes[a[0]].spent === a[10] && m3.nodes[a[0]].engaged === a[11] : C.OLD_SEEDS.map(C.norm).includes(C.norm(a[1])) && !(a[10] > 0) && !(a[11] > 0)), "migration keeps every v3 node with its time and engagement (only untouched old seeds are pruned)");
   ok(v3.k.every((e) => C.deckEntry(m3, e[0]) && C.deckEntry(m3, e[0]).best >= e[5]), "migration keeps the deck and each card's best stage");
   eq(m3.draws, v3.g, "migration keeps the draw log"); ok(m3.sessions === v3.ss, "and the session count");
   const fr3 = C.findTopic(m3, "Fractions");
@@ -625,7 +638,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(finite, "all landscape coordinates are finite");
   ok(water > 15 && water < 50 && trees > 30 && birds > 20, "scenes vary: some water, mostly trees, some birds", `${water}/${trees}/${birds}`);
 
-  const c = C.create("Maya", T0);
+  const c = seeded("Maya", T0);
   const t = C.findTopic(c, "Counting");
   C.engage(c, t.id, "open"); C.engage(c, t.id, "got"); C.joinDeck(c);
   C.setBlurb(c, t.id, "Saying numbers in order, one for each thing. And more words after the first sentence.");
@@ -660,7 +673,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(D.render(doc, ach, {}).className.includes("achieved") && D.render(doc, ach, {}).kids.some((k) => k.className === "gc-mark" && k.textContent === "Achieved"), "render: achieved cards carry a small text-only Achieved mark");
 
   // weights
-  const y = C.create("Maya", T0);
+  const y = seeded("Maya", T0);
   const add = (subj, names) => names.forEach((n) => { C.applyTopics(y, [{ name: n, parent: subj, signal: "strength" }], T0); const x = C.findTopic(y, n); C.engage(y, x.id, "open", T0); C.engage(y, x.id, "got", T0); });
   add("Math", ["Counting", "Addition", "Subtraction", "Fractions", "Shapes", "Doubles", "Halves", "Clocks"]);
   add("Science", ["Volcanoes", "Plants"]); add("Art & Music", ["Rhythm"]); add("Reading & Writing", ["Rhymes"]);
@@ -693,8 +706,8 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(d1.length === 3 && new Set(d1).size === 3, "draw: 3 different cards");
   ok(new Set(d1.map((id) => C.subjectOf(y, id).label)).size === 3, "draw: one draw mixes subjects");
   ok(JSON.stringify(D.drawSession(y, { day: day0 + 1 })) !== JSON.stringify(d1) || JSON.stringify(D.drawSession(y, { day: day0 + 2 })) !== JSON.stringify(d1), "draw changes from day to day");
-  eq(D.drawSession(C.create("Nia", T0), { day: day0 }), [], "empty deck: no draw");
-  const one = C.create("Nia", T0); const oc = C.findTopic(one, "Shapes"); C.engage(one, oc.id, "open"); C.engage(one, oc.id, "got"); C.joinDeck(one);
+  eq(D.drawSession(seeded("Nia", T0), { day: day0 }), [], "empty deck: no draw");
+  const one = seeded("Nia", T0); const oc = C.findTopic(one, "Shapes"); C.engage(one, oc.id, "open"); C.engage(one, oc.id, "got"); C.joinDeck(one);
   eq(D.drawSession(one, { day: day0 }), [oc.id], "a one-card deck draws that card");
 
   // a year of daily sessions: well rounded, compared with a plain shuffle
@@ -751,7 +764,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(!shown.includes("cat, dog") && !shown.includes("<<<"), "lessonEvents: questions are not in the streamed text");
 
   // model: chains build explicit parent -> child links, reusing what exists
-  const c = C.create("Maya", T0);
+  const c = seeded("Maya", T0);
   const r1 = C.applyTopics(c, [{ name: "Sets", parent: "Python", signal: "curious", chain: ["Computer Science", "Programming", "Python"] }], T0 + 1);
   const sets = C.findTopic(c, "Sets");
   eq(C.chainOf(c, sets.id), ["Computer Science", "Programming", "Python", "Sets"], "a chat chain builds the links: Sets sits under Python under Programming, in Computer Science");
@@ -793,16 +806,16 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const later = RK.top(c, { now: t1 + 60 * DAYMS });
   for (let i = 0; i < 8; i++) C.engage(c, C.findTopic(c, "Rocks").id, "open", t1 + 60 * DAYMS);
   ok(RK.top(c, { now: t1 + 60 * DAYMS })[0].label === "Rocks" && later.length > 0, "top 10 follows what's used lately (older use cools off)");
-  ok(RK.sources().join() === "local,chain,popular" && RK.register({ name: "server", weight: 3, scores: () => ({ [C.findTopic(c, "Dictionaries").key]: 5, unknown: 9 }) }) && RK.sources().join() === "local,chain,popular,server", "a future server source plugs in");
+  ok(RK.sources().join() === "local,chain,model" && RK.register({ name: "server", weight: 3, scores: () => ({ [C.findTopic(c, "Dictionaries").key]: 5, unknown: 9 }) }) && RK.sources().join() === "local,chain,model,server", "a future server source plugs in");
   ok(RK.top(c, { now: t1 + 60 * DAYMS })[0].label === "Dictionaries", "a plugged-in source shifts the ranking (unknown topics skipped)");
   RK.register({ name: "broken", scores: () => { throw new Error("x"); } });
   ok(RK.top(c, { now: t1 }).length > 0, "a broken source can't break the ranking");
-  ok(RK.unregister("server") && RK.unregister("broken") && !RK.unregister("local") && !RK.unregister("chain") && RK.sources().join() === "local,chain,popular", "sources can be removed; the device sources stay");
+  ok(RK.unregister("server") && RK.unregister("broken") && !RK.unregister("local") && !RK.unregister("chain") && RK.sources().join() === "local,chain,model", "sources can be removed; the device sources stay");
   const bo = RK.boost(c, t1 + 60 * DAYMS), ids = Object.keys(bo);
   ok(ids.length <= RK.TOP && Math.max(...ids.map((k) => bo[k])) === 1 && ids.every((k) => bo[k] > 0 && bo[k] <= 1), "boost: 1 for the top topic, less down the list");
 
   // a year of draws with a lopsided top 10 stays balanced
-  const y = C.create("Maya", T0);
+  const y = seeded("Maya", T0);
   const add = (subj, names) => names.forEach((n) => { C.applyTopics(y, [{ name: n, parent: subj, signal: "strength" }], T0); const x = C.findTopic(y, n); C.engage(y, x.id, "open", T0); C.engage(y, x.id, "got", T0); });
   add("Math", ["Counting", "Addition", "Subtraction", "Fractions", "Shapes", "Doubles", "Halves", "Clocks"]);
   add("Science", ["Volcanoes", "Plants"]); add("Art & Music", ["Rhythm"]); add("Reading & Writing", ["Rhymes"]);
@@ -982,7 +995,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const lessonJs = fs.readFileSync("public/ikolearn/lesson.js", "utf8");
   ok(/<script src="\/ikolearn\/lesson\.js/.test(html) && html.indexOf("lesson.js") < html.indexOf("app.js") && html.indexOf("cloud-model.js") < html.indexOf("lesson.js"), "lesson.js loads before app.js");
   ok(/id="lesson"/.test(html) && /id="l-got"/.test(html) && /id="l-tricky"/.test(html) && /id="p-lesson"/.test(html) && /id="p-path"/.test(html), "lesson view + panel buttons present");
-  ok(/ikolearn\.v1\.lessons/.test(app) && /MAX_LESSONS/.test(app) && /"\/lesson"/.test(app) && /"\/path"/.test(app), "lessons cached in localStorage; lesson + path endpoints");
+  ok(/ikolearn\.v1\.lessons/.test(app) && /MAX_LESSONS/.test(app) && /"\/lesson"/.test(app) && /"\/create"/.test(app) && !/"\/path"/.test(app), "lessons cached in localStorage; lesson and create endpoints (paths now come from the creation call)");
   ok(!/generativelanguage|GEMINI_API_KEY|x-goog-api-key|innerHTML/.test(lessonJs) && !/innerHTML\s*=(?!\s*"")/.test(app), "lesson rendering uses text nodes only");
   ok(!/montessori|waldorf|bloom|common core/i.test(app + lessonJs + html), "UI never names frameworks");
   const deckJs = fs.readFileSync("public/ikolearn/deck.js", "utf8");
@@ -1000,77 +1013,90 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(!/innerHTML|fetch\(|localStorage/.test(rankJs), "rank.js: pure, no network or storage of its own");
   const files = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js", "rank.js", "orchestrator.js"];
   const bytes = files.reduce((n, f) => n + fs.statSync("public/ikolearn/" + f).size, 0);
-  ok(bytes < 230_000, "app weight under 230 KB uncompressed", String(bytes));
+  ok(bytes < 260_000, "app weight under 260 KB uncompressed", String(bytes));
 }
 
 /* ================= the flow pass: chains, Computer Science, orchestrator, children, tests ================= */
 {
-  // A) chains: one table on both sides, filled when the model leaves a chain out
-  eq(C.KNOWN_CHAINS, KNOWN_CHAINS, "known chains: the browser and server tables are the same");
-  ok(Object.keys(KNOWN_CHAINS).every((k) => C.chainHint(k).join() === chainHint(k).join()) && C.norm("How AI Works") === C.norm("how ai work"), "known chains: both sides look labels up the same way");
-  eq(chainHint("python"), ["Computer Science", "Programming"], "chainHint: Python sits in Computer Science > Programming");
-  ok(chainHint("Wizardry") === null && fillChain("Spells", "Wizardry", undefined) === undefined, "chainHint: unknown labels give nothing (no guessing)");
-  eq(fillChain("Sets", "Python", ["Math"]), ["Math"], "fillChain: a chain from the model is kept");
-  /* seen live on Oct 21: the model answered "How do sets work in Python?" with Sets under ["Computer Science"] only */
-  const askQ = "How do sets work in Python?";
-  eq(deepenChain("Sets", "Computer Science", ["Computer Science"], askQ), ["Computer Science", "Programming", "Python"], "deepenChain: a known topic named by the learner deepens a short chain");
-  eq(deepenChain("Sets", "Computer Science", undefined, askQ), ["Computer Science", "Programming", "Python"], "deepenChain: works from the parent alone");
-  eq(deepenChain("Sets", "Math", ["Math"], askQ), ["Math"], "deepenChain: never moves a topic to another subject");
-  eq(deepenChain("Sets", "", undefined, askQ), undefined, "deepenChain: needs a link to start from");
-  eq(deepenChain("Sets", "Python", ["Computer Science", "Programming", "Python"], askQ), ["Computer Science", "Programming", "Python"], "deepenChain: a full chain is left alone");
-  eq(deepenChain("Python", "Computer Science", ["Computer Science"], "What is Python?"), ["Computer Science"], "deepenChain: the topic itself does not count");
-  eq(deepenChain("Clocks", "Math", ["Math"], "I have no time for this"), ["Math", "Time"], "deepenChain: whole words only, within the same subject");
-  eq(deepenChain("Sets", "Computer Science", ["Computer Science"], "how do sets work in pythonic code"), ["Computer Science"], "deepenChain: no partial words");
-  const live = parseCloudBlock('{"topics":[{"name":"Sets","parent":"Computer Science","signal":"curious","chain":["Computer Science"]}]}', "Maya", askQ);
-  ok(live.topics[0].chain.join(">") === "Computer Science>Programming>Python" && live.topics[0].parent === "Python", "parseCloudBlock: the live short chain is deepened from the message, parent follows");
-
-  const blk = parseCloudBlock('{"topics":[{"name":"Sets","parent":"Python","signal":"curious"},{"name":"Halves","parent":"Fractions","signal":"explored"}],"ghosts":[]}', "Sam");
-  eq(blk.topics[0].chain, ["Computer Science", "Programming", "Python"], "parseCloudBlock: a leaf with a known parent gets its full chain (server fallback)");
-  eq(blk.topics[1].chain, ["Math", "Fractions"], "parseCloudBlock: Halves under Fractions -> Math > Fractions");
-  const cardC = parseCard({ title: "Sets", body: "A set keeps one of each thing, like a box of unique stickers.", topic: "Sets", parent: "Python" });
-  eq(cardC.chain, ["Computer Science", "Programming", "Python"], "parseCard: the chain is filled too");
-
-  // client fallback when no chain arrives at all (older server, or a card)
+  // A) chains (v6): no tables. The model's chain is used as given; a short one is deepened from the learner's own map.
+  const blk = parseCloudBlock('{"topics":[{"name":"Sets","parent":"Python","signal":"curious","chain":["Computer Science","Programming","Python"]},{"name":"Halves","parent":"Fractions","signal":"explored"}],"ghosts":[]}', "Sam");
+  eq(blk.topics[0].chain, ["Computer Science", "Programming", "Python"], "parseCloudBlock: the model's full chain passes through");
+  ok(!("chain" in blk.topics[1]), "parseCloudBlock: no chain is invented on the server (no hardcoded tables)");
+  ok(!fs.existsSync("lib/ikolearn/chains.ts") && !/KNOWN_CHAINS|chainHint/.test(fs.readFileSync("public/ikolearn/cloud-model.js", "utf8")), "the hardcoded chain tables are gone (server and device)");
+  // a full chain from the model builds every missing link on an empty cloud, and a palette subject keeps its colour
   const f0 = C.create("Maya", T0);
-  const r = C.applyTopics(f0, [{ name: "Sets", parent: "Python", signal: "curious" }], T0 + 1);
+  C.applyTopics(f0, [{ name: "Sets", parent: "Python", signal: "curious", chain: ["Computer Science", "Programming", "Python"] }], T0 + 1);
   const sets = C.findTopic(f0, "Sets");
-  eq(C.chainOf(f0, sets.id), ["Computer Science", "Programming", "Python", "Sets"], "client fallback: how do sets work in Python -> Computer Science > Programming > Python > Sets");
-  ok(r.created.includes(C.findTopic(f0, "Python").id) && r.promoted.includes(C.findTopic(f0, "Programming").id), "client fallback: missing links are created, the seeded Programming becomes explored");
-  const n0 = f0.order.length;
-  C.applyTopics(f0, [{ name: "Halves", parent: "Fractions", signal: "explored" }], T0 + 2);
-  ok(C.chainOf(f0, C.findTopic(f0, "Halves").id).join(">") === "Math>Fractions>Halves" && f0.order.length === n0 + 1, "client fallback: a parent already on the map is used as is (nothing extra)");
-  C.applyTopics(f0, [{ name: "Variables", parent: "Coding", signal: "curious" }], T0 + 3);
-  ok(C.subjectOf(f0, C.findTopic(f0, "Variables").id).label === "Computer Science", "coding words lead to Computer Science now");
-  C.applyTopics(f0, [{ name: "Bridges", parent: "Engineering", signal: "curious" }], T0 + 4);
-  ok(C.subjectOf(f0, C.findTopic(f0, "Bridges").id).label === "Making & Coding", "making and engineering stay with Making & Coding");
-
-  // Computer Science is its own subject with its own hue
-  const subs = C.subjects(f0), cs = subs.find((x) => x.label === "Computer Science"), mk = subs.find((x) => x.label === "Making & Coding");
-  ok(cs && new Set(subs.map((x) => x.hue)).size === subs.length && cs.hue === 252, "Computer Science: its own subject and its own hue (252, unused by others)");
-  eq(C.childrenOf(f0, mk.id).map((x) => x.label).slice(0, 3), ["Building", "Puzzles", "Robots"], "Making & Coding keeps making (no coding seeds)");
-  eq(cs.path.ids.map((id) => f0.nodes[id].label), ["Algorithms", "Programming"], "Computer Science seeds a short path");
+  eq(C.chainOf(f0, sets.id), ["Computer Science", "Programming", "Python", "Sets"], "a full chain on an empty cloud: Computer Science > Programming > Python > Sets");
+  ok(C.findSubject(f0, "Computer Science").hue === 252, "Computer Science takes its palette hue (252) even as the first subject");
+  // the live case: the model put Sets right under Computer Science; Python is on the map and the learner named it
+  const said = "How do sets work in Python?";
+  const f1 = C.create("Maya", T0);
+  C.applyTopics(f1, [{ name: "Python", parent: "Programming", signal: "explored", chain: ["Computer Science", "Programming"] }], T0 + 1);
+  C.applyTopics(f1, [{ name: "Sets", parent: "Computer Science", signal: "curious", chain: ["Computer Science"] }], T0 + 2, said);
+  eq(C.chainOf(f1, C.findTopic(f1, "Sets").id), ["Computer Science", "Programming", "Python", "Sets"], "device: a short chain is deepened from a topic on the learner's map that they named");
+  const f2 = C.create("Maya", T0);
+  C.applyTopics(f2, [{ name: "Python", parent: "Programming", signal: "explored", chain: ["Computer Science", "Programming"] }], T0 + 1);
+  C.applyTopics(f2, [{ name: "Sets", parent: "Computer Science", signal: "curious", chain: ["Computer Science"] }], T0 + 2, "how do sets work in pythonic code");
+  eq(C.chainOf(f2, C.findTopic(f2, "Sets").id), ["Computer Science", "Sets"], "device: whole words only (no deepening from 'pythonic')");
+  C.applyTopics(f2, [{ name: "Venn Sets", parent: "Math", signal: "curious", chain: ["Math"] }], T0 + 3, said);
+  eq(C.chainOf(f2, C.findTopic(f2, "Venn Sets").id), ["Math", "Venn Sets"], "device: never moves a topic into another subject");
+  eq(C.deepenChain(f1, [], "Sets", said), null, "deepenChain needs a link to start from");
+  // coding words still lead to Computer Science when both subjects exist
+  const f3 = seeded("Maya", T0);
+  C.applyTopics(f3, [{ name: "Variables", parent: "Coding", signal: "curious" }], T0 + 3);
+  ok(C.subjectOf(f3, C.findTopic(f3, "Variables").id).label === "Computer Science", "coding words lead to Computer Science");
+  C.applyTopics(f3, [{ name: "Bridges", parent: "Engineering", signal: "curious" }], T0 + 4);
+  ok(C.subjectOf(f3, C.findTopic(f3, "Bridges").id).label === "Making & Coding", "making and engineering stay with Making & Coding");
+  // colours: the palette is data only; a learner's own subject takes a free hue no palette subject owns
+  ok(C.PALETTE.every((x) => typeof x.label === "string" && Number.isFinite(x.hue) && Object.keys(x).length === 2), "PALETTE is data only: names and hues, no children or paths");
   const g8 = C.create("Lee", T0); C.applyTopics(g8, [{ name: "Chess", parent: "Games", signal: "explored" }], T0 + 1);
-  ok(C.subjects(g8).filter((x) => x.label === "Games").length === 1 && C.findSubject(g8, "Games").hue === 214, "a learner's own new subject takes the next unused hue");
+  C.applyTopics(g8, [{ name: "Fractions", parent: "Maths", signal: "explored" }], T0 + 2);
+  ok(C.findSubject(g8, "Games").hue === 214 && C.findSubject(g8, "Math")?.hue === 28, "a new subject takes a free non-palette hue (214); Math keeps 28 whenever it appears", JSON.stringify(C.subjects(g8).map((x) => x.label + ":" + x.hue)));
 
-  // v4 -> v5 migration: lossless, and the clearly-CS topics move across
+  // v4 -> v6 migration: nothing the learner used is lost; untouched old seeds are pruned; CS topics move across
   const v4raw = fs.readFileSync("scripts/fixtures/ikolearn-cloud-v4.json", "utf8"), v4 = JSON.parse(v4raw);
-  const m5 = C.deserialize(v4raw);
-  ok(v4.v === 4 && m5 && m5.v === 5, "v4 cloud migrates to v5");
-  ok(v4.n.every((row) => m5.nodes[row[0]] && m5.nodes[row[0]].label === row[1]), "v4 -> v5: every node and id kept");
+  const m5 = C.deserialize(v4raw), seedKeys = C.OLD_SEEDS.map(C.norm);
+  ok(v4.v === 4 && m5 && m5.v === 6, "v4 cloud migrates to v6");
+  const gone = v4.n.filter((row) => !m5.nodes[row[0]]);
+  ok(gone.length > 10 && gone.every((row) => seedKeys.includes(C.norm(row[1])) && !(row[3] & 2) && !(row[10] > 0) && !(row[11] > 0) && !(row[5] > 0)), "v4 -> v6: only untouched seed nodes are pruned (never opened, no time, no engagement, no mastery)", gone.map((r) => r[1]).join());
+  ok(["Number Bonds", "Poetry", "Robots"].every((l) => !C.findTopic(m5, l)), "v4 -> v6: untouched Math (and other) seed ghosts are gone");
+  const br = seeded("Lu", T0), cn = C.findTopic(br, "Counting");
+  C.engage(br, cn.id, "open", T0 + 1); C.engage(br, cn.id, "got", T0 + 2);
+  const c20 = C.findTopic(br, "Counting to 20"); C.engage(br, c20.id, "got", T0 + 3); C.confirm(br, c20.id, true, T0 + 4); C.confirm(br, c20.id, true, T0 + 5);
+  C.pruneSeeds(br);
+  ok(C.findTopic(br, "Skip Counting") && !C.isAchieved(br, cn.id), "pruning keeps the rest of a branch the learner worked on (Skip Counting under Counting), so no card is promoted by it");
+  ok(v4.n.filter((row) => !seedKeys.includes(C.norm(row[1]))).every((row) => m5.nodes[row[0]] && m5.nodes[row[0]].label === row[1]), "v4 -> v6: every node the learner made is kept, with its id");
+  ok(m5.deck.every((e) => m5.nodes[e.id]) && m5.deck.length === v4.k.length, "v4 -> v6: every deck card's topic is kept");
   const py5 = C.findTopic(m5, "Python"), cod5 = C.findTopic(m5, "Coding"), cs5 = C.subjects(m5).find((x) => x.label === "Computer Science");
-  eq(C.chainOf(m5, C.findTopic(m5, "Sets").id), ["Computer Science", "Coding", "Python", "Sets"], "v4 -> v5: Coding (with Python and Sets) moves under Computer Science");
-  ok(cod5.parent === cs5.id && C.findTopic(m5, "How AI Works").parent === cs5.id && C.childrenOf(m5, C.findSubject(m5, "Making & Coding").id).every((x) => !C.CS_TOPICS.map(C.norm).includes(x.key)), "v4 -> v5: nothing clearly CS is left in Making & Coding");
+  eq(C.chainOf(m5, C.findTopic(m5, "Sets").id), ["Computer Science", "Coding", "Python", "Sets"], "v4 -> v6: Coding (with Python and Sets) moves under Computer Science");
+  ok(cod5.parent === cs5.id && C.childrenOf(m5, C.findSubject(m5, "Making & Coding").id).every((x) => !C.CS_TOPICS.map(C.norm).includes(x.key)), "v4 -> v6: nothing clearly CS is left in Making & Coding");
+  ok(!C.findTopic(m5, "Programming") && !C.findTopic(m5, "Algorithms"), "v4 -> v6: no CS seeds are planted");
   const row = v4.n.find((x) => x[1] === "Python");
-  ok(py5.correct === row[12] && Math.round(py5.heat * 100) === row[13] && py5.blurb === row[15] && py5.spent === row[10], "v4 -> v5: answers, heat, time and card line kept");
+  ok(py5.correct === row[12] && Math.round(py5.heat * 100) === row[13] && py5.blurb === row[15] && py5.spent === row[10], "v4 -> v6: answers, heat, time and card line kept");
   const dk = m5.deck.find((e) => e.id === py5.id);
-  ok(m5.deck.length === v4.k.length && dk.subject === "Computer Science" && dk.hue === 252 && dk.chain.join(">") === "Computer Science>Coding>Python", "v4 -> v5: deck cards kept, with their new subject, hue and chain");
-  ok(py5.fork && py5.fork.ids.length === 2 && m5.draws.length === v4.g.length && m5.cards.length === v4.cards.length, "v4 -> v5: forks, draw log and cards kept");
-  ok(C.findTopic(m5, "Programming")?.ghost && C.findTopic(m5, "Algorithms")?.ghost, "v4 -> v5: the missing CS seeds arrive as dotted ghosts");
+  ok(dk.subject === "Computer Science" && dk.hue === 252 && dk.chain.join(">") === "Computer Science>Coding>Python", "v4 -> v6: deck cards kept, with their new subject, hue and chain");
+  ok(py5.fork && py5.fork.ids.length === 2 && m5.draws.length === v4.g.length && m5.cards.length === v4.cards.length, "v4 -> v6: forks, draw log and cards kept");
   const again = C.deserialize(C.serialize(m5));
-  ok(C.serialize(again) === C.serialize(m5), "v5 round trip is stable (migration runs once)");
+  ok(C.serialize(again) === C.serialize(m5), "v6 round trip is stable (migration runs once)");
+  // pruning rules on their own
+  const pr = seeded("Ivy", T0), cnt = C.findTopic(pr, "Counting"), bonds0 = C.findTopic(pr, "Number Bonds");
+  C.engage(pr, bonds0.id, "open", T0 + 1);
+  const shapes0 = C.findTopic(pr, "Shapes"); C.track(pr, shapes0.id, 30, T0 + 2);
+  const myOwn = C.applyTopics(pr, [{ name: "Robots", parent: "Making & Coding", signal: "curious" }], T0 + 3);
+  const removed = C.pruneSeeds(pr);
+  ok(C.findTopic(pr, "Number Bonds") && C.findTopic(pr, "Addition") && C.findSubject(pr, "Math"), "pruning: an opened seed is kept, with its parents");
+  ok(C.findTopic(pr, "Shapes"), "pruning: a seed with time spent is kept");
+  ok(C.findTopic(pr, "Robots") && myOwn.promoted.length === 1, "pruning: a seed the learner talked about is kept");
+  ok(!C.findTopic(pr, "Skip Counting") && !C.findTopic(pr, "Poetry") && removed.includes("Skip Counting") && !C.findTopic(pr, "Counting to 20"), "pruning: untouched seeds go, deepest first");
+  ok(!cnt || !C.findTopic(pr, "Counting"), "pruning: an untouched seed parent goes once its children are gone");
+  ok(!C.findSubject(pr, "People & Places") && !C.findSubject(pr, "Art & Music"), "pruning: an untouched seeded subject goes when nothing is left under it");
+  const learned = C.create("Ola", T0);
+  C.applyTopics(learned, [{ name: "Counting", parent: "Math", signal: "explored" }], T0 + 1);
+  ok(C.pruneSeeds(learned).length === 0, "pruning: a topic the learner made (even with an old seed's name) is never pruned");
 
   // the orchestrator: engagement, children waiting on it, tests from completed material only
-  const o = C.create("Maya", T0), O = (l) => C.findTopic(o, l);
+  const o = seeded("Maya", T0), O = (l) => C.findTopic(o, l);
   const add = O("Subtraction");
   C.engage(o, add.id, "open", T0 + 1);
   ok(!P.engaged(o, add.id) && P.wantChildren(o, add.id), "orchestrator: a first read isn't engagement yet; a topic without a path wants child topics");
@@ -1082,8 +1108,9 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const grown = C.applyPending(o, add.id, T0 + 3);
   ok(grown && add.path && add.path.ids.map((x) => o.nodes[x].label).join() === "Taking Away,Counting Back,Within 20" && grown.added.every((x) => o.nodes[x].ghost && o.nodes[x].parent === add.id) && !add.pending, "children grow as dotted ghosts under the parent, in learning order");
   ok(grown.added.length === 3 && add.path.next === O("Counting Back").id, "duplicates dropped; the suggested first child is kept");
+  eq(P.orderedChildren(o, add.id).slice(0, 3).map((x) => o.nodes[x].label), ["Taking Away", "Counting Back", "Within 20"], "without use, a parent's children keep their logical order (foundational first)");
   for (let i = 0; i < 5; i++) C.engage(o, O("Within 20").id, "open", T0 + 3);
-  eq(P.orderedChildren(o, add.id).slice(0, 3).map((x) => o.nodes[x].label), ["Taking Away", "Counting Back", "Within 20"], "within a parent the path's learning order wins over rank (foundational first)");
+  eq(P.orderedChildren(o, add.id).slice(0, 3).map((x) => o.nodes[x].label), ["Within 20", "Taking Away", "Counting Back"], "a much-used child moves up; the others keep their logical order");
   ok(P.lessonContext(o, add.id).wantPath === false && typeof P.lessonContext(o, O("Counting").id).ahead === "string", "lessonContext: no child topics asked for once they exist");
 
   // tests
@@ -1108,7 +1135,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(!P.testState(o, add.id).ready && P.testState(o, add.id).taken, "after an attempt the test rests until more is completed");
   const t5 = C.deserialize(C.serialize(o)).tests[add.id];
   ok(t5 && t5.attempts === 1 && Math.abs(t5.best - 2 / 3) < 0.01 && t5.n === 3, "test results survive a reload (v5)");
-  const half = C.create("Ana", T0), hm = C.findSubject(half, "Computer Science");
+  const half = seeded("Ana", T0), hm = C.findSubject(half, "Computer Science");
   half.nodes[hm.path.ids[0]].ghost = false; half.nodes[hm.path.ids[1]].ghost = false;
   C.engage(half, hm.path.ids[0], "got", T0); C.engage(half, hm.path.ids[1], "got", T0);
   ok(P.testState(half, hm.id).ready, "a test also appears when a parent's whole path (2+ steps) is completed");
@@ -1116,24 +1143,40 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   // suggestions, ranking and Draw: on the device, no calls
   const q = C.deserialize(v4raw), now = Date.UTC(2026, 9, 12, 15);
   const s1 = P.suggest(q, { now });
-  ok(s1.length === 3 && s1.every((x) => q.nodes[x.id] && ["deck", "next", "new", "test"].includes(x.kind) && x.why), "suggest: three cards, each with a plain reason");
+  ok(s1.length === 3 && s1.every((x) => q.nodes[x.id] && ["deck", "next", "new", "test", "grow"].includes(x.kind) && x.why), "suggest: three cards, each with a plain reason");
   ok(s1.some((x) => x.kind === "new"), "suggest: something new always keeps a place (free exploration)");
   ok(q.suggest && q.suggest.items.length === 3 && C.deserialize(C.serialize(q)).suggest.items.length === 3, "suggestions are kept on the cloud (v5)");
   const topIds = RK.top(q, { now }).map((x) => x.id);
-  const ranked = s1.filter((x) => x.kind !== "test" && x.kind !== "new");
+  const ranked = s1.filter((x) => x.kind !== "test" && x.kind !== "new" && x.kind !== "grow");
   ok(ranked.length && topIds.includes(ranked[0].id) && ranked[0].why.startsWith("In your top 10"), "ranking shows: the top 10 is offered first and says so");
   const chainTop = RK.chains(q, { now })[0];
   ok(chainTop && ["Coding", "Python", "Computer Science"].includes(chainTop.label), "ranking: the busiest chain is the one in use (" + (chainTop && chainTop.label) + ")");
-  for (let i = 0; i < 6; i++) C.engage(q, C.findTopic(q, "Rocks")?.id || C.findTopic(q, "Space").id, "open", now);
   const sc = RK.scores(q, now);
   const m = C.findSubject(q, "Math");
-  ok(sc[C.findTopic(q, "Counting").id] > 0 && (sc[C.findTopic(q, "Counting").id] || 0) > (sc[C.findTopic(q, "Decimals").id] || 0), "popularity: a popular unexplored topic scores above an unpopular one");
-  ok(!RK.top(q, { now }).some((x) => x.label === "Counting"), "popularity alone never puts a topic in the top 10");
-  const fork = { ids: [C.findTopic(q, "Decimals").id, C.findTopic(q, "Counting").id], why: ["Later", "Start here"] };
-  ok(P.orderChoices(q, fork)[0].id === C.findTopic(q, "Counting").id && P.orderChoices(q, fork)[0].why === "Start here", "fork choices are ordered by rank, keeping their reasons");
+  // ranking with the model's importance scores (made for the learner's age band and rough region)
+  const mq = C.create("Rae", T0);
+  C.setProfile(mq, { age: "7-9", region: "Canada / Ontario-ish", onboarded: true }, T0);
+  C.applyCreate(mq, { items: [{ node: { name: "Dinosaurs", chain: ["Science"] }, card: { title: "Dinosaurs", blurb: "Giant reptiles from long ago.", goal: "Name three kinds." },
+    children: [{ name: "Fossils", order: 1, score: 0.4 }, { name: "Dino Types", order: 2, score: 0.95 }, { name: "Extinction", order: 3, score: 0.2 }] }] }, { t: T0 + 1 });
+  const ML = (l) => C.findTopic(mq, l), din = ML("Dinosaurs"), msc = RK.scores(mq, T0 + 2);
+  ok(RK.sources().join() === "local,chain,model" && !RK.POPULAR, "ranking sources: local use, chain, and the model's importance (no built-in popularity list)");
+  ok(msc[ML("Dino Types").id] > msc[ML("Fossils").id] && msc[ML("Fossils").id] > msc[ML("Extinction").id], "model importance ranks a parent's children");
+  eq(P.orderedChildren(mq, din.id).map((x) => mq.nodes[x].label), ["Dino Types", "Fossils", "Extinction"], "a much more important child is offered before the first logical step");
+  ok(P.orderedChildren(mq, din.id).includes(ML("Extinction").id), "a low score never hides a child (exploration stays free)");
+  ok(!RK.top(mq, { now: T0 + 2 }).length, "model scores alone never put a topic in the top 10");
+  const close = C.create("Rae", T0);
+  C.applyCreate(close, { items: [{ node: { name: "Bridges", chain: ["Making & Coding"] }, card: {}, children: [{ name: "Beams", order: 1, score: 0.7 }, { name: "Arches", order: 2, score: 0.75 }] }] }, { t: T0 + 1 });
+  eq(P.orderedChildren(close, C.findTopic(close, "Bridges").id).map((x) => close.nodes[x].label), ["Beams", "Arches"], "with similar scores the logical order leads");
+  // the age / region bias: scores made before the learner changed their age or region count half until refreshed
+  C.setProfile(mq, { age: "10-12" }, T0 + 5);
+  C.applyCreate(mq, { items: [{ node: { name: "Volcanoes", chain: ["Science"] }, card: {}, children: [{ name: "Lava", order: 1, score: 0.6 }, { name: "Eruptions", order: 2, score: 0.5 }] }] }, { t: T0 + 6 });
+  const msc2 = RK.scores(mq, T0 + 7);
+  ok(mq.profile.changedAt === T0 + 5 && msc2[ML("Lava").id] > msc2[ML("Dino Types").id], "after an age change, fresh scores outrank older ones (0.6 now > 0.95 made for the old age band)");
+  const fork = { ids: [ML("Extinction").id, ML("Dino Types").id], why: ["Later", "Start here"] };
+  ok(P.orderChoices(mq, fork)[0].id === ML("Dino Types").id && P.orderChoices(mq, fork)[0].why === "Start here", "fork choices are ordered by rank, keeping their reasons");
   const today = (cl) => cl.draws.filter((x) => x[0] === D.dayOf(now)).length, drawsBefore = today(q), d1 = P.draw(q, { now, skip: py5.id });
   ok(d1 && q.nodes[d1] && d1 !== py5.id && today(q) === drawsBefore + 1 && q.draws.at(-1)[1] === d1, "Draw: one card, never the one already open, logged for the yearly balance");
-  const empty = C.create("Kim", T0), d2 = P.draw(empty, { now: T0 });
+  const empty = seeded("Kim", T0), d2 = P.draw(empty, { now: T0 });
   ok(d2 && empty.nodes[d2] && !(empty.deck || []).length, "Draw with an empty deck takes the best suggestion");
   ok(m && P.explore(q, now, sc, () => false), "explore: a lightly balanced pick from the quietest subject");
   const orch = fs.readFileSync("public/ikolearn/orchestrator.js", "utf8");
@@ -1174,6 +1217,148 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/P\.orderChoices\(/.test(app) && /P\.orderedChildren\(/.test(app) && /R\.chains/.test(app), "ranking orders forks and branches; chains show in the top 10");
   const deploy = fs.readFileSync("scripts/deploy-ikosagon-prod.sh", "utf8");
   ok(/\.env\.local/.test(deploy) && /VERCEL_ORG_ID/.test(deploy) && /VERCEL_PROJECT_ID/.test(deploy) && /deploy --prod/.test(deploy) && !/^[^#]*vercel[^\n]*\b(link|env pull|dev)\b/m.test(deploy), "deploy script: ids from env, never links, pulls env or runs dev, and refuses an .env.local");
+  // procedural start: no seeded map; a few questions, then one creation call builds the first parents
+  const fresh = C.create("Mia", T0);
+  ok(Object.keys(fresh.nodes).length === 0 && fresh.v === 6 && !C.STARTERS && !C.KNOWN_CHAINS && !RK.POPULAR, "a new learner starts with an empty cloud (no seeded subjects, chains or popularity list)");
+  ok(Array.isArray(C.PALETTE) && C.PALETTE.every((p) => typeof p.hue === "number" && typeof p.label === "string") && C.PALETTE.length <= 8 && C.paletteHue("Math") === 28, "only a small data-only palette of broad subjects and hues remains");
+  ok(P.needsOnboarding(fresh) && !P.needsOnboarding(seeded("Old", T0)), "onboarding runs for an empty cloud, not for an existing one");
+  const ob = P.onboarding(fresh, true), ob2 = P.onboarding(fresh, false);
+  ok(ob.length === 2 && ob2.length === 3 && ob2[0].id === "name" && ob.map((x) => x.id).join() === "age,interests", "onboarding: at most 3 questions; the name only when missing");
+  ok(/skip/i.test(ob[0].q) && ob[0].chips.length === AGE_BANDS.length && ob[1].multi && ob[1].input && ob[1].chips.length >= 6, "onboarding: an optional age band, interests as chips or typed; static, built on the device");
+  C.setProfile(fresh, { age: "7-9", interests: ["Dinosaurs", "Building things"], onboarded: true }, T0);
+  ok(!P.needsOnboarding(fresh) && C.profileOf(fresh).interests.length === 2 && !P.interestChips(fresh).includes("Dinosaurs"), "answers are kept on the profile; chosen interests leave the chips");
+  const rq = P.createRequest(fresh, "start");
+  ok(rq.kind === "start" && rq.age === "7-9" && rq.interests.join() === "Dinosaurs,Building things" && Array.isArray(rq.favorites), "createRequest(start): age band, interests and favorites only");
+  const CI = parseLearnInput({ mode: "notice", name: "Mia", messages: [], kind: "start", age: "7-9", region: "Canada / Ontario-ish M5V 2T6", interests: ["Dinosaurs", "<b>Building</b> things", "", "a", "b", "c", "d"] });
+  ok(CI.age === "7-9" && CI.region.startsWith("Canada / Ontario-ish") && !/\d/.test(CI.region) && CI.interests.length === 5 && !CI.interests[1].includes("<"), "create input: a known age band, a region with no digits, interests cleaned and capped");
+  ok(parseLearnInput({ mode: "notice", name: "Mia", messages: [], age: "12", kind: "weird" }).age === "" && parseLearnInput({ mode: "notice", name: "Mia", messages: [], kind: "weird" }).kind === "start" && !/\d/.test(cleanRegion("51.5, -0.12")), "an unknown age band or kind is dropped; coordinates lose their digits");
+  const cs = createSystem(CI);
+  ok(/Role: create, start/.test(cs) && /3 to 5 parent topics/.test(cs) && /Dinosaurs/.test(cs) && /Age band: 7-9/.test(cs) && /Rough region: Canada \/ Ontario-ish/.test(cs), "create prompt (start): interests, age band and rough region");
+  ok(/typical home curriculum/.test(cs) && /never rules a topic out/.test(cs) && /score \(0 to 1/.test(cs) && /order \(1 = learn first/.test(cs) && /goal/.test(cs), "create prompt: curriculum fit only biases; children carry order and a typical-importance score; card has a goal");
+  ok(!/Common Core|Montessori|Ontario curriculum|National Curriculum/i.test(cs), "create prompt: no external framework names");
+  const nxi = parseLearnInput({ mode: "notice", name: "Mia", messages: [], kind: "next", focus: "Dinosaurs", known: ["Fossils"], favorites: ["Fossils", "Volcanoes"] });
+  const ns = createSystem(nxi);
+  ok(/Role: create, next/.test(ns) && /exactly 1 item whose node\.name is "Dinosaurs"/.test(ns) && /They already have: Fossils/.test(ns) && /most-used topics lately[^\n]*Volcanoes/.test(ns), "create prompt (next): the focus, what they have, and their favorites steer it");
+  ok(/Role: create, more/.test(createSystem(parseLearnInput({ mode: "notice", name: "Mia", messages: [], kind: "more", interests: ["Space"] }))), "create prompt (more): one or two new parents");
+  ok(CREATE_SCHEMA.properties.items.items.required.join() === "node,card,children" && CREATE_SCHEMA.properties.items.items.properties.children.items.required.join() === "name,order,score", "create schema: node, card and ordered, scored children");
+
+  // strict validation of the creation result
+  const kid = (name, order, score, why = "") => ({ name, order, score, why });
+  const item = (name, chain, kids, card = { title: name, blurb: "What " + name + " is about.", goal: "Explain " + name + "." }) => ({ node: { name, chain }, card, children: kids });
+  const good = { items: [
+    item("Dinosaurs", ["Science"], [kid("Fossils", 2, 0.7), kid("Dino Types", 1, 90), kid("Mia", 3, 0.5), kid("dinosaurs", 4, 0.5), kid("Science", 5, 0.5), kid("Extinction", 3, "x")]),
+    item("Building Things", ["Making & Coding"], [kid("Bridges", 1, 0.8), kid("Fossils", 2, 0.5), kid("Towers", 2, -3)]),
+    item("Mia", ["Science"], [kid("A", 1, 1), kid("B", 2, 1)]),
+    item("Reading", [], [kid("Phonics", 1, 0.9), kid("Stories", 2, 0.6)]),
+  ] };
+  const pc = parseCreate(JSON.stringify(good), "start", "Mia");
+  ok(pc && pc.items.length === 3 && pc.items.map((x) => x.node.name).join() === "Dinosaurs,Building Things,Reading", "parseCreate(start): never the learner's name; good items kept in order");
+  const d0 = pc.items[0];
+  eq(d0.children.map((c) => [c.name, c.order, c.score]), [["Dino Types", 1, 0.9], ["Fossils", 2, 0.7], ["Extinction", 3, 0.5]], "parseCreate: children sorted by order and renumbered; percent scores read as 0-1, junk scores 0.5; the node, its chain and the name dropped");
+  ok(pc.items[1].children.map((c) => c.name).join() === "Bridges,Towers" && pc.items[1].children[1].score === 0 && d0.node.chain.join() === "Science" && pc.items[2].node.chain.length === 0, "parseCreate: no child twice across the result; scores clamped; an empty chain is allowed (placed as a subject)");
+  ok(d0.card.title === "Dinosaurs" && d0.card.goal === "Explain Dinosaurs." && !/Mia/.test(JSON.stringify(pc)), "parseCreate: card title, blurb and goal");
+  ok(parseCreate({ items: [item("Dinosaurs", ["Science"], [kid("Fossils", 1, 0.5), kid("Eggs", 2, 0.5)])] }, "start", "Mia") === null, "parseCreate(start): one parent is not a start (2+ needed)");
+  ok(parseCreate({ items: [item("Dinosaurs", ["Science"], [kid("Fossils", 1, 0.5)]), item("Space", ["Science"], [kid("Moon", 1, 0.5)])] }, "start", "Mia") === null && parseCreate("junk", "start") === null && parseCreate({ items: "x" }, "more") === null, "parseCreate: items need 2+ children; junk is null (the app falls back)");
+  ok(parseCreate({ items: [1, 2, 3, 4, 5, 6, 7].map((i) => item("Topic " + "ABCDEFG"[i - 1], ["Science"], [kid("Kid " + i + "a", 1, 0.5), kid("Kid " + i + "b", 2, 0.5)])) }, "start").items.length === 5 && parseCreate({ items: [1, 2, 3].map((i) => item("Topic " + "ABC"[i - 1], [], [kid("K" + i + "a", 1, 0.5), kid("K" + i + "b", 2, 0.5)])) }, "more").items.length === 2, "parseCreate: at most 5 parents to start, 2 for more");
+  const pn = parseCreate({ items: [item("Space", [], [kid("Moon", 1, 1), kid("Mars", 2, 1)]), item("dinosaurs", ["Science"], [kid("Fossils", 1, 0.9), kid("Eggs", 2, 0.8), kid("Raptors", 3, 0.4)])] }, "next", "Mia", "Dinosaurs", ["fossils"]);
+  ok(pn && pn.items.length === 1 && pn.items[0].node.name === "Dinosaurs" && pn.items[0].node.chain.length === 0 && pn.items[0].children.map((c) => c.name).join() === "Eggs,Raptors", "parseCreate(next): only the focus, with children it doesn't already have");
+  ok(parseCreate({ items: [item("Dinosaurs", [], [kid("Fossils", 1, 0.9), kid("Eggs", 2, 0.8)])] }, "next", "Mia", "Dinosaurs", ["Fossils"]) === null, "parseCreate(next): fewer than 2 new children is null (nothing half-made)");
+
+  // the creation call: one model call, mocked
+  const cf = fakeFetch([() => res(200, { candidates: [{ content: { parts: [{ text: JSON.stringify(good) }] } }] })]);
+  const co = await createFor(CI, ENV, cf);
+  ok(co.status === 200 && co.body.ok && co.body.kind === "start" && co.body.items.length === 3 && cf.calls.length === 1 && cf.calls[0].url.includes(":generateContent"), "createFor(start): one call -> parents, cards and ordered children");
+  const sent = JSON.stringify(cf.calls[0]);
+  ok(/Age band: 7-9/.test(sent) && !/M5V|2T6/.test(sent), "createFor: the age band and rough region go along; nothing more precise");
+  ok(JSON.parse(cf.calls[0].init.body).generationConfig.maxOutputTokens === MODEL_LIMITS.createMaxTokens && MODEL_LIMITS.createMaxTokens >= 1500 && tf.calls.length && JSON.parse(tf.calls[0].init.body).generationConfig.maxOutputTokens === MODEL_LIMITS.jsonMaxTokens, "the creation call gets room for 5 parents with cards and children; other JSON calls keep their cap");
+  const cf2 = fakeFetch([() => res(200, {})]);
+  const co2 = await createFor(parseLearnInput({ mode: "notice", name: "Mia", messages: [], kind: "next" }), ENV, cf2);
+  ok(co2.status === 422 && co2.body.reason === "focus" && cf2.calls.length === 0, "createFor(next) without a focus: no call");
+  const empty2 = () => res(200, { candidates: [{ content: { parts: [{ text: "{\"items\":[]}" }] } }] });
+  const cf3 = fakeFetch([empty2, empty2, empty2]);
+  const co3 = await createFor(CI, ENV, cf3);
+  ok(co3.status >= 500 && !co3.body.ok, "createFor: an unusable answer is an error (the app falls back on the device)");
+  const croute = fs.readFileSync("app/api/ikolearn/create/route.ts", "utf8");
+  ok(/prepare\(/.test(croute) && /createFor\(/.test(croute) && /maxDuration = 60/.test(croute) && !/requireFocus/.test(croute), "create route: same guards (origin, rate limits, daily budget)");
+  ok(!fs.existsSync("lib/ikolearn/chains.ts") && !/from "\.\/chains"/.test(fs.readFileSync("lib/ikolearn/prompts.ts", "utf8")), "the hardcoded chain table is gone");
+
+  // live finding: the model named "Engineering" and "Language" as subjects on an empty map
+  const al = C.create("Mia", T0);
+  C.applyCreate(al, { items: [item("Building Things", ["Engineering"], [kid("Towers", 1, 0.9), kid("Bridges", 2, 0.8)]), item("Reading Stories", ["Language"], [kid("Plot", 1, 0.9), kid("Characters", 2, 0.8)])] }, { t: T0 });
+  ok(C.findSubject(al, "Making & Coding").label === "Making & Coding" && C.findSubject(al, "Reading & Writing").hue === 4 && !al.order.some((id) => ["Engineering", "Language"].includes(al.nodes[id].label)), "a new subject named by an alias takes the palette name and colour (Engineering -> Making & Coding)");
+  const gm = C.create("M", T0); C.applyCreate(gm, { items: [item("Chess", ["Games & Strategy"], [kid("Openings", 1, 1), kid("Endgames", 2, 1)])] }, { t: T0 });
+  ok(C.findSubject(gm, "Games & Strategy") && C.findSubject(gm, "Games & Strategy").label === "Games & Strategy" && !C.PALETTE.some((q) => q.hue === C.findSubject(gm, "Games & Strategy").hue), "any other subject keeps its own name and takes a free colour");
+  const prq = P.createRequest(C.create("Mia", T0), "start");
+  ok(prq.parents.join() === C.PALETTE.map((q) => q.label).join() && P.createRequest(seeded("Mia", T0), "start").parents[0] === "Reading & Writing", "createRequest: the palette's broad subject names go along, so the model files parents under them");
+  ok(/use an existing subject when one fits: Reading & Writing, Math/.test(createSystem(parseLearnInput({ mode: "notice", name: "Mia", messages: [], kind: "start", parents: prq.parents }))), "create prompt lists the broad subjects to use");
+
+  // building from a creation result, on the device
+  const bc = C.create("Mia", T0);
+  C.setProfile(bc, { age: "7-9", onboarded: true }, T0);
+  const built = C.applyCreate(bc, pc, { t: T0 + 1 });
+  const BD = (l) => C.findTopic(bc, l);
+  ok(built.nodes.length === 3 && built.children.length === 7 && BD("Dinosaurs").parent === C.findSubject(bc, "Science").id && C.findSubject(bc, "Reading"), "applyCreate: parents placed under their chain (or as a subject), children created");
+  ok(C.findSubject(bc, "Science").hue === 48 && !BD("Dinosaurs").ghost && BD("Fossils").ghost && BD("Dinosaurs").blurb && BD("Dinosaurs").goal === "Explain Dinosaurs.", "applyCreate: palette hue, solid parents, dotted child placeholders, card blurb and goal");
+  ok(BD("Dinosaurs").path.ids.map((x) => bc.nodes[x].label).join() === "Dino Types,Fossils,Extinction" && BD("Dino Types").imp === 0.9 && BD("Dino Types").impAt === T0 + 1, "applyCreate: children on a path in the model's order, with its importance score and time");
+  ok(built.order[0] === C.findSubject(bc, "Science").id && built.order.indexOf(BD("Dinosaurs").id) < built.order.indexOf(BD("Dino Types").id), "applyCreate: build order broadest first, then each parent, then its children (for the visible build)");
+  const deckBefore = JSON.stringify(bc.deck), countBefore = Object.keys(bc.nodes).length;
+  C.applyCreate(bc, pn, { t: T0 + 2, focusId: BD("Dinosaurs").id });
+  ok(BD("Eggs") && BD("Raptors") && BD("Fossils") && Object.keys(bc.nodes).length === countBefore + 2 && JSON.stringify(bc.deck) === deckBefore, "applyCreate(next): adds only new children; nothing is removed");
+  ok(BD("Dinosaurs").goal === "Explain Dinosaurs." && BD("Dinosaurs").blurb === "What Dinosaurs is about.", "applyCreate(next): the parent's card line and goal stay as they were");
+
+  // "what comes next": only once a branch is finished, and cached
+  const wn = C.create("Mia", T0);
+  C.applyCreate(wn, { items: [item("Space", ["Science"], [kid("Moon", 1, 0.9), kid("Mars", 2, 0.5)]), item("Lego", [], [kid("Bricks", 1, 0.9), kid("Gears", 2, 0.5)])] }, { t: T0 });
+  ok(!P.needsNext(wn, C.findSubject(wn, "Science").id) && !P.needsNext(wn, C.findSubject(wn, "Lego").id), "what comes next: not for a plain subject, nor before anything is done");
+  const sp = C.findTopic(wn, "Space"), moon = C.findTopic(wn, "Moon"), mars = C.findTopic(wn, "Mars");
+  ok(!P.needsNext(wn, sp.id), "what comes next: not while the branch still has open children");
+  const leafOk = () => !P.needsNext(wn, moon.id) && !P.needsNext(wn, mars.id);
+  [moon, mars].forEach((k, i) => { C.engage(wn, k.id, "got", T0 + i); C.confirm(wn, k.id, true, T0 + 10 + i); C.confirm(wn, k.id, true, T0 + 20 + i); });
+  ok(P.needsNext(wn, sp.id) && P.readyNext(wn, T0 + 30)[0] === sp.id && leafOk(), "what comes next: offered for the parent once its branch is finished (its finished steps hand it up)");
+  ok(P.suggest(wn, { now: T0 + 30 }).some((x) => x.kind === "grow" && x.id === sp.id && /What comes next in Space/.test(x.why)), "suggestions offer \"What comes next\" after a branch ends");
+  const nreq = P.createRequest(wn, "next", sp.id);
+  ok(nreq.kind === "next" && nreq.focus === "Space" && nreq.known.join() === "Moon,Mars", "createRequest(next): the parent, its trail and what it already has");
+  C.applyCreate(wn, { items: [{ node: { name: "Space", chain: [] }, card: {}, children: [{ name: "Stars", order: 1, score: 0.8, why: "" }, { name: "Comets", order: 2, score: 0.4, why: "" }] }] }, { t: T0 + 31, focusId: sp.id });
+  ok(!P.needsNext(wn, sp.id) && sp.asked === 3, "what comes next: cached on the parent; not asked again for the same step");
+  ok(C.deserialize(C.serialize(wn)).nodes[sp.id].asked === 3, "the cache survives a reload");
+  const wd = C.create("Mia", T0); C.applyCreate(wd, { items: [item("Space", ["Science"], [kid("Moon", 1, 0.9), kid("Mars", 2, 0.5)])] }, { t: T0 });
+  [C.findTopic(wd, "Moon"), C.findTopic(wd, "Mars")].forEach((k, i) => { C.engage(wd, k.id, "got", T0 + i); C.confirm(wd, k.id, true, T0 + 10 + i); C.confirm(wd, k.id, true, T0 + 20 + i); });
+  C.setProfile(wd, { onboarded: true }, T0); C.joinDeck(wd, T0 + 30);
+  const wdS = P.suggest(wd, { now: T0 + 5 * DAYMS }), wdD = P.draw(wd, { now: T0 + 5 * DAYMS });
+  ok(wdS.some((x) => x.kind === "grow") && wdS.some((x) => x.kind === "ask") && wdD && ["Moon", "Mars"].includes(wd.nodes[wdD].label) && !P.suggest(wd, { now: T0 + 5 * DAYMS, noAsk: true }).some((x) => x.kind === "ask"), "Draw never spends a call: it skips the grow and ask items and takes a card");
+
+  // re-ask lightly: one question when the cloud is thin or the learner seems stuck, every few days at most
+  const ra = C.create("Mia", T0);
+  ok(P.reask(ra, T0) === null, "re-ask: never before onboarding");
+  C.setProfile(ra, { onboarded: true, askedAt: true }, T0);
+  ok(P.reask(ra, T0 + DAYMS) === null, "re-ask: not within 3 days of the last question");
+  const r1 = P.reask(ra, T0 + 4 * DAYMS);
+  ok(r1 && r1.why === "thin" && /curious/.test(r1.q) && r1.chips.length <= 6, "re-ask: one short question when the cloud is thin");
+  const rich = seeded("Mia", T0); C.setProfile(rich, { onboarded: true }, T0);
+  ok(P.reask(rich, T0 + 4 * DAYMS) === null, "re-ask: not when there is plenty open and the learner is learning");
+  rich.profile.visits = 5; rich.profile.lessonVisit = 1;
+  ok((P.reask(rich, T0 + 4 * DAYMS) || {}).why === "stuck", "re-ask: offered when several visits pass without a lesson");
+  ok(P.suggest(ra, { now: T0 + 4 * DAYMS }).some((x) => x.kind === "ask" && x.id === null) && !P.suggest(ra, { now: T0 + 4 * DAYMS, noAsk: true }).some((x) => x.kind === "ask"), "the question appears as a suggestion (no call until answered)");
+
+  // region from the browser alone, and the profile on the device
+  ok(P.regionFrom("America/Toronto", "en-CA") === "Canada / Ontario-ish" && P.regionFrom("Europe/Paris", "fr-FR") === "France", "region: a coarse guess from the time zone");
+  ok(P.regionFrom("Etc/UTC", "en-NZ") === "New Zealand" && P.regionFrom("Etc/UTC", "en") === "" && P.regionFrom("", "") === "", "region: the locale's country as a fallback; nothing when unknown");
+  const pf = C.create("Mia", T0);
+  C.setProfile(pf, { age: "10-12", region: "Canada / Ontario-ish", regionAuto: false, interests: ["Space", "space", "Lego"], onboarded: true }, T0 + 1000);
+  const pf2 = C.deserialize(C.serialize(pf)).profile;
+  ok(pf2.age === "10-12" && pf2.region === "Canada / Ontario-ish" && pf2.regionAuto === false && pf2.interests.join() === "Space,Lego" && pf2.onboarded && pf2.changedAt === T0 + 1000, "the profile round-trips (v6): age band, region, interests, flags");
+  C.setProfile(pf, { region: "" }, T0 + 2000); C.setProfile(pf, { age: "99" }, T0 + 3000);
+  ok(C.profileOf(pf).region === "" && C.profileOf(pf).changedAt === T0 + 2000 && C.profileOf(pf).age === "10-12", "region can be cleared; an unknown age band is ignored");
+
+  // UI wiring for the procedural flow
+  const priv = fs.readFileSync("public/ikolearn/privacy.html", "utf8");
+  ok(/id="you"/.test(html) && /id="you-link"/.test(html) && /id="you-age"/.test(html) && /id="you-region"/.test(html) && /id="you-clear"/.test(html), "About you: age band and region are shown, editable and clearable in a quiet spot");
+  ok(/Age and region/.test(priv) && /time zone/i.test(priv), "privacy page explains the age band and rough region");
+  ok(/"\/create"/.test(app) && /P\.createRequest\(/.test(app) && /C\.applyCreate\(/.test(app) && /animateBuild/.test(app) && /mode: "notice"/.test(app), "the app builds from one creation call, visibly");
+  ok(/P\.onboarding\(/.test(app) && /askTile/.test(app) && /answerReask/.test(app) && /fallbackParents/.test(app), "onboarding questions, a light re-ask, and a local fallback when the call fails");
+  ok(!/geolocation|ipapi|ipinfo|ip-api/i.test(app + html), "no location permission prompt and no IP lookup");
+  ok(/function nextStep\(/.test(app) && !/C\.nextFor\(state\.cloud, id\)\);\n    return nx/.test(app) && /var rec = nextStep\(id\)/.test(app), "one recommended next step everywhere (fork pick, then the ranked child, then up the tree)");
+  ok(C.trimThread([{ role: "ask", text: "q", done: true }, { role: "ask", text: "open" }, { role: "user", text: "a" }]).length === 2, "answered questions stay in the saved chat; open ones are asked again");
 }
 
 if (fails.length) {
