@@ -106,7 +106,7 @@
     var n = cloud.nodes[id], e = C.deckEntry(cloud, id), s = n ? C.subjectOf(cloud, id) : null;
     return {
       id: id, label: n ? n.label : e.label, subject: s && s.id !== id ? s.label : e ? e.subject : "",
-      chain: C.chainOf(cloud, id), blurb: (n && n.blurb) || (e && e.blurb) || "",
+      chain: C.chainOf(cloud, id), blurb: (n && n.blurb) || (e && e.blurb) || "", goal: (n && n.goal) || "",
       stage: g.stage, detail: g.detail, stageName: g.name, achieved: g.achieved, toNext: g.toNext, inDeck: g.inDeck, live: Boolean(n),
       color: C.cardColor(cloud, id), art: landscape(id, g.detail)
     };
@@ -183,6 +183,7 @@
     if (size === "full") {
       d.appendChild(Object.assign(doc.createElement("span"), { className: "gc-rule" }));
       if (spec.blurb) { var b = doc.createElement("span"); b.className = "gc-desc"; b.textContent = spec.blurb; d.appendChild(b); }
+      if (spec.goal) { var g = doc.createElement("span"); g.className = "gc-goal"; g.textContent = "Goal: " + spec.goal; d.appendChild(g); }
     }
     var f = doc.createElement("span"); f.className = "gc-mark"; f.textContent = spec.achieved ? "Achieved" : spec.stageName; d.appendChild(f);
     return d;

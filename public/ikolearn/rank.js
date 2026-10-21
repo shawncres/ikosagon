@@ -7,8 +7,11 @@
  * Scores are normalised per source (top = 1) and mixed by each source's weight. Three sources are on today:
  *   local    this learner's use of each topic (weight 1)
  *   chain    use of everything under a topic, so the parents of an active chain rank too (weight 0.5)
- *   popular  a small built-in prior of topics many young learners start with (weight 0.35). It stands in for a shared,
- *            across-learners source until there is one; it only orders things and never puts an unused topic in the top 10.
+ *   model    model-informed importance (weight 0.35): the creation call scores each child it makes (0-1, how important
+ *            and typical it is for this learner's age band and rough region). A score made before the learner changed
+ *            their age or region counts half until it is refreshed. A prior: it only orders things and never puts an
+ *            unused topic in the top 10, and it never hides anything (low scores are still offered, just later).
+ * A shared, across-learners source can register later with the same shape (register({ name, weight, prior, scores })).
  *
  * The ranking orders what is offered first: suggestions and Draw (orchestrator.js), child topics without a path order,
  * fork choices, and the nearby branch offered when a branch ends. Within a parent, the path's learning order (foundational
@@ -48,14 +51,21 @@
       return out;
     }
   };
-  /* Topics many young learners start with (a prior, highest first). Keys are labels; normalised on use. */
-  var POPULAR = ["Counting", "Addition", "Stories", "Living Things", "Space", "Drawing", "Fractions", "Shapes", "Programming", "Volcanoes",
-    "Subtraction", "Multiplication", "Animals", "Dinosaurs", "Building", "Python", "Algorithms", "Vocabulary", "Maps", "Weather", "Rhythm", "Puzzles", "Planets", "Scratch"];
-  var popular = {
-    name: "popular", weight: 0.35, prior: true,
-    scores: function () { var out = {}; POPULAR.forEach(function (l, i) { out[C.norm(l)] = 1 - i / (POPULAR.length + 4); }); return out; }
+  /* importance from the creation call, per topic key (the best score when a label appears twice) */
+  var model = {
+    name: "model", weight: 0.35, prior: true,
+    scores: function (cloud) {
+      var out = {}, changed = (cloud.profile && cloud.profile.changedAt) || 0;
+      cloud.order.forEach(function (id) {
+        var n = cloud.nodes[id];
+        if (!n || !n.parent || n.imp == null) return;
+        var v = n.imp * (changed && (n.impAt || 0) < changed ? 0.5 : 1);
+        if (v > 0) out[n.key] = Math.max(out[n.key] || 0, v);
+      });
+      return out;
+    }
   };
-  var sources = [local, chain, popular];
+  var sources = [local, chain, model];
 
   /* Adds a source { name, weight, scores(cloud, now) -> { key: score }, prior? }. A prior only orders things; it can't put a topic in the top 10. Same name replaces. */
   function register(src) {
@@ -109,7 +119,7 @@
     return out;
   }
 
-  /* id -> mixed score for any node (ghosts included, so unexplored children can be ordered by popularity). */
+  /* id -> mixed score for any node (ghosts included, so unexplored children can be ordered by their importance). */
   function scores(cloud, now) {
     var m = mixed(cloud, now || Date.now()), out = {};
     cloud.order.forEach(function (id) { var nd = cloud.nodes[id]; if (nd && nd.parent && m[nd.key]) out[id] = Math.round(m[nd.key] * 1000) / 1000; });
@@ -130,7 +140,7 @@
     return rows.slice(0, opts.n || 5);
   }
 
-  var api = { TOP: TOP, POPULAR: POPULAR, scores: scores, order: order, chains: chains, register: register, unregister: unregister, mixed: mixed, top: top, boost: boost, sources: function () { return sources.map(function (s) { return s.name; }); } };
+  var api = { TOP: TOP, scores: scores, order: order, chains: chains, register: register, unregister: unregister, mixed: mixed, top: top, boost: boost, sources: function () { return sources.map(function (s) { return s.name; }); } };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.IkoRank = api;
 })(typeof window !== "undefined" ? window : this);
