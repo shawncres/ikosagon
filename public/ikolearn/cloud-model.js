@@ -10,7 +10,7 @@
 (function (root) {
   "use strict";
 
-  var VERSION = 4;
+  var VERSION = 5;
   /* nodes: stored cap (localStorage stays small). children / ghosts: per node. There is no depth limit. */
   var LIMITS = { nodes: 600, subjects: 12, children: 16, ghostsPerNode: 6, pathSteps: 6, cards: 60, labelChars: 32, choices: 3, draws: 3000, whyChars: 80, chain: 4, blurbChars: 140 };
   var MASTERED = 0.6;
@@ -40,7 +40,12 @@
     { label: "Science", children: ["Living Things", "Space", { label: "Weather", ghost: true }] },
     { label: "People & Places", children: ["History", "Maps", { label: "Cultures", ghost: true }] },
     { label: "Art & Music", children: ["Drawing", "Rhythm", { label: "Color Mixing", ghost: true }] },
-    { label: "Making & Coding", children: ["Building", "Puzzles", { label: "Coding", ghost: true }, { label: "How AI Works", ghost: true }] }
+    { label: "Making & Coding", children: ["Building", "Puzzles", { label: "Robots", ghost: true }] },
+    /* its own subject (and hue) since v5: older clouds move their clearly-CS topics here on load (adoptComputerScience) */
+    {
+      label: "Computer Science", hue: 252, path: ["Algorithms", "Programming"],
+      children: [{ label: "Algorithms", ghost: true }, { label: "Programming", ghost: true }, { label: "How Computers Work", ghost: true }, { label: "How AI Works", ghost: true }]
+    }
   ];
 
   /* Words that point at an existing subject, so "maths" or "biology" lands under Math or Science. */
@@ -50,8 +55,36 @@
     science: ["sciences", "biology", "physic", "physics", "chemistry", "nature", "earth science"],
     "people and places": ["history", "geography", "social studies", "social study", "civics", "world"],
     "art and music": ["art", "arts", "music", "drawing and music", "creative arts"],
-    "making and coding": ["coding", "computing", "computer science", "technology", "tech", "engineering", "making", "programming"]
+    "making and coding": ["technology", "tech", "engineering", "making", "building", "crafts", "maker"],
+    "computer science": ["cs", "computing", "computers", "computer", "coding", "programming", "code", "software", "comp sci"]
   };
+
+  /*
+   * Known chains (broadest first, down to the parent), used when the model names a topic but not where it sits, or names a
+   * parent that isn't on the map yet: "Sets" under "Python" becomes Computer Science -> Programming -> Python -> Sets.
+   * Deterministic, no call. The server keeps the same table (lib/ikolearn/chains.ts; the check script compares them).
+   */
+  var KNOWN_CHAINS = {
+    "Programming": ["Computer Science"], "Algorithms": ["Computer Science"], "Coding": ["Computer Science"],
+    "How Computers Work": ["Computer Science"], "How AI Works": ["Computer Science"], "Web Pages": ["Computer Science"],
+    "Python": ["Computer Science", "Programming"], "JavaScript": ["Computer Science", "Programming"], "Scratch": ["Computer Science", "Programming"],
+    "Java": ["Computer Science", "Programming"], "HTML": ["Computer Science", "Web Pages"],
+    "Counting": ["Math"], "Number Sense": ["Math"], "Addition": ["Math"], "Subtraction": ["Math"], "Multiplication": ["Math"], "Division": ["Math"],
+    "Fractions": ["Math"], "Shapes": ["Math"], "Place Value": ["Math", "Number Sense"], "Decimals": ["Math", "Fractions"], "Time": ["Math"], "Money": ["Math"],
+    "Living Things": ["Science"], "Space": ["Science"], "Weather": ["Science"], "Volcanoes": ["Science"], "Planets": ["Science", "Space"], "Plants": ["Science", "Living Things"], "Animals": ["Science", "Living Things"],
+    "Stories": ["Reading & Writing"], "Vocabulary": ["Reading & Writing"], "Poetry": ["Reading & Writing"], "Grammar": ["Reading & Writing"], "Spelling": ["Reading & Writing"], "Phonics": ["Reading & Writing"],
+    "History": ["People & Places"], "Maps": ["People & Places"], "Cultures": ["People & Places"],
+    "Drawing": ["Art & Music"], "Rhythm": ["Art & Music"], "Color Mixing": ["Art & Music"], "Painting": ["Art & Music"],
+    "Building": ["Making & Coding"], "Puzzles": ["Making & Coding"], "Robots": ["Making & Coding"]
+  };
+  var CHAIN_INDEX = null;
+  function chainHint(label) {
+    if (!CHAIN_INDEX) { CHAIN_INDEX = {}; Object.keys(KNOWN_CHAINS).forEach(function (k) { CHAIN_INDEX[norm(k)] = KNOWN_CHAINS[k]; }); }
+    var c = CHAIN_INDEX[norm(label)];
+    return c ? c.slice() : null;
+  }
+  /* Topics that belong to Computer Science, not Making & Coding (moved once, on load, from older clouds). */
+  var CS_TOPICS = ["Coding", "Programming", "Python", "JavaScript", "Scratch", "Java", "Algorithms", "How AI Works", "How Computers Work", "Computers", "Web Pages", "HTML", "Internet", "Data", "Apps", "Code"];
 
   function cleanLabel(v) {
     return String(v == null ? "" : v)
@@ -119,12 +152,19 @@
       id: id, label: cleanLabel(o.label), key: norm(o.label), parent: o.parent || null,
       weight: o.ghost ? 0 : (o.weight == null ? 1 : o.weight), mastery: 0, ghost: Boolean(o.ghost),
       born: o.born == null ? Date.now() : o.born, touched: o.born || 0, cards: [], opened: false,
-      spent: 0, engaged: 0, end: false, correct: 0, heat: 0, heatAt: 0, blurb: "", achievedAt: 0
+      spent: 0, engaged: 0, end: false, correct: 0, heat: 0, heatAt: 0, blurb: "", achievedAt: 0, pending: null, doneAt: 0
     };
-    if (!n.parent) n.hue = HUES[subjects(cloud).length % HUES.length];
+    if (!n.parent) n.hue = Number.isFinite(o.hue) && !hueUsed(cloud, o.hue) ? o.hue : freeHue(cloud);
     cloud.nodes[id] = n;
     cloud.order.push(id);
     return n;
+  }
+
+  /* Each subject keeps its own hue: the first one in HUES order that no subject uses yet. */
+  function hueUsed(cloud, h) { return subjects(cloud).some(function (s) { return s.hue === h; }); }
+  function freeHue(cloud) {
+    for (var i = 0; i < HUES.length; i++) if (!hueUsed(cloud, HUES[i])) return HUES[i];
+    return HUES[subjects(cloud).length % HUES.length];
   }
 
   function removeNode(cloud, id) {
@@ -135,6 +175,8 @@
       if (n.fork) { var i = n.fork.ids.indexOf(id); if (i >= 0) { n.fork.ids.splice(i, 1); n.fork.why.splice(i, 1); } if (n.fork.picked === id) n.fork.picked = null; if (n.fork.ids.length < 2) delete n.fork; }
     });
     if (cloud.next === id) cloud.next = null;
+    if (cloud.tests) delete cloud.tests[id];
+    if (cloud.active === id) cloud.active = null;
   }
 
   /* On a path or offered as a fork choice: such ghosts are kept when room is needed. */
@@ -241,6 +283,8 @@
       cur = i === 0 ? findAny(cloud, list[0]) : findTopic(cloud, list[i]);
       if (cur) { at = i; break; }
     }
+    /* a seeded (dotted) link that now carries a topic becomes explored */
+    if (cur && cur.ghost) { cur.ghost = false; cur.born = t; cur.weight = Math.max(cur.weight, 0.5); if (res) res.promoted.push(cur.id); }
     var start = at + 1;
     if (!cur) {
       cur = resolveParent(cloud, list[0], t, res);
@@ -257,6 +301,20 @@
       cur = hit;
     }
     return cur;
+  }
+
+  /*
+   * When a new topic arrives with only a parent hint: if that parent isn't on the map (as a topic, or by its exact subject
+   * name), its known chain plus the parent; with no usable parent, the topic's own known chain. null when nothing is missing.
+   */
+  function fallbackChain(cloud, label, parentLabel) {
+    var p = cleanLabel(parentLabel);
+    var known = p && (findTopic(cloud, p) || subjects(cloud).filter(function (s) { return s.key === norm(p); })[0]);
+    if (known) return null;
+    var h = p ? chainHint(p) : null;
+    if (h) return h.concat([p]);
+    h = chainHint(label);
+    return h && h.length ? h : null;
   }
 
   function bumpAncestors(cloud, id, amount, t) {
@@ -285,6 +343,8 @@
         /* an explicit chain (from chat or a card) builds the missing links between the subject and this topic */
         var links = (Array.isArray(tp.chain) ? tp.chain.slice(0, LIMITS.chain) : []);
         if (links.length && tp.parent && norm(links[links.length - 1]) !== norm(tp.parent)) links.push(tp.parent);
+        /* the model gave no usable chain: build the missing links from the known chains (no call) */
+        if (links.length <= 1) links = fallbackChain(cloud, label, tp.parent) || links;
         links = links.filter(function (l) { return norm(l) !== norm(label); });
         parent = (links.length > 1 && placeChain(cloud, links, t, res)) || resolveParent(cloud, tp.parent, t, res);
         if (!makeRoom(cloud, parent.id, false)) { parent.weight += 0.5; parent.touched = t; res.strengthened.push(parent.id); return; }
@@ -594,7 +654,7 @@
     if (!n) {
       if (parentId && !makeRoom(cloud, parentId, true)) return null;
       if (!parentId && subjects(cloud).length >= LIMITS.subjects) return null;
-      n = addNode(cloud, { label: label, parent: parentId, ghost: Boolean(parentId) && (ghost || onlyMissing), weight: 1, born: onlyMissing ? t : 0 });
+      n = addNode(cloud, { label: label, parent: parentId, ghost: Boolean(parentId) && (ghost || onlyMissing), weight: 1, born: onlyMissing ? t : 0, hue: typeof spec === "object" ? spec.hue : undefined });
     }
     var kids = (typeof spec === "object" && spec.children) || [];
     kids.forEach(function (c) { plant(cloud, c, n.id, t, onlyMissing); });
@@ -607,7 +667,7 @@
 
   function create(name, t) {
     t = now_(t);
-    var cloud = { v: VERSION, name: cleanLabel(name) || "Me", seq: 0, rev: 0, nodes: {}, order: [], cards: [], created: t, next: null, deck: [], draws: [], sessions: 0 };
+    var cloud = { v: VERSION, name: cleanLabel(name) || "Me", seq: 0, rev: 0, nodes: {}, order: [], cards: [], created: t, next: null, deck: [], draws: [], sessions: 0, tests: {}, suggest: null, active: null };
     STARTERS.forEach(function (s) { plant(cloud, s, null, 0, false); });
     var math = findSubject(cloud, "Math");
     cloud.next = math ? nextFor(cloud, math.id) : null;
@@ -690,6 +750,7 @@
     all(cloud).forEach(function (n) {
       if (!n.parent || n.ghost) return;
       if (!n.achievedAt && isTerminal(cloud, n.id)) n.achievedAt = t;
+      if (!n.doneAt && isDone(cloud, n.id)) n.doneAt = t; /* completion is kept for good, even if mastery later dips */
       if (inDeck(cloud, n.id) || (scoreOf(n) < GROWTH.join && !n.achievedAt)) return;
       cloud.deck.push({ id: n.id, label: n.label, subject: "", hue: SEPIA, at: t, best: 0, chain: [], blurb: "", ach: 0 });
       joined.push(n.id);
@@ -735,7 +796,7 @@
    * Usage heat for the ranking (rank.js): points per use, halving every HEAT.halfDays days, so the top 10 follows what the
    * learner does lately. Kept per node as { heat, heatAt }.
    */
-  var HEAT = { halfDays: 14, open: 1, minute: 0.25, correct: 1.5, wrong: 0.3, got: 2, tricky: 0.5, card: 1, chat: 0.5 };
+  var HEAT = { halfDays: 14, open: 1, minute: 0.25, correct: 1.5, wrong: 0.3, got: 2, tricky: 0.5, card: 1, chat: 0.5, test: 2 };
   function heatNow(n, t) {
     if (!n || !n.heat) return 0;
     var dt = Math.max(0, now_(t) - (n.heatAt || 0));
@@ -799,6 +860,111 @@
     if (n.mastery < MASTERED || !n.path || !n.path.ids.length) return false;
     return n.path.ids.every(function (x) { return !cloud.nodes[x] || cloud.nodes[x].mastery >= MASTERED; });
   }
+  /* ---------- completion, children waiting for engagement, tests (v5) ---------- */
+  /* A completed topic: done once (doneAt), or mastered, or 2+ right answers, or its branch has ended. Ghosts never are. */
+  function isDone(cloud, id) {
+    var n = node(cloud, id);
+    if (!n || !n.parent || n.ghost) return false;
+    return Boolean(n.doneAt || n.achievedAt || n.mastery >= MASTERED || (n.correct || 0) >= 2 || isTerminal(cloud, id));
+  }
+  /* The completed children of a topic (its direct children, path steps first). */
+  function doneChildren(cloud, id) {
+    var n = node(cloud, id);
+    if (!n) return [];
+    var ids = (n.path ? n.path.ids.slice() : []);
+    childrenOf(cloud, id).forEach(function (c) { if (ids.indexOf(c.id) < 0) ids.push(c.id); });
+    return ids.filter(function (x) { return cloud.nodes[x] && cloud.nodes[x].parent === id && isDone(cloud, x); });
+  }
+  /*
+   * Child topics that arrived with a lesson (the same call) but wait until the learner has engaged with the topic
+   * (orchestrator.js decides when); applyPending then grows them onto the cloud as dotted branches.
+   */
+  function setPending(cloud, id, steps, nextLabel) {
+    var n = node(cloud, id);
+    if (!n || n.path) return false;
+    var list = [];
+    (Array.isArray(steps) ? steps : []).forEach(function (x) { var l = cleanLabel(x); if (l && list.length < LIMITS.pathSteps && list.every(function (y) { return norm(y) !== norm(l); })) list.push(l); });
+    if (!list.length) return false;
+    n.pending = { steps: list, next: cleanLabel(nextLabel) };
+    return true;
+  }
+  function applyPending(cloud, id, t) {
+    var n = node(cloud, id);
+    if (!n || !n.pending) return null;
+    var p = n.pending;
+    n.pending = null;
+    if (n.path) return { ids: [], added: [], next: null };
+    return applyPath(cloud, id, p.steps, p.next, t);
+  }
+  var TEST_PASS = 0.6;
+  function testOf(cloud, id) { return (cloud.tests || {})[id] || null; }
+  function markOffered(cloud, id, t) {
+    if (!node(cloud, id)) return;
+    cloud.tests = cloud.tests || {};
+    var x = cloud.tests[id] || { at: 0, n: 0, best: 0, attempts: 0, offeredAt: 0 };
+    if (!x.offeredAt) x.offeredAt = now_(t);
+    cloud.tests[id] = x;
+  }
+  /*
+   * A test result: results = [{ id, right }] for completed topics under (or equal to) the parent. Each answer colours its
+   * own topic (confirm); any attempt strengthens the parent a little, a pass (TEST_PASS of answers right) more.
+   */
+  function recordTest(cloud, pid, results, t) {
+    t = now_(t);
+    var p = node(cloud, pid);
+    if (!p) return null;
+    var n = 0, right = 0, touched = [];
+    (Array.isArray(results) ? results : []).forEach(function (r) {
+      if (!r || !cloud.nodes[r.id] || (r.id !== pid && ancestry(cloud, r.id).indexOf(pid) < 0)) return;
+      n++; if (r.right) right++;
+      confirm(cloud, r.id, Boolean(r.right), t);
+      if (touched.indexOf(r.id) < 0) touched.push(r.id);
+    });
+    if (!n) return null;
+    var score = right / n, passed = score >= TEST_PASS;
+    p.weight += 0.5; p.touched = t;
+    warm(p, HEAT.test, t);
+    if (passed) { p.correct = (p.correct || 0) + 2; p.mastery = clamp01(p.mastery + 0.15); }
+    else if (right) p.correct = (p.correct || 0) + 1;
+    cloud.tests = cloud.tests || {};
+    var prev = cloud.tests[pid] || { at: 0, n: 0, best: 0, attempts: 0, offeredAt: 0 };
+    cloud.tests[pid] = { at: t, n: doneChildren(cloud, pid).length, best: Math.max(prev.best || 0, score), attempts: (prev.attempts || 0) + 1, offeredAt: prev.offeredAt || t };
+    cloud.rev += 1;
+    return { score: score, right: right, n: n, passed: passed, touched: touched };
+  }
+
+  /*
+   * v5: Computer Science is its own subject. Older clouds get it (with its own hue), and the clearly-CS topics under
+   * Making & Coding move across with everything they hold (ids, paths, cards, deck entries). Missing CS seeds arrive as ghosts.
+   */
+  function adoptComputerScience(cloud, t) {
+    t = now_(t);
+    var spec = STARTERS.filter(function (x) { return norm(x.label) === norm("Computer Science"); })[0];
+    var cs = subjects(cloud).filter(function (x) { return x.key === norm(spec.label); })[0];
+    var making = subjects(cloud).filter(function (x) { return x.key === norm("Making & Coding"); })[0];
+    var keys = CS_TOPICS.map(norm), moved = [], created = false;
+    if (!cs) {
+      if (subjects(cloud).length >= LIMITS.subjects) return { moved: moved, created: false };
+      cs = addNode(cloud, { label: spec.label, parent: null, weight: 1, born: t, hue: spec.hue });
+      created = true;
+    }
+    if (making) childrenOf(cloud, making.id).filter(function (c) { return keys.indexOf(c.key) >= 0; }).forEach(function (c) {
+      var twin = childrenOf(cloud, cs.id).filter(function (x) { return x.key === c.key; })[0];
+      if (twin) { if (twin.ghost && !childrenOf(cloud, twin.id).length) removeNode(cloud, twin.id); else return; }
+      c.parent = cs.id;
+      moved.push(c.id);
+      cs.weight += Math.max(0, c.weight) * 0.5;
+    });
+    if (making && making.path) {
+      making.path.ids = making.path.ids.filter(function (x) { return moved.indexOf(x) < 0; });
+      if (moved.indexOf(making.path.next) >= 0) making.path.next = null;
+      if (!making.path.ids.length) making.path = null;
+    }
+    plant(cloud, spec, null, t, true);
+    if (moved.length || created) cloud.rev += 1;
+    return { moved: moved, created: created };
+  }
+
   /* Other branches, offered only once a branch has ended: unfinished nearby branches first, then one from another subject. Local, no call. */
   /* prefer: ids in ranked order (the top 10); the first nearby one of them moves to the front. */
   function otherBranches(cloud, id, max, prefer) {
@@ -842,12 +1008,18 @@
       if (x.path && x.path.ids.length) paths[id] = [x.path.ids, x.path.next || 0, s(x.path.at)];
       if (x.fork && x.fork.ids.length) forks[id] = [x.fork.ids, x.fork.why, x.fork.picked || 0, s(x.fork.at)];
       var row = [id, x.label, x.parent || 0, (x.ghost ? 1 : 0) | (x.opened ? 2 : 0) | (x.end ? 4 : 0), Math.round(x.weight * 10), Math.round(x.mastery * 100), s(x.born), s(x.touched), x.parent ? -1 : (x.hue == null ? 30 : x.hue), s(x.lastStruggle), x.spent || 0, x.engaged || 0];
-      /* v4 fields only when set, so most rows stay short */
-      if (x.correct || x.heat || x.blurb || x.achievedAt) row.push(x.correct || 0, Math.round((x.heat || 0) * 100), s(x.heatAt), x.blurb || "", s(x.achievedAt));
+      /* v4 and v5 fields only when set, so most rows stay short */
+      var v5 = x.pending || x.doneAt;
+      if (v5 || x.correct || x.heat || x.blurb || x.achievedAt) row.push(x.correct || 0, Math.round((x.heat || 0) * 100), s(x.heatAt), x.blurb || "", s(x.achievedAt));
+      if (v5) row.push(x.pending ? [x.pending.steps, x.pending.next || ""] : 0, s(x.doneAt));
       return row;
     });
+    var tests = {};
+    Object.keys(cloud.tests || {}).forEach(function (id) { var x = cloud.tests[id]; if (cloud.nodes[id]) tests[id] = [s(x.at), x.n || 0, Math.round((x.best || 0) * 100), x.attempts || 0, s(x.offeredAt)]; });
+    var sg = cloud.suggest && Array.isArray(cloud.suggest.items) ? [s(cloud.suggest.at), cloud.suggest.items.map(function (i) { return [i.id, i.kind, i.why || ""]; })] : 0;
     return JSON.stringify({ v: VERSION, name: cloud.name, seq: cloud.seq, rev: cloud.rev, created: cloud.created, next: cloud.next || 0, n: n, p: paths, f: forks, cards: cloud.cards,
-      k: (cloud.deck || []).map(function (e) { return [e.id, e.label, e.subject, e.hue, s(e.at), e.best || 0, e.chain || [], e.blurb || "", s(e.ach)]; }), g: cloud.draws || [], ss: cloud.sessions || 0 });
+      k: (cloud.deck || []).map(function (e) { return [e.id, e.label, e.subject, e.hue, s(e.at), e.best || 0, e.chain || [], e.blurb || "", s(e.ach)]; }), g: cloud.draws || [], ss: cloud.sessions || 0,
+      t: tests, sg: sg, fl: cloud.active || 0 });
   }
 
   function finish(c, list, cards, paths, extra) {
@@ -880,7 +1052,7 @@
       var n = out.nodes[id], p = paths[id];
       if (!n || !p) return;
       var ids = (Array.isArray(p.ids) ? p.ids : p[0] || []).filter(function (x) { return out.nodes[x] && x !== id; }).slice(0, LIMITS.pathSteps);
-      if (ids.length) n.path = { ids: ids, next: ids.indexOf(p.next || p[1]) >= 0 ? (p.next || p[1]) : null, at: Number(p.at || p[2] * 1000) || 0 };
+      if (ids.length) n.path = { ids: ids, next: ids.indexOf(p.next || p[1]) >= 0 ? (p.next || p[1]) : null, at: Number(Array.isArray(p) ? p[2] * 1000 : p.at) || 0 }; /* arrays have an .at() method, so check the form first */
     });
     Object.keys(extra.forks || {}).forEach(function (id) {
       var n = out.nodes[id], f = extra.forks[id];
@@ -901,6 +1073,15 @@
     out.draws = (Array.isArray(extra.draws) ? extra.draws : []).filter(function (d) { return Array.isArray(d) && Number.isFinite(d[0]) && typeof d[1] === "string"; }).slice(-LIMITS.draws);
     out.sessions = Math.max(0, Number(extra.sessions) || 0);
     out.next = out.nodes[c.next] ? c.next : null;
+    out.tests = {};
+    Object.keys(extra.tests || {}).forEach(function (id) {
+      var x = extra.tests[id];
+      if (!out.nodes[id] || !Array.isArray(x)) return;
+      out.tests[id] = { at: (Number(x[0]) || 0) * 1000, n: Math.max(0, Number(x[1]) || 0), best: clamp01((Number(x[2]) || 0) / 100), attempts: Math.max(0, Number(x[3]) || 0), offeredAt: (Number(x[4]) || 0) * 1000 };
+    });
+    var sg = extra.suggest;
+    out.suggest = Array.isArray(sg) && Array.isArray(sg[1]) ? { at: (Number(sg[0]) || 0) * 1000, items: sg[1].filter(function (i) { return Array.isArray(i) && out.nodes[i[0]] && /^(deck|next|test|new|continue)$/.test(i[1]); }).slice(0, 6).map(function (i) { return { id: i[0], kind: i[1], why: cleanWhy(i[2]) }; }) } : null;
+    out.active = out.nodes[extra.active] ? extra.active : null;
     joinDeck(out, Number(c.created) || 0); /* older saves: topics already past the threshold join the deck */
     return out;
   }
@@ -911,7 +1092,7 @@
     try { c = typeof str === "string" ? JSON.parse(str) : str; } catch { return null; }
     if (!c || typeof c.name !== "string") return null;
     var base = { name: cleanLabel(c.name) || "Me", seq: Number(c.seq) || 0, rev: Number(c.rev) || 0, created: Number(c.created) || 0, next: c.next || null };
-    if ((c.v === 2 || c.v === 3 || c.v === 4) && Array.isArray(c.n)) {
+    if ((c.v === 2 || c.v === 3 || c.v === 4 || c.v === 5) && Array.isArray(c.n)) {
       var ms = function (s) { return (Number(s) || 0) * 1000; };
       var list = c.n.map(function (a) {
         if (!Array.isArray(a) || typeof a[0] !== "string" || typeof a[1] !== "string") return null;
@@ -920,10 +1101,14 @@
           weight: (Number(a[4]) || 0) / 10, mastery: clamp01((Number(a[5]) || 0) / 100), born: ms(a[6]), touched: ms(a[7]),
           hue: a[2] ? undefined : (Number.isFinite(a[8]) && a[8] >= 0 ? a[8] : 30), lastStruggle: a[9] ? ms(a[9]) : undefined, cards: [],
           end: Boolean(a[3] & 4), spent: Math.max(0, Number(a[10]) || 0), engaged: Math.max(0, Number(a[11]) || 0),
-          correct: Math.max(0, Number(a[12]) || 0), heat: Math.max(0, Number(a[13]) || 0) / 100, heatAt: ms(a[14]), blurb: cleanBlurb(a[15] || ""), achievedAt: ms(a[16])
+          correct: Math.max(0, Number(a[12]) || 0), heat: Math.max(0, Number(a[13]) || 0) / 100, heatAt: ms(a[14]), blurb: cleanBlurb(a[15] || ""), achievedAt: ms(a[16]),
+          pending: Array.isArray(a[17]) && Array.isArray(a[17][0]) && a[17][0].length ? { steps: a[17][0].map(cleanLabel).filter(Boolean).slice(0, LIMITS.pathSteps), next: cleanLabel(a[17][1]) } : null,
+          doneAt: ms(a[18])
         };
       });
-      return finish(base, list, c.cards, c.p, { forks: c.f, deck: c.k, draws: c.g, sessions: c.ss });
+      var out = finish(base, list, c.cards, c.p, { forks: c.f, deck: c.k, draws: c.g, sessions: c.ss, tests: c.t, suggest: c.sg, active: c.fl });
+      if (c.v < 5) { adoptComputerScience(out, Date.now()); joinDeck(out); } /* v4 and older: Computer Science becomes its own subject */
+      return out;
     }
     if (c.v === 1 && c.nodes && Array.isArray(c.order)) return migrateV1(c, base);
     return null;
@@ -938,12 +1123,14 @@
         id: id, label: cleanLabel(n.label), key: norm(n.label), parent: n.parent || null, ghost: Boolean(n.ghost), opened: false,
         weight: Number(n.weight) || 0, mastery: clamp01(Number(n.mastery) || 0), born: Number(n.born) || 0, touched: Number(n.touched) || 0,
         hue: n.parent ? undefined : (Number.isFinite(n.hue) ? n.hue : 30), lastStruggle: n.lastStruggle || undefined, cards: [],
-        spent: 0, engaged: 0, end: false, correct: 0, heat: 0, heatAt: 0, blurb: "", achievedAt: 0
+        spent: 0, engaged: 0, end: false, correct: 0, heat: 0, heatAt: 0, blurb: "", achievedAt: 0, pending: null, doneAt: 0
       };
     });
     var out = finish(base, list, c.cards, {});
     var t = Date.now();
     STARTERS.forEach(function (s) { if (findSubject(out, s.label) && subjects(out).some(function (x) { return x.key === norm(s.label); })) plant(out, s, null, t, true); });
+    adoptComputerScience(out, t);
+    joinDeck(out, t);
     var math = findSubject(out, "Math");
     out.next = math ? nextFor(out, math.id) : null;
     return out;
@@ -961,6 +1148,9 @@
     track: track, markEnd: markEnd, activity: activity, hueOf: hueOf,
     GROWTH: GROWTH, growthOf: growthOf, joinDeck: joinDeck, chainOf: chainOf, confirm: confirm, setBlurb: setBlurb, cleanBlurb: cleanBlurb,
     isAchieved: isAchieved, placeChain: placeChain, HEAT: HEAT, heatNow: heatNow, inDeck: inDeck, deckEntry: deckEntry, logDraw: logDraw,
+    isDone: isDone, doneChildren: doneChildren, setPending: setPending, applyPending: applyPending, TEST_PASS: TEST_PASS, testOf: testOf,
+    markOffered: markOffered, recordTest: recordTest, adoptComputerScience: adoptComputerScience, chainHint: chainHint, KNOWN_CHAINS: KNOWN_CHAINS,
+    fallbackChain: fallbackChain, CS_TOPICS: CS_TOPICS,
     evolveColor: evolveColor, cardColor: cardColor, applyChoices: applyChoices, pickChoice: pickChoice, isTerminal: isTerminal, otherBranches: otherBranches, hash: hash,
     attachCard: attachCard, cardsFor: cardsFor, summarize: summarize, knownUnder: knownUnder, subjectLabels: subjectLabels,
     subjects: subjects, childrenOf: childrenOf, ancestry: ancestry, depthOf: depthOf, subjectOf: subjectOf, trail: trail, index: index,
