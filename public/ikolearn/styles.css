@@ -156,13 +156,15 @@ button.gcard:hover { border-color: var(--soft); }
 #draw { width: 100%; min-width: 0; padding-top: 16px; }
 #draw .d-head { margin: 0 0 10px; }
 .draw-row { display: flex; gap: 10px; padding: 2px 0 8px; }
-.draw-row .gcard { flex: 1 1 0; min-width: 0; max-width: 160px; }
+/* direct children only: a card inside a suggestion cell (.sg, a flex column) must not get a 0 flex-basis, or with
+   overflow: hidden (the tier frame) its automatic min-height is 0 and it collapses to a strip */
+.draw-row > .gcard { flex: 1 1 0; min-width: 0; max-width: 160px; }
 /* the flow: suggested cards, Draw, Continue, the cloud: always an obvious next step */
 .flow-in { padding: 2px 0 6px; }
 .flow-in .d-head { margin: 0 0 10px; }
 .flow .draw-row { align-items: flex-start; }
 .sg { flex: 1 1 0; min-width: 0; max-width: 160px; display: flex; flex-direction: column; }
-.sg .gcard { width: auto; max-width: none; }
+.sg .gcard { flex: none; width: auto; max-width: none; }
 .sg-why { font-size: 12.5px; line-height: 1.35; color: var(--soft); margin: 6px 2px 0; }
 .flow-acts { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
 .btn.draw-btn { background: var(--ink); color: var(--paper); }

@@ -144,7 +144,16 @@
     if (cloud) { (C.profileOf(cloud).interests || []).forEach(function (x) { have[C.norm(x)] = 1; }); cloud.order.forEach(function (id) { have[cloud.nodes[id].key] = 1; }); }
     return INTERESTS.filter(function (x) { return !have[C.norm(x)]; }).slice(0, max || 10);
   }
-  function needsOnboarding(cloud) { var p = C.profileOf(cloud); return !p.onboarded && C.topicCount(cloud) < PLAN.thinTopics; }
+  /*
+   * A learner who has already started is not new: a card in the deck, a lesson in progress, or a topic they opened,
+   * spent time on or answered on. They are never sent back through the first questions (their cloud and deck stay as
+   * they are); the light re-ask can fill in their interests later.
+   */
+  function hasStarted(cloud) {
+    if ((cloud.deck || []).length || (cloud.active && cloud.nodes[cloud.active])) return true;
+    return cloud.order.some(function (id) { var n = cloud.nodes[id]; return n && n.parent && !n.ghost && (n.opened || n.engaged > 0 || n.correct > 0 || n.spent > 0); });
+  }
+  function needsOnboarding(cloud) { var p = C.profileOf(cloud); return !p.onboarded && C.topicCount(cloud) < PLAN.thinTopics && !hasStarted(cloud); }
   /* Topics still open to learn (not done, not an end), dotted ones included. */
   function openTopics(cloud) { return cloud.order.filter(function (id) { var n = cloud.nodes[id]; return n.parent && !n.end && !C.isDone(cloud, id); }).length; }
   /*
@@ -154,7 +163,7 @@
   function reask(cloud, now) {
     now = now || Date.now();
     var p = C.profileOf(cloud), R = PLAN.reask;
-    if (!p.onboarded || (p.askedAt && now - p.askedAt < R.days * DAY)) return null;
+    if (!(p.onboarded || hasStarted(cloud)) || (p.askedAt && now - p.askedAt < R.days * DAY)) return null;
     var thin = openTopics(cloud) < R.open, stuck = (p.visits || 0) - (p.lessonVisit || 0) >= R.stuckVisits;
     if (!thin && !stuck) return null;
     return { q: thin ? "What else are you curious about lately?" : "Want to try something different? What do you enjoy these days?", chips: interestChips(cloud, 6), why: thin ? "thin" : "stuck" };
@@ -404,7 +413,7 @@
     MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
     suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf,
-    onboarding: onboarding, interestChips: interestChips, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics,
+    onboarding: onboarding, interestChips: interestChips, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics,
     needsNext: needsNext, readyNext: readyNext, createRequest: createRequest, regionFrom: regionFrom, ZONES: ZONES, AGE_LABELS: AGE_LABELS
   };
   if (node_) module.exports = api;

@@ -1509,9 +1509,11 @@
   }
   /* On session start and whenever the learner comes back to the chat, deck or cloud: fresh suggestions (on the device). */
   function startSession() { renderDraw(); }
+  /* The first questions are on screen (an onboarding question not yet answered): they are the next step, nothing else. */
+  function onboardingOpen() { return state.thread.some(function (m) { return m.role === "ask" && !m.done; }); }
   function renderDraw() {
     el.draw.textContent = "";
-    el.draw.hidden = !el.lesson.hidden || !el.deck.hidden;
+    el.draw.hidden = !el.lesson.hidden || !el.deck.hidden || onboardingOpen();
     if (el.draw.hidden) return;
     refreshSuggest();
     el.draw.appendChild(flowBlock("chat"));
