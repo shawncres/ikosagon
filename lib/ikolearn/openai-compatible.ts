@@ -18,9 +18,9 @@ export function chatRequest(cfg: LlmConfig, system: string, contents: Content[],
   return { model: cfg.model, messages: toMessages(system, contents), temperature: MODEL_LIMITS.chatTemperature, max_tokens: opts.maxTokens || MODEL_LIMITS.chatMaxTokens, stream: true };
 }
 
-export function jsonRequest(cfg: LlmConfig, system: string, user: string, schema: unknown) {
+export function jsonRequest(cfg: LlmConfig, system: string, user: string, schema: unknown, opts: StreamOptions = {}) {
   const sys = `${system}\n\nReply with one JSON object only (no code fences), matching this JSON Schema: ${JSON.stringify(schema)}`;
-  return { model: cfg.model, messages: toMessages(sys, [{ role: "user", parts: [{ text: user }] }]), temperature: MODEL_LIMITS.jsonTemperature, max_tokens: MODEL_LIMITS.jsonMaxTokens, response_format: { type: "json_object" } };
+  return { model: cfg.model, messages: toMessages(sys, [{ role: "user", parts: [{ text: user }] }]), temperature: MODEL_LIMITS.jsonTemperature, max_tokens: opts.maxTokens || MODEL_LIMITS.jsonMaxTokens, response_format: { type: "json_object" } };
 }
 
 const headers = (cfg: LlmConfig) => ({ Authorization: `Bearer ${cfg.key}`, "Content-Type": "application/json" });
@@ -52,11 +52,11 @@ export async function openaiStream(cfg: LlmConfig, system: string, contents: Con
   }
 }
 
-export async function openaiJson<T>(cfg: LlmConfig, system: string, user: string, schema: unknown, parse: (t: string) => T | null, fetchImpl: typeof fetch): Promise<JsonResult<T>> {
+export async function openaiJson<T>(cfg: LlmConfig, system: string, user: string, schema: unknown, parse: (t: string) => T | null, fetchImpl: typeof fetch, opts: StreamOptions = {}): Promise<JsonResult<T>> {
   let done = () => {};
   try {
     const r = await timedFetch(fetchImpl, `${cfg.base}/chat/completions`, {
-      method: "POST", headers: headers(cfg), body: JSON.stringify(jsonRequest(cfg, system, user, schema)),
+      method: "POST", headers: headers(cfg), body: JSON.stringify(jsonRequest(cfg, system, user, schema, opts)),
     }, MODEL_LIMITS.jsonTimeoutMs);
     done = r.done;
     if (!r.res.ok) return statusFail(r.res.status);

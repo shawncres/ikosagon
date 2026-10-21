@@ -2,40 +2,70 @@
 
 A learning companion with a visible, evolving learning profile: a point cloud centred on the learner's first name that grows into a tree of topics.
 Tapping a card or a topic opens a short lesson; every topic can map an ordered path of smaller topics, one level at a time, as deep as the learner goes.
+There is no pre-built map: a new learner answers a few short questions and the companion builds their first topics on the fly, then keeps growing branches as they finish them (see "A procedural start").
 Topics the learner spends time with become collectible cards: an ink-sketch landscape, the topic's chain, a title and one line. They start in sepia, take on their chain's colour as the learner shows what they've learned, and are marked Achieved when the branch is finished. Cards stay in the deck for good. Every visit opens with a few suggested cards and a Draw button; a small on-device orchestrator picks them, balanced over the year and ordered by a living top 10, offers children once a topic is engaged, and offers an optional Test when a branch has enough finished topics.
-Static client in `public/ikolearn/`, six small server routes in `app/api/ikolearn/`, Gemini (free tier) behind them by default; the model provider can be swapped with env vars alone (see "Swapping the model provider").
+Static client in `public/ikolearn/`, seven small server routes in `app/api/ikolearn/`, Gemini (free tier) behind them by default; the model provider can be swapped with env vars alone (see "Swapping the model provider").
 Unlisted and noindexed while we test with one learner.
 
 ## Files
 
 | Piece | File | What it does |
 | --- | --- | --- |
-| Prompts | `lib/ikolearn/prompts.ts` | Input cleaning, the roles (companion / noticing, card, adjacent, lesson, path), the hidden-block rules, response schemas, parsing, and the streaming block splitter. No UI or network code. |
+| Prompts | `lib/ikolearn/prompts.ts` | Input cleaning, the roles (companion / noticing, card, adjacent, lesson, path, test, create), the hidden-block rules, response schemas, parsing, and the streaming block splitter. No UI or network code. |
 | Model interface | `lib/ikolearn/llm.ts`, `llm-types.ts` | What prompts and the service use: `streamText` and `generateJson`, whatever the provider. Picks the provider from env vars (`llmConfig`). Shared types, limits, timeouts and the SSE reader. |
 | Gemini adapter | `lib/ikolearn/gemini.ts` | The default. Streaming (`streamGenerateContent?alt=sse`) and structured JSON (`generateContent` + `responseSchema`), fallback model on 5xx. |
 | OpenAI-compatible adapter | `lib/ikolearn/openai-compatible.ts` | `/chat/completions` with SSE streaming and JSON mode, any base URL: OpenAI, Groq, xAI, OpenRouter and similar. |
-| Service | `lib/ikolearn/service.ts` | Route logic with injectable `fetch`: origin/size/input checks, per-IP rate limit, daily call budget, NDJSON event stream, chat / lesson / card / adjacent / path handlers. |
-| Chains | `lib/ikolearn/chains.ts` | Known chains for common topics ("Sets" in Python: Computer Science → Programming → Python). Fills a chain the model left short. Mirrors `KNOWN_CHAINS` in `cloud-model.js`. |
-| Routes | `app/api/ikolearn/{chat,lesson,card,adjacent,path,test}/route.ts` | Thin wrappers around the service. All go through the same `prepare()` guards and budget. |
-| Cloud model | `public/ikolearn/cloud-model.js` | Pure data: the recursive topic tree, starters (Math seeded deeper), growth/merge, paths, next topic, lesson engagement, summary for prompts, colours, 3D layout, compact storage and migration. Runs in the browser and in Node tests. |
+| Service | `lib/ikolearn/service.ts` | Route logic with injectable `fetch`: origin/size/input checks, per-IP rate limit, daily call budget, NDJSON event stream, chat / lesson / card / adjacent / path / test / create handlers. |
+| Routes | `app/api/ikolearn/{chat,lesson,card,adjacent,path,test,create}/route.ts` | Thin wrappers around the service. All go through the same `prepare()` guards and budget. |
+| Cloud model | `public/ikolearn/cloud-model.js` | Pure data: the recursive topic tree (it starts empty), the learner's profile (age band, rough region, interests), applying a creation result, growth/merge, paths, next topic, lesson engagement, summary for prompts, colours, 3D layout, compact storage and migration. Runs in the browser and in Node tests. |
 | Cloud view | `public/ikolearn/cloud-view.js` | Canvas 2D projection of the 3D points: rotate, pan, zoom, focus a branch, depth- and zoom-aware labels, a draw cap. |
-| Ranking | `public/ikolearn/rank.js` | The top 10 (`IkoRank`): pluggable score sources (device-local use, chain, a popularity prior), per-topic scores, ordering and busiest chains. Pure, no storage or network. |
-| Orchestrator | `public/ikolearn/orchestrator.js` | `IkoPlan`: what to suggest, Draw, when to grow children, when a Test is ready, the context for lesson prompts. Pure, no calls. |
+| Ranking | `public/ikolearn/rank.js` | The top 10 (`IkoRank`): pluggable score sources (device-local use, chain, the model's importance scores), per-topic scores, ordering and busiest chains. Pure, no storage or network. |
+| Orchestrator | `public/ikolearn/orchestrator.js` | `IkoPlan`: onboarding and re-ask questions, what to suggest, Draw, when to grow children, when to ask "what comes next", when a Test is ready, the context for lesson and creation prompts, the rough region. Pure, no calls. |
 | Deck | `public/ikolearn/deck.js` | Procedural landscapes (deterministic from the topic id, more ink with detail), the card renderer (tile, full, mini), and the balanced session draw. Pure apart from `render`, which takes a `document`. |
 | Lesson | `public/ikolearn/lesson.js` | Parses the tagged lesson text (also while it streams) and renders it with text nodes only. |
 | App | `public/ikolearn/app.js`, `index.html`, `styles.css` | Chat, cards, the card holder and lesson, questions, the top 10, panel, persistence (localStorage), fallbacks. |
-| Tests | `scripts/ikolearn-check.mjs` | `npm run check:ikolearn`: mocked, no network, no key. `scripts/fixtures/ikolearn-cloud-v1.json` to `-v4.json` are saved clouds for the migration tests. |
+| Tests | `scripts/ikolearn-check.mjs` | `npm run check:ikolearn`: mocked, no network, no key. `scripts/fixtures/ikolearn-cloud-v1.json` to `-v4.json` are saved clouds for the migration tests; `ikolearn-starters.json` is the old starter map, kept only so tests can build a rich cloud. |
 
 ## The tree
 
 - Every node has a stable id (`n1`, `n2`, ... never reused), a `parent` (null for a subject) and therefore a path from its subject (`trail`: "Math > Addition > Number Bonds"). There is no depth limit.
 - Subjects keep their own hue; every level below is a shade of it (`hueOf`, `colorOf`). Ghosts (dotted) are ideas not explored yet.
 - **Chains.** A card's chain is its path in the tree (`chainOf`: "Computer Science → Programming → Python → Sets"). For every new topic the model sends the full logical `chain` (broadest first, up to 4 links), and `placeChain` reuses the deepest link that already exists (promoting a ghost) and creates the missing ones in between as real nodes with explicit parent → child links. The cloud shows them straight away.
-- **Chain fallback.** When the model sends only the leaf, or a leaf and its parent, the chain is filled in deterministically, on the server (`fillChain` in `chains.ts`) and again on the device (`fallbackChain` in `cloud-model.js`): from a table of known chains (`KNOWN_CHAINS`, e.g. Python, Sets, Loops, Fractions, Halves, Photosynthesis), else from where the parent already sits on the map. If the chain is still short, a known topic the learner named in their message deepens it, within the same subject only (`deepenChain`: "How do sets work in Python?" with Sets under Computer Science lands under Python; we saw the model skip those links live). No call.
-- **Computer Science** is its own subject (its own hue, 252), seeded with ghosts Algorithms, Programming, How Computers Work and How AI Works. Aliases: cs, computing, computers, coding, programming, software. Making & Coding keeps Building, Puzzles and Robots. On migration, clearly-CS topics under Making & Coding (Coding, Programming, Python, Algorithms, ...) move to Computer Science with their whole branch, ids kept. A new subject takes the first unused rainbow hue.
+- **Short chains.** There is no built-in table of chains. The prompts ask the model for the full chain; when it sends only the leaf (or the leaf and a subject), a topic the learner already has and named in their message deepens it, within the same subject only (`deepenChain`: "How do sets work in Python?" with Python on the map lands under Python). No call. On a brand-new map with nothing to match, the topic sits where the model put it.
+- **Subjects and colours.** A small data-only palette (`PALETTE`) gives broad subjects a stable hue: Reading & Writing 4, Math 28, Science 48, People & Places 96, Art & Music 150, Making & Coding 188, Computer Science 252. It holds no topics. Any other subject the model names takes the first free hue. Aliases (maths, cs, computing, coding, ...) still map to these names. On migration from v4, clearly-CS topics under Making & Coding move to Computer Science with their whole branch, ids kept.
 - Topics match existing nodes by a normalised key (case, plurals, `&`/`and`). A new topic may land under any existing topic; otherwise under a subject (aliases like maths -> Math), or a new subject (cap 12).
 - Caps keep it light: 600 nodes, 16 children and 6 ghosts per node, 6 steps per path. When room is needed, the oldest free ghost leaf goes first; nodes with children, on a path, or with cards are never pruned.
-- Math is the worked example: Counting, Number Sense, Addition, Subtraction, Multiplication, Fractions in order, with a few seeded levels below. Everything else uses the same subject-agnostic code.
+
+## A procedural start
+
+Nothing is pre-seeded. The map is built from the learner, one structured "create" call at a time, and kept for years on the device.
+
+1. **Onboarding** (`IkoPlan.onboarding`, static questions on the device, each skippable): the first name if we don't have it, an optional age band (4-6, 7-9, 10-12, 13-15, 16-18, adult), and what they enjoy (chips or their own words). Then one creation call (`kind: "start"`) returns 3-5 parent topics, each with its card and 3-6 child placeholders. The cloud opens and builds visibly ("Building your cloud..."): each parent appears, then its children, about 0.7 s apart (instant with reduced motion). If the call fails, a local fallback plants palette subjects from the interests plus Reading & Writing, Math and Science, so there is always somewhere to start.
+2. **Building on it**: parents are solid nodes placed through their chain (`placeChain`), with the card line and a goal ("Goal: ..." on the full card). Children are dotted placeholders on the parent's path in the model's logical order, each with the model's importance score (`imp`) and when it was made (`impAt`).
+3. **"What comes next"** (`IkoPlan.needsNext`, `kind: "next"`): offered (a "What comes next in X?" suggestion, a link under the lesson and in the panel) only once a parent's branch is finished, i.e. all its children are done (or it has none and was engaged). A finished step hands it to its parent. One call returns new children for that parent only; it is cached on the parent (`asked` = finished children + 1), so it is not offered again until more is finished. Leaves still get their children through the lesson call.
+4. **Re-asking lightly** (`IkoPlan.reask`): one question ("What else are you curious about lately?") appears among the suggestions when the cloud is thin (fewer than 3 open topics) or the learner seems stuck (3 visits without opening a lesson), at most every 3 days. It costs nothing until answered; an answer is one creation call (`kind: "more"`, 1-2 new parents).
+5. Later sessions mostly draw from the Deck and the cloud (suggestions, Draw), with new branches proposed as branches end.
+
+### The creation call
+
+`POST /api/ikolearn/create` with `{ name, mode: "notice", kind: "start"|"more"|"next", interests, age, region, favorites, focus/trail/known (next), cloud, parents }`, through the same `prepare()` guards (origin, size, per-IP rate limits, the daily budget). One `generateJson` call with `CREATE_SCHEMA`; the result, strictly validated by `parseCreate`:
+
+```
+{ ok: true, kind, items: [
+  { node: { name, chain: [broad subject, ..., parent] },
+    card: { title, blurb, goal },
+    children: [{ name, order, score, why }] } ] }
+```
+
+- Labels are cleaned, never the learner's name, and never repeated across the result; children equal to their node or its chain are dropped, and for `next` so are the ones it already has.
+- Children are sorted by `order` and renumbered; `score` is clamped to 0-1 (0-100 is read as a percent; junk is 0.5). Each item needs 2+ children; `start` needs 2-5 items, `more` 1-2, `next` exactly the focus. Anything less is an error (502) and the app falls back on the device.
+- The prompt asks for what a typical home curriculum for the learner's age and rough region would stress, with their interests leading, and says plainly that region and age only bias the choice and never rule a topic out. Their most-used topics go along as favorites.
+
+### Age band and rough region
+
+- No location permission prompt and no IP lookup. A rough region is guessed from the browser's time zone (`IkoPlan.regionFrom`: America/Toronto -> "Canada / Ontario-ish"), else the locale's country, else nothing.
+- Both live in "About you" (a quiet link in the footer, the section under the deck): an age band select, the region (editable, "Guess from this device", "Clear"). A region the learner edits is never overwritten by a guess.
+- Only the age band and the region text go to the model (`profile()` in every prompt). The server keeps only letters and a few separators in the region (no digits, so no postcodes or coordinates), up to 40 characters.
 
 ## Lessons, paths and the next topic
 
@@ -45,7 +75,7 @@ Unlisted and noindexed while we test with one learner.
 4. **Children on engagement.** The steps are kept as pending children (`node.pending`) until the learner engages with the topic: a right answer, "I've got it", a second visit, or 2 minutes with the lesson open (`IkoPlan.engaged`). Then `applyPath` turns them into children in learning order, reusing existing children (and anything already inside this branch). Topics that already live elsewhere on the map stay where they are. Children take their parent's colour family, show as sepia ghosts on the cloud, and are listed under the holder ("Branches of Python: Sets · Lists · ...").
 5. The next topic is chosen locally (`nextFor`): the path's pick if not done, else the first unfinished step, else the next step further up the tree. It is shown as a dotted ring on the cloud, "next" on "Your path", and "Next up" after a lesson.
 6. Reading a lesson nudges mastery a little; a right answer to a question confirms it (`confirm`); "I've got it" marks it strong (mastery >= 0.6) and moves to the next step; "Still tricky" is remembered gently.
-7. "Map a path for X" (`/api/ikolearn/path`, one structured call) maps the next level on demand. The model may answer that a topic is small enough to end the branch (`end`); `markEnd` records it and `nextFor` moves on.
+7. "What comes next in X?" (the creation call, `kind: "next"`) replaces the old "Map a path" link once a branch is finished. `/api/ikolearn/path` still exists on the server but the app no longer calls it.
 8. After a lesson the learner picks where to go next (see Forks). Other branches are suggested only once a branch ends.
 9. Lessons are cached per node in `localStorage` (newest 30) with their questions and answers, so reopening costs nothing. "Write a fresh version" asks again.
 
@@ -58,7 +88,9 @@ Unlisted and noindexed while we test with one learner.
 | Opening a node from a path or lesson | 0 (note on request) |
 | Make a card | 1 (includes its path) |
 | Related topics (shown once a branch ends) | 1 |
-| Map a path | 1 |
+| Onboarding (first visit) | 1 creation call (the questions themselves are on the device) |
+| What comes next in a finished branch | 1 (cached on the parent until more is finished) |
+| Answering the light re-ask | 1 ("more"); showing it 0 |
 | Take a Test | 1 (cached until taken; 0 if there isn't enough finished material) |
 | New lesson | 1 (includes the questions, the card line, the fork choices, and the children if none yet) |
 | Children appearing, answering a test | 0 |
@@ -101,9 +133,9 @@ The lesson call's hidden block brings 1-2 multiple-choice questions (`{q, option
 ### The top 10 and ranking
 
 - `IkoRank.top(cloud)` ranks topics by heat: points for opens (also re-opens), minutes, right and wrong answers, "I've got it", "Still tricky", tests, cards and chat, halving every 14 days (`HEAT`, `heatNow`). It lives on the device, for one learner.
-- Three built-in sources, each scaled to its best, weighted and summed: `local` (weight 1, the learner's own use), `chain` (0.5: half of a topic's descendants' heat goes to its ancestors, so a busy chain lifts its parents), and `popular` (0.35, a small built-in list of well-loved first topics standing in for a shared source later). `popular` is a prior: it orders suggestions, but only topics the learner has used can enter the top 10.
+- Three built-in sources, each scaled to its best, weighted and summed: `local` (weight 1, the learner's own use), `chain` (0.5: half of a topic's descendants' heat goes to its ancestors, so a busy chain lifts its parents), and `model` (0.35: the importance score the creation call gave each child for this learner's age and rough region). `model` is a prior: it orders children and suggestions, but only topics the learner has used can enter the top 10. Scores made before the learner changed their age band or region count half until new ones arrive (`impAt < profile.changedAt`). Nothing is ever hidden by a low score.
 - `IkoRank.scores` gives every topic a score (ghosts too), `order(cloud, ids)` sorts by it, and `chains(cloud)` lists the busiest chains (shown under the top 10).
-- Sources are pluggable: `IkoRank.register({ name, weight, prior, scores(cloud, now) -> { topicKey: score } })`; keys not on the map are skipped. A server source (popular topics, a class's focus) plugs in without changing the draw.
+- Sources are pluggable: `IkoRank.register({ name, weight, prior, scores(cloud, now) -> { topicKey: score } })`; keys not on the map are skipped. A server source (topics popular across learners, a class's focus) plugs in without changing the draw.
 - It is shown as a quiet "Your top 10" list under the deck. In the draw it is a modest nudge: x `1 + 0.3*boost` on a card's weight, and a top card is due back from review a little sooner by the same factor. `boost` is 1 for the top topic, falling by a tenth per rank. Topics outside the top 10 get no nudge. In the simulated year below with three favourite Math topics, the favourites come up about a fifth more often than the other Math cards and Math still gets about a third of the draws. When a branch ends, a nearby top-10 topic is suggested first. Suggestions and fork choices in the top 10 come first and say so ("In your top 10 · ...").
 
 ## Suggestions, Draw and the orchestrator
@@ -113,7 +145,8 @@ The lesson call's hidden block brings 1-2 multiple-choice questions (`{q, option
 - **Suggestions** (`suggest`, 3 cards) show at session start, and again whenever the learner comes back to the Deck or the cloud. In order: a Test that's ready; the next step in the busiest recent chain (last 10 days); a card from the deck draw; something new from a quiet subject (always kept last). The non-test ones are sorted by rank, top-10 ones first. A new learner gets first steps from different subjects. Each has a short why line.
 - **Draw** (`draw`) picks one card with the balanced deck draw (below), skipping the card already in the holder, falls back to the best suggestion, slides it into the left holder and opens its lesson straight away.
 - There is always an obvious next step: the suggestions, Draw a card, Continue (the active lesson, `cloud.active`) and Your cloud. On the cloud the same choices sit in a small bar.
-- **Children** (`wantChildren`, `childrenReady`): a topic is engaged after 1 right answer, 2 visits, or 120 s. Only then do its pending children grow. Within a parent, the path order (foundational first, as the model lists it) wins; the remaining children follow by rank, explored before ghosts (`orderedChildren`). Other branches are suggested only after the current branch ends.
+- **Children** (`wantChildren`, `childrenReady`): a topic is engaged after 1 right answer, 2 visits, or 120 s. Only then do its pending children grow. Within a parent, children are ordered by rank (use, chain, the model's score) plus a bonus for their logical position (`orderWeight` 0.6 x how early it comes), and +0.2 once explored (`orderedChildren`). So the logical order leads when scores are close, a much more important or much-used child moves up, and the first is marked "start here". Other branches are suggested only after the current branch ends.
+- **Grow and ask items**: after a ready Test, a "What comes next in X?" item (`grow`) can lead the suggestions; the light re-ask takes the last slot when due. Draw skips both, so it never spends a call.
 - **Tests** (`testState`): a Test is ready when a parent has 3 finished children, or a whole path of at least 2 finished; after one is taken it is offered again once 2 more are finished. It's optional. It is shown as a Test card first in the suggestions, a dashed diamond beside the parent on the cloud ("Test", filled once taken), and "Take the test" in the panel. `/api/ikolearn/test` is one structured call with 5 questions built only from the finished material (the parent if opened, plus finished children with their card lines, up to 8). Fewer than 2 pieces of material answer 422 with no call. Each answer is checked against its topic; a right answer adds colour to that card (`recordTest`). Any attempt strengthens the parent (weight + 0.5, test heat); a pass (60%+) adds 2 confirmations and mastery to the parent.
 - Thresholds live in `IkoPlan.PLAN`.
 
@@ -138,10 +171,10 @@ The lesson call's hidden block brings 1-2 multiple-choice questions (`{q, option
 ## Storage
 
 - `ikolearn.v1.name`, `.cloud`, `.thread`, `.notes`, `.lessons`, `.tests` (cached test questions per parent, until taken) in `localStorage`. The server keeps nothing.
-- The cloud is stored in a compact v5 format: one array per node
+- The cloud is stored in a compact v6 format: one array per node
   `[id, label, parent, flags, weight*10, mastery*100, born(s), touched(s), hue, struggle(s), spent(s), engaged]`, plus `[correct, heat*100, heated(s), blurb, achieved(s)]` and then v5's `[pending ? [stepNames, next] : 0, done(s)]`, only on nodes that have them
-  (flags: 1 ghost, 2 opened, 4 branch ends), paths as `{ id: [stepIds, next, at] }`, plus cards, forks (`f`), the deck (`k`: `[id, label, subject, hue, joined(s), best stage, chain, blurb, achieved(s)]`), the draw log (`g`), the session count (`ss`), and v5's tests (`t`: `{ parentId: [at(s), finished children then, best*100, attempts, offered(s)] }`), the last suggestions (`sg`) and the active lesson (`fl`). A fresh cloud is about 1.9 KB; a full 600-node cloud stays under 60 KB.
-- v1 to v4 clouds are migrated on load without loss (every id, label, parent, ghost flag, weight, mastery, time, card, fork, path, deck entry and draw kept); missing seed topics arrive as ghosts. v2 topics with enough time join the deck straight away. v3 cards keep the stage they had reached; one whose branch had already ended becomes Achieved. v4 clouds get the Computer Science subject, with clearly-CS topics moved there from Making & Coding (ids, cards, paths and forks kept), and finished deck topics get a done time. New fields go at the end of the row so older rows still load.
+  (flags: 1 ghost, 2 opened, 4 branch ends), paths as `{ id: [stepIds, next, at] }`, plus cards, forks (`f`), the deck (`k`: `[id, label, subject, hue, joined(s), best stage, chain, blurb, achieved(s)]`), the draw log (`g`), the session count (`ss`), and v5's tests (`t`: `{ parentId: [at(s), finished children then, best*100, attempts, offered(s)] }`), the last suggestions (`sg`) and the active lesson (`fl`). v6 adds per node `[importance*100 or -1, made(s), goal, asked]` and the profile (`pr`: `[age band, region, region guessed 1/0, interests, onboarded(s), asked(s), visits, lesson visit, changed(s)]`). A fresh cloud is about 1.9 KB; a full 600-node cloud stays under 60 KB.
+- v1 to v4 clouds are migrated on load without loss (every id, label, parent, ghost flag, weight, mastery, time, card, fork, path, deck entry and draw kept); no seed topics are added any more. v2 topics with enough time join the deck straight away. v3 cards keep the stage they had reached; one whose branch had already ended becomes Achieved. v4 clouds get the Computer Science subject, with clearly-CS topics moved there from Making & Coding (ids, cards, paths and forks kept), and finished deck topics get a done time. v5 and older clouds also lose the old starter seeds the learner never touched (`pruneSeeds`): a seeded topic goes only if it was never opened, has no time, answers, card, deck entry, heat, path pick or test, and nothing of theirs under it, and it isn't a remaining step on the path of a topic they worked on. Seeded subjects go once empty and never strengthened. Learned or engaged topics, and everything the learner made, are never removed. New fields go at the end of the row so older rows still load.
 
 ## Rendering at depth
 
