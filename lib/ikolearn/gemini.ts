@@ -26,11 +26,11 @@ export function chatBody(system: string, contents: Content[], opts: StreamOption
   };
 }
 
-export function jsonBody(system: string, user: string, schema: unknown) {
+export function jsonBody(system: string, user: string, schema: unknown, opts: StreamOptions = {}) {
   return {
     systemInstruction: { parts: [{ text: system }] },
     contents: [{ role: "user", parts: [{ text: user }] }],
-    generationConfig: { temperature: MODEL_LIMITS.jsonTemperature, maxOutputTokens: MODEL_LIMITS.jsonMaxTokens, responseMimeType: "application/json", responseSchema: upperTypes(schema) },
+    generationConfig: { temperature: MODEL_LIMITS.jsonTemperature, maxOutputTokens: opts.maxTokens || MODEL_LIMITS.jsonMaxTokens, responseMimeType: "application/json", responseSchema: upperTypes(schema) },
   };
 }
 
@@ -94,8 +94,8 @@ async function jsonOnce<T>(cfg: LlmConfig, model: string, body: unknown, parse: 
   }
 }
 
-export async function geminiJson<T>(cfg: LlmConfig, system: string, user: string, schema: unknown, parse: (t: string) => T | null, fetchImpl: typeof fetch): Promise<JsonResult<T>> {
-  const body = jsonBody(system, user, schema);
+export async function geminiJson<T>(cfg: LlmConfig, system: string, user: string, schema: unknown, parse: (t: string) => T | null, fetchImpl: typeof fetch, opts: StreamOptions = {}): Promise<JsonResult<T>> {
+  const body = jsonBody(system, user, schema, opts);
   const first = await jsonOnce(cfg, cfg.model, body, parse, fetchImpl);
   if (first.ok || !cfg.fallback || cfg.model === cfg.fallback || !shouldFallBack(first)) return first;
   return jsonOnce(cfg, cfg.fallback, body, parse, fetchImpl);

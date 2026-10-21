@@ -1,0 +1,166 @@
+{
+ "note": "Test fixture only: the starter map new learners got before v6. The app no longer seeds anything; tests use this to build a rich cloud through IkoCloud.plant.",
+ "starters": [
+  {
+   "label": "Reading & Writing",
+   "children": [
+    "Stories",
+    "Vocabulary",
+    {
+     "label": "Poetry",
+     "ghost": true
+    }
+   ]
+  },
+  {
+   "label": "Math",
+   "path": [
+    "Counting",
+    "Number Sense",
+    "Addition",
+    "Subtraction",
+    "Multiplication",
+    "Fractions"
+   ],
+   "children": [
+    {
+     "label": "Counting",
+     "path": [
+      "Counting to 20",
+      "Skip Counting"
+     ],
+     "children": [
+      "Counting to 20",
+      {
+       "label": "Skip Counting",
+       "ghost": true
+      }
+     ]
+    },
+    {
+     "label": "Number Sense",
+     "path": [
+      "Comparing Numbers",
+      "Place Value"
+     ],
+     "children": [
+      {
+       "label": "Comparing Numbers",
+       "ghost": true
+      },
+      {
+       "label": "Place Value",
+       "ghost": true
+      }
+     ]
+    },
+    {
+     "label": "Addition",
+     "ghost": true,
+     "path": [
+      "Adding Within 10",
+      "Number Bonds",
+      "Adding Within 20"
+     ],
+     "children": [
+      {
+       "label": "Adding Within 10",
+       "ghost": true
+      },
+      {
+       "label": "Number Bonds",
+       "ghost": true
+      },
+      {
+       "label": "Adding Within 20",
+       "ghost": true
+      }
+     ]
+    },
+    {
+     "label": "Subtraction",
+     "ghost": true
+    },
+    {
+     "label": "Multiplication",
+     "ghost": true
+    },
+    {
+     "label": "Fractions",
+     "ghost": true
+    },
+    "Shapes"
+   ]
+  },
+  {
+   "label": "Science",
+   "children": [
+    "Living Things",
+    "Space",
+    {
+     "label": "Weather",
+     "ghost": true
+    }
+   ]
+  },
+  {
+   "label": "People & Places",
+   "children": [
+    "History",
+    "Maps",
+    {
+     "label": "Cultures",
+     "ghost": true
+    }
+   ]
+  },
+  {
+   "label": "Art & Music",
+   "children": [
+    "Drawing",
+    "Rhythm",
+    {
+     "label": "Color Mixing",
+     "ghost": true
+    }
+   ]
+  },
+  {
+   "label": "Making & Coding",
+   "children": [
+    "Building",
+    "Puzzles",
+    {
+     "label": "Robots",
+     "ghost": true
+    }
+   ]
+  },
+  {
+   "label": "Computer Science",
+   "hue": 252,
+   "path": [
+    "Algorithms",
+    "Programming"
+   ],
+   "children": [
+    {
+     "label": "Algorithms",
+     "ghost": true
+    },
+    {
+     "label": "Programming",
+     "ghost": true
+    },
+    {
+     "label": "How Computers Work",
+     "ghost": true
+    },
+    {
+     "label": "How AI Works",
+     "ghost": true
+    }
+   ]
+  }
+ ]
+}

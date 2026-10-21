@@ -2,15 +2,16 @@
  * IkoLearn cloud data model (no DOM). The learner's knowledge map as a tree of any depth:
  *   root (first name) -> subjects -> topics -> subtopics -> ... ; ghosts are topics not explored yet.
  * Every node has a stable id ("n12", never reused) and a path of labels from its subject ("Math > Addition > Number Bonds").
- * It grows from the structured block the companion appends to each reply, from cards, from lesson paths and from
- * "related topics". Nodes keep weight (how much it came up), mastery (0..1, raised by lessons) and an optional ordered
+ * It starts empty (just the learner's name) and grows procedurally: from the creation call (the first parents a new
+ * learner gets, and "what comes next" for a parent), from the structured block the companion appends to each reply,
+ * from cards, from lesson paths and from "related topics". Nothing is pre-seeded; PALETTE only keeps subject colours stable. Nodes keep weight (how much it came up), mastery (0..1, raised by lessons) and an optional ordered
  * learning path of subtopics with a recommended next step.
  * Works in the browser (window.IkoCloud) and in Node (module.exports) so the check script can test it.
  */
 (function (root) {
   "use strict";
 
-  var VERSION = 4;
+  var VERSION = 7;
   /* nodes: stored cap (localStorage stays small). children / ghosts: per node. There is no depth limit. */
   var LIMITS = { nodes: 600, subjects: 12, children: 16, ghostsPerNode: 6, pathSteps: 6, cards: 60, labelChars: 32, choices: 3, draws: 3000, whyChars: 80, chain: 4, blurbChars: 140 };
   var MASTERED = 0.6;
@@ -18,30 +19,19 @@
   var HUES = [4, 28, 48, 96, 150, 188, 214, 252, 286, 322, 70, 170];
 
   /*
-   * Starter map. A string is an explored starter topic; { ghost: true } is a dotted branch; `path` orders a node's
-   * subtopics into a suggested learning route. Math is seeded deeper as the worked example; the logic is the same for
-   * every subject.
+   * Broad subject names and their hues: data only, a palette and a fallback, never a curriculum. A subject the model
+   * names that matches one (or its aliases) takes that hue, so colours stay the same for every learner and across years.
+   * Other subjects take the free hues in HUES, starting with the ones no palette subject owns.
    */
-  var STARTERS = [
-    { label: "Reading & Writing", children: ["Stories", "Vocabulary", { label: "Poetry", ghost: true }] },
-    {
-      label: "Math",
-      path: ["Counting", "Number Sense", "Addition", "Subtraction", "Multiplication", "Fractions"],
-      children: [
-        { label: "Counting", path: ["Counting to 20", "Skip Counting"], children: ["Counting to 20", { label: "Skip Counting", ghost: true }] },
-        { label: "Number Sense", path: ["Comparing Numbers", "Place Value"], children: [{ label: "Comparing Numbers", ghost: true }, { label: "Place Value", ghost: true }] },
-        { label: "Addition", ghost: true, path: ["Adding Within 10", "Number Bonds", "Adding Within 20"], children: [{ label: "Adding Within 10", ghost: true }, { label: "Number Bonds", ghost: true }, { label: "Adding Within 20", ghost: true }] },
-        { label: "Subtraction", ghost: true },
-        { label: "Multiplication", ghost: true },
-        { label: "Fractions", ghost: true },
-        "Shapes"
-      ]
-    },
-    { label: "Science", children: ["Living Things", "Space", { label: "Weather", ghost: true }] },
-    { label: "People & Places", children: ["History", "Maps", { label: "Cultures", ghost: true }] },
-    { label: "Art & Music", children: ["Drawing", "Rhythm", { label: "Color Mixing", ghost: true }] },
-    { label: "Making & Coding", children: ["Building", "Puzzles", { label: "Coding", ghost: true }, { label: "How AI Works", ghost: true }] }
+  var PALETTE = [
+    { label: "Reading & Writing", hue: 4 }, { label: "Math", hue: 28 }, { label: "Science", hue: 48 }, { label: "People & Places", hue: 96 },
+    { label: "Art & Music", hue: 150 }, { label: "Making & Coding", hue: 188 }, { label: "Computer Science", hue: 252 }
   ];
+  /* Migration only: the labels the old starter map (v1-v5) planted. Untouched ones are pruned from older saves (pruneSeeds). */
+  var OLD_SEEDS = ["Reading & Writing", "Stories", "Vocabulary", "Poetry", "Math", "Counting", "Counting to 20", "Skip Counting", "Number Sense", "Comparing Numbers",
+    "Place Value", "Addition", "Adding Within 10", "Number Bonds", "Adding Within 20", "Subtraction", "Multiplication", "Fractions", "Shapes", "Science", "Living Things",
+    "Space", "Weather", "People & Places", "History", "Maps", "Cultures", "Art & Music", "Drawing", "Rhythm", "Color Mixing", "Making & Coding", "Building", "Puzzles",
+    "Robots", "Computer Science", "Algorithms", "Programming", "How Computers Work", "How AI Works"];
 
   /* Words that point at an existing subject, so "maths" or "biology" lands under Math or Science. */
   var SUBJECT_ALIASES = {
@@ -50,8 +40,12 @@
     science: ["sciences", "biology", "physic", "physics", "chemistry", "nature", "earth science"],
     "people and places": ["history", "geography", "social studies", "social study", "civics", "world"],
     "art and music": ["art", "arts", "music", "drawing and music", "creative arts"],
-    "making and coding": ["coding", "computing", "computer science", "technology", "tech", "engineering", "making", "programming"]
+    "making and coding": ["technology", "tech", "engineering", "making", "building", "crafts", "maker"],
+    "computer science": ["cs", "computing", "computers", "computer", "coding", "programming", "code", "software", "comp sci"]
   };
+
+  /* Topics that belong to Computer Science, not Making & Coding (moved once, on load, from older clouds). */
+  var CS_TOPICS = ["Coding", "Programming", "Python", "JavaScript", "Scratch", "Java", "Algorithms", "How AI Works", "How Computers Work", "Computers", "Web Pages", "HTML", "Internet", "Data", "Apps", "Code"];
 
   function cleanLabel(v) {
     return String(v == null ? "" : v)
@@ -114,17 +108,49 @@
   function newId(cloud) { cloud.seq = (cloud.seq || 0) + 1; return "n" + cloud.seq; }
 
   function addNode(cloud, o) {
+    if (!o.parent) o = Object.assign({}, o, { label: paletteLabel(o.label) }); /* "Engineering" as a new subject is Making & Coding */
     var id = newId(cloud);
     var n = {
       id: id, label: cleanLabel(o.label), key: norm(o.label), parent: o.parent || null,
       weight: o.ghost ? 0 : (o.weight == null ? 1 : o.weight), mastery: 0, ghost: Boolean(o.ghost),
       born: o.born == null ? Date.now() : o.born, touched: o.born || 0, cards: [], opened: false,
-      spent: 0, engaged: 0, end: false, correct: 0, heat: 0, heatAt: 0, blurb: "", achievedAt: 0
+      spent: 0, engaged: 0, end: false, correct: 0, heat: 0, heatAt: 0, blurb: "", achievedAt: 0, pending: null, doneAt: 0,
+      imp: null, impAt: 0, goal: "", asked: 0,
+      /* v7: role among its siblings (core = the main sequence, optional = a side path off one core step), made by a creation call, bridge cached; absorb groundwork */
+      role: o.role === "core" || o.role === "optional" ? o.role : "", off: o.off || null, made: Boolean(o.made), bridged: 0, absorbedInto: null, absorbed: []
     };
-    if (!n.parent) n.hue = HUES[subjects(cloud).length % HUES.length];
+    if (!n.parent) {
+      var ph = paletteHue(o.label);
+      n.hue = Number.isFinite(o.hue) && !hueUsed(cloud, o.hue) ? o.hue : ph != null && !hueUsed(cloud, ph) ? ph : freeHue(cloud);
+    }
     cloud.nodes[id] = n;
     cloud.order.push(id);
     return n;
+  }
+
+  /* Each subject keeps its own hue: the first one in HUES order that no subject uses yet. */
+  function hueUsed(cloud, h) { return subjects(cloud).some(function (s) { return s.hue === h; }); }
+  function freeHue(cloud) {
+    var owned = PALETTE.map(function (p) { return p.hue; }), i;
+    for (i = 0; i < HUES.length; i++) if (owned.indexOf(HUES[i]) < 0 && !hueUsed(cloud, HUES[i])) return HUES[i];
+    for (i = 0; i < HUES.length; i++) if (!hueUsed(cloud, HUES[i])) return HUES[i];
+    return HUES[subjects(cloud).length % HUES.length];
+  }
+  /* A new subject's name: the palette name when it is one of its aliases ("Language" -> "Reading & Writing"), else as given. */
+  function paletteLabel(label) {
+    var k = norm(label);
+    for (var i = 0; k && i < PALETTE.length; i++) if ((SUBJECT_ALIASES[norm(PALETTE[i].label)] || []).indexOf(k) >= 0) return PALETTE[i].label;
+    return label;
+  }
+  /* The palette hue for a subject name (exact, or through its aliases), or null. */
+  function paletteHue(label) {
+    var k = norm(label);
+    if (!k) return null;
+    for (var i = 0; i < PALETTE.length; i++) {
+      var pk = norm(PALETTE[i].label), al = SUBJECT_ALIASES[pk] || [];
+      if (pk === k || al.indexOf(k) >= 0) return PALETTE[i].hue;
+    }
+    return null;
   }
 
   function removeNode(cloud, id) {
@@ -133,8 +159,13 @@
     all(cloud).forEach(function (n) {
       if (n.path) { n.path.ids = n.path.ids.filter(function (x) { return x !== id; }); if (n.path.next === id) n.path.next = null; }
       if (n.fork) { var i = n.fork.ids.indexOf(id); if (i >= 0) { n.fork.ids.splice(i, 1); n.fork.why.splice(i, 1); } if (n.fork.picked === id) n.fork.picked = null; if (n.fork.ids.length < 2) delete n.fork; }
+      if (n.off === id) n.off = null;
+      if (n.absorbedInto === id) n.absorbedInto = null;
+      if (n.absorbed && n.absorbed.indexOf(id) >= 0) n.absorbed = n.absorbed.filter(function (x) { return x !== id; });
     });
     if (cloud.next === id) cloud.next = null;
+    if (cloud.tests) delete cloud.tests[id];
+    if (cloud.active === id) cloud.active = null;
   }
 
   /* On a path or offered as a fork choice: such ghosts are kept when room is needed. */
@@ -241,6 +272,8 @@
       cur = i === 0 ? findAny(cloud, list[0]) : findTopic(cloud, list[i]);
       if (cur) { at = i; break; }
     }
+    /* a seeded (dotted) link that now carries a topic becomes explored */
+    if (cur && cur.ghost) { cur.ghost = false; cur.born = t; cur.weight = Math.max(cur.weight, 0.5); if (res) res.promoted.push(cur.id); }
     var start = at + 1;
     if (!cur) {
       cur = resolveParent(cloud, list[0], t, res);
@@ -259,6 +292,25 @@
     return cur;
   }
 
+  /*
+   * A short chain deepened from the learner's own map: when what they wrote names a topic already on their map
+   * ("How do sets work in Python?" with Python on the map) and that topic's chain starts with the links given, the
+   * new topic goes under it. Only ever extends a chain inside the same subject; no tables, no call. null when nothing fits.
+   */
+  function deepenChain(cloud, links, label, said) {
+    var text = " " + norm(said) + " ", k = norm(label), base = (links || []).map(norm);
+    if (!base.length || text.length < 3) return null;
+    var best = null;
+    all(cloud).forEach(function (n) {
+      if (!n.parent || n.key === k || text.indexOf(" " + n.key + " ") < 0) return;
+      var ch = ancestry(cloud, n.id).map(function (x) { return cloud.nodes[x]; });
+      if (ch.length <= base.length || ch.some(function (c) { return c.key === k; })) return;
+      if (!base.every(function (b, i) { return ch[i].key === b || (i === 0 && findSubject(cloud, links[0]) === ch[0]); })) return;
+      if (!best || ch.length > best.length) best = ch;
+    });
+    return best ? best.map(function (c) { return c.label; }) : null;
+  }
+
   function bumpAncestors(cloud, id, amount, t) {
     var a = ancestry(cloud, id); a.pop();
     a.reverse().forEach(function (x, i) { var n = cloud.nodes[x]; n.weight += amount / (i + 1); n.touched = t; });
@@ -268,7 +320,8 @@
    * Applies the companion's topics. Returns { created, promoted, strengthened, parentsCreated } (node ids),
    * which the views use to highlight what grew.
    */
-  function applyTopics(cloud, topics, t) {
+  /* said: what the learner just wrote (optional), used only to deepen a short chain from their own map. */
+  function applyTopics(cloud, topics, t, said) {
     t = now_(t);
     var res = { created: [], promoted: [], strengthened: [], parentsCreated: [] };
     (Array.isArray(topics) ? topics : []).slice(0, 3).forEach(function (tp) {
@@ -285,6 +338,8 @@
         /* an explicit chain (from chat or a card) builds the missing links between the subject and this topic */
         var links = (Array.isArray(tp.chain) ? tp.chain.slice(0, LIMITS.chain) : []);
         if (links.length && tp.parent && norm(links[links.length - 1]) !== norm(tp.parent)) links.push(tp.parent);
+        /* a short chain: deepen it from a topic on the learner's map that they named (no call) */
+        if (links.length <= 1 && said) links = deepenChain(cloud, links.length ? links : [tp.parent], label, said) || links;
         links = links.filter(function (l) { return norm(l) !== norm(label); });
         parent = (links.length > 1 && placeChain(cloud, links, t, res)) || resolveParent(cloud, tp.parent, t, res);
         if (!makeRoom(cloud, parent.id, false)) { parent.weight += 0.5; parent.touched = t; res.strengthened.push(parent.id); return; }
@@ -361,6 +416,7 @@
       if (out.ids.indexOf(hit.id) < 0) out.ids.push(hit.id);
     });
     if (!out.ids.length) return out;
+    out.ids.forEach(function (x) { var k = cloud.nodes[x]; if (k.parent === id && k.role !== "optional") k.role = "core"; }); /* a path is the core sequence */
     var want = norm(nextLabel);
     var pick = out.ids.filter(function (x) { return cloud.nodes[x].key === want && cloud.nodes[x].mastery < MASTERED; })[0];
     n.path = { ids: out.ids, next: pick || null, at: t };
@@ -557,8 +613,18 @@
       var basis = perp(cur.dir);
       var step = 0.42 * levelScale(P.d + 1) / 0.6;
       var a0 = hash(n.key + "fan") * Math.PI * 2;
+      kidsIds = kidsIds.filter(function (x) { return cloud.nodes[x].role !== "optional"; }).concat(kidsIds.filter(function (x) { return cloud.nodes[x].role === "optional"; }));
       kidsIds.forEach(function (cid) {
         var c = cloud.nodes[cid];
+        if (c.role === "optional" && c.off && pos[c.off] && kidsIds.indexOf(c.off) >= 0) {
+          /* a side path sits just off its core step, a little further out */
+          var O = pos[c.off], dir = unit({ x: O.x - P.x, y: O.y - P.y, z: O.z - P.z }), b2 = perp(dir), a2 = hash(c.key + "side") * Math.PI * 2, sd = step * 0.55;
+          var so = { x: dir.x * 0.5 + (b2[0].x * Math.cos(a2) + b2[1].x * Math.sin(a2)) * 0.85, y: dir.y * 0.5 + (b2[0].y * Math.cos(a2) + b2[1].y * Math.sin(a2)) * 0.85, z: dir.z * 0.5 + (b2[0].z * Math.cos(a2) + b2[1].z * Math.sin(a2)) * 0.85 };
+          var sq = { x: O.x + so.x * sd, y: O.y + so.y * sd, z: O.z + so.z * sd, d: P.d + 1 };
+          pos[cid] = sq;
+          stack.push({ id: cid, dir: unit({ x: sq.x - P.x, y: sq.y - P.y, z: sq.z - P.z }) });
+          return;
+        }
         var oi = order.indexOf(cid);
         var a = oi >= 0 ? a0 + oi * (Math.PI * 2 / Math.max(order.length + 1, 5)) : hash(c.key + "a") * Math.PI * 2;
         var theta = 0.7 + (c.ghost ? 0.2 : 0) + hash(c.key + "t") * 0.25;
@@ -583,9 +649,12 @@
     return [u, unit(cross(d, u))];
   }
 
-  /* ---------- seeds ---------- */
+  /* ---------- branches from a spec ---------- */
   function seedLabel(s) { return typeof s === "string" ? s : s.label; }
-  /* Adds a starter branch. With `onlyMissing`, existing nodes are kept as they are and new seeds arrive as ghosts. */
+  /*
+   * Adds a branch from a nested spec ({ label, ghost, path, children }). Nothing calls this for new learners any more;
+   * it stays for fixtures and tools. With `onlyMissing`, existing nodes are kept and new ones arrive as ghosts.
+   */
   function plant(cloud, spec, parentId, t, onlyMissing) {
     var label = seedLabel(spec), ghost = typeof spec === "object" && spec.ghost;
     var k = norm(label);
@@ -594,7 +663,7 @@
     if (!n) {
       if (parentId && !makeRoom(cloud, parentId, true)) return null;
       if (!parentId && subjects(cloud).length >= LIMITS.subjects) return null;
-      n = addNode(cloud, { label: label, parent: parentId, ghost: Boolean(parentId) && (ghost || onlyMissing), weight: 1, born: onlyMissing ? t : 0 });
+      n = addNode(cloud, { label: label, parent: parentId, ghost: Boolean(parentId) && (ghost || onlyMissing), weight: 1, born: onlyMissing ? t : 0, hue: typeof spec === "object" ? spec.hue : undefined });
     }
     var kids = (typeof spec === "object" && spec.children) || [];
     kids.forEach(function (c) { plant(cloud, c, n.id, t, onlyMissing); });
@@ -607,11 +676,142 @@
 
   function create(name, t) {
     t = now_(t);
-    var cloud = { v: VERSION, name: cleanLabel(name) || "Me", seq: 0, rev: 0, nodes: {}, order: [], cards: [], created: t, next: null, deck: [], draws: [], sessions: 0 };
-    STARTERS.forEach(function (s) { plant(cloud, s, null, 0, false); });
-    var math = findSubject(cloud, "Math");
-    cloud.next = math ? nextFor(cloud, math.id) : null;
-    return cloud;
+    /* nothing pre-seeded: the orchestrator asks a few questions and the creation call builds the first parents */
+    return { v: VERSION, name: cleanLabel(name) || "Me", seq: 0, rev: 0, nodes: {}, order: [], cards: [], created: t, next: null, deck: [], draws: [], sessions: 0, tests: {}, suggest: null, active: null, profile: newProfile() };
+  }
+
+  /* ---------- the learner's profile (v6) ---------- */
+  /*
+   * age: an optional band (AGE_BANDS); region: a coarse place like "Canada / Ontario-ish", guessed on the device from
+   * the locale and time zone (regionAuto) or typed by the learner, or empty. interests: what they said they enjoy.
+   * onboarded: when the first questions were answered or skipped; askedAt: the last light re-ask; visits / lessonVisit:
+   * for "seems stuck"; changedAt: when age or region last changed (older model scores then count for less).
+   */
+  var AGE_BANDS = ["4-6", "7-9", "10-12", "13-15", "16-18", "adult"];
+  function newProfile() { return { age: "", region: "", regionAuto: true, interests: [], onboarded: 0, askedAt: 0, visits: 0, lessonVisit: 0, changedAt: 0 }; }
+  function cleanRegion(v) { return String(v == null ? "" : v).replace(/[^\p{L}\p{M} /,.&'-]/gu, " ").replace(/\s+/g, " ").trim().slice(0, 40).trim(); }
+  function cleanInterest(v) { return String(v == null ? "" : v).replace(/[\u0000-\u001f\u007f"<>{}[\]`*_#|\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40).trim(); }
+  function profileOf(cloud) { if (!cloud.profile) cloud.profile = newProfile(); return cloud.profile; }
+  function setProfile(cloud, patch, t) {
+    t = now_(t);
+    var p = profileOf(cloud), changed = false;
+    if (patch && "age" in patch) { var a = AGE_BANDS.indexOf(String(patch.age)) >= 0 ? String(patch.age) : patch.age === "" || patch.age == null ? "" : null; if (a !== null && a !== p.age) { p.age = a; changed = true; } } /* "" clears; an unknown band is ignored */
+    if (patch && "region" in patch) { var r = cleanRegion(patch.region); if (r !== p.region) { p.region = r; changed = true; } p.regionAuto = Boolean(patch.regionAuto); }
+    if (patch && Array.isArray(patch.interests)) {
+      patch.interests.map(cleanInterest).filter(Boolean).forEach(function (x) { if (!p.interests.some(function (y) { return norm(y) === norm(x); })) p.interests.push(x); });
+      p.interests = p.interests.slice(-12);
+    }
+    if (patch && patch.onboarded) p.onboarded = p.onboarded || t;
+    if (patch && patch.askedAt) p.askedAt = t;
+    if (changed) p.changedAt = t;
+    return p;
+  }
+  /* Topics the learner has (explored, below a subject). */
+  function topicCount(cloud) { return all(cloud).filter(function (n) { return n.parent && !n.ghost; }).length; }
+
+  function cleanGoal(v) { return String(v == null ? "" : v).replace(/[\u0000-\u001f\u007f<>{}[\]`*_#|\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 100).trim(); }
+  /*
+   * Applies one creation result (the "create" call): { items: [{ node: { name, chain }, card: { title, blurb, goal },
+   * children: [{ name, order, score }] }] }. Each node is placed through its chain (missing links are created, a broad
+   * subject takes its palette colour), gets its card line and goal, and its children arrive as dotted placeholders in
+   * their logical order (its path) with the model's importance score (imp) for the ranking. opts.focusId: "what comes
+   * next" for that existing parent. Never removes anything. -> { nodes: [ids], children: [ids], order: [ids as created] }
+   */
+  function applyCreate(cloud, result, opts) {
+    opts = opts || {};
+    var t = now_(opts.t), out = { nodes: [], children: [], order: [] }, res = { created: [], promoted: [], strengthened: [], parentsCreated: [] };
+    (result && Array.isArray(result.items) ? result.items : []).forEach(function (it) {
+      if (!it || !it.node) return;
+      var label = cleanLabel(it.node.name), k = norm(label), n = null;
+      if (opts.focusId) n = node(cloud, opts.focusId);
+      else if (label && k !== norm(cloud.name)) {
+        var links = (Array.isArray(it.node.chain) ? it.node.chain : []).map(cleanLabel).filter(function (l) { return l && norm(l) !== k && norm(l) !== norm(cloud.name); }).slice(-LIMITS.chain);
+        var parent = links.length ? placeChain(cloud, links, t, res) : null;
+        /* new links of the chain appear first, broadest first, then the node */
+        res.parentsCreated.concat(res.created).forEach(function (x) { if (out.order.indexOf(x) < 0) out.order.push(x); });
+        res.created = []; res.parentsCreated = [];
+        if (parent) {
+          n = childrenOf(cloud, parent.id).filter(function (c) { return c.key === k; })[0] || findTopic(cloud, label, parent.id);
+          if (!n && makeRoom(cloud, parent.id, false)) { n = addNode(cloud, { label: label, parent: parent.id, weight: 0.5, born: t }); out.order.push(n.id); }
+        } else {
+          n = subjects(cloud).filter(function (x) { return x.key === k; })[0] || findTopic(cloud, label) || findSubject(cloud, label);
+          if (!n && subjects(cloud).length < LIMITS.subjects) { n = addNode(cloud, { label: label, parent: null, weight: 1, born: t }); out.order.push(n.id); }
+        }
+      }
+      if (!n) return;
+      if (n.ghost) { n.ghost = false; n.born = t; n.weight = Math.max(n.weight, 0.5); }
+      var card = it.card || {};
+      if (card.blurb && (!n.blurb || !opts.focusId)) setBlurb(cloud, n.id, card.blurb);
+      if (card.goal && (!n.goal || !opts.focusId)) n.goal = cleanGoal(card.goal); /* "what comes next" never rewrites a parent's card */
+      var kids = (Array.isArray(it.children) ? it.children : []).slice().sort(function (a, b) { return (Number(a.order) || 99) - (Number(b.order) || 99); });
+      /* core children are the ordered main sequence (its path); optional ones hang off one core step as side paths */
+      var core = kids.filter(function (c) { return c.role !== "optional"; }), side = kids.filter(function (c) { return c.role === "optional"; });
+      if (!core.length && side.length) core = [side.shift()];
+      var before = childrenOf(cloud, n.id).map(function (c) { return c.id; });
+      var r = core.length ? applyPath(cloud, n.id, core.map(function (c) { return c.name; }), core[0].name, t) : { ids: [], added: [] };
+      var coreIds = (n.path ? n.path.ids : []).filter(function (x) { return cloud.nodes[x] && cloud.nodes[x].parent === n.id; });
+      coreIds.forEach(function (x) { if (cloud.nodes[x].role !== "optional") cloud.nodes[x].role = "core"; });
+      side.forEach(function (c) {
+        var lbl = cleanLabel(c.name), kk = norm(lbl);
+        if (!kk || kk === norm(cloud.name) || kk === n.key) return;
+        var hit = childrenOf(cloud, n.id).filter(function (x) { return x.key === kk; })[0];
+        if (!hit && findTopic(cloud, lbl, n.id) && !isAncestor(cloud, n.id, findTopic(cloud, lbl, n.id).id)) return; /* lives elsewhere: leave it there */
+        if (!hit) {
+          if (!makeRoom(cloud, n.id, true, coreIds)) return;
+          hit = addNode(cloud, { label: lbl, parent: n.id, ghost: true, born: t, role: "optional" });
+          r.added.push(hit.id);
+        }
+        if (hit.role !== "core") {
+          hit.role = "optional";
+          var at = coreIds.filter(function (x) { return cloud.nodes[x].key === norm(c.after); })[0];
+          hit.off = at || hit.off || coreIds[0] || null;
+        }
+      });
+      kids.forEach(function (c) {
+        var hit = childrenOf(cloud, n.id).filter(function (x) { return x.key === norm(c.name); })[0];
+        if (!hit) return;
+        var sc = Number(c.score);
+        if (Number.isFinite(sc)) { hit.imp = clamp01(sc > 1 ? sc / 100 : sc); hit.impAt = t; }
+        if (before.indexOf(hit.id) < 0 && out.children.indexOf(hit.id) < 0) out.children.push(hit.id);
+      });
+      r.added.forEach(function (x) { if (out.order.indexOf(x) < 0) out.order.push(x); });
+      n.pending = null;
+      if (opts.focusId) n.asked = doneCore(cloud, n.id).length + 1;
+      else n.made = true;
+      n.touched = Math.max(n.touched || 0, t);
+      if (out.nodes.indexOf(n.id) < 0) out.nodes.push(n.id);
+    });
+    if (out.nodes.length) { cloud.rev += 1; prune(cloud); }
+    return out;
+  }
+
+  /*
+   * v6 migration: the old starter map is gone. Seeded topics the learner never touched (no visit, time, answers, card,
+   * deck entry, heat, path pick or test, and nothing of theirs under them) are pruned, deepest first; a seeded subject
+   * goes once it has nothing left under it and was never strengthened. Learned or engaged nodes are never removed, and
+   * neither are the remaining steps on the path of a topic the learner worked on (so no branch is marked finished by it).
+   */
+  function pruneSeeds(cloud) {
+    var seeds = OLD_SEEDS.map(norm), removed = [], guard = 0, again = true;
+    var untouched = function (n) {
+      return seeds.indexOf(n.key) >= 0 && !n.opened && !(n.spent > 0) && !(n.engaged > 0) && !(n.correct > 0) && !(n.mastery > 0) && !(n.heat > 0) &&
+        !n.cards.length && !inDeck(cloud, n.id) && !n.blurb && !n.achievedAt && !n.doneAt && !n.pending && !n.lastStruggle && !(cloud.tests && cloud.tests[n.id]) &&
+        n.weight <= 1.0001 && !hasChildren(cloud, n.id) && !(n.fork && n.fork.picked) && !onEngagedPath(n);
+    };
+    /* a step on the path of a topic the learner worked on stays: it's the rest of their branch (pruning it would mark the branch finished) */
+    var onEngagedPath = function (n) {
+      var par = cloud.nodes[n.parent];
+      return Boolean(par && par.path && par.path.ids.indexOf(n.id) >= 0 && (par.opened || par.engaged > 0 || par.correct > 0 || par.spent > 0 || inDeck(cloud, par.id)));
+    };
+    while (again && guard++ < 50) {
+      again = false;
+      cloud.order.slice().reverse().forEach(function (id) {
+        var n = cloud.nodes[id];
+        if (n && untouched(n)) { removeNode(cloud, id); removed.push(n.label); again = true; }
+      });
+    }
+    if (removed.length) cloud.rev += 1;
+    return removed;
   }
 
   /*
@@ -690,6 +890,7 @@
     all(cloud).forEach(function (n) {
       if (!n.parent || n.ghost) return;
       if (!n.achievedAt && isTerminal(cloud, n.id)) n.achievedAt = t;
+      if (!n.doneAt && isDone(cloud, n.id)) n.doneAt = t; /* completion is kept for good, even if mastery later dips */
       if (inDeck(cloud, n.id) || (scoreOf(n) < GROWTH.join && !n.achievedAt)) return;
       cloud.deck.push({ id: n.id, label: n.label, subject: "", hue: SEPIA, at: t, best: 0, chain: [], blurb: "", ach: 0 });
       joined.push(n.id);
@@ -735,7 +936,7 @@
    * Usage heat for the ranking (rank.js): points per use, halving every HEAT.halfDays days, so the top 10 follows what the
    * learner does lately. Kept per node as { heat, heatAt }.
    */
-  var HEAT = { halfDays: 14, open: 1, minute: 0.25, correct: 1.5, wrong: 0.3, got: 2, tricky: 0.5, card: 1, chat: 0.5 };
+  var HEAT = { halfDays: 14, open: 1, minute: 0.25, correct: 1.5, wrong: 0.3, got: 2, tricky: 0.5, card: 1, chat: 0.5, test: 2 };
   function heatNow(n, t) {
     if (!n || !n.heat) return 0;
     var dt = Math.max(0, now_(t) - (n.heatAt || 0));
@@ -799,6 +1000,160 @@
     if (n.mastery < MASTERED || !n.path || !n.path.ids.length) return false;
     return n.path.ids.every(function (x) { return !cloud.nodes[x] || cloud.nodes[x].mastery >= MASTERED; });
   }
+  /* ---------- completion, children waiting for engagement, tests (v5) ---------- */
+  /* A completed topic: done once (doneAt), or mastered, or 2+ right answers, or its branch has ended. Ghosts never are. */
+  function isDone(cloud, id) {
+    var n = node(cloud, id);
+    if (!n || !n.parent || n.ghost) return false;
+    return Boolean(n.doneAt || n.achievedAt || n.mastery >= MASTERED || (n.correct || 0) >= 2 || isTerminal(cloud, id));
+  }
+  /* The completed children of a topic (its direct children, path steps first). */
+  function doneChildren(cloud, id) {
+    var n = node(cloud, id);
+    if (!n) return [];
+    var ids = (n.path ? n.path.ids.slice() : []);
+    childrenOf(cloud, id).forEach(function (c) { if (ids.indexOf(c.id) < 0) ids.push(c.id); });
+    return ids.filter(function (x) { return cloud.nodes[x] && cloud.nodes[x].parent === id && isDone(cloud, x); });
+  }
+  /* Core children: the main sequence (and children from before roles existed). Optional ones are side paths and never block. */
+  function coreChildren(cloud, id) { return childrenOf(cloud, id).filter(function (c) { return c.role !== "optional"; }); }
+  function doneCore(cloud, id) { return doneChildren(cloud, id).filter(function (x) { return cloud.nodes[x].role !== "optional"; }); }
+  /* Side paths of a topic: its optional children, each with the core step it branches off. */
+  function sidePaths(cloud, id) {
+    return childrenOf(cloud, id).filter(function (c) { return c.role === "optional"; }).map(function (c) { return { id: c.id, off: c.off && cloud.nodes[c.off] && cloud.nodes[c.off].parent === id ? c.off : null }; });
+  }
+  /*
+   * Groundwork for "powerful cards" (not built yet): a parent may one day absorb its completed children. The fields
+   * (node.absorbed: child ids, child.absorbedInto: parent id) are stored and kept consistent, nothing sets them yet.
+   */
+  function absorbable(cloud, id) { return doneCore(cloud, id).filter(function (x) { return !cloud.nodes[x].absorbedInto; }); }
+
+  /*
+   * A bridge (the creation call, kind "bridge"): the logical in-between topics for a topic that landed too close to its
+   * subject ("Sets" right under Computer Science -> Computer Science > Programming > Python > Sets). Links are placed
+   * through placeChain (existing nodes reused by name and alias), get their card line, and the topic moves under the
+   * deepest one with its whole branch (ids kept). Cached on the topic (bridged), whatever the answer.
+   * -> { moved, created: [ids], chain: [labels] }
+   */
+  function applyBridge(cloud, id, result, t) {
+    t = now_(t);
+    var n = node(cloud, id), out = { moved: false, created: [], chain: [] };
+    if (!n || !n.parent) return out;
+    n.bridged = t;
+    var it = result && Array.isArray(result.items) ? result.items[0] : null;
+    var subj = subjectOf(cloud, id);
+    var chain = (it && it.node && Array.isArray(it.node.chain) ? it.node.chain : []).map(cleanLabel).filter(function (l) { return l && norm(l) !== n.key && norm(l) !== norm(cloud.name); });
+    if (subj && chain.length && !findSubject(cloud, chain[0]) && norm(chain[0]) !== subj.key) chain.unshift(subj.label);
+    if (chain.length < 2) return out;
+    var res = { created: [], promoted: [], strengthened: [], parentsCreated: [] };
+    var deep = placeChain(cloud, chain, t, res);
+    if (!deep || deep.id === n.id || isAncestor(cloud, n.id, deep.id)) return out;
+    var blurbs = {};
+    ((it && it.links) || []).forEach(function (l) { if (l && l.name) blurbs[norm(l.name)] = l.blurb; });
+    ancestry(cloud, deep.id).concat(deep.id).forEach(function (x) { var m = cloud.nodes[x]; if (m.parent && !m.blurb && blurbs[m.key]) setBlurb(cloud, x, blurbs[m.key]); if (m.parent) m.bridged = m.bridged || t; });
+    if (n.parent !== deep.id) {
+      var old = node(cloud, n.parent);
+      if (old && old.path) old.path.ids = old.path.ids.filter(function (x) { return x !== id; });
+      n.parent = deep.id; n.role = ""; n.off = null; out.moved = true;
+    }
+    if (it && it.card && it.card.blurb && !n.blurb) setBlurb(cloud, id, it.card.blurb);
+    out.created = res.parentsCreated.concat(res.created, res.promoted);
+    out.chain = chainOf(cloud, id);
+    cloud.rev += 1;
+    return out;
+  }
+
+  /*
+   * Child topics that arrived with a lesson (the same call) but wait until the learner has engaged with the topic
+   * (orchestrator.js decides when); applyPending then grows them onto the cloud as dotted branches.
+   */
+  function setPending(cloud, id, steps, nextLabel) {
+    var n = node(cloud, id);
+    if (!n || n.path) return false;
+    var list = [];
+    (Array.isArray(steps) ? steps : []).forEach(function (x) { var l = cleanLabel(x); if (l && list.length < LIMITS.pathSteps && list.every(function (y) { return norm(y) !== norm(l); })) list.push(l); });
+    if (!list.length) return false;
+    n.pending = { steps: list, next: cleanLabel(nextLabel) };
+    return true;
+  }
+  function applyPending(cloud, id, t) {
+    var n = node(cloud, id);
+    if (!n || !n.pending) return null;
+    var p = n.pending;
+    n.pending = null;
+    if (n.path) return { ids: [], added: [], next: null };
+    return applyPath(cloud, id, p.steps, p.next, t);
+  }
+  var TEST_PASS = 0.6;
+  function testOf(cloud, id) { return (cloud.tests || {})[id] || null; }
+  function markOffered(cloud, id, t) {
+    if (!node(cloud, id)) return;
+    cloud.tests = cloud.tests || {};
+    var x = cloud.tests[id] || { at: 0, n: 0, best: 0, attempts: 0, offeredAt: 0 };
+    if (!x.offeredAt) x.offeredAt = now_(t);
+    cloud.tests[id] = x;
+  }
+  /*
+   * A test result: results = [{ id, right }] for completed topics under (or equal to) the parent. Each answer colours its
+   * own topic (confirm); any attempt strengthens the parent a little, a pass (TEST_PASS of answers right) more.
+   */
+  function recordTest(cloud, pid, results, t) {
+    t = now_(t);
+    var p = node(cloud, pid);
+    if (!p) return null;
+    var n = 0, right = 0, touched = [];
+    (Array.isArray(results) ? results : []).forEach(function (r) {
+      if (!r || !cloud.nodes[r.id] || (r.id !== pid && ancestry(cloud, r.id).indexOf(pid) < 0)) return;
+      n++; if (r.right) right++;
+      confirm(cloud, r.id, Boolean(r.right), t);
+      if (touched.indexOf(r.id) < 0) touched.push(r.id);
+    });
+    if (!n) return null;
+    var score = right / n, passed = score >= TEST_PASS;
+    p.weight += 0.5; p.touched = t;
+    warm(p, HEAT.test, t);
+    if (passed) { p.correct = (p.correct || 0) + 2; p.mastery = clamp01(p.mastery + 0.15); }
+    else if (right) p.correct = (p.correct || 0) + 1;
+    cloud.tests = cloud.tests || {};
+    var prev = cloud.tests[pid] || { at: 0, n: 0, best: 0, attempts: 0, offeredAt: 0 };
+    cloud.tests[pid] = { at: t, n: doneChildren(cloud, pid).length, best: Math.max(prev.best || 0, score), attempts: (prev.attempts || 0) + 1, offeredAt: prev.offeredAt || t };
+    cloud.rev += 1;
+    return { score: score, right: right, n: n, passed: passed, touched: touched };
+  }
+
+  /*
+   * v5: Computer Science is its own subject. Older clouds get it (with its own hue), and the clearly-CS topics under
+   * Making & Coding move across with everything they hold (ids, paths, cards, deck entries). Nothing is seeded: the
+   * subject is only created when there is something to move.
+   */
+  function adoptComputerScience(cloud, t) {
+    t = now_(t);
+    var label = "Computer Science";
+    var cs = subjects(cloud).filter(function (x) { return x.key === norm(label); })[0];
+    var making = subjects(cloud).filter(function (x) { return x.key === norm("Making & Coding"); })[0];
+    var keys = CS_TOPICS.map(norm), moved = [], created = false;
+    var movable = making ? childrenOf(cloud, making.id).filter(function (c) { return keys.indexOf(c.key) >= 0; }) : [];
+    if (!cs) {
+      if (!movable.length || subjects(cloud).length >= LIMITS.subjects) return { moved: moved, created: false };
+      cs = addNode(cloud, { label: label, parent: null, weight: 1, born: t, hue: paletteHue(label) });
+      created = true;
+    }
+    if (making) childrenOf(cloud, making.id).filter(function (c) { return keys.indexOf(c.key) >= 0; }).forEach(function (c) {
+      var twin = childrenOf(cloud, cs.id).filter(function (x) { return x.key === c.key; })[0];
+      if (twin) { if (twin.ghost && !childrenOf(cloud, twin.id).length) removeNode(cloud, twin.id); else return; }
+      c.parent = cs.id;
+      moved.push(c.id);
+      cs.weight += Math.max(0, c.weight) * 0.5;
+    });
+    if (making && making.path) {
+      making.path.ids = making.path.ids.filter(function (x) { return moved.indexOf(x) < 0; });
+      if (moved.indexOf(making.path.next) >= 0) making.path.next = null;
+      if (!making.path.ids.length) making.path = null;
+    }
+    if (moved.length || created) cloud.rev += 1;
+    return { moved: moved, created: created };
+  }
+
   /* Other branches, offered only once a branch has ended: unfinished nearby branches first, then one from another subject. Local, no call. */
   /* prefer: ids in ranked order (the top 10); the first nearby one of them moves to the front. */
   function otherBranches(cloud, id, max, prefer) {
@@ -842,12 +1197,37 @@
       if (x.path && x.path.ids.length) paths[id] = [x.path.ids, x.path.next || 0, s(x.path.at)];
       if (x.fork && x.fork.ids.length) forks[id] = [x.fork.ids, x.fork.why, x.fork.picked || 0, s(x.fork.at)];
       var row = [id, x.label, x.parent || 0, (x.ghost ? 1 : 0) | (x.opened ? 2 : 0) | (x.end ? 4 : 0), Math.round(x.weight * 10), Math.round(x.mastery * 100), s(x.born), s(x.touched), x.parent ? -1 : (x.hue == null ? 30 : x.hue), s(x.lastStruggle), x.spent || 0, x.engaged || 0];
-      /* v4 fields only when set, so most rows stay short */
-      if (x.correct || x.heat || x.blurb || x.achievedAt) row.push(x.correct || 0, Math.round((x.heat || 0) * 100), s(x.heatAt), x.blurb || "", s(x.achievedAt));
+      /* v4 and v5 fields only when set, so most rows stay short */
+      var v7 = x.role || x.off || x.made || x.bridged || x.absorbedInto || (x.absorbed && x.absorbed.length);
+      var v6 = v7 || x.imp != null || x.goal || x.asked, v5 = v6 || x.pending || x.doneAt;
+      if (v5 || x.correct || x.heat || x.blurb || x.achievedAt) row.push(x.correct || 0, Math.round((x.heat || 0) * 100), s(x.heatAt), x.blurb || "", s(x.achievedAt));
+      if (v5) row.push(x.pending ? [x.pending.steps, x.pending.next || ""] : 0, s(x.doneAt));
+      if (v6) row.push(x.imp == null ? -1 : Math.round(x.imp * 100), s(x.impAt), x.goal || "", x.asked || 0);
+      if (v7) row.push(x.role === "core" ? 1 : x.role === "optional" ? 2 : 0, x.off || 0, x.made ? 1 : 0, s(x.bridged), x.absorbedInto || 0, x.absorbed && x.absorbed.length ? x.absorbed : 0);
       return row;
     });
+    var tests = {};
+    Object.keys(cloud.tests || {}).forEach(function (id) { var x = cloud.tests[id]; if (cloud.nodes[id]) tests[id] = [s(x.at), x.n || 0, Math.round((x.best || 0) * 100), x.attempts || 0, s(x.offeredAt)]; });
+    var sg = cloud.suggest && Array.isArray(cloud.suggest.items) ? [s(cloud.suggest.at), cloud.suggest.items.map(function (i) { return [i.id, i.kind, i.why || ""]; })] : 0;
     return JSON.stringify({ v: VERSION, name: cloud.name, seq: cloud.seq, rev: cloud.rev, created: cloud.created, next: cloud.next || 0, n: n, p: paths, f: forks, cards: cloud.cards,
-      k: (cloud.deck || []).map(function (e) { return [e.id, e.label, e.subject, e.hue, s(e.at), e.best || 0, e.chain || [], e.blurb || "", s(e.ach)]; }), g: cloud.draws || [], ss: cloud.sessions || 0 });
+      k: (cloud.deck || []).map(function (e) { return [e.id, e.label, e.subject, e.hue, s(e.at), e.best || 0, e.chain || [], e.blurb || "", s(e.ach)]; }), g: cloud.draws || [], ss: cloud.sessions || 0,
+      t: tests, sg: sg, fl: cloud.active || 0, pr: profileRow(cloud.profile) });
+  }
+  function profileRow(p) {
+    p = p || newProfile();
+    var s = function (ms) { return ms ? Math.round(ms / 1000) : 0; };
+    return [p.age || "", p.region || "", p.regionAuto ? 1 : 0, p.interests || [], s(p.onboarded), s(p.askedAt), p.visits || 0, p.lessonVisit || 0, s(p.changedAt)];
+  }
+  function profileFrom(a) {
+    var p = newProfile();
+    if (!Array.isArray(a)) return p;
+    p.age = AGE_BANDS.indexOf(String(a[0])) >= 0 ? String(a[0]) : "";
+    p.region = cleanRegion(a[1]);
+    p.regionAuto = a[2] !== 0;
+    p.interests = (Array.isArray(a[3]) ? a[3] : []).map(cleanInterest).filter(Boolean).slice(-12);
+    var ms = function (x) { return (Number(x) || 0) * 1000; };
+    p.onboarded = ms(a[4]); p.askedAt = ms(a[5]); p.visits = Math.max(0, Number(a[6]) || 0); p.lessonVisit = Math.max(0, Number(a[7]) || 0); p.changedAt = ms(a[8]);
+    return p;
   }
 
   function finish(c, list, cards, paths, extra) {
@@ -880,7 +1260,7 @@
       var n = out.nodes[id], p = paths[id];
       if (!n || !p) return;
       var ids = (Array.isArray(p.ids) ? p.ids : p[0] || []).filter(function (x) { return out.nodes[x] && x !== id; }).slice(0, LIMITS.pathSteps);
-      if (ids.length) n.path = { ids: ids, next: ids.indexOf(p.next || p[1]) >= 0 ? (p.next || p[1]) : null, at: Number(p.at || p[2] * 1000) || 0 };
+      if (ids.length) n.path = { ids: ids, next: ids.indexOf(p.next || p[1]) >= 0 ? (p.next || p[1]) : null, at: Number(Array.isArray(p) ? p[2] * 1000 : p.at) || 0 }; /* arrays have an .at() method, so check the form first */
     });
     Object.keys(extra.forks || {}).forEach(function (id) {
       var n = out.nodes[id], f = extra.forks[id];
@@ -901,6 +1281,16 @@
     out.draws = (Array.isArray(extra.draws) ? extra.draws : []).filter(function (d) { return Array.isArray(d) && Number.isFinite(d[0]) && typeof d[1] === "string"; }).slice(-LIMITS.draws);
     out.sessions = Math.max(0, Number(extra.sessions) || 0);
     out.next = out.nodes[c.next] ? c.next : null;
+    out.tests = {};
+    Object.keys(extra.tests || {}).forEach(function (id) {
+      var x = extra.tests[id];
+      if (!out.nodes[id] || !Array.isArray(x)) return;
+      out.tests[id] = { at: (Number(x[0]) || 0) * 1000, n: Math.max(0, Number(x[1]) || 0), best: clamp01((Number(x[2]) || 0) / 100), attempts: Math.max(0, Number(x[3]) || 0), offeredAt: (Number(x[4]) || 0) * 1000 };
+    });
+    var sg = extra.suggest;
+    out.suggest = Array.isArray(sg) && Array.isArray(sg[1]) ? { at: (Number(sg[0]) || 0) * 1000, items: sg[1].filter(function (i) { return Array.isArray(i) && out.nodes[i[0]] && /^(deck|next|test|new|continue|grow)$/.test(i[1]); }).slice(0, 6).map(function (i) { return { id: i[0], kind: i[1], why: cleanWhy(i[2]) }; }) } : null;
+    out.active = out.nodes[extra.active] ? extra.active : null;
+    out.profile = profileFrom(extra.profile);
     joinDeck(out, Number(c.created) || 0); /* older saves: topics already past the threshold join the deck */
     return out;
   }
@@ -911,7 +1301,7 @@
     try { c = typeof str === "string" ? JSON.parse(str) : str; } catch { return null; }
     if (!c || typeof c.name !== "string") return null;
     var base = { name: cleanLabel(c.name) || "Me", seq: Number(c.seq) || 0, rev: Number(c.rev) || 0, created: Number(c.created) || 0, next: c.next || null };
-    if ((c.v === 2 || c.v === 3 || c.v === 4) && Array.isArray(c.n)) {
+    if (c.v >= 2 && c.v <= 7 && Array.isArray(c.n)) {
       var ms = function (s) { return (Number(s) || 0) * 1000; };
       var list = c.n.map(function (a) {
         if (!Array.isArray(a) || typeof a[0] !== "string" || typeof a[1] !== "string") return null;
@@ -920,16 +1310,27 @@
           weight: (Number(a[4]) || 0) / 10, mastery: clamp01((Number(a[5]) || 0) / 100), born: ms(a[6]), touched: ms(a[7]),
           hue: a[2] ? undefined : (Number.isFinite(a[8]) && a[8] >= 0 ? a[8] : 30), lastStruggle: a[9] ? ms(a[9]) : undefined, cards: [],
           end: Boolean(a[3] & 4), spent: Math.max(0, Number(a[10]) || 0), engaged: Math.max(0, Number(a[11]) || 0),
-          correct: Math.max(0, Number(a[12]) || 0), heat: Math.max(0, Number(a[13]) || 0) / 100, heatAt: ms(a[14]), blurb: cleanBlurb(a[15] || ""), achievedAt: ms(a[16])
+          correct: Math.max(0, Number(a[12]) || 0), heat: Math.max(0, Number(a[13]) || 0) / 100, heatAt: ms(a[14]), blurb: cleanBlurb(a[15] || ""), achievedAt: ms(a[16]),
+          pending: Array.isArray(a[17]) && Array.isArray(a[17][0]) && a[17][0].length ? { steps: a[17][0].map(cleanLabel).filter(Boolean).slice(0, LIMITS.pathSteps), next: cleanLabel(a[17][1]) } : null,
+          doneAt: ms(a[18]),
+          imp: Number.isFinite(a[19]) && a[19] >= 0 ? clamp01(a[19] / 100) : null, impAt: ms(a[20]), goal: cleanGoal(a[21] || ""), asked: Math.max(0, Number(a[22]) || 0),
+          role: a[23] === 1 ? "core" : a[23] === 2 ? "optional" : "", off: typeof a[24] === "string" ? a[24] : null, made: a[25] === 1, bridged: ms(a[26]),
+          absorbedInto: typeof a[27] === "string" ? a[27] : null, absorbed: Array.isArray(a[28]) ? a[28].filter(function (x) { return typeof x === "string"; }) : []
         };
       });
-      return finish(base, list, c.cards, c.p, { forks: c.f, deck: c.k, draws: c.g, sessions: c.ss });
+      var out = finish(base, list, c.cards, c.p, { forks: c.f, deck: c.k, draws: c.g, sessions: c.ss, tests: c.t, suggest: c.sg, active: c.fl, profile: c.pr });
+      var nowS = Math.round(Date.now() / 1000) * 1000; /* whole seconds, as stored, so a migrated cloud round-trips exactly */
+      if (c.v < 5) adoptComputerScience(out, nowS); /* v4 and older: Computer Science becomes its own subject */
+      if (c.v < 6) { pruneSeeds(out); joinDeck(out, nowS); } /* v5 and older: untouched starter seeds go; everything learned stays */
+      if (c.v < 7) markCore(out); /* v6 and older: the steps of each path become its core sequence */
+      tidyRefs(out);
+      return out;
     }
     if (c.v === 1 && c.nodes && Array.isArray(c.order)) return migrateV1(c, base);
     return null;
   }
 
-  /* v1 (subjects -> topics only, object nodes) -> v2. Everything is kept; the starter seeds that are missing arrive as ghosts. */
+  /* v1 (subjects -> topics only, object nodes). Everything the learner touched is kept; untouched starter seeds are pruned. */
   function migrateV1(c, base) {
     var list = c.order.map(function (id) {
       var n = c.nodes[id];
@@ -938,29 +1339,47 @@
         id: id, label: cleanLabel(n.label), key: norm(n.label), parent: n.parent || null, ghost: Boolean(n.ghost), opened: false,
         weight: Number(n.weight) || 0, mastery: clamp01(Number(n.mastery) || 0), born: Number(n.born) || 0, touched: Number(n.touched) || 0,
         hue: n.parent ? undefined : (Number.isFinite(n.hue) ? n.hue : 30), lastStruggle: n.lastStruggle || undefined, cards: [],
-        spent: 0, engaged: 0, end: false, correct: 0, heat: 0, heatAt: 0, blurb: "", achievedAt: 0
+        spent: 0, engaged: 0, end: false, correct: 0, heat: 0, heatAt: 0, blurb: "", achievedAt: 0, pending: null, doneAt: 0, imp: null, impAt: 0, goal: "", asked: 0,
+        role: "", off: null, made: false, bridged: 0, absorbedInto: null, absorbed: []
       };
     });
     var out = finish(base, list, c.cards, {});
     var t = Date.now();
-    STARTERS.forEach(function (s) { if (findSubject(out, s.label) && subjects(out).some(function (x) { return x.key === norm(s.label); })) plant(out, s, null, t, true); });
-    var math = findSubject(out, "Math");
-    out.next = math ? nextFor(out, math.id) : null;
+    adoptComputerScience(out, t);
+    pruneSeeds(out);
+    joinDeck(out, t);
     return out;
+  }
+
+  /* v7 migration: a path's steps are its core sequence; every other child keeps no role (shown and counted as before). */
+  function markCore(cloud) {
+    all(cloud).forEach(function (n) { if (n.path) n.path.ids.forEach(function (x) { var k = cloud.nodes[x]; if (k && k.parent === n.id && !k.role) k.role = "core"; }); });
+  }
+  /* References that must point at a live node of the right kind (side path step, absorb links). */
+  function tidyRefs(cloud) {
+    all(cloud).forEach(function (n) {
+      if (n.off && (!cloud.nodes[n.off] || cloud.nodes[n.off].parent !== n.parent || n.role !== "optional")) n.off = null;
+      if (n.absorbedInto && !cloud.nodes[n.absorbedInto]) n.absorbedInto = null;
+      n.absorbed = (n.absorbed || []).filter(function (x) { return cloud.nodes[x]; });
+    });
   }
 
   /* Thread persistence: keep the most recent messages only. */
   function trimThread(msgs, max) {
     max = max || 60;
-    return (Array.isArray(msgs) ? msgs : []).filter(function (m) { return m && typeof m.text === "string" && /^(user|model|card|grow)$/.test(m.role); }).slice(-max);
+    return (Array.isArray(msgs) ? msgs : []).filter(function (m) { return m && typeof m.text === "string" && (/^(user|model|card|grow)$/.test(m.role) || (m.role === "ask" && m.done)); }).slice(-max); /* answered questions stay; open ones are asked again */
   }
 
   var api = {
-    VERSION: VERSION, LIMITS: LIMITS, MASTERED: MASTERED, STARTERS: STARTERS, HUES: HUES,
+    VERSION: VERSION, LIMITS: LIMITS, MASTERED: MASTERED, PALETTE: PALETTE, OLD_SEEDS: OLD_SEEDS, HUES: HUES, paletteHue: paletteHue, paletteLabel: paletteLabel, plant: plant,
+    AGE_BANDS: AGE_BANDS, newProfile: newProfile, profileOf: profileOf, setProfile: setProfile, cleanRegion: cleanRegion, topicCount: topicCount,
+    applyCreate: applyCreate, pruneSeeds: pruneSeeds, deepenChain: deepenChain, applyBridge: applyBridge, coreChildren: coreChildren, doneCore: doneCore, sidePaths: sidePaths, absorbable: absorbable, markCore: markCore,
     create: create, applyTopics: applyTopics, addGhosts: addGhosts, applyPath: applyPath, nextFor: nextFor, engage: engage,
     track: track, markEnd: markEnd, activity: activity, hueOf: hueOf,
     GROWTH: GROWTH, growthOf: growthOf, joinDeck: joinDeck, chainOf: chainOf, confirm: confirm, setBlurb: setBlurb, cleanBlurb: cleanBlurb,
     isAchieved: isAchieved, placeChain: placeChain, HEAT: HEAT, heatNow: heatNow, inDeck: inDeck, deckEntry: deckEntry, logDraw: logDraw,
+    isDone: isDone, doneChildren: doneChildren, setPending: setPending, applyPending: applyPending, TEST_PASS: TEST_PASS, testOf: testOf,
+    markOffered: markOffered, recordTest: recordTest, adoptComputerScience: adoptComputerScience, CS_TOPICS: CS_TOPICS,
     evolveColor: evolveColor, cardColor: cardColor, applyChoices: applyChoices, pickChoice: pickChoice, isTerminal: isTerminal, otherBranches: otherBranches, hash: hash,
     attachCard: attachCard, cardsFor: cardsFor, summarize: summarize, knownUnder: knownUnder, subjectLabels: subjectLabels,
     subjects: subjects, childrenOf: childrenOf, ancestry: ancestry, depthOf: depthOf, subjectOf: subjectOf, trail: trail, index: index,

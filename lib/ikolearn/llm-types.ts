@@ -26,6 +26,8 @@ export const MODEL_LIMITS = {
   chatMaxTokens: 900,
   lessonMaxTokens: 1_800,
   jsonMaxTokens: 600,
+  /** the creation call: up to 5 parents, each with a card and up to 6 children */
+  createMaxTokens: 2_000,
   chatTemperature: 0.4,
   jsonTemperature: 0.3,
 };
