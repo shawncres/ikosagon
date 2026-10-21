@@ -59,8 +59,8 @@ export async function streamText(system: string, contents: Content[], env: Env, 
 }
 
 /** One structured (JSON) call to the configured provider; `parse` validates the text, null means unusable. */
-export async function generateJson<T>(system: string, user: string, schema: unknown, parse: (t: string) => T | null, env: Env, fetchImpl: typeof fetch = fetch): Promise<JsonResult<T>> {
+export async function generateJson<T>(system: string, user: string, schema: unknown, parse: (t: string) => T | null, env: Env, fetchImpl: typeof fetch = fetch, opts: StreamOptions = {}): Promise<JsonResult<T>> {
   const cfg = llmConfig(env);
   if ("error" in cfg) return notReady();
-  return cfg.provider === "gemini" ? geminiJson(cfg, system, user, schema, parse, fetchImpl) : openaiJson(cfg, system, user, schema, parse, fetchImpl);
+  return cfg.provider === "gemini" ? geminiJson(cfg, system, user, schema, parse, fetchImpl, opts) : openaiJson(cfg, system, user, schema, parse, fetchImpl, opts);
 }

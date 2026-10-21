@@ -14,6 +14,10 @@ import {
   PATH_OPEN,
   PATH_SCHEMA,
   TEST_SCHEMA,
+  CREATE_SCHEMA,
+  createSystem,
+  parseCreate,
+  type CreateResult,
   adjacentSystem,
   parseTest,
   testSystem,
@@ -163,8 +167,7 @@ export function chatEvents(input: LearnInput, env: Env, fetchImpl: typeof fetch 
       contents: buildContents(input),
       maxChars: LEARN_LIMITS.replyChars,
       tail: (block) => {
-        const said = input.messages.filter((m) => m.role === "user").slice(-1).map((m) => m.text).join(" ");
-        const b = parseCloudBlock(block, input.name, said);
+        const b = parseCloudBlock(block, input.name);
         return { t: "cloud", topics: b.topics, ghosts: b.ghosts };
       },
     },
@@ -242,6 +245,22 @@ export async function pathFor(input: LearnInput, env: Env, fetchImpl: typeof fet
 }
 
 /** A test for one parent: 3-5 questions from the completed material only (each names the topic it checks). One call. */
+/**
+ * The creation call (one structured call): new parents for a new learner (start), a new interest (more), or what comes
+ * next inside one parent (next). Strictly validated (parseCreate); an unusable answer is 502 "bad_output" and the app
+ * falls back locally.
+ */
+export async function createFor(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): Promise<Out> {
+  if (input.kind === "next" && !input.focus) return json(422, { ok: false, reason: "focus" });
+  const user =
+    input.kind === "next"
+      ? `What should come next in ${input.focus}?`
+      : `Build my ${input.kind === "start" ? "first" : "new"} learning topics.${input.interests.length ? ` I enjoy: ${input.interests.join(", ")}.` : ""}`;
+  const r = await generateJson<CreateResult>(createSystem(input), user, CREATE_SCHEMA, (t) => parseCreate(t, input.kind, input.name, input.focus, input.known), env, fetchImpl, { maxTokens: MODEL_LIMITS.createMaxTokens });
+  if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
+  return json(200, { ok: true, kind: input.kind, items: r.value.items });
+}
+
 export async function testFor(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): Promise<Out> {
   const allowed = input.material.map((m) => m.label);
   if (allowed.length < 2) return json(422, { ok: false, reason: "material" });

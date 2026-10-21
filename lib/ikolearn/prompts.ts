@@ -14,7 +14,6 @@
  *  - test:      3-5 questions built only from the completed topics under a parent, JSON { questions: [{ q, options, answer, topic }] }.
  * Every topic carries its full chain from the subject down; chains.ts fills a missing one from known chains.
  */
-import { deepenChain, fillChain } from "./chains";
 
 export const LEARN_LIMITS = {
   bodyBytes: 16_000,
@@ -44,7 +43,19 @@ export const LEARN_LIMITS = {
   questionChars: 160,
   optionChars: 60,
   blurbChars: 120,
+  interests: 5,
+  interestChars: 40,
+  regionChars: 40,
+  createItems: 5,
+  createChildren: 6,
+  goalChars: 100,
+  favorites: 5,
 };
+
+/** Age bands the learner can pick (optional). Only the band ever leaves the device. */
+export const AGE_BANDS = ["4-6", "7-9", "10-12", "13-15", "16-18", "adult"] as const;
+/** What a creation call is for: the first parents (start), more parents from a new interest (more), or a parent's next children (next). */
+export const CREATE_KINDS = ["start", "more", "next"] as const;
 
 export const CLOUD_OPEN = "<<<CLOUD";
 export const CLOUD_CLOSE = "CLOUD>>>";
@@ -74,6 +85,13 @@ export type LearnInput = {
   ahead: string;
   /** Test only: the completed topics the test may cover (the parent and its finished children), each with its card line. */
   material: { label: string; line: string }[];
+  /** Optional, coarse: an age band (AGE_BANDS) and a region like "Canada / Ontario-ish". Never precise data. */
+  age: string;
+  region: string;
+  /** Create only: what the learner said they enjoy, what the creation is for, and their top-ranked topics (to steer what comes next). */
+  interests: string[];
+  kind: (typeof CREATE_KINDS)[number];
+  favorites: string[];
 };
 /** chain: broader topics from the subject down to the parent (only for a new topic that sits deeper), e.g. ["Computer Science","Programming","Python"]. */
 export type Topic = { name: string; parent: string; signal: Signal; chain?: string[] };
@@ -148,7 +166,20 @@ export function parseLearnInput(raw: unknown): LearnInput | { error: string } {
       .map((m) => ({ label: cleanLabel((m as { label?: unknown }).label), line: cleanText((m as { line?: unknown }).line, LEARN_LIMITS.blurbChars).replace(/[<>{}[\]`*_#|\\]/g, " ") }))
       .filter((m, i, all) => m.label && all.findIndex((x) => x.label.toLowerCase() === m.label.toLowerCase()) === i)
       .slice(0, LEARN_LIMITS.material),
+    age: (AGE_BANDS as readonly string[]).includes(String(b.age)) ? String(b.age) : "",
+    region: cleanRegion(b.region),
+    interests: (Array.isArray(b.interests) ? b.interests : [])
+      .map((x) => cleanText(x, LEARN_LIMITS.interestChars).replace(/[\n\r"<>{}[\]`*_#|\\]/g, " ").replace(/\s+/g, " ").trim())
+      .filter(Boolean)
+      .slice(0, LEARN_LIMITS.interests),
+    kind: (CREATE_KINDS as readonly string[]).includes(String(b.kind)) ? (b.kind as LearnInput["kind"]) : "start",
+    favorites: (Array.isArray(b.favorites) ? b.favorites : []).map(cleanLabel).filter(Boolean).slice(0, LEARN_LIMITS.favorites),
   };
+}
+
+/** A coarse region only: letters, spaces and a few separators, no digits (so no postcodes or coordinates), short. */
+export function cleanRegion(v: unknown): string {
+  return cleanText(v, LEARN_LIMITS.regionChars).replace(/[^\p{L}\p{M} /,.&'-]/gu, " ").replace(/\s+/g, " ").trim();
 }
 
 /* ---------- prompts ---------- */
@@ -175,8 +206,10 @@ const blockRules = (parents: string[]) =>
 
 const profile = (i: LearnInput) =>
   `Learner's first name: ${i.name}\n` +
+  (i.age ? `Age band: ${i.age === "adult" ? "adult" : i.age + " years"}\n` : "") +
+  (i.region ? `Rough region: ${i.region}\n` : "") +
   (i.focus ? `Current focus: ${i.focus}${i.trail ? ` (${i.trail})` : i.focusParent ? ` (in ${i.focusParent})` : ""}\n` : "") +
-  `Learning profile (subjects, topics, weights, strengths; ghost = not explored yet):\n${i.cloud || "(new learner, starter subjects only)"}`;
+  `Learning profile (subjects, topics, weights, strengths; ghost = not explored yet):\n${i.cloud || "(new learner, nothing yet)"}`;
 
 export function companionSystem(i: LearnInput): string {
   return (
@@ -329,6 +362,124 @@ export const TEST_SCHEMA = {
   required: ["questions"],
 };
 
+/*
+ * The creation call: one structured call that builds new nodes with their card and their first child options.
+ *   start  the first 3-5 parent topics for a new learner, from what they said they enjoy (onboarding)
+ *   more   1-2 new parent topics from a new interest (a light re-ask when the cloud is thin)
+ *   next   "what comes next" for one parent: its next child topics, logical order plus importance
+ * The orchestrator (public/ikolearn/orchestrator.js) decides when to call and what context to send.
+ */
+export type CreateChild = { name: string; order: number; score: number; why: string };
+export type CreateItem = { node: { name: string; chain: string[] }; card: { title: string; blurb: string; goal: string }; children: CreateChild[] };
+export type CreateResult = { items: CreateItem[] };
+
+export function createSystem(i: LearnInput): string {
+  const fit =
+    "Prefer what a typical home curriculum for this learner's age and rough region would stress at this point, but let their interests lead; " +
+    "a rough region or age band only biases what you pick, it never rules a topic out. ";
+  const childRules =
+    `children: 3 to ${LEARN_LIMITS.createChildren} smaller child topics (1 to 3 words, Title Case) with order (1 = learn first; foundational before advanced), ` +
+    "score (0 to 1: how important and typical this child is for this age and place; the most popular, logical next steps score highest) and why (a short friendly reason, under 10 words). ";
+  const card =
+    "card: title (the topic, at most 4 words), blurb (one line under 12 words saying what it is, never the learner's name) and goal (one short line: what the learner can do once they have finished it). ";
+  const task =
+    i.kind === "next"
+      ? `Role: create, next. The learner is working in "${i.focus}"${i.trail ? ` (${i.trail})` : ""}. They already have: ${i.known.join(", ") || "nothing yet"}. ` +
+        `Decide what should come next inside "${i.focus}": return exactly 1 item whose node.name is "${i.focus}" and whose children are new child topics (not ones they already have). `
+      : i.kind === "more"
+        ? `Role: create, more. The learner told us something new they enjoy: ${i.interests.join(", ") || "(nothing specific)"}. Return 1 or 2 new parent topics for it that are not in their profile. `
+        : `Role: create, start. This is a new learner. They enjoy: ${i.interests.join(", ") || "(they skipped this; pick a friendly, balanced mix)"}. ` +
+          "Return 3 to 5 parent topics to start their learning cloud: mostly from what they enjoy, plus one or two core skills (reading, numbers) woven in where they fit. ";
+  return (
+    `${SYSTEM_BASE}\n\n${task}${fit}\n` +
+    "Each item: node.name (1 to 3 words, Title Case, never the learner's name), node.chain (the broader topics from a broad subject down to the node's parent, broadest first; " +
+    'a parent topic usually has a one-link chain with its broad subject, e.g. ["Science"] for Dinosaurs; use an existing subject when one fits: ' +
+    `${i.parents.join(", ") || "(none yet)"}), ${card}${childRules}\n` +
+    (i.favorites.length ? `Their most-used topics lately (lean toward building on these): ${i.favorites.join(", ")}.\n` : "") +
+    `\n${profile(i)}`
+  );
+}
+
+export const CREATE_SCHEMA = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          node: { type: "object", properties: { name: { type: "string" }, chain: { type: "array", items: { type: "string" } } }, required: ["name", "chain"] },
+          card: { type: "object", properties: { title: { type: "string" }, blurb: { type: "string" }, goal: { type: "string" } }, required: ["title", "blurb", "goal"] },
+          children: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: { name: { type: "string" }, order: { type: "integer" }, score: { type: "number" }, why: { type: "string" } },
+              required: ["name", "order", "score"],
+            },
+          },
+        },
+        required: ["node", "card", "children"],
+      },
+    },
+  },
+  required: ["items"],
+};
+
+/**
+ * Strict validation of a creation result. Labels are cleaned, never the learner's name, deduped across the whole
+ * result; children are sorted by order (ties keep their place) with scores clamped to 0..1 (0-100 is read as a percent).
+ * start: 2-5 items (each needs 2+ children); more: 1-2; next: exactly the focus, with 2+ new children.
+ * Anything short of that is null, so the app falls back instead of growing a half-made branch.
+ */
+export function parseCreate(raw: unknown, kind: LearnInput["kind"], learnerName = "", focus = "", known: string[] = []): CreateResult | null {
+  const list = jsonObject(raw)?.items;
+  if (!Array.isArray(list)) return null;
+  const seen: string[] = [];
+  const taken = (s: string) => seen.some((x) => sameLabel(x, s)) || (learnerName !== "" && sameLabel(s, learnerName));
+  const max = kind === "start" ? LEARN_LIMITS.createItems : kind === "more" ? 2 : 1;
+  const items: CreateItem[] = [];
+  for (const it of list) {
+    if (items.length >= max) break;
+    if (!it || typeof it !== "object") continue;
+    const o = it as Record<string, unknown>;
+    const nd = (o.node && typeof o.node === "object" ? o.node : {}) as Record<string, unknown>;
+    const cd = (o.card && typeof o.card === "object" ? o.card : {}) as Record<string, unknown>;
+    const name = kind === "next" ? focus : cleanLabel(nd.name);
+    if (!name || (kind !== "next" && taken(name))) continue;
+    if (kind === "next" && !sameLabel(cleanLabel(nd.name), focus)) continue;
+    const chain = kind === "next" ? [] : parseChain(nd.chain, learnerName, name);
+    const kids: (CreateChild & { i: number })[] = [];
+    (Array.isArray(o.children) ? o.children : []).forEach((c, i) => {
+      if (!c || typeof c !== "object" || kids.length >= LEARN_LIMITS.createChildren) return;
+      const k = c as Record<string, unknown>;
+      const cn = cleanLabel(k.name);
+      if (!cn || sameLabel(cn, name) || taken(cn) || kids.some((x) => sameLabel(x.name, cn)) || chain.some((x) => sameLabel(x, cn))) return;
+      if (kind === "next" && known.some((x) => sameLabel(x, cn))) return;
+      let score = Number(k.score);
+      if (!Number.isFinite(score)) score = 0.5;
+      if (score > 1) score = score / 100;
+      score = Math.max(0, Math.min(1, score));
+      const order = Number.isFinite(Number(k.order)) ? Number(k.order) : 99;
+      kids.push({ name: cn, order, score: Math.round(score * 100) / 100, why: cleanText(k.why, LEARN_LIMITS.whyChars).replace(/[<>{}[\]`*_#|\\]/g, " ").trim(), i });
+    });
+    if (kids.length < 2) continue;
+    kids.sort((a, b) => a.order - b.order || a.i - b.i);
+    seen.push(name, ...kids.map((k) => k.name));
+    items.push({
+      node: { name, chain },
+      card: {
+        title: cleanLabel(cd.title) || name,
+        blurb: parseBlurb(cd.blurb, learnerName),
+        goal: cleanText(plainReply(cd.goal), LEARN_LIMITS.goalChars).replace(/[<>{}[\]`*_#|\\]/g, " ").replace(/\s+/g, " ").trim(),
+      },
+      children: kids.map((k, j) => ({ name: k.name, order: j + 1, score: k.score, why: k.why })),
+    });
+  }
+  const min = kind === "start" ? 2 : 1;
+  return items.length >= min ? { items } : null;
+}
+
 /* ---------- output parsing ---------- */
 
 export function plainReply(v: unknown): string {
@@ -365,8 +516,7 @@ function jsonObject(raw: unknown): Record<string, unknown> | null {
 const sameLabel = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 /** The trailing cloud block -> validated topics + ghosts. Bad or missing JSON gives empty arrays (the reply still shows). */
-/** context: what the learner just wrote, used only to deepen a short chain (deepenChain). */
-export function parseCloudBlock(raw: unknown, learnerName = "", context = ""): CloudBlock {
+export function parseCloudBlock(raw: unknown, learnerName = ""): CloudBlock {
   const obj = jsonObject(raw);
   const out: CloudBlock = { topics: [], ghosts: [] };
   if (!obj) return out;
@@ -380,11 +530,9 @@ export function parseCloudBlock(raw: unknown, learnerName = "", context = ""): C
     if (out.topics.some((x) => sameLabel(x.name, name))) continue;
     const topic: Topic = { name, parent, signal: (SIGNALS as readonly string[]).includes(sig) ? sig : "explored" };
     // no chain from the model: fill it from the known chains, so "Sets" under "Python" still lands at the right depth
-    const chain = deepenChain(name, parent, fillChain(name, parent, parseChain((t as Topic).chain, learnerName, name)), context);
-    if (chain && chain.length) {
-      topic.chain = chain;
-      if (!parent || chain.some((c) => sameLabel(c, parent))) topic.parent = chain[chain.length - 1];
-    }
+    // the chain is the model's (the device deepens a short one from the learner's own map, cloud-model.js)
+    const chain = parseChain((t as Topic).chain, learnerName, name);
+    if (chain.length) topic.chain = chain;
     out.topics.push(topic);
     if (out.topics.length >= LEARN_LIMITS.topicsPerTurn) break;
   }
@@ -536,8 +684,8 @@ export function parseCard(raw: unknown): Card | null {
   const parent = cleanLabel(obj.parent);
   if (title.length < 2 || body.length < 20 || !topic) return null;
   const card: Card = { title, body, topic, parent };
-  const chain = fillChain(topic, parent, parseChain(obj.chain, "", topic));
-  if (chain && chain.length) card.chain = chain;
+  const chain = parseChain(obj.chain, "", topic);
+  if (chain.length) card.chain = chain;
   const path = Array.isArray(obj.path) ? parsePath({ steps: obj.path, next: obj.next }, "", topic) : null;
   if (path) {
     card.path = path.steps;
