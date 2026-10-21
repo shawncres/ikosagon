@@ -265,7 +265,8 @@ export async function createFor(input: LearnInput, env: Env, fetchImpl: typeof f
         : `Where does ${input.focus} fit under ${input.focusParent || "its subject"}? Give the steps in between.${bridgeAsk(input)}`
       : input.kind === "next"
       ? `What should come next in ${input.focus}?`
-      : `Build my ${input.kind === "start" ? "first" : "new"} learning topics.${input.interests.length ? ` I enjoy: ${input.interests.join(", ")}.` : ""}`;
+      : `Build my ${input.kind === "start" ? "first" : "new"} learning topics.` +
+        (input.about ? ` In my own words: "${input.about}"` : input.interests.length ? ` I enjoy: ${input.interests.join(", ")}.` : input.kind === "start" ? " I skipped the question, so pick popular places to start for me." : "");
   const r = await generateJson<CreateResult>(createSystem(input), user, CREATE_SCHEMA, (t) => parseCreate(t, input.kind, input.name, input.focus, input.known), env, fetchImpl, { maxTokens: MODEL_LIMITS.createMaxTokens });
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
   return json(200, { ok: true, kind: input.kind, items: r.value.items });
