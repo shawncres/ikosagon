@@ -178,8 +178,8 @@ Timeouts are plain: a request that hasn't started answering in 20 s (the whole a
 Production deploys come from a clean temp clone with the Vercel CLI, never from this working copy, and nothing is linked or pulled, so no `.env.local` is ever created:
 
 ```
-scripts/deploy-ikosagon-prod.sh <full commit sha>            # deploys that commit to production
-DRY_RUN=1 scripts/deploy-ikosagon-prod.sh <full commit sha>  # checks everything, deploys nothing
+bash scripts/deploy-ikosagon-prod.sh <full commit sha>            # deploys that commit to production
+DRY_RUN=1 bash scripts/deploy-ikosagon-prod.sh <full commit sha>  # checks everything, deploys nothing
 ```
 
 The script clones the repo into a temp folder, checks out the sha, writes no `.vercel` or env files, sets `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` (defaults are our team and project; override them in the environment), refuses to go on if any `.env*` file other than `.env.example` is there, runs `vercel deploy --prod --yes`, and deletes the clone on exit. Env vars stay in Vercel. Never run `vercel link`, `vercel env pull` or `vercel dev` here: they write `.env.local` with secrets. `.gitignore` ignores `.env*` (except `.env.example`) as a second guard.

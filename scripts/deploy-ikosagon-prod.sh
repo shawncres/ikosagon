@@ -6,12 +6,12 @@
 # environment, so no link step and no .vercel/ folder are needed. Production env vars stay on Vercel and are applied
 # by Vercel's own build. The clone is deleted afterwards.
 #
-# Usage:  scripts/deploy-ikosagon-prod.sh <full-commit-sha>      (DRY_RUN=1 to check everything but the deploy)
+# Usage:  bash scripts/deploy-ikosagon-prod.sh <full-commit-sha>      (DRY_RUN=1 to check everything but the deploy)
 # Needs:  a logged-in Vercel CLI (`vercel whoami`). Free on Hobby: one production build.
 # The ids are not secrets; override them with the env vars of the same name if the project ever moves.
 set -euo pipefail
 
-SHA="${1:?usage: scripts/deploy-ikosagon-prod.sh <full-commit-sha>}"
+SHA="${1:?usage: bash scripts/deploy-ikosagon-prod.sh <full-commit-sha>}"
 REPO="${IKOSAGON_REPO:-https://github.com/shawncres/ikosagon.git}"
 export VERCEL_ORG_ID="${VERCEL_ORG_ID:-team_CX0zMP5T1vlNgZkliw8Q5AGl}"        # Shawn Cooper's projects
 export VERCEL_PROJECT_ID="${VERCEL_PROJECT_ID:-prj_v3hZaXzBLA9WX874VYIIUVoiA4Um}" # ikosagon
