@@ -14,7 +14,7 @@ export const FALLBACK_MODEL = "gemini-3.1-flash-lite";
 export const MODEL_LIMITS = {
   timeoutMs: 30_000,
   chatMaxTokens: 900,
-  lessonMaxTokens: 1_400,
+  lessonMaxTokens: 1_800,
   jsonMaxTokens: 600,
   chatTemperature: 0.4,
   jsonTemperature: 0.3,

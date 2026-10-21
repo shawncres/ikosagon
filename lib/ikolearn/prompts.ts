@@ -7,8 +7,9 @@
  *  - notice:    a warm brief reflection or 2-3 suggestions about the name (whole cloud) or one node (streamed, same block).
  *  - card:      a short learning card, JSON { title, body, topic, parent }.
  *  - adjacent:  related unexplored topics for one node, JSON { ghosts: [{ name, parent }] } (shown as ghost branches).
- *  - lesson:    one topic as a short lesson (streamed, tagged lines INTRO/STEP/EXAMPLE/CHECK/ANSWER/NEXT), optionally ending
- *               with a <<<PATH {json} PATH>>> block: the topic's subtopics in learning order plus the one to start with.
+ *  - lesson:    one topic as a short lesson (streamed, tagged lines INTRO/STEP/EXAMPLE/NEXT), ending with a hidden
+ *               <<<PATH {json} PATH>>> block: 1-2 multiple-choice check questions, the fork choices, a one-line card
+ *               description, and (when asked) the topic's subtopics in learning order.
  *  - path:      just the ordered subtopics for one node, JSON { steps: [{ name }], next }.
  */
 
@@ -32,6 +33,12 @@ export const LEARN_LIMITS = {
   pathSteps: 6,
   choices: 3,
   whyChars: 80,
+  chain: 4,
+  questions: 2,
+  options: 4,
+  questionChars: 160,
+  optionChars: 60,
+  blurbChars: 120,
 };
 
 export const CLOUD_OPEN = "<<<CLOUD";
@@ -61,17 +68,20 @@ export type LearnInput = {
   /** Lesson only: the planned next step after the focus (from the learner's path), offered as one fork choice. */
   ahead: string;
 };
-export type Topic = { name: string; parent: string; signal: Signal };
+/** chain: broader topics from the subject down to the parent (only for a new topic that sits deeper), e.g. ["Computer Science","Programming","Python"]. */
+export type Topic = { name: string; parent: string; signal: Signal; chain?: string[] };
 export type Ghost = { name: string; parent: string };
 export type CloudBlock = { topics: Topic[]; ghosts: Ghost[] };
-export type Card = { title: string; body: string; topic: string; parent: string; path?: string[]; next?: string };
+export type Card = { title: string; body: string; topic: string; parent: string; path?: string[]; next?: string; chain?: string[] };
 /** end: the branch stops here (no smaller subtopics); steps is then empty. */
 export type LearnPath = { steps: string[]; next: string; end?: boolean };
 /** A fork choice after a lesson: continue the path (next), go further into the topic (deeper), or a nearby topic (side). */
 export const CHOICE_KINDS = ["next", "deeper", "side"] as const;
 export type Choice = { name: string; kind: (typeof CHOICE_KINDS)[number]; why: string };
-/** The hidden block at the end of a lesson: path steps (only when asked), fork choices, and whether the branch ends here. */
-export type LessonBlock = { steps: string[]; next: string; choices: Choice[]; end?: boolean };
+/** A multiple-choice check question: 2-4 options, answer is the index of the right one. */
+export type Question = { q: string; options: string[]; answer: number };
+/** The hidden block at the end of a lesson: path steps (only when asked), fork choices, check questions, the card line, and whether the branch ends here. */
+export type LessonBlock = { steps: string[]; next: string; choices: Choice[]; questions: Question[]; blurb?: string; end?: boolean };
 
 /* ---------- input cleaning (everything from the browser is untrusted) ---------- */
 
@@ -142,10 +152,11 @@ export const SYSTEM_BASE =
 
 const blockRules = (parents: string[]) =>
   `After your reply, on a new line, write ${CLOUD_OPEN} then one JSON object then ${CLOUD_CLOSE}, and nothing after it. ` +
-  'The JSON is {"topics":[{"name":"...","parent":"...","signal":"explored|strength|struggle|curious"}],"ghosts":[{"name":"...","parent":"..."}]}. ' +
+  'The JSON is {"topics":[{"name":"...","parent":"...","signal":"explored|strength|struggle|curious","chain":["..."]}],"ghosts":[{"name":"...","parent":"..."}]}. ' +
   `topics: 0 to ${LEARN_LIMITS.topicsPerTurn} learning topics that this exchange actually touched (1 to 3 words each, Title Case, specific like "Fractions" or "Volcanoes", never the learner's name). ` +
   "signal: strength if the learner showed they understand it, struggle if they found it hard or had a mix-up, curious if they only asked or showed interest, explored otherwise. " +
   `parent: where it belongs: the most specific existing topic from the profile that it sits under (for example "Fractions" for "Halves"), else one of these existing subjects: ${parents.length ? parents.join(", ") : "(none yet)"}. Only name a new broad subject when none fit. ` +
+  `chain: only for a topic that is new to the profile and sits deeper than its parent's level: the broader topics from the subject down to the parent, broadest first, up to ${LEARN_LIMITS.chain} (for "Sets": ["Computer Science","Programming","Python"]); otherwise leave chain out. ` +
   `ghosts: leave this empty, unless the learner asked what else they could learn; then 1 or 2 related topics not in the profile, each with its parent. New branches are offered when a branch ends, not before. Use empty arrays for small talk. The learner never sees this block.`;
 
 const profile = (i: LearnInput) =>
@@ -187,7 +198,8 @@ export function cardSystem(i: LearnInput): string {
   return (
     `${SYSTEM_BASE}\n\nRole: card. Write one short learning card about the focus topic for this learner, at their level, building on the recent conversation. ` +
     `title: at most 6 words. body: 40 to 90 words, plain text, one key idea explained simply plus one tiny example or try-this. ` +
-    "topic: the specific topic (1 to 3 words, Title Case). parent: its broad subject, one of the existing subjects when it fits. " +
+    "topic: the specific topic (1 to 3 words, Title Case). parent: the topic it sits directly under, or its broad subject (one of the existing subjects when it fits). " +
+    "chain: the broader topics from the subject down to parent, broadest first (for Sets: Computer Science, Programming, Python); just the subject when the topic sits right under it. " +
     `path: 3 to 5 smaller subtopics of the topic in a sensible learning order, easiest first (1 to 3 words each, Title Case, not already known: ${i.known.join(", ") || "none"}). next: the path step to start with.\n\n` +
     `Existing subjects: ${i.parents.join(", ") || "(none)"}\n${profile(i)}`
   );
@@ -214,18 +226,19 @@ export function lessonSystem(i: LearnInput): string {
     "INTRO: one or two warm sentences: what it is and why it is useful, using the learner's first name once.\n" +
     "STEP: one small step, one or two short sentences. Write 3 to 5 STEP lines.\n" +
     "EXAMPLE: a worked example, shown step by step on one to three EXAMPLE lines.\n" +
-    "CHECK: one quick question the learner can answer on their own.\n" +
-    "ANSWER: the answer to CHECK with a one-line reason.\n" +
     "NEXT: one sentence on what to try next.\n" +
-    "Keep the whole lesson under 230 words. Use simple numbers and everyday objects. A parent reading along should understand it too.\n\n" +
+    "Do not write check questions in the lesson text; they go in the hidden block below. " +
+    "Keep the whole lesson under 200 words. Use simple numbers and everyday objects. A parent reading along should understand it too.\n\n" +
     `${profile(i)}\n\n${lessonBlockRules(i)}`
   );
 }
 
-/** One hidden block after every lesson (no extra call): the path when asked, plus the fork of 2 or 3 choices. */
+/** One hidden block after every lesson (no extra call): check questions, the fork of 2 or 3 choices, the card line, and the path when asked. */
 const lessonBlockRules = (i: LearnInput) =>
-  `After the lesson, on a new line, write ${PATH_OPEN} then one JSON object then ${PATH_CLOSE}, and nothing after it. The learner never sees this block. ` +
-  'The JSON is {"steps":["..."],"next":"...","choices":[{"name":"...","kind":"next|deeper|side","why":"..."}],"end":false}. ' +
+  `After the lesson, on a new line, write ${PATH_OPEN} then one JSON object then ${PATH_CLOSE}, and nothing after it. The learner never sees this block as text. ` +
+  'The JSON is {"questions":[{"q":"...","options":["...","...","..."],"answer":0}],"blurb":"...","steps":["..."],"next":"...","choices":[{"name":"...","kind":"next|deeper|side","why":"..."}],"end":false}. ' +
+  `questions: 1 or 2 multiple-choice questions that check this lesson, each with 3 short options (one clearly right, the others believable), and answer = the position of the right option counting from 0. Short and kind, at the learner's level. ` +
+  `blurb: one line under 12 words that says what "${i.focus}" is, for its card, without the learner's name. ` +
   (i.wantPath ? `steps and next: ${pathRules(i)} ` : 'steps: [] and next: "" (this topic already has a path). ') +
   "choices: a fork, 2 or 3 directions the learner can pick from after this lesson: " +
   (i.ahead ? `one with kind "next" for their planned next step "${i.ahead}", ` : "") +
@@ -256,6 +269,7 @@ export const CARD_SCHEMA = {
     parent: { type: "STRING" },
     path: { type: "ARRAY", items: { type: "STRING" } },
     next: { type: "STRING" },
+    chain: { type: "ARRAY", items: { type: "STRING" } },
   },
   required: ["title", "body", "topic", "parent"],
 };
@@ -313,7 +327,10 @@ export function parseCloudBlock(raw: unknown, learnerName = ""): CloudBlock {
     const sig = String((t as Topic).signal || "").toLowerCase() as Signal;
     if (!notName(name)) continue;
     if (out.topics.some((x) => sameLabel(x.name, name))) continue;
-    out.topics.push({ name, parent, signal: (SIGNALS as readonly string[]).includes(sig) ? sig : "explored" });
+    const topic: Topic = { name, parent, signal: (SIGNALS as readonly string[]).includes(sig) ? sig : "explored" };
+    const chain = parseChain((t as Topic).chain, learnerName, name);
+    if (chain.length) topic.chain = chain;
+    out.topics.push(topic);
     if (out.topics.length >= LEARN_LIMITS.topicsPerTurn) break;
   }
   for (const g of Array.isArray(obj.ghosts) ? obj.ghosts : []) {
@@ -360,16 +377,76 @@ export function parseChoices(raw: unknown, learnerName = "", focus = ""): Choice
   return out.length >= 2 ? out : [];
 }
 
+/** Small stable string hash (for the option order). */
+function strHash(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i += 1) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+
+/**
+ * Check questions: question text and 2-4 distinct options, cleaned; the answer index must point at an option.
+ * The options are rotated by a hash of the question (same order every time), so the right one is not always first.
+ * Up to 2 kept.
+ */
+export function parseQuestions(raw: unknown): Question[] {
+  const out: Question[] = [];
+  for (const item of Array.isArray(raw) ? raw : []) {
+    if (!item || typeof item !== "object") continue;
+    const o = item as Record<string, unknown>;
+    const q = cleanText(plainReply(o.q ?? o.question), LEARN_LIMITS.questionChars);
+    const ans = Number(o.answer);
+    const all = Array.isArray(o.options) ? o.options : [];
+    if (q.length < 6 || !Number.isInteger(ans) || ans < 0 || ans >= all.length) continue;
+    const right = cleanText(plainReply(all[ans]), LEARN_LIMITS.optionChars);
+    const opts: string[] = [];
+    for (const v of all) {
+      const t = cleanText(plainReply(v), LEARN_LIMITS.optionChars);
+      if (t && !opts.some((x) => sameLabel(x, t))) opts.push(t);
+    }
+    if (!right || opts.length < 2) continue;
+    const kept = opts.slice(0, LEARN_LIMITS.options);
+    if (!kept.some((x) => sameLabel(x, right))) kept[kept.length - 1] = right;
+    const rot = strHash(q) % kept.length;
+    const options = kept.slice(rot).concat(kept.slice(0, rot));
+    out.push({ q, options, answer: options.findIndex((x) => sameLabel(x, right)) });
+    if (out.length >= LEARN_LIMITS.questions) break;
+  }
+  return out;
+}
+
+/** The one-line card description: plain, short, never the learner's name. */
+export function parseBlurb(raw: unknown, learnerName = ""): string {
+  const t = cleanText(plainReply(raw), LEARN_LIMITS.blurbChars).replace(/[<>{}[\]`*_#|\\]/g, " ").replace(/\s+/g, " ").trim();
+  if (t.length < 8) return "";
+  if (learnerName && new RegExp(`\\b${learnerName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(t)) return "";
+  return t;
+}
+
+/** Chain labels (broadest first), cleaned and deduped, never the name or the topic itself; at most LEARN_LIMITS.chain. */
+export function parseChain(raw: unknown, learnerName = "", topic = ""): string[] {
+  const out: string[] = [];
+  for (const v of Array.isArray(raw) ? raw : []) {
+    const name = cleanLabel(v);
+    if (!name || (learnerName && sameLabel(name, learnerName)) || (topic && sameLabel(name, topic)) || out.some((x) => sameLabel(x, name))) continue;
+    out.push(name);
+  }
+  return out.slice(-LEARN_LIMITS.chain);
+}
+
 /** The block after a lesson. Steps only count when the client asked for a path. Null when nothing usable is in it. */
 export function parseLessonBlock(raw: unknown, learnerName = "", focus = "", wantPath = false): LessonBlock | null {
   const obj = jsonObject(raw);
   if (!obj) return null;
   const p = wantPath ? parsePath({ steps: obj.steps, next: obj.next }, learnerName, focus) : null;
   const choices = parseChoices(obj.choices, learnerName, focus);
+  const questions = parseQuestions(obj.questions);
+  const blurb = parseBlurb(obj.blurb, learnerName);
   const end = obj.end === true;
   const steps = p ? p.steps : [];
-  if (!steps.length && !choices.length && !end) return null;
-  const out: LessonBlock = { steps, next: p ? p.next : "", choices };
+  if (!steps.length && !choices.length && !questions.length && !end) return null;
+  const out: LessonBlock = { steps, next: p ? p.next : "", choices, questions };
+  if (blurb) out.blurb = blurb;
   if (end) out.end = true;
   return out;
 }
@@ -384,6 +461,8 @@ export function parseCard(raw: unknown): Card | null {
   const parent = cleanLabel(obj.parent);
   if (title.length < 2 || body.length < 20 || !topic) return null;
   const card: Card = { title, body, topic, parent };
+  const chain = parseChain(obj.chain, "", topic);
+  if (chain.length) card.chain = chain;
   const path = Array.isArray(obj.path) ? parsePath({ steps: obj.path, next: obj.next }, "", topic) : null;
   if (path) {
     card.path = path.steps;

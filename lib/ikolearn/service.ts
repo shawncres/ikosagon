@@ -168,7 +168,7 @@ export function chatEvents(input: LearnInput, env: Env, fetchImpl: typeof fetch 
   );
 }
 
-/** Streams one lesson (tagged lines). The hidden trailing block (path steps when asked, fork choices, branch end) becomes one "path" event. */
+/** Streams one lesson (tagged lines). The hidden trailing block (path steps when asked, fork choices, 1-2 questions, the card line, branch end) becomes one "path" event. */
 export function lessonEvents(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): AsyncGenerator<ChatEvent> {
   return streamEvents(
     {
