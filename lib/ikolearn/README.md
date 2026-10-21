@@ -98,7 +98,8 @@ Nothing is pre-seeded. The map is built from the learner, one structured "create
 | Chat message | 1 |
 | Tap a node on the cloud (first time, or after the cloud changed) | 1 (note cached per node) |
 | Opening a node from a path or lesson | 0 (note on request) |
-| Make a card | 1 (includes its path) |
+| Save a note (chat link under a reply; was "Make a card") | 1 (a short written note card, includes its path) |
+| Open its card (the hub), the album, coverage, orbit, animations | 0 |
 | Related topics (shown once a branch ends) | 1 |
 | Onboarding (first visit) | 1 creation call (the questions themselves are on the device) |
 | What comes next in a finished branch | 1 (cached on the parent until more is finished) |
@@ -177,6 +178,22 @@ The lesson call's hidden block brings 1-2 multiple-choice questions (`{q, option
 - `IkoRank.scores` gives every topic a score (ghosts too), `order(cloud, ids)` sorts by it, and `chains(cloud)` lists the busiest chains (shown under the top 10).
 - Sources are pluggable: `IkoRank.register({ name, weight, prior, scores(cloud, now) -> { topicKey: score } })`; keys not on the map are skipped. A server source (topics popular across learners, a class's focus) plugs in without changing the draw.
 - It is shown as a quiet "Your top 10" list under the deck. In the draw it is a modest nudge: x `1 + 0.3*boost` on a card's weight, and a top card is due back from review a little sooner by the same factor. `boost` is 1 for the top topic, falling by a tenth per rank. Topics outside the top 10 get no nudge. In the simulated year below with three favourite Math topics, the favourites come up about a fifth more often than the other Math cards and Math still gets about a third of the draws. When a branch ends, a nearby top-10 topic is suggested first. Suggestions and fork choices in the top 10 come first and say so ("In your top 10 · ...").
+
+## The album and the card hub
+
+- **Uniform cards.** Every card (holder, suggestions, album, hub, corpus) is one shape: `aspect-ratio: 5 / 7` (a 2.5 x 3.5 in trading card), plate on top (3:2), then title, chain, and the tier mark with pips. Titles clamp to 2 lines, the chain to 1 (ellipsis), descriptions to a fixed number of lines, so text never changes a card's size. Each card is a size container (`container-type: inline-size`), so type in `cqi` units scales with the card's own width.
+- **Covered vs uncovered is derived, not stored** (`IkoDeck.coverage`): covered = merged into a parent, Tinted or higher, or `C.isDone` ("I've got it", 2+ right answers, mastered, branch ended); in progress = any confirmation, a deck card, or opened / engaged / time spent; uncovered = the rest (ghosts read "Suggested"). Storage stays v8.
+- **The album** (`IkoDeck.albumModel`): a binder page per subject (its hue), a row per branch (a topic directly under the subject) led by the branch's own card (merged parents at 2 x 2 slots), then its deck cards by rarity, then dashed outline slots for known topics not yet collected (capped at 6, the rest "+N more"). Each page shows "covered of known".
+- **The hub** (tap any album card, slot, holder card, or "Open its card" on the cloud): the large card, its chain as links up, Start / Continue / Review the lesson, the test when ready, See it on your cloud, and its branches with a covered / in-progress / not-started marker, each opening its own hub or starting its lesson. Back returns where you came from (deck, cloud, chat, or the card above).
+- **"Make a card" is gone from the panel.** It was a v1 action: one model call (`/card`) that wrote a short note card (title + up to 700 chars) onto the topic's `cloud.cards`, shown in chat and under the panel. It never touched the deck. The panel button is now "Open its card" (the hub, 0 calls); the one-call note survives as "Save a note on X" under chat replies.
+
+## The camera pivot
+
+The cloud turns about a pivot `P` (the origin, or the focused node). A point is drawn at `centre + pan + zoom·s·persp(R(p − P))`, so `P` itself always lands at `centre + pan` whatever the yaw and pitch: once a node is the pivot, turning orbits it and it stays put. Focusing is therefore simple: `pivot = node`, `pan = target − centre`, zoom from `fitAround` (the node's children mirrored about it, so the far side decides). The tween eases yaw (shortest arc), zoom (log space), pan and the pivot (straight line) together. Recentre tweens the pivot back to the origin. The pivot is saved with the view. On phones the target is the middle of the strip above the open sheet (`focusFrame`), and the sheet growing (its note streaming in) re-frames it for a few seconds.
+
+## Motion
+
+CSS only (no libraries): press feedback (`:active` scale, hover lift with a drop-shadow so the tier frames are untouched), views slide in, album pages turn in with staggered slots, the hub's card lifts from where it was tapped (FLIP with the Web Animations API), the cloud's sheet slides up. Everything is off under `prefers-reduced-motion`.
 
 ## Suggestions, Draw and the orchestrator
 

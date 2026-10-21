@@ -4,6 +4,9 @@
  *   Focus        tap a point: the camera eases (cubic in-out, zoom interpolated in log space, turn by the shortest
  *                arc) so the node comes to the front and its branch is framed in the view
  *   Inertia      a released pan glides on and slows exponentially: v(t) = v0·e^(-t/τ), distance v0·τ·(1 - e^(-t/τ))
+ *   Pivot        the camera turns about a pivot point P (the origin, or the focused node). A point p is drawn at
+ *                centre + pan + zoom·s·persp(R(p − P)), so P itself always sits at centre + pan: turning about P
+ *                leaves the focused node where it is, and focusing a node is just "pivot = node, pan = target − centre"
  * Runs in the browser (window.IkoCamera) and in Node.
  */
 (function (root) {
@@ -34,8 +37,31 @@
     return {
       zoom: Math.exp(Math.log(a.zoom) + (Math.log(b.zoom) - Math.log(a.zoom)) * e),
       panX: a.panX + (b.panX - a.panX) * e, panY: a.panY + (b.panY - a.panY) * e,
-      yaw: a.yaw + wrap(b.yaw - a.yaw) * e, pitch: a.pitch + (b.pitch - a.pitch) * e
+      yaw: a.yaw + wrap(b.yaw - a.yaw) * e, pitch: a.pitch + (b.pitch - a.pitch) * e,
+      pivot: lerpPoint(a.pivot || ORIGIN, b.pivot || ORIGIN, e)
     };
+  }
+  var ORIGIN = { x: 0, y: 0, z: 0 };
+  /* The pivot moves in a straight line during a focus or recentre tween, so the turn centre slides with the camera. */
+  function lerpPoint(a, b, e) { return { x: a.x + (b.x - a.x) * e, y: a.y + (b.y - a.y) * e, z: a.z + (b.z - a.z) * e }; }
+  /*
+   * The zoom that keeps a box of offsets (measured at zoom 1, relative to the pivot node, which stays put) inside w x h
+   * when the node is pinned in the middle: the box is mirrored about the node, so the far side decides.
+   */
+  function fitAround(box, w, h, lo, hi, margin) {
+    var hx = Math.max(Math.abs(box.x0), Math.abs(box.x1)), hy = Math.max(Math.abs(box.y0), Math.abs(box.y1));
+    return fitZoom({ x0: -hx, x1: hx, y0: -hy, y1: hy }, w, h, lo, hi, margin);
+  }
+  /*
+   * Where a focused node goes on screen, and the free area to frame its branch in. Wide screens: left of the 400px
+   * side panel. Phones: the bottom sheet (sheet px tall) covers the lower part, so the node sits in the middle of the
+   * strip above it (never above the top controls) and the branch is fitted to that strip.
+   */
+  function focusFrame(w, h, o) {
+    o = o || {};
+    if (o.wide) return { cx: (w - (o.side || 400)) / 2, cy: h / 2, aw: w - (o.side || 400) - 20, ah: h - 80 };
+    var top = o.top || 64, free = Math.max(120, h - (o.sheet || 0) - top);
+    return { cx: w / 2, cy: top + free / 2, aw: w - 24, ah: Math.max(100, free - 24) };
   }
   /* The yaw that brings a point to the front (on the near side, centred left-right): x' = 0, z' = -hypot(x, z). */
   function forwardYaw(p) { return Math.hypot(p.x, p.z) < 1e-9 ? null : Math.atan2(-p.x, -p.z); }
@@ -68,7 +94,7 @@
   /* One wheel notch, kept deliberate: a capped factor per event (a trackpad pinch sends ctrlKey and a small delta). */
   function wheelFactor(deltaY, ctrl) { return clamp(Math.exp(-deltaY * CAM.wheel * (ctrl ? 4 : 1)), CAM.wheelStep[0], CAM.wheelStep[1]); }
 
-  var api = { CAM: CAM, gestureFor: gestureFor, hint: hint, easeInOutCubic: easeInOutCubic, wrap: wrap, lerpView: lerpView, forwardYaw: forwardYaw, fitZoom: fitZoom, glide: glide, velocity: velocity, twist: twist, zoomAbout: zoomAbout, wheelFactor: wheelFactor };
+  var api = { CAM: CAM, gestureFor: gestureFor, hint: hint, easeInOutCubic: easeInOutCubic, wrap: wrap, lerpView: lerpView, lerpPoint: lerpPoint, ORIGIN: ORIGIN, fitAround: fitAround, focusFrame: focusFrame, forwardYaw: forwardYaw, fitZoom: fitZoom, glide: glide, velocity: velocity, twist: twist, zoomAbout: zoomAbout, wheelFactor: wheelFactor };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.IkoCamera = api;
 })(typeof window !== "undefined" ? window : this);
