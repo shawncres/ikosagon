@@ -28,9 +28,11 @@
     lesson: $("lesson"), lBack: $("l-back"), lTrail: $("l-trail"), lTitle: $("l-title"), lBody: $("l-body"), lDone: $("l-done"),
     lGot: $("l-got"), lTricky: $("l-tricky"), lStatus: $("l-status"), lPath: $("l-path"), lChat: $("l-chat"), lRedo: $("l-redo"),
     cloud: $("cloud"), cloudCanvas: $("cloud-canvas"), cloudClose: $("cloud-close"), zin: $("zin"), zout: $("zout"), zreset: $("zreset"),
-    panel: $("panel"), pKicker: $("p-kicker"), pTitle: $("p-title"), pNote: $("p-note"), pLesson: $("p-lesson"), pCard: $("p-card"), pAdj: $("p-adj"),
+    panel: $("panel"), cloudTop: document.querySelector(".cloud-top"), pKicker: $("p-kicker"), pTitle: $("p-title"), pNote: $("p-note"), pLesson: $("p-lesson"), pCard: $("p-card"), pAdj: $("p-adj"),
     pChat: $("p-chat"), pPath: $("p-path"), pCards: $("p-cards"), pClose: $("p-close"),
-    draw: $("draw"), deckBtn: $("deck-btn"), deck: $("deck"), dBack: $("d-back"), dLede: $("d-lede"), dGrid: $("d-grid"), dBalance: $("d-balance"),
+    draw: $("draw"), deckBtn: $("deck-btn"), deck: $("deck"), dBack: $("d-back"), dLede: $("d-lede"), dAlbum: $("d-album"),
+    hub: $("hub"), hubBack: $("hub-back"), hubCrumb: $("hub-crumb"), hubCard: $("hub-card"), hubTitle: $("hub-title"), hubState: $("hub-state"),
+    hubNote: $("hub-note"), hubLesson: $("hub-lesson"), hubTest: $("hub-test"), hubCloud: $("hub-cloud"), hubCorpus: $("hub-corpus"), hubKids: $("hub-kids"), dBalance: $("d-balance"),
     lCard: $("l-card"), lFork: $("l-fork"), lQuiz: $("l-quiz"), hNote: $("h-note"),
     top: $("top"), tLede: $("t-lede"), tList: $("t-list"),
     dSuggest: $("d-suggest"), hKids: $("h-kids"), lPhase: $("l-phase"), phLearn: $("ph-learn"), phCheck: $("ph-check"), pTest: $("p-test"),
@@ -70,6 +72,8 @@
   /* The camera and focus of the big cloud, so they come back next time (UI state, kept apart from the cloud). */
   function saveView(v) {
     state.view = { y: +v.yaw.toFixed(4), p: +v.pitch.toFixed(4), z: +v.zoom.toFixed(4), x: Math.round(v.panX), q: Math.round(v.panY), f: v.focus && state.cloud.nodes[v.focus] ? v.focus : 0 };
+    /* the turn centre (the focused node, or the origin): kept so a restored view orbits the same point */
+    if (v.pivot && (v.pivot.x || v.pivot.y || v.pivot.z)) state.view.o = [v.pivot.x, v.pivot.y, v.pivot.z].map(function (k) { return +k.toFixed(4); });
     store(LS.view, JSON.stringify(state.view));
   }
   /* What each card looked like when last shown (D.evolveKey), so a rise in tier or colour plays its transition once. */
@@ -253,7 +257,7 @@
       var body = mk("div"); paragraphs(body, m.text || ""); d.appendChild(body);
       if (m.role === "model" && m.topic && !m.streaming && !m.fallback) {
         var acts = mk("div", "acts");
-        acts.appendChild(linkBtn("Make a card on " + m.topic, function () { makeCard(m.topic, m.parent || ""); }));
+        acts.appendChild(linkBtn("Save a note on " + m.topic, function () { makeCard(m.topic, m.parent || ""); }));
         d.appendChild(acts);
       }
       if (m.role === "model" && m.opens && m.opens.length && !m.streaming) {
@@ -490,7 +494,7 @@
   function makeCard(topic, parent) {
     if (state.busy) return;
     lock(true);
-    var wait = push({ role: "grow", text: "Making a card on " + topic + "..." });
+    var wait = push({ role: "grow", text: "Writing a short note on " + topic + "..." });
     var node = C.findTopic(state.cloud, topic) || C.findSubject(state.cloud, topic);
     var body = Object.assign(basePayload(node ? node.id : null), { focus: topic, focusParent: parent || (node && node.parent ? nodeOf(node.parent).label : ""), messages: history() });
     postJson("/card", body).then(function (j) {
@@ -500,7 +504,7 @@
         push({ role: "card", text: r.card.title, card: r.card });
         refreshAll(r.grew.created.concat(r.grew.promoted, r.grew.strengthened, r.grew.parentsCreated, r.path ? r.path.added : []));
       } else {
-        push({ role: "grow", text: "I couldn't make that card just now (" + ((j && (j.reason || j.error)) || "error") + "). Try again in a moment." });
+        push({ role: "grow", text: "I couldn't write that note just now (" + ((j && (j.reason || j.error)) || "error") + "). Try again in a moment." });
       }
     }).then(function () { save(); lock(false); });
   }
@@ -635,12 +639,12 @@
 
   function showLesson(on) {
     if (!on) stopClock();
-    if (on) el.deck.hidden = true;
+    if (on) { el.deck.hidden = true; el.hub.hidden = true; }
     el.lesson.hidden = !on;
     el.thread.hidden = on;
     el.dock.hidden = on;
     if (!on) { state.lessonNode = null; state.mode = "lesson"; state.test = null; renderThread(); renderDraw(); }
-    else el.draw.hidden = true;
+    else { el.draw.hidden = true; viewIn(el.lesson); }
   }
 
   function renderLessonBody(text, streaming) {
@@ -667,7 +671,7 @@
     var sig = JSON.stringify(sp), old = el.lCard.firstElementChild;
     if (!old || el.lCard.getAttribute("data-sig") !== sig) {
       el.lCard.textContent = "";
-      var c = D.render(document, sp, { size: "full" });
+      var c = D.render(document, sp, { size: "full", onOpen: function (cid, src) { var back = state.lessonFrom; state.lessonFrom = null; showLesson(false); openHub(cid, src, back || "chat"); } });
       if (!markEvolve(c, sp) && grew) c.classList.add("grew");
       el.lCard.appendChild(c);
       el.lCard.setAttribute("data-sig", sig);
@@ -894,6 +898,7 @@
     if (!el.cloud.hidden) closeCloud(true);
     stopClock();
     state.lessonNode = id;
+    state.lessonFrom = state.pendingFrom || null; state.pendingFrom = null; /* opened from a card's hub: Back returns there */
     state.mode = "lesson"; state.test = null;
     if (!C.isDone(state.cloud, id)) state.cloud.active = id; /* "Continue" brings the learner back here */
     C.profileOf(state.cloud).lessonVisit = C.profileOf(state.cloud).visits || 0; /* not stuck: a lesson was opened this visit */
@@ -1025,7 +1030,12 @@
     el.input.focus();
     scrollDown();
   }
-  el.lBack.addEventListener("click", function () { showLesson(false); });
+  el.lBack.addEventListener("click", function () {
+    var back = state.lessonFrom;
+    state.lessonFrom = null;
+    showLesson(false);
+    if (back && nodeOf(back)) openHub(back, null, "deck");
+  });
   el.lGot.addEventListener("click", function () { finishLesson("got"); });
   el.lTricky.addEventListener("click", function () { finishLesson("tricky"); });
   el.lChat.addEventListener("click", function () { askInChat(state.lessonNode); });
@@ -1048,6 +1058,7 @@
     if (!el.cloud.hidden) closeCloud(true);
     stopClock();
     state.lessonNode = pid; state.mode = "test";
+    state.lessonFrom = state.pendingFrom || null; state.pendingFrom = null;
     showLesson(true);
     window.scrollTo(0, 0);
     el.lMain.classList.add("testing");
@@ -1230,7 +1241,7 @@
     big.resize();
     big.setCloud(state.cloud);
     /* the camera and focus come back as they were left (unless a lesson's topic is about to be focused) */
-    if (fresh && state.view && !state.lessonNode) big.setView({ yaw: state.view.y, pitch: state.view.p, zoom: state.view.z, panX: state.view.x, panY: state.view.q, focus: state.view.f && nodeOf(state.view.f) ? state.view.f : null });
+    if (fresh && state.view && !state.lessonNode) big.setView({ yaw: state.view.y, pitch: state.view.p, zoom: state.view.z, panX: state.view.x, panY: state.view.q, pivot: Array.isArray(state.view.o) ? { x: state.view.o[0], y: state.view.o[1], z: state.view.o[2] } : null, focus: state.view.f && nodeOf(state.view.f) ? state.view.f : null });
     big.setTests(testMap());
     if (state.lessonNode) setTimeout(function () { openPanel(state.lessonNode, false, false, true); }, 0); /* a lesson or a test: its topic */
     renderCloudFlow();
@@ -1322,11 +1333,24 @@
     if (isRoot) { big.clearFocus(); liftCloud(true); }
     else {
       liftCloud(false);
-      var wide = window.innerWidth >= 900, ch = el.cloudCanvas.clientHeight, cw = el.cloudCanvas.clientWidth;
-      var ph = el.panel.offsetHeight;
-      big.focusNode(id, { cx: wide ? (cw - 400) / 2 : cw / 2, cy: wide ? ch / 2 : Math.max(90, (ch - ph) / 2 + 20), aw: wide ? cw - 420 : cw, ah: wide ? ch - 80 : Math.max(160, ch - ph - 60) });
+      focusInView(id, false);
     }
   }
+  /* Focus a node where it is visible (CAM.focusFrame); a phone sheet that grows as its note streams re-frames it. */
+  var sheetH = 0, sheetTimer = 0, focusAt = 0;
+  function focusInView(id, keepYaw) {
+    if (!keepYaw) focusAt = Date.now();
+    var wide = window.innerWidth >= 900, ch = el.cloudCanvas.clientHeight, cw = el.cloudCanvas.clientWidth;
+    var top = el.cloudTop ? el.cloudTop.getBoundingClientRect().bottom - el.cloudCanvas.getBoundingClientRect().top + 8 : 64;
+    sheetH = el.panel.hidden ? 0 : el.panel.offsetHeight;
+    big.focusNode(id, Object.assign({ keepYaw: keepYaw }, CAM.focusFrame(cw, ch, { wide: wide, sheet: wide ? 0 : sheetH, top: top })));
+  }
+  if (window.ResizeObserver) new ResizeObserver(function () {
+    if (el.panel.hidden || window.innerWidth >= 900 || !big || !state.panelNode || state.panelNode === "root") return;
+    if (Math.abs(el.panel.offsetHeight - sheetH) < 24 || Date.now() - focusAt > 6000) return; /* not after the learner has moved on */
+    clearTimeout(sheetTimer);
+    sheetTimer = setTimeout(function () { if (!el.panel.hidden && nodeOf(state.panelNode)) focusInView(state.panelNode, true); }, 220);
+  }).observe(el.panel);
 
   /* On phones the panel covers the lower part of the screen: move the cloud up while it is open (whole-cloud view). */
   function liftCloud(on) {
@@ -1358,10 +1382,10 @@
   }
 
   el.pLesson.addEventListener("click", function () { if (nodeOf(state.panelNode)) openLesson(state.panelNode); });
+  /* Open its card: the topic's hub (its card, chain, lesson and test, and its branches with what is covered). No model call. */
   el.pCard.addEventListener("click", function () {
-    var n = nodeOf(state.panelNode); if (!n) return;
-    makeCard(n.label, n.parent ? nodeOf(n.parent).label : "");
-    paragraphs(el.pNote, "Making a card on " + n.label + ". It will appear in your chat and here.");
+    var id = state.panelNode; if (!nodeOf(id)) return;
+    openHub(id, null, "cloud");
   });
   /* Related topics: suggestions whose subject we don't know land under the tapped node's subject. */
   el.pAdj.addEventListener("click", function () {
@@ -1402,6 +1426,7 @@
     if (e.key !== "Escape") return;
     if (!el.cloud.hidden) closeCloud();
     else if (state.lessonNode) showLesson(false);
+    else if (!el.hub.hidden) hubBack();
     else if (!el.deck.hidden) showDeck(false);
   });
 
@@ -1429,11 +1454,144 @@
   }
   function showDeck(on) {
     if (on && state.lessonNode) showLesson(false);
+    if (on) el.hub.hidden = true;
+    var was = !el.deck.hidden;
     el.deck.hidden = !on;
     el.thread.hidden = on;
     el.dock.hidden = on;
-    if (on) { el.draw.hidden = true; renderDeck(); window.scrollTo(0, 0); } else { renderDraw(); scrollDown(); }
+    if (on) { el.draw.hidden = true; renderDeck(!was); window.scrollTo(0, 0); } else { renderDraw(); scrollDown(); }
   }
+  var motionOK = function () { return !(reduceMotion && reduceMotion.matches); };
+  function viewIn(node) {
+    if (!motionOK()) return;
+    node.classList.remove("view-in"); void node.offsetWidth; node.classList.add("view-in");
+  }
+  /* Card lift (FLIP): measure where it was tapped and where it lands, play the difference back to none. */
+  function liftCard(card, from) {
+    if (!card || !card.animate || !from || !from.width || !motionOK()) return;
+    var to = card.getBoundingClientRect();
+    if (!to.width) return;
+    card.style.transformOrigin = "0 0";
+    card.animate([
+      { transform: "translate(" + Math.round(from.left - to.left) + "px, " + Math.round(from.top - to.top) + "px) scale(" + (from.width / to.width).toFixed(3) + ")", filter: "drop-shadow(0 10px 12px rgba(60,40,20,.25))" },
+      { transform: "translateY(-6px) scale(1.01)", filter: "drop-shadow(0 12px 14px rgba(60,40,20,.22))", offset: 0.7 },
+      { transform: "none", filter: "drop-shadow(0 1px 1px rgba(60,40,20,0))" }
+    ], { duration: 560, easing: "cubic-bezier(.2,.7,.2,1)" });
+  }
+
+  /* ---------- the card hub ---------- */
+  /* from: where Back goes ("deck", "cloud", "chat", or the card's id you came from) */
+  function openHub(id, src, from) {
+    if (!nodeOf(id) && !C.inDeck(state.cloud, id)) return;
+    var rect = src && src.getBoundingClientRect ? src.getBoundingClientRect() : null;
+    if (!el.cloud.hidden) closeCloud(true);
+    if (state.lessonNode) showLesson(false);
+    state.hubNode = id; state.hubFrom = from || "deck";
+    el.deck.hidden = true; el.thread.hidden = true; el.dock.hidden = true; el.draw.hidden = true;
+    el.hub.hidden = false;
+    renderHub(true);
+    window.scrollTo(0, 0);
+    viewIn(el.hub.querySelector(".hub-info"));
+    liftCard(el.hubCard.firstElementChild, rect);
+  }
+  function hubBack() {
+    var from = state.hubFrom, id = state.hubNode;
+    el.hub.hidden = true; state.hubNode = null;
+    if (from && from !== "deck" && from !== "cloud" && from !== "chat" && (nodeOf(from) || C.inDeck(state.cloud, from))) return openHub(from, null, "deck");
+    if (from === "cloud" && nodeOf(id)) { el.thread.hidden = false; el.dock.hidden = false; openCloud(); openPanel(id, false, false, true); return; }
+    if (from === "chat") { el.thread.hidden = false; el.dock.hidden = false; renderDraw(); scrollDown(); return; }
+    showDeck(true);
+  }
+  el.hubBack.addEventListener("click", hubBack);
+  function hubKidAction(cid, cv) {
+    var lesson = state.lessons[cid];
+    return cv.state === "covered" ? (lesson ? "Review" : "Lesson") : lesson || cv.state === "progress" ? "Continue" : "Start";
+  }
+  function renderHub(opening) {
+    var id = state.hubNode, n = nodeOf(id), sp = D.cardSpec(state.cloud, id);
+    if (!sp) return;
+    el.hubBack.textContent = state.hubFrom === "cloud" ? "Back to your cloud" : state.hubFrom === "chat" ? "Back to chat" : state.hubFrom && state.hubFrom !== "deck" && nodeOf(state.hubFrom) ? "Back to " + nodeOf(state.hubFrom).label : "Back to your deck";
+    el.hubCrumb.textContent = "";
+    var anc = n ? C.ancestry(state.cloud, id).slice(0, -1) : [];
+    el.hubCrumb.appendChild(linkBtn("Deck", function () { el.hub.hidden = true; state.hubNode = null; showDeck(true); }));
+    anc.forEach(function (aid) {
+      el.hubCrumb.appendChild(mk("span", "sep", "›"));
+      el.hubCrumb.appendChild(linkBtn(nodeOf(aid).label, function () { openHub(aid, null, id); }));
+    });
+    if (!n && sp.chain.length > 1) el.hubCrumb.appendChild(mk("span", "sep", "› " + sp.chain.slice(0, -1).join(" › ")));
+    el.hubCard.textContent = "";
+    var card = D.render(document, sp, { size: "full" });
+    markEvolve(card, sp);
+    el.hubCard.appendChild(card);
+    saveSeen();
+    el.hubTitle.textContent = sp.label;
+    var cv = D.coverage(state.cloud, id) || { state: "uncovered", text: "" };
+    el.hubState.textContent = "";
+    var st = mk("span"); st.appendChild(mk("span", "cov-dot " + cv.state)); st.appendChild(document.createTextNode(cv.text)); el.hubState.appendChild(st);
+    el.hubState.appendChild(mk("span", null, sp.tierName + (sp.inDeck ? " · in your deck" : " · not in your deck yet")));
+    if (sp.absorbedInto && nodeOf(sp.absorbedInto)) { var mi = mk("span", null, "Merged into "); mi.appendChild(linkBtn(nodeOf(sp.absorbedInto).label, function () { openHub(sp.absorbedInto, null, id); })); el.hubState.appendChild(mi); }
+    el.hubNote.textContent = sp.blurb || (n && n.ghost ? "A suggested branch you haven't opened yet." : "");
+    el.hubLesson.hidden = !n;
+    el.hubLesson.textContent = state.lessons[id] ? (cv.state === "covered" ? "Review the lesson" : "Continue the lesson") : "Start the lesson";
+    var tst = n && P.testState(state.cloud, id);
+    el.hubTest.hidden = !(tst && (tst.ready || tst.taken));
+    if (tst) { el.hubTest.textContent = tst.ready ? (tst.taken ? "Test again" : "Take the test") : "Test taken"; el.hubTest.disabled = state.busy || !tst.ready; }
+    el.hubCloud.hidden = !n;
+    el.hubCorpus.textContent = "";
+    /* the corpus, unless every card in it is already listed below as a merged-in branch */
+    var kidIds = n ? C.childrenOf(state.cloud, id).map(function (k) { return k.id; }) : [];
+    if (sp.corpus.some(function (x) { return kidIds.indexOf(x.id) < 0; })) el.hubCorpus.appendChild(D.renderCorpus(document, state.cloud, id, { onOpen: function (cid, src) { openHub(cid, src, id); } }));
+    renderHubKids(id, opening);
+  }
+  function renderHubKids(id, opening) {
+    el.hubKids.textContent = "";
+    el.hubKids.classList.toggle("opening", Boolean(opening) && motionOK());
+    if (!nodeOf(id)) return;
+    var hk = D.hubChildren(state.cloud, id, { core: P.orderedChildren(state.cloud, id), side: P.sidePaths(state.cloud, id) });
+    var head = mk("div", "hk-head"), h3 = mk("h3", null, "Branches");
+    head.appendChild(h3);
+    head.appendChild(mk("span", "fine", hk.total ? hk.covered + " of " + hk.total + " covered" : ""));
+    el.hubKids.appendChild(head);
+    var leg = mk("p", "hk-legend");
+    [["covered", "Covered"], ["progress", "In progress"], ["uncovered", "Not started"]].forEach(function (x) { var s = mk("span"); s.appendChild(mk("span", "cov-dot " + x[0])); s.appendChild(document.createTextNode(x[1])); leg.appendChild(s); });
+    if (hk.total) el.hubKids.appendChild(leg);
+    if (!hk.total && !hk.waiting.length) { el.hubKids.appendChild(mk("p", "fine", "No branches yet. They grow from this card once you've answered a question in its lesson or said “I've got it”.")); return; }
+    var j = 0;
+    function grid(list, label) {
+      if (!list.length) return;
+      if (label) el.hubKids.appendChild(mk("p", "hk-sub", label));
+      var g = mk("div", "hk-grid");
+      list.forEach(function (x) {
+        var cell = mk("div", "hk-cell is-" + x.cov.state), go = function (cid, src) { openHub(cid, src, id); };
+        cell.style.setProperty("--j", String(Math.min(j++, 12)));
+        var csp = x.cov.state !== "uncovered" && C.inDeck(state.cloud, x.id) ? D.cardSpec(state.cloud, x.id) : null;
+        cell.appendChild(csp ? D.render(document, csp, { onOpen: go }) : D.renderSlot(document, state.cloud, x.id, { onOpen: go }));
+        var row = mk("span", "hk-cov"), lab = mk("span");
+        lab.appendChild(mk("span", "cov-dot " + x.cov.state));
+        lab.appendChild(document.createTextNode(x.cov.text));
+        row.appendChild(lab);
+        row.appendChild(linkBtn(hubKidAction(x.id, x.cov), function () { state.pendingFrom = id; openLesson(x.id); }));
+        cell.appendChild(row);
+        g.appendChild(cell);
+      });
+      el.hubKids.appendChild(g);
+    }
+    grid(hk.core, hk.side.length ? "Core path" : "");
+    grid(hk.side, "Side paths");
+    if (hk.waiting.length) {
+      el.hubKids.appendChild(mk("p", "hk-sub", "Grow after its next lesson"));
+      var w = mk("div", "hk-wait");
+      hk.waiting.forEach(function (l) { w.appendChild(mk("span", null, l)); });
+      el.hubKids.appendChild(w);
+    }
+  }
+  el.hubLesson.addEventListener("click", function () { var id = state.hubNode; if (nodeOf(id)) { state.pendingFrom = id; openLesson(id, false, el.hubCard.firstElementChild && el.hubCard.firstElementChild.getBoundingClientRect()); } });
+  el.hubTest.addEventListener("click", function () { var id = state.hubNode; if (nodeOf(id)) { state.lessonFrom = id; openTest(id); } });
+  el.hubCloud.addEventListener("click", function () {
+    var id = state.hubNode; if (!nodeOf(id)) return;
+    el.hub.hidden = true; state.hubNode = null; el.thread.hidden = false; el.dock.hidden = false;
+    openCloud(); openPanel(id, false, false, true);
+  });
   /* ---------- About you: the quiet settings spot (age band, rough region) ---------- */
   function renderYou() {
     var pr = C.profileOf(state.cloud);
@@ -1457,34 +1615,73 @@
   el.youClear.addEventListener("click", function () { youSaved({ region: "", regionAuto: false }); });
   el.youLink.addEventListener("click", function () { showDeck(true); setTimeout(function () { el.you.scrollIntoView({ block: "start" }); el.youAge.focus(); }, 0); });
 
-  function renderDeck() {
+  function renderDeck(opening) {
     renderYou();
     var ids = deckIds();
     refreshSuggest();
     el.dSuggest.textContent = "";
     el.dSuggest.appendChild(flowBlock("deck"));
     var held = (state.cloud.deck || []).length - ids.length;
-    el.dLede.textContent = (ids.length === 1 ? "1 card" : ids.length + " cards") + (held ? " (plus " + held + " merged into parent cards)" : "") + ". Cards stay in your deck for good. Each one moves from Sketch to Inked, Tinted and Achieved as you show what you've learned, and finished subtopics merge into their parent card.";
-    el.dGrid.textContent = "";
-    ids.forEach(function (id) {
-      var sp = D.cardSpec(state.cloud, id);
-      if (!sp) return;
-      var cell = mk("div", "deck-cell" + (sp.corpus.length ? " has-corpus" : "")), card = D.render(document, sp, { onOpen: openCard });
-      markEvolve(card, sp);
-      cell.appendChild(card);
-      /* a merged card: its corpus opens under it (the absorbed cards, each still openable) */
-      if (sp.corpus.length) {
-        var f = mk("details", "corpus-fold"), su = mk("summary", null, "Corpus · " + sp.corpus.length);
-        f.appendChild(su);
-        f.addEventListener("toggle", function () { if (f.open && f.childNodes.length < 2) f.appendChild(D.renderCorpus(document, state.cloud, id, { onOpen: openCard })); });
-        cell.appendChild(f);
-      }
-      el.dGrid.appendChild(cell);
-    });
+    el.dLede.textContent = (ids.length === 1 ? "1 card" : ids.length + " cards") + (held ? " (plus " + held + " merged into parent cards)" : "") + ", by subject. Cards move from Sketch to Inked, Tinted and Achieved as you learn, and finished subtopics merge into their parent. Dashed outlines are topics you haven't collected yet.";
+    renderAlbum(opening);
     saveSeen();
     var rows = D.balance(state.cloud, D.dayOf(Date.now())).filter(function (r) { return r.draws; });
     el.dBalance.textContent = rows.length ? "Drawn this year: " + rows.map(function (r) { return r.subject + " " + r.draws; }).join(" · ") : "";
     renderTop();
+  }
+  /* The album (D.albumModel): binder pages by subject; a merged lead card at double size; tap opens the hub. */
+  function renderAlbum(opening) {
+    el.dAlbum.textContent = "";
+    el.dAlbum.classList.toggle("opening", Boolean(opening) && motionOK());
+    var pages = D.albumModel(state.cloud), go = function (cid, src) { openHub(cid, src, "deck"); };
+    if (!pages.length) { el.dAlbum.appendChild(mk("p", "album-empty", "Your album is empty for now. Open a lesson and its card joins your deck.")); return; }
+    pages.forEach(function (pg, i) {
+      var page = mk("section", "album-page");
+      page.style.setProperty("--i", String(Math.min(i, 6)));
+      if (pg.hue != null) page.style.setProperty("--page-ink", "hsl(" + pg.hue + ", 42%, 36%)");
+      var head = mk("div", "ap-head");
+      head.appendChild(mk("h3", null, pg.subject));
+      head.appendChild(mk("span", "ap-count", pg.covered + " of " + pg.known + (pg.known === 1 ? " topic" : " topics") + " covered"));
+      page.appendChild(head);
+      var bar = mk("div", "ap-bar");
+      bar.style.setProperty("--p", "0");
+      page.appendChild(bar);
+      setTimeout(function () { bar.style.setProperty("--p", String(pg.known ? Math.round((pg.covered / pg.known) * 100) / 100 : 0)); }, 30);
+      var j = 0;
+      pg.rows.forEach(function (r) {
+        var row = mk("div", "ap-row"), rh = mk("p", "ap-row-head");
+        if (r.head && nodeOf(r.head)) rh.appendChild(linkBtn(r.label, function () { go(r.head); }));
+        else rh.appendChild(mk("span", null, r.label));
+        rh.appendChild(mk("span", null, r.cards.length + (r.cards.length === 1 ? " card" : " cards") + (r.slots.length + r.more ? " · " + (r.slots.length + r.more) + " to collect" : "")));
+        row.appendChild(rh);
+        var g = mk("div", "ap-grid");
+        r.cards.forEach(function (cid, k) {
+          var sp = D.cardSpec(state.cloud, cid);
+          if (!sp) return;
+          var c = D.render(document, sp, { onOpen: go });
+          if (k === 0 && r.lead && sp.level) c.classList.add("prominent");
+          c.style.setProperty("--i", String(Math.min(i, 6))); c.style.setProperty("--j", String(Math.min(j++, 14)));
+          markEvolve(c, sp);
+          g.appendChild(c);
+        });
+        r.slots.forEach(function (sid) {
+          var sl = D.renderSlot(document, state.cloud, sid, { onOpen: go });
+          sl.style.setProperty("--i", String(Math.min(i, 6))); sl.style.setProperty("--j", String(Math.min(j++, 14)));
+          g.appendChild(sl);
+        });
+        if (r.more) {
+          var more = mk("button", "gslot more");
+          more.type = "button";
+          more.appendChild(mk("span", "gs-title", "+" + r.more + " more"));
+          more.appendChild(mk("span", "gs-state", "in " + r.label));
+          more.addEventListener("click", function () { go(r.head, more); });
+          g.appendChild(more);
+        }
+        row.appendChild(g);
+        page.appendChild(row);
+      });
+      el.dAlbum.appendChild(page);
+    });
   }
   /* The top 10: what this learner has used most lately (rank.js). A quiet list; it nudges the draw, never decides it. */
   function renderTop() {
@@ -1513,7 +1710,7 @@
   function onboardingOpen() { return state.thread.some(function (m) { return m.role === "ask" && !m.done; }); }
   function renderDraw() {
     el.draw.textContent = "";
-    el.draw.hidden = !el.lesson.hidden || !el.deck.hidden || onboardingOpen();
+    el.draw.hidden = !el.lesson.hidden || !el.deck.hidden || !el.hub.hidden || onboardingOpen();
     if (el.draw.hidden) return;
     refreshSuggest();
     el.draw.appendChild(flowBlock("chat"));
