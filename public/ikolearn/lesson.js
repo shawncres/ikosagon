@@ -1,17 +1,17 @@
 /*
- * IkoLearn lessons: parses the tagged lesson text the server streams (INTRO / STEP / EXAMPLE / CHECK / ANSWER / NEXT)
- * and renders it as a short, calm lesson. Works on partial text while it streams. No DOM needed for parsing, so the
+ * IkoLearn lessons: parses the tagged lesson text the server streams (INTRO / EXPLAIN / STEP / EXAMPLE / CHECK / ANSWER / NEXT)
+ * and renders the teaching half of a short, calm lesson ("Learn"); the app renders the questions after it ("Check yourself"). Works on partial text while it streams. No DOM needed for parsing, so the
  * check script can test it in Node (module.exports); the browser gets window.IkoLesson.
  */
 (function (root) {
   "use strict";
 
-  var TAGS = { intro: "intro", step: "steps", example: "example", check: "check", answer: "answer", next: "next" };
-  var TAG_RE = /^\s*(?:[-*•]\s*)?(?:\d+[.)]\s*)?(intro|step|example|check|answer|next)\s*(?:\d+)?\s*[:.-]\s*/i;
+  var TAGS = { intro: "intro", explain: "explain", step: "steps", example: "example", check: "check", answer: "answer", next: "next" };
+  var TAG_RE = /^\s*(?:[-*•]\s*)?(?:\d+[.)]\s*)?(intro|explain|step|example|check|answer|next)\s*(?:\d+)?\s*[:.-]\s*/i;
 
-  /* -> { intro: [], steps: [], example: [], check: "", answer: "", next: "" }; untagged lines join the section above. */
+  /* -> { intro: [], explain: [], steps: [], example: [], check: "", answer: "", next: "" }; untagged lines join the section above. */
   function parse(text) {
-    var out = { intro: [], steps: [], example: [], check: "", answer: "", next: "" };
+    var out = { intro: [], explain: [], steps: [], example: [], check: "", answer: "", next: "" };
     var cur = "intro";
     String(text || "").replace(/\r/g, "").split("\n").forEach(function (raw) {
       var line = raw.replace(/\*\*|__|`+/g, "").replace(/^#+\s*/, "").trim();
@@ -21,7 +21,7 @@
         cur = TAGS[m[1].toLowerCase()];
         line = line.slice(m[0].length).trim();
         if (!line) return;
-        if (cur === "steps" || cur === "example" || cur === "intro") { out[cur].push(line); return; }
+        if (Array.isArray(out[cur])) { out[cur].push(line); return; }
         out[cur] = out[cur] ? out[cur] + " " + line : line;
         return;
       }
@@ -33,8 +33,8 @@
     return out;
   }
 
-  /* A lesson is usable once it has an intro and at least one step (used to decide whether to cache it). */
-  function usable(p) { return Boolean(p && p.intro.length && p.steps.length); }
+  /* A lesson is usable once it has an intro and some teaching: an explanation or a step (used to decide whether to cache it). */
+  function usable(p) { return Boolean(p && p.intro.length && (p.steps.length || (p.explain && p.explain.length))); }
 
   /* Renders into `el`. opts: { streaming, revealed, onReveal } */
   function render(el, p, opts) {
@@ -43,8 +43,9 @@
     var mk = function (tag, cls, text) { var e = doc.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
     el.textContent = "";
     p.intro.forEach(function (t) { el.appendChild(mk("p", "l-intro", t)); });
+    (p.explain || []).forEach(function (t) { el.appendChild(mk("p", "l-explain", t)); });
     if (p.steps.length) {
-      el.appendChild(mk("p", "l-head", "Step by step"));
+      el.appendChild(mk("p", "l-head", p.explain && p.explain.length ? "How to do it" : "Step by step"));
       var ol = mk("ol", "l-steps");
       p.steps.forEach(function (t) { ol.appendChild(mk("li", null, t)); });
       el.appendChild(ol);

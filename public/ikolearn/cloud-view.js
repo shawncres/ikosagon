@@ -22,6 +22,8 @@
     var pointers = {}, gesture = null, idleSpin = mini && !reduce, tween = null;
     var focusId = null, focusSet = {};
     var projected = [];
+    /* Test nodes: { parentId: "ready" | "taken" } (from orchestrator.js), drawn as a small diamond hanging off the parent */
+    var tests = {}, testMarks = [];
 
     function resize() {
       var r = canvas.getBoundingClientRect();
@@ -178,6 +180,25 @@
           font: (n.ghost ? "italic " : "") + (n.parent ? "" : "600 ") + Math.round(size * Math.max(0.85, Math.min(1.2, p.f))) + "px " + FONT });
       });
 
+      /* test nodes: a dotted diamond while offered, inked once taken, on a short dotted link from their parent */
+      testMarks = [];
+      items.forEach(function (it) {
+        var st = tests[it.n.id];
+        if (!st) return;
+        var p = it.p, off = mini ? 5 : 20 * Math.max(0.75, p.f), x = p.x + off, y = p.y + off * 0.8, sz = mini ? 2.4 : 5.5 * Math.max(0.8, p.f);
+        var col = C.colorOf(cloud, it.n);
+        ctx.save();
+        ctx.globalAlpha = 0.55; ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.setLineDash([1.5, 2.5]);
+        ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(x, y); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x, y - sz); ctx.lineTo(x + sz, y); ctx.lineTo(x, y + sz); ctx.lineTo(x - sz, y); ctx.closePath();
+        ctx.globalAlpha = 0.95;
+        if (st === "taken") { ctx.setLineDash([]); ctx.fillStyle = col; ctx.fill(); ctx.strokeStyle = INK; ctx.globalAlpha = 0.5; ctx.stroke(); }
+        else { ctx.setLineDash([2, 2]); ctx.strokeStyle = INK; ctx.lineWidth = 1.2; ctx.stroke(); }
+        ctx.restore();
+        testMarks.push({ id: it.n.id, x: x, y: y });
+        if (!mini) labels.push({ n: it.n, text: st === "taken" ? "Test · taken" : "Test", x: x, y: y + sz + 13, a: 0.95, fresh: st === "ready", font: "italic " + Math.round(11.5 * Math.max(0.9, Math.min(1.15, p.f))) + "px " + FONT });
+      });
+
       /* labels: most important first; skip any that would collide with one already placed */
       var placed = [];
       ctx.save();
@@ -221,6 +242,7 @@
     function pick(x, y) {
       var rp = project(pos.root);
       if (Math.hypot(rp.x - x, rp.y - y) < 22) return { root: true };
+      for (var t = 0; t < testMarks.length; t++) if (Math.hypot(testMarks[t].x - x, testMarks[t].y - y) < 11) return { test: testMarks[t].id };
       var best = null, bd = 20;
       projected.forEach(function (it) {
         var d = Math.hypot(it.p.x - x, it.p.y - y) - (focusSet[it.n.id] ? 3 : 0);
@@ -323,6 +345,7 @@
 
     return {
       setCloud: setCloud,
+      setTests: function (map) { tests = map || {}; request(); },
       flash: flash,
       resize: resize,
       zoomBy: function (k) { tween = null; zoomAt(k, null); },
