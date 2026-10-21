@@ -17,8 +17,10 @@ import {
   lessonContents,
   lessonSystem,
   parsePath,
+  parseLessonBlock,
   pathSystem,
   type LearnPath,
+  type LessonBlock,
   buildContents,
   cardSystem,
   companionSystem,
@@ -97,7 +99,7 @@ export type ChatEvent =
   | { t: "start"; model: string }
   | { t: "delta"; text: string }
   | { t: "cloud"; topics: CloudBlock["topics"]; ghosts: CloudBlock["ghosts"] }
-  | { t: "path"; steps: string[]; next: string; end?: boolean }
+  | ({ t: "path" } & LessonBlock)
   | { t: "done" }
   | { t: "error"; reason: FailCode | "cut" };
 
@@ -166,7 +168,7 @@ export function chatEvents(input: LearnInput, env: Env, fetchImpl: typeof fetch 
   );
 }
 
-/** Streams one lesson (tagged lines). With wantPath, a valid trailing path block becomes a "path" event. */
+/** Streams one lesson (tagged lines). The hidden trailing block (path steps when asked, fork choices, branch end) becomes one "path" event. */
 export function lessonEvents(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): AsyncGenerator<ChatEvent> {
   return streamEvents(
     {
@@ -177,9 +179,9 @@ export function lessonEvents(input: LearnInput, env: Env, fetchImpl: typeof fetc
       maxChars: LEARN_LIMITS.lessonChars,
       maxTokens: MODEL_LIMITS.lessonMaxTokens,
       tail: (block, found) => {
-        if (!input.wantPath || !found) return null;
-        const p = parsePath(block, input.name, input.focus);
-        return p ? { t: "path", steps: p.steps, next: p.next, ...(p.end ? { end: true } : {}) } : null;
+        if (!found) return null;
+        const b = parseLessonBlock(block, input.name, input.focus, input.wantPath);
+        return b ? { t: "path", ...b } : null;
       },
     },
     env,

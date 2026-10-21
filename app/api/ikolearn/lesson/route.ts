@@ -5,8 +5,8 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /**
- * POST { name, focus, trail?, known?, wantPath?, cloud, parents } -> NDJSON stream (one Gemini call):
- * {t:"start"} {t:"delta",text}... [{t:"path",steps,next}] {t:"done"}  or  {t:"error",reason}.
+ * POST { name, focus, trail?, known?, wantPath?, ahead?, cloud, parents } -> NDJSON stream (one Gemini call):
+ * {t:"start"} {t:"delta",text}... [{t:"path",steps,next,choices,end?}] {t:"done"}  or  {t:"error",reason}.
  */
 export async function POST(request: Request) {
   const p = prepare({ rawBody: await request.text(), ...reqMeta(request), env: process.env, state, requireFocus: true });
