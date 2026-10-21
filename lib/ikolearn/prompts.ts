@@ -7,6 +7,9 @@
  *  - notice:    a warm brief reflection or 2-3 suggestions about the name (whole cloud) or one node (streamed, same block).
  *  - card:      a short learning card, JSON { title, body, topic, parent }.
  *  - adjacent:  related unexplored topics for one node, JSON { ghosts: [{ name, parent }] } (shown as ghost branches).
+ *  - lesson:    one topic as a short lesson (streamed, tagged lines INTRO/STEP/EXAMPLE/CHECK/ANSWER/NEXT), optionally ending
+ *               with a <<<PATH {json} PATH>>> block: the topic's subtopics in learning order plus the one to start with.
+ *  - path:      just the ordered subtopics for one node, JSON { steps: [{ name }], next }.
  */
 
 export const LEARN_LIMITS = {
@@ -23,10 +26,16 @@ export const LEARN_LIMITS = {
   cardTitleChars: 60,
   cardBodyChars: 700,
   replyChars: 4_000,
+  lessonChars: 6_000,
+  trailChars: 200,
+  known: 16,
+  pathSteps: 6,
 };
 
 export const CLOUD_OPEN = "<<<CLOUD";
 export const CLOUD_CLOSE = "CLOUD>>>";
+export const PATH_OPEN = "<<<PATH";
+export const PATH_CLOSE = "PATH>>>";
 export const SIGNALS = ["explored", "strength", "struggle", "curious"] as const;
 export type Signal = (typeof SIGNALS)[number];
 
@@ -41,11 +50,19 @@ export type LearnInput = {
   /** Compact text summary of the cloud, written by the browser (cloud-model.js summarize()). */
   cloud: string;
   parents: string[];
+  /** Where the focus sits in the tree, e.g. "Math > Addition > Number Bonds". */
+  trail: string;
+  /** Labels already under the focus node (so paths and lessons build on them instead of repeating). */
+  known: string[];
+  /** Lesson only: also map the focus node's subtopics (it has no path yet). */
+  wantPath: boolean;
 };
 export type Topic = { name: string; parent: string; signal: Signal };
 export type Ghost = { name: string; parent: string };
 export type CloudBlock = { topics: Topic[]; ghosts: Ghost[] };
-export type Card = { title: string; body: string; topic: string; parent: string };
+export type Card = { title: string; body: string; topic: string; parent: string; path?: string[]; next?: string };
+/** end: the branch stops here (no smaller subtopics); steps is then empty. */
+export type LearnPath = { steps: string[]; next: string; end?: boolean };
 
 /* ---------- input cleaning (everything from the browser is untrusted) ---------- */
 
@@ -96,6 +113,9 @@ export function parseLearnInput(raw: unknown): LearnInput | { error: string } {
     messages,
     cloud: cleanText(b.cloud, LEARN_LIMITS.summaryChars).replace(/\n{3,}/g, "\n\n"),
     parents,
+    trail: cleanText(b.trail, LEARN_LIMITS.trailChars).replace(/>{2,}/g, " ").replace(/[\n\r"<{}[\]`*_#|\\]/g, " ").replace(/\s+/g, " ").trim(),
+    known: (Array.isArray(b.known) ? b.known : []).map(cleanLabel).filter(Boolean).slice(0, LEARN_LIMITS.known),
+    wantPath: b.wantPath === true,
   };
 }
 
@@ -115,12 +135,12 @@ const blockRules = (parents: string[]) =>
   'The JSON is {"topics":[{"name":"...","parent":"...","signal":"explored|strength|struggle|curious"}],"ghosts":[{"name":"...","parent":"..."}]}. ' +
   `topics: 0 to ${LEARN_LIMITS.topicsPerTurn} learning topics that this exchange actually touched (1 to 3 words each, Title Case, specific like "Fractions" or "Volcanoes", never the learner's name). ` +
   "signal: strength if the learner showed they understand it, struggle if they found it hard or had a mix-up, curious if they only asked or showed interest, explored otherwise. " +
-  `parent: the broad subject it belongs to. Use one of these existing subjects whenever it fits: ${parents.length ? parents.join(", ") : "(none yet)"}. Only name a new broad subject when none fit. ` +
+  `parent: where it belongs: the most specific existing topic from the profile that it sits under (for example "Fractions" for "Halves"), else one of these existing subjects: ${parents.length ? parents.join(", ") : "(none yet)"}. Only name a new broad subject when none fit. ` +
   `ghosts: usually 1 or 2 closely related topics the learner has not explored yet (not already in the profile), each with its parent subject. Use empty arrays for small talk. The learner never sees this block.`;
 
 const profile = (i: LearnInput) =>
   `Learner's first name: ${i.name}\n` +
-  (i.focus ? `Current focus: ${i.focus}${i.focusParent ? ` (in ${i.focusParent})` : ""}\n` : "") +
+  (i.focus ? `Current focus: ${i.focus}${i.trail ? ` (${i.trail})` : i.focusParent ? ` (in ${i.focusParent})` : ""}\n` : "") +
   `Learning profile (subjects, topics, weights, strengths; ghost = not explored yet):\n${i.cloud || "(new learner, starter subjects only)"}`;
 
 export function companionSystem(i: LearnInput): string {
@@ -157,7 +177,8 @@ export function cardSystem(i: LearnInput): string {
   return (
     `${SYSTEM_BASE}\n\nRole: card. Write one short learning card about the focus topic for this learner, at their level, building on the recent conversation. ` +
     `title: at most 6 words. body: 40 to 90 words, plain text, one key idea explained simply plus one tiny example or try-this. ` +
-    "topic: the specific topic (1 to 3 words, Title Case). parent: its broad subject, one of the existing subjects when it fits.\n\n" +
+    "topic: the specific topic (1 to 3 words, Title Case). parent: its broad subject, one of the existing subjects when it fits. " +
+    `path: 3 to 5 smaller subtopics of the topic in a sensible learning order, easiest first (1 to 3 words each, Title Case, not already known: ${i.known.join(", ") || "none"}). next: the path step to start with.\n\n` +
     `Existing subjects: ${i.parents.join(", ") || "(none)"}\n${profile(i)}`
   );
 }
@@ -170,9 +191,52 @@ export function adjacentSystem(i: LearnInput): string {
   );
 }
 
+const pathRules = (i: LearnInput) =>
+  `The subtopics are the smaller pieces of "${i.focus}" itself, one level down, in the order a learner should meet them (easiest and most foundational first), ` +
+  `3 to ${LEARN_LIMITS.pathSteps} of them, 1 to 3 words each, Title Case, never the learner's name. ` +
+  `Reuse these existing ones where they fit: ${i.known.join(", ") || "(none yet)"}. Then pick the one the learner should do next, given their profile. ` +
+  `Only if "${i.focus}" is already so small that it has no smaller pieces worth learning on their own, give an empty steps list and "end": true.`;
+
+export function lessonSystem(i: LearnInput): string {
+  return (
+    `${SYSTEM_BASE}\n\nRole: lesson. Teach the topic "${i.focus}"${i.trail ? ` (${i.trail})` : ""} as one short lesson for this learner, at their level, building on what their profile shows. ` +
+    "Write plain text lines, each starting with one of these tags, in this order:\n" +
+    "INTRO: one or two warm sentences: what it is and why it is useful, using the learner's first name once.\n" +
+    "STEP: one small step, one or two short sentences. Write 3 to 5 STEP lines.\n" +
+    "EXAMPLE: a worked example, shown step by step on one to three EXAMPLE lines.\n" +
+    "CHECK: one quick question the learner can answer on their own.\n" +
+    "ANSWER: the answer to CHECK with a one-line reason.\n" +
+    "NEXT: one sentence on what to try next.\n" +
+    "Keep the whole lesson under 230 words. Use simple numbers and everyday objects. A parent reading along should understand it too.\n\n" +
+    `${profile(i)}` +
+    (i.wantPath ? `\n\nAfter the lesson, on a new line, write ${PATH_OPEN} then one JSON object {"steps":["..."],"next":"..."} then ${PATH_CLOSE}, and nothing after it. ${pathRules(i)} The learner never sees this block.` : "")
+  );
+}
+
+export function lessonContents(i: LearnInput) {
+  return [{ role: "user" as const, parts: [{ text: `Please teach me "${i.focus}".` }] }];
+}
+
+export function pathSystem(i: LearnInput): string {
+  return `${SYSTEM_BASE}\n\nRole: path. Map a learning path for the topic "${i.focus}"${i.trail ? ` (${i.trail})` : ""}. ${pathRules(i)}\n\n${profile(i)}`;
+}
+
+export const PATH_SCHEMA = {
+  type: "OBJECT",
+  properties: { steps: { type: "ARRAY", items: { type: "STRING" } }, next: { type: "STRING" }, end: { type: "BOOLEAN" } },
+  required: ["steps", "next"],
+};
+
 export const CARD_SCHEMA = {
   type: "OBJECT",
-  properties: { title: { type: "STRING" }, body: { type: "STRING" }, topic: { type: "STRING" }, parent: { type: "STRING" } },
+  properties: {
+    title: { type: "STRING" },
+    body: { type: "STRING" },
+    topic: { type: "STRING" },
+    parent: { type: "STRING" },
+    path: { type: "ARRAY", items: { type: "STRING" } },
+    next: { type: "STRING" },
+  },
   required: ["title", "body", "topic", "parent"],
 };
 export const ADJACENT_SCHEMA = {
@@ -195,6 +259,7 @@ export function plainReply(v: unknown): string {
 }
 
 function jsonObject(raw: unknown): Record<string, unknown> | null {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) return raw as Record<string, unknown>;
   let t = String(raw ?? "").trim();
   if (!t) return null;
   t = t.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
@@ -242,6 +307,23 @@ export function parseCloudBlock(raw: unknown, learnerName = ""): CloudBlock {
   return out;
 }
 
+/** Ordered subtopics for one node: cleaned, deduped, never the learner's name or the focus itself; next is one of the steps. */
+export function parsePath(raw: unknown, learnerName = "", focus = ""): LearnPath | null {
+  const obj = jsonObject(raw);
+  if (!obj) return null;
+  const steps: string[] = [];
+  for (const s of Array.isArray(obj.steps) ? obj.steps : []) {
+    const name = cleanLabel(s && typeof s === "object" ? (s as { name?: unknown }).name : s);
+    if (!name || (learnerName && sameLabel(name, learnerName)) || (focus && sameLabel(name, focus))) continue;
+    if (steps.some((x) => sameLabel(x, name))) continue;
+    steps.push(name);
+    if (steps.length >= LEARN_LIMITS.pathSteps) break;
+  }
+  if (!steps.length) return obj.end === true ? { steps: [], next: "", end: true } : null;
+  const want = cleanLabel(obj.next);
+  return { steps, next: steps.find((x) => sameLabel(x, want)) || steps[0] };
+}
+
 export function parseCard(raw: unknown): Card | null {
   const obj = jsonObject(raw);
   if (!obj) return null;
@@ -251,11 +333,27 @@ export function parseCard(raw: unknown): Card | null {
   const topic = cleanLabel(obj.topic);
   const parent = cleanLabel(obj.parent);
   if (title.length < 2 || body.length < 20 || !topic) return null;
-  return { title, body, topic, parent };
+  const card: Card = { title, body, topic, parent };
+  const path = Array.isArray(obj.path) ? parsePath({ steps: obj.path, next: obj.next }, "", topic) : null;
+  if (path) {
+    card.path = path.steps;
+    card.next = path.next;
+  }
+  return card;
 }
 
+/** Related topics. A missing parent is kept as "" so the browser can fall back to the tapped node's subject. */
 export function parseAdjacent(raw: unknown, learnerName = ""): Ghost[] {
-  return parseCloudBlock(JSON.stringify({ topics: [], ghosts: jsonObject(raw)?.ghosts ?? [] }), learnerName).ghosts;
+  const out: Ghost[] = [];
+  const list = jsonObject(raw)?.ghosts;
+  for (const g of Array.isArray(list) ? list : []) {
+    if (!g || typeof g !== "object") continue;
+    const name = cleanLabel((g as Ghost).name);
+    if (!name || (learnerName && sameLabel(name, learnerName)) || out.some((x) => sameLabel(x.name, name))) continue;
+    out.push({ name, parent: cleanLabel((g as Ghost).parent) });
+    if (out.length >= LEARN_LIMITS.ghostsPerTurn) break;
+  }
+  return out;
 }
 
 /**

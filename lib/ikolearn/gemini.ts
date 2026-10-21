@@ -14,6 +14,7 @@ export const FALLBACK_MODEL = "gemini-3.1-flash-lite";
 export const MODEL_LIMITS = {
   timeoutMs: 30_000,
   chatMaxTokens: 900,
+  lessonMaxTokens: 1_400,
   jsonMaxTokens: 600,
   chatTemperature: 0.4,
   jsonTemperature: 0.3,
@@ -40,11 +41,13 @@ const textOf = (data: any) =>
     .map((p: any) => (typeof p?.text === "string" ? p.text : ""))
     .join("");
 
-export function chatBody(system: string, contents: Content[]) {
+export type StreamOptions = { maxTokens?: number };
+
+export function chatBody(system: string, contents: Content[], opts: StreamOptions = {}) {
   return {
     systemInstruction: { parts: [{ text: system }] },
     contents,
-    generationConfig: { temperature: MODEL_LIMITS.chatTemperature, maxOutputTokens: MODEL_LIMITS.chatMaxTokens },
+    generationConfig: { temperature: MODEL_LIMITS.chatTemperature, maxOutputTokens: opts.maxTokens || MODEL_LIMITS.chatMaxTokens },
   };
 }
 
@@ -128,9 +131,9 @@ function shouldFallBack(f: Fail) {
 }
 
 /** Opens a streamed reply; tries the fallback model once (see shouldFallBack). */
-export async function streamText(system: string, contents: Content[], env: Env, fetchImpl: typeof fetch = fetch): Promise<StreamStart> {
+export async function streamText(system: string, contents: Content[], env: Env, fetchImpl: typeof fetch = fetch, opts: StreamOptions = {}): Promise<StreamStart> {
   if (!keyOf(env)) return { ok: false, code: "no_key" };
-  const body = chatBody(system, contents);
+  const body = chatBody(system, contents, opts);
   const primary = modelOf(env);
   const first = await openStream(primary, body, env, fetchImpl);
   if (first.ok || primary === FALLBACK_MODEL) return first;
