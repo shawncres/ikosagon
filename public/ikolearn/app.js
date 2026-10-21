@@ -6,13 +6,15 @@
  * lesson 1 (cached per node; the same call brings 2-3 check questions, the fork of 2-3 choices, the card's line, and the
  * topic's child topics when it has none, which grow onto the cloud once the topic is engaged), test 1 (cached until taken).
  * Suggestions, Draw, the orchestrator (orchestrator.js), answering, reopening a lesson, picking a fork choice, the holder,
- * the deck, card colour and the top 10 cost nothing.
+ * the deck, card colour and tiers, merging cards into a parent, the cloud's camera and the top 10 cost nothing.
+ * A bridge (a topic that landed too close to its subject) is 1 call after the chat reply, plus at most 1 repair call per
+ * topic, ever, when its chain is still shallow.
  */
 (function () {
   "use strict";
-  var C = window.IkoCloud, V = window.IkoCloudView, L = window.IkoLesson, D = window.IkoDeck, R = window.IkoRank, P = window.IkoPlan;
+  var C = window.IkoCloud, V = window.IkoCloudView, L = window.IkoLesson, D = window.IkoDeck, R = window.IkoRank, P = window.IkoPlan, CAM = window.IkoCamera;
   var API = "/api/ikolearn";
-  var LS = { name: "ikolearn.v1.name", cloud: "ikolearn.v1.cloud", thread: "ikolearn.v1.thread", notes: "ikolearn.v1.notes", lessons: "ikolearn.v1.lessons", tests: "ikolearn.v1.tests" };
+  var LS = { name: "ikolearn.v1.name", cloud: "ikolearn.v1.cloud", thread: "ikolearn.v1.thread", notes: "ikolearn.v1.notes", lessons: "ikolearn.v1.lessons", tests: "ikolearn.v1.tests", view: "ikolearn.v1.view", seen: "ikolearn.v1.seen" };
   var VISIT = "ikolearn.v1.visit"; /* sessionStorage: this browser session was counted as a visit */
   var SESSION = "ikolearn.v1.session"; /* sessionStorage: the old once-a-visit draw (no longer written; cleared on reset) */
   var HISTORY = 10, TIMEOUT_MS = 60000, MAX_LESSONS = 30;
@@ -32,12 +34,12 @@
     lCard: $("l-card"), lFork: $("l-fork"), lQuiz: $("l-quiz"), hNote: $("h-note"),
     top: $("top"), tLede: $("t-lede"), tList: $("t-list"),
     dSuggest: $("d-suggest"), hKids: $("h-kids"), lPhase: $("l-phase"), phLearn: $("ph-learn"), phCheck: $("ph-check"), pTest: $("p-test"),
-    lMain: document.querySelector("#lesson .l-main"),
+    lMain: document.querySelector("#lesson .l-main"), cloudHint: document.querySelector("#cloud .cloud-hint"),
     youAge: $("you-age"), youRegion: $("you-region"), youGuess: $("you-guess"), youClear: $("you-clear"), youSaved: $("you-saved"), youLink: $("you-link"), you: $("you")
   };
   var reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
 
-  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [] };
+  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], view: null, seen: { c: {}, ev: 0 } };
   var mini = null, big = null;
 
   /* ---------- storage ---------- */
@@ -63,6 +65,52 @@
     store(LS.lessons, JSON.stringify(state.lessons));
     Object.keys(state.tests).forEach(function (id) { if (!state.cloud.nodes[id]) delete state.tests[id]; });
     store(LS.tests, JSON.stringify(state.tests));
+    saveSeen();
+  }
+  /* The camera and focus of the big cloud, so they come back next time (UI state, kept apart from the cloud). */
+  function saveView(v) {
+    state.view = { y: +v.yaw.toFixed(4), p: +v.pitch.toFixed(4), z: +v.zoom.toFixed(4), x: Math.round(v.panX), q: Math.round(v.panY), f: v.focus && state.cloud.nodes[v.focus] ? v.focus : 0 };
+    store(LS.view, JSON.stringify(state.view));
+  }
+  /* What each card looked like when last shown (D.evolveKey), so a rise in tier or colour plays its transition once. */
+  function saveSeen() {
+    var ids = Object.keys(state.seen.c).filter(function (id) { return state.cloud.nodes[id] || C.inDeck(state.cloud, id); }), c = {};
+    ids.slice(-400).forEach(function (id) { c[id] = state.seen.c[id]; });
+    state.seen.c = c;
+    store(LS.seen, JSON.stringify(state.seen));
+  }
+  /*
+   * The colour-evolution transition: the first time a card is shown at a higher tier, colour stage or merge level than
+   * before, it plays a short ink wash that bleeds out from its plate (and the sheen passes once on achieved and merged
+   * cards). The first sighting of a card only records it. Respects prefers-reduced-motion (a still, final state).
+   */
+  function markEvolve(card, spec) {
+    if (!card || !spec) return false;
+    var key = D.evolveKey(spec), was = state.seen.c[spec.id];
+    if (was == null || key > was) state.seen.c[spec.id] = key;
+    if (was == null || key <= was) return false;
+    var prev = { tier: Math.floor(was / 1000), level: was % 100 };
+    card.classList.add("evolve");
+    if (spec.tier > prev.tier) card.classList.add("tier-up");
+    if (spec.level > prev.level) card.classList.add("merged-up");
+    return true;
+  }
+  /*
+   * Merges: after any progress (an answer, "I've got it", a test), the orchestrator decides which parents are ready to
+   * form or upgrade a higher-valued card, and the model applies it (pure, idempotent). No calls.
+   */
+  function settleMerges() {
+    var done = P.settleMerges(state.cloud);
+    if (!done.length) return done;
+    save();
+    done.forEach(function (m) {
+      var p = nodeOf(m.id), names = m.ids.map(nodeOf).filter(Boolean).map(function (c) { return c.label; });
+      if (!p) return;
+      push({ role: "grow", open: m.id, text: (m.level === 1 ? names.join(", ") + (names.length === 1 ? " merged into " : " merged into ") + p.label + ". It's a Merged I card now, holding them all." : p.label + " took in " + names.join(", ") + ". It rises to Merged " + C.roman(m.level) + ".") + (m.why === "test" ? " Your test result sealed it." : "") });
+    });
+    refreshViews(done.map(function (m) { return m.id; }));
+    renderDeckButton();
+    return done;
   }
 
   /* ---------- small DOM helpers ---------- */
@@ -414,7 +462,29 @@
         refreshViews(r.created.concat(id));
         push({ role: "grow", text: "Filled in the steps for " + nodeOf(id).label + ": " + C.trail(state.cloud, id, " → ") + " (was " + before + ")", open: id });
       }
+      return runRepair(id);
     }).then(function () { save(); lock(false); state.bridgeQueue = []; });
+  }
+  /*
+   * The validation pass after a bridge: if the chain is still shallow (fewer than 2 links under the subject), one repair
+   * re-ask names the chain so far and asks for a skipped level. node.repaired is set (and saved) before the call, so a
+   * topic gets at most 1 repair, ever, whatever happens to the call.
+   */
+  function runRepair(id) {
+    if (!P.needsRepair(state.cloud, id)) return null;
+    var n = nodeOf(id);
+    n.repaired = Date.now();
+    save();
+    var before = C.trail(state.cloud, id, " → ");
+    return postJson("/create", Object.assign(basePayload(id), { mode: "notice", messages: history().filter(function (m) { return m.role === "user"; }).slice(-1) }, P.repairRequest(state.cloud, id))).then(function (j) {
+      if (!(j && j.ok && Array.isArray(j.items))) return;
+      var r = C.applyRepair(state.cloud, id, j);
+      save();
+      if (r.moved || r.created.length) {
+        refreshViews(r.created.concat(id));
+        push({ role: "grow", text: "Added a missing step for " + nodeOf(id).label + ": " + C.trail(state.cloud, id, " → ") + " (was " + before + ")", open: id });
+      }
+    });
   }
 
   function makeCard(topic, parent) {
@@ -586,30 +656,60 @@
     renderLessonCard(false);
   }
   /* The holder: the topic's card sits in its tray beside (or above, on phones) the lesson, filling with colour as learning is confirmed. */
+  /*
+   * The card in the holder. It is only rebuilt when its spec changed, so a transition that just started (the ink wash,
+   * the pulse) is not cut short by a later redraw in the same turn (renderLessonPath redraws the card too).
+   */
   function renderLessonCard(grew) {
-    el.lCard.textContent = "";
     el.hNote.textContent = "";
     var sp = state.lessonNode && D.cardSpec(state.cloud, state.lessonNode);
-    if (!sp) return;
-    var c = D.render(document, sp, { size: "full" });
-    if (grew) c.classList.add("grew");
-    el.lCard.appendChild(c);
-    el.hNote.textContent = sp.achieved ? "Achieved. This card stays in your deck for good."
-      : (sp.inDeck ? "In your deck. " : "") + (sp.stage < 3 ? "Right answers and \u201cI've got it\u201d bring in its colour." : "Finish this branch to complete the card.");
+    if (!sp) { el.lCard.textContent = ""; el.lCard.removeAttribute("data-sig"); return; }
+    var sig = JSON.stringify(sp), old = el.lCard.firstElementChild;
+    if (!old || el.lCard.getAttribute("data-sig") !== sig) {
+      el.lCard.textContent = "";
+      var c = D.render(document, sp, { size: "full" });
+      if (!markEvolve(c, sp) && grew) c.classList.add("grew");
+      el.lCard.appendChild(c);
+      el.lCard.setAttribute("data-sig", sig);
+      saveSeen();
+    } else if (grew && !old.classList.contains("evolve")) {
+      old.classList.remove("grew"); void old.offsetWidth; old.classList.add("grew"); /* restart the pulse */
+    }
+    el.hNote.textContent = sp.level ? "Merged " + C.roman(sp.level) + ". It holds " + sp.corpus.length + " cards and rises a level with each new batch you finish."
+      : sp.achieved ? "Achieved. This card stays in your deck for good. Finish a few of its branches and they merge into it."
+      : (sp.inDeck ? "In your deck. " : "") + ["Its first right answer inks it in.", "Finish it (\u201cI've got it\u201d or two right answers) to tint it.", "Three right answers and it's Achieved, in full colour."][sp.tier];
     renderKids();
   }
   /* Under the holder: this card's own branches (its children, in the order they're offered), linked from the card. */
+  /*
+   * Under the holder: the card's branches (the core sequence, numbered), its side paths, and (merged cards) its corpus.
+   * On phones the docked holder is slim, so this is a disclosure: a one-line summary that opens to the full lists.
+   */
+  var kidsOpen = false;
   function renderKids() {
     el.hKids.textContent = "";
     var id = state.lessonNode, n = nodeOf(id);
     if (!n) return;
-    var ids = P.orderedChildren(state.cloud, id).slice(0, 6), sides = P.sidePaths(state.cloud, id).slice(0, 4);
-    if (!ids.length && !sides.length) {
+    var ids = P.orderedChildren(state.cloud, id).filter(function (x) { return !nodeOf(x).absorbedInto; }).slice(0, 6), sides = P.sidePaths(state.cloud, id).filter(function (x) { return !nodeOf(x.id).absorbedInto; }).slice(0, 4);
+    var corpus = C.corpusOf(state.cloud, id);
+    if (!ids.length && !sides.length && !corpus.length) {
       if (n.pending) el.hKids.appendChild(mk("p", "fine", "New branches grow here once you've answered a question or said \u201cI've got it\u201d."));
       return;
     }
-    el.hKids.appendChild(mk("p", "l-head", "Branches of " + n.label));
-    var ul = mk("ul");
+    var fold = mk("details", "h-fold"), sum = mk("summary", "h-sum");
+    var lead = nodeOf(P.nextChild(state.cloud, id));
+    sum.appendChild(mk("span", "h-sum-t", "Branches of " + n.label));
+    var doneN = ids.filter(function (x) { return C.isDone(state.cloud, x); }).length;
+    sum.appendChild(mk("span", "h-sum-n", [ids.length ? ids.length + " core" + (doneN ? " (" + doneN + " done)" : "") : "", sides.length ? sides.length + (sides.length === 1 ? " side path" : " side paths") : "", corpus.length ? corpus.length + " merged" : ""].filter(Boolean).join(" · ") + (lead ? " · next: " + lead.label : "")));
+    fold.appendChild(sum);
+    fold.open = kidsOpen || window.innerWidth >= 900;
+    fold.addEventListener("toggle", function () { if (window.innerWidth < 900) kidsOpen = fold.open; });
+    el.hKids.appendChild(fold);
+    var box = mk("div", "h-lists");
+    fold.appendChild(box);
+    if (corpus.length) box.appendChild(D.renderCorpus(document, state.cloud, id, { onOpen: function (cid, src) { openCard(cid, src); } }));
+    if (!ids.length && !sides.length) return;
+    var ul = mk("ol", "core-path");
     ids.forEach(function (cid) {
       var c = nodeOf(cid), li = mk("li", c.ghost ? "ghost" : C.isDone(state.cloud, cid) ? "done" : "");
       li.appendChild(linkBtn(c.label, function () { openLesson(cid); }));
@@ -617,10 +717,10 @@
       li.appendChild(mk("span", "tag", C.isDone(state.cloud, cid) ? " · done" : lead ? " · start here" : c.ghost ? " · new" : ""));
       ul.appendChild(li);
     });
-    if (ids.length) el.hKids.appendChild(ul);
+    if (ids.length) { box.appendChild(mk("p", "l-head", "Core path")); box.appendChild(ul); }
     /* side paths: optional aspects off one core step; they never block the branch */
     if (!sides.length) return;
-    el.hKids.appendChild(mk("p", "l-head side-head", "Side paths"));
+    box.appendChild(mk("p", "l-head side-head", "Side paths"));
     var sl = mk("ul", "side-paths");
     sides.forEach(function (x) {
       var c = nodeOf(x.id), li = mk("li", c.ghost ? "ghost" : C.isDone(state.cloud, x.id) ? "done" : "");
@@ -628,7 +728,7 @@
       li.appendChild(mk("span", "tag", C.isDone(state.cloud, x.id) ? " · done" : x.off && nodeOf(x.off) ? " · off " + nodeOf(x.off).label : " · optional"));
       sl.appendChild(li);
     });
-    el.hKids.appendChild(sl);
+    box.appendChild(sl);
   }
   /* Slides the card into the holder: from where it was tapped (a deck or draw card), or a short drop-in. */
   function animateIn(from) {
@@ -708,6 +808,7 @@
     renderQuiz();
     if (note) el.lStatus.textContent = note;
     if (kids.length) el.lStatus.textContent = (el.lStatus.textContent ? el.lStatus.textContent + " " : "") + kidsLine(id, kids);
+    settleMerges().forEach(function (m) { var pn = nodeOf(m.id); if (pn) el.lStatus.textContent += " " + pn.label + " is now a Merged " + C.roman(m.level) + " card, holding " + C.corpusOf(state.cloud, m.id).length + " cards."; });
     renderLessonCard(Boolean(note));
     renderLessonPath();
     refreshViews(kids);
@@ -871,6 +972,7 @@
     if (n.mastery >= C.MASTERED) el.lStatus.textContent = "You've marked this one as done. " + (C.isTerminal(state.cloud, id) || n.fork ? "" : nextLine(id));
     if (note) el.lStatus.textContent = (el.lStatus.textContent ? el.lStatus.textContent + " " : "") + note;
     save();
+    settleMerges();
     refreshViews((was || wasNew ? [id] : []).concat(kids));
     renderLessonPath();
     renderLessonCard(Boolean(note));
@@ -891,6 +993,7 @@
     var note = growthNote(id, before);
     if (C.isDone(state.cloud, id) && state.cloud.active === id) state.cloud.active = null;
     save();
+    settleMerges();
     refreshViews([id].concat(r.next ? [r.next] : [], kids));
     el.lStatus.textContent = "";
     if (kids.length) el.lStatus.appendChild(document.createTextNode(kidsLine(id, kids) + " "));
@@ -1021,12 +1124,14 @@
     results.concat([{ id: t.pid }]).forEach(function (r) { before[r.id] = C.growthOf(state.cloud, r.id); });
     var res = C.recordTest(state.cloud, t.pid, results);
     delete state.tests[t.pid];
+    var merged = settleMerges().filter(function (m) { return m.id === t.pid; })[0]; /* a passed test can form or upgrade the parent card */
     var p = nodeOf(t.pid), brighter = Object.keys(before).filter(function (x) { var a = C.growthOf(state.cloud, x), b = before[x]; return a && b && a.stage > b.stage; });
     save();
     el.lStatus.textContent = "";
     if (res) {
       el.lStatus.appendChild(document.createTextNode("You got " + res.right + " of " + res.n + " right. " + (res.passed ? "Great work: " + p.label + " is stronger on your cloud. " : "Good try: every attempt makes " + p.label + " stronger, and you can test again once you've finished more. ")));
       if (brighter.length) el.lStatus.appendChild(document.createTextNode("Picked up colour: " + brighter.map(function (x) { return nodeOf(x).label; }).join(", ") + ". "));
+      if (merged) el.lStatus.appendChild(document.createTextNode(p.label + " is now a Merged " + C.roman(merged.level) + " card. "));
     }
     el.lStatus.appendChild(linkBtn("Draw a card", function () { drawCard(null); }));
     el.lStatus.appendChild(document.createTextNode(" · "));
@@ -1120,9 +1225,12 @@
   /* ---------- cloud overlay + panel ---------- */
   function openCloud() {
     el.cloud.hidden = false;
-    if (!big) big = V.create(el.cloudCanvas, { onPick: pick });
+    var fresh = !big;
+    if (!big) big = V.create(el.cloudCanvas, { onPick: pick, onView: saveView });
     big.resize();
     big.setCloud(state.cloud);
+    /* the camera and focus come back as they were left (unless a lesson's topic is about to be focused) */
+    if (fresh && state.view && !state.lessonNode) big.setView({ yaw: state.view.y, pitch: state.view.p, zoom: state.view.z, panX: state.view.x, panY: state.view.q, focus: state.view.f && nodeOf(state.view.f) ? state.view.f : null });
     big.setTests(testMap());
     if (state.lessonNode) setTimeout(function () { openPanel(state.lessonNode, false, false, true); }, 0); /* a lesson or a test: its topic */
     renderCloudFlow();
@@ -1148,7 +1256,6 @@
   function closeCloud(keepView) {
     liftCloud(false);
     el.cloud.hidden = true; el.panel.hidden = true; state.panelNode = null;
-    if (big) big.clearFocus();
     if (!keepView && !state.lessonNode) { renderDraw(); el.input.focus(); }
   }
 
@@ -1216,7 +1323,8 @@
     else {
       liftCloud(false);
       var wide = window.innerWidth >= 900, ch = el.cloudCanvas.clientHeight, cw = el.cloudCanvas.clientWidth;
-      big.focusNode(id, { cx: wide ? (cw - 400) / 2 : cw / 2, cy: wide ? ch / 2 : Math.max(90, (ch - el.panel.offsetHeight) / 2 + 20) });
+      var ph = el.panel.offsetHeight;
+      big.focusNode(id, { cx: wide ? (cw - 400) / 2 : cw / 2, cy: wide ? ch / 2 : Math.max(90, (ch - ph) / 2 + 20), aw: wide ? cw - 420 : cw, ah: wide ? ch - 80 : Math.max(160, ch - ph - 60) });
     }
   }
 
@@ -1287,7 +1395,9 @@
   el.cloudClose.addEventListener("click", function () { closeCloud(); });
   el.zin.addEventListener("click", function () { big.zoomBy(1.35); });
   el.zout.addEventListener("click", function () { big.zoomBy(1 / 1.35); });
-  el.zreset.addEventListener("click", function () { big.reset(); state.lifted = 0; if (!el.panel.hidden && state.panelNode === "root") liftCloud(true); });
+  el.zreset.addEventListener("click", function () { big.recentre(); state.lifted = 0; if (!el.panel.hidden && state.panelNode === "root") liftCloud(true); });
+  /* one faint line documents the input map, for touch or for a mouse */
+  if (el.cloudHint && CAM) el.cloudHint.textContent = CAM.hint(Boolean(window.matchMedia && window.matchMedia("(pointer: coarse)").matches));
   document.addEventListener("keydown", function (e) {
     if (e.key !== "Escape") return;
     if (!el.cloud.hidden) closeCloud();
@@ -1299,7 +1409,8 @@
   function deckIds() {
     var order = {};
     C.subjects(state.cloud).forEach(function (s, i) { order[s.label] = i; });
-    return (state.cloud.deck || []).slice().sort(function (a, b) {
+    /* a card merged into a parent card lives in that card's corpus, not loose in the grid */
+    return (state.cloud.deck || []).filter(function (e) { var p = C.absorbedInto(state.cloud, e.id); return !(p && C.inDeck(state.cloud, p)); }).sort(function (a, b) {
       var sa = order[a.subject] == null ? 99 : order[a.subject], sb = order[b.subject] == null ? 99 : order[b.subject];
       return sa - sb || a.at - b.at;
     }).map(function (e) { return e.id; });
@@ -1352,9 +1463,25 @@
     refreshSuggest();
     el.dSuggest.textContent = "";
     el.dSuggest.appendChild(flowBlock("deck"));
-    el.dLede.textContent = (ids.length === 1 ? "1 card. " : ids.length + " cards. ") + "Cards stay in your deck for good. Their colour comes in as you show what you've learned, and a card is complete when you finish its branch.";
+    var held = (state.cloud.deck || []).length - ids.length;
+    el.dLede.textContent = (ids.length === 1 ? "1 card" : ids.length + " cards") + (held ? " (plus " + held + " merged into parent cards)" : "") + ". Cards stay in your deck for good. Each one moves from Sketch to Inked, Tinted and Achieved as you show what you've learned, and finished subtopics merge into their parent card.";
     el.dGrid.textContent = "";
-    ids.forEach(function (id) { var sp = D.cardSpec(state.cloud, id); if (sp) el.dGrid.appendChild(D.render(document, sp, { onOpen: openCard })); });
+    ids.forEach(function (id) {
+      var sp = D.cardSpec(state.cloud, id);
+      if (!sp) return;
+      var cell = mk("div", "deck-cell" + (sp.corpus.length ? " has-corpus" : "")), card = D.render(document, sp, { onOpen: openCard });
+      markEvolve(card, sp);
+      cell.appendChild(card);
+      /* a merged card: its corpus opens under it (the absorbed cards, each still openable) */
+      if (sp.corpus.length) {
+        var f = mk("details", "corpus-fold"), su = mk("summary", null, "Corpus · " + sp.corpus.length);
+        f.appendChild(su);
+        f.addEventListener("toggle", function () { if (f.open && f.childNodes.length < 2) f.appendChild(D.renderCorpus(document, state.cloud, id, { onOpen: openCard })); });
+        cell.appendChild(f);
+      }
+      el.dGrid.appendChild(cell);
+    });
+    saveSeen();
     var rows = D.balance(state.cloud, D.dayOf(Date.now())).filter(function (r) { return r.draws; });
     el.dBalance.textContent = rows.length ? "Drawn this year: " + rows.map(function (r) { return r.subject + " " + r.draws; }).join(" · ") : "";
     renderTop();
@@ -1465,7 +1592,10 @@
     try { state.notes = JSON.parse(load(LS.notes) || "{}") || {}; } catch { state.notes = {}; }
     try { state.lessons = JSON.parse(load(LS.lessons) || "{}") || {}; } catch { state.lessons = {}; }
     try { state.tests = JSON.parse(load(LS.tests) || "{}") || {}; } catch { state.tests = {}; }
-    save(); /* writes a migrated (older -> v6) cloud back in the compact format, with the deck backfilled */
+    try { var v = JSON.parse(load(LS.view) || "null"); state.view = v && Number.isFinite(v.z) ? v : null; } catch { state.view = null; }
+    try { var sn = JSON.parse(load(LS.seen) || "null"); if (sn && sn.c && typeof sn.c === "object") state.seen = { c: sn.c, ev: Number(sn.ev) || 0 }; } catch { /* keep the empty default */ }
+    save(); /* writes a migrated (older -> v8) cloud back in the compact format, with the deck backfilled */
     startChat();
+    settleMerges(); /* existing completion data can already form parent cards (0 calls) */
   })();
 })();

@@ -6,6 +6,7 @@
   <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#f3ead8">
   <title>IkoLearn</title>
+  <link rel="icon" href="/ikolearn/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/ikolearn/styles.css">
 </head>
 <body>
@@ -86,12 +87,12 @@
     </section>
 
     <section id="cloud" hidden>
-      <canvas id="cloud-canvas" aria-label="Your learning cloud. Drag to turn, pinch or scroll to zoom, tap a point to explore it."></canvas>
+      <canvas id="cloud-canvas" aria-label="Your learning cloud. Drag to move, pinch or scroll to zoom, right-drag or twist to turn, tap a point to bring it close."></canvas>
       <div class="cloud-top">
         <button type="button" id="cloud-close" class="link">Back to chat</button>
-        <span class="zoom"><button type="button" id="zin" class="btn sm" aria-label="Zoom in">+</button><button type="button" id="zout" class="btn sm" aria-label="Zoom out">&minus;</button><button type="button" id="zreset" class="btn sm">Reset</button></span>
+        <span class="zoom"><button type="button" id="zin" class="btn sm" aria-label="Zoom in">+</button><button type="button" id="zout" class="btn sm" aria-label="Zoom out">&minus;</button><button type="button" id="zreset" class="btn sm" title="Ease back to the whole cloud">Recentre</button></span>
       </div>
-      <p class="cloud-hint">Drag to turn. Pinch or scroll to zoom. Tap a point.</p>
+      <p class="cloud-hint">Drag to move · Scroll to zoom · Right-drag or Shift-drag to turn · Click a point to bring it close</p>
       <aside id="panel" hidden>
         <div class="panel-in">
           <p class="kicker" id="p-kicker"></p>
@@ -115,6 +116,7 @@
   <script src="/ikolearn/rank.js"></script>
   <script src="/ikolearn/deck.js"></script>
   <script src="/ikolearn/orchestrator.js"></script>
+  <script src="/ikolearn/camera.js"></script>
   <script src="/ikolearn/cloud-view.js"></script>
   <script src="/ikolearn/lesson.js"></script>
   <script src="/ikolearn/app.js"></script>

@@ -1,16 +1,18 @@
 /*
  * IkoLearn cloud view: a small canvas 2D renderer for the 3D knowledge tree (no libraries).
- * Rotate (drag), pan (two fingers, right-drag or shift-drag), zoom (wheel, pinch, buttons), tap a node to pick it.
+ * Input (camera.js): drag pans (with a short glide), right-drag / Shift-drag / two-finger twist turns, pinch / wheel /
+ * buttons zoom; tapping a node picks it and the app eases it into focus (focusNode). Merged parents are drawn brighter
+ * with a ring per level; the cards they absorbed sit close round them as a tighter constellation.
  * Depth- and zoom-aware: each level of the tree is drawn smaller; deeper levels appear (and get labels) as you zoom in
  * or focus a branch, and higher labels fade back. At most DRAW_CAP points are drawn at once.
  * New or promoted nodes pulse for a few seconds; the recommended next topic carries a quiet ring.
  */
 (function (root) {
   "use strict";
-  var C = root.IkoCloud;
+  var C = root.IkoCloud, CAM = root.IkoCamera;
   var INK = "#2b2118", PAPER = "#f3ead8";
   var FONT = "Georgia, 'Iowan Old Style', serif";
-  var DRAW_CAP = 260, ZMIN = 0.6, ZMAX = 60;
+  var DRAW_CAP = 260, ZMIN = CAM.CAM.zmin, ZMAX = CAM.CAM.zmax, HOME = { yaw: -0.5, pitch: 0.32, zoom: 1, panX: 0, panY: 0 };
   var reduce = root.matchMedia && root.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   function createView(canvas, opts) {
@@ -19,7 +21,7 @@
     var ctx = canvas.getContext("2d");
     var cloud = null, pos = {}, depth = {}, pathRank = {}, highlight = {}, raf = 0, w = 0, h = 0, dpr = 1;
     var yaw = -0.5, pitch = 0.32, zoom = 1, panX = 0, panY = 0;
-    var pointers = {}, gesture = null, idleSpin = mini && !reduce, tween = null;
+    var pointers = {}, gesture = null, idleSpin = mini && !reduce, tween = null, glideV = null;
     var focusId = null, focusSet = {};
     var projected = [];
     /* Test nodes: { parentId: "ready" | "taken" } (from orchestrator.js), drawn as a small diamond hanging off the parent */
@@ -117,6 +119,7 @@
       raf = 0;
       if (!cloud) return;
       if (tween) stepTween(now);
+      if (glideV) stepGlide(now);
       ctx.clearRect(0, 0, w, h);
       var rootP = project(pos.root);
       var vis = visibleIds(now), items = [], at = { root: rootP };
@@ -133,7 +136,8 @@
         ctx.save();
         var fade = Math.min(1, 0.5 + reads(n.id));
         /* a side path: a faint dotted twig off its core step */
-        if (side) { ctx.setLineDash([1, 3]); ctx.globalAlpha = 0.22 * it.p.f * fade; ctx.strokeStyle = C.colorOf(cloud, n); }
+        if (n.absorbedInto && n.absorbedInto === n.parent) { ctx.globalAlpha = 0.55 * it.p.f * fade; ctx.lineWidth = 0.8; ctx.strokeStyle = C.colorOf(cloud, n); from = at[n.parent] || from; }
+        else if (side) { ctx.setLineDash([1, 3]); ctx.globalAlpha = 0.22 * it.p.f * fade; ctx.strokeStyle = C.colorOf(cloud, n); }
         else if (n.ghost) { ctx.setLineDash([2, 4]); ctx.globalAlpha = 0.3 * it.p.f * fade; ctx.strokeStyle = C.colorOf(cloud, n); }
         else if (n.parent) { ctx.globalAlpha = 0.42 * it.p.f * fade; ctx.strokeStyle = C.colorOf(cloud, n); }
         else { ctx.globalAlpha = 0.22; ctx.strokeStyle = INK; }
@@ -146,14 +150,21 @@
       items.forEach(function (it) {
         var n = it.n, p = it.p, d = depth[n.id] || 1;
         var base = !n.parent ? 4.5 + Math.min(6, Math.sqrt(n.weight) * 1.2) : (n.ghost ? 2.2 : 2.4 + Math.min(4, Math.sqrt(n.weight) * 1.1));
+        var ml = Math.min(3, n.ml || 0), absorbed = Boolean(n.absorbedInto);
+        base *= (1 + 0.16 * ml) * (absorbed ? 0.72 : 1); /* merged: a stronger node; absorbed: a small star of its constellation */
         var r = mini ? base * 0.6 : base * Math.max(0.55, Math.min(1.6, reads(n.id) * 0.9 + (d > 1 ? 0.25 : 0))) * p.f;
         var col = C.colorOf(cloud, n);
         ctx.save();
-        ctx.globalAlpha = Math.min(1, 0.45 + 0.55 * p.f);
+        ctx.globalAlpha = Math.min(1, 0.45 + 0.55 * p.f) * (absorbed ? 0.85 : 1);
         ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
         if (n.ghost) { ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.stroke(); }
         else { ctx.fillStyle = col; ctx.fill(); }
-        if (!mini && n.mastery >= C.MASTERED && !n.ghost) {
+        /* a merged parent: one quiet ring per level (I, II, III) */
+        for (var mr = 0; mr < ml; mr++) {
+          ctx.globalAlpha = (0.42 - mr * 0.1) * Math.min(1, 0.5 + p.f * 0.5); ctx.strokeStyle = col; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(p.x, p.y, r + 3 + mr * 2.8, 0, Math.PI * 2); ctx.stroke();
+        }
+        if (!mini && n.mastery >= C.MASTERED && !n.ghost && !ml) {
           ctx.globalAlpha = 0.5; ctx.strokeStyle = INK; ctx.lineWidth = 1;
           ctx.beginPath(); ctx.arc(p.x, p.y, r + 1.8, 0, Math.PI * 2); ctx.stroke();
         }
@@ -173,11 +184,12 @@
 
         if (mini) return;
         var la = labelAlpha(n.id, n);
+        if (absorbed && !focusSet[n.id]) la *= 0.55; /* the constellation reads as one: its labels stay quiet until focused */
         if (age < 6000 || n.id === cloud.next || n.id === focusId) la = Math.max(la, 0.92);
         la *= Math.min(1, 0.35 + 0.65 * p.f);
         if (la < 0.03) return;
         var size = !n.parent ? 14 + Math.min(3, n.weight * 0.2) : 12.5;
-        var text = (pathRank[n.id] && reads(n.id) >= 0.8 ? pathRank[n.id] + ". " : "") + n.label;
+        var text = (pathRank[n.id] && reads(n.id) >= 0.8 ? pathRank[n.id] + ". " : "") + n.label + (ml ? " " + C.roman(n.ml) : "");
         labels.push({ n: n, text: text, x: p.x, y: p.y - r - 5, a: la, fresh: age < 6000,
           font: (n.ghost ? "italic " : "") + (n.parent ? "" : "600 ") + Math.round(size * Math.max(0.85, Math.min(1.2, p.f))) + "px " + FONT });
       });
@@ -219,6 +231,9 @@
           if (box.x0 < q.x1 && box.x1 > q.x0 && box.y0 < q.y1 && box.y1 > q.y0) return;
         }
         placed.push(box);
+        /* a paper halo keeps labels readable over edges at every zoom */
+        ctx.globalAlpha = l.a * 0.9; ctx.strokeStyle = PAPER; ctx.lineWidth = 3.2; ctx.lineJoin = "round";
+        ctx.strokeText(l.text, l.x, l.y);
         ctx.globalAlpha = l.a;
         ctx.fillText(l.text, l.x, l.y);
       });
@@ -236,7 +251,7 @@
       ctx.restore();
 
       if (idleSpin) yaw += 0.0025;
-      if (pulsing || idleSpin || gesture || tween) request();
+      if (pulsing || idleSpin || gesture || tween || glideV) request();
     }
 
     function request() { if (!raf) raf = root.requestAnimationFrame(draw); }
@@ -255,56 +270,73 @@
 
     function setZoom(z) { zoom = Math.max(ZMIN, Math.min(ZMAX, z)); request(); }
 
-    /* Glide so a node sits at (cx, cy) with its children legible. */
+    function view() { return { zoom: zoom, panX: panX, panY: panY, yaw: yaw, pitch: pitch }; }
+    function apply(v) { zoom = v.zoom; panX = v.panX; panY = v.panY; yaw = v.yaw; pitch = v.pitch; }
+    function animateTo(to, ms) {
+      glideV = null;
+      if (reduce || !ms) { apply(to); tween = null; request(); changed(); return; }
+      tween = { t0: performance.now(), ms: ms, from: view(), to: to };
+      request();
+    }
+    /*
+     * Brings a node into focus: it turns to the front (shortest arc), and the camera frames the node with its children
+     * inside the free area centred on (cx, cy), at a zoom where the children's labels are legible. Eased, cubic in-out.
+     */
     function focusNode(id, o) {
       o = o || {};
       if (!cloud || !pos[id]) return;
       setFocus(id);
-      var d = depth[id] || 1;
-      var targetZoom = o.zoom || Math.max(1, Math.min(ZMAX, 1.25 / C.levelScale(d + 1)));
+      var d = depth[id] || 1, saved = view();
+      var fy = o.keepYaw ? null : CAM.forwardYaw(pos[id]);
+      yaw = fy == null ? yaw : fy; zoom = 1; panX = 0; panY = 0;
+      var pts = [id].concat((C.index(cloud)[id] || []).filter(function (k) { return pos[k]; })), box = { x0: 1e9, x1: -1e9, y0: 1e9, y1: -1e9 };
+      pts.forEach(function (k) { var q = project(pos[k]), x = q.x - w / 2, y = q.y - h / 2; box.x0 = Math.min(box.x0, x); box.x1 = Math.max(box.x1, x); box.y0 = Math.min(box.y0, y); box.y1 = Math.max(box.y1, y); });
+      var lo = Math.max(1, 0.75 / C.levelScale(d + 1)), hi = Math.max(lo, 1.6 / C.levelScale(d + 1));
+      var z = o.zoom || CAM.fitZoom(box, o.aw || w, o.ah || h, lo, hi);
       var cx = o.cx == null ? w / 2 : o.cx, cy = o.cy == null ? h / 2 : o.cy;
-      var from = { zoom: zoom, panX: panX, panY: panY };
-      var saved = { zoom: zoom, panX: panX, panY: panY };
-      zoom = targetZoom; panX = 0; panY = 0;
-      var pr = project(pos[id]);
-      var to = { zoom: targetZoom, panX: cx - pr.x, panY: cy - pr.y };
-      zoom = saved.zoom; panX = saved.panX; panY = saved.panY;
-      if (reduce || o.instant) { zoom = to.zoom; panX = to.panX; panY = to.panY; tween = null; request(); return; }
-      tween = { t0: performance.now(), ms: 450, from: from, to: to };
-      request();
+      var to = { zoom: z, panX: cx - w / 2 - ((box.x0 + box.x1) / 2) * z, panY: cy - h / 2 - ((box.y0 + box.y1) / 2) * z, yaw: yaw, pitch: saved.pitch };
+      apply(saved);
+      animateTo(to, o.instant ? 0 : CAM.CAM.focusMs);
     }
     function stepTween(now) {
-      var k = Math.min(1, (now - tween.t0) / tween.ms), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
-      var lz = Math.log(tween.from.zoom) + (Math.log(tween.to.zoom) - Math.log(tween.from.zoom)) * e;
-      zoom = Math.exp(lz);
-      panX = tween.from.panX + (tween.to.panX - tween.from.panX) * e;
-      panY = tween.from.panY + (tween.to.panY - tween.from.panY) * e;
-      if (k >= 1) tween = null;
+      var k = Math.min(1, (now - tween.t0) / tween.ms);
+      apply(CAM.lerpView(tween.from, tween.to, CAM.easeInOutCubic(k)));
+      if (k >= 1) { tween = null; changed(); }
+    }
+    /* A released pan glides on, slowing exponentially (camera.js glide), until it is too slow to see. */
+    function stepGlide(now) {
+      var dt = Math.min(64, now - glideV.t);
+      var gx = CAM.glide(glideV.x, dt), gy = CAM.glide(glideV.y, dt);
+      panX += gx.d; panY += gy.d; glideV.x = gx.v; glideV.y = gy.v; glideV.t = now;
+      if (Math.hypot(glideV.x, glideV.y) < CAM.CAM.glideStop) { glideV = null; changed(); }
+    }
+    /* Tells the app the view settled (it stores it, so the focus and camera come back next time). */
+    var changeTimer = 0;
+    function changed() {
+      if (!opts.onView || mini) return;
+      clearTimeout(changeTimer);
+      changeTimer = setTimeout(function () { opts.onView({ yaw: yaw, pitch: pitch, zoom: zoom, panX: panX, panY: panY, focus: focusId }); }, 250);
     }
 
     /* ---------- input ---------- */
     function local(e) { var r = canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
-    function zoomAt(k, at) {
-      var before = zoom;
-      setZoom(zoom * k);
-      var real = zoom / before;
-      if (at) { panX = at.x - w / 2 - (at.x - w / 2 - panX) * real; panY = at.y - h / 2 - (at.y - h / 2 - panY) * real; }
-    }
+    function zoomAt(k, at) { var v = CAM.zoomAbout(view(), k, at, w, h); zoom = v.zoom; panX = v.panX; panY = v.panY; request(); }
 
     if (mini) {
       canvas.addEventListener("click", function () { if (opts.onOpen) opts.onOpen(); });
     } else {
       canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
       canvas.addEventListener("pointerdown", function (e) {
-        tween = null;
+        tween = null; glideV = null;
         canvas.setPointerCapture(e.pointerId);
         pointers[e.pointerId] = local(e);
         var ids = Object.keys(pointers);
-        if (ids.length === 1) gesture = { type: e.button === 2 || e.shiftKey ? "pan" : "rotate", start: local(e), last: local(e), moved: 0 };
+        if (ids.length === 1) gesture = { type: CAM.gestureFor({ pointers: 1, button: e.button, shift: e.shiftKey, alt: e.altKey }), start: local(e), last: local(e), t: performance.now(), vx: 0, vy: 0, moved: 0 };
         else if (ids.length === 2) {
           var a = pointers[ids[0]], b = pointers[ids[1]];
-          gesture = { type: "pinch", dist: Math.hypot(a.x - b.x, a.y - b.y), mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, zoom: zoom, moved: 99 };
+          gesture = { type: "pinch", dist: Math.hypot(a.x - b.x, a.y - b.y), mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, zoom: zoom, a: a, b: b, moved: 99 };
         }
+        canvas.classList.toggle("turning", gesture && gesture.type === "rotate");
         request();
       });
       canvas.addEventListener("pointermove", function (e) {
@@ -316,11 +348,13 @@
           var d = Math.hypot(a.x - b.x, a.y - b.y), mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
           zoomAt((gesture.zoom * d / Math.max(1, gesture.dist)) / zoom, mid);
           panX += mid.x - gesture.mid.x; panY += mid.y - gesture.mid.y; gesture.mid = mid;
+          yaw += CAM.twist(gesture.a, gesture.b, a, b); /* a two-finger twist turns the cloud */
+          gesture.a = { x: a.x, y: a.y }; gesture.b = { x: b.x, y: b.y };
         } else if (ids.length === 1 && gesture.type !== "pinch") {
-          var p = local(e), dx = p.x - gesture.last.x, dy = p.y - gesture.last.y;
+          var p = local(e), dx = p.x - gesture.last.x, dy = p.y - gesture.last.y, t = performance.now(), dt = t - gesture.t;
           gesture.moved += Math.abs(dx) + Math.abs(dy);
           gesture.last = p;
-          if (gesture.type === "pan" || zoom > 3) { panX += dx; panY += dy; }
+          if (gesture.type === "pan") { panX += dx; panY += dy; gesture.vx = CAM.velocity(gesture.vx, dx, dt); gesture.vy = CAM.velocity(gesture.vy, dy, dt); gesture.t = t; }
           else { yaw += dx * 0.008; pitch = Math.max(-1.3, Math.min(1.3, pitch + dy * 0.008)); }
         }
         request();
@@ -330,16 +364,19 @@
         delete pointers[e.pointerId];
         if (!Object.keys(pointers).length) {
           gesture = null;
+          canvas.classList.remove("turning");
           if (g && g.type !== "pinch" && g.moved < 6 && opts.onPick) {
             var hit = pick(g.start.x, g.start.y);
             if (hit) opts.onPick(hit);
-          }
+          } else if (g && g.type === "pan" && !reduce && performance.now() - g.t < 90 && Math.hypot(g.vx, g.vy) > CAM.CAM.glideMin) {
+            glideV = { x: g.vx, y: g.vy, t: performance.now() };
+          } else changed();
         } else if (g && g.type === "pinch") gesture = null;
         request();
       };
       canvas.addEventListener("pointerup", end);
       canvas.addEventListener("pointercancel", end);
-      canvas.addEventListener("wheel", function (e) { e.preventDefault(); tween = null; zoomAt(Math.exp(-e.deltaY * 0.0015), local(e)); }, { passive: false });
+      canvas.addEventListener("wheel", function (e) { e.preventDefault(); tween = null; glideV = null; zoomAt(CAM.wheelFactor(e.deltaY, e.ctrlKey), local(e)); changed(); }, { passive: false });
     }
 
     root.addEventListener("resize", resize);
@@ -350,10 +387,14 @@
       setTests: function (map) { tests = map || {}; request(); },
       flash: flash,
       resize: resize,
-      zoomBy: function (k) { tween = null; zoomAt(k, null); },
-      reset: function () { yaw = -0.5; pitch = 0.32; zoom = 1; panX = 0; panY = 0; tween = null; setFocus(null); request(); },
-      state: function () { return { yaw: yaw, pitch: pitch, zoom: zoom, panX: panX, panY: panY, focus: focusId, drawn: projected.length }; },
-      setView: function (v) { if (v.zoom) setZoom(v.zoom); if (v.yaw != null) yaw = v.yaw; if (v.pitch != null) pitch = v.pitch; if (v.panX != null) panX = v.panX; if (v.panY != null) panY = v.panY; request(); },
+      /* the zoom buttons: a short eased zoom about the centre */
+      zoomBy: function (k) { var v = view(), z = CAM.zoomAbout(v, k, null, w, h); animateTo({ zoom: z.zoom, panX: v.panX * (z.zoom / v.zoom), panY: v.panY * (z.zoom / v.zoom), yaw: v.yaw, pitch: v.pitch }, CAM.CAM.zoomMs); },
+      reset: function () { apply(HOME); tween = null; glideV = null; setFocus(null); request(); changed(); },
+      /* Recentre: ease back to the whole cloud and let go of the focus */
+      recentre: function () { setFocus(null); animateTo(Object.assign({}, HOME), CAM.CAM.focusMs); },
+      state: function () { return { yaw: yaw, pitch: pitch, zoom: zoom, panX: panX, panY: panY, focus: focusId, drawn: projected.length, moving: Boolean(tween || glideV) }; },
+      setView: function (v) { if (v.zoom) setZoom(v.zoom); if (v.yaw != null) yaw = v.yaw; if (v.pitch != null) pitch = v.pitch; if (v.panX != null) panX = v.panX; if (v.panY != null) panY = v.panY; if (v.focus !== undefined) setFocus(v.focus); request(); },
+      project: function (id) { return pos[id] ? project(pos[id]) : null; },
       focusNode: focusNode,
       clearFocus: function () { setFocus(null); request(); }
     };

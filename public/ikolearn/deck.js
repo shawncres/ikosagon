@@ -108,9 +108,15 @@
       id: id, label: n ? n.label : e.label, subject: s && s.id !== id ? s.label : e ? e.subject : "",
       chain: C.chainOf(cloud, id), blurb: (n && n.blurb) || (e && e.blurb) || "", goal: (n && n.goal) || "",
       stage: g.stage, detail: g.detail, stageName: g.name, achieved: g.achieved, toNext: g.toNext, inDeck: g.inDeck, live: Boolean(n),
+      tier: g.tier, tierKey: g.tierKey, tierName: g.tierName, level: g.level, progress: g.progress, pips: pipsFor(g.tier, g.level),
+      corpus: C.corpusOf(cloud, id), absorbedInto: C.absorbedInto(cloud, id),
       color: C.cardColor(cloud, id), art: landscape(id, g.detail)
     };
   }
+  /* Rarity, quietly: one corner pip per tier above Sketch, one more per merge level past I (at most 6). */
+  function pipsFor(tier, level) { return Math.min(6, tier + Math.max(0, (level || 0) - 1)); }
+  /* A number that only goes up as a card evolves (tier, then colour stage, then merge level): the app animates a rise. */
+  function evolveKey(spec) { return spec ? spec.tier * 1000 + spec.stage * 100 + Math.min(99, spec.level || 0) : 0; }
   /* "Math → Counting → Counting to 20". withTopic: the full chain (the holder); else the links above the topic, kept to subject → … → parent. */
   function chainText(chain, withTopic) {
     var c = (chain || []).slice(0, withTopic ? undefined : -1);
@@ -156,17 +162,19 @@
   }
   /*
    * A card. opts: { onOpen, size: "full" (the holder) | "tile" (deck, draw) | "mini" (art only, in chat) }.
-   * Paper with a thin double border and a folded corner, the landscape top-left, the chain, the title, the line under it,
-   * and a quiet text mark: the colour stage, or "Achieved". No icons.
+   * Paper with a folded corner, the landscape set in top-left like a plate, the chain as links, the title, the line
+   * under it, and the foot: the tier ("Sketch" .. "Merged II") with its corner pips. The tier sets the frame weight,
+   * paper texture and (achieved, merged) a faint sheen in CSS (tier-* classes); colour comes from the stage. No icons.
    */
   function render(doc, spec, opts) {
     opts = opts || {};
     var size = opts.size || "tile";
     var d = doc.createElement(opts.onOpen ? "button" : "div");
-    d.className = "gcard size-" + size + " stage-" + spec.stage + (spec.achieved ? " achieved" : "");
+    d.className = "gcard size-" + size + " stage-" + spec.stage + " tier-" + spec.tierKey + (spec.achieved ? " achieved" : "") + (spec.level ? " lv-" + Math.min(4, spec.level) : "");
+    d.dataset.tier = spec.tierKey;
     if (opts.onOpen) {
       d.type = "button";
-      d.setAttribute("aria-label", spec.label + ", " + spec.stageName + (spec.subject ? ", " + spec.subject : ""));
+      d.setAttribute("aria-label", spec.label + ", " + spec.tierName + (spec.corpus.length ? ", " + spec.corpus.length + " cards inside" : "") + (spec.subject ? ", " + spec.subject : ""));
       d.addEventListener("click", function (e) { e.stopPropagation(); opts.onOpen(spec.id, d); });
     }
     d.dataset.card = spec.id;
@@ -175,18 +183,62 @@
     d.style.setProperty("--card-soft", spec.color.soft);
     var art = doc.createElement("span"); art.className = "gc-art";
     art.appendChild(artSvg(doc, spec));
+    /* the plate: the landscape is set into the card's corner like a printed plate, framed by tier */
     d.appendChild(art);
+    /* the colour-evolution layer (an ink wash that bleeds out from the plate) and the sheen (achieved and merged only) */
+    d.appendChild(Object.assign(doc.createElement("span"), { className: "gc-bleed" }));
+    if (spec.tier >= 3) d.appendChild(Object.assign(doc.createElement("span"), { className: "gc-sheen" }));
     if (size === "mini") return d;
-    var ch = chainText(spec.chain, size === "full");
-    if (ch) { var c = doc.createElement("span"); c.className = "gc-chain"; c.textContent = ch; d.appendChild(c); }
+    var links = chainLinks(spec.chain, size === "full");
+    if (links.length) {
+      var c = doc.createElement("span"); c.className = "gc-chain";
+      links.forEach(function (l, i) {
+        if (i) c.appendChild(Object.assign(doc.createElement("span"), { className: "gc-sep", textContent: " › " }));
+        c.appendChild(Object.assign(doc.createElement("span"), { className: "gc-link" + (i === links.length - 1 ? " last" : ""), textContent: l }));
+      });
+      d.appendChild(c);
+    }
     var t = doc.createElement("span"); t.className = "gc-title"; t.textContent = spec.label; d.appendChild(t);
     if (size === "full") {
       d.appendChild(Object.assign(doc.createElement("span"), { className: "gc-rule" }));
       if (spec.blurb) { var b = doc.createElement("span"); b.className = "gc-desc"; b.textContent = spec.blurb; d.appendChild(b); }
       if (spec.goal) { var g = doc.createElement("span"); g.className = "gc-goal"; g.textContent = "Goal: " + spec.goal; d.appendChild(g); }
     }
-    var f = doc.createElement("span"); f.className = "gc-mark"; f.textContent = spec.achieved ? "Achieved" : spec.stageName; d.appendChild(f);
+    if (spec.corpus.length) d.appendChild(Object.assign(doc.createElement("span"), { className: "gc-corpus", textContent: "Holds " + spec.corpus.length + (spec.corpus.length === 1 ? " card" : " cards") }));
+    var foot = doc.createElement("span"); foot.className = "gc-foot";
+    var f = doc.createElement("span"); f.className = "gc-mark"; f.textContent = spec.tierName; foot.appendChild(f);
+    var pips = doc.createElement("span"); pips.className = "gc-pips"; pips.setAttribute("aria-hidden", "true");
+    for (var i = 0; i < spec.pips; i++) pips.appendChild(Object.assign(doc.createElement("span"), { className: "pip" }));
+    foot.appendChild(pips);
+    d.appendChild(foot);
+    /* progress toward the next tier: a hairline along the bottom edge (not on achieved or merged cards) */
+    if (spec.tier < 3) { var pr = doc.createElement("span"); pr.className = "gc-prog"; pr.style.setProperty("--p", String(Math.round(spec.progress * 100) / 100)); d.appendChild(pr); }
     return d;
+  }
+  /* The chain as separate links for the card: subject › … › parent (or the full chain with the topic, in the holder). */
+  function chainLinks(chain, withTopic) {
+    var t = chainText(chain, withTopic);
+    return t ? t.split(" → ") : [];
+  }
+  /*
+   * The corpus view: the cards a merged parent holds, as small tiles (each opens its own lesson). Never lost: labels
+   * come from the deck entry when a topic is gone (those show as plain, not openable).
+   */
+  function renderCorpus(doc, cloud, id, opts) {
+    opts = opts || {};
+    var list = C.corpusOf(cloud, id);
+    var w = doc.createElement("div"); w.className = "corpus";
+    if (!list.length) return w;
+    var lvl = C.mergeLevel(cloud, id);
+    w.appendChild(Object.assign(doc.createElement("p"), { className: "l-head corpus-head", textContent: "Corpus · " + list.length + (list.length === 1 ? " card" : " cards") + (lvl ? " · level " + C.roman(lvl) : "") }));
+    var row = doc.createElement("div"); row.className = "corpus-row";
+    list.forEach(function (c) {
+      var sp = c.live ? cardSpec(cloud, c.id) : null;
+      if (sp) row.appendChild(render(doc, sp, { size: "tile", onOpen: opts.onOpen }));
+      else row.appendChild(Object.assign(doc.createElement("span"), { className: "corpus-gone", textContent: c.label }));
+    });
+    w.appendChild(row);
+    return w;
   }
 
   /* ---------- the session draw ---------- */
@@ -214,7 +266,8 @@
    *                    term above still evens subjects out over the year
    */
   function weigh(cloud, day) {
-    var deck = cloud.deck || [];
+    /* a card absorbed into a merged parent is drawn as that parent (its fuller corpus), not on its own */
+    var deck = (cloud.deck || []).filter(function (e) { var p = C.absorbedInto(cloud, e.id); return !(p && C.inDeck(cloud, p)); });
     var year = (cloud.draws || []).filter(function (d) { return d[0] > day - DRAW.yearDays && d[0] <= day; });
     var drawn = {}, cardsIn = {}, last = {}, today = {};
     deck.forEach(function (e) { var k = subjectKey(cloud, e); cardsIn[k] = (cardsIn[k] || 0) + 1; });
@@ -277,7 +330,8 @@
 
   var api = {
     DETAIL: DETAIL, REVIEW_DAYS: REVIEW_DAYS, DRAW: DRAW,
-    seedOf: seedOf, rng: rng, landscape: landscape, cardSpec: cardSpec, chainText: chainText, render: render, artSvg: artSvg,
+    seedOf: seedOf, rng: rng, landscape: landscape, cardSpec: cardSpec, chainText: chainText, chainLinks: chainLinks, render: render, artSvg: artSvg,
+    renderCorpus: renderCorpus, pipsFor: pipsFor, evolveKey: evolveKey,
     dayOf: dayOf, weigh: weigh, drawSession: drawSession, balance: balance
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
