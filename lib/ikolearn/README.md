@@ -31,6 +31,7 @@ Unlisted and noindexed while we test with one learner.
 - Every node has a stable id (`n1`, `n2`, ... never reused), a `parent` (null for a subject) and therefore a path from its subject (`trail`: "Math > Addition > Number Bonds"). There is no depth limit.
 - Subjects keep their own hue; every level below is a shade of it (`hueOf`, `colorOf`). Ghosts (dotted) are ideas not explored yet.
 - **Chains.** A card's chain is its path in the tree (`chainOf`: "Computer Science → Programming → Python → Sets"). For every new topic the model sends the full logical `chain` (broadest first, up to 4 links), and `placeChain` reuses the deepest link that already exists (promoting a ghost) and creates the missing ones in between as real nodes with explicit parent → child links. The cloud shows them straight away.
+- **Validation and one repair.** Every chain goes through `checkChain` before it is placed: duplicates, the topic itself, the learner's name, the topic's own descendants (cycles) and other subjects are dropped (exact names only, so "Programming" can sit under Computer Science). After a bridge, if the chain is still shallow (fewer than 2 links between the subject and the topic, like Computer Science → Python → Sets), the app asks **once** more (`IkoPlan.needsRepair` / `repairRequest`: the bridge request plus `repair: true` and the chain so far; the prompt asks whether a level a learner would meet was skipped). `applyRepair` inserts a missing level along the topic's own ancestry (Python moves under the new Programming with its branch, ids kept). `repaired` is set and saved before the call, so it is at most 1 extra call per topic, ever.
 - **Short chains and bridges.** There is no built-in table of chains. The chat prompt asks the model for the full chain in the same call. When it sends only the leaf (or the leaf and a subject), a topic the learner already has and named in their message deepens it, within the same subject only (`deepenChain`: "How do sets work in Python?" with Python on the map lands under Python). No call. If the new topic still lands right under its subject on a shallow chain (`IkoPlan.needsBridge`: not a parent made by a creation call, not bridged before), the app makes one **bridge** creation call after the reply for the logical in-between steps (Computer Science → Programming → Python for Sets). `applyBridge` places them through `placeChain` (existing nodes reused by name and alias), gives each its card line (sepia, like any new card), and moves the topic under the deepest link with its whole branch (same id, history kept). The answer is cached on the topic (`bridged`), including "it really sits under the subject".
 - **Subjects and colours.** A small data-only palette (`PALETTE`) gives broad subjects a stable hue: Reading & Writing 4, Math 28, Science 48, People & Places 96, Art & Music 150, Making & Coding 188, Computer Science 252. It holds no topics. Any other subject the model names takes the first free hue. Aliases (maths, cs, computing, coding, ...) still map to these names. On migration from v4, clearly-CS topics under Making & Coding move to Computer Science with their whole branch, ids kept.
 - Topics match existing nodes by a normalised key (case, plurals, `&`/`and`). A new topic may land under any existing topic; otherwise under a subject (aliases like maths -> Math), or a new subject (cap 12).
@@ -100,6 +101,8 @@ Nothing is pre-seeded. The map is built from the learner, one structured "create
 | Onboarding (first visit) | 1 creation call (the questions themselves are on the device) |
 | What comes next in a finished branch | 1 (cached on the parent until more is finished) |
 | Bridge for a topic that landed too close to its subject | +1 after that chat reply, only when there's a gap; cached per topic (0 when the chat call already sent the full chain) |
+| Repair re-ask after a bridge whose chain is still shallow | +1 at most, once per topic, ever (`repaired` is stored before the call) |
+| Tiers, colour evolution, merging, the corpus, the cloud's camera and focus | 0 (all on the device) |
 | Answering the light re-ask | 1 ("more"); showing it 0 |
 | Take a Test | 1 (cached until taken; 0 if there isn't enough finished material) |
 | New lesson | 1 (includes the questions, the card line, the fork choices, and the children if none yet) |
@@ -115,7 +118,7 @@ The loop: suggestions, Draw or chat offer cards, picking one slides it into the 
 
 ### Cards
 
-- Every card has an ink-sketch landscape top left, the chain in small type with thin arrows, a serif title, one short line, a thin double border and a folded corner. No icons or images: the only mark is the stage in small text ("New", "Warming up", "Growing", "Bright", "Achieved").
+- Every card has an ink-sketch landscape plate in the corner, the chain in small capitals (each link a separate span, the topic in ink), a serif title, one short line, a frame by tier and a folded corner. No icons or images: the only mark is the tier in small text (Sketch, Inked, Tinted, Achieved, Merged I ...) with its corner pips.
 - The card line (`blurb`) comes from the lesson's hidden block (under 12 words, never the learner's name), or a card's first sentence until a lesson has run.
 - Sizes: `tile` (draw and deck), `full` (the holder), `mini` (beside a chat card).
 
@@ -124,9 +127,34 @@ The loop: suggestions, Draw or chat offer cards, picking one slides it into the 
 Two separate measures, both from `growthOf(cloud, id)`:
 
 - **Detail (ink)** comes from use: `spent/60 + 2*engaged + 3*correct + 4*mastery + min(cards, 3)`, in levels at 0, 3, 8, 16, 30. A topic joins the deck at 3. More detail means more hatching, trees, birds and ripples on the same landscape.
-- **Colour** comes only from confirmed learning: `correct answers + 2 if mastery >= 0.6` ("I've got it"). 0 is sepia; 1, 3 and 5 confirmations give Warming up, Growing and Bright. **Achieved** (full colour, the ink-coloured border) needs the branch to be finished (`isTerminal`), and stays once reached (`achievedAt`). Time alone never adds colour.
-- The stage a card reached is kept in the deck (`best`), so a card never fades. It stops at Bright until its branch is achieved.
+- **Colour** comes only from confirmed learning: `correct answers + 2 if mastery >= 0.6` ("I've got it"). 0 is sepia; 1, 3 and 5 confirmations give Warming up, Growing and Bright. The tier sets a floor on this stage (see Tiers below), so colour is earned on the card as the tier rises: an Achieved card (completed with 3 right answers, or its branch finished, `isTerminal`) is in full colour and stays so. Time alone never adds colour.
+- The stage a card reached is kept in the deck (`best`), so a card never fades. Full colour comes with the Achieved tier.
 - `evolveColor(hue, stage)` is the one place colour is made: the ink mixes in RGB from sepia (hsl 34 24% 36%) towards the chain's hue (58%, 42%) by 0, 18, 40, 65 and 100%, and a wash of the chain's hue bleeds in from the first confirmation. Mixing in RGB means a card never passes through other hues on the way.
+
+### Tiers (v8)
+
+A card's tier is its rarity, derived from the same data (no new counters), and never goes down (the deck keeps the best, `tb`):
+
+| Tier | When | Colour stage at least |
+| --- | --- | --- |
+| Sketch | nothing confirmed yet | 0 (sepia, the plate slightly greyed) |
+| Inked | 1 confirmation (a right answer or "I've got it") | 1 |
+| Tinted | completed (`isDone`: mastered, or 2 right answers) | 2 |
+| Achieved | completed and 3 right answers (`ACHIEVE_RIGHT`), or its branch ended | 4 (full colour) |
+| Merged I, II, III ... | it has absorbed completed subtopics (`ml` > 0) | 4 |
+
+Rarity is shown without icons: frame weight (hairline, soft, hue-coloured, double ink, triple ink), paper texture that thickens by tier, the plate set into the corner (a hue-ink offset from Achieved, a double rule when Merged), corner pips (`pipsFor(tier, level)` = tier + merge levels beyond I, max 6), a hairline along the bottom showing progress to the next tier (`tierProgress`), and a faint sheen only on Achieved and Merged cards. `growthOf` returns `tier`, `tierKey`, `tierName`, `level`, `progress`, plus `achieved` (tier >= 3) and `ended` (the branch-terminal flag that used to be `achieved`).
+
+**The evolution transition.** `IkoDeck.evolveKey(spec)` = tier·1000 + stage·100 + level, a number that only rises. The app keeps the last key it showed per card (`ikolearn.v1.seen`); when a card renders with a higher key it gets `evolve` (an ink wash bleeds out from the plate as a growing circular clip, the plate's grey filter lifts, and the sheen passes once), `tier-up` and, for a new merge level, `merged-up` (a ring that gathers in). The first sighting only records. `prefers-reduced-motion` shows the final state with no motion. The holder only rebuilds its card when the spec changed, so a redraw in the same turn can't cut a transition short.
+
+### Merging (v8)
+
+Completed subtopic cards combine into a higher-valued parent card. Pure, deterministic and idempotent, 0 calls.
+
+- **Data.** `child.absorbedInto = parentId`, `parent.absorbed = [childIds]`, `parent.ml` (merge level, I, II, III ...), `parent.mergedAt`, and an event log (`cloud.events`, newest last, capped at 120: `{ t, k: "merge", id, lv, ids, why }`). The parent's deck entry keeps the corpus as `[[id, label]]`, so a child's label survives even if its topic is later removed. Children are never deleted; they stay on the cloud and in the deck data.
+- **Transition.** `IkoCloud.mergeInto(cloud, pid, ids, t, why)` absorbs only real, unabsorbed children of `pid`; with none left it returns `null` and changes nothing (applying a plan twice merges once). Each successful call raises the level by one.
+- **When (the orchestrator, `IkoPlan.mergePlan`).** `MERGE = { first: 3, batch: 2 }`. *Form*: at least 3 core children at Achieved (or merged themselves), not yet absorbed. *Upgrade*: a merged parent takes the next batch once 2 more are ready, or the last ones that complete its whole core sequence. *Test*: a passed test since the last merge (`tests[pid].passAt > mergedAt`) absorbs every completed child (at least 1). `settleMerges` re-plans after each merge, deepest first, so a child merges its own subtopics and then counts for its parent in the same pass. It runs after an answer, "I've got it", a lesson's children landing, a test, and on load (an older save forms merges from progress it already has).
+- **Shown.** The parent is always in the deck, as a Merged card with "Holds N cards"; absorbed cards leave the deck grid and appear in its **corpus** (a fold under the card in the deck, and under the holder card), each still openable. On the cloud the parent is larger (×(1 + 0.16·level)) with one ring per level; absorbed children are drawn smaller with quieter labels and laid out in a tighter constellation (0.45 of the usual distance). Draw and the deck weights skip absorbed cards (their parent stands for them).
 
 ### Landscapes
 
@@ -184,11 +212,20 @@ The lesson call's hidden block brings 1-2 multiple-choice questions (`{q, option
 - The cloud is stored in a compact v7 format: one array per node
   `[id, label, parent, flags, weight*10, mastery*100, born(s), touched(s), hue, struggle(s), spent(s), engaged]`, plus `[correct, heat*100, heated(s), blurb, achieved(s)]` and then v5's `[pending ? [stepNames, next] : 0, done(s)]`, only on nodes that have them
   (flags: 1 ghost, 2 opened, 4 branch ends), paths as `{ id: [stepIds, next, at] }`, plus cards, forks (`f`), the deck (`k`: `[id, label, subject, hue, joined(s), best stage, chain, blurb, achieved(s)]`), the draw log (`g`), the session count (`ss`), and v5's tests (`t`: `{ parentId: [at(s), finished children then, best*100, attempts, offered(s)] }`), the last suggestions (`sg`) and the active lesson (`fl`). v6 adds per node `[importance*100 or -1, made(s), goal, asked]` and v7 `[role 0/1 core/2 optional, off step id, made by a creation call, bridged(s), absorbedInto, absorbed ids]` and the profile (`pr`: `[age band, region, region guessed 1/0, interests, onboarded(s), asked(s), visits, lesson visit, changed(s)]`). A fresh cloud is about 1.9 KB; a full 600-node cloud stays under 60 KB.
+- v8 adds per node `[merge level, merged(s), repaired(s)]`, per deck entry `[best tier, merge level, absorbed into, corpus [[id, label]]]` (only when set), per test the last pass (`passAt`), and the event log (`ev`: `[[t(s), kind, id, level, ids, why]]`). v7 saves load with these empty, then merges settle from existing progress. Also in `localStorage`: `ikolearn.v1.view` (the big cloud's camera and focused node, restored next time) and `ikolearn.v1.seen` (the last evolve key shown per card); Start over clears both.
 - v1 to v4 clouds are migrated on load without loss (every id, label, parent, ghost flag, weight, mastery, time, card, fork, path, deck entry and draw kept); no seed topics are added any more. v2 topics with enough time join the deck straight away. v3 cards keep the stage they had reached; one whose branch had already ended becomes Achieved. v4 clouds get the Computer Science subject, with clearly-CS topics moved there from Making & Coding (ids, cards, paths and forks kept), and finished deck topics get a done time. v5 and older clouds also lose the old starter seeds the learner never touched (`pruneSeeds`): a seeded topic goes only if it was never opened, has no time, answers, card, deck entry, heat, path pick or test, and nothing of theirs under it, and it isn't a remaining step on the path of a topic they worked on. Seeded subjects go once empty and never strengthened. Learned or engaged topics, and everything the learner made, are never removed. v6 and older clouds get roles on load: each path's steps become core, other children keep no role (counted and shown as before), no side paths are invented. New fields go at the end of the row so older rows still load.
 
 ## Rendering at depth
 
-Each level is drawn at 0.6x the size of the one above and zoom goes to 60x, so a branch can keep opening. Selecting a node focuses its branch (ancestors plus two levels below). Labels fade in by how big a node reads at the current zoom; at most 260 points are drawn, with collision-avoiding labels.
+Each level is drawn at 0.6x the size of the one above and zoom goes to 60x, so a branch can keep opening. Selecting a node focuses its branch (ancestors plus two levels below). Labels fade in by how big a node reads at the current zoom, sit on a paper-coloured halo so they stay readable over edges, and carry the merge level; at most 260 points are drawn, with collision-avoiding labels.
+
+### The camera (`public/ikolearn/camera.js`, pure, tested in Node)
+
+- **Input map** (`gestureFor`): one finger or left-drag pans; right-drag, Shift-drag or a two-finger twist turns; pinch or the wheel zooms. One faint line under the controls documents it (`hint(coarse)`, touch or mouse wording). Recentre eases back to the whole cloud.
+- **Focus.** Tapping a point animates the camera over 650 ms with `easeInOutCubic`: zoom interpolated in log space (each doubling takes the same time), pan linearly, yaw by the shortest arc (`wrap`). The target yaw brings the node to the front: `forwardYaw = atan2(-x, -z)` gives x' = 0 and z' = -r in the view's rotation. The target zoom frames the node and its children (`fitZoom` on their screen box measured at zoom 1, since offsets scale linearly with zoom), bounded so the node's level stays legible.
+- **Inertia.** Pan velocity is an exponential moving average of pointer samples; on release it glides with exact exponential decay, v(t) = v₀·e^(−t/τ), distance v₀·τ·(1 − e^(−t/τ)), τ = 260 ms, so it is frame-rate independent.
+- **Zoom.** `zoomAbout` keeps the point under the cursor fixed; one wheel event is a capped factor (0.82 to 1.22), so zoom stays deliberate; the buttons animate over 220 ms.
+- The view (yaw, pitch, zoom, pan, focus) is reported through `onView` (debounced) and persisted.
 
 ## Swapping the model provider
 
