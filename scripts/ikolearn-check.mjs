@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 import {
   LEARN_LIMITS, CLOUD_OPEN, CLOUD_CLOSE, cleanName, cleanLabel, cleanMessages, parseLearnInput, SYSTEM_BASE, companionSystem, noticeSystem,
   buildContents, cardSystem, adjacentSystem, plainReply, parseCloudBlock, parseCard, parseAdjacent, createBlockSplitter,
-  PATH_OPEN, PATH_CLOSE, lessonSystem, lessonContents, pathSystem, PATH_SCHEMA, CARD_SCHEMA, parsePath, parseChoices, parseLessonBlock,
+  PATH_OPEN, PATH_CLOSE, lessonSystem, lessonContents, pathSystem, PATH_SCHEMA, CARD_SCHEMA, parsePath, parseChoices, parseLessonBlock, parseQuestions, parseBlurb, parseChain,
 } from "../lib/ikolearn/prompts.ts";
 import { DEFAULT_MODEL, FALLBACK_MODEL, MODEL_LIMITS, chatBody, jsonBody, readSse, streamText, generateJson } from "../lib/ikolearn/gemini.ts";
 import { LEARN_GUARDS, createLearnState, prepare, chatEvents, eventStream, cardFor, adjacentFor, lessonEvents, pathFor } from "../lib/ikolearn/service.ts";
@@ -15,6 +15,7 @@ const require = createRequire(import.meta.url);
 const C = require("../public/ikolearn/cloud-model.js");
 const L = require("../public/ikolearn/lesson.js");
 const D = require("../public/ikolearn/deck.js");
+const RK = require("../public/ikolearn/rank.js");
 const DAYMS = 86400000;
 
 let pass = 0;
@@ -164,7 +165,7 @@ const T0 = Date.UTC(2026, 9, 21, 16);
   // v1 -> v2 migration without loss
   const v1raw = fs.readFileSync("scripts/fixtures/ikolearn-cloud-v1.json", "utf8"), v1 = JSON.parse(v1raw);
   const mig = C.deserialize(v1raw);
-  ok(mig && mig.v === 3, "v1 cloud migrates forward (to v3)");
+  ok(mig && mig.v === 4, "v1 cloud migrates forward (to v4)");
   ok(v1.order.every((id) => mig.nodes[id] && mig.nodes[id].label === v1.nodes[id].label && mig.nodes[id].parent === (v1.nodes[id].parent || null) && mig.nodes[id].ghost === v1.nodes[id].ghost), "migration keeps every v1 node, id, parent and ghost flag");
   ok(v1.order.every((id) => Math.abs(mig.nodes[id].weight - v1.nodes[id].weight) < 1e-9 && mig.nodes[id].mastery === v1.nodes[id].mastery), "migration keeps weights and mastery");
   ok(mig.cards.length === 1 && mig.nodes[mig.cards[0].node].label === "Fractions", "migration keeps cards on their node");
@@ -353,7 +354,9 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(parseLearnInput({ mode: "notice", name: "Sam", focus: "x", messages: [], wantPath: "yes" }).wantPath === false, "input: wantPath must be true exactly");
   ok(parseLearnInput({ mode: "notice", name: "Sam", focus: "x", messages: [], known: Array.from({ length: 40 }, (_, i) => "K" + i) }).known.length === LEARN_LIMITS.known, "input: known capped");
   const ls = lessonSystem(LI), lsNo = lessonSystem({ ...LI, wantPath: false }), ps = pathSystem(LI);
-  ok(ls.includes("Role: lesson") && /INTRO:/.test(ls) && /STEP:/.test(ls) && /EXAMPLE:/.test(ls) && /CHECK:/.test(ls) && /ANSWER:/.test(ls) && /NEXT:/.test(ls), "lesson prompt: intro, steps, example, check, answer, next");
+  ok(ls.includes("Role: lesson") && /INTRO:/.test(ls) && /STEP:/.test(ls) && /EXAMPLE:/.test(ls) && /NEXT:/.test(ls) && !/\nCHECK:/.test(ls) && !/\nANSWER:/.test(ls), "lesson prompt: intro, steps, example, next (questions moved to the hidden block)");
+  ok(/questions: 1 or 2 multiple-choice questions/.test(ls) && /answer = the position of the right option/.test(ls) && /"questions":\[\{"q"/.test(ls) && /questions/.test(lsNo), "every lesson block asks for 1-2 multiple-choice questions with the answer index");
+  ok(/blurb: one line under 12 words/.test(ls) && /without the learner's name/.test(ls), "lesson block asks for the card's one-line description");
   ok(ls.includes("Math > Addition > Number Bonds") && /parent reading along/.test(ls), "lesson prompt: knows where the topic sits, readable by a parent");
   ok(ls.includes(PATH_OPEN) && ls.includes(PATH_CLOSE) && lsNo.includes(PATH_OPEN), "every lesson ends with the hidden block (fork choices, no extra call)");
   ok(/easiest and most foundational first/.test(ls) && !/easiest and most foundational first/.test(lsNo) && /steps: \[\]/.test(lsNo), "lesson block asks for path steps only with wantPath");
@@ -368,8 +371,8 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(ch[0].why.length <= LEARN_LIMITS.whyChars && !ch[0].why.includes("*"), "parseChoices: reason short and plain");
   eq(parseChoices([{ name: "Only One" }]), [], "parseChoices: one choice is not a fork");
   eq(parseLessonBlock('{"steps":["A","B"],"next":"B","choices":[]}', "", "X", false), null, "parseLessonBlock: steps ignored without wantPath; nothing else -> null");
-  eq(parseLessonBlock('{"steps":["A","B"],"next":"B","choices":[{"name":"C"},{"name":"D","kind":"side"}]}', "", "X", true), { steps: ["A", "B"], next: "B", choices: [{ name: "C", kind: "deeper", why: "" }, { name: "D", kind: "side", why: "" }] }, "parseLessonBlock: steps + choices");
-  eq(parseLessonBlock('{"steps":[],"choices":[],"end":true}', "", "X", false), { steps: [], next: "", choices: [], end: true }, "parseLessonBlock: end alone is kept");
+  eq(parseLessonBlock('{"steps":["A","B"],"next":"B","choices":[{"name":"C"},{"name":"D","kind":"side"}]}', "", "X", true), { steps: ["A", "B"], next: "B", choices: [{ name: "C", kind: "deeper", why: "" }, { name: "D", kind: "side", why: "" }], questions: [] }, "parseLessonBlock: steps + choices");
+  eq(parseLessonBlock('{"steps":[],"choices":[],"end":true}', "", "X", false), { steps: [], next: "", choices: [], questions: [], end: true }, "parseLessonBlock: end alone is kept");
   ok(parseLessonBlock("junk") === null, "parseLessonBlock: junk -> null");
   ok(ps.includes("Role: path") && ps.includes("Pairs To 10") && /easiest and most foundational first/.test(ps) && /"end": true/.test(ps), "path prompt: ordered subtopics, reuses known, can end a branch");
   ok(!/montessori|waldorf|bloom|common core|khan|duolingo|reggio|curriculum framework|ib programme/i.test(ls + ps), "lesson/path prompts never name external frameworks");
@@ -391,7 +394,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   let ev = await collect(lessonEvents(LI, ENV, f));
   const txt = ev.filter((e) => e.t === "delta").map((e) => e.text).join("");
   ok(txt.includes("INTRO:") && txt.includes("NEXT: Try 20.") && !txt.includes("<<<") && !txt.includes("Making 20"), "lessonEvents: lesson text streams, path block held back");
-  eq(ev.find((e) => e.t === "path"), { t: "path", steps: ["Pairs To 10", "Making 20"], next: "Pairs To 10", choices: [] }, "lessonEvents: path event");
+  eq(ev.find((e) => e.t === "path"), { t: "path", steps: ["Pairs To 10", "Making 20"], next: "Pairs To 10", choices: [], questions: [] }, "lessonEvents: path event");
   ok(ev.at(-1).t === "done" && f.calls.length === 1, "lessonEvents: one call");
   const lb = JSON.parse(f.calls[0].init.body);
   ok(lb.generationConfig.maxOutputTokens === MODEL_LIMITS.lessonMaxTokens && lb.systemInstruction.parts[0].text.includes("Role: lesson"), "lesson request: own token limit + lesson role");
@@ -401,7 +404,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(!ev.some((e) => e.t === "path") && !ev.filter((e) => e.t === "delta").map((e) => e.text).join("").includes("<<<"), "lessonEvents: no path event without wantPath (block still hidden)");
   f = fakeFetch([() => res(200, sse(["INTRO: Hi.\nSTEP: One.\n", `${PATH_OPEN}{"steps":[],"end":true}${PATH_CLOSE}`]))]);
   ev = await collect(lessonEvents(LI, ENV, f));
-  eq(ev.find((e) => e.t === "path"), { t: "path", steps: [], next: "", choices: [], end: true }, "lessonEvents: branch end passes through");
+  eq(ev.find((e) => e.t === "path"), { t: "path", steps: [], next: "", choices: [], questions: [], end: true }, "lessonEvents: branch end passes through");
   f = fakeFetch([() => res(200, sse(["INTRO: Hi.\nSTEP: One.\n", `${PATH_OPEN}{"steps":["Ignored"],"next":"","choices":[{"name":"Making 20","kind":"next","why":"Your next step"},{"name":"Doubles","kind":"deeper","why":"A quick trick"}]}${PATH_CLOSE}`]))]);
   ev = await collect(lessonEvents({ ...LI, wantPath: false, ahead: "Making 20" }, ENV, f));
   const fe = ev.find((e) => e.t === "path");
@@ -439,7 +442,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
 {
   const c = C.create("Sam", T0);
   const cnt = C.findTopic(c, "Counting"), c20 = C.findTopic(c, "Counting to 20");
-  eq(C.activity(c, cnt.id), { spent: 0, engaged: 0, mastery: 0, opened: false, end: false, cards: 0, subject: C.findSubject(c, "Math").id, hue: C.findSubject(c, "Math").hue }, "activity: one place to read per-node state");
+  eq(C.activity(c, cnt.id), { spent: 0, engaged: 0, correct: 0, mastery: 0, opened: false, end: false, achieved: false, cards: 0, subject: C.findSubject(c, "Math").id, hue: C.findSubject(c, "Math").hue }, "activity: one place to read per-node state");
   const rev = c.rev;
   ok(C.track(c, cnt.id, 42.4, T0 + 1) === 42 && C.track(c, cnt.id, 99999) === 42 + 1800 && C.track(c, cnt.id, -5) === 1842 && c.rev === rev, "track: seconds add up, capped per call, never negative, no redraw");
   C.engage(c, cnt.id, "open", T0 + 2); C.engage(c, cnt.id, "open", T0 + 3); C.engage(c, cnt.id, "got", T0 + 4);
@@ -465,34 +468,51 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
 {
   const c = C.create("Maya", T0);
   const math = C.findSubject(c, "Math"), cnt = C.findTopic(c, "Counting"), sci = C.findSubject(c, "Science");
-  eq(C.GROWTH.stages, [0, 3, 8, 16, 30], "growth stages");
+  eq(C.GROWTH.stages, [0, 3, 8, 16, 30], "growth (detail) stages");
+  eq(C.GROWTH.confirm, [0, 1, 3, 5], "colour stages by confirmed learning");
   let g = C.growthOf(c, cnt.id);
-  ok(g.stage === 0 && g.name === "New" && !g.inDeck && c.deck.length === 0, "a fresh topic is a new, sepia card outside the deck");
+  ok(g.stage === 0 && g.name === "New" && !g.inDeck && !g.achieved && c.deck.length === 0, "a fresh topic is a new, sepia card outside the deck");
   C.engage(c, cnt.id, "open", T0 + 1);
   ok(C.joinDeck(c, T0 + 2).length === 0, "opening a lesson once is not enough to join");
   C.track(c, cnt.id, 75, T0 + 3);
   eq(C.joinDeck(c, T0 + 4), [cnt.id], "time spent pushes it past the threshold: joins the deck");
-  ok(C.inDeck(c, cnt.id) && C.growthOf(c, cnt.id).stage === 1 && C.deckEntry(c, cnt.id).subject === "Math", "deck entry keeps label, subject and stage");
+  ok(C.inDeck(c, cnt.id) && C.deckEntry(c, cnt.id).subject === "Math" && C.deckEntry(c, cnt.id).chain.join(">") === "Math>Counting", "deck entry keeps label, subject and chain");
   eq(C.joinDeck(c, T0 + 5), [], "joining is once only");
-  C.engage(c, cnt.id, "got", T0 + 6); C.track(c, cnt.id, 600, T0 + 7); C.joinDeck(c, T0 + 8);
+  C.track(c, cnt.id, 1800, T0 + 6); C.joinDeck(c, T0 + 7);
+  g = C.growthOf(c, cnt.id);
+  ok(g.stage === 0 && g.detail >= 3, "time alone adds detail (ink), not colour: still sepia", JSON.stringify(g));
+  ok(C.confirm(c, cnt.id, false, T0 + 8) && C.growthOf(c, cnt.id).stage === 0 && cnt.correct === 0, "a wrong answer counts as use, not as colour");
+  C.confirm(c, cnt.id, true, T0 + 9);
+  ok(C.growthOf(c, cnt.id).stage === 1 && cnt.correct === 1, "a right answer: the first touch of colour");
+  C.engage(c, cnt.id, "got", T0 + 10);
+  ok(C.growthOf(c, cnt.id).stage === 2 && C.growthOf(c, cnt.id).confirmed === 3, "\"I've got it\" confirms learning too (counts 2)");
+  C.confirm(c, cnt.id, true, T0 + 11); C.confirm(c, cnt.id, true, T0 + 12); C.joinDeck(c, T0 + 13);
   const st = C.growthOf(c, cnt.id).stage;
-  ok(st >= 3, "more time and mastery: the card grows stages", String(st));
-  for (let i = 0; i < 6; i++) C.engage(c, cnt.id, "tricky", T0 + 9 + i);
-  cnt.mastery = 0; C.joinDeck(c, T0 + 20);
-  ok(C.growthOf(c, cnt.id).stage >= st - 0 && C.deckEntry(c, cnt.id).best >= st, "a card's stage never goes back down");
+  ok(st === 3 && !C.growthOf(c, cnt.id).achieved && C.growthOf(c, cnt.id).toNext === 0, "bright, but not achieved until the branch ends", String(st));
+  for (let i = 0; i < 6; i++) C.engage(c, cnt.id, "tricky", T0 + 14 + i);
+  cnt.mastery = 0; cnt.correct = 0; C.joinDeck(c, T0 + 20);
+  ok(C.growthOf(c, cnt.id).stage === st && C.deckEntry(c, cnt.id).best === st, "a card's colour never goes back down");
   math.engaged = 40; math.spent = 9999;
   ok(!C.joinDeck(c).includes(math.id) && !C.inDeck(c, math.id), "subjects are not cards");
   const gh = C.findTopic(c, "Skip Counting"); gh.spent = 9999;
   ok(gh.ghost && !C.joinDeck(c).includes(gh.id), "ghosts never join until explored");
   gh.spent = 0;
 
-  // colour: sepia first, the subject's hue at full colour, all from one place
+  // colour: sepia first, the chain's hue at full colour, all from one place
   const s0 = C.evolveColor(sci.hue, 0), s4 = C.evolveColor(sci.hue, 4), m0 = C.evolveColor(math.hue, 0);
   ok(s0.hue === 34 && m0.hue === 34 && s0.ink === m0.ink, "stage 0 is the same sepia for every subject");
-  ok(s4.hue === sci.hue && s4.ink !== s0.ink, "stage 4 reaches the subject's own hue");
-  const sats = [0, 1, 2, 3, 4].map((x) => +/hsl\(\d+, (\d+)%/.exec(C.evolveColor(sci.hue, x).ink)[1]);
-  ok(sats.every((v, i) => !i || v > sats[i - 1]), "colour deepens at every stage", sats.join(","));
-  eq(C.cardColor(c, cnt.id), C.evolveColor(C.hueOf(c, cnt.id), C.growthOf(c, cnt.id).stage), "cardColor = evolveColor(subject hue, stage)");
+  ok(s4.hue === sci.hue && s4.ink !== s0.ink && s4.base === sci.hue, "stage 4 reaches the chain's own hue");
+  const rgb = (c) => { const [h, sa, l] = [c.hue, c.sat / 100, c.light / 100]; const k = (n) => (n + h / 30) % 12, a = sa * Math.min(l, 1 - l); return [0, 8, 4].map((n) => 255 * (l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1)))); };
+  const dist = (x, y) => Math.hypot(...x.map((v, i) => v - y[i]));
+  let closer = true;
+  for (const hue of [4, 96, 188, 214, 286]) {
+    const ds = [0, 1, 2, 3, 4].map((x) => dist(rgb(C.evolveColor(hue, x)), rgb(C.evolveColor(hue, 4))));
+    if (!ds.every((v, i) => !i || v < ds[i - 1])) closer = false;
+  }
+  ok(closer, "every stage moves the ink closer to the chain's hue (mixed, never through other hues)");
+  const washes = [0, 1, 2, 3, 4].map((x) => +/, ([\d.]+)\)$/.exec(C.evolveColor(sci.hue, x).wash)[1]);
+  ok(washes.every((v, i) => !i || v > washes[i - 1]), "the colour wash bleeds in a little more at every stage", washes.join(","));
+  eq(C.cardColor(c, cnt.id), C.evolveColor(C.hueOf(c, cnt.id), C.growthOf(c, cnt.id).stage), "cardColor = evolveColor(chain hue, stage)");
 
   // forks
   const add = C.findTopic(c, "Addition"), aw10 = C.findTopic(c, "Adding Within 10");
@@ -514,6 +534,11 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(!C.isTerminal(c, c20.id), "not ended yet");
   C.markEnd(c, c20.id); C.engage(c, c20.id, "got", T0 + 50);
   ok(C.isTerminal(c, c20.id), "ended: marked as an end and done");
+  ok(C.growthOf(c, c20.id).achieved && C.growthOf(c, c20.id).stage === 4 && C.growthOf(c, c20.id).name === "Achieved", "an ended branch is achieved: full colour");
+  C.joinDeck(c, T0 + 51);
+  ok(c20.achievedAt === T0 + 51 && C.inDeck(c, c20.id) && C.deckEntry(c, c20.id).ach === T0 + 51 && C.deckEntry(c, c20.id).best === 4, "achieved cards join the deck for good, with the date");
+  C.applyPath(c, c20.id, ["Counting Back"], "Counting Back", T0 + 52); c20.end = false; C.joinDeck(c, T0 + 53);
+  ok(!C.isTerminal(c, c20.id) && C.growthOf(c, c20.id).achieved && C.growthOf(c, c20.id).stage === 4, "an achieved card stays achieved even if its branch grows later");
   const ob = C.otherBranches(c, c20.id, 3);
   ok(ob.length === 3 && ob.every((x) => c.nodes[x].mastery < C.MASTERED && x !== c20.id && !C.ancestry(c, c20.id).includes(x)), "other branches: unfinished, not this branch or above it");
   ok(ob.some((x) => C.subjectOf(c, x).id !== math.id) && ob.some((x) => C.subjectOf(c, x).id === math.id), "other branches: nearby first, plus one from another subject");
@@ -534,7 +559,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const raw = JSON.parse(C.serialize(c));
   raw.n = raw.n.filter((a) => a[0] !== cnt.id && a[2] !== cnt.id);
   const lost = C.deserialize(raw);
-  ok(!lost.nodes[cnt.id] && C.inDeck(lost, cnt.id) && C.deckEntry(lost, cnt.id).label === "Counting" && C.growthOf(lost, cnt.id).stage >= 3, "a deck card stays even if its topic is gone");
+  ok(!lost.nodes[cnt.id] && C.inDeck(lost, cnt.id) && C.deckEntry(lost, cnt.id).label === "Counting" && C.growthOf(lost, cnt.id).stage >= 3 && C.chainOf(lost, cnt.id).join(">") === "Math>Counting", "a deck card stays (colour and chain) even if its topic is gone");
   // prune never drops a deck card
   const big = C.create("Ann", T0);
   const keep = C.findTopic(big, "Shapes");
@@ -546,58 +571,86 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   // migration: v2 (PR #56) and v1 saves move to v3; topics past the threshold backfill the deck
   const v2raw = fs.readFileSync("scripts/fixtures/ikolearn-cloud-v2.json", "utf8"), v2 = JSON.parse(v2raw);
   const m2 = C.deserialize(v2raw);
-  ok(m2 && v2.v === 2 && m2.v === 3, "v2 cloud migrates to v3");
+  ok(m2 && v2.v === 2 && m2.v === 4, "v2 cloud migrates to v4");
   ok(v2.n.every((a) => m2.nodes[a[0]] && m2.nodes[a[0]].label === a[1] && (m2.nodes[a[0]].spent || 0) === (a[10] || 0)), "migration keeps every v2 node with its time spent");
   const mc = C.findTopic(m2, "Counting"), mnb = C.findTopic(m2, "Number Bonds");
-  ok(C.inDeck(m2, mc.id) && C.growthOf(m2, mc.id).stage === 2 && !C.inDeck(m2, mnb.id), "backfill: Counting (4 min, got it) joins at stage 2; Number Bonds (30 s) not yet");
+  ok(C.inDeck(m2, mc.id) && C.growthOf(m2, mc.id).stage === 1 && !C.inDeck(m2, mnb.id), "backfill: Counting (4 min, got it) joins with its first colour; Number Bonds (30 s) not yet");
   ok(C.findTopic(m2, "Counting to 20").end && C.findTopic(m2, "Fractions").path.ids.length === 2, "migration keeps branch ends and paths");
   eq(C.deserialize(C.serialize(m2)).deck, m2.deck, "migrated deck round-trips");
-  ok(C.deserialize(fs.readFileSync("scripts/fixtures/ikolearn-cloud-v1.json", "utf8")).v === 3, "v1 still migrates (to v3)");
+  ok(C.deserialize(fs.readFileSync("scripts/fixtures/ikolearn-cloud-v1.json", "utf8")).v === 4, "v1 still migrates (to v4)");
+  // v3 (PR #57) -> v4 without loss: every node, the deck with its best stages, forks, draws and sessions
+  const v3raw = fs.readFileSync("scripts/fixtures/ikolearn-cloud-v3.json", "utf8"), v3 = JSON.parse(v3raw), m3 = C.deserialize(v3raw);
+  ok(m3 && v3.v === 3 && m3.v === 4, "v3 cloud migrates to v4");
+  ok(v3.n.every((a) => m3.nodes[a[0]] && m3.nodes[a[0]].label === a[1] && m3.nodes[a[0]].spent === a[10] && m3.nodes[a[0]].engaged === a[11]), "migration keeps every v3 node with its time and engagement");
+  ok(v3.k.every((e) => C.deckEntry(m3, e[0]) && C.deckEntry(m3, e[0]).best >= e[5]), "migration keeps the deck and each card's best stage");
+  eq(m3.draws, v3.g, "migration keeps the draw log"); ok(m3.sessions === v3.ss, "and the session count");
+  const fr3 = C.findTopic(m3, "Fractions");
+  ok(fr3.fork && fr3.fork.picked === C.findTopic(m3, "Fraction Strips").id && fr3.path.ids.length === 2, "migration keeps forks (with the pick) and paths");
+  const c203 = C.findTopic(m3, "Counting to 20");
+  ok(C.growthOf(m3, c203.id).achieved && C.deckEntry(m3, c203.id).best === 4, "a branch already ended in v3 is achieved after migration");
+  ok(C.growthOf(m3, C.findTopic(m3, "Counting").id).stage === 3, "a v3 card shown at full colour keeps its colour (bright) but is not called achieved without a finished branch");
+  eq(C.deserialize(C.serialize(m3)).deck, m3.deck, "migrated v4 deck round-trips");
 }
 
 /* ================= card art + session draw (deck.js) ================= */
 {
-  const a = D.design("n12", 2);
-  eq(D.design("n12", 2), a, "card art is deterministic from the topic id");
-  ok(JSON.stringify(D.design("n13", 2)) !== JSON.stringify(a), "different topics, different cards");
-  const pats = new Set(Array.from({ length: 80 }, (_, i) => D.design("n" + i, 0).pattern));
-  ok(pats.size === D.PATTERNS.length, "all patterns occur", [...pats].join(","));
-  let grows = true, prefix = true, finite = true;
+  const a = D.landscape("n12", 2);
+  eq(D.landscape("n12", 2), a, "landscape is deterministic from the topic id");
+  ok(JSON.stringify(D.landscape("n13", 2)) !== JSON.stringify(a), "different topics, different landscapes");
+  let grows = true, prefix = true, finite = true, layers = true, water = 0, trees = 0, birds = 0;
   for (let i = 0; i < 60; i++) {
-    const id = "n" + i, st = [0, 1, 2, 3, 4].map((s) => D.design(id, s));
-    st.forEach((d, s) => {
-      if (s && d.marks.length < st[s - 1].marks.length) grows = false;
-      if (s && JSON.stringify(d.marks.slice(0, st[s - 1].marks.length)) !== JSON.stringify(st[s - 1].marks)) prefix = false;
-      d.marks.forEach((m) => Object.values(m).forEach((v) => { if (typeof v === "number" && !Number.isFinite(v)) finite = false; }));
-    });
-    if (st[4].marks.length !== st[4].total) grows = false;
+    const id = "n" + i, st = [0, 1, 2, 3, 4].map((s) => D.landscape(id, s));
+    if (st[0].layers.length < 3 || JSON.stringify(st.map((x) => x.layers)) !== JSON.stringify(st.map(() => st[0].layers))) layers = false;
+    if (st[0].water) water += 1; if (st[4].totals.trees) trees += 1; if (st[4].totals.birds) birds += 1;
+    for (const k of ["hatch", "trees", "birds", "ripples"]) {
+      st.forEach((d, s) => {
+        if (s && d[k].length < st[s - 1][k].length) grows = false;
+        if (s && JSON.stringify(d[k].slice(0, st[s - 1][k].length)) !== JSON.stringify(st[s - 1][k])) prefix = false;
+      });
+      if (st[4][k].length !== st[4].totals[k]) grows = false;
+    }
+    JSON.stringify(st[4]).replace(/-?\d+(\.\d+)?/g, (m) => { if (!Number.isFinite(+m)) finite = false; return m; });
+    if (/NaN|Infinity/.test(JSON.stringify(st[4]))) finite = false;
   }
-  ok(grows, "ink density grows with every stage (full pattern at stage 4)");
-  ok(prefix, "a growing card keeps its marks and adds more (same card, more ink)");
-  ok(finite, "all art coordinates are finite");
-  ok(D.INK.opacity.every((v, i) => !i || v > D.INK.opacity[i - 1]), "ink strength grows with the stage");
+  ok(layers, "same ridges at every detail level (3-4 layers)");
+  ok(grows, "detail grows with every level: hatching, trees, birds, ripples (all of it at level 4)");
+  ok(prefix, "a growing card keeps its marks and adds more (same scene, more ink)");
+  ok(finite, "all landscape coordinates are finite");
+  ok(water > 15 && water < 50 && trees > 30 && birds > 20, "scenes vary: some water, mostly trees, some birds", `${water}/${trees}/${birds}`);
 
   const c = C.create("Maya", T0);
   const t = C.findTopic(c, "Counting");
   C.engage(c, t.id, "open"); C.engage(c, t.id, "got"); C.joinDeck(c);
+  C.setBlurb(c, t.id, "Saying numbers in order, one for each thing. And more words after the first sentence.");
   const sp = D.cardSpec(c, t.id);
   ok(sp.label === "Counting" && sp.subject === "Math" && sp.stage === C.growthOf(c, t.id).stage && sp.inDeck && sp.color.ink === C.cardColor(c, t.id).ink, "cardSpec: label, subject, stage, colour from the model");
+  ok(sp.chain.join(">") === "Math>Counting" && sp.blurb === "Saying numbers in order, one for each thing." && sp.art.detail === C.growthOf(c, t.id).detail, "cardSpec: chain, one-line description, landscape detail");
   ok(D.cardSpec(c, "nope") === null, "cardSpec: unknown id -> null");
+  eq(D.chainText(["Math", "Counting", "Counting to 20"], true), "Math → Counting → Counting to 20", "chain text: thin arrows, the full chain in the holder");
+  eq(D.chainText(["Making & Coding", "Programming", "Python", "Sets"], false), "Making & Coding → … → Python", "chain text: tiles show subject → … → parent");
+  eq(D.chainText(["A", "B", "C", "D", "E", "F"], true), "A → … → E → F", "chain text: long chains are shortened");
 
   // render with a tiny fake DOM (no innerHTML anywhere)
-  const mkEl = (tag, ns) => ({ tag, ns, attrs: {}, kids: [], style: { props: {}, setProperty(k, v) { this.props[k] = v; } }, listeners: {}, className: "", textContent: "",
+  const mkEl = (tag, ns) => ({ tag, ns, attrs: {}, kids: [], dataset: {}, style: { props: {}, setProperty(k, v) { this.props[k] = v; } }, listeners: {}, className: "", textContent: "",
     setAttribute(k, v) { this.attrs[k] = v; }, appendChild(k) { this.kids.push(k); return k; }, addEventListener(e, f) { this.listeners[e] = f; } });
   const doc = { createElement: (t) => mkEl(t), createElementNS: (ns, t) => mkEl(t, ns) };
-  let opened = null;
-  const el = D.render(doc, sp, { onOpen: (id) => { opened = id; } });
+  let opened = null, src = null;
+  const el = D.render(doc, sp, { onOpen: (id, e) => { opened = id; src = e; } });
   const svg = el.kids[0].kids[0];
-  ok(el.tag === "button" && el.className.includes("dcard") && el.className.includes("stage-" + sp.stage) && svg.tag === "svg" && svg.ns === "http://www.w3.org/2000/svg", "render: a button card with an SVG face");
-  ok(el.kids[1].textContent === "Counting" && el.kids[2].textContent.includes("Math") && el.style.props["--card-ink"] === sp.color.ink, "render: label, subject · stage, ink colour");
+  const texts = el.kids.map((k) => k.className + "=" + k.textContent);
+  ok(el.tag === "button" && el.className.includes("gcard") && el.className.includes("size-tile") && el.className.includes("stage-" + sp.stage) && svg.tag === "svg" && svg.ns === "http://www.w3.org/2000/svg", "render: a button card with an SVG landscape");
+  ok(el.kids[0].className === "gc-art" && texts.includes("gc-chain=Math") && texts.includes("gc-title=Counting") && texts.includes("gc-mark=" + sp.stageName) && el.style.props["--card-ink"] === sp.color.ink && el.style.props["--card-wash"] === sp.color.wash, "render: landscape first (top-left), then chain, title, a quiet text mark; colours from the model");
   el.listeners.click({ stopPropagation() {} });
-  ok(opened === t.id, "render: tapping opens the topic");
-  const g = svg.kids.find((k) => k.tag === "g");
-  ok(g && g.kids.length === sp.art.marks.length, "render: one SVG element per mark");
-  ok(D.render(doc, sp, { bare: true, small: true }).kids.length === 1, "render: bare small card is art only");
+  ok(opened === t.id && src === el, "render: tapping opens the topic (and hands over the card for the slide into the holder)");
+  const full = D.render(doc, sp, { size: "full" });
+  ok(full.kids.some((k) => k.className === "gc-desc" && k.textContent === sp.blurb) && full.kids.some((k) => k.className === "gc-chain" && k.textContent === "Math → Counting") && full.kids.some((k) => k.className === "gc-rule"), "render: the full card has the whole chain, a rule and the description");
+  ok(D.render(doc, sp, { size: "mini" }).kids.length === 1, "render: mini card is the landscape only");
+  const count = (e, tag) => (e.tag === tag ? 1 : 0) + (e.kids || []).reduce((n, k) => n + count(k, tag), 0);
+  ok(count(svg, "path") >= sp.art.layers.length * 2 + sp.art.trees.length + sp.art.birds.length && count(svg, "line") >= sp.art.hatch.length, "render: ridges (fill + line), trees, birds and hatching are drawn");
+  const all = JSON.stringify(full, (k, v) => (k === "ns" ? undefined : v));
+  ok(!/"tag":"(img|image|use|i|picture)"|href|https?:/.test(all) && !/\p{Extended_Pictographic}/u.test(all), "no images, icons or emoji: text and line drawing only");
+  const ach = Object.assign({}, sp, { achieved: true, stage: 4, stageName: "Achieved" });
+  ok(D.render(doc, ach, {}).className.includes("achieved") && D.render(doc, ach, {}).kids.some((k) => k.className === "gc-mark" && k.textContent === "Achieved"), "render: achieved cards carry a small text-only Achieved mark");
 
   // weights
   const y = C.create("Maya", T0);
@@ -607,9 +660,13 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   C.joinDeck(y, T0);
   ok(y.deck.length === 12, "test deck: 8 Math, 2 Science, 1 Art, 1 Reading");
   const day0 = D.dayOf(T0) + 1;
+  const rk = D.DRAW.rank;
+  ok(D.weigh(y, day0).every((x) => x.rank >= 1 && x.rank <= 1 + rk), "the top-10 nudge is modest: at most +" + rk * 100 + "% on a card");
+  D.DRAW.rank = 0;
   const w0 = D.weigh(y, day0);
   const mass = (w, s) => w.filter((x) => x.subject === s).reduce((a, x) => a + x.w, 0);
-  ok(Math.abs(mass(w0, "Math") - mass(w0, "Science")) < 1e-9, "per-subject weighting: 8 Math cards weigh the same as 2 Science cards");
+  ok(Math.abs(mass(w0, "Math") - mass(w0, "Science")) < 1e-9, "per-subject weighting: 8 Math cards weigh the same as 2 Science cards (top-10 nudge aside)");
+  D.DRAW.rank = rk;
   C.logDraw(y, day0 - 1, Array.from({ length: 6 }, () => C.findTopic(y, "Counting").id));
   const w1 = D.weigh(y, day0);
   ok(w1.find((x) => x.subject === "Math").balance < 1 && w1.find((x) => x.subject === "Science").balance > 1, "balance: over-drawn subject held back, under-drawn boosted");
@@ -644,6 +701,119 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(Math.max(...mathCards) - Math.min(...mathCards) < Math.max(...mathCards) * 0.6, "a year: cards within a subject share its draws", mathCards.join(","));
   ok(bal.reduce((a, r) => a + r.draws, 0) === y.draws.length, "balance counts every logged draw");
   ok(D.dayOf(Date.UTC(2026, 9, 21, 3, 0)) === D.dayOf(Date.UTC(2026, 9, 21, 3, 0) + 60000), "dayOf is a whole local day");
+}
+
+/* ================= card game: chains, questions, blurbs, heat, top 10 ================= */
+{
+  // prompts: chains on chat topics and cards
+  ok(/"chain":\["\.\.\."\]/.test(companionSystem(IN)) && /for "Sets": \["Computer Science","Programming","Python"\]/.test(companionSystem(IN)), "chat block asks for a chain only for a new topic that sits deeper");
+  ok(/chain: the broader topics from the subject down to parent/.test(cardSystem(IN)) && CARD_SCHEMA.properties.chain, "card asks for its chain in the same call");
+  eq(parseChain(["Computer Science", "computer science", "Sam", "Programming", "Python", "Sets", "", 7]), ["Programming", "Python", "Sets", "7"], "parseChain: dedupe, drop blanks, keeps the deepest links up to the cap");
+  eq(parseChain(["Math", "Sam", "Sets", "Python"], "Sam", "Sets"), ["Math", "Python"], "parseChain: never the name or the topic itself");
+  const cb = parseCloudBlock('{"topics":[{"name":"Sets","parent":"Python","signal":"curious","chain":["Computer Science","Programming","Python","Sets"]},{"name":"Rocks","parent":"Science"}]}', "Sam");
+  ok(cb.topics[0].chain.join(">") === "Computer Science>Programming>Python" && !("chain" in cb.topics[1]), "parseCloudBlock: chain kept when given, left out otherwise");
+  ok(parseCard('{"title":"Sets","body":"A set keeps one of each thing.","topic":"Sets","parent":"Python","chain":["Computer Science","Programming","Python"]}').chain.length === 3, "parseCard: chain parsed");
+
+  // questions: validated, right answer kept, order mixed, at most 2
+  const qs = parseQuestions([
+    { q: "Which of these could be a set?", options: ["cat, cat, dog", "dog, dog", "cat, dog, fish"], answer: 2 },
+    { q: "Too short?", options: ["a", "b"], answer: 5 },
+    { q: "What is **in** the set now?", options: ["red, blue", "Red, Blue", "blue", "green", "one", "two"], answer: 0 },
+    { q: "A third question that is fine", options: ["x", "y"], answer: 1 },
+    { q: "Ok?", options: ["x", "y"], answer: 0 },
+    "junk",
+  ]);
+  ok(qs.length === 2, "parseQuestions: bad answer index dropped, at most 2 kept", String(qs.length));
+  ok(qs[0].options[qs[0].answer] === "cat, dog, fish" && qs[0].options.length === 3, "parseQuestions: the right option survives reordering");
+  ok(qs[1].options[qs[1].answer] === "red, blue" && qs[1].options.length <= LEARN_LIMITS.options && !qs[1].q.includes("*") && !qs[1].options.includes("Red, Blue"), "parseQuestions: plain text, options deduped and capped, answer still right");
+  eq(parseQuestions([{ q: "Which of these could be a set?", options: ["cat, cat, dog", "dog, dog", "cat, dog, fish"], answer: 2 }]), [qs[0]], "parseQuestions is deterministic");
+  let rot = 0;
+  for (let i = 0; i < 12; i++) { const r = parseQuestions([{ q: "Question number " + i + " here", options: ["right", "w1", "w2"], answer: 0 }])[0]; if (r.answer !== 0) rot += 1; }
+  ok(rot >= 4, "parseQuestions: the right answer isn't always first", String(rot));
+  eq(parseQuestions("nope"), [], "parseQuestions: junk -> none");
+  ok(parseBlurb("A set keeps one of each thing.") === "A set keeps one of each thing." && parseBlurb("Sam, a set keeps one of each.", "Sam") === "" && parseBlurb("ok") === "", "parseBlurb: short, plain, never the learner's name");
+  const blk2 = parseLessonBlock('{"steps":[],"choices":[],"questions":[{"q":"Which of these could be a set?","options":["a, a","a, b"],"answer":1}],"blurb":"A set keeps one of each thing."}', "Sam", "Sets", false);
+  ok(blk2 && blk2.questions.length === 1 && blk2.blurb === "A set keeps one of each thing.", "parseLessonBlock: questions and blurb alone are enough");
+
+  // lessonEvents: the questions ride in the same call, hidden from the streamed text
+  const LI = parseLearnInput({ mode: "notice", name: "Sam", focus: "Sets", trail: "Making & Coding > Programming > Python > Sets", wantPath: false, messages: [] });
+  const f = fakeFetch([() => res(200, sse(["INTRO: A set keeps one of each, Sam.\nSTEP: Make one.\n", `${PATH_OPEN}{"steps":[],"choices":[],"questions":[{"q":"Which of these could be a set?","options":["cat, cat","cat, dog"],"answer":1}],`, `"blurb":"A set keeps one of each thing."}${PATH_CLOSE}`]))]);
+  const ev = await collect(lessonEvents(LI, ENV, f));
+  const pe = ev.find((e) => e.t === "path"), shown = ev.filter((e) => e.t === "delta").map((e) => e.text).join("");
+  ok(pe && pe.questions.length === 1 && pe.questions[0].options[pe.questions[0].answer] === "cat, dog" && pe.blurb === "A set keeps one of each thing." && f.calls.length === 1, "lessonEvents: questions and the card line arrive in the one lesson call");
+  ok(!shown.includes("cat, dog") && !shown.includes("<<<"), "lessonEvents: questions are not in the streamed text");
+
+  // model: chains build explicit parent -> child links, reusing what exists
+  const c = C.create("Maya", T0);
+  const r1 = C.applyTopics(c, [{ name: "Sets", parent: "Python", signal: "curious", chain: ["Computer Science", "Programming", "Python"] }], T0 + 1);
+  const sets = C.findTopic(c, "Sets");
+  eq(C.chainOf(c, sets.id), ["Making & Coding", "Programming", "Python", "Sets"], "a chat chain builds the links: Sets sits under Python under Programming");
+  ok(r1.created.length === 3 && r1.created.includes(sets.id), "the missing links are created (and highlighted)");
+  C.applyTopics(c, [{ name: "Dictionaries", parent: "Python", signal: "curious", chain: ["Computer Science", "Programming", "Python"] }], T0 + 2);
+  const py = C.findTopic(c, "Python");
+  ok(C.findTopic(c, "Dictionaries").parent === py.id && c.order.filter((id) => c.nodes[id].key === py.key).length === 1, "a second chain reuses the existing Python link");
+  C.attachCard(c, { title: "Loops", body: "Loops repeat steps for you. More text.", topic: "Loops", parent: "Python", chain: ["Computer Science", "Programming", "Python"] }, T0 + 3);
+  const loops = C.findTopic(c, "Loops");
+  ok(loops.parent === py.id && loops.blurb === "Loops repeat steps for you.", "a card's chain places it too; its first sentence becomes the card line");
+  ok(C.setBlurb(c, loops.id, "A loop does the same steps again.") && loops.blurb === "A loop does the same steps again." && !C.setBlurb(c, loops.id, "x"), "setBlurb: the lesson's line replaces it; junk ignored");
+  const n0 = c.order.length;
+  C.applyTopics(c, [{ name: "Rocks", parent: "Science", signal: "explored", chain: ["Science"] }], T0 + 4);
+  ok(C.findTopic(c, "Rocks").parent === C.findAny(c, "Science").id && c.order.length === n0 + 1, "a one-link chain is just the parent (nothing extra created)");
+
+  // heat: uses warm a topic, and it cools by half every two weeks
+  const h0 = C.heatNow(sets, T0 + 5);
+  C.engage(c, sets.id, "open", T0 + 5); C.confirm(c, sets.id, true, T0 + 5);
+  const h1 = C.heatNow(sets, T0 + 5);
+  ok(Math.abs(h1 - h0 - C.HEAT.open - C.HEAT.correct) < 1e-9, "heat: an open and a right answer add their points");
+  ok(Math.abs(C.heatNow(sets, T0 + 5 + 14 * DAYMS) - h1 / 2) < 1e-9, "heat halves in 14 days");
+  C.track(c, loops.id, 600, T0 + 5);
+  ok(C.heatNow(loops, T0 + 5) >= 10 * C.HEAT.minute, "heat: minutes spent count");
+
+  // round trip of everything new in v4
+  C.joinDeck(c, T0 + 6);
+  const back = C.deserialize(C.serialize(c));
+  ok(back.nodes[sets.id].correct === 1 && Math.abs(C.heatNow(back.nodes[sets.id], T0 + 5) - h1) < 0.02 && back.nodes[loops.id].blurb === loops.blurb, "v4 round trip: right answers, heat and card lines");
+  ok(C.chainOf(back, sets.id).join(">") === C.chainOf(c, sets.id).join(">"), "v4 round trip: chains");
+  const e1 = C.findTopic(c, "Counting"); e1.end = true; C.engage(c, e1.id, "got", T0 + 7); C.track(c, e1.id, 300, T0 + 7); C.joinDeck(c, T0 + 8);
+  const back2 = C.deserialize(C.serialize(c));
+  ok(C.isAchieved(back2, e1.id) && back2.nodes[e1.id].achievedAt === Math.floor((T0 + 8) / 1000) * 1000 && C.deckEntry(back2, e1.id).ach, "v4 round trip: achieved date on the node and the card");
+
+  // the top 10: local, decaying, pluggable
+  const t1 = T0 + 9;
+  let top = RK.top(c, { now: t1 });
+  ok(top.length > 0 && top.length <= RK.TOP && top[0].rank === 1 && top.every((r, i) => !i || r.score <= top[i - 1].score), "top 10: ranked, highest first, at most 10");
+  ok(top.every((r) => c.nodes[r.id] && !c.nodes[r.id].ghost && c.nodes[r.id].parent) && Array.isArray(top[0].chain), "top 10: only real topics (no subjects or ghosts), each with its chain");
+  const later = RK.top(c, { now: t1 + 60 * DAYMS });
+  for (let i = 0; i < 8; i++) C.engage(c, C.findTopic(c, "Rocks").id, "open", t1 + 60 * DAYMS);
+  ok(RK.top(c, { now: t1 + 60 * DAYMS })[0].label === "Rocks" && later.length > 0, "top 10 follows what's used lately (older use cools off)");
+  ok(RK.sources().join() === "local" && RK.register({ name: "server", weight: 2, scores: () => ({ [C.findTopic(c, "Dictionaries").key]: 5, unknown: 9 }) }) && RK.sources().join() === "local,server", "a future server source plugs in");
+  ok(RK.top(c, { now: t1 + 60 * DAYMS })[0].label === "Dictionaries", "a plugged-in source shifts the ranking (unknown topics skipped)");
+  RK.register({ name: "broken", scores: () => { throw new Error("x"); } });
+  ok(RK.top(c, { now: t1 }).length > 0, "a broken source can't break the ranking");
+  ok(RK.unregister("server") && RK.unregister("broken") && !RK.unregister("local") && RK.sources().join() === "local", "sources can be removed; the device source stays");
+  const bo = RK.boost(c, t1 + 60 * DAYMS), ids = Object.keys(bo);
+  ok(ids.length <= RK.TOP && Math.max(...ids.map((k) => bo[k])) === 1 && ids.every((k) => bo[k] > 0 && bo[k] <= 1), "boost: 1 for the top topic, less down the list");
+
+  // a year of draws with a lopsided top 10 stays balanced
+  const y = C.create("Maya", T0);
+  const add = (subj, names) => names.forEach((n) => { C.applyTopics(y, [{ name: n, parent: subj, signal: "strength" }], T0); const x = C.findTopic(y, n); C.engage(y, x.id, "open", T0); C.engage(y, x.id, "got", T0); });
+  add("Math", ["Counting", "Addition", "Subtraction", "Fractions", "Shapes", "Doubles", "Halves", "Clocks"]);
+  add("Science", ["Volcanoes", "Plants"]); add("Art & Music", ["Rhythm"]); add("Reading & Writing", ["Rhymes"]);
+  C.joinDeck(y, T0);
+  const day0 = D.dayOf(T0) + 1;
+  for (let i = 0; i < 365; i++) {
+    for (const n of ["Counting", "Addition", "Fractions"]) C.engage(y, C.findTopic(y, n).id, "open", (day0 + i) * DAYMS);
+    C.logDraw(y, day0 + i, D.drawSession(y, { day: day0 + i }));
+  }
+  const bal = D.balance(y, day0 + 364), mshare = bal.find((r) => r.subject === "Math").share;
+  ok(mshare < 0.4, "a year with Math always in the top 10: still about a third Math", bal.map((r) => r.subject + " " + r.share.toFixed(2)).join(", "));
+  const cnt = (n) => y.draws.filter((d) => d[1] === C.findTopic(y, n).id).length;
+  const favs = cnt("Counting") + cnt("Addition") + cnt("Fractions"), quiet = cnt("Shapes") + cnt("Halves") + cnt("Clocks");
+  ok(favs > quiet * 1.1 && favs < quiet * 1.8, "the top 10 nudges modestly: favourites come up more, but not overwhelmingly", favs + " vs " + quiet);
+  const re = C.heatNow(C.findTopic(y, "Counting"), (day0 + 364) * DAYMS);
+  ok(re > 1, "re-opening a lesson keeps warming its topic", re.toFixed(2));
+  const fav = C.findTopic(y, "Counting").id;
+  ok(C.otherBranches(y, C.findTopic(y, "Subtraction").id, 3, [fav])[0] === fav || !C.otherBranches(y, C.findTopic(y, "Subtraction").id, 3).includes(fav), "suggestions put a nearby top-10 topic first");
 }
 
 /* ================= route guards ================= */
@@ -720,9 +890,16 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(!/innerHTML|generativelanguage|fetch\(/.test(deckJs) && /createElementNS/.test(deckJs), "deck.js: SVG via DOM calls, no innerHTML, no network");
   ok(/sessionStorage/.test(app) && /ikolearn\.v1\.session/.test(app) && /drawSession/.test(app) && /logDraw/.test(app), "one draw per visit, logged on the device");
   ok(/el\.pAdj\.hidden = !ended/.test(app) && !/grow\(\{ topics: \[\], ghosts/.test(app), "related topics only once a branch has ended; notes no longer add branches");
-  ok(/\.dcard::after/.test(css) && /\.dcard\.grew/.test(css), "deck cards keep the corner fold; growth pulse respects reduced motion");
-  const bytes = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js"].reduce((n, f) => n + fs.statSync("public/ikolearn/" + f).size, 0);
-  ok(bytes < 170_000, "app weight under 170 KB uncompressed", String(bytes));
+  ok(/\.gcard::before/.test(css) && /\.gcard::after/.test(css) && /inset 0 0 0 3px/.test(css) && /\.gcard\.grew/.test(css), "cards: thin double border and corner fold; growth pulse");
+  ok(/prefers-reduced-motion[\s\S]{0,400}\.gcard\.grew/.test(css) && /reduceMotion/.test(app) && /matchMedia\("\(prefers-reduced-motion: reduce\)"\)/.test(app), "the slide into the holder and the pulse respect reduced motion");
+  ok(/id="holder"/.test(html) && /class="tray"/.test(html) && /id="l-quiz"/.test(html) && /id="top"/.test(html) && /id="t-list"/.test(html), "holder, tray, question area and top 10 present");
+  ok(html.indexOf("cloud-model.js") < html.indexOf("rank.js") && html.indexOf("rank.js") < html.indexOf("deck.js"), "rank.js loads after the model and before deck.js");
+  ok(/type = "radio"/.test(app) && /mk\("fieldset"/.test(app) && /C\.confirm\(/.test(app), "questions are real radio groups; answers confirm learning in the model");
+  const rankJs = fs.readFileSync("public/ikolearn/rank.js", "utf8");
+  ok(!/innerHTML|fetch\(|localStorage/.test(rankJs), "rank.js: pure, no network or storage of its own");
+  const files = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js", "rank.js"];
+  const bytes = files.reduce((n, f) => n + fs.statSync("public/ikolearn/" + f).size, 0);
+  ok(bytes < 185_000, "app weight under 185 KB uncompressed", String(bytes));
 }
 
 if (fails.length) {
