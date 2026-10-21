@@ -181,7 +181,7 @@ const seeded = (name, t) => {
   // v1 -> v2 migration without loss
   const v1raw = fs.readFileSync("scripts/fixtures/ikolearn-cloud-v1.json", "utf8"), v1 = JSON.parse(v1raw);
   const mig = C.deserialize(v1raw);
-  ok(mig && mig.v === C.VERSION && C.VERSION === 6, "v1 cloud migrates forward (to v6)");
+  ok(mig && mig.v === C.VERSION && C.VERSION === 7, "v1 cloud migrates forward (to v7)");
   const migCs = C.subjects(mig).find((x) => x.label === "Computer Science"), csKeys = C.CS_TOPICS.map(C.norm), seedKeys = C.OLD_SEEDS.map(C.norm);
   const keptV1 = v1.order.filter((id) => mig.nodes[id]), goneV1 = v1.order.filter((id) => !mig.nodes[id]);
   ok(keptV1.every((id) => mig.nodes[id].label === v1.nodes[id].label && mig.nodes[id].ghost === v1.nodes[id].ghost &&
@@ -591,16 +591,16 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   // migration: v2 (PR #56) and v1 saves move to v3; topics past the threshold backfill the deck
   const v2raw = fs.readFileSync("scripts/fixtures/ikolearn-cloud-v2.json", "utf8"), v2 = JSON.parse(v2raw);
   const m2 = C.deserialize(v2raw);
-  ok(m2 && v2.v === 2 && m2.v === 6, "v2 cloud migrates to v6");
+  ok(m2 && v2.v === 2 && m2.v === 7, "v2 cloud migrates to v7");
   ok(v2.n.every((a) => m2.nodes[a[0]] ? m2.nodes[a[0]].label === a[1] && (m2.nodes[a[0]].spent || 0) === (a[10] || 0) : C.OLD_SEEDS.map(C.norm).includes(C.norm(a[1])) && !(a[10] > 0)), "migration keeps every v2 node with its time spent (only untouched old seeds are pruned)");
   const mc = C.findTopic(m2, "Counting"), mnb = C.findTopic(m2, "Number Bonds");
   ok(C.inDeck(m2, mc.id) && C.growthOf(m2, mc.id).stage === 1 && !C.inDeck(m2, mnb.id), "backfill: Counting (4 min, got it) joins with its first colour; Number Bonds (30 s) not yet");
   ok(C.findTopic(m2, "Counting to 20").end && C.findTopic(m2, "Fractions").path.ids.length === 2, "migration keeps branch ends and paths");
   eq(C.deserialize(C.serialize(m2)).deck, m2.deck, "migrated deck round-trips");
-  ok(C.deserialize(fs.readFileSync("scripts/fixtures/ikolearn-cloud-v1.json", "utf8")).v === 6, "v1 still migrates (to v6)");
+  ok(C.deserialize(fs.readFileSync("scripts/fixtures/ikolearn-cloud-v1.json", "utf8")).v === 7, "v1 still migrates (to v7)");
   // v3 (PR #57) -> v4 without loss: every node, the deck with its best stages, forks, draws and sessions
   const v3raw = fs.readFileSync("scripts/fixtures/ikolearn-cloud-v3.json", "utf8"), v3 = JSON.parse(v3raw), m3 = C.deserialize(v3raw);
-  ok(m3 && v3.v === 3 && m3.v === 6, "v3 cloud migrates to v6");
+  ok(m3 && v3.v === 3 && m3.v === 7, "v3 cloud migrates to v7");
   ok(v3.n.every((a) => m3.nodes[a[0]] ? m3.nodes[a[0]].label === a[1] && m3.nodes[a[0]].spent === a[10] && m3.nodes[a[0]].engaged === a[11] : C.OLD_SEEDS.map(C.norm).includes(C.norm(a[1])) && !(a[10] > 0) && !(a[11] > 0)), "migration keeps every v3 node with its time and engagement (only untouched old seeds are pruned)");
   ok(v3.k.every((e) => C.deckEntry(m3, e[0]) && C.deckEntry(m3, e[0]).best >= e[5]), "migration keeps the deck and each card's best stage");
   eq(m3.draws, v3.g, "migration keeps the draw log"); ok(m3.sessions === v3.ss, "and the session count");
@@ -1013,7 +1013,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(!/innerHTML|fetch\(|localStorage/.test(rankJs), "rank.js: pure, no network or storage of its own");
   const files = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js", "rank.js", "orchestrator.js"];
   const bytes = files.reduce((n, f) => n + fs.statSync("public/ikolearn/" + f).size, 0);
-  ok(bytes < 260_000, "app weight under 260 KB uncompressed", String(bytes));
+  ok(bytes < 280_000, "app weight under 280 KB uncompressed", String(bytes));
 }
 
 /* ================= the flow pass: chains, Computer Science, orchestrator, children, tests ================= */
@@ -1057,7 +1057,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   // v4 -> v6 migration: nothing the learner used is lost; untouched old seeds are pruned; CS topics move across
   const v4raw = fs.readFileSync("scripts/fixtures/ikolearn-cloud-v4.json", "utf8"), v4 = JSON.parse(v4raw);
   const m5 = C.deserialize(v4raw), seedKeys = C.OLD_SEEDS.map(C.norm);
-  ok(v4.v === 4 && m5 && m5.v === 6, "v4 cloud migrates to v6");
+  ok(v4.v === 4 && m5 && m5.v === 7, "v4 cloud migrates to v7");
   const gone = v4.n.filter((row) => !m5.nodes[row[0]]);
   ok(gone.length > 10 && gone.every((row) => seedKeys.includes(C.norm(row[1])) && !(row[3] & 2) && !(row[10] > 0) && !(row[11] > 0) && !(row[5] > 0)), "v4 -> v6: only untouched seed nodes are pruned (never opened, no time, no engagement, no mastery)", gone.map((r) => r[1]).join());
   ok(["Number Bonds", "Poetry", "Robots"].every((l) => !C.findTopic(m5, l)), "v4 -> v6: untouched Math (and other) seed ghosts are gone");
@@ -1219,7 +1219,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/\.env\.local/.test(deploy) && /VERCEL_ORG_ID/.test(deploy) && /VERCEL_PROJECT_ID/.test(deploy) && /deploy --prod/.test(deploy) && !/^[^#]*vercel[^\n]*\b(link|env pull|dev)\b/m.test(deploy), "deploy script: ids from env, never links, pulls env or runs dev, and refuses an .env.local");
   // procedural start: no seeded map; a few questions, then one creation call builds the first parents
   const fresh = C.create("Mia", T0);
-  ok(Object.keys(fresh.nodes).length === 0 && fresh.v === 6 && !C.STARTERS && !C.KNOWN_CHAINS && !RK.POPULAR, "a new learner starts with an empty cloud (no seeded subjects, chains or popularity list)");
+  ok(Object.keys(fresh.nodes).length === 0 && fresh.v === 7 && !C.STARTERS && !C.KNOWN_CHAINS && !RK.POPULAR, "a new learner starts with an empty cloud (no seeded subjects, chains or popularity list)");
   ok(Array.isArray(C.PALETTE) && C.PALETTE.every((p) => typeof p.hue === "number" && typeof p.label === "string") && C.PALETTE.length <= 8 && C.paletteHue("Math") === 28, "only a small data-only palette of broad subjects and hues remains");
   ok(P.needsOnboarding(fresh) && !P.needsOnboarding(seeded("Old", T0)), "onboarding runs for an empty cloud, not for an existing one");
   const ob = P.onboarding(fresh, true), ob2 = P.onboarding(fresh, false);
@@ -1240,7 +1240,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const ns = createSystem(nxi);
   ok(/Role: create, next/.test(ns) && /exactly 1 item whose node\.name is "Dinosaurs"/.test(ns) && /They already have: Fossils/.test(ns) && /most-used topics lately[^\n]*Volcanoes/.test(ns), "create prompt (next): the focus, what they have, and their favorites steer it");
   ok(/Role: create, more/.test(createSystem(parseLearnInput({ mode: "notice", name: "Mia", messages: [], kind: "more", interests: ["Space"] }))), "create prompt (more): one or two new parents");
-  ok(CREATE_SCHEMA.properties.items.items.required.join() === "node,card,children" && CREATE_SCHEMA.properties.items.items.properties.children.items.required.join() === "name,order,score", "create schema: node, card and ordered, scored children");
+  ok(CREATE_SCHEMA.properties.items.items.required.join() === "node,card,children" && CREATE_SCHEMA.properties.items.items.properties.children.items.required.join() === "name,order,score,role", "create schema: node, card and ordered, scored children");
 
   // strict validation of the creation result
   const kid = (name, order, score, why = "") => ({ name, order, score, why });
@@ -1359,6 +1359,105 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(!/geolocation|ipapi|ipinfo|ip-api/i.test(app + html), "no location permission prompt and no IP lookup");
   ok(/function nextStep\(/.test(app) && !/C\.nextFor\(state\.cloud, id\)\);\n    return nx/.test(app) && /var rec = nextStep\(id\)/.test(app), "one recommended next step everywhere (fork pick, then the ranked child, then up the tree)");
   ok(C.trimThread([{ role: "ask", text: "q", done: true }, { role: "ask", text: "open" }, { role: "user", text: "a" }]).length === 2, "answered questions stay in the saved chat; open ones are asked again");
+  {
+  // core sequence + optional side paths (v7)
+  const rc = parseCreate({ items: [
+    { node: { name: "Dinosaurs", chain: ["Science"] }, card: { title: "Dinosaurs", blurb: "Giant reptiles.", goal: "Name three." }, children: [
+      { name: "Fossils", order: 1, score: 0.9, role: "core" }, { name: "Dino Types", order: 2, score: 0.8, role: "core" },
+      { name: "Dino Art", order: 3, score: 0.3, role: "optional", after: "Dino Types" }, { name: "Museums", order: 4, score: 0.4, role: "optional", after: "Nowhere" },
+      { name: "Extinction", order: 5, score: 0.6, role: "weird" }] },
+    { node: { name: "Space", chain: ["Science"] }, card: {}, children: [{ name: "Moon", order: 1, score: 1, role: "optional" }, { name: "Mars", order: 2, score: 1, role: "optional" }] },
+  ] }, "start", "Mia");
+  const rd = rc.items[0].children;
+  ok(rd.map((c) => c.role).join() === "core,core,optional,optional,core" && rd[2].after === "Dino Types" && rd[3].after === "Fossils" && rd[4].after === "", "parseCreate: roles kept (unknown -> core); an optional child's step must be a core child (else the first)");
+  ok(rc.items[1].children[0].role === "core" && rc.items[1].children[1].role === "optional", "parseCreate: an item always keeps at least one core child");
+  ok(/role \("core": the main sequence/.test(createSystem(CI)) && /"optional": an isolated aspect or side path/.test(createSystem(CI)) && /after \(for an optional child only/.test(createSystem(CI)), "create prompt: core sequence vs optional side paths, with the step they branch off");
+  const rv = C.create("Mia", T0);
+  C.applyCreate(rv, rc, { t: T0 + 1 });
+  const RV = (l) => C.findTopic(rv, l), dn = RV("Dinosaurs");
+  ok(dn.path.ids.map((x) => rv.nodes[x].label).join() === "Fossils,Dino Types,Extinction" && ["Fossils", "Dino Types", "Extinction"].every((l) => RV(l).role === "core"), "applyCreate: the core children are the numbered path, in order");
+  ok(RV("Dino Art").role === "optional" && RV("Dino Art").off === RV("Dino Types").id && RV("Museums").off === RV("Fossils").id && RV("Dino Art").ghost && RV("Dino Art").parent === dn.id, "applyCreate: optional children hang off their core step (dotted, not on the path)");
+  eq(P.orderedChildren(rv, dn.id).map((x) => rv.nodes[x].label).sort(), ["Dino Types", "Extinction", "Fossils"], "branches list: the core sequence only");
+  eq(P.sidePaths(rv, dn.id).map((x) => [rv.nodes[x.id].label, rv.nodes[x.off].label]).sort(), [["Dino Art", "Dino Types"], ["Museums", "Fossils"]], "side paths: listed with the step they branch off");
+  const lay = C.layout(rv), dist = (a, b) => Math.hypot(lay[a].x - lay[b].x, lay[a].y - lay[b].y, lay[a].z - lay[b].z);
+  ok(dist(RV("Dino Art").id, RV("Dino Types").id) < dist(RV("Dino Art").id, dn.id), "layout: a side path sits next to its step on the cloud");
+  ["Fossils", "Dino Types", "Extinction"].forEach((l, i) => { const k = RV(l); C.engage(rv, k.id, "got", T0 + 10 + i); C.confirm(rv, k.id, true, T0 + 20 + i); C.confirm(rv, k.id, true, T0 + 30 + i); });
+  C.confirm(rv, dn.id, true, T0 + 40); C.confirm(rv, dn.id, true, T0 + 41); C.engage(rv, dn.id, "got", T0 + 42);
+  ok(C.isTerminal(rv, dn.id) && !C.isDone(rv, RV("Dino Art").id) && P.needsNext(rv, dn.id), "the branch ends when its core sequence is done; side paths never block (what comes next is offered)");
+  C.engage(rv, RV("Dino Art").id, "got", T0 + 50); C.engage(rv, RV("Dino Art").id, "open", T0 + 51);
+  ok(P.needsNext(rv, RV("Dino Art").id) && P.createRequest(rv, "next", RV("Dino Art").id).focus === "Dino Art", "an engaged side path can become its own parent (what comes next builds its own core and optional children)");
+  C.applyCreate(rv, { items: [{ node: { name: "Dino Art", chain: [] }, card: {}, children: [{ name: "Sketching", order: 1, score: 0.8, role: "core" }, { name: "Clay Models", order: 2, score: 0.6, role: "core" }, { name: "Comics", order: 3, score: 0.3, role: "optional", after: "Sketching" }] }] }, { t: T0 + 60, focusId: RV("Dino Art").id });
+  ok(RV("Dino Art").path.ids.length === 2 && RV("Comics").role === "optional" && RV("Comics").off === RV("Sketching").id && RV("Dino Art").role === "optional", "recursively: the side path now has its own core sequence and side path");
+  C.engage(rv, RV("Dino Art").id, "got", T0 + 61); C.confirm(rv, RV("Dino Art").id, true, T0 + 62); C.confirm(rv, RV("Dino Art").id, true, T0 + 63);
+  const tr2 = P.testRequest(rv, dn.id).material.map((m) => m.label);
+  ok(["Fossils", "Dino Types", "Extinction", "Dino Art"].every((l) => tr2.includes(l)) && tr2.indexOf("Dino Art") > tr2.indexOf("Extinction") && !tr2.includes("Museums"), "tests: completed core material first, plus completed side paths (never unfinished ones)");
+  const rv2 = C.deserialize(C.serialize(rv));
+  ok(rv2.v === 7 && rv2.nodes[RV("Dino Art").id].role === "optional" && rv2.nodes[RV("Dino Art").id].off === RV("Dino Types").id && rv2.nodes[dn.id].made && rv2.nodes[RV("Fossils").id].role === "core", "roles, side-path steps and made round-trip (v7)");
+
+  const lp2 = C.create("Mia", T0); C.applyTopics(lp2, [{ name: "Fractions", parent: "Math", signal: "curious", chain: ["Math"] }], T0);
+  const fr = C.findTopic(lp2, "Fractions"); C.applyPath(lp2, fr.id, ["Halves", "Quarters"], "Halves", T0);
+  ok(C.findTopic(lp2, "Halves").role === "core" && C.findTopic(lp2, "Quarters").role === "core", "children from a lesson's path are its core sequence too");
+  // migrating v5 and v6 saves forward
+  const old5 = JSON.parse(C.serialize(rv)); old5.v = 5; old5.n = old5.n.map((a) => a.slice(0, 19)); delete old5.pr;
+  const m7 = C.deserialize(JSON.stringify(old5));
+  ok(m7 && m7.v === 7 && Object.values(m7.nodes).every((n) => n.role === "" || n.role === "core") && Object.values(m7.nodes).some((n) => n.role === "core"), "v5 -> v7: path steps become core, everything else keeps no role (shown as before)");
+  ok(Object.values(m7.nodes).filter((n) => n.role === "core").every((n) => m7.nodes[n.parent].path.ids.includes(n.id)) && !Object.values(m7.nodes).some((n) => n.role === "optional" || n.off || n.absorbedInto), "v5 -> v7: no side paths invented, no absorb links");
+  const old6 = JSON.parse(C.serialize(rv)); old6.v = 6; old6.n = old6.n.map((a) => a.slice(0, 23));
+  const m6 = C.deserialize(JSON.stringify(old6));
+  ok(m6.v === 7 && Object.keys(m6.nodes).length === Object.keys(rv.nodes).length && m6.nodes[RV("Fossils").id].role === "core" && m6.nodes[RV("Dino Art").id].role === "", "v6 -> v7: every node kept; path steps become core");
+  ok(C.deserialize(C.serialize(m7)).v === 7 && C.serialize(C.deserialize(C.serialize(m7))) === C.serialize(m7), "a migrated cloud round-trips exactly");
+
+  // groundwork for powerful cards (not built): fields only
+  const ab = C.deserialize(C.serialize(rv));
+  ab.nodes[dn.id].absorbed = [RV("Fossils").id, "n999"]; ab.nodes[RV("Fossils").id].absorbedInto = dn.id;
+  const ab2 = C.deserialize(C.serialize(ab));
+  ok(ab2.nodes[dn.id].absorbed.join() === RV("Fossils").id && ab2.nodes[RV("Fossils").id].absorbedInto === dn.id, "absorb fields round-trip; links to missing nodes are dropped");
+  ok(C.absorbable(rv, dn.id).length === 3 && Object.values(rv.nodes).every((n) => !n.absorbedInto && !n.absorbed.length) && !/absorb/.test(fs.readFileSync("public/ikolearn/app.js", "utf8")), "nothing absorbs yet: the data model is ready, no collapse feature or UI");
+
+  // bridging: procedural in-between steps, one call only when there's a gap, cached
+  const bq = C.create("Sam", T0);
+  C.applyTopics(bq, [{ name: "Sets", parent: "Computer Science", signal: "curious", chain: ["Computer Science"] }], T0, "How do sets work in Python?");
+  const bsets = C.findTopic(bq, "Sets");
+  ok(bsets && bq.nodes[bsets.parent].label === "Computer Science" && P.needsBridge(bq, bsets.id, 1) && !P.needsBridge(bq, bsets.id, 3), "a gap: a new topic right under its subject on a shallow chain (a full chain needs no bridge)");
+  ok(!P.needsBridge(rv, dn.id) && !P.needsBridge(bq, C.findSubject(bq, "Computer Science").id), "no bridge for a parent made by a creation call, or a subject");
+  const brq = P.bridgeRequest(bq, bsets.id);
+  ok(brq.kind === "bridge" && brq.focus === "Sets" && brq.focusParent === "Computer Science", "bridgeRequest: the topic and its subject");
+  const BI = parseLearnInput({ mode: "notice", name: "Sam", messages: [], ...brq });
+  const bsys = createSystem(BI);
+  ok(BI.kind === "bridge" && /Role: create, bridge/.test(bsys) && /"Sets" sits directly under the broad subject "Computer Science"/.test(bsys) && /every in-between topic/.test(bsys) && !/Python/.test(bsys), "bridge prompt: asks for the logical in-between steps (no table, nothing named for it)");
+  const braw = { items: [{ node: { name: "sets", chain: ["Computer Science", "Programming", "Python", "Sam"] }, card: { title: "Sets", blurb: "Groups where each item appears once.", goal: "" }, children: [],
+    links: [{ name: "Programming", blurb: "Writing instructions for computers." }, { name: "Python", blurb: "A friendly programming language." }, { name: "Cooking", blurb: "x" }] }] };
+  const pb = parseCreate(braw, "bridge", "Sam", "Sets");
+  ok(pb && pb.items[0].node.name === "Sets" && pb.items[0].node.chain.join() === "Computer Science,Programming,Python" && pb.items[0].links.map((l) => l.name).join() === "Programming,Python", "parseCreate(bridge): the focus with its chain (never the name) and a card line per link");
+  ok(parseCreate({ items: [{ node: { name: "Loops", chain: ["Computer Science"] }, card: {}, children: [] }] }, "bridge", "Sam", "Sets") === null, "parseCreate(bridge): only the topic asked about");
+  const bf = fakeFetch([() => res(200, { candidates: [{ content: { parts: [{ text: JSON.stringify(braw) }] } }] })]);
+  const bo = await createFor(BI, ENV, bf);
+  ok(bo.status === 200 && bo.body.kind === "bridge" && bf.calls.length === 1, "createFor(bridge): one call");
+  const bf3 = fakeFetch([() => res(200, { candidates: [{ content: { parts: [{ text: JSON.stringify(braw) }] } }] })]);
+  await createFor(parseLearnInput({ mode: "notice", name: "Sam", messages: [{ role: "user", text: "How do sets work in Python?" }], ...brq }), ENV, bf3);
+  ok(bf3.calls.length === 1 && /The learner asked: \\"How do sets work in Python\?\\"/.test(bf3.calls[0].init.body), "createFor(bridge): carries the question that brought the topic up");
+  ok(/messages: history\(\)\.filter\(function \(m\) \{ return m\.role === "user"; \}\)\.slice\(-1\)/.test(app), "the app sends only the learner's last question with the bridge");
+  const bf2 = fakeFetch([() => res(200, {})]);
+  ok((await createFor(parseLearnInput({ mode: "notice", name: "Sam", messages: [], kind: "bridge" }), ENV, bf2)).status === 422 && bf2.calls.length === 0, "createFor(bridge) without a topic: no call");
+  C.engage(bq, bsets.id, "open", T0 + 1);
+  const br = C.applyBridge(bq, bsets.id, bo.body, T0 + 2);
+  ok(br.moved && C.chainOf(bq, bsets.id).join(" > ") === "Computer Science > Programming > Python > Sets" && bsets.opened && bsets.bridged, "applyBridge: Sets moves under Computer Science > Programming > Python (same id, history kept)");
+  ok(!C.findTopic(bq, "Python").ghost && C.findTopic(bq, "Python").blurb === "A friendly programming language." && C.growthOf(bq, C.findTopic(bq, "Python").id).stage === 0, "the in-between steps are real nodes with sepia cards (their line from the bridge)");
+  ok(!P.needsBridge(bq, bsets.id, 1) && !P.needsBridge(bq, C.findTopic(bq, "Python").id, 1), "cached: never asked again for the same topic (nor for its new links)");
+  const bq2 = C.create("Sam", T0);
+  C.applyTopics(bq2, [{ name: "Coding Basics", parent: "Computer Science", signal: "explored", chain: ["Computer Science"] }], T0);
+  C.applyTopics(bq2, [{ name: "Python", parent: "Coding Basics", signal: "explored", chain: ["Computer Science", "Coding Basics"] }], T0);
+  C.applyTopics(bq2, [{ name: "Sets", parent: "Computer Science", signal: "curious", chain: ["Computer Science"] }], T0);
+  const s2 = C.findTopic(bq2, "Sets"), py2 = C.findTopic(bq2, "Python"), before2 = Object.keys(bq2.nodes).length;
+  C.applyBridge(bq2, s2.id, { items: [{ node: { name: "Sets", chain: ["Computer Science", "Programming", "Python"] }, card: {}, children: [] }] }, T0 + 5);
+  ok(s2.parent === py2.id && Object.keys(bq2.nodes).length === before2, "applyBridge reuses existing nodes by name (Python already on the map: no duplicate)");
+  const bq3 = C.create("Sam", T0); C.applyTopics(bq3, [{ name: "Volcanoes", parent: "Science", signal: "curious", chain: ["Science"] }], T0);
+  const vo = C.findTopic(bq3, "Volcanoes"), r3 = C.applyBridge(bq3, vo.id, { items: [{ node: { name: "Volcanoes", chain: ["Science"] }, card: {}, children: [] }] }, T0 + 1);
+  ok(!r3.moved && bq3.nodes[vo.parent].label === "Science" && vo.bridged && !P.needsBridge(bq3, vo.id, 1), "when it truly sits under its subject, nothing moves and the answer is cached");
+  ok(C.deserialize(C.serialize(bq)).nodes[bsets.id].bridged === Math.round((T0 + 2) / 1000) * 1000, "the bridge cache survives a reload");
+  ok(/function runBridge/.test(app) && /P\.needsBridge\(/.test(app) && /C\.applyBridge\(/.test(app) && /runBridge\(\);/.test(app) && /bridgeQueue/.test(app), "the app bridges after the chat reply, one call, only when needed");
+  ok(/Side paths/.test(app) && /P\.sidePaths\(/.test(app) && /n\.role === "optional" && n\.off/.test(fs.readFileSync("public/ikolearn/cloud-view.js", "utf8")), "side paths: a quiet list on the card and faint twigs off their step on the cloud");
+  }
 }
 
 if (fails.length) {

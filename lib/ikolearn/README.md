@@ -31,7 +31,7 @@ Unlisted and noindexed while we test with one learner.
 - Every node has a stable id (`n1`, `n2`, ... never reused), a `parent` (null for a subject) and therefore a path from its subject (`trail`: "Math > Addition > Number Bonds"). There is no depth limit.
 - Subjects keep their own hue; every level below is a shade of it (`hueOf`, `colorOf`). Ghosts (dotted) are ideas not explored yet.
 - **Chains.** A card's chain is its path in the tree (`chainOf`: "Computer Science → Programming → Python → Sets"). For every new topic the model sends the full logical `chain` (broadest first, up to 4 links), and `placeChain` reuses the deepest link that already exists (promoting a ghost) and creates the missing ones in between as real nodes with explicit parent → child links. The cloud shows them straight away.
-- **Short chains.** There is no built-in table of chains. The prompts ask the model for the full chain; when it sends only the leaf (or the leaf and a subject), a topic the learner already has and named in their message deepens it, within the same subject only (`deepenChain`: "How do sets work in Python?" with Python on the map lands under Python). No call. On a brand-new map with nothing to match, the topic sits where the model put it.
+- **Short chains and bridges.** There is no built-in table of chains. The chat prompt asks the model for the full chain in the same call. When it sends only the leaf (or the leaf and a subject), a topic the learner already has and named in their message deepens it, within the same subject only (`deepenChain`: "How do sets work in Python?" with Python on the map lands under Python). No call. If the new topic still lands right under its subject on a shallow chain (`IkoPlan.needsBridge`: not a parent made by a creation call, not bridged before), the app makes one **bridge** creation call after the reply for the logical in-between steps (Computer Science → Programming → Python for Sets). `applyBridge` places them through `placeChain` (existing nodes reused by name and alias), gives each its card line (sepia, like any new card), and moves the topic under the deepest link with its whole branch (same id, history kept). The answer is cached on the topic (`bridged`), including "it really sits under the subject".
 - **Subjects and colours.** A small data-only palette (`PALETTE`) gives broad subjects a stable hue: Reading & Writing 4, Math 28, Science 48, People & Places 96, Art & Music 150, Making & Coding 188, Computer Science 252. It holds no topics. Any other subject the model names takes the first free hue. Aliases (maths, cs, computing, coding, ...) still map to these names. On migration from v4, clearly-CS topics under Making & Coding move to Computer Science with their whole branch, ids kept.
 - Topics match existing nodes by a normalised key (case, plurals, `&`/`and`). A new topic may land under any existing topic; otherwise under a subject (aliases like maths -> Math), or a new subject (cap 12).
 - Caps keep it light: 600 nodes, 16 children and 6 ghosts per node, 6 steps per path. When room is needed, the oldest free ghost leaf goes first; nodes with children, on a path, or with cards are never pruned.
@@ -46,19 +46,28 @@ Nothing is pre-seeded. The map is built from the learner, one structured "create
 4. **Re-asking lightly** (`IkoPlan.reask`): one question ("What else are you curious about lately?") appears among the suggestions when the cloud is thin (fewer than 3 open topics) or the learner seems stuck (3 visits without opening a lesson), at most every 3 days. It costs nothing until answered; an answer is one creation call (`kind: "more"`, 1-2 new parents).
 5. Later sessions mostly draw from the Deck and the cloud (suggestions, Draw), with new branches proposed as branches end.
 
+### Core sequence and side paths
+
+- Every child from a creation call has a `role`: **core** (the main sequence, foundational to advanced; it is the parent's numbered path with "next") or **optional** (an isolated aspect or side path, with `off`: the core step it branches from). A lesson's path steps are core too.
+- On the cloud a side path sits just off its step, on a faint dotted twig. On the card, the core children are listed as "Branches of X" (ranked, "start here"), and side paths as a quiet "Side paths" list ("· off Dino Types").
+- A branch ends when its core sequence is done; side paths never block ("what comes next" is offered then). A side path the learner engages can grow its own core and optional children through "what comes next", recursively.
+- Tests use completed core material first, then completed side paths. Never unfinished ones.
+- Groundwork for "powerful cards" (not built): `node.absorbed` (child ids) and `child.absorbedInto` (parent id) are stored and kept consistent, and `absorbable(cloud, id)` lists completed core children. Nothing sets them yet and there is no UI.
+
 ### The creation call
 
-`POST /api/ikolearn/create` with `{ name, mode: "notice", kind: "start"|"more"|"next", interests, age, region, favorites, focus/trail/known (next), cloud, parents }`, through the same `prepare()` guards (origin, size, per-IP rate limits, the daily budget). One `generateJson` call with `CREATE_SCHEMA`; the result, strictly validated by `parseCreate`:
+`POST /api/ikolearn/create` with `{ name, mode: "notice", kind: "start"|"more"|"next"|"bridge", interests, age, region, favorites, focus/trail/known (next), cloud, parents }`, through the same `prepare()` guards (origin, size, per-IP rate limits, the daily budget). One `generateJson` call with `CREATE_SCHEMA`; the result, strictly validated by `parseCreate`:
 
 ```
 { ok: true, kind, items: [
   { node: { name, chain: [broad subject, ..., parent] },
     card: { title, blurb, goal },
-    children: [{ name, order, score, why }] } ] }
+    children: [{ name, order, score, why, role: "core"|"optional", after }],
+    links: [{ name, blurb }] /* bridge only: a card line per chain link */ } ] }
 ```
 
 - Labels are cleaned, never the learner's name, and never repeated across the result; children equal to their node or its chain are dropped, and for `next` so are the ones it already has.
-- Children are sorted by `order` and renumbered; `score` is clamped to 0-1 (0-100 is read as a percent; junk is 0.5). Each item needs 2+ children; `start` needs 2-5 items, `more` 1-2, `next` exactly the focus. Anything less is an error (502) and the app falls back on the device.
+- Children are sorted by `order` and renumbered; `score` is clamped to 0-1 (0-100 is read as a percent; junk is 0.5). Each item needs 2+ children; `start` needs 2-5 items, `more` 1-2, `next` exactly the focus, `bridge` exactly the focus with its chain (children may be empty). Roles: core unless "optional"; an optional child's `after` must name a core child (else the first); each item keeps at least one core child. Anything less is an error (502) and the app falls back on the device.
 - The prompt asks for what a typical home curriculum for the learner's age and rough region would stress, with their interests leading, and says plainly that region and age only bias the choice and never rule a topic out. Their most-used topics go along as favorites.
 
 ### Age band and rough region
@@ -90,6 +99,7 @@ Nothing is pre-seeded. The map is built from the learner, one structured "create
 | Related topics (shown once a branch ends) | 1 |
 | Onboarding (first visit) | 1 creation call (the questions themselves are on the device) |
 | What comes next in a finished branch | 1 (cached on the parent until more is finished) |
+| Bridge for a topic that landed too close to its subject | +1 after that chat reply, only when there's a gap; cached per topic (0 when the chat call already sent the full chain) |
 | Answering the light re-ask | 1 ("more"); showing it 0 |
 | Take a Test | 1 (cached until taken; 0 if there isn't enough finished material) |
 | New lesson | 1 (includes the questions, the card line, the fork choices, and the children if none yet) |
@@ -171,10 +181,10 @@ The lesson call's hidden block brings 1-2 multiple-choice questions (`{q, option
 ## Storage
 
 - `ikolearn.v1.name`, `.cloud`, `.thread`, `.notes`, `.lessons`, `.tests` (cached test questions per parent, until taken) in `localStorage`. The server keeps nothing.
-- The cloud is stored in a compact v6 format: one array per node
+- The cloud is stored in a compact v7 format: one array per node
   `[id, label, parent, flags, weight*10, mastery*100, born(s), touched(s), hue, struggle(s), spent(s), engaged]`, plus `[correct, heat*100, heated(s), blurb, achieved(s)]` and then v5's `[pending ? [stepNames, next] : 0, done(s)]`, only on nodes that have them
-  (flags: 1 ghost, 2 opened, 4 branch ends), paths as `{ id: [stepIds, next, at] }`, plus cards, forks (`f`), the deck (`k`: `[id, label, subject, hue, joined(s), best stage, chain, blurb, achieved(s)]`), the draw log (`g`), the session count (`ss`), and v5's tests (`t`: `{ parentId: [at(s), finished children then, best*100, attempts, offered(s)] }`), the last suggestions (`sg`) and the active lesson (`fl`). v6 adds per node `[importance*100 or -1, made(s), goal, asked]` and the profile (`pr`: `[age band, region, region guessed 1/0, interests, onboarded(s), asked(s), visits, lesson visit, changed(s)]`). A fresh cloud is about 1.9 KB; a full 600-node cloud stays under 60 KB.
-- v1 to v4 clouds are migrated on load without loss (every id, label, parent, ghost flag, weight, mastery, time, card, fork, path, deck entry and draw kept); no seed topics are added any more. v2 topics with enough time join the deck straight away. v3 cards keep the stage they had reached; one whose branch had already ended becomes Achieved. v4 clouds get the Computer Science subject, with clearly-CS topics moved there from Making & Coding (ids, cards, paths and forks kept), and finished deck topics get a done time. v5 and older clouds also lose the old starter seeds the learner never touched (`pruneSeeds`): a seeded topic goes only if it was never opened, has no time, answers, card, deck entry, heat, path pick or test, and nothing of theirs under it, and it isn't a remaining step on the path of a topic they worked on. Seeded subjects go once empty and never strengthened. Learned or engaged topics, and everything the learner made, are never removed. New fields go at the end of the row so older rows still load.
+  (flags: 1 ghost, 2 opened, 4 branch ends), paths as `{ id: [stepIds, next, at] }`, plus cards, forks (`f`), the deck (`k`: `[id, label, subject, hue, joined(s), best stage, chain, blurb, achieved(s)]`), the draw log (`g`), the session count (`ss`), and v5's tests (`t`: `{ parentId: [at(s), finished children then, best*100, attempts, offered(s)] }`), the last suggestions (`sg`) and the active lesson (`fl`). v6 adds per node `[importance*100 or -1, made(s), goal, asked]` and v7 `[role 0/1 core/2 optional, off step id, made by a creation call, bridged(s), absorbedInto, absorbed ids]` and the profile (`pr`: `[age band, region, region guessed 1/0, interests, onboarded(s), asked(s), visits, lesson visit, changed(s)]`). A fresh cloud is about 1.9 KB; a full 600-node cloud stays under 60 KB.
+- v1 to v4 clouds are migrated on load without loss (every id, label, parent, ghost flag, weight, mastery, time, card, fork, path, deck entry and draw kept); no seed topics are added any more. v2 topics with enough time join the deck straight away. v3 cards keep the stage they had reached; one whose branch had already ended becomes Achieved. v4 clouds get the Computer Science subject, with clearly-CS topics moved there from Making & Coding (ids, cards, paths and forks kept), and finished deck topics get a done time. v5 and older clouds also lose the old starter seeds the learner never touched (`pruneSeeds`): a seeded topic goes only if it was never opened, has no time, answers, card, deck entry, heat, path pick or test, and nothing of theirs under it, and it isn't a remaining step on the path of a topic they worked on. Seeded subjects go once empty and never strengthened. Learned or engaged topics, and everything the learner made, are never removed. v6 and older clouds get roles on load: each path's steps become core, other children keep no role (counted and shown as before), no side paths are invented. New fields go at the end of the row so older rows still load.
 
 ## Rendering at depth
 
