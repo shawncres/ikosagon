@@ -13,6 +13,7 @@
   var C = window.IkoCloud, V = window.IkoCloudView, L = window.IkoLesson, D = window.IkoDeck, R = window.IkoRank, P = window.IkoPlan;
   var API = "/api/ikolearn";
   var LS = { name: "ikolearn.v1.name", cloud: "ikolearn.v1.cloud", thread: "ikolearn.v1.thread", notes: "ikolearn.v1.notes", lessons: "ikolearn.v1.lessons", tests: "ikolearn.v1.tests" };
+  var VISIT = "ikolearn.v1.visit"; /* sessionStorage: this browser session was counted as a visit */
   var SESSION = "ikolearn.v1.session"; /* sessionStorage: the old once-a-visit draw (no longer written; cleared on reset) */
   var HISTORY = 10, TIMEOUT_MS = 60000, MAX_LESSONS = 30;
 
@@ -31,7 +32,8 @@
     lCard: $("l-card"), lFork: $("l-fork"), lQuiz: $("l-quiz"), hNote: $("h-note"),
     top: $("top"), tLede: $("t-lede"), tList: $("t-list"),
     dSuggest: $("d-suggest"), hKids: $("h-kids"), lPhase: $("l-phase"), phLearn: $("ph-learn"), phCheck: $("ph-check"), pTest: $("p-test"),
-    lMain: document.querySelector("#lesson .l-main")
+    lMain: document.querySelector("#lesson .l-main"),
+    youAge: $("you-age"), youRegion: $("you-region"), youGuess: $("you-guess"), youClear: $("you-clear"), youSaved: $("you-saved"), youLink: $("you-link"), you: $("you")
   };
   var reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
 
@@ -84,16 +86,27 @@
    * "Your path": the node's subtopics in learning order. Mastered steps say so; the recommended one is marked.
    * opts: { onStep(id), offer (show "Map a path" when there is none), heading }
    */
+  /*
+   * The recommended next step from a topic, the same everywhere it is shown: the learner's own fork pick first, then
+   * the best-ranked unfinished child (logical order + use + the model's importance), else the usual walk up the tree.
+   */
+  function nextStep(id) {
+    var n = nodeOf(id);
+    if (!n) return null;
+    var pick = n.fork && n.fork.picked;
+    if (!(pick && nodeOf(pick) && !C.isDone(state.cloud, pick))) { var k = P.nextChild(state.cloud, id); if (k) return k; }
+    return C.nextFor(state.cloud, id);
+  }
   function pathBlock(id, opts) {
     opts = opts || {};
     var n = nodeOf(id), wrap = mk("div", "path");
     if (!n) return wrap;
     if (!n.path || !n.path.ids.length) {
       if (n.end) wrap.appendChild(mk("p", "fine", "This branch ends here."));
-      else if (opts.offer) wrap.appendChild(linkBtn("Map a path for " + n.label, function () { mapPath(id); }));
+      else if (opts.offer) wrap.appendChild(linkBtn("What comes next in " + n.label + "?", function () { createNext(id); }));
       return wrap;
     }
-    var rec = C.nextFor(state.cloud, id);
+    var rec = nextStep(id);
     wrap.appendChild(mk("p", "l-head", opts.heading || "Your path"));
     var ol = mk("ol");
     n.path.ids.forEach(function (sid) {
@@ -133,9 +146,55 @@
     return d;
   }
 
+  /* A first-run or re-ask question: chips (one, or several for interests), an optional typed answer, and Skip. */
+  var askHandlers = {};
+  function renderAsk(m) {
+    var d = mk("div", "msg model ask");
+    var body = mk("div"); paragraphs(body, m.text || ""); d.appendChild(body);
+    if (m.done) return d;
+    var picked = {}, go = askHandlers[m.id] || function () {};
+    var chips = mk("div", "chips ask-chips");
+    (m.chips || []).forEach(function (c) {
+      var b = linkBtn(c.label, function () {
+        if (!m.multi) { go(c.value, c.label); return; }
+        picked[c.value] = !picked[c.value];
+        b.classList.toggle("on", picked[c.value]); b.setAttribute("aria-pressed", picked[c.value] ? "true" : "false");
+      }, "btn chip-q");
+      if (m.multi) b.setAttribute("aria-pressed", "false");
+      chips.appendChild(b);
+    });
+    d.appendChild(chips);
+    var row = mk("div", "ask-row"), inp = null;
+    if (m.input) { inp = mk("input", "ask-in"); inp.maxLength = 40; inp.placeholder = m.multi ? "Or type something you enjoy" : "Type here"; inp.setAttribute("aria-label", m.text); row.appendChild(inp); }
+    if (m.multi || m.input) {
+      var ok = linkBtn(m.go || "Done", function () {
+        var vals = Object.keys(picked).filter(function (k) { return picked[k]; });
+        var typed = inp ? C.cleanLabel(inp.value) : "";
+        if (typed) vals.push(typed);
+        go(m.multi ? vals : typed, (m.multi ? vals.join(", ") : typed) || "Skip");
+      }, "btn draw-btn sm");
+      row.appendChild(ok);
+    }
+    row.appendChild(linkBtn("Skip", function () { go(m.multi ? [] : "", "Skip"); }, "link"));
+    d.appendChild(row);
+    return d;
+  }
+  /* Asks one question in the chat; cb(value) once answered. The answer shows as the learner's reply. */
+  function ask(q, cb) {
+    var m = { role: "ask", local: true, text: q.q, chips: q.chips || [], multi: Boolean(q.multi), input: Boolean(q.input), go: q.go };
+    askHandlers[(m.id = "a" + Date.now().toString(36) + (mid++))] = function (val, label) {
+      if (m.done) return;
+      m.done = true; upsert(m); delete askHandlers[m.id];
+      push({ role: "user", local: true, text: label || "Skip" });
+      cb(val);
+    };
+    push(m);
+  }
+
   function renderMsg(m) {
     var d;
-    if (m.role === "card") {
+    if (m.role === "ask") d = renderAsk(m);
+    else if (m.role === "card") {
       d = cardNode(m.card, m.card.node && nodeOf(m.card.node) ? "On " + trailOf(m.card.node) : "");
     } else if (m.role === "grow") {
       d = mk("p", "grow", m.text);
@@ -148,6 +207,11 @@
         var acts = mk("div", "acts");
         acts.appendChild(linkBtn("Make a card on " + m.topic, function () { makeCard(m.topic, m.parent || ""); }));
         d.appendChild(acts);
+      }
+      if (m.role === "model" && m.opens && m.opens.length && !m.streaming) {
+        var go = mk("div", "acts");
+        m.opens.forEach(function (id, i) { var n = nodeOf(id); if (!n) return; if (go.childNodes.length) go.appendChild(document.createTextNode(" · ")); go.appendChild(linkBtn(i ? n.label : "Open " + n.label, function () { openCard(id, null); })); });
+        d.appendChild(go);
       }
       if (m.chips && m.chips.length) {
         var wrap = mk("div");
@@ -238,8 +302,9 @@
   }
   function basePayload(focusId) {
     var n = nodeOf(focusId);
-    var p = n && n.parent ? nodeOf(n.parent) : null;
+    var p = n && n.parent ? nodeOf(n.parent) : null, pr = C.profileOf(state.cloud);
     return {
+      age: pr.age || "", region: pr.region || "", /* coarse only: an age band and a rough region, never precise data */
       name: state.name, focus: n ? n.label : "", focusParent: p ? p.label : "", trail: n ? C.trail(state.cloud, n.id) : "",
       known: n ? C.knownUnder(state.cloud, n.id) : [], cloud: C.summarize(state.cloud), parents: C.subjectLabels(state.cloud)
     };
@@ -351,27 +416,116 @@
     if (n) n.remove();
   }
 
-  /* Ordered subtopics for one node (one call, on demand). */
-  function mapPath(id, done) {
+  /* ---------- procedural growth: the creation call ---------- */
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, reduceMotion && reduceMotion.matches ? 0 : ms); }); }
+  /*
+   * Shows the build: each new parent appears on the cloud, then its child placeholders, a beat apart, so the learner
+   * sees their cloud being made. Resolves the ids of the parents.
+   */
+  function animateBuild(items, focusId) {
+    var parents = [];
+    openCloud();
+    setCloudCaption("Building your cloud...");
+    var chain = Promise.resolve();
+    items.forEach(function (it) {
+      chain = chain.then(function () {
+        if (focusId) return;
+        var r = C.applyCreate(state.cloud, { items: [{ node: it.node, card: it.card, children: [] }] });
+        parents = parents.concat(r.nodes.filter(function (x) { return parents.indexOf(x) < 0; }));
+        refreshViews(r.order.length ? r.order : r.nodes);
+        return wait(700);
+      }).then(function () {
+        var r = C.applyCreate(state.cloud, { items: [it] }, focusId ? { focusId: focusId } : {});
+        if (focusId) parents = r.nodes;
+        refreshViews(r.children);
+        return wait(700);
+      });
+    });
+    return chain.then(function () { setCloudCaption(""); save(); return parents; });
+  }
+  /* A slim caption on the cloud while it is being built. */
+  var cloudCaption = null;
+  function setCloudCaption(t) {
+    if (!cloudCaption) { cloudCaption = mk("p", "cloud-caption"); cloudCaption.setAttribute("aria-live", "polite"); el.cloud.appendChild(cloudCaption); }
+    cloudCaption.textContent = t; cloudCaption.hidden = !t;
+    if (cloudFlow) cloudFlow.hidden = Boolean(t) || !el.panel.hidden;
+    if (!t) renderCloudFlow();
+  }
+  /* No model (off, offline, or an unusable answer): a few broad subjects from the palette, matched to the interests. */
+  function fallbackParents(interests) {
+    var labels = [];
+    (interests || []).forEach(function (x) { var h = C.paletteHue(x); var p = C.PALETTE.filter(function (q) { return q.hue === h; })[0]; if (p && labels.indexOf(p.label) < 0) labels.push(p.label); });
+    ["Reading & Writing", "Math", "Science"].forEach(function (l) { if (labels.length < 3 && labels.indexOf(l) < 0) labels.push(l); });
+    return labels.slice(0, 3).map(function (l) { return C.plant(state.cloud, l, null, Date.now(), false); }).filter(Boolean).map(function (n) { return n.id; });
+  }
+  /*
+   * One creation call for new parents: "start" (after the first questions) or "more" (after a light re-ask), then the
+   * visible build. Falls back to broad palette subjects when the call can't be made.
+   */
+  function buildCloud(kind, interests) {
+    if (state.busy) return;
+    lock(true);
+    var m = push({ role: "model", local: true, streaming: true, text: kind === "start" ? "Thanks, " + state.name + ". I'm building your first topics now..." : "Let me build something new around " + (interests.join(", ") || "that") + "..." });
+    var req = P.createRequest(state.cloud, kind, null, { interests: interests });
+    postJson("/create", Object.assign(basePayload(null), { mode: "notice" }, req)).then(function (j) {
+      if (j && j.ok && Array.isArray(j.items) && j.items.length) {
+        return animateBuild(j.items, null).then(function (ids) {
+          var names = ids.map(function (x) { return nodeOf(x) && nodeOf(x).label; }).filter(Boolean);
+          var pr = C.profileOf(state.cloud);
+          m.streaming = false;
+          m.text = (kind === "start" ? "Here's your cloud to start: " : "New on your cloud: ") + names.join(", ") + ". Each one has a few smaller topics waiting, best first. Pick a card, or draw one." +
+            (kind === "start" && pr.region ? " I'm fitting things to " + pr.region + (pr.age ? ", age " + P.AGE_LABELS[pr.age] : "") + ". You can change that under About you." : "");
+          m.opens = ids.slice(0, 5);
+          upsert(m);
+        });
+      }
+      var ids = kind === "start" ? fallbackParents(interests) : [];
+      m.streaming = false;
+      m.text = reasonLead(j && (j.reason || j.error)) + (ids.length ? " So I've started you with a few broad areas: " + ids.map(function (x) { return nodeOf(x).label; }).join(", ") + ". Open one for a lesson and it will grow from there." : " Let's try that again a little later.");
+      upsert(m);
+      refreshViews(ids);
+    }).then(function () { save(); lock(false); renderDraw(); });
+  }
+  /* "What comes next" for a parent: one creation call (the orchestrator only offers it when needed, and it is cached). */
+  function createNext(id) {
     var n = nodeOf(id);
     if (!n || state.busy) return;
     lock(true);
-    if (state.panelNode === id) paragraphs(el.pNote, "Mapping a path through " + n.label + "...");
-    postJson("/path", basePayload(id)).then(function (j) {
-      if (j && j.ok && j.path && j.path.end) {
-        C.markEnd(state.cloud, id);
+    var say = function (t) { if (state.panelNode === id && !el.panel.hidden) paragraphs(el.pNote, t); else push({ role: "grow", text: t, open: null }); };
+    say("Working out what comes next in " + n.label + "...");
+    postJson("/create", Object.assign(basePayload(id), { mode: "notice" }, P.createRequest(state.cloud, "next", id))).then(function (j) {
+      if (j && j.ok && Array.isArray(j.items) && j.items.length) {
+        var r = C.applyCreate(state.cloud, { items: j.items.slice(0, 1) }, { focusId: id });
         save();
-        refreshAll([]);
-        var after = nodeOf(C.nextFor(state.cloud, id));
-        if (state.panelNode === id) paragraphs(el.pNote, n.label + " is small enough to learn in one go, so this branch ends here." + (after ? " Next up: " + after.label + "." : ""));
-      } else if (j && j.ok && j.path) {
-        var r = C.applyPath(state.cloud, id, j.path.steps, j.path.next);
+        refreshAll(r.children);
+        var first = nodeOf(P.nextChild(state.cloud, id));
+        say(r.children.length ? "Next in " + n.label + ": " + r.children.map(function (x) { return nodeOf(x).label; }).join(", ") + "." + (first ? " " + first.label + " is a good place to start." : "") : "Nothing new to add in " + n.label + " right now.");
+      } else say("I couldn't work out what comes next just now (" + ((j && (j.reason || j.error)) || "error") + "). Try again in a moment.");
+    }).then(function () { save(); lock(false); if (!el.draw.hidden) renderDraw(); });
+  }
+  /* The first-run questions (static, on the device), then one creation call builds the first parents. */
+  function runOnboarding() {
+    var qs = P.onboarding(state.cloud, true), answers = {}, i = 0;
+    push({ role: "model", local: true, text: "Hi " + state.name + ", welcome to IkoLearn. Around your name is your learning cloud. Before we start, a couple of quick questions so I can build it around you. Each one is optional." });
+    var next = function () {
+      if (i >= qs.length) {
+        C.setProfile(state.cloud, { age: answers.age || "", interests: answers.interests || [], onboarded: true });
         save();
-        refreshAll(r.added.concat(r.next ? [r.next] : []));
-        if (state.panelNode === id) paragraphs(el.pNote, r.ids.length ? "Here is a path through " + n.label + ". The marked step is a good place to start." : "I couldn't map new steps for " + n.label + " this time.");
-      } else if (state.panelNode === id) paragraphs(el.pNote, "I couldn't map a path just now (" + ((j && (j.reason || j.error)) || "error") + "). Try again in a moment.");
-      if (done) done();
-    }).then(function () { save(); lock(false); });
+        buildCloud("start", C.profileOf(state.cloud).interests.slice(-5));
+        return;
+      }
+      var q = qs[i++];
+      if (q.id === "interests") q.go = "Build my cloud";
+      ask(q, function (v) { answers[q.id] = v; if (q.id === "age") C.setProfile(state.cloud, { age: v || "" }); save(); next(); });
+    };
+    next();
+  }
+  /* The light re-ask (one question): its answer is one creation call for 1 or 2 new parents. */
+  function answerReask(v) {
+    var list = (Array.isArray(v) ? v : [v]).map(C.cleanLabel).filter(Boolean);
+    C.setProfile(state.cloud, { askedAt: true, interests: list });
+    save();
+    if (list.length) buildCloud("more", list); else renderDraw();
   }
 
   /* ---------- lessons ---------- */
@@ -434,7 +588,8 @@
     ids.forEach(function (cid) {
       var c = nodeOf(cid), li = mk("li", c.ghost ? "ghost" : C.isDone(state.cloud, cid) ? "done" : "");
       li.appendChild(linkBtn(c.label, function () { openLesson(cid); }));
-      li.appendChild(mk("span", "tag", C.isDone(state.cloud, cid) ? " · done" : c.ghost ? " · new" : ""));
+      var lead = cid === P.nextChild(state.cloud, id);
+      li.appendChild(mk("span", "tag", C.isDone(state.cloud, cid) ? " · done" : lead ? " · start here" : c.ghost ? " · new" : ""));
       ul.appendChild(li);
     });
     el.hKids.appendChild(ul);
@@ -604,6 +759,7 @@
     state.lessonNode = id;
     state.mode = "lesson"; state.test = null;
     if (!C.isDone(state.cloud, id)) state.cloud.active = id; /* "Continue" brings the learner back here */
+    C.profileOf(state.cloud).lessonVisit = C.profileOf(state.cloud).visits || 0; /* not stuck: a lesson was opened this visit */
     startClock();
     state.revealed = false;
     showLesson(true);
@@ -687,7 +843,7 @@
     offerTest(id);
   }
   function nextLine(id) {
-    var nx = nodeOf(C.nextFor(state.cloud, id));
+    var nx = nodeOf(nextStep(id));
     return nx ? "Next up: " + nx.label + "." : "";
   }
   function finishLesson(kind) {
@@ -708,7 +864,7 @@
       if (C.isTerminal(state.cloud, id)) { /* other branches show below */ }
       else if (n.fork && n.fork.ids.length >= 2) el.lStatus.appendChild(document.createTextNode("Pick where to go next below."));
       else if (nx) { el.lStatus.appendChild(document.createTextNode("Next up: ")); el.lStatus.appendChild(linkBtn(nx.label, function () { openLesson(nx.id); })); }
-      else if (!n.path) el.lStatus.appendChild(linkBtn("Map what comes next in " + n.label, function () { mapPath(id); }));
+      else if (!n.path || P.needsNext(state.cloud, id)) el.lStatus.appendChild(linkBtn("What comes next in " + n.label + "?", function () { createNext(id); }));
       else el.lStatus.appendChild(document.createTextNode("You've covered this path."));
     } else {
       if (note) el.lStatus.appendChild(document.createTextNode(note + " "));
@@ -859,20 +1015,52 @@
     b.addEventListener("click", function (e) { e.stopPropagation(); (onOpen || openTest)(pid, b); });
     return b;
   }
+  /* "What comes next" for a parent whose topics are all done (one creation call when tapped). */
+  function growTile(pid) {
+    var p = nodeOf(pid), sp = D.cardSpec(state.cloud, pid);
+    var b = mk("button", "gcard size-tile grow-tile"); b.type = "button";
+    if (sp) { b.style.setProperty("--card-ink", sp.color.ink); b.style.setProperty("--card-wash", sp.color.wash); b.style.setProperty("--card-soft", sp.color.soft); }
+    b.appendChild(mk("span", "gc-chain", "What comes next"));
+    b.appendChild(mk("span", "gc-title", p.label));
+    b.appendChild(mk("span", "gc-desc", "You've finished its topics. Let's see what's next."));
+    b.appendChild(mk("span", "gc-mark", "New branch"));
+    b.addEventListener("click", function () { createNext(pid); });
+    return b;
+  }
+  /* The light re-ask, as a quiet tile: one question, a few chips, a typed answer, or not now. */
+  function askTile(it) {
+    var box = mk("div", "ask-tile");
+    box.appendChild(mk("p", "gc-chain", "A quick question"));
+    box.appendChild(mk("p", "ask-q", it.q));
+    var chips = mk("div", "chips");
+    (it.chips || []).slice(0, 4).forEach(function (c) { chips.appendChild(linkBtn(c, function () { answerReask(c); }, "btn chip-q")); });
+    box.appendChild(chips);
+    var f = mk("form", "ask-row"), inp = mk("input", "ask-in"); inp.maxLength = 40; inp.placeholder = "Or type your own"; inp.setAttribute("aria-label", it.q);
+    f.appendChild(inp);
+    f.addEventListener("submit", function (e) { e.preventDefault(); if (C.cleanLabel(inp.value)) answerReask(inp.value); });
+    box.appendChild(f);
+    box.appendChild(linkBtn("Not now", function () { C.setProfile(state.cloud, { askedAt: true }); save(); renderDraw(); }, "link fine"));
+    return box;
+  }
   /* The always-there next actions: suggested cards, Draw, Continue the active lesson, and the cloud. */
   function flowBlock(where) {
-    var items = (state.suggest || []).filter(function (it) { return nodeOf(it.id); });
+    var items = (state.suggest || []).filter(function (it) { return nodeOf(it.id) || it.kind === "ask"; });
     var box = mk("div", "flow-in");
     box.appendChild(mk("p", "kicker", "Pick up a card"));
-    box.appendChild(mk("p", "d-head", items.length ? "Here are a few good next cards, " + state.name + ". Pick one, or draw one." : "Draw a card to start, " + state.name + ", or ask me anything below."));
+    var empty = !state.cloud.order.length;
+    box.appendChild(mk("p", "d-head", empty ? "Let's build your cloud, " + state.name + "." : items.length ? "Here are a few good next cards, " + state.name + ". Pick one, or draw one." : "Draw a card to start, " + state.name + ", or ask me anything below."));
     var row = mk("div", "draw-row");
     items.forEach(function (it) {
       var cell = mk("div", "sg sg-" + it.kind);
       if (it.kind === "test") cell.appendChild(testTile(it.id));
+      else if (it.kind === "grow") cell.appendChild(growTile(it.id));
+      else if (it.kind === "ask") cell.appendChild(askTile(it));
       else { var sp = D.cardSpec(state.cloud, it.id); if (!sp) return; cell.appendChild(D.render(document, sp, { onOpen: openCard })); }
-      cell.appendChild(mk("p", "sg-why", it.why));
+      if (it.kind !== "ask") cell.appendChild(mk("p", "sg-why", it.why));
       row.appendChild(cell);
     });
+    if (empty && state.thread.some(function (m) { return m.role === "ask" && !m.done; })) return box; /* the questions are already on screen */
+    if (empty && !state.busy) { var start = linkBtn("Start: a few quick questions", runOnboarding, "btn draw-btn"); box.appendChild(start); return box; }
     if (items.length) box.appendChild(row);
     var acts = mk("div", "flow-acts");
     var draw = mk("button", "btn draw-btn", "Draw a card"); draw.type = "button";
@@ -909,13 +1097,13 @@
   function renderCloudFlow() {
     if (!cloudFlow) { cloudFlow = mk("div", "cloud-flow"); el.cloud.appendChild(cloudFlow); }
     cloudFlow.textContent = "";
-    cloudFlow.hidden = !el.panel.hidden;
+    cloudFlow.hidden = !el.panel.hidden || Boolean(cloudCaption && !cloudCaption.hidden);
     if (cloudFlow.hidden) return;
     var items = refreshSuggest().filter(function (it) { return nodeOf(it.id); });
     cloudFlow.appendChild(mk("span", "kicker", "Pick up"));
     items.forEach(function (it) {
       var n = nodeOf(it.id);
-      cloudFlow.appendChild(linkBtn(it.kind === "test" ? "Test: " + n.label : n.label, function () { if (it.kind === "test") openTest(it.id); else openLesson(it.id); }, "chip"));
+      cloudFlow.appendChild(linkBtn(it.kind === "test" ? "Test: " + n.label : it.kind === "grow" ? "Next in " + n.label : n.label, function () { if (it.kind === "test") openTest(it.id); else if (it.kind === "grow") createNext(it.id); else openLesson(it.id); }, "chip"));
     });
     var d = mk("button", "btn sm draw-btn", "Draw a card"); d.type = "button";
     d.addEventListener("click", function () { drawCard(d); });
@@ -1099,7 +1287,31 @@
     el.dock.hidden = on;
     if (on) { el.draw.hidden = true; renderDeck(); window.scrollTo(0, 0); } else { renderDraw(); scrollDown(); }
   }
+  /* ---------- About you: the quiet settings spot (age band, rough region) ---------- */
+  function renderYou() {
+    var pr = C.profileOf(state.cloud);
+    if (!el.youAge.options.length) {
+      el.youAge.appendChild(new Option("Not set", ""));
+      C.AGE_BANDS.forEach(function (a) { el.youAge.appendChild(new Option(P.AGE_LABELS[a], a)); });
+    }
+    el.youAge.value = pr.age || "";
+    el.youRegion.value = pr.region || "";
+    el.youSaved.textContent = "";
+  }
+  function youSaved(patch) {
+    C.setProfile(state.cloud, patch);
+    save();
+    renderYou();
+    el.youSaved.textContent = " Saved.";
+  }
+  el.youAge.addEventListener("change", function () { youSaved({ age: el.youAge.value }); });
+  el.youRegion.addEventListener("change", function () { youSaved({ region: el.youRegion.value, regionAuto: false }); });
+  el.youGuess.addEventListener("click", function () { youSaved({ region: deviceRegion(), regionAuto: true }); });
+  el.youClear.addEventListener("click", function () { youSaved({ region: "", regionAuto: false }); });
+  el.youLink.addEventListener("click", function () { showDeck(true); setTimeout(function () { el.you.scrollIntoView({ block: "start" }); el.youAge.focus(); }, 0); });
+
   function renderDeck() {
+    renderYou();
     var ids = deckIds();
     refreshSuggest();
     el.dSuggest.textContent = "";
@@ -1157,7 +1369,7 @@
   el.reset.addEventListener("click", function () {
     if (!window.confirm("Start over? This clears your name, chat, cloud and lessons from this device.")) return;
     Object.keys(LS).forEach(function (k) { try { localStorage.removeItem(LS[k]); } catch { /* ignore */ } });
-    try { sessionStorage.removeItem(SESSION); } catch { /* ignore */ }
+    try { sessionStorage.removeItem(SESSION); sessionStorage.removeItem(VISIT); } catch { /* ignore */ }
     location.reload();
   });
 
@@ -1169,15 +1381,31 @@
     mini.setCloud(state.cloud);
     renderThread();
     renderDeckButton();
+    countVisit();
+    if (P.needsOnboarding(state.cloud)) { if (!state.thread.some(function (m) { return m.role === "user"; })) state.thread = []; renderThread(); runOnboarding(); }
+    else if (!state.thread.length) greet();
     startSession();
     setTimeout(function () { el.input.focus(); }, 0);
+  }
+  /* Once per browser session: for "seems stuck" (visits without a lesson). A coarse region guess the first time, unless cleared. */
+  function countVisit() {
+    var pr = C.profileOf(state.cloud);
+    try { if (!sessionStorage.getItem(VISIT)) { sessionStorage.setItem(VISIT, "1"); pr.visits = (pr.visits || 0) + 1; } } catch { /* ignore */ }
+    if (!pr.region && pr.regionAuto) C.setProfile(state.cloud, { region: deviceRegion(), regionAuto: true });
+    save();
+  }
+  function deviceRegion() {
+    var tz = "", loc = "";
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { /* ignore */ }
+    try { loc = (navigator.languages && navigator.languages[0]) || navigator.language || ""; } catch { /* ignore */ }
+    return P.regionFrom(tz, loc);
   }
 
   function greet() {
     push({
       role: "model", local: true,
-      text: "Hi " + state.name + ", I'm IkoLearn. Around your name is your learning cloud. As we talk, it grows with the topics you explore. Tap any point to open it as a short lesson. Topics you spend time with become cards in your deck. They start in sepia and fill with colour as you show what you've learned. Pick a card above, tap Draw a card, or tell me what you'd like to learn about today.",
-      chips: ["Help me with fractions", "How do volcanoes work?", "Give me a story idea"]
+      text: "Hi " + state.name + ", welcome back. Your learning cloud grows with the topics you explore. Tap any point to open it as a short lesson. Topics you spend time with become cards in your deck. They start in sepia and fill with colour as you show what you've learned. Pick a card above, tap Draw a card, or tell me what you'd like to learn about today.",
+      chips: C.profileOf(state.cloud).interests.slice(-2).map(function (x) { return "Tell me something new about " + x; }).concat(["What could I learn next?"])
     });
     save();
   }
@@ -1191,7 +1419,6 @@
     state.cloud = C.create(n);
     state.thread = [];
     startChat();
-    greet();
   });
 
   (function boot() {
@@ -1202,8 +1429,7 @@
     try { state.notes = JSON.parse(load(LS.notes) || "{}") || {}; } catch { state.notes = {}; }
     try { state.lessons = JSON.parse(load(LS.lessons) || "{}") || {}; } catch { state.lessons = {}; }
     try { state.tests = JSON.parse(load(LS.tests) || "{}") || {}; } catch { state.tests = {}; }
-    save(); /* writes a migrated (v1/v2 -> v3) cloud back in the compact format, with the deck backfilled */
+    save(); /* writes a migrated (older -> v6) cloud back in the compact format, with the deck backfilled */
     startChat();
-    if (!state.thread.length) greet();
   })();
 })();
