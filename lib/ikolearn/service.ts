@@ -1,6 +1,6 @@
 /**
  * IkoLearn server logic: request checks, per-IP rate limits, a daily call budget, and the handlers
- * (streamed chat/notice and lesson, card, adjacent, path). Every handler is one model call (provider chosen in llm.ts) and counts against the budget. Nothing about the learner is stored server-side: every request carries
+ * (streamed chat/notice and lesson, card, adjacent, path, test). Every handler is one model call (provider chosen in llm.ts) and counts against the budget. Nothing about the learner is stored server-side: every request carries
  * the few recent messages and a compact cloud summary from the browser, and the response is not cached.
  */
 import { createRateLimiter } from "../ikoreadtube/service";
@@ -13,7 +13,11 @@ import {
   PATH_CLOSE,
   PATH_OPEN,
   PATH_SCHEMA,
+  TEST_SCHEMA,
   adjacentSystem,
+  parseTest,
+  testSystem,
+  type TestQuestion,
   lessonContents,
   lessonSystem,
   parsePath,
@@ -159,7 +163,8 @@ export function chatEvents(input: LearnInput, env: Env, fetchImpl: typeof fetch 
       contents: buildContents(input),
       maxChars: LEARN_LIMITS.replyChars,
       tail: (block) => {
-        const b = parseCloudBlock(block, input.name);
+        const said = input.messages.filter((m) => m.role === "user").slice(-1).map((m) => m.text).join(" ");
+        const b = parseCloudBlock(block, input.name, said);
         return { t: "cloud", topics: b.topics, ghosts: b.ghosts };
       },
     },
@@ -234,4 +239,14 @@ export async function pathFor(input: LearnInput, env: Env, fetchImpl: typeof fet
   const r = await generateJson<LearnPath>(pathSystem(input), user, PATH_SCHEMA, (t) => parsePath(t, input.name, input.focus), env, fetchImpl);
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
   return json(200, { ok: true, path: r.value });
+}
+
+/** A test for one parent: 3-5 questions from the completed material only (each names the topic it checks). One call. */
+export async function testFor(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): Promise<Out> {
+  const allowed = input.material.map((m) => m.label);
+  if (allowed.length < 2) return json(422, { ok: false, reason: "material" });
+  const user = `Make my test on ${input.focus}. Topics I have finished: ${allowed.join(", ")}.`;
+  const r = await generateJson<TestQuestion[]>(testSystem(input), user, TEST_SCHEMA, (t) => parseTest(t, allowed), env, fetchImpl);
+  if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
+  return json(200, { ok: true, questions: r.value });
 }

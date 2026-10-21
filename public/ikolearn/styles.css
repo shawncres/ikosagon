@@ -120,6 +120,24 @@ button.gcard:hover { border-color: var(--soft); }
 #draw .d-head { margin: 0 0 10px; }
 .draw-row { display: flex; gap: 10px; padding: 2px 0 8px; }
 .draw-row .gcard { flex: 1 1 0; min-width: 0; max-width: 160px; }
+/* the flow: suggested cards, Draw, Continue, the cloud: always an obvious next step */
+.flow-in { padding: 2px 0 6px; }
+.flow-in .d-head { margin: 0 0 10px; }
+.flow .draw-row { align-items: flex-start; }
+.sg { flex: 1 1 0; min-width: 0; max-width: 160px; display: flex; flex-direction: column; }
+.sg .gcard { width: auto; max-width: none; }
+.sg-why { font-size: 12.5px; line-height: 1.35; color: var(--soft); margin: 6px 2px 0; }
+.flow-acts { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
+.btn.draw-btn { background: var(--ink); color: var(--paper); }
+.btn.draw-btn:disabled { opacity: .45; }
+.btn.quiet { border-color: var(--rule); text-decoration: none; }
+#deck .flow { border-bottom: 1px solid var(--rule); margin: 0 0 18px; padding-bottom: 12px; }
+.gcard.test-tile { border-style: dashed; text-align: left; justify-content: flex-start; }
+.gcard.test-tile .gc-chain { font-style: italic; }
+.gcard.test-tile .gc-desc { display: block; font-size: 12.5px; color: var(--soft); margin-top: 4px; }
+.cloud-flow { position: absolute; left: 0; right: 0; bottom: 40px; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; padding: 0 16px; }
+.cloud-flow .kicker { margin-right: 2px; }
+.chip { font: inherit; font-size: 14px; color: var(--ink); background: var(--paper); border: 1px solid var(--rule); border-radius: 999px; padding: 3px 12px; min-height: 32px; cursor: pointer; }
 .deck-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 12px; margin: 14px 0 8px; }
 .deck-grid .gcard { width: auto; }
 .top10 { margin: 26px 0 0; border-top: 1px solid var(--rule); padding-top: 14px; }
@@ -168,6 +186,28 @@ button.gcard:hover { border-color: var(--soft); }
 .l-example .l-head { margin-top: 10px !important; }
 .l-check { border-left: 2px solid var(--rule); padding: 0 0 0 14px; margin: 14px 0; }
 .l-answer { color: var(--soft); }
+/* two phases: Learn, then Check yourself */
+.phase { list-style: none; display: flex; gap: 18px; margin: -6px 0 14px; padding: 0; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); counter-reset: ph; }
+.phase li { counter-increment: ph; }
+.phase li::before { content: counter(ph) " · "; }
+.phase li.on { color: var(--ink); text-decoration: underline; text-underline-offset: 4px; }
+.phase li.past { color: var(--soft); }
+.l-explain { margin: 0 0 .75em; }
+.phase-head { font-weight: normal; font-size: 20px; margin: 22px 0 4px; padding-top: 16px; border-top: 1px solid var(--rule); }
+.phase-head::before { content: "2 · "; color: var(--soft); }
+.quiz.test .phase-head::before { content: ""; }
+.q-lede { color: var(--soft); font-size: 15.5px; margin: 0 0 6px; }
+.q-topic { display: block; font-size: 12.5px; color: var(--soft); font-style: italic; }
+.testing .l-example, .testing #l-done { display: none; }
+/* the card's own branches, under the holder */
+.h-kids { font-size: 13px; color: var(--soft); margin-top: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.h-kids .l-head { display: inline; margin: 0 6px 0 0 !important; font-size: 11.5px; }
+.h-kids ul { display: inline; margin: 0; padding: 0; list-style: none; }
+.h-kids li { display: inline; }
+.h-kids li + li::before { content: " · "; }
+.h-kids li.ghost .link { font-style: italic; text-decoration-style: dotted; }
+.h-kids .tag { display: none; }
+.h-kids .fine { display: none; }
 /* check questions: radio-style options, the first answer counts */
 .quiz { margin: 14px 0 6px; }
 .q { border: 0; border-left: 2px solid var(--rule); margin: 10px 0 14px; padding: 0 0 0 14px; }
@@ -225,6 +265,13 @@ button.gcard:hover { border-color: var(--soft); }
   .holder .gcard.size-full .gc-rule, .holder .gcard.size-full .gc-desc { display: block; }
   .holder .gcard.size-full::before, .holder .gcard.size-full::after { width: 30px; height: 30px; }
   .h-note { display: block; font-size: 13px; color: var(--soft); margin: 46px 0 0; }
+  .h-kids { margin: 14px 0 0; white-space: normal; }
+  .h-kids .l-head { display: block; margin: 0 0 4px !important; }
+  .h-kids ul, .h-kids li { display: block; }
+  .h-kids li + li::before { content: none; }
+  .h-kids li { margin: 2px 0; }
+  .h-kids .tag, .h-kids .fine { display: inline; }
+  .h-kids .fine { display: block; }
   .l-main { padding-top: 0; }
   .l-main #l-trail { display: block; }
   .fork-opts { grid-template-columns: repeat(3, 1fr); }

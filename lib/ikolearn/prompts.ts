@@ -7,11 +7,14 @@
  *  - notice:    a warm brief reflection or 2-3 suggestions about the name (whole cloud) or one node (streamed, same block).
  *  - card:      a short learning card, JSON { title, body, topic, parent }.
  *  - adjacent:  related unexplored topics for one node, JSON { ghosts: [{ name, parent }] } (shown as ghost branches).
- *  - lesson:    one topic as a short lesson (streamed, tagged lines INTRO/STEP/EXAMPLE/NEXT), ending with a hidden
- *               <<<PATH {json} PATH>>> block: 1-2 multiple-choice check questions, the fork choices, a one-line card
- *               description, and (when asked) the topic's subtopics in learning order.
+ *  - lesson:    one topic as a short lesson that teaches first (streamed, tagged lines INTRO/EXPLAIN/STEP/EXAMPLE/NEXT), ending
+ *               with a hidden <<<PATH {json} PATH>>> block: 2-3 multiple-choice questions on what it explained, the fork
+ *               choices, a one-line card description, and (when asked) the topic's child topics in learning order.
  *  - path:      just the ordered subtopics for one node, JSON { steps: [{ name }], next }.
+ *  - test:      3-5 questions built only from the completed topics under a parent, JSON { questions: [{ q, options, answer, topic }] }.
+ * Every topic carries its full chain from the subject down; chains.ts fills a missing one from known chains.
  */
+import { deepenChain, fillChain } from "./chains";
 
 export const LEARN_LIMITS = {
   bodyBytes: 16_000,
@@ -34,7 +37,9 @@ export const LEARN_LIMITS = {
   choices: 3,
   whyChars: 80,
   chain: 4,
-  questions: 2,
+  questions: 3,
+  testQuestions: 5,
+  material: 8,
   options: 4,
   questionChars: 160,
   optionChars: 60,
@@ -67,6 +72,8 @@ export type LearnInput = {
   wantPath: boolean;
   /** Lesson only: the planned next step after the focus (from the learner's path), offered as one fork choice. */
   ahead: string;
+  /** Test only: the completed topics the test may cover (the parent and its finished children), each with its card line. */
+  material: { label: string; line: string }[];
 };
 /** chain: broader topics from the subject down to the parent (only for a new topic that sits deeper), e.g. ["Computer Science","Programming","Python"]. */
 export type Topic = { name: string; parent: string; signal: Signal; chain?: string[] };
@@ -136,6 +143,11 @@ export function parseLearnInput(raw: unknown): LearnInput | { error: string } {
     known: (Array.isArray(b.known) ? b.known : []).map(cleanLabel).filter(Boolean).slice(0, LEARN_LIMITS.known),
     wantPath: b.wantPath === true,
     ahead: cleanLabel(b.ahead),
+    material: (Array.isArray(b.material) ? b.material : [])
+      .filter((m) => m && typeof m === "object")
+      .map((m) => ({ label: cleanLabel((m as { label?: unknown }).label), line: cleanText((m as { line?: unknown }).line, LEARN_LIMITS.blurbChars).replace(/[<>{}[\]`*_#|\\]/g, " ") }))
+      .filter((m, i, all) => m.label && all.findIndex((x) => x.label.toLowerCase() === m.label.toLowerCase()) === i)
+      .slice(0, LEARN_LIMITS.material),
   };
 }
 
@@ -156,7 +168,9 @@ const blockRules = (parents: string[]) =>
   `topics: 0 to ${LEARN_LIMITS.topicsPerTurn} learning topics that this exchange actually touched (1 to 3 words each, Title Case, specific like "Fractions" or "Volcanoes", never the learner's name). ` +
   "signal: strength if the learner showed they understand it, struggle if they found it hard or had a mix-up, curious if they only asked or showed interest, explored otherwise. " +
   `parent: where it belongs: the most specific existing topic from the profile that it sits under (for example "Fractions" for "Halves"), else one of these existing subjects: ${parents.length ? parents.join(", ") : "(none yet)"}. Only name a new broad subject when none fit. ` +
-  `chain: only for a topic that is new to the profile and sits deeper than its parent's level: the broader topics from the subject down to the parent, broadest first, up to ${LEARN_LIMITS.chain} (for "Sets": ["Computer Science","Programming","Python"]); otherwise leave chain out. ` +
+  `chain: always, for every topic: the full logical chain of broader topics from its subject down to its parent, broadest first, up to ${LEARN_LIMITS.chain}, even when some links are not in the profile yet ` +
+  '(for "Sets" in Python: ["Computer Science","Programming","Python"]; for "Halves": ["Math","Fractions"]; for a topic right under a subject, just ["Math"]). ' +
+  "Programming languages, coding, algorithms and how computers or AI work belong under Computer Science. When the learner names where a topic lives ('sets in Python'), that topic is the last link of the chain and the parent. " +
   `ghosts: leave this empty, unless the learner asked what else they could learn; then 1 or 2 related topics not in the profile, each with its parent. New branches are offered when a branch ends, not before. Use empty arrays for small talk. The learner never sees this block.`;
 
 const profile = (i: LearnInput) =>
@@ -222,13 +236,15 @@ const pathRules = (i: LearnInput) =>
 export function lessonSystem(i: LearnInput): string {
   return (
     `${SYSTEM_BASE}\n\nRole: lesson. Teach the topic "${i.focus}"${i.trail ? ` (${i.trail})` : ""} as one short lesson for this learner, at their level, building on what their profile shows. ` +
+    "Teach first: really explain the idea so the learner understands it, with concrete, everyday details, before anything is checked. " +
     "Write plain text lines, each starting with one of these tags, in this order:\n" +
     "INTRO: one or two warm sentences: what it is and why it is useful, using the learner's first name once.\n" +
-    "STEP: one small step, one or two short sentences. Write 3 to 5 STEP lines.\n" +
-    "EXAMPLE: a worked example, shown step by step on one to three EXAMPLE lines.\n" +
-    "NEXT: one sentence on what to try next.\n" +
-    "Do not write check questions in the lesson text; they go in the hidden block below. " +
-    "Keep the whole lesson under 200 words. Use simple numbers and everyday objects. A parent reading along should understand it too.\n\n" +
+    "EXPLAIN: a short paragraph (two or three sentences) that explains how it works or what it means, with a concrete picture or comparison. Write 2 or 3 EXPLAIN lines, each building on the one before.\n" +
+    "STEP: one small step for doing it or spotting it yourself, one short sentence. Write 2 to 4 STEP lines.\n" +
+    "EXAMPLE: optional; a worked example, shown step by step on one to three EXAMPLE lines, when the topic has something to work through.\n" +
+    "NEXT: one encouraging sentence on what to try next.\n" +
+    "Do not write check questions in the lesson text; they go in the hidden block below, and they only ask about what you explained. " +
+    "Keep the whole lesson under 260 words. Use simple numbers and everyday objects. A parent reading along should understand it too.\n\n" +
     `${profile(i)}\n\n${lessonBlockRules(i)}`
   );
 }
@@ -237,9 +253,9 @@ export function lessonSystem(i: LearnInput): string {
 const lessonBlockRules = (i: LearnInput) =>
   `After the lesson, on a new line, write ${PATH_OPEN} then one JSON object then ${PATH_CLOSE}, and nothing after it. The learner never sees this block as text. ` +
   'The JSON is {"questions":[{"q":"...","options":["...","...","..."],"answer":0}],"blurb":"...","steps":["..."],"next":"...","choices":[{"name":"...","kind":"next|deeper|side","why":"..."}],"end":false}. ' +
-  `questions: 1 or 2 multiple-choice questions that check this lesson, each with 3 short options (one clearly right, the others believable), and answer = the position of the right option counting from 0. Short and kind, at the learner's level. ` +
+  `questions: 2 or 3 multiple-choice questions that check understanding of what this lesson explained (not new facts, not trick questions), each with 3 short options (one clearly right, the others believable), and answer = the position of the right option counting from 0. Short and kind, at the learner's level. ` +
   `blurb: one line under 12 words that says what "${i.focus}" is, for its card, without the learner's name. ` +
-  (i.wantPath ? `steps and next: ${pathRules(i)} ` : 'steps: [] and next: "" (this topic already has a path). ') +
+  (i.wantPath ? `steps and next: the child topics of "${i.focus}". ${pathRules(i)} ` : 'steps: [] and next: "" (no child topics wanted this time). ') +
   "choices: a fork, 2 or 3 directions the learner can pick from after this lesson: " +
   (i.ahead ? `one with kind "next" for their planned next step "${i.ahead}", ` : "") +
   `one with kind "deeper" that goes further into "${i.focus}" itself, and if it fits one with kind "side" for a nearby topic in the same subject. ` +
@@ -280,6 +296,39 @@ export const ADJACENT_SCHEMA = {
   required: ["ghosts"],
 };
 
+/** A test question names the completed topic it checks. */
+export type TestQuestion = Question & { topic: string };
+
+/*
+ * The Test: one call, only after the learner has completed enough under a parent (orchestrator.js decides). It may only
+ * use the listed material, never topics the learner hasn't learned.
+ */
+export function testSystem(i: LearnInput): string {
+  const list = i.material.map((m) => `- ${m.label}${m.line ? `: ${m.line}` : ""}`).join("\n");
+  return (
+    `${SYSTEM_BASE}\n\nRole: test. The learner has finished these topics in "${i.focus}"${i.trail ? ` (${i.trail})` : ""} and chose to test themselves:\n${list}\n` +
+    `Write ${Math.min(LEARN_LIMITS.testQuestions, Math.max(3, i.material.length))} multiple-choice questions that check understanding of these topics only. Never ask about anything not on that list, and spread the questions across the topics. ` +
+    "Each question has q, 3 short options (one clearly right, the others believable), answer = the position of the right option counting from 0, " +
+    "and topic = exactly one name from the list that the question checks. Short, kind and at the learner's level, like a friendly quiz, not an exam.\n\n" +
+    profile(i)
+  );
+}
+
+export const TEST_SCHEMA = {
+  type: "object",
+  properties: {
+    questions: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { q: { type: "string" }, options: { type: "array", items: { type: "string" } }, answer: { type: "integer" }, topic: { type: "string" } },
+        required: ["q", "options", "answer", "topic"],
+      },
+    },
+  },
+  required: ["questions"],
+};
+
 /* ---------- output parsing ---------- */
 
 export function plainReply(v: unknown): string {
@@ -316,7 +365,8 @@ function jsonObject(raw: unknown): Record<string, unknown> | null {
 const sameLabel = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 /** The trailing cloud block -> validated topics + ghosts. Bad or missing JSON gives empty arrays (the reply still shows). */
-export function parseCloudBlock(raw: unknown, learnerName = ""): CloudBlock {
+/** context: what the learner just wrote, used only to deepen a short chain (deepenChain). */
+export function parseCloudBlock(raw: unknown, learnerName = "", context = ""): CloudBlock {
   const obj = jsonObject(raw);
   const out: CloudBlock = { topics: [], ghosts: [] };
   if (!obj) return out;
@@ -329,8 +379,12 @@ export function parseCloudBlock(raw: unknown, learnerName = ""): CloudBlock {
     if (!notName(name)) continue;
     if (out.topics.some((x) => sameLabel(x.name, name))) continue;
     const topic: Topic = { name, parent, signal: (SIGNALS as readonly string[]).includes(sig) ? sig : "explored" };
-    const chain = parseChain((t as Topic).chain, learnerName, name);
-    if (chain.length) topic.chain = chain;
+    // no chain from the model: fill it from the known chains, so "Sets" under "Python" still lands at the right depth
+    const chain = deepenChain(name, parent, fillChain(name, parent, parseChain((t as Topic).chain, learnerName, name)), context);
+    if (chain && chain.length) {
+      topic.chain = chain;
+      if (!parent || chain.some((c) => sameLabel(c, parent))) topic.parent = chain[chain.length - 1];
+    }
     out.topics.push(topic);
     if (out.topics.length >= LEARN_LIMITS.topicsPerTurn) break;
   }
@@ -390,7 +444,7 @@ function strHash(s: string): number {
  * The options are rotated by a hash of the question (same order every time), so the right one is not always first.
  * Up to 2 kept.
  */
-export function parseQuestions(raw: unknown): Question[] {
+export function parseQuestions(raw: unknown, max: number = LEARN_LIMITS.questions): Question[] {
   const out: Question[] = [];
   for (const item of Array.isArray(raw) ? raw : []) {
     if (!item || typeof item !== "object") continue;
@@ -411,9 +465,29 @@ export function parseQuestions(raw: unknown): Question[] {
     const rot = strHash(q) % kept.length;
     const options = kept.slice(rot).concat(kept.slice(0, rot));
     out.push({ q, options, answer: options.findIndex((x) => sameLabel(x, right)) });
-    if (out.length >= LEARN_LIMITS.questions) break;
+    if (out.length >= max) break;
   }
   return out;
+}
+
+/**
+ * Test questions: like check questions, and each must name one of the allowed (completed) topics; any other is dropped,
+ * so a test never covers what the learner hasn't learned. Fewer than 2 usable questions is not a test (null).
+ */
+export function parseTest(raw: unknown, allowed: string[]): TestQuestion[] | null {
+  const list = jsonObject(raw)?.questions;
+  const items = Array.isArray(list) ? list : [];
+  const out: TestQuestion[] = [];
+  for (const item of items) {
+    if (!item || typeof item !== "object") continue;
+    const want = cleanLabel((item as { topic?: unknown }).topic);
+    const topic = allowed.find((a) => sameLabel(a, want));
+    if (!topic) continue;
+    const [q] = parseQuestions([item], 1);
+    if (q && !out.some((x) => sameLabel(x.q, q.q))) out.push({ ...q, topic });
+    if (out.length >= LEARN_LIMITS.testQuestions) break;
+  }
+  return out.length >= 2 ? out : null;
 }
 
 /** The one-line card description: plain, short, never the learner's name. */
@@ -462,8 +536,8 @@ export function parseCard(raw: unknown): Card | null {
   const parent = cleanLabel(obj.parent);
   if (title.length < 2 || body.length < 20 || !topic) return null;
   const card: Card = { title, body, topic, parent };
-  const chain = parseChain(obj.chain, "", topic);
-  if (chain.length) card.chain = chain;
+  const chain = fillChain(topic, parent, parseChain(obj.chain, "", topic));
+  if (chain && chain.length) card.chain = chain;
   const path = Array.isArray(obj.path) ? parsePath({ steps: obj.path, next: obj.next }, "", topic) : null;
   if (path) {
     card.path = path.steps;
