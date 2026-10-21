@@ -10,9 +10,9 @@
 (function (root) {
   "use strict";
 
-  var VERSION = 2;
+  var VERSION = 3;
   /* nodes: stored cap (localStorage stays small). children / ghosts: per node. There is no depth limit. */
-  var LIMITS = { nodes: 600, subjects: 12, children: 16, ghostsPerNode: 6, pathSteps: 6, cards: 60, labelChars: 32 };
+  var LIMITS = { nodes: 600, subjects: 12, children: 16, ghostsPerNode: 6, pathSteps: 6, cards: 60, labelChars: 32, choices: 3, draws: 3000, whyChars: 80 };
   var MASTERED = 0.6;
   /* Soft spectrum, one hue per subject in order of creation. */
   var HUES = [4, 28, 48, 96, 150, 188, 214, 252, 286, 322, 70, 170];
@@ -132,11 +132,13 @@
     cloud.order = cloud.order.filter(function (x) { return x !== id; });
     all(cloud).forEach(function (n) {
       if (n.path) { n.path.ids = n.path.ids.filter(function (x) { return x !== id; }); if (n.path.next === id) n.path.next = null; }
+      if (n.fork) { var i = n.fork.ids.indexOf(id); if (i >= 0) { n.fork.ids.splice(i, 1); n.fork.why.splice(i, 1); } if (n.fork.picked === id) n.fork.picked = null; if (n.fork.ids.length < 2) delete n.fork; }
     });
     if (cloud.next === id) cloud.next = null;
   }
 
-  function onSomePath(cloud, id) { return all(cloud).some(function (n) { return n.path && n.path.ids.indexOf(id) >= 0; }); }
+  /* On a path or offered as a fork choice: such ghosts are kept when room is needed. */
+  function onSomePath(cloud, id) { return all(cloud).some(function (n) { return (n.path && n.path.ids.indexOf(id) >= 0) || (n.fork && n.fork.ids.indexOf(id) >= 0); }); }
   function hasChildren(cloud, id) { return cloud.order.some(function (x) { var n = cloud.nodes[x]; return n && n.parent === id; }); }
 
   /* ---------- lookup ---------- */
@@ -191,7 +193,7 @@
   function prune(cloud) {
     var guard = 0;
     while (cloud.order.length > LIMITS.nodes && guard++ < 1000) {
-      var leaves = all(cloud).filter(function (n) { return n.parent && !hasChildren(cloud, n.id) && !n.cards.length && n.id !== cloud.next; });
+      var leaves = all(cloud).filter(function (n) { return n.parent && !hasChildren(cloud, n.id) && !n.cards.length && n.id !== cloud.next && !inDeck(cloud, n.id); });
       var ghosts = leaves.filter(function (n) { return n.ghost && !onSomePath(cloud, n.id); });
       if (!ghosts.length) ghosts = leaves.filter(function (n) { return n.ghost; });
       if (ghosts.length) { removeNode(cloud, ghosts[0].id); continue; }
@@ -337,6 +339,7 @@
     var n = node(cloud, id);
     if (!n) return null;
     var open = function (x) { var m = cloud.nodes[x]; return m && m.mastery < MASTERED && x !== id; };
+    if (n.fork && n.fork.picked && open(n.fork.picked)) return n.fork.picked;
     if (!n.end && n.path && n.path.ids.length) {
       if (n.path.next && open(n.path.next)) return n.path.next;
       var first = n.path.ids.filter(open)[0];
@@ -438,6 +441,28 @@
     return n.ghost ? "hsla(" + h + ", 35%, 55%, 0.55)" : "hsl(" + h + ", 46%, " + light + "%)";
   }
 
+  /*
+   * Card colour: every card starts sepia and moves toward its subject's hue as it grows (stage 0 to 4).
+   * The only place card colour is worked out; the deck and any card design read it from here.
+   */
+  var SEPIA = 34;
+  function mixHue(a, b, t) { var d = ((b - a + 540) % 360) - 180; return Math.round((a + d * t + 360) % 360); }
+  function evolveColor(hue, stage) {
+    var st = Math.max(0, Math.min(4, Math.round(Number(stage) || 0))) / 4;
+    var h = mixHue(SEPIA, hue == null ? SEPIA : hue, st);
+    var sat = Math.round(20 + 52 * st), light = Math.round(36 + 6 * st);
+    return {
+      stage: st * 4, hue: h,
+      ink: "hsl(" + h + ", " + sat + "%, " + light + "%)",
+      soft: "hsla(" + h + ", " + sat + "%, " + light + "%, " + (0.2 + 0.25 * st).toFixed(2) + ")",
+      wash: "hsla(" + h + ", " + (sat + 10) + "%, 62%, " + (0.03 + 0.17 * st).toFixed(2) + ")"
+    };
+  }
+  function cardColor(cloud, id) {
+    var g = growthOf(cloud, id), e = deckEntry(cloud, id);
+    return evolveColor(cloud.nodes[id] ? hueOf(cloud, id) : e ? e.hue : SEPIA, g ? g.stage : e ? e.best : 0);
+  }
+
   /* Size of a level in the layout: each level down is 0.6x the one above, so the tree can keep branching. */
   function levelScale(depth) { return Math.pow(0.6, Math.max(0, depth - 1)); }
 
@@ -517,7 +542,7 @@
 
   function create(name, t) {
     t = now_(t);
-    var cloud = { v: VERSION, name: cleanLabel(name) || "Me", seq: 0, rev: 0, nodes: {}, order: [], cards: [], created: t, next: null };
+    var cloud = { v: VERSION, name: cleanLabel(name) || "Me", seq: 0, rev: 0, nodes: {}, order: [], cards: [], created: t, next: null, deck: [], draws: [], sessions: 0 };
     STARTERS.forEach(function (s) { plant(cloud, s, null, 0, false); });
     var math = findSubject(cloud, "Math");
     cloud.next = math ? nextFor(cloud, math.id) : null;
@@ -554,24 +579,140 @@
     return { spent: n.spent || 0, engaged: n.engaged || 0, mastery: n.mastery, opened: n.opened, end: Boolean(n.end), cards: n.cards.length, subject: (subjectOf(cloud, id) || {}).id || null, hue: hueOf(cloud, id) };
   }
 
+  /* ---------- growth, the deck, forks ---------- */
+  /*
+   * Growth score: minutes spent + 2 per engagement (lesson opened, got it, still tricky) + 4 x mastery + cards (up to 3).
+   * Stages 0..4 at these scores. A card joins the deck for good at GROWTH.join, and its stage never goes back down.
+   */
+  var GROWTH = { stages: [0, 3, 8, 16, 30], join: 3, names: ["New", "Warming up", "Growing", "Bright", "Full colour"] };
+  function scoreOf(n) { return n ? (n.spent || 0) / 60 + 2 * (n.engaged || 0) + 4 * (n.mastery || 0) + Math.min((n.cards || []).length, 3) : 0; }
+  function stageFor(score) { var st = 0; for (var i = 1; i < GROWTH.stages.length; i++) if (score >= GROWTH.stages[i]) st = i; return st; }
+  function deckEntry(cloud, id) { var d = cloud.deck || []; for (var i = 0; i < d.length; i++) if (d[i].id === id) return d[i]; return null; }
+  function inDeck(cloud, id) { return Boolean(deckEntry(cloud, id)); }
+  function growthOf(cloud, id) {
+    var n = node(cloud, id), e = deckEntry(cloud, id);
+    if (!n && !e) return null;
+    var score = n ? scoreOf(n) : GROWTH.stages[e.best];
+    var stage = Math.max(stageFor(score), e ? e.best : 0), lo = GROWTH.stages[stage], hi = GROWTH.stages[stage + 1];
+    return { score: Math.round(score * 10) / 10, stage: stage, name: GROWTH.names[stage], progress: hi == null ? 1 : Math.max(0, Math.min(1, (score - lo) / (hi - lo))), inDeck: Boolean(e) };
+  }
+  /* Adds every topic past the threshold to the deck (never removes). Keeps each card's best stage and label up to date. Returns ids that joined now. */
+  function joinDeck(cloud, t) {
+    t = now_(t);
+    cloud.deck = cloud.deck || [];
+    var joined = [];
+    all(cloud).forEach(function (n) {
+      if (!n.parent || n.ghost || inDeck(cloud, n.id) || scoreOf(n) < GROWTH.join) return;
+      cloud.deck.push({ id: n.id, label: n.label, subject: "", hue: SEPIA, at: t, best: 0 });
+      joined.push(n.id);
+    });
+    cloud.deck.forEach(function (e) {
+      var n = cloud.nodes[e.id];
+      if (!n) return;
+      var s = subjectOf(cloud, n.id);
+      e.label = n.label;
+      if (s) { e.subject = s.label; e.hue = s.hue == null ? SEPIA : s.hue; }
+      e.best = Math.max(e.best || 0, stageFor(scoreOf(n)));
+    });
+    return joined;
+  }
+  /* Session draws, for the yearly balance: [day, cardId] pairs, the last 366 days only. */
+  function logDraw(cloud, day, ids) {
+    cloud.draws = (cloud.draws || []).concat((ids || []).map(function (id) { return [day, id]; }))
+      .filter(function (d) { return d[0] > day - 366; }).slice(-LIMITS.draws);
+    cloud.sessions = (cloud.sessions || 0) + 1;
+    return cloud.draws.length;
+  }
+
+  function cleanWhy(v) { return String(v == null ? "" : v).replace(/[<>{}[\]`*_#|\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, LIMITS.whyChars); }
+  /*
+   * A fork after a lesson: 2 or 3 choices. A choice that already exists anywhere is reused; otherwise "deeper" lands
+   * under this topic and "next"/"side" next to it, as ghosts. Fewer than 2 usable choices is not a fork.
+   */
+  function applyChoices(cloud, id, choices, t) {
+    t = now_(t);
+    var n = node(cloud, id), out = { ids: [], why: [], added: [] };
+    if (!n) return out;
+    (Array.isArray(choices) ? choices : []).slice(0, LIMITS.choices).forEach(function (c) {
+      var label = cleanLabel(c && c.name), k = norm(label);
+      if (!label || k === n.key || k === norm(cloud.name)) return;
+      var hit = findTopic(cloud, label, id);
+      if (hit && (hit.id === id || out.ids.indexOf(hit.id) >= 0)) return;
+      if (!hit) {
+        var pid = c.kind === "deeper" || !n.parent ? id : n.parent;
+        if (!makeRoom(cloud, pid, true, out.ids)) return;
+        hit = addNode(cloud, { label: label, parent: pid, ghost: true, born: t });
+        out.added.push(hit.id);
+      }
+      out.ids.push(hit.id);
+      out.why.push(cleanWhy(c.why));
+    });
+    if (out.ids.length < 2) { out.added.forEach(function (x) { removeNode(cloud, x); }); return { ids: [], why: [], added: [] }; }
+    n.fork = { ids: out.ids, why: out.why, picked: null, at: t };
+    cloud.rev += 1;
+    return out;
+  }
+  function pickChoice(cloud, id, choiceId) {
+    var n = node(cloud, id);
+    if (!n || !n.fork || n.fork.ids.indexOf(choiceId) < 0) return false;
+    n.fork.picked = choiceId;
+    cloud.next = choiceId;
+    cloud.rev += 1;
+    return true;
+  }
+  /* A branch has ended when it was marked as an end, or it and every step on its path are mastered. */
+  function isTerminal(cloud, id) {
+    var n = node(cloud, id);
+    if (!n || !n.parent) return false;
+    if (n.end) return n.mastery >= MASTERED || !n.path;
+    if (n.mastery < MASTERED || !n.path || !n.path.ids.length) return false;
+    return n.path.ids.every(function (x) { return !cloud.nodes[x] || cloud.nodes[x].mastery >= MASTERED; });
+  }
+  /* Other branches, offered only once a branch has ended: unfinished nearby branches first, then one from another subject. Local, no call. */
+  function otherBranches(cloud, id, max) {
+    max = max || 3;
+    var n = node(cloud, id), out = [];
+    if (!n) return out;
+    var ok = function (x) { var m = cloud.nodes[x]; return m && m.parent && m.mastery < MASTERED && !m.end && x !== id && !isAncestor(cloud, id, x) && ancestry(cloud, id).indexOf(x) < 0 && out.indexOf(x) < 0; };
+    ancestry(cloud, id).slice(0, -1).reverse().forEach(function (a) {
+      var an = cloud.nodes[a];
+      (an.path ? an.path.ids : []).concat(childrenOf(cloud, a).map(function (c) { return c.id; })).forEach(function (x) { if (out.length < max - 1 && ok(x)) out.push(x); });
+    });
+    var own = (subjectOf(cloud, id) || {}).id;
+    subjects(cloud).filter(function (s) { return s.id !== own; }).sort(function (a, b) { return a.weight - b.weight || cloud.order.indexOf(a.id) - cloud.order.indexOf(b.id); })
+      .some(function (s) {
+        var x = nextFor(cloud, s.id);
+        if (!x || !ok(x)) x = (childrenOf(cloud, s.id).filter(function (c) { return ok(c.id); })[0] || {}).id;
+        if (x && ok(x)) out.push(x);
+        return out.length >= max;
+      });
+    return out.slice(0, max);
+  }
+
   /* ---------- storage ---------- */
   /*
    * Compact form: one array per node
    * [id, label, parent, flags, weight*10, mastery*100, born(s), touched(s), hue, struggle(s), spent(s), engaged]
-   * (flags: 1 ghost, 2 opened, 4 branch ends here). New fields go on the end of the array, so older saves still load, paths as { id: [stepIds, next] }. Node.cards and keys are rebuilt on load.
+   * (flags: 1 ghost, 2 opened, 4 branch ends here). New fields go on the end of the array, so older saves still load.
+   * p: paths { id: [stepIds, next, at] }, f: forks { id: [choiceIds, whys, picked, at] },
+   * k: the deck [[id, label, subject, hue, joined(s), best stage]], g: draw log [[day, id]], ss: session count.
+   * Node.cards and keys are rebuilt on load.
    */
   function serialize(cloud) {
     var s = function (ms) { return ms ? Math.round(ms / 1000) : 0; };
-    var paths = {};
+    var paths = {}, forks = {};
     var n = cloud.order.map(function (id) {
       var x = cloud.nodes[id];
       if (x.path && x.path.ids.length) paths[id] = [x.path.ids, x.path.next || 0, s(x.path.at)];
+      if (x.fork && x.fork.ids.length) forks[id] = [x.fork.ids, x.fork.why, x.fork.picked || 0, s(x.fork.at)];
       return [id, x.label, x.parent || 0, (x.ghost ? 1 : 0) | (x.opened ? 2 : 0) | (x.end ? 4 : 0), Math.round(x.weight * 10), Math.round(x.mastery * 100), s(x.born), s(x.touched), x.parent ? -1 : (x.hue == null ? 30 : x.hue), s(x.lastStruggle), x.spent || 0, x.engaged || 0];
     });
-    return JSON.stringify({ v: VERSION, name: cloud.name, seq: cloud.seq, rev: cloud.rev, created: cloud.created, next: cloud.next || 0, n: n, p: paths, cards: cloud.cards });
+    return JSON.stringify({ v: VERSION, name: cloud.name, seq: cloud.seq, rev: cloud.rev, created: cloud.created, next: cloud.next || 0, n: n, p: paths, f: forks, cards: cloud.cards,
+      k: (cloud.deck || []).map(function (e) { return [e.id, e.label, e.subject, e.hue, s(e.at), e.best || 0]; }), g: cloud.draws || [], ss: cloud.sessions || 0 });
   }
 
-  function finish(c, list, cards, paths) {
+  function finish(c, list, cards, paths, extra) {
+    extra = extra || {};
     var nodes = {}, order = [];
     list.forEach(function (n) { if (n && n.id && typeof n.label === "string" && !nodes[n.id]) { nodes[n.id] = n; order.push(n.id); } });
     /* drop orphans and cycles: every chain must reach a subject */
@@ -602,17 +743,33 @@
       var ids = (Array.isArray(p.ids) ? p.ids : p[0] || []).filter(function (x) { return out.nodes[x] && x !== id; }).slice(0, LIMITS.pathSteps);
       if (ids.length) n.path = { ids: ids, next: ids.indexOf(p.next || p[1]) >= 0 ? (p.next || p[1]) : null, at: Number(p.at || p[2] * 1000) || 0 };
     });
+    Object.keys(extra.forks || {}).forEach(function (id) {
+      var n = out.nodes[id], f = extra.forks[id];
+      if (!n || !Array.isArray(f) || !Array.isArray(f[0])) return;
+      var ids = [], why = [];
+      f[0].forEach(function (x, i) { if (out.nodes[x] && x !== id && ids.indexOf(x) < 0 && ids.length < LIMITS.choices) { ids.push(x); why.push(cleanWhy((f[1] || [])[i])); } });
+      if (ids.length >= 2) n.fork = { ids: ids, why: why, picked: ids.indexOf(f[2]) >= 0 ? f[2] : null, at: (Number(f[3]) || 0) * 1000 };
+    });
+    /* the deck only grows: entries are kept even if their topic is gone (they still show as cards) */
+    out.deck = [];
+    (Array.isArray(extra.deck) ? extra.deck : []).forEach(function (e) {
+      if (!Array.isArray(e) || typeof e[0] !== "string" || out.deck.some(function (d) { return d.id === e[0]; })) return;
+      out.deck.push({ id: e[0], label: cleanLabel(e[1]) || "Card", subject: cleanLabel(e[2]), hue: Number.isFinite(e[3]) ? e[3] : SEPIA, at: (Number(e[4]) || 0) * 1000, best: Math.max(0, Math.min(4, Number(e[5]) || 0)) });
+    });
+    out.draws = (Array.isArray(extra.draws) ? extra.draws : []).filter(function (d) { return Array.isArray(d) && Number.isFinite(d[0]) && typeof d[1] === "string"; }).slice(-LIMITS.draws);
+    out.sessions = Math.max(0, Number(extra.sessions) || 0);
     out.next = out.nodes[c.next] ? c.next : null;
+    joinDeck(out, Number(c.created) || 0); /* older saves: topics already past the threshold join the deck */
     return out;
   }
 
-  /* Validates stored JSON (v2, or v1 which is migrated forward without loss); null when unusable. */
+  /* Validates stored JSON (v3 or v2, or v1 which is migrated forward without loss); null when unusable. */
   function deserialize(str) {
     var c;
     try { c = typeof str === "string" ? JSON.parse(str) : str; } catch { return null; }
     if (!c || typeof c.name !== "string") return null;
     var base = { name: cleanLabel(c.name) || "Me", seq: Number(c.seq) || 0, rev: Number(c.rev) || 0, created: Number(c.created) || 0, next: c.next || null };
-    if (c.v === 2 && Array.isArray(c.n)) {
+    if ((c.v === 2 || c.v === 3) && Array.isArray(c.n)) {
       var ms = function (s) { return (Number(s) || 0) * 1000; };
       var list = c.n.map(function (a) {
         if (!Array.isArray(a) || typeof a[0] !== "string" || typeof a[1] !== "string") return null;
@@ -623,7 +780,7 @@
           end: Boolean(a[3] & 4), spent: Math.max(0, Number(a[10]) || 0), engaged: Math.max(0, Number(a[11]) || 0)
         };
       });
-      return finish(base, list, c.cards, c.p);
+      return finish(base, list, c.cards, c.p, { forks: c.f, deck: c.k, draws: c.g, sessions: c.ss });
     }
     if (c.v === 1 && c.nodes && Array.isArray(c.order)) return migrateV1(c, base);
     return null;
@@ -659,6 +816,8 @@
     VERSION: VERSION, LIMITS: LIMITS, MASTERED: MASTERED, STARTERS: STARTERS, HUES: HUES,
     create: create, applyTopics: applyTopics, addGhosts: addGhosts, applyPath: applyPath, nextFor: nextFor, engage: engage,
     track: track, markEnd: markEnd, activity: activity, hueOf: hueOf,
+    GROWTH: GROWTH, growthOf: growthOf, joinDeck: joinDeck, inDeck: inDeck, deckEntry: deckEntry, logDraw: logDraw,
+    evolveColor: evolveColor, cardColor: cardColor, applyChoices: applyChoices, pickChoice: pickChoice, isTerminal: isTerminal, otherBranches: otherBranches, hash: hash,
     attachCard: attachCard, cardsFor: cardsFor, summarize: summarize, knownUnder: knownUnder, subjectLabels: subjectLabels,
     subjects: subjects, childrenOf: childrenOf, ancestry: ancestry, depthOf: depthOf, subjectOf: subjectOf, trail: trail, index: index,
     findSubject: findSubject, findTopic: findTopic, findAny: findAny, norm: norm, cleanLabel: cleanLabel,

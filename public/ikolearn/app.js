@@ -2,14 +2,16 @@
  * IkoLearn app: chat harness, learning cards, lessons and the learning cloud. Vanilla JS, no build step.
  * Talks only to our own routes under /api/ikolearn (the server holds the Gemini key). Everything about the learner
  * (first name, recent conversation, cloud, cards, lessons) is kept in this browser's localStorage.
- * Calls: chat turn 1, tap note 1 (cached), card 1, related topics 1, map a path 1, lesson 1 (cached per node; maps the
- * path in the same call when the node has none). Reopening a lesson, finishing it and picking the next step cost nothing.
+ * Calls: chat turn 1, tap note 1 (cached), card 1, related topics 1 (only once a branch has ended), map a path 1,
+ * lesson 1 (cached per node; the same call maps the path when the node has none and offers the fork of 2-3 choices).
+ * Reopening a lesson, finishing it, picking a fork choice, the deck, card growth and the session draw cost nothing.
  */
 (function () {
   "use strict";
-  var C = window.IkoCloud, V = window.IkoCloudView, L = window.IkoLesson;
+  var C = window.IkoCloud, V = window.IkoCloudView, L = window.IkoLesson, D = window.IkoDeck;
   var API = "/api/ikolearn";
   var LS = { name: "ikolearn.v1.name", cloud: "ikolearn.v1.cloud", thread: "ikolearn.v1.thread", notes: "ikolearn.v1.notes", lessons: "ikolearn.v1.lessons" };
+  var SESSION = "ikolearn.v1.session"; /* sessionStorage: this visit's draw */
   var HISTORY = 10, TIMEOUT_MS = 60000, MAX_LESSONS = 30;
 
   var $ = function (id) { return document.getElementById(id); };
@@ -22,10 +24,12 @@
     lGot: $("l-got"), lTricky: $("l-tricky"), lStatus: $("l-status"), lPath: $("l-path"), lChat: $("l-chat"), lRedo: $("l-redo"),
     cloud: $("cloud"), cloudCanvas: $("cloud-canvas"), cloudClose: $("cloud-close"), zin: $("zin"), zout: $("zout"), zreset: $("zreset"),
     panel: $("panel"), pKicker: $("p-kicker"), pTitle: $("p-title"), pNote: $("p-note"), pLesson: $("p-lesson"), pCard: $("p-card"), pAdj: $("p-adj"),
-    pChat: $("p-chat"), pPath: $("p-path"), pCards: $("p-cards"), pClose: $("p-close")
+    pChat: $("p-chat"), pPath: $("p-path"), pCards: $("p-cards"), pClose: $("p-close"),
+    draw: $("draw"), deckBtn: $("deck-btn"), deck: $("deck"), dBack: $("d-back"), dLede: $("d-lede"), dGrid: $("d-grid"), dBalance: $("d-balance"),
+    lCard: $("l-card"), lFork: $("l-fork")
   };
 
-  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0 };
+  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null };
   var mini = null, big = null;
 
   /* ---------- storage ---------- */
@@ -37,6 +41,7 @@
     return out;
   }
   function save() {
+    C.joinDeck(state.cloud); /* any topic past the threshold joins the deck for good */
     store(LS.cloud, C.serialize(state.cloud));
     store(LS.thread, JSON.stringify(C.trimThread(state.thread.map(function (m) {
       var c = Object.assign({}, m); delete c.streaming; return c;
@@ -102,6 +107,8 @@
     var b = mk("div"); paragraphs(b, card.body); d.appendChild(b);
     var n = nodeOf(card.node);
     if (n) {
+      var sp = D.cardSpec(state.cloud, n.id);
+      if (sp) d.insertBefore(D.render(document, sp, { small: true, bare: true }), d.firstChild);
       d.classList.add("open");
       d.tabIndex = 0;
       d.setAttribute("role", "button");
@@ -197,7 +204,8 @@
   function refreshAll(flashIds) {
     refreshViews(flashIds);
     renderThread();
-    if (state.lessonNode) renderLessonPath();
+    renderDeckButton();
+    if (state.lessonNode) { renderLessonPath(); renderFork(state.lessonNode); }
     if (state.panelNode && !el.panel.hidden) openPanel(state.panelNode, true, true);
   }
 
@@ -264,10 +272,8 @@
   }
   /* Local, no-API text when the model cannot be reached: honest, and still points somewhere useful. */
   function fallbackText(reason) {
-    var next = nodeOf(state.cloud.next), ghost = null;
-    if (!next) state.cloud.order.some(function (id) { var n = state.cloud.nodes[id]; if (n.ghost) { ghost = n; return true; } return false; });
-    var tip = next ? " While we wait, your next step is " + next.label + ". Tap it on your cloud whenever you like."
-      : ghost ? " While we wait, " + ghost.label + " is waiting on your cloud as a dotted branch. Want to start there next?" : " Your cloud is saved, so nothing is lost.";
+    var next = nodeOf(state.cloud.next);
+    var tip = next ? " While we wait, your next step is " + next.label + ". Tap it on your cloud whenever you like." : " Your cloud is saved, so nothing is lost.";
     return reasonLead(reason) + tip;
   }
 
@@ -348,7 +354,7 @@
   /* ---------- lessons ---------- */
   /* Time spent reading a lesson is kept per node (C.track); later features can read it via C.activity. */
   function stopClock() {
-    if (state.lessonNode && state.lessonAt) { C.track(state.cloud, state.lessonNode, (Date.now() - state.lessonAt) / 1000); save(); }
+    if (state.lessonNode && state.lessonAt) { C.track(state.cloud, state.lessonNode, (Date.now() - state.lessonAt) / 1000); save(); renderDeckButton(); }
     state.lessonAt = 0;
   }
   function startClock() { state.lessonAt = state.lessonNode && !document.hidden ? Date.now() : 0; }
@@ -357,10 +363,12 @@
 
   function showLesson(on) {
     if (!on) stopClock();
+    if (on) el.deck.hidden = true;
     el.lesson.hidden = !on;
     el.thread.hidden = on;
     el.dock.hidden = on;
-    if (!on) { state.lessonNode = null; renderThread(); }
+    el.draw.hidden = on || !state.session;
+    if (!on) { state.lessonNode = null; renderThread(); renderDraw(); }
   }
 
   function renderLessonBody(text, streaming) {
@@ -373,6 +381,82 @@
     el.lPath.textContent = "";
     if (!nodeOf(id)) return;
     el.lPath.appendChild(pathBlock(id, { offer: true }));
+    renderLessonCard(false);
+  }
+  /* The topic's card beside the lesson title: it fills in and colours as the learner spends time here. */
+  function renderLessonCard(grew) {
+    el.lCard.textContent = "";
+    var sp = state.lessonNode && D.cardSpec(state.cloud, state.lessonNode);
+    if (!sp) return;
+    var c = D.render(document, sp, { small: true, bare: true });
+    c.title = sp.stageName + (sp.inDeck ? " · in your deck" : "");
+    if (grew) c.classList.add("grew");
+    el.lCard.appendChild(c);
+  }
+  /* What changed on this topic's card after an action: joined the deck, or grew a stage. */
+  function growthNote(id, before) {
+    var joined = C.joinDeck(state.cloud).indexOf(id) >= 0, after = C.growthOf(state.cloud, id), n = nodeOf(id);
+    if (!after || !n) return "";
+    if (joined) return n.label + " joined your deck. It stays there for good and keeps growing as you come back to it.";
+    if (before && after.stage > before.stage) return "Your " + n.label + " card grew: " + after.name.toLowerCase() + ".";
+    return "";
+  }
+
+  /*
+   * The fork: 2 or 3 directions after a lesson (from the lesson call, kept on the node). Once a branch has ended,
+   * other branches are suggested instead (chosen on the device, no call). Nowhere else suggests other branches.
+   */
+  function renderFork(id) {
+    el.lFork.textContent = "";
+    var n = nodeOf(id);
+    if (!n) return;
+    if (C.isTerminal(state.cloud, id)) {
+      var others = C.otherBranches(state.cloud, id, 3).map(nodeOf).filter(Boolean);
+      var w = mk("div", "others");
+      w.appendChild(mk("p", "l-head", "This branch is done"));
+      w.appendChild(mk("p", null, others.length ? "You've finished " + n.label + ". Here are other branches to try:" : "You've finished " + n.label + ". Ask in chat for something new whenever you like."));
+      if (others.length) {
+        var ul = mk("ul");
+        others.forEach(function (o) {
+          var li = mk("li");
+          li.appendChild(linkBtn(o.label, function () { openLesson(o.id); }));
+          li.appendChild(mk("span", "tag", " · " + trailOf(o.parent)));
+          ul.appendChild(li);
+        });
+        w.appendChild(ul);
+      }
+      el.lFork.appendChild(w);
+      return;
+    }
+    if (!n.fork || n.fork.ids.length < 2) return;
+    var f = mk("div", "fork");
+    f.appendChild(mk("p", "l-head", "Where next? Pick one"));
+    var opts = mk("div", "fork-opts");
+    n.fork.ids.forEach(function (cid, i) {
+      var c = nodeOf(cid); if (!c) return;
+      var b = mk("button", "fork-opt" + (n.fork.picked === cid ? " picked" : ""));
+      b.type = "button";
+      b.appendChild(mk("span", null, c.label + (n.fork.picked === cid ? " · your pick" : "")));
+      if (n.fork.why[i]) b.appendChild(mk("span", "why", n.fork.why[i]));
+      b.addEventListener("click", function () { C.pickChoice(state.cloud, id, cid); save(); refreshViews([cid]); openLesson(cid); });
+      opts.appendChild(b);
+    });
+    f.appendChild(opts);
+    el.lFork.appendChild(f);
+  }
+  /* The planned next step after this topic: the following unfinished step on a path above it. Sent so the fork can offer it. */
+  function aheadOf(id) {
+    var cur = nodeOf(id), guard = 0;
+    while (cur && cur.parent && guard++ < 50) {
+      var p = nodeOf(cur.parent);
+      if (p && p.path) {
+        var i = p.path.ids.indexOf(cur.id);
+        var rest = p.path.ids.slice(i + 1).filter(function (x) { var m = nodeOf(x); return m && x !== id && m.mastery < C.MASTERED; });
+        if (rest.length) return nodeOf(rest[0]).label;
+      }
+      cur = p;
+    }
+    return "";
   }
 
   /* Opens a node as a lesson: from the cache (no call) or streamed once (one call; maps the path too if it has none). */
@@ -390,6 +474,7 @@
     el.lTitle.textContent = n.label;
     el.lStatus.textContent = "";
     el.lDone.hidden = true;
+    el.lFork.textContent = "";
     renderLessonPath();
     var cached = !fresh && state.lessons[id];
     if (cached) {
@@ -399,15 +484,18 @@
     }
     if (state.busy) { paragraphs(el.lBody, "One moment, I'm still finishing something else. Try again in a few seconds."); return; }
     lock(true);
-    var text = "", wantPath = !n.path;
+    var text = "", wantPath = !n.path && !n.end;
     el.lBody.textContent = "";
     renderLessonBody("", true);
-    stream("/lesson", Object.assign(basePayload(id), { wantPath: wantPath }), {
+    stream("/lesson", Object.assign(basePayload(id), { wantPath: wantPath, ahead: aheadOf(id) }), {
       delta: function (t) { text += t; if (state.lessonNode === id) renderLessonBody(text, true); },
+      /* the hidden block: path steps (only when asked), the fork, and whether this branch ends here */
       path: function (ev) {
-        if (ev.end) { C.markEnd(state.cloud, id); return; }
-        var r = C.applyPath(state.cloud, id, ev.steps, ev.next);
-        refreshViews(r.added.concat(r.next ? [r.next] : []));
+        var flash = [];
+        if (ev.end) C.markEnd(state.cloud, id);
+        if (wantPath && ev.steps && ev.steps.length) { var r = C.applyPath(state.cloud, id, ev.steps, ev.next); flash = flash.concat(r.added, r.next ? [r.next] : []); }
+        if (ev.choices && ev.choices.length) flash = flash.concat(C.applyChoices(state.cloud, id, ev.choices).added);
+        refreshViews(flash);
         if (state.lessonNode === id) renderLessonPath();
       }
     }).then(function (r) {
@@ -430,13 +518,17 @@
   /* Reading a lesson counts a little toward mastery; the learner says how it went with the two buttons. */
   function lessonReady(id, wasNew) {
     var n = nodeOf(id);
-    var was = n.ghost;
+    var was = n.ghost, before = C.growthOf(state.cloud, id);
     C.engage(state.cloud, id, "open");
     el.lDone.hidden = false;
-    if (n.mastery >= C.MASTERED) el.lStatus.textContent = "You've marked this one as done. " + nextLine(id);
+    var note = growthNote(id, before);
+    if (n.mastery >= C.MASTERED) el.lStatus.textContent = "You've marked this one as done. " + (C.isTerminal(state.cloud, id) || n.fork ? "" : nextLine(id));
+    if (note) el.lStatus.textContent = (el.lStatus.textContent ? el.lStatus.textContent + " " : "") + note;
     save();
     refreshViews(was || wasNew ? [id] : []);
     renderLessonPath();
+    renderLessonCard(Boolean(note));
+    renderFork(id);
   }
   function nextLine(id) {
     var nx = nodeOf(C.nextFor(state.cloud, id));
@@ -445,22 +537,29 @@
   function finishLesson(kind) {
     var id = state.lessonNode, n = nodeOf(id);
     if (!n) return;
+    var before = C.growthOf(state.cloud, id);
     var r = C.engage(state.cloud, id, kind);
+    var note = growthNote(id, before);
     save();
     refreshViews([id].concat(r.next ? [r.next] : []));
     el.lStatus.textContent = "";
     var nx = nodeOf(r.next);
     if (kind === "got") {
-      el.lStatus.appendChild(document.createTextNode("Nice work. " + n.label + " is growing stronger on your cloud. "));
-      if (nx) { el.lStatus.appendChild(document.createTextNode("Next up: ")); el.lStatus.appendChild(linkBtn(nx.label, function () { openLesson(nx.id); })); }
+      el.lStatus.appendChild(document.createTextNode("Nice work. " + (note || n.label + " is growing stronger on your cloud.") + " "));
+      if (C.isTerminal(state.cloud, id)) { /* other branches show below */ }
+      else if (n.fork && n.fork.ids.length >= 2) el.lStatus.appendChild(document.createTextNode("Pick where to go next below."));
+      else if (nx) { el.lStatus.appendChild(document.createTextNode("Next up: ")); el.lStatus.appendChild(linkBtn(nx.label, function () { openLesson(nx.id); })); }
       else if (!n.path) el.lStatus.appendChild(linkBtn("Map what comes next in " + n.label, function () { mapPath(id); }));
       else el.lStatus.appendChild(document.createTextNode("You've covered this path."));
     } else {
+      if (note) el.lStatus.appendChild(document.createTextNode(note + " "));
       el.lStatus.appendChild(document.createTextNode("That's okay, it takes a few tries. Look at the worked example again, or "));
       el.lStatus.appendChild(linkBtn("ask about it in chat", function () { askInChat(id); }));
       el.lStatus.appendChild(document.createTextNode("."));
     }
     renderLessonPath();
+    renderLessonCard(Boolean(note));
+    renderFork(id);
   }
   function askInChat(id) {
     var n = nodeOf(id);
@@ -512,7 +611,8 @@
       el.pKicker.appendChild(linkBtn(nodeOf(aid).label, function () { openPanel(aid, false, false, true); }, "link up"));
     });
     el.pTitle.textContent = isRoot ? state.cloud.name : n.label;
-    el.pLesson.hidden = isRoot; el.pCard.hidden = isRoot; el.pAdj.hidden = isRoot;
+    var ended = !isRoot && C.isTerminal(state.cloud, id);
+    el.pLesson.hidden = isRoot; el.pCard.hidden = isRoot; el.pAdj.hidden = !ended; /* new branches only once this one has ended */
     el.pLesson.textContent = !isRoot && state.lessons[id] ? "Open lesson" : "Start a lesson";
     el.pPath.textContent = "";
     if (isRoot) {
@@ -525,6 +625,17 @@
       }
     } else {
       el.pPath.appendChild(pathBlock(id, { offer: true, onStep: function (sid) { openPanel(sid, false, false, true); } }));
+      if (ended) {
+        var others = C.otherBranches(state.cloud, id, 3).map(nodeOf).filter(Boolean);
+        if (others.length) {
+          var ob = mk("div", "path");
+          ob.appendChild(mk("p", "l-head", "Other branches"));
+          var ul = mk("ul");
+          others.forEach(function (o) { var li = mk("li"); li.appendChild(linkBtn(o.label, function () { openPanel(o.id, false, false, true); })); ul.appendChild(li); });
+          ob.appendChild(ul);
+          el.pPath.appendChild(ob);
+        }
+      }
     }
     el.pCards.textContent = "";
     if (!isRoot) C.cardsFor(state.cloud, id).slice().reverse().forEach(function (c) { el.pCards.appendChild(cardNode(c, new Date(c.at).toLocaleDateString())); });
@@ -562,8 +673,7 @@
     el.pNote.className = "note streaming"; paragraphs(el.pNote, "");
     var body = Object.assign(basePayload(id === "root" ? null : id), { mode: "notice", messages: history() });
     stream("/chat", body, {
-      delta: function (t) { text += t; if (state.panelNode === id) paragraphs(el.pNote, text); },
-      cloud: function (ev) { grow({ topics: [], ghosts: ev.ghosts || [] }, id === "root" ? null : id); }
+      delta: function (t) { text += t; if (state.panelNode === id) paragraphs(el.pNote, text); }
     }).then(function (r) {
       el.pNote.className = "note";
       if (!r.ok && !text) text = fallbackText(r.reason);
@@ -615,7 +725,68 @@
     if (e.key !== "Escape") return;
     if (!el.cloud.hidden) closeCloud();
     else if (state.lessonNode) showLesson(false);
+    else if (!el.deck.hidden) showDeck(false);
   });
+
+  /* ---------- the deck and today's draw ---------- */
+  function deckIds() {
+    var order = {};
+    C.subjects(state.cloud).forEach(function (s, i) { order[s.label] = i; });
+    return (state.cloud.deck || []).slice().sort(function (a, b) {
+      var sa = order[a.subject] == null ? 99 : order[a.subject], sb = order[b.subject] == null ? 99 : order[b.subject];
+      return sa - sb || a.at - b.at;
+    }).map(function (e) { return e.id; });
+  }
+  function openCard(id) { if (nodeOf(id)) openLesson(id); }
+  function renderDeckButton() {
+    var n = (state.cloud.deck || []).length;
+    el.deckBtn.hidden = !n;
+    el.deckBtn.textContent = "Your deck · " + n;
+  }
+  function showDeck(on) {
+    if (on && state.lessonNode) showLesson(false);
+    el.deck.hidden = !on;
+    el.thread.hidden = on;
+    el.dock.hidden = on;
+    el.draw.hidden = on || !state.session;
+    if (on) { renderDeck(); window.scrollTo(0, 0); } else scrollDown();
+  }
+  function renderDeck() {
+    var ids = deckIds();
+    el.dLede.textContent = ids.length === 1 ? "1 card. Cards stay in your deck for good, and grow brighter the more time you spend with them."
+      : ids.length + " cards. Cards stay in your deck for good, and grow brighter the more time you spend with them.";
+    el.dGrid.textContent = "";
+    ids.forEach(function (id) { var sp = D.cardSpec(state.cloud, id); if (sp) el.dGrid.appendChild(D.render(document, sp, { onOpen: openCard })); });
+    var rows = D.balance(state.cloud, D.dayOf(Date.now())).filter(function (r) { return r.draws; });
+    el.dBalance.textContent = rows.length ? "Drawn this year: " + rows.map(function (r) { return r.subject + " " + r.draws; }).join(" · ") : "";
+  }
+  /* Once per visit (per day): a weighted, shuffled draw from the deck, decided on this device. */
+  function startSession() {
+    var day = D.dayOf(Date.now()), saved = null;
+    try { saved = JSON.parse(sessionStorage.getItem(SESSION) || "null"); } catch { saved = null; }
+    if (saved && saved.day === day && Array.isArray(saved.ids)) state.session = saved;
+    else if ((state.cloud.deck || []).length) {
+      var ids = D.drawSession(state.cloud, { day: day });
+      C.logDraw(state.cloud, day, ids);
+      save();
+      state.session = { day: day, ids: ids };
+      try { sessionStorage.setItem(SESSION, JSON.stringify(state.session)); } catch { /* private mode: draw again next load */ }
+    }
+    renderDraw();
+  }
+  function renderDraw() {
+    var ids = (state.session && state.session.ids || []).filter(function (id) { return C.deckEntry(state.cloud, id); });
+    el.draw.textContent = "";
+    el.draw.hidden = !ids.length || !el.lesson.hidden || !el.deck.hidden;
+    if (!ids.length) return;
+    el.draw.appendChild(mk("p", "kicker", "Today's draw"));
+    el.draw.appendChild(mk("p", "d-head", ids.length === 1 ? "Here's a card from your deck, " + state.name + ". Tap it to start." : "Here are today's cards from your deck, " + state.name + ". Pick one to start."));
+    var row = mk("div", "draw-row");
+    ids.forEach(function (id) { var sp = D.cardSpec(state.cloud, id); if (sp) row.appendChild(D.render(document, sp, { onOpen: openCard })); });
+    el.draw.appendChild(row);
+  }
+  el.deckBtn.addEventListener("click", function () { showDeck(true); });
+  el.dBack.addEventListener("click", function () { showDeck(false); });
 
   /* ---------- composer ---------- */
   function autosize() { el.input.style.height = "auto"; el.input.style.height = Math.min(el.input.scrollHeight, 180) + "px"; }
@@ -630,6 +801,7 @@
   el.reset.addEventListener("click", function () {
     if (!window.confirm("Start over? This clears your name, chat, cloud and lessons from this device.")) return;
     Object.keys(LS).forEach(function (k) { try { localStorage.removeItem(LS[k]); } catch { /* ignore */ } });
+    try { sessionStorage.removeItem(SESSION); } catch { /* ignore */ }
     location.reload();
   });
 
@@ -640,13 +812,15 @@
     mini = V.create(el.thumbCanvas, { mini: true, onOpen: openCloud });
     mini.setCloud(state.cloud);
     renderThread();
+    renderDeckButton();
+    startSession();
     setTimeout(function () { el.input.focus(); }, 0);
   }
 
   function greet() {
     push({
       role: "model", local: true,
-      text: "Hi " + state.name + ", I'm IkoLearn. Around your name is your learning cloud. As we talk, it grows with the topics you explore, and dotted branches show what you could learn next. Tap any point to open it as a short lesson. What would you like to learn about today?",
+      text: "Hi " + state.name + ", I'm IkoLearn. Around your name is your learning cloud. As we talk, it grows with the topics you explore. Tap any point to open it as a short lesson. Topics you spend time with become cards in your deck, and they keep growing. What would you like to learn about today?",
       chips: ["Help me with fractions", "How do volcanoes work?", "Give me a story idea"]
     });
     save();
@@ -671,7 +845,7 @@
     try { state.thread = C.trimThread(JSON.parse(load(LS.thread) || "[]")); } catch { state.thread = []; }
     try { state.notes = JSON.parse(load(LS.notes) || "{}") || {}; } catch { state.notes = {}; }
     try { state.lessons = JSON.parse(load(LS.lessons) || "{}") || {}; } catch { state.lessons = {}; }
-    save(); /* writes a migrated (v1 -> v2) cloud back in the compact format */
+    save(); /* writes a migrated (v1/v2 -> v3) cloud back in the compact format, with the deck backfilled */
     startChat();
     if (!state.thread.length) greet();
   })();

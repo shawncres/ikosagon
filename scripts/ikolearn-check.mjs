@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 import {
   LEARN_LIMITS, CLOUD_OPEN, CLOUD_CLOSE, cleanName, cleanLabel, cleanMessages, parseLearnInput, SYSTEM_BASE, companionSystem, noticeSystem,
   buildContents, cardSystem, adjacentSystem, plainReply, parseCloudBlock, parseCard, parseAdjacent, createBlockSplitter,
-  PATH_OPEN, PATH_CLOSE, lessonSystem, lessonContents, pathSystem, PATH_SCHEMA, CARD_SCHEMA, parsePath,
+  PATH_OPEN, PATH_CLOSE, lessonSystem, lessonContents, pathSystem, PATH_SCHEMA, CARD_SCHEMA, parsePath, parseChoices, parseLessonBlock,
 } from "../lib/ikolearn/prompts.ts";
 import { DEFAULT_MODEL, FALLBACK_MODEL, MODEL_LIMITS, chatBody, jsonBody, readSse, streamText, generateJson } from "../lib/ikolearn/gemini.ts";
 import { LEARN_GUARDS, createLearnState, prepare, chatEvents, eventStream, cardFor, adjacentFor, lessonEvents, pathFor } from "../lib/ikolearn/service.ts";
@@ -14,6 +14,8 @@ import { LEARN_GUARDS, createLearnState, prepare, chatEvents, eventStream, cardF
 const require = createRequire(import.meta.url);
 const C = require("../public/ikolearn/cloud-model.js");
 const L = require("../public/ikolearn/lesson.js");
+const D = require("../public/ikolearn/deck.js");
+const DAYMS = 86400000;
 
 let pass = 0;
 const fails = [];
@@ -162,7 +164,7 @@ const T0 = Date.UTC(2026, 9, 21, 16);
   // v1 -> v2 migration without loss
   const v1raw = fs.readFileSync("scripts/fixtures/ikolearn-cloud-v1.json", "utf8"), v1 = JSON.parse(v1raw);
   const mig = C.deserialize(v1raw);
-  ok(mig && mig.v === 2, "v1 cloud migrates to v2");
+  ok(mig && mig.v === 3, "v1 cloud migrates forward (to v3)");
   ok(v1.order.every((id) => mig.nodes[id] && mig.nodes[id].label === v1.nodes[id].label && mig.nodes[id].parent === (v1.nodes[id].parent || null) && mig.nodes[id].ghost === v1.nodes[id].ghost), "migration keeps every v1 node, id, parent and ghost flag");
   ok(v1.order.every((id) => Math.abs(mig.nodes[id].weight - v1.nodes[id].weight) < 1e-9 && mig.nodes[id].mastery === v1.nodes[id].mastery), "migration keeps weights and mastery");
   ok(mig.cards.length === 1 && mig.nodes[mig.cards[0].node].label === "Fractions", "migration keeps cards on their node");
@@ -353,7 +355,22 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const ls = lessonSystem(LI), lsNo = lessonSystem({ ...LI, wantPath: false }), ps = pathSystem(LI);
   ok(ls.includes("Role: lesson") && /INTRO:/.test(ls) && /STEP:/.test(ls) && /EXAMPLE:/.test(ls) && /CHECK:/.test(ls) && /ANSWER:/.test(ls) && /NEXT:/.test(ls), "lesson prompt: intro, steps, example, check, answer, next");
   ok(ls.includes("Math > Addition > Number Bonds") && /parent reading along/.test(ls), "lesson prompt: knows where the topic sits, readable by a parent");
-  ok(ls.includes(PATH_OPEN) && ls.includes(PATH_CLOSE) && !lsNo.includes(PATH_OPEN), "lesson prompt asks for a path block only with wantPath");
+  ok(ls.includes(PATH_OPEN) && ls.includes(PATH_CLOSE) && lsNo.includes(PATH_OPEN), "every lesson ends with the hidden block (fork choices, no extra call)");
+  ok(/easiest and most foundational first/.test(ls) && !/easiest and most foundational first/.test(lsNo) && /steps: \[\]/.test(lsNo), "lesson block asks for path steps only with wantPath");
+  ok(/kind "deeper"/.test(ls) && /2 or 3 directions/.test(ls) && !/kind "next" for their planned/.test(ls), "fork rules: 2 or 3 choices, no planned step when none is known");
+  const la = lessonSystem({ ...LI, ahead: "Making 20" });
+  ok(la.includes('kind "next" for their planned next step "Making 20"'), "fork rules: offers the planned next step when known");
+  ok(/leave this empty, unless the learner asked/.test(companionSystem(IN)) && /New branches are offered when a branch ends/.test(companionSystem(IN)), "chat no longer suggests new branches on every turn");
+  ok(/Do not list other topics to try/.test(noticeSystem({ ...IN, mode: "notice" })) && !/2 to 3 short suggestions/.test(noticeSystem({ ...IN, mode: "notice" })), "notes on the cloud no longer list other topics");
+  ok(parseLearnInput({ mode: "notice", name: "Sam", focus: "x", ahead: "  <b>Making 20</b> ", messages: [] }).ahead === "b Making 20 /b", "input: ahead is cleaned");
+  const ch = parseChoices([{ name: "Doubles", kind: "DEEPER", why: "A **quick** trick to add fast without counting every single one of the things in the whole group, honestly" }, { name: "doubles" }, { name: "Sam" }, { name: "Number Bonds" }, { name: "Making 20", kind: "weird" }, { name: "Tens", kind: "side" }, { name: "Extra" }], "Sam", "Number Bonds");
+  eq(ch.map((c) => c.name + ":" + c.kind), ["Doubles:deeper", "Making 20:deeper", "Tens:side"], "parseChoices: dedupe, no name/focus, kind fallback, 3 max");
+  ok(ch[0].why.length <= LEARN_LIMITS.whyChars && !ch[0].why.includes("*"), "parseChoices: reason short and plain");
+  eq(parseChoices([{ name: "Only One" }]), [], "parseChoices: one choice is not a fork");
+  eq(parseLessonBlock('{"steps":["A","B"],"next":"B","choices":[]}', "", "X", false), null, "parseLessonBlock: steps ignored without wantPath; nothing else -> null");
+  eq(parseLessonBlock('{"steps":["A","B"],"next":"B","choices":[{"name":"C"},{"name":"D","kind":"side"}]}', "", "X", true), { steps: ["A", "B"], next: "B", choices: [{ name: "C", kind: "deeper", why: "" }, { name: "D", kind: "side", why: "" }] }, "parseLessonBlock: steps + choices");
+  eq(parseLessonBlock('{"steps":[],"choices":[],"end":true}', "", "X", false), { steps: [], next: "", choices: [], end: true }, "parseLessonBlock: end alone is kept");
+  ok(parseLessonBlock("junk") === null, "parseLessonBlock: junk -> null");
   ok(ps.includes("Role: path") && ps.includes("Pairs To 10") && /easiest and most foundational first/.test(ps) && /"end": true/.test(ps), "path prompt: ordered subtopics, reuses known, can end a branch");
   ok(!/montessori|waldorf|bloom|common core|khan|duolingo|reggio|curriculum framework|ib programme/i.test(ls + ps), "lesson/path prompts never name external frameworks");
   eq(lessonContents(LI)[0].parts[0].text, 'Please teach me "Number Bonds".', "lesson contents: one user turn");
@@ -374,7 +391,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   let ev = await collect(lessonEvents(LI, ENV, f));
   const txt = ev.filter((e) => e.t === "delta").map((e) => e.text).join("");
   ok(txt.includes("INTRO:") && txt.includes("NEXT: Try 20.") && !txt.includes("<<<") && !txt.includes("Making 20"), "lessonEvents: lesson text streams, path block held back");
-  eq(ev.find((e) => e.t === "path"), { t: "path", steps: ["Pairs To 10", "Making 20"], next: "Pairs To 10" }, "lessonEvents: path event");
+  eq(ev.find((e) => e.t === "path"), { t: "path", steps: ["Pairs To 10", "Making 20"], next: "Pairs To 10", choices: [] }, "lessonEvents: path event");
   ok(ev.at(-1).t === "done" && f.calls.length === 1, "lessonEvents: one call");
   const lb = JSON.parse(f.calls[0].init.body);
   ok(lb.generationConfig.maxOutputTokens === MODEL_LIMITS.lessonMaxTokens && lb.systemInstruction.parts[0].text.includes("Role: lesson"), "lesson request: own token limit + lesson role");
@@ -384,7 +401,12 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(!ev.some((e) => e.t === "path") && !ev.filter((e) => e.t === "delta").map((e) => e.text).join("").includes("<<<"), "lessonEvents: no path event without wantPath (block still hidden)");
   f = fakeFetch([() => res(200, sse(["INTRO: Hi.\nSTEP: One.\n", `${PATH_OPEN}{"steps":[],"end":true}${PATH_CLOSE}`]))]);
   ev = await collect(lessonEvents(LI, ENV, f));
-  eq(ev.find((e) => e.t === "path"), { t: "path", steps: [], next: "", end: true }, "lessonEvents: branch end passes through");
+  eq(ev.find((e) => e.t === "path"), { t: "path", steps: [], next: "", choices: [], end: true }, "lessonEvents: branch end passes through");
+  f = fakeFetch([() => res(200, sse(["INTRO: Hi.\nSTEP: One.\n", `${PATH_OPEN}{"steps":["Ignored"],"next":"","choices":[{"name":"Making 20","kind":"next","why":"Your next step"},{"name":"Doubles","kind":"deeper","why":"A quick trick"}]}${PATH_CLOSE}`]))]);
+  ev = await collect(lessonEvents({ ...LI, wantPath: false, ahead: "Making 20" }, ENV, f));
+  const fe = ev.find((e) => e.t === "path");
+  ok(fe && fe.steps.length === 0 && fe.choices.length === 2 && fe.choices[0].kind === "next" && f.calls.length === 1, "lessonEvents: fork choices arrive in the same call (no path steps without wantPath)");
+  ok(JSON.parse(f.calls[0].init.body).systemInstruction.parts[0].text.includes('"Making 20"'), "lesson request carries the planned next step");
   f = fakeFetch([() => res(200, sse(["INTRO: Hi.\nSTEP: One.\n", `${PATH_OPEN}nonsense${PATH_CLOSE}`]))]);
   ev = await collect(lessonEvents(LI, ENV, f));
   ok(!ev.some((e) => e.t === "path") && ev.at(-1).t === "done", "lessonEvents: bad path block is ignored");
@@ -437,6 +459,191 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
 {
   const view = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8");
   ok(/DRAW_CAP\s*=\s*\d+/.test(view) && /levelScale/.test(view) && /focusNode/.test(view), "view: draw cap, level scale, focus a branch");
+}
+
+/* ================= growth, deck, forks (model) ================= */
+{
+  const c = C.create("Maya", T0);
+  const math = C.findSubject(c, "Math"), cnt = C.findTopic(c, "Counting"), sci = C.findSubject(c, "Science");
+  eq(C.GROWTH.stages, [0, 3, 8, 16, 30], "growth stages");
+  let g = C.growthOf(c, cnt.id);
+  ok(g.stage === 0 && g.name === "New" && !g.inDeck && c.deck.length === 0, "a fresh topic is a new, sepia card outside the deck");
+  C.engage(c, cnt.id, "open", T0 + 1);
+  ok(C.joinDeck(c, T0 + 2).length === 0, "opening a lesson once is not enough to join");
+  C.track(c, cnt.id, 75, T0 + 3);
+  eq(C.joinDeck(c, T0 + 4), [cnt.id], "time spent pushes it past the threshold: joins the deck");
+  ok(C.inDeck(c, cnt.id) && C.growthOf(c, cnt.id).stage === 1 && C.deckEntry(c, cnt.id).subject === "Math", "deck entry keeps label, subject and stage");
+  eq(C.joinDeck(c, T0 + 5), [], "joining is once only");
+  C.engage(c, cnt.id, "got", T0 + 6); C.track(c, cnt.id, 600, T0 + 7); C.joinDeck(c, T0 + 8);
+  const st = C.growthOf(c, cnt.id).stage;
+  ok(st >= 3, "more time and mastery: the card grows stages", String(st));
+  for (let i = 0; i < 6; i++) C.engage(c, cnt.id, "tricky", T0 + 9 + i);
+  cnt.mastery = 0; C.joinDeck(c, T0 + 20);
+  ok(C.growthOf(c, cnt.id).stage >= st - 0 && C.deckEntry(c, cnt.id).best >= st, "a card's stage never goes back down");
+  math.engaged = 40; math.spent = 9999;
+  ok(!C.joinDeck(c).includes(math.id) && !C.inDeck(c, math.id), "subjects are not cards");
+  const gh = C.findTopic(c, "Skip Counting"); gh.spent = 9999;
+  ok(gh.ghost && !C.joinDeck(c).includes(gh.id), "ghosts never join until explored");
+  gh.spent = 0;
+
+  // colour: sepia first, the subject's hue at full colour, all from one place
+  const s0 = C.evolveColor(sci.hue, 0), s4 = C.evolveColor(sci.hue, 4), m0 = C.evolveColor(math.hue, 0);
+  ok(s0.hue === 34 && m0.hue === 34 && s0.ink === m0.ink, "stage 0 is the same sepia for every subject");
+  ok(s4.hue === sci.hue && s4.ink !== s0.ink, "stage 4 reaches the subject's own hue");
+  const sats = [0, 1, 2, 3, 4].map((x) => +/hsl\(\d+, (\d+)%/.exec(C.evolveColor(sci.hue, x).ink)[1]);
+  ok(sats.every((v, i) => !i || v > sats[i - 1]), "colour deepens at every stage", sats.join(","));
+  eq(C.cardColor(c, cnt.id), C.evolveColor(C.hueOf(c, cnt.id), C.growthOf(c, cnt.id).stage), "cardColor = evolveColor(subject hue, stage)");
+
+  // forks
+  const add = C.findTopic(c, "Addition"), aw10 = C.findTopic(c, "Adding Within 10");
+  let f = C.applyChoices(c, add.id, [{ name: "Adding Within 10", kind: "next", why: "Start small" }, { name: "Doubles", kind: "deeper", why: "A <b>quick</b> trick" }, { name: "Number Lines", kind: "side", why: "See it on a line" }, { name: "Extra", kind: "side" }], T0 + 30);
+  ok(f.ids.length === 3 && f.ids[0] === aw10.id, "fork: existing topic reused, 3 choices max");
+  ok(c.nodes[f.ids[1]].parent === add.id && c.nodes[f.ids[1]].ghost && c.nodes[f.ids[2]].parent === add.parent, "fork: deeper goes under the topic, side next to it");
+  eq(add.fork.why, ["Start small", "A b quick /b trick", "See it on a line"], "fork reasons cleaned");
+  const before = c.order.length;
+  f = C.applyChoices(c, cnt.id, [{ name: "Counting" }, { name: "Maya" }, { name: "Tens", kind: "deeper" }], T0 + 31);
+  ok(f.ids.length === 0 && c.order.length === before && !cnt.fork, "fewer than 2 usable choices is not a fork (nothing left behind)");
+  ok(C.pickChoice(c, add.id, f.ids[0]) === false && C.pickChoice(c, add.id, add.fork.ids[1]) && c.next === add.fork.ids[1] && C.nextFor(c, add.id) === add.fork.ids[1], "pickChoice: the pick becomes next");
+  for (let i = 0; i < 10; i++) C.addGhosts(c, [{ name: "Filler " + i, parent: "Addition" }], T0 + 40 + i);
+  ok(add.fork.ids.every((x) => c.nodes[x]), "fork choices are kept when room is needed");
+  const rt = C.deserialize(C.serialize(c));
+  eq({ ...rt.nodes[add.id].fork, at: 0 }, { ...add.fork, at: 0 }, "fork survives a round trip");
+
+  // branch end -> other branches (local)
+  const c20 = C.findTopic(c, "Counting to 20");
+  ok(!C.isTerminal(c, c20.id), "not ended yet");
+  C.markEnd(c, c20.id); C.engage(c, c20.id, "got", T0 + 50);
+  ok(C.isTerminal(c, c20.id), "ended: marked as an end and done");
+  const ob = C.otherBranches(c, c20.id, 3);
+  ok(ob.length === 3 && ob.every((x) => c.nodes[x].mastery < C.MASTERED && x !== c20.id && !C.ancestry(c, c20.id).includes(x)), "other branches: unfinished, not this branch or above it");
+  ok(ob.some((x) => C.subjectOf(c, x).id !== math.id) && ob.some((x) => C.subjectOf(c, x).id === math.id), "other branches: nearby first, plus one from another subject");
+  const fr = C.findTopic(c, "Fractions");
+  C.applyPath(c, fr.id, ["Halves", "Quarters"], "Halves", T0 + 60);
+  fr.path.ids.forEach((x) => C.engage(c, x, "got", T0 + 61));
+  ok(!C.isTerminal(c, fr.id), "path done but the topic itself not yet: not ended");
+  C.engage(c, fr.id, "got", T0 + 62);
+  ok(C.isTerminal(c, fr.id), "a topic and its whole path mastered: the branch has ended");
+  ok(!C.isTerminal(c, math.id), "subjects never end");
+
+  // draw log
+  C.logDraw(c, 20000, ["a", "b"]); C.logDraw(c, 20100, ["c"]); C.logDraw(c, 20400, ["d"]);
+  eq(c.draws, [[20100, "c"], [20400, "d"]], "draw log keeps the last 366 days");
+  ok(c.sessions === 3, "sessions are counted");
+
+  // the deck only grows: an entry outlives its topic
+  const raw = JSON.parse(C.serialize(c));
+  raw.n = raw.n.filter((a) => a[0] !== cnt.id && a[2] !== cnt.id);
+  const lost = C.deserialize(raw);
+  ok(!lost.nodes[cnt.id] && C.inDeck(lost, cnt.id) && C.deckEntry(lost, cnt.id).label === "Counting" && C.growthOf(lost, cnt.id).stage >= 3, "a deck card stays even if its topic is gone");
+  // prune never drops a deck card
+  const big = C.create("Ann", T0);
+  const keep = C.findTopic(big, "Shapes");
+  C.engage(big, keep.id, "open"); C.engage(big, keep.id, "got"); C.joinDeck(big);
+  for (let i = 0; i < 900; i++) C.applyTopics(big, [{ name: "Thing " + i, parent: "Art & Music" }], T0 + i);
+  ok(big.nodes[keep.id] && C.inDeck(big, keep.id), "pruning never removes a deck card's topic");
+  ok(C.serialize(c).length < 8000, "deck, forks and log stay compact", String(C.serialize(c).length));
+
+  // migration: v2 (PR #56) and v1 saves move to v3; topics past the threshold backfill the deck
+  const v2raw = fs.readFileSync("scripts/fixtures/ikolearn-cloud-v2.json", "utf8"), v2 = JSON.parse(v2raw);
+  const m2 = C.deserialize(v2raw);
+  ok(m2 && v2.v === 2 && m2.v === 3, "v2 cloud migrates to v3");
+  ok(v2.n.every((a) => m2.nodes[a[0]] && m2.nodes[a[0]].label === a[1] && (m2.nodes[a[0]].spent || 0) === (a[10] || 0)), "migration keeps every v2 node with its time spent");
+  const mc = C.findTopic(m2, "Counting"), mnb = C.findTopic(m2, "Number Bonds");
+  ok(C.inDeck(m2, mc.id) && C.growthOf(m2, mc.id).stage === 2 && !C.inDeck(m2, mnb.id), "backfill: Counting (4 min, got it) joins at stage 2; Number Bonds (30 s) not yet");
+  ok(C.findTopic(m2, "Counting to 20").end && C.findTopic(m2, "Fractions").path.ids.length === 2, "migration keeps branch ends and paths");
+  eq(C.deserialize(C.serialize(m2)).deck, m2.deck, "migrated deck round-trips");
+  ok(C.deserialize(fs.readFileSync("scripts/fixtures/ikolearn-cloud-v1.json", "utf8")).v === 3, "v1 still migrates (to v3)");
+}
+
+/* ================= card art + session draw (deck.js) ================= */
+{
+  const a = D.design("n12", 2);
+  eq(D.design("n12", 2), a, "card art is deterministic from the topic id");
+  ok(JSON.stringify(D.design("n13", 2)) !== JSON.stringify(a), "different topics, different cards");
+  const pats = new Set(Array.from({ length: 80 }, (_, i) => D.design("n" + i, 0).pattern));
+  ok(pats.size === D.PATTERNS.length, "all patterns occur", [...pats].join(","));
+  let grows = true, prefix = true, finite = true;
+  for (let i = 0; i < 60; i++) {
+    const id = "n" + i, st = [0, 1, 2, 3, 4].map((s) => D.design(id, s));
+    st.forEach((d, s) => {
+      if (s && d.marks.length < st[s - 1].marks.length) grows = false;
+      if (s && JSON.stringify(d.marks.slice(0, st[s - 1].marks.length)) !== JSON.stringify(st[s - 1].marks)) prefix = false;
+      d.marks.forEach((m) => Object.values(m).forEach((v) => { if (typeof v === "number" && !Number.isFinite(v)) finite = false; }));
+    });
+    if (st[4].marks.length !== st[4].total) grows = false;
+  }
+  ok(grows, "ink density grows with every stage (full pattern at stage 4)");
+  ok(prefix, "a growing card keeps its marks and adds more (same card, more ink)");
+  ok(finite, "all art coordinates are finite");
+  ok(D.INK.opacity.every((v, i) => !i || v > D.INK.opacity[i - 1]), "ink strength grows with the stage");
+
+  const c = C.create("Maya", T0);
+  const t = C.findTopic(c, "Counting");
+  C.engage(c, t.id, "open"); C.engage(c, t.id, "got"); C.joinDeck(c);
+  const sp = D.cardSpec(c, t.id);
+  ok(sp.label === "Counting" && sp.subject === "Math" && sp.stage === C.growthOf(c, t.id).stage && sp.inDeck && sp.color.ink === C.cardColor(c, t.id).ink, "cardSpec: label, subject, stage, colour from the model");
+  ok(D.cardSpec(c, "nope") === null, "cardSpec: unknown id -> null");
+
+  // render with a tiny fake DOM (no innerHTML anywhere)
+  const mkEl = (tag, ns) => ({ tag, ns, attrs: {}, kids: [], style: { props: {}, setProperty(k, v) { this.props[k] = v; } }, listeners: {}, className: "", textContent: "",
+    setAttribute(k, v) { this.attrs[k] = v; }, appendChild(k) { this.kids.push(k); return k; }, addEventListener(e, f) { this.listeners[e] = f; } });
+  const doc = { createElement: (t) => mkEl(t), createElementNS: (ns, t) => mkEl(t, ns) };
+  let opened = null;
+  const el = D.render(doc, sp, { onOpen: (id) => { opened = id; } });
+  const svg = el.kids[0].kids[0];
+  ok(el.tag === "button" && el.className.includes("dcard") && el.className.includes("stage-" + sp.stage) && svg.tag === "svg" && svg.ns === "http://www.w3.org/2000/svg", "render: a button card with an SVG face");
+  ok(el.kids[1].textContent === "Counting" && el.kids[2].textContent.includes("Math") && el.style.props["--card-ink"] === sp.color.ink, "render: label, subject · stage, ink colour");
+  el.listeners.click({ stopPropagation() {} });
+  ok(opened === t.id, "render: tapping opens the topic");
+  const g = svg.kids.find((k) => k.tag === "g");
+  ok(g && g.kids.length === sp.art.marks.length, "render: one SVG element per mark");
+  ok(D.render(doc, sp, { bare: true, small: true }).kids.length === 1, "render: bare small card is art only");
+
+  // weights
+  const y = C.create("Maya", T0);
+  const add = (subj, names) => names.forEach((n) => { C.applyTopics(y, [{ name: n, parent: subj, signal: "strength" }], T0); const x = C.findTopic(y, n); C.engage(y, x.id, "open", T0); C.engage(y, x.id, "got", T0); });
+  add("Math", ["Counting", "Addition", "Subtraction", "Fractions", "Shapes", "Doubles", "Halves", "Clocks"]);
+  add("Science", ["Volcanoes", "Plants"]); add("Art & Music", ["Rhythm"]); add("Reading & Writing", ["Rhymes"]);
+  C.joinDeck(y, T0);
+  ok(y.deck.length === 12, "test deck: 8 Math, 2 Science, 1 Art, 1 Reading");
+  const day0 = D.dayOf(T0) + 1;
+  const w0 = D.weigh(y, day0);
+  const mass = (w, s) => w.filter((x) => x.subject === s).reduce((a, x) => a + x.w, 0);
+  ok(Math.abs(mass(w0, "Math") - mass(w0, "Science")) < 1e-9, "per-subject weighting: 8 Math cards weigh the same as 2 Science cards");
+  C.logDraw(y, day0 - 1, Array.from({ length: 6 }, () => C.findTopic(y, "Counting").id));
+  const w1 = D.weigh(y, day0);
+  ok(w1.find((x) => x.subject === "Math").balance < 1 && w1.find((x) => x.subject === "Science").balance > 1, "balance: over-drawn subject held back, under-drawn boosted");
+  C.logDraw(y, day0 + 2, [C.findTopic(y, "Counting").id]);
+  const wr = D.weigh(y, day0 + 3);
+  ok(wr.find((x) => x.id === C.findTopic(y, "Counting").id).review < wr.find((x) => x.id === C.findTopic(y, "Addition").id).review, "spaced review: a card drawn yesterday waits; others are due");
+  y.draws = y.draws.filter((d) => d[0] !== day0 + 2);
+  C.logDraw(y, day0, [C.findTopic(y, "Rhythm").id]);
+  ok(D.weigh(y, day0).find((x) => x.id === C.findTopic(y, "Rhythm").id).w < w1.find((x) => x.id === C.findTopic(y, "Rhythm").id).w * 0.1, "already drawn today: almost never again today");
+  C.engage(y, C.findTopic(y, "Plants").id, "tricky", T0 + DAYMS);
+  ok(D.weigh(y, day0).find((x) => x.id === C.findTopic(y, "Plants").id).struggle === 1.5, "found tricky lately: drawn a bit more often");
+  y.draws = []; y.sessions = 0;
+
+  // draw
+  const d1 = D.drawSession(y, { day: day0 }), d2 = D.drawSession(y, { day: day0 });
+  eq(d1, d2, "draw is deterministic for a day + session");
+  ok(d1.length === 3 && new Set(d1).size === 3, "draw: 3 different cards");
+  ok(new Set(d1.map((id) => C.subjectOf(y, id).label)).size === 3, "draw: one draw mixes subjects");
+  ok(JSON.stringify(D.drawSession(y, { day: day0 + 1 })) !== JSON.stringify(d1) || JSON.stringify(D.drawSession(y, { day: day0 + 2 })) !== JSON.stringify(d1), "draw changes from day to day");
+  eq(D.drawSession(C.create("Nia", T0), { day: day0 }), [], "empty deck: no draw");
+  const one = C.create("Nia", T0); const oc = C.findTopic(one, "Shapes"); C.engage(one, oc.id, "open"); C.engage(one, oc.id, "got"); C.joinDeck(one);
+  eq(D.drawSession(one, { day: day0 }), [oc.id], "a one-card deck draws that card");
+
+  // a year of daily sessions: well rounded, compared with a plain shuffle
+  for (let i = 0; i < 365; i++) { const ids = D.drawSession(y, { day: day0 + i }); C.logDraw(y, day0 + i, ids); }
+  const bal = D.balance(y, day0 + 364), shares = bal.map((r) => r.share);
+  const naiveMath = 8 / 12;
+  ok(bal.find((r) => r.subject === "Math").share < 0.4 && naiveMath > 0.6, "a year: Math is about a third of draws, not two thirds as with a plain shuffle", bal.map((r) => r.subject + " " + r.share.toFixed(2)).join(", "));
+  ok(Math.max(...shares) - Math.min(...shares) < 0.15, "a year: every subject within 15 points of the others", shares.map((s) => s.toFixed(2)).join(","));
+  ok(y.deck.every((e) => y.draws.some((d) => d[1] === e.id)), "a year: every card in the deck comes up");
+  const mathCards = y.deck.filter((e) => e.subject === "Math").map((e) => y.draws.filter((d) => d[1] === e.id).length);
+  ok(Math.max(...mathCards) - Math.min(...mathCards) < Math.max(...mathCards) * 0.6, "a year: cards within a subject share its draws", mathCards.join(","));
+  ok(bal.reduce((a, r) => a + r.draws, 0) === y.draws.length, "balance counts every logged draw");
+  ok(D.dayOf(Date.UTC(2026, 9, 21, 3, 0)) === D.dayOf(Date.UTC(2026, 9, 21, 3, 0) + 60000), "dayOf is a whole local day");
 }
 
 /* ================= route guards ================= */
@@ -507,8 +714,15 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/ikolearn\.v1\.lessons/.test(app) && /MAX_LESSONS/.test(app) && /"\/lesson"/.test(app) && /"\/path"/.test(app), "lessons cached in localStorage; lesson + path endpoints");
   ok(!/generativelanguage|GEMINI_API_KEY|x-goog-api-key|innerHTML/.test(lessonJs) && !/innerHTML\s*=(?!\s*"")/.test(app), "lesson rendering uses text nodes only");
   ok(!/montessori|waldorf|bloom|common core/i.test(app + lessonJs + html), "UI never names frameworks");
-  const bytes = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js"].reduce((n, f) => n + fs.statSync("public/ikolearn/" + f).size, 0);
-  ok(bytes < 150_000, "app weight under 150 KB uncompressed", String(bytes));
+  const deckJs = fs.readFileSync("public/ikolearn/deck.js", "utf8");
+  ok(html.indexOf("cloud-model.js") < html.indexOf("deck.js") && html.indexOf("deck.js") < html.indexOf("app.js"), "deck.js loads after the model and before app.js");
+  ok(/id="deck"/.test(html) && /id="draw"/.test(html) && /id="deck-btn"/.test(html) && /id="l-fork"/.test(html) && /id="l-card"/.test(html), "deck view, draw, fork and lesson card present");
+  ok(!/innerHTML|generativelanguage|fetch\(/.test(deckJs) && /createElementNS/.test(deckJs), "deck.js: SVG via DOM calls, no innerHTML, no network");
+  ok(/sessionStorage/.test(app) && /ikolearn\.v1\.session/.test(app) && /drawSession/.test(app) && /logDraw/.test(app), "one draw per visit, logged on the device");
+  ok(/el\.pAdj\.hidden = !ended/.test(app) && !/grow\(\{ topics: \[\], ghosts/.test(app), "related topics only once a branch has ended; notes no longer add branches");
+  ok(/\.dcard::after/.test(css) && /\.dcard\.grew/.test(css), "deck cards keep the corner fold; growth pulse respects reduced motion");
+  const bytes = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js"].reduce((n, f) => n + fs.statSync("public/ikolearn/" + f).size, 0);
+  ok(bytes < 170_000, "app weight under 170 KB uncompressed", String(bytes));
 }
 
 if (fails.length) {

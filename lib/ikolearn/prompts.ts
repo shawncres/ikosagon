@@ -30,6 +30,8 @@ export const LEARN_LIMITS = {
   trailChars: 200,
   known: 16,
   pathSteps: 6,
+  choices: 3,
+  whyChars: 80,
 };
 
 export const CLOUD_OPEN = "<<<CLOUD";
@@ -56,6 +58,8 @@ export type LearnInput = {
   known: string[];
   /** Lesson only: also map the focus node's subtopics (it has no path yet). */
   wantPath: boolean;
+  /** Lesson only: the planned next step after the focus (from the learner's path), offered as one fork choice. */
+  ahead: string;
 };
 export type Topic = { name: string; parent: string; signal: Signal };
 export type Ghost = { name: string; parent: string };
@@ -63,6 +67,11 @@ export type CloudBlock = { topics: Topic[]; ghosts: Ghost[] };
 export type Card = { title: string; body: string; topic: string; parent: string; path?: string[]; next?: string };
 /** end: the branch stops here (no smaller subtopics); steps is then empty. */
 export type LearnPath = { steps: string[]; next: string; end?: boolean };
+/** A fork choice after a lesson: continue the path (next), go further into the topic (deeper), or a nearby topic (side). */
+export const CHOICE_KINDS = ["next", "deeper", "side"] as const;
+export type Choice = { name: string; kind: (typeof CHOICE_KINDS)[number]; why: string };
+/** The hidden block at the end of a lesson: path steps (only when asked), fork choices, and whether the branch ends here. */
+export type LessonBlock = { steps: string[]; next: string; choices: Choice[]; end?: boolean };
 
 /* ---------- input cleaning (everything from the browser is untrusted) ---------- */
 
@@ -116,6 +125,7 @@ export function parseLearnInput(raw: unknown): LearnInput | { error: string } {
     trail: cleanText(b.trail, LEARN_LIMITS.trailChars).replace(/>{2,}/g, " ").replace(/[\n\r"<{}[\]`*_#|\\]/g, " ").replace(/\s+/g, " ").trim(),
     known: (Array.isArray(b.known) ? b.known : []).map(cleanLabel).filter(Boolean).slice(0, LEARN_LIMITS.known),
     wantPath: b.wantPath === true,
+    ahead: cleanLabel(b.ahead),
   };
 }
 
@@ -136,7 +146,7 @@ const blockRules = (parents: string[]) =>
   `topics: 0 to ${LEARN_LIMITS.topicsPerTurn} learning topics that this exchange actually touched (1 to 3 words each, Title Case, specific like "Fractions" or "Volcanoes", never the learner's name). ` +
   "signal: strength if the learner showed they understand it, struggle if they found it hard or had a mix-up, curious if they only asked or showed interest, explored otherwise. " +
   `parent: where it belongs: the most specific existing topic from the profile that it sits under (for example "Fractions" for "Halves"), else one of these existing subjects: ${parents.length ? parents.join(", ") : "(none yet)"}. Only name a new broad subject when none fit. ` +
-  `ghosts: usually 1 or 2 closely related topics the learner has not explored yet (not already in the profile), each with its parent subject. Use empty arrays for small talk. The learner never sees this block.`;
+  `ghosts: leave this empty, unless the learner asked what else they could learn; then 1 or 2 related topics not in the profile, each with its parent. New branches are offered when a branch ends, not before. Use empty arrays for small talk. The learner never sees this block.`;
 
 const profile = (i: LearnInput) =>
   `Learner's first name: ${i.name}\n` +
@@ -156,8 +166,8 @@ export function noticeSystem(i: LearnInput): string {
   const about = i.focus ? `the topic "${i.focus}"${i.focusParent ? ` in ${i.focusParent}` : ""}` : "the learner's whole learning cloud";
   return (
     `${SYSTEM_BASE}\n\nRole: noticing. The learner tapped ${about} on their learning cloud. ` +
-    "Write either one warm, brief reflection (2 to 4 sentences) about what you notice in their profile and recent messages, or 2 to 3 short suggestions of what to try next, each on its own line. " +
-    "Be specific to their profile, kind about anything they found hard, and end with one easy question or invitation.\n\n" +
+    "Write one warm, brief reflection (2 to 4 sentences) about what you notice in their profile and recent messages about this branch. " +
+    "Be specific to their profile and kind about anything they found hard. Do not list other topics to try; end with one easy question or an invitation to open the lesson.\n\n" +
     `${profile(i)}\n\n${blockRules(i.parents)}`
   );
 }
@@ -208,10 +218,20 @@ export function lessonSystem(i: LearnInput): string {
     "ANSWER: the answer to CHECK with a one-line reason.\n" +
     "NEXT: one sentence on what to try next.\n" +
     "Keep the whole lesson under 230 words. Use simple numbers and everyday objects. A parent reading along should understand it too.\n\n" +
-    `${profile(i)}` +
-    (i.wantPath ? `\n\nAfter the lesson, on a new line, write ${PATH_OPEN} then one JSON object {"steps":["..."],"next":"..."} then ${PATH_CLOSE}, and nothing after it. ${pathRules(i)} The learner never sees this block.` : "")
+    `${profile(i)}\n\n${lessonBlockRules(i)}`
   );
 }
+
+/** One hidden block after every lesson (no extra call): the path when asked, plus the fork of 2 or 3 choices. */
+const lessonBlockRules = (i: LearnInput) =>
+  `After the lesson, on a new line, write ${PATH_OPEN} then one JSON object then ${PATH_CLOSE}, and nothing after it. The learner never sees this block. ` +
+  'The JSON is {"steps":["..."],"next":"...","choices":[{"name":"...","kind":"next|deeper|side","why":"..."}],"end":false}. ' +
+  (i.wantPath ? `steps and next: ${pathRules(i)} ` : 'steps: [] and next: "" (this topic already has a path). ') +
+  "choices: a fork, 2 or 3 directions the learner can pick from after this lesson: " +
+  (i.ahead ? `one with kind "next" for their planned next step "${i.ahead}", ` : "") +
+  `one with kind "deeper" that goes further into "${i.focus}" itself, and if it fits one with kind "side" for a nearby topic in the same subject. ` +
+  "Each name is 1 to 3 words, Title Case, never the learner's name; why is a short friendly reason, under 10 words. " +
+  `If "${i.focus}" is a natural end with nothing deeper worth learning, set "end": true and leave out the "deeper" choice.`;
 
 export function lessonContents(i: LearnInput) {
   return [{ role: "user" as const, parts: [{ text: `Please teach me "${i.focus}".` }] }];
@@ -322,6 +342,36 @@ export function parsePath(raw: unknown, learnerName = "", focus = ""): LearnPath
   if (!steps.length) return obj.end === true ? { steps: [], next: "", end: true } : null;
   const want = cleanLabel(obj.next);
   return { steps, next: steps.find((x) => sameLabel(x, want)) || steps[0] };
+}
+
+/** Fork choices: cleaned, deduped, never the name or the focus, 2 or 3 kept (1 is not a fork, so it is dropped). */
+export function parseChoices(raw: unknown, learnerName = "", focus = ""): Choice[] {
+  const out: Choice[] = [];
+  for (const c of Array.isArray(raw) ? raw : []) {
+    if (!c || typeof c !== "object") continue;
+    const o = c as Record<string, unknown>;
+    const name = cleanLabel(o.name);
+    if (!name || (learnerName && sameLabel(name, learnerName)) || (focus && sameLabel(name, focus)) || out.some((x) => sameLabel(x.name, name))) continue;
+    const k = String(o.kind || "").toLowerCase();
+    const kind = ((CHOICE_KINDS as readonly string[]).includes(k) ? k : "deeper") as Choice["kind"];
+    out.push({ name, kind, why: cleanText(plainReply(o.why), LEARN_LIMITS.whyChars) });
+    if (out.length >= LEARN_LIMITS.choices) break;
+  }
+  return out.length >= 2 ? out : [];
+}
+
+/** The block after a lesson. Steps only count when the client asked for a path. Null when nothing usable is in it. */
+export function parseLessonBlock(raw: unknown, learnerName = "", focus = "", wantPath = false): LessonBlock | null {
+  const obj = jsonObject(raw);
+  if (!obj) return null;
+  const p = wantPath ? parsePath({ steps: obj.steps, next: obj.next }, learnerName, focus) : null;
+  const choices = parseChoices(obj.choices, learnerName, focus);
+  const end = obj.end === true;
+  const steps = p ? p.steps : [];
+  if (!steps.length && !choices.length && !end) return null;
+  const out: LessonBlock = { steps, next: p ? p.next : "", choices };
+  if (end) out.end = true;
+  return out;
 }
 
 export function parseCard(raw: unknown): Card | null {
