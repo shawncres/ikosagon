@@ -198,7 +198,7 @@
     return d;
   }
 
-  /* A first-run or re-ask question: chips (one, or several for interests), an optional typed answer, and Skip. */
+  /* A first-run question: chips (the age bands), or an open question answered in a free-text field; Skip either way. */
   var askHandlers = {};
   function renderAsk(m) {
     var d = mk("div", "msg model ask");
@@ -215,13 +215,17 @@
       if (m.multi) b.setAttribute("aria-pressed", "false");
       chips.appendChild(b);
     });
-    d.appendChild(chips);
-    var row = mk("div", "ask-row"), inp = null;
-    if (m.input) { inp = mk("input", "ask-in"); inp.maxLength = 40; inp.placeholder = m.multi ? "Or type something you enjoy" : "Type here"; inp.setAttribute("aria-label", m.text); row.appendChild(inp); }
+    if (chips.childNodes.length) d.appendChild(chips);
+    if (m.hint) d.appendChild(mk("p", "ask-hint", m.hint));
+    var row = mk("div", "ask-row" + (m.open ? " ask-open" : "")), inp = null;
+    if (m.open) inp = openField(m.text, m.ph, function () { ok.click(); });
+    else if (m.input) { inp = mk("input", "ask-in"); inp.maxLength = 40; inp.placeholder = "Type here"; inp.setAttribute("aria-label", m.text); }
+    if (inp) row.appendChild(inp);
+    var ok = null;
     if (m.multi || m.input) {
-      var ok = linkBtn(m.go || "Done", function () {
+      ok = linkBtn(m.go || "Done", function () {
         var vals = Object.keys(picked).filter(function (k) { return picked[k]; });
-        var typed = inp ? C.cleanLabel(inp.value) : "";
+        var typed = inp ? (m.open ? cleanAbout(inp.value) : C.cleanLabel(inp.value)) : "";
         if (typed) vals.push(typed);
         go(m.multi ? vals : typed, (m.multi ? vals.join(", ") : typed) || "Skip");
       }, "btn draw-btn sm");
@@ -231,9 +235,18 @@
     d.appendChild(row);
     return d;
   }
+  /* An open answer in the learner's own words: one line of plain text, at most 300 characters. */
+  function cleanAbout(v) { return String(v || "").replace(/[\u0000-\u001f\u007f<>{}[\]`*_#|\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 300); }
+  /* The free-text field for an open question (Enter answers, Shift+Enter is a new line). */
+  function openField(label, ph, onEnter) {
+    var t = mk("textarea", "ask-in ask-open-in");
+    t.rows = 2; t.maxLength = 300; t.placeholder = ph || "In your own words"; t.setAttribute("aria-label", label);
+    t.addEventListener("keydown", function (e) { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); onEnter(); } });
+    return t;
+  }
   /* Asks one question in the chat; cb(value) once answered. The answer shows as the learner's reply. */
   function ask(q, cb) {
-    var m = { role: "ask", local: true, text: q.q, chips: q.chips || [], multi: Boolean(q.multi), input: Boolean(q.input), go: q.go };
+    var m = { role: "ask", local: true, text: q.q, hint: q.hint || "", chips: q.chips || [], multi: Boolean(q.multi), input: Boolean(q.input), open: Boolean(q.open), ph: q.ph || "", go: q.go };
     askHandlers[(m.id = "a" + Date.now().toString(36) + (mid++))] = function (val, label) {
       if (m.done) return;
       m.done = true; upsert(m); delete askHandlers[m.id];
@@ -264,6 +277,12 @@
         var go = mk("div", "acts");
         m.opens.forEach(function (id, i) { var n = nodeOf(id); if (!n) return; if (go.childNodes.length) go.appendChild(document.createTextNode(" · ")); go.appendChild(linkBtn(i ? n.label : "Open " + n.label, function () { openCard(id, null); })); });
         d.appendChild(go);
+      }
+      /* a creation call that couldn't run: try it again (a first build only while the cloud is still empty) */
+      if (m.role === "model" && m.retry && !m.streaming && (m.retry.kind !== "start" || !state.cloud.order.length)) {
+        var again = mk("div", "acts"), rt = m.retry;
+        again.appendChild(linkBtn("Try again", function () { if (!state.busy) { m.retry = null; upsert(m); buildCloud(rt.kind, [], rt.about || ""); } }, "btn draw-btn sm"));
+        d.appendChild(again);
       }
       if (m.chips && m.chips.length) {
         var wrap = mk("div");
@@ -550,39 +569,36 @@
     if (cloudFlow) cloudFlow.hidden = Boolean(t) || !el.panel.hidden;
     if (!t) renderCloudFlow();
   }
-  /* No model (off, offline, or an unusable answer): a few broad subjects from the palette, matched to the interests. */
-  function fallbackParents(interests) {
-    var labels = [];
-    (interests || []).forEach(function (x) { var h = C.paletteHue(x); var p = C.PALETTE.filter(function (q) { return q.hue === h; })[0]; if (p && labels.indexOf(p.label) < 0) labels.push(p.label); });
-    ["Reading & Writing", "Math", "Science"].forEach(function (l) { if (labels.length < 3 && labels.indexOf(l) < 0) labels.push(l); });
-    return labels.slice(0, 3).map(function (l) { return C.plant(state.cloud, l, null, Date.now(), false); }).filter(Boolean).map(function (n) { return n.id; });
-  }
   /*
-   * One creation call for new parents: "start" (after the first questions) or "more" (after a light re-ask), then the
-   * visible build. Falls back to broad palette subjects when the call can't be made.
+   * One creation call for new parents: "start" (after the first questions, or Skip) or "more" (after a light re-ask),
+   * then the visible build. `about` is the learner's answer in their own words ("" after Skip: the model then picks
+   * broad, popular starting points for their age and region). Nothing is seeded on the device: when the call can't be
+   * made, the message says why and offers Try again (and the chat box stays open for typing a topic).
    */
-  function buildCloud(kind, interests) {
+  function buildCloud(kind, interests, about) {
     if (state.busy) return;
+    interests = interests || [];
     lock(true);
-    var m = push({ role: "model", local: true, streaming: true, text: kind === "start" ? "Thanks, " + state.name + ". I'm building your first topics now..." : "Let me build something new around " + (interests.join(", ") || "that") + "..." });
-    var req = P.createRequest(state.cloud, kind, null, { interests: interests });
+    var m = push({ role: "model", local: true, streaming: true, text: kind === "start" ? "Thanks, " + state.name + ". I'm building your first topics now..." : "Let me build something new around " + (about || interests.join(", ") || "that") + "..." });
+    var req = P.createRequest(state.cloud, kind, null, { interests: interests, about: about || "" });
     postJson("/create", Object.assign(basePayload(null), { mode: "notice" }, req)).then(function (j) {
       if (j && j.ok && Array.isArray(j.items) && j.items.length) {
         return animateBuild(j.items, null).then(function (ids) {
           var names = ids.map(function (x) { return nodeOf(x) && nodeOf(x).label; }).filter(Boolean);
+          /* what they enjoy, as the model read it: the new parents become the profile's interests (later asks build on them) */
+          C.setProfile(state.cloud, { interests: names.slice(0, 5) });
           var pr = C.profileOf(state.cloud);
           m.streaming = false;
-          m.text = (kind === "start" ? "Here's your cloud to start: " : "New on your cloud: ") + names.join(", ") + ". Each one has a few smaller topics waiting, best first. Pick a card, or draw one." +
+          m.text = (kind === "start" ? (about ? "Here's your cloud to start: " : "Here are a few popular places to start: ") : "New on your cloud: ") + names.join(", ") + ". Each one has a few smaller topics waiting, best first. Pick a card, or draw one." +
             (kind === "start" && pr.region ? " I'm fitting things to " + pr.region + (pr.age ? ", age " + P.AGE_LABELS[pr.age] : "") + ". You can change that under About you." : "");
           m.opens = ids.slice(0, 5);
           upsert(m);
         });
       }
-      var ids = kind === "start" ? fallbackParents(interests) : [];
       m.streaming = false;
-      m.text = reasonLead(j && (j.reason || j.error)) + (ids.length ? " So I've started you with a few broad areas: " + ids.map(function (x) { return nodeOf(x).label; }).join(", ") + ". Open one for a lesson and it will grow from there." : " Let's try that again a little later.");
+      m.text = reasonLead(j && (j.reason || j.error)) + (kind === "start" ? " So I couldn't build your first topics yet. Try again in a moment, or type something you'd like to learn about below." : " Let's try that again a little later.");
+      m.retry = { kind: kind, about: about || "" };
       upsert(m);
-      refreshViews(ids);
     }).then(function () { save(); lock(false); renderDraw(); });
   }
   /* "What comes next" for a parent: one creation call (the orchestrator only offers it when needed, and it is cached). */
@@ -602,29 +618,37 @@
       } else say("I couldn't work out what comes next just now (" + ((j && (j.reason || j.error)) || "error") + "). Try again in a moment.");
     }).then(function () { save(); lock(false); if (!el.draw.hidden) renderDraw(); });
   }
-  /* The first-run questions (static, on the device), then one creation call builds the first parents. */
+  /*
+   * The first-run questions (on the device, no call): age, then one open question in the learner's own words and,
+   * when they answered it, an optional second. Then ONE creation call ("start") builds the first parents from what
+   * they wrote, or, on Skip, from their age and region alone. The light re-ask is held back for its usual few days.
+   */
   function runOnboarding() {
-    var qs = P.onboarding(state.cloud, true), answers = {}, i = 0;
+    var qs = P.onboarding(state.cloud, true), answers = {}, said = [], i = 0;
     push({ role: "model", local: true, text: "Hi " + state.name + ", welcome to IkoLearn. Around your name is your learning cloud. Before we start, a couple of quick questions so I can build it around you. Each one is optional." });
     var next = function () {
       if (i >= qs.length) {
-        C.setProfile(state.cloud, { age: answers.age || "", interests: answers.interests || [], onboarded: true });
+        C.setProfile(state.cloud, { age: answers.age || "", onboarded: true, askedAt: true });
         save();
-        buildCloud("start", C.profileOf(state.cloud).interests.slice(-5));
+        buildCloud("start", [], said.join(". "));
         return;
       }
       var q = qs[i++];
-      if (q.id === "interests") q.go = "Build my cloud";
-      ask(q, function (v) { answers[q.id] = v; if (q.id === "age") C.setProfile(state.cloud, { age: v || "" }); save(); next(); });
+      ask(q, function (v) {
+        answers[q.id] = v;
+        if (q.id === "age") C.setProfile(state.cloud, { age: v || "" });
+        if (q.open && v) { said.push(v); if (q.id === "curious") qs.push(P.openQuestion(state.cloud, "more")); }
+        save(); next();
+      });
     };
     next();
   }
-  /* The light re-ask (one question): its answer is one creation call for 1 or 2 new parents. */
+  /* The light re-ask (one open question): its answer is one creation call for 1 or 2 new parents. */
   function answerReask(v) {
-    var list = (Array.isArray(v) ? v : [v]).map(C.cleanLabel).filter(Boolean);
-    C.setProfile(state.cloud, { askedAt: true, interests: list });
+    var about = cleanAbout(v);
+    C.setProfile(state.cloud, { askedAt: true });
     save();
-    if (list.length) buildCloud("more", list); else renderDraw();
+    if (about) buildCloud("more", [], about); else renderDraw();
   }
 
   /* ---------- lessons ---------- */
@@ -1179,17 +1203,15 @@
     b.addEventListener("click", function () { createNext(pid); });
     return b;
   }
-  /* The light re-ask, as a quiet tile: one question, a few chips, a typed answer, or not now. */
+  /* The light re-ask, as a quiet tile: one open question, answered in their own words, or not now. */
   function askTile(it) {
     var box = mk("div", "ask-tile");
     box.appendChild(mk("p", "gc-chain", "A quick question"));
     box.appendChild(mk("p", "ask-q", it.q));
-    var chips = mk("div", "chips");
-    (it.chips || []).slice(0, 4).forEach(function (c) { chips.appendChild(linkBtn(c, function () { answerReask(c); }, "btn chip-q")); });
-    box.appendChild(chips);
-    var f = mk("form", "ask-row"), inp = mk("input", "ask-in"); inp.maxLength = 40; inp.placeholder = "Or type your own"; inp.setAttribute("aria-label", it.q);
+    var f = mk("form", "ask-row ask-open"), inp = openField(it.q, it.ph, function () { f.requestSubmit(); });
     f.appendChild(inp);
-    f.addEventListener("submit", function (e) { e.preventDefault(); if (C.cleanLabel(inp.value)) answerReask(inp.value); });
+    f.appendChild(linkBtn("Build", function () { f.requestSubmit(); }, "btn draw-btn sm"));
+    f.addEventListener("submit", function (e) { e.preventDefault(); if (cleanAbout(inp.value)) answerReask(inp.value); });
     box.appendChild(f);
     box.appendChild(linkBtn("Not now", function () { C.setProfile(state.cloud, { askedAt: true }); save(); renderDraw(); }, "link fine"));
     return box;

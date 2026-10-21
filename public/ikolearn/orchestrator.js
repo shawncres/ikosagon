@@ -126,23 +126,34 @@
   }
 
   /* ---------- onboarding, the light re-ask, and "what comes next" ---------- */
-  /* Interest chips: broad and friendly, generated on the device (no call); the learner can also type their own. */
-  var INTERESTS = ["Animals", "Dinosaurs", "Space", "Building things", "Stories", "Numbers & puzzles", "Drawing", "Music", "How things work", "Nature", "Games", "Coding", "People & places", "Cooking", "Sports"];
   var AGE_LABELS = { "4-6": "4 to 6", "7-9": "7 to 9", "10-12": "10 to 12", "13-15": "13 to 15", "16-18": "16 to 18", adult: "Grown-up" };
-  /* The first-run questions, static and in order; each is skippable. The name is asked first only when missing. */
+  /*
+   * The first-run questions, in order, each skippable: the name (only when missing), a rough age (bands, not topics),
+   * then one or two open questions answered in the learner's own words. There is no topic list anywhere: the answer
+   * (or nothing, on Skip) goes to one creation call ("start"), and the model proposes the first parents from it.
+   */
   function onboarding(cloud, hasName) {
     var name = cloud && cloud.name ? cloud.name : "";
     var qs = [];
     if (!hasName) qs.push({ id: "name", q: "First, what's your first name?", input: true });
     qs.push({ id: "age", q: "Nice to meet you" + (name ? ", " + name : "") + ". Roughly how old are you? It helps us pick the right level. You can skip this.", chips: C.AGE_BANDS.map(function (a) { return { value: a, label: AGE_LABELS[a] }; }) });
-    qs.push({ id: "interests", q: "What are you curious about, or what do you enjoy? Pick a few, or type your own.", chips: interestChips(cloud).map(function (x) { return { value: x, label: x }; }), multi: true, input: true });
+    qs.push(openQuestion(cloud, "curious"));
     return qs;
   }
-  /* Chips for interests, without the ones already given or already parents on the map, in a stable order. */
-  function interestChips(cloud, max) {
-    var have = {};
-    if (cloud) { (C.profileOf(cloud).interests || []).forEach(function (x) { have[C.norm(x)] = 1; }); cloud.order.forEach(function (id) { have[cloud.nodes[id].key] = 1; }); }
-    return INTERESTS.filter(function (x) { return !have[C.norm(x)]; }).slice(0, max || 10);
+  /*
+   * An open question in the learner's own words (a free-text field, no chips). "curious": the first one; "more": the
+   * optional follow-up after a first answer; "reask": later, when the cloud is thin or they seem stuck. Wording
+   * follows the age band (simpler for the youngest), never a list of topics.
+   */
+  function openQuestion(cloud, kind) {
+    var p = cloud ? C.profileOf(cloud) : {}, young = p.age === "4-6" || p.age === "7-9";
+    var Q = {
+      curious: young ? ["What do you love doing, or what do you wonder about?", "Anything at all: a game you play, an animal you like, a question you keep asking."]
+        : ["What are you curious about, or what do you enjoy?", "Anything goes: a hobby, something you've wondered about, a thing you'd like to be better at."],
+      more: young ? ["Is there anything else you'd like to find out about?", "Or tap Build my cloud."] : ["Anything else you'd like to learn, or get better at?", "Optional. Or go ahead and build your cloud."],
+      reask: young ? ["What would you like to find out about next?", ""] : ["What's caught your interest lately?", ""]
+    }[kind];
+    return { id: kind, q: Q[0], hint: Q[1], open: true, input: true, go: kind === "curious" ? "Next" : "Build my cloud", ph: young ? "Tell me here" : "In your own words" };
   }
   /*
    * A learner who has already started is not new: a card in the deck, a lesson in progress, or a topic they opened,
@@ -166,7 +177,8 @@
     if (!(p.onboarded || hasStarted(cloud)) || (p.askedAt && now - p.askedAt < R.days * DAY)) return null;
     var thin = openTopics(cloud) < R.open, stuck = (p.visits || 0) - (p.lessonVisit || 0) >= R.stuckVisits;
     if (!thin && !stuck) return null;
-    return { q: thin ? "What else are you curious about lately?" : "Want to try something different? What do you enjoy these days?", chips: interestChips(cloud, 6), why: thin ? "thin" : "stuck" };
+    var o = openQuestion(cloud, "reask");
+    return { q: thin ? o.q : "Want to try something different? What do you enjoy these days?", open: true, ph: o.ph, why: thin ? "thin" : "stuck" };
   }
   /*
    * "What comes next" for a parent: when it has no unfinished children left (all done, or none yet after it was
@@ -268,8 +280,10 @@
   function createRequest(cloud, kind, id, extra) {
     var p = C.profileOf(cloud), n = nodeOf(cloud, id);
     var req = { kind: kind, age: p.age || "", region: p.region || "", interests: (extra && extra.interests) || (p.interests || []).slice(-5), favorites: (RK ? RK.top(cloud, { n: 5 }) : []).map(function (r) { return r.label; }) };
-    /* broad subjects to file new parents under: the learner's own, then the palette's (data only, no topics) */
-    req.parents = C.subjectLabels(cloud).concat(C.PALETTE.map(function (q) { return q.label; })).filter(function (x, i, all) { return all.map(C.norm).indexOf(C.norm(x)) === i; }).slice(0, 12);
+    /* the learner's own words (start / more): sent once, never stored; the model reads it, nothing on the device matches it */
+    if (extra && extra.about) req.about = String(extra.about).slice(0, 300);
+    /* subjects to file new parents under: only the learner's own (the palette is colour data, never offered) */
+    req.parents = C.subjectLabels(cloud).slice(0, 12);
     if (kind === "next" && n) { req.focus = n.label; req.trail = C.trail(cloud, id); req.known = C.childrenOf(cloud, id).map(function (c) { return c.label; }).slice(0, 16); }
     return req;
   }
@@ -413,7 +427,7 @@
     MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
     suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf,
-    onboarding: onboarding, interestChips: interestChips, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics,
+    onboarding: onboarding, openQuestion: openQuestion, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics,
     needsNext: needsNext, readyNext: readyNext, createRequest: createRequest, regionFrom: regionFrom, ZONES: ZONES, AGE_LABELS: AGE_LABELS
   };
   if (node_) module.exports = api;
