@@ -22,6 +22,8 @@ const D = require("../public/ikolearn/deck.js");
 const RK = require("../public/ikolearn/rank.js");
 const P = require("../public/ikolearn/orchestrator.js");
 const CAM = require("../public/ikolearn/camera.js");
+import { minifyFile, targets as minTargets } from "./ikolearn-minify.mjs";
+import vm from "node:vm";
 const DAYMS = 86400000;
 
 let pass = 0;
@@ -1020,14 +1022,16 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/type = "radio"/.test(app) && /mk\("fieldset"/.test(app) && /C\.confirm\(/.test(app), "questions are real radio groups; answers confirm learning in the model");
   const rankJs = fs.readFileSync("public/ikolearn/rank.js", "utf8");
   ok(!/innerHTML|fetch\(|localStorage/.test(rankJs), "rank.js: pure, no network or storage of its own");
-  /* v8 adds tiers, merging, the camera and the corpus (about +30 KB raw, +8 KB gzip); the budget was 330 KB raw / 100 KB gzip.
-     The album, the card hub, the orbit pivot and the motion add about +34 KB raw / +8.8 KB gzip (all unminified source,
-     about a third of it comments): over that budget, so it is 350 KB / 105 KB here until a minify step or a trim. */
+  /*
+   * Page weight, measured on what is served: the build minifies every .js and .css (scripts/ikolearn-minify.mjs, the
+   * same function here), index.html and the icon go as they are. Budget 330 KB raw / 100 KB gzip.
+   */
   const files = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js", "rank.js", "orchestrator.js", "camera.js", "icon.svg"];
-  const bytes = files.reduce((n, f) => n + fs.statSync("public/ikolearn/" + f).size, 0);
-  const gz = files.reduce((n, f) => n + zlib.gzipSync(fs.readFileSync("public/ikolearn/" + f), { level: 9 }).length, 0);
-  ok(bytes < 350_000, "app weight under 350 KB uncompressed", String(bytes));
-  ok(gz < 105_000, "app weight under 105 KB gzipped", String(gz));
+  const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
+  const bytes = files.reduce((n, f) => n + served(f).length, 0);
+  const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
+  ok(bytes < 330_000, "app weight under 330 KB uncompressed (served, minified)", String(bytes));
+  ok(gz < 100_000, "app weight under 100 KB gzipped (served, minified)", String(gz));
 }
 
 /* ================= the flow pass: chains, Computer Science, orchestrator, children, tests ================= */
@@ -1812,6 +1816,47 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   // 8) motion: press feedback, view transitions, card lift, all off under reduced motion
   ok(/button\.gcard:active/.test(css) && /\.btn:active/.test(css) && /@keyframes page-in/.test(css) && /@keyframes slot-in/.test(css) && /@keyframes view-in/.test(css) && /@keyframes sheet-up/.test(css), "motion: press feedback, album pages, slots, views and the sheet");
   ok(/prefers-reduced-motion: reduce\)[^@]*\.view-in, \.album\.opening \.album-page/.test(css) && /function liftCard[\s\S]{0,200}motionOK\(\)/.test(app), "motion: all of it stays still under prefers-reduced-motion");
+}
+
+/* ================= build-time minify: the served files behave exactly like the sources ================= */
+{
+  const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+  ok(pkg.scripts.prebuild === "node scripts/ikolearn-minify.mjs" && /^\^?0\.\d+/.test(pkg.devDependencies.esbuild || ""), "minify: runs before next build (prebuild), esbuild is a dev dependency");
+  const mjs = fs.readFileSync("scripts/ikolearn-minify.mjs", "utf8");
+  ok(/process\.env\.VERCEL === "1" \|\| process\.env\.IKOLEARN_MINIFY === "1"/.test(mjs) && !/mangleProps|keepNames: false|bundle: true/.test(mjs) && /sourcesContent: true/.test(mjs), "minify: in place only on Vercel's build (or when asked), no property mangling, no bundling, readable source in the maps");
+  eq(minTargets(), ["app.js", "camera.js", "cloud-model.js", "cloud-view.js", "deck.js", "lesson.js", "orchestrator.js", "rank.js", "styles.css"], "minify: every app script and the stylesheet");
+  const min = {}, src = {};
+  minTargets().forEach((f) => { src[f] = fs.readFileSync("public/ikolearn/" + f, "utf8"); min[f] = minifyFile(f, src[f]); });
+  ok(Object.keys(min).every((f) => min[f].code.length < src[f].length * 0.85 && min[f].code.endsWith(`sourceMappingURL=${f}.map${f.endsWith(".css") ? " */" : ""}\n`)), "minify: every file is smaller and links its source map");
+  ok(Object.keys(min).every((f) => { const m = JSON.parse(min[f].map); return m.sources[0] === f && m.sourcesContent[0] === src[f]; }), "minify: each map carries the readable source (devtools show the original)");
+  ok(!/sourceMappingURL/.test(Object.values(src).join("")), "minify: the repo keeps the readable sources (nothing minified is committed)");
+  // load the minified modules the way Node loads the sources (UMD: module.exports) and compare behaviour
+  const load = (f, req) => { const mod = { exports: {} }; vm.runInNewContext(min[f].code, { module: mod, exports: mod.exports, require: req, console, Date, Math, JSON }, { filename: f }); return mod.exports; };
+  const mC = load("cloud-model.js"), mRK = load("rank.js", (x) => (x === "./cloud-model.js" ? mC : null));
+  const mD = load("deck.js", (x) => (x === "./cloud-model.js" ? mC : x === "./rank.js" ? mRK : null));
+  const mP = load("orchestrator.js", (x) => (x === "./cloud-model.js" ? mC : x === "./rank.js" ? mRK : x === "./deck.js" ? mD : null));
+  const mCAM = load("camera.js"), mL = load("lesson.js");
+  const keys = (o) => Object.keys(o).sort().join(",");
+  ok(keys(mC) === keys(C) && keys(mD) === keys(D) && keys(mP) === keys(P) && keys(mRK) === keys(RK) && keys(mCAM) === keys(CAM) && keys(mL) === keys(L), "minify: every exported name is unchanged (IkoCloud, IkoDeck, IkoPlan, IkoRank, IkoCamera, IkoLesson)");
+  // one learner's run through both builds: same cloud (storage v8), same album, hub, coverage, merges, draws, camera
+  const run = (C_, D_, P_, CAM_) => {
+    const c = C_.create("Maya", T0);
+    C_.applyTopics(c, [{ name: "Dinosaurs", parent: "Science", signal: "explored", chain: ["Science"] }], T0);
+    ["Fossils", "Eras", "Diets", "Habitats"].forEach((n, i) => { C_.applyTopics(c, [{ name: n, parent: "Dinosaurs", signal: "explored", chain: ["Science", "Dinosaurs"] }], T0 + i); const x = C_.findTopic(c, n); x.role = "core"; C_.engage(c, x.id, "open", T0); for (let j = 0; j < 3 - (i === 3 ? 2 : 0); j++) C_.confirm(c, x.id, true, T0 + j); });
+    const d = C_.findTopic(c, "Dinosaurs"); C_.engage(c, d.id, "open", T0); for (let j = 0; j < 3; j++) C_.confirm(c, d.id, true, T0);
+    C_.joinDeck(c, T0);
+    const merges = P_.settleMerges(c, T0 + 5);
+    const back = C_.deserialize(C_.serialize(c));
+    return JSON.stringify({ s: C_.serialize(back), merges, album: D_.albumModel(back), hub: D_.hubChildren(back, d.id), cov: Object.keys(back.nodes).map((k) => D_.coverage(back, k)), spec: D_.cardSpec(back, d.id), draw: D_.drawSession(back, D_.dayOf(T0)), cam: [CAM_.lerpView({ zoom: 1, panX: 0, panY: 0, yaw: 0, pitch: 0 }, { zoom: 3, panX: 4, panY: 5, yaw: 2, pitch: 0.3, pivot: { x: 1, y: 2, z: 3 } }, 0.4), CAM_.focusFrame(390, 760, { sheet: 400, top: 60 }), CAM_.fitAround({ x0: -3, x1: 40, y0: -8, y1: 2 }, 300, 400, 1, 9)] });
+  };
+  const a = run(C, D, P, CAM), b = run(mC, mD, mP, mCAM);
+  ok(a === b && JSON.parse(JSON.parse(a).s).v === 8, "minify: the same learner run gives identical results (v8 storage, merges, album, hub, coverage, cards, draws, camera)");
+  // the browser path: the scripts in page order set the same window.Iko* globals
+  const win = { matchMedia: () => ({ matches: false }) }; win.window = win;
+  const ctx = vm.createContext(win);
+  ["cloud-model.js", "rank.js", "deck.js", "orchestrator.js", "camera.js", "lesson.js"].forEach((f) => vm.runInContext(min[f].code, ctx, { filename: f }));
+  ok(["IkoCloud", "IkoRank", "IkoDeck", "IkoPlan", "IkoCamera", "IkoLesson"].every((g) => win[g] && typeof win[g] === "object"), "minify: in a page, the minified scripts define the same window.Iko* globals");
+  ok(/root\.IkoCloudView = /.test(src["cloud-view.js"]) && /\.IkoCloudView=/.test(min["cloud-view.js"].code) && /window\.IkoCloud,/.test(min["app.js"].code), "minify: the view and the app keep their global names");
 }
 
 if (fails.length) {
