@@ -12,7 +12,8 @@
  *               choices, a one-line card description, and (when asked) the topic's child topics in learning order.
  *  - path:      just the ordered subtopics for one node, JSON { steps: [{ name }], next }.
  *  - test:      3-5 questions built only from the completed topics under a parent, JSON { questions: [{ q, options, answer, topic }] }.
- * Every topic carries its full chain from the subject down; chains.ts fills a missing one from known chains.
+ * Every topic carries its full chain from the subject down; when the model sends a shallow one, the device asks a
+ * "bridge" creation call for the in-between steps (no built-in table).
  */
 
 export const LEARN_LIMITS = {
@@ -54,8 +55,13 @@ export const LEARN_LIMITS = {
 
 /** Age bands the learner can pick (optional). Only the band ever leaves the device. */
 export const AGE_BANDS = ["4-6", "7-9", "10-12", "13-15", "16-18", "adult"] as const;
-/** What a creation call is for: the first parents (start), more parents from a new interest (more), or a parent's next children (next). */
-export const CREATE_KINDS = ["start", "more", "next"] as const;
+/**
+ * What a creation call is for: the first parents (start), more parents from a new interest (more), a parent's next
+ * children (next), or the in-between steps for a topic that landed too close to its subject (bridge).
+ */
+export const CREATE_KINDS = ["start", "more", "next", "bridge"] as const;
+/** A child's place: the core sequence (the main path, foundational to advanced) or an optional side path off one core step. */
+export const CHILD_ROLES = ["core", "optional"] as const;
 
 export const CLOUD_OPEN = "<<<CLOUD";
 export const CLOUD_CLOSE = "CLOUD>>>";
@@ -367,10 +373,15 @@ export const TEST_SCHEMA = {
  *   start  the first 3-5 parent topics for a new learner, from what they said they enjoy (onboarding)
  *   more   1-2 new parent topics from a new interest (a light re-ask when the cloud is thin)
  *   next   "what comes next" for one parent: its next child topics, logical order plus importance
+ *   bridge the logical in-between topics from a topic's subject down to its parent (Computer Science > Programming > Python
+ *          for Sets), each with a card line, when the topic landed too close to its subject
+ * Children carry a role: core (the ordered main sequence) or optional (a side path, with after = the core step it
+ * branches from). A branch ends when its core sequence is done; side paths never block.
  * The orchestrator (public/ikolearn/orchestrator.js) decides when to call and what context to send.
  */
-export type CreateChild = { name: string; order: number; score: number; why: string };
-export type CreateItem = { node: { name: string; chain: string[] }; card: { title: string; blurb: string; goal: string }; children: CreateChild[] };
+export type CreateChild = { name: string; order: number; score: number; why: string; role: (typeof CHILD_ROLES)[number]; after: string };
+export type CreateLink = { name: string; blurb: string };
+export type CreateItem = { node: { name: string; chain: string[] }; card: { title: string; blurb: string; goal: string }; children: CreateChild[]; links?: CreateLink[] };
 export type CreateResult = { items: CreateItem[] };
 
 export function createSystem(i: LearnInput): string {
@@ -379,9 +390,22 @@ export function createSystem(i: LearnInput): string {
     "a rough region or age band only biases what you pick, it never rules a topic out. ";
   const childRules =
     `children: 3 to ${LEARN_LIMITS.createChildren} smaller child topics (1 to 3 words, Title Case) with order (1 = learn first; foundational before advanced), ` +
-    "score (0 to 1: how important and typical this child is for this age and place; the most popular, logical next steps score highest) and why (a short friendly reason, under 10 words). ";
+    "score (0 to 1: how important and typical this child is for this age and place; the most popular, logical next steps score highest), why (a short friendly reason, under 10 words), " +
+    'role ("core": the main sequence a learner should follow, foundational to advanced, usually 2 to 4 of them; "optional": an isolated aspect or side path worth exploring but not needed to finish, at most 2) ' +
+    "and after (for an optional child only: the name of the core child it branches off). Order the core children first. ";
   const card =
     "card: title (the topic, at most 4 words), blurb (one line under 12 words saying what it is, never the learner's name) and goal (one short line: what the learner can do once they have finished it). ";
+  if (i.kind === "bridge")
+    return (
+      `${SYSTEM_BASE}\n\nRole: create, bridge. The learner's topic "${i.focus}" sits directly under the broad subject "${i.focusParent || "(unknown)"}", which is probably too shallow. ` +
+      `Return exactly 1 item whose node.name is "${i.focus}" and whose node.chain is the full logical chain from "${i.focusParent || "its broad subject"}" down to the topic's parent, broadest first, ` +
+      `every in-between topic a learner would meet on the way, up to ${LEARN_LIMITS.chain} (for example a part of a programming language sits under the language, which sits under programming). ` +
+      "When the learner asked about the topic within something specific (a language, a tool, an instrument, a place, a period), that thing is a step of the chain, right above the topic. " +
+      "Do not skip levels: keep the field between the broad subject and that thing (like Art & Music > Instruments > Guitar > Chords). " +
+      `If "${i.focus}" truly belongs right under the subject, node.chain is just ["${i.focusParent || "the subject"}"]. ` +
+      "links: one entry per chain topic below the subject, { name, blurb } with a one-line card description under 12 words. card: title, blurb and goal for the topic itself. children: an empty list.\n" +
+      `Existing subjects: ${i.parents.join(", ") || "(none yet)"}.\n\n${profile(i)}`
+    );
   const task =
     i.kind === "next"
       ? `Role: create, next. The learner is working in "${i.focus}"${i.trail ? ` (${i.trail})` : ""}. They already have: ${i.known.join(", ") || "nothing yet"}. ` +
@@ -414,10 +438,11 @@ export const CREATE_SCHEMA = {
             type: "array",
             items: {
               type: "object",
-              properties: { name: { type: "string" }, order: { type: "integer" }, score: { type: "number" }, why: { type: "string" } },
-              required: ["name", "order", "score"],
+              properties: { name: { type: "string" }, order: { type: "integer" }, score: { type: "number" }, why: { type: "string" }, role: { type: "string" }, after: { type: "string" } },
+              required: ["name", "order", "score", "role"],
             },
           },
+          links: { type: "array", items: { type: "object", properties: { name: { type: "string" }, blurb: { type: "string" } }, required: ["name"] } },
         },
         required: ["node", "card", "children"],
       },
@@ -429,7 +454,9 @@ export const CREATE_SCHEMA = {
 /**
  * Strict validation of a creation result. Labels are cleaned, never the learner's name, deduped across the whole
  * result; children are sorted by order (ties keep their place) with scores clamped to 0..1 (0-100 is read as a percent).
- * start: 2-5 items (each needs 2+ children); more: 1-2; next: exactly the focus, with 2+ new children.
+ * start: 2-5 items (each needs 2+ children); more: 1-2; next: exactly the focus, with 2+ new children; bridge: exactly
+ * the focus, with its chain (children optional) and a card line per link. Roles: core unless "optional"; an optional
+ * child's after must name a core child of the same item (else it is cleared); an item always keeps at least 1 core child.
  * Anything short of that is null, so the app falls back instead of growing a half-made branch.
  */
 export function parseCreate(raw: unknown, kind: LearnInput["kind"], learnerName = "", focus = "", known: string[] = []): CreateResult | null {
@@ -438,6 +465,7 @@ export function parseCreate(raw: unknown, kind: LearnInput["kind"], learnerName 
   const seen: string[] = [];
   const taken = (s: string) => seen.some((x) => sameLabel(x, s)) || (learnerName !== "" && sameLabel(s, learnerName));
   const max = kind === "start" ? LEARN_LIMITS.createItems : kind === "more" ? 2 : 1;
+  const focused = kind === "next" || kind === "bridge";
   const items: CreateItem[] = [];
   for (const it of list) {
     if (items.length >= max) break;
@@ -445,9 +473,9 @@ export function parseCreate(raw: unknown, kind: LearnInput["kind"], learnerName 
     const o = it as Record<string, unknown>;
     const nd = (o.node && typeof o.node === "object" ? o.node : {}) as Record<string, unknown>;
     const cd = (o.card && typeof o.card === "object" ? o.card : {}) as Record<string, unknown>;
-    const name = kind === "next" ? focus : cleanLabel(nd.name);
-    if (!name || (kind !== "next" && taken(name))) continue;
-    if (kind === "next" && !sameLabel(cleanLabel(nd.name), focus)) continue;
+    const name = focused ? focus : cleanLabel(nd.name);
+    if (!name || (!focused && taken(name))) continue;
+    if (focused && !sameLabel(cleanLabel(nd.name), focus)) continue;
     const chain = kind === "next" ? [] : parseChain(nd.chain, learnerName, name);
     const kids: (CreateChild & { i: number })[] = [];
     (Array.isArray(o.children) ? o.children : []).forEach((c, i) => {
@@ -461,10 +489,18 @@ export function parseCreate(raw: unknown, kind: LearnInput["kind"], learnerName 
       if (score > 1) score = score / 100;
       score = Math.max(0, Math.min(1, score));
       const order = Number.isFinite(Number(k.order)) ? Number(k.order) : 99;
-      kids.push({ name: cn, order, score: Math.round(score * 100) / 100, why: cleanText(k.why, LEARN_LIMITS.whyChars).replace(/[<>{}[\]`*_#|\\]/g, " ").trim(), i });
+      const role = k.role === "optional" ? "optional" : "core";
+      kids.push({ name: cn, order, score: Math.round(score * 100) / 100, why: cleanText(k.why, LEARN_LIMITS.whyChars).replace(/[<>{}[\]`*_#|\\]/g, " ").trim(), role, after: cleanLabel(k.after), i });
     });
-    if (kids.length < 2) continue;
+    if (kids.length < 2 && kind !== "bridge") continue;
     kids.sort((a, b) => a.order - b.order || a.i - b.i);
+    if (kids.length && !kids.some((k) => k.role === "core")) kids[0].role = "core";
+    const cores = kids.filter((k) => k.role === "core");
+    kids.forEach((k) => { if (k.role === "core" || !cores.some((c) => sameLabel(c.name, k.after))) k.after = k.role === "core" ? "" : cores[0].name; });
+    const links: CreateLink[] = kind !== "bridge" ? [] : (Array.isArray(o.links) ? o.links : [])
+      .filter((l) => l && typeof l === "object")
+      .map((l) => ({ name: cleanLabel((l as Record<string, unknown>).name), blurb: parseBlurb((l as Record<string, unknown>).blurb, learnerName) }))
+      .filter((l) => l.name && chain.some((c) => sameLabel(c, l.name)));
     seen.push(name, ...kids.map((k) => k.name));
     items.push({
       node: { name, chain },
@@ -473,7 +509,8 @@ export function parseCreate(raw: unknown, kind: LearnInput["kind"], learnerName 
         blurb: parseBlurb(cd.blurb, learnerName),
         goal: cleanText(plainReply(cd.goal), LEARN_LIMITS.goalChars).replace(/[<>{}[\]`*_#|\\]/g, " ").replace(/\s+/g, " ").trim(),
       },
-      children: kids.map((k, j) => ({ name: k.name, order: j + 1, score: k.score, why: k.why })),
+      children: kids.map((k, j) => ({ name: k.name, order: j + 1, score: k.score, why: k.why, role: k.role, after: k.after })),
+      ...(kind === "bridge" ? { links } : {}),
     });
   }
   const min = kind === "start" ? 2 : 1;

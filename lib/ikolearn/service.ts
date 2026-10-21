@@ -250,10 +250,18 @@ export async function pathFor(input: LearnInput, env: Env, fetchImpl: typeof fet
  * next inside one parent (next). Strictly validated (parseCreate); an unusable answer is 502 "bad_output" and the app
  * falls back locally.
  */
+/** The learner's question that brought the topic up, so the bridge follows it ("sets in Python" sits under Python). Content, not instructions. */
+function bridgeAsk(input: LearnInput): string {
+  const q = [...input.messages].reverse().find((m) => m.role === "user");
+  return q ? ` The learner asked: "${q.text.slice(0, 300)}"` : "";
+}
+
 export async function createFor(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): Promise<Out> {
-  if (input.kind === "next" && !input.focus) return json(422, { ok: false, reason: "focus" });
+  if ((input.kind === "next" || input.kind === "bridge") && !input.focus) return json(422, { ok: false, reason: "focus" });
   const user =
-    input.kind === "next"
+    input.kind === "bridge"
+      ? `Where does ${input.focus} fit under ${input.focusParent || "its subject"}? Give the steps in between.${bridgeAsk(input)}`
+      : input.kind === "next"
       ? `What should come next in ${input.focus}?`
       : `Build my ${input.kind === "start" ? "first" : "new"} learning topics.${input.interests.length ? ` I enjoy: ${input.interests.join(", ")}.` : ""}`;
   const r = await generateJson<CreateResult>(createSystem(input), user, CREATE_SCHEMA, (t) => parseCreate(t, input.kind, input.name, input.focus, input.known), env, fetchImpl, { maxTokens: MODEL_LIMITS.createMaxTokens });
