@@ -1672,6 +1672,43 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   }
 }
 
+/* ================= fix: collapsed suggestion cards, suggestions during onboarding ================= */
+{
+  const app = fs.readFileSync("public/ikolearn/app.js", "utf8"), css = fs.readFileSync("public/ikolearn/styles.css", "utf8");
+  // 1) a card in a suggestion cell (a flex column) must not inherit a 0 flex-basis: with overflow: hidden its min-height is 0
+  ok(/\.gcard \{[^}]*overflow: hidden/.test(css), "cards clip their frame layers (overflow: hidden), so flex sizing must not shrink them");
+  ok(/\.draw-row > \.gcard \{ flex: 1 1 0;/.test(css) && !/\.draw-row \.gcard \{/.test(css), "the row's flex: 1 1 0 applies only to cards placed directly in the row");
+  ok(/\.sg \.gcard \{ flex: none;/.test(css) && /\.sg \{[^}]*flex-direction: column/.test(css), "a card inside a suggestion cell keeps its content height (flex: none)");
+  const flexZero = [...css.matchAll(/([^{}]+)\{[^}]*flex: 1 1 0[^}]*\}/g)].map((m) => m[1].trim()).filter((sel) => /\.gcard/.test(sel));
+  ok(flexZero.every((sel) => /> \.gcard$/.test(sel)), "no card gets a 0 flex-basis except as a direct child of a row", flexZero.join(" | "));
+
+  // 2) onboarding only for learners who haven't started; nothing else shows while its questions are open
+  const fresh = C.create("Barry", T0);
+  ok(P.needsOnboarding(fresh) && !P.hasStarted(fresh), "a new learner: onboarding");
+  const chatted = C.create("Barry", T0);
+  C.applyTopics(chatted, [{ name: "Physics", parent: "Science", signal: "curious", chain: ["Science"] }], T0);
+  ok(P.needsOnboarding(chatted) && !P.hasStarted(chatted), "one topic from chat, nothing opened yet: still onboarding (the questions build the cloud)");
+  const opened = C.create("Barry", T0);
+  C.applyTopics(opened, [{ name: "Physics", parent: "Science", signal: "curious", chain: ["Science"] }], T0);
+  C.findTopic(opened, "Physics").opened = true;
+  ok(P.hasStarted(opened) && !P.needsOnboarding(opened), "a topic they opened: started, never sent back through the first questions");
+  const active = C.create("Barry", T0);
+  C.applyTopics(active, [{ name: "Physics", parent: "Science", signal: "curious", chain: ["Science"] }], T0);
+  active.active = C.findTopic(active, "Physics").id;
+  ok(!P.needsOnboarding(active), "a lesson in progress (Continue): no onboarding");
+  const decked = C.create("Barry", T0);
+  decked.deck = [{ id: "gone", label: "Forces", subject: "Science", hue: 0, at: T0, best: 1, chain: [], blurb: "", ach: 0, tb: 1, ml: 0, inn: null, co: [] }];
+  ok(!P.needsOnboarding(decked) && P.hasStarted(decked), "cards in the deck (even if their topics are gone): no onboarding, the deck is kept");
+  const snap = C.serialize(decked);
+  P.needsOnboarding(decked); P.hasStarted(decked);
+  ok(C.serialize(decked) === snap && JSON.parse(snap).v === 8, "derived only: no new stored fields, storage stays v8");
+  ok(P.reask(opened, T0 + 1) !== null && P.reask(fresh, T0 + 1) === null, "a started learner who never answered the questions can get the light re-ask instead; a brand-new one gets onboarding");
+  const done = C.create("Barry", T0); C.setProfile(done, { onboarded: true });
+  ok(!P.needsOnboarding(done), "onboarded: never again");
+  ok(/function onboardingOpen\(\) \{ return state\.thread\.some\(function \(m\) \{ return m\.role === "ask" && !m\.done; \}\); \}/.test(app) && /el\.draw\.hidden = !el\.lesson\.hidden \|\| !el\.deck\.hidden \|\| onboardingOpen\(\);/.test(app), "while an onboarding question is open, suggestions, Draw, Continue and Your cloud stay hidden");
+  ok((app.match(/[^\w.]ask\(\w+, function/g) || []).length === 1, "only onboarding asks questions in the thread (so hiding on an open ask hides nothing else)");
+}
+
 if (fails.length) {
   console.error(`ikolearn checks: ${pass} passed, ${fails.length} FAILED`);
   for (const f of fails) console.error("  x " + f);
