@@ -26,7 +26,20 @@
         <button type="button" id="thumb" class="thumb" aria-label="Open your learning cloud"><canvas id="thumb-canvas" width="72" height="72"></canvas></button>
       </header>
       <div id="thread" class="col" role="log" aria-live="polite"></div>
-      <div class="dock">
+      <article id="lesson" class="col" hidden aria-live="polite">
+        <button type="button" id="l-back" class="link back">Back to chat</button>
+        <p class="kicker" id="l-trail"></p>
+        <h2 id="l-title"></h2>
+        <div id="l-body" class="lesson"></div>
+        <div id="l-done" class="actions" hidden>
+          <button type="button" id="l-got" class="btn sm">I've got it</button>
+          <button type="button" id="l-tricky" class="btn sm">Still tricky</button>
+        </div>
+        <p id="l-status" class="status"></p>
+        <div id="l-path"></div>
+        <p class="fine"><button type="button" id="l-chat" class="link">Ask about this in chat</button> · <button type="button" id="l-redo" class="link">Write a fresh version</button></p>
+      </article>
+      <div class="dock" id="dock">
         <div class="col">
           <p id="focus-chip" class="focus" hidden><span id="focus-text"></span> <button type="button" id="focus-clear" class="link" aria-label="Clear focus">clear</button></p>
           <form id="composer">
@@ -51,10 +64,12 @@
           <h2 id="p-title"></h2>
           <div id="p-note" class="note"></div>
           <div class="actions">
+            <button type="button" id="p-lesson" class="btn sm">Start a lesson</button>
             <button type="button" id="p-card" class="btn sm">Make a card</button>
             <button type="button" id="p-adj" class="btn sm">Related topics</button>
             <button type="button" id="p-chat" class="btn sm">Talk in chat</button>
           </div>
+          <div id="p-path"></div>
           <div id="p-cards"></div>
           <button type="button" id="p-close" class="link">Close</button>
         </div>
@@ -63,6 +78,7 @@
   </main>
   <script src="/ikolearn/cloud-model.js"></script>
   <script src="/ikolearn/cloud-view.js"></script>
+  <script src="/ikolearn/lesson.js"></script>
   <script src="/ikolearn/app.js"></script>
 </body>
 </html>
