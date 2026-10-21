@@ -36,7 +36,7 @@
         <div id="d-suggest" class="flow"></div>
         <h2 id="d-title">Your deck</h2>
         <p id="d-lede" class="d-lede"></p>
-        <div id="d-grid" class="deck-grid"></div>
+        <div id="d-album" class="album" aria-label="Your cards by subject"></div>
         <p id="d-balance" class="fine"></p>
         <section id="top" class="top10" hidden aria-labelledby="t-title">
           <h3 id="t-title">Your top 10</h3>
@@ -50,6 +50,25 @@
           <div class="you-row"><label for="you-region">Region</label><input id="you-region" maxlength="40" placeholder="e.g. Canada / Ontario" autocomplete="off"></div>
           <p class="fine"><button type="button" id="you-guess" class="link">Use this device's guess</button> · <button type="button" id="you-clear" class="link">Clear</button><span id="you-saved" class="tag" aria-live="polite"></span></p>
         </section>
+      </article>
+      <article id="hub" class="col" hidden aria-labelledby="hub-title">
+        <button type="button" id="hub-back" class="link back">Back to your deck</button>
+        <nav id="hub-crumb" class="hub-crumb" aria-label="Where this card sits"></nav>
+        <div class="hub-top">
+          <div id="hub-card" class="hub-card"></div>
+          <div class="hub-info">
+            <h2 id="hub-title"></h2>
+            <p id="hub-state" class="hub-state"></p>
+            <p id="hub-note" class="hub-note"></p>
+            <div class="actions">
+              <button type="button" id="hub-lesson" class="btn sm draw-btn">Start the lesson</button>
+              <button type="button" id="hub-test" class="btn sm" hidden>Take the test</button>
+              <button type="button" id="hub-cloud" class="btn sm quiet">See it on your cloud</button>
+            </div>
+            <div id="hub-corpus"></div>
+          </div>
+        </div>
+        <section id="hub-kids" class="hub-kids" aria-label="Its branches"></section>
       </article>
       <article id="lesson" class="game" hidden>
         <aside id="holder" class="holder" aria-label="Your card">
@@ -100,7 +119,7 @@
           <div id="p-note" class="note"></div>
           <div class="actions">
             <button type="button" id="p-lesson" class="btn sm">Start a lesson</button>
-            <button type="button" id="p-card" class="btn sm">Make a card</button>
+            <button type="button" id="p-card" class="btn sm" title="Its card, its branches and what you've covered">Open its card</button>
             <button type="button" id="p-test" class="btn sm" hidden>Take the test</button>
             <button type="button" id="p-adj" class="btn sm">Related topics</button>
             <button type="button" id="p-chat" class="btn sm">Talk in chat</button>

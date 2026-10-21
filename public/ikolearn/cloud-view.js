@@ -1,7 +1,8 @@
 /*
  * IkoLearn cloud view: a small canvas 2D renderer for the 3D knowledge tree (no libraries).
  * Input (camera.js): drag pans (with a short glide), right-drag / Shift-drag / two-finger twist turns, pinch / wheel /
- * buttons zoom; tapping a node picks it and the app eases it into focus (focusNode). Merged parents are drawn brighter
+ * buttons zoom; tapping a node picks it and the app eases it into focus (focusNode), which also moves the turn centre
+ * (the pivot) to that node, so turning orbits the node you are looking at; Recentre puts the pivot back. Merged parents are drawn brighter
  * with a ring per level; the cards they absorbed sit close round them as a tighter constellation.
  * Depth- and zoom-aware: each level of the tree is drawn smaller; deeper levels appear (and get labels) as you zoom in
  * or focus a branch, and higher labels fade back. At most DRAW_CAP points are drawn at once.
@@ -20,7 +21,7 @@
     var mini = Boolean(opts.mini);
     var ctx = canvas.getContext("2d");
     var cloud = null, pos = {}, depth = {}, pathRank = {}, highlight = {}, raf = 0, w = 0, h = 0, dpr = 1;
-    var yaw = -0.5, pitch = 0.32, zoom = 1, panX = 0, panY = 0;
+    var yaw = -0.5, pitch = 0.32, zoom = 1, panX = 0, panY = 0, pivot = CAM.ORIGIN;
     var pointers = {}, gesture = null, idleSpin = mini && !reduce, tween = null, glideV = null;
     var focusId = null, focusSet = {};
     var projected = [];
@@ -70,10 +71,12 @@
       }
     }
 
+    /* p − pivot, turned (yaw about the vertical axis, then pitch), in perspective; the pivot lands at centre + pan */
     function project(p) {
       var cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
-      var x = p.x * cy - p.z * sy, z = p.x * sy + p.z * cy;
-      var y = p.y * cp - z * sp; z = p.y * sp + z * cp;
+      var px = p.x - pivot.x, py = p.y - pivot.y, pz = p.z - pivot.z;
+      var x = px * cy - pz * sy, z = px * sy + pz * cy;
+      var y = py * cp - z * sp; z = py * sp + z * cp;
       var f = 3.2 / (3.2 + z);
       var s = Math.min(w, h) * (mini ? 0.3 : 0.34) * zoom;
       return { x: w / 2 + panX + x * f * s, y: h / 2 + panY - y * f * s, f: f, z: z };
@@ -270,8 +273,9 @@
 
     function setZoom(z) { zoom = Math.max(ZMIN, Math.min(ZMAX, z)); request(); }
 
-    function view() { return { zoom: zoom, panX: panX, panY: panY, yaw: yaw, pitch: pitch }; }
-    function apply(v) { zoom = v.zoom; panX = v.panX; panY = v.panY; yaw = v.yaw; pitch = v.pitch; }
+    function view() { return { zoom: zoom, panX: panX, panY: panY, yaw: yaw, pitch: pitch, pivot: pivot }; }
+    function apply(v) { zoom = v.zoom; panX = v.panX; panY = v.panY; yaw = v.yaw; pitch = v.pitch; pivot = v.pivot || CAM.ORIGIN; }
+    function pointOf(id) { var p = pos[id]; return { x: p.x, y: p.y, z: p.z }; }
     function animateTo(to, ms) {
       glideV = null;
       if (reduce || !ms) { apply(to); tween = null; request(); changed(); return; }
@@ -279,8 +283,9 @@
       request();
     }
     /*
-     * Brings a node into focus: it turns to the front (shortest arc), and the camera frames the node with its children
-     * inside the free area centred on (cx, cy), at a zoom where the children's labels are legible. Eased, cubic in-out.
+     * Brings a node into focus: it turns to the front (shortest arc) and becomes the pivot, so it is pinned at
+     * (cx, cy) and any later turn orbits it. The zoom fits its children around it inside the free area aw x ah, kept
+     * where their labels are legible. The tween eases yaw, zoom (log space), pan and the pivot together (cubic in-out).
      */
     function focusNode(id, o) {
       o = o || {};
@@ -288,13 +293,13 @@
       setFocus(id);
       var d = depth[id] || 1, saved = view();
       var fy = o.keepYaw ? null : CAM.forwardYaw(pos[id]);
-      yaw = fy == null ? yaw : fy; zoom = 1; panX = 0; panY = 0;
-      var pts = [id].concat((C.index(cloud)[id] || []).filter(function (k) { return pos[k]; })), box = { x0: 1e9, x1: -1e9, y0: 1e9, y1: -1e9 };
+      yaw = fy == null ? yaw : fy; zoom = 1; panX = 0; panY = 0; pivot = pointOf(id);
+      var pts = (C.index(cloud)[id] || []).filter(function (k) { return pos[k]; }), box = { x0: 0, x1: 0, y0: 0, y1: 0 };
       pts.forEach(function (k) { var q = project(pos[k]), x = q.x - w / 2, y = q.y - h / 2; box.x0 = Math.min(box.x0, x); box.x1 = Math.max(box.x1, x); box.y0 = Math.min(box.y0, y); box.y1 = Math.max(box.y1, y); });
       var lo = Math.max(1, 0.75 / C.levelScale(d + 1)), hi = Math.max(lo, 1.6 / C.levelScale(d + 1));
-      var z = o.zoom || CAM.fitZoom(box, o.aw || w, o.ah || h, lo, hi);
+      var z = o.zoom || CAM.fitAround(box, o.aw || w, o.ah || h, lo, hi);
       var cx = o.cx == null ? w / 2 : o.cx, cy = o.cy == null ? h / 2 : o.cy;
-      var to = { zoom: z, panX: cx - w / 2 - ((box.x0 + box.x1) / 2) * z, panY: cy - h / 2 - ((box.y0 + box.y1) / 2) * z, yaw: yaw, pitch: saved.pitch };
+      var to = { zoom: z, panX: cx - w / 2, panY: cy - h / 2, yaw: yaw, pitch: saved.pitch, pivot: pivot };
       apply(saved);
       animateTo(to, o.instant ? 0 : CAM.CAM.focusMs);
     }
@@ -315,7 +320,7 @@
     function changed() {
       if (!opts.onView || mini) return;
       clearTimeout(changeTimer);
-      changeTimer = setTimeout(function () { opts.onView({ yaw: yaw, pitch: pitch, zoom: zoom, panX: panX, panY: panY, focus: focusId }); }, 250);
+      changeTimer = setTimeout(function () { opts.onView({ yaw: yaw, pitch: pitch, zoom: zoom, panX: panX, panY: panY, pivot: { x: pivot.x, y: pivot.y, z: pivot.z }, focus: focusId }); }, 250);
     }
 
     /* ---------- input ---------- */
@@ -389,11 +394,11 @@
       resize: resize,
       /* the zoom buttons: a short eased zoom about the centre */
       zoomBy: function (k) { var v = view(), z = CAM.zoomAbout(v, k, null, w, h); animateTo({ zoom: z.zoom, panX: v.panX * (z.zoom / v.zoom), panY: v.panY * (z.zoom / v.zoom), yaw: v.yaw, pitch: v.pitch }, CAM.CAM.zoomMs); },
-      reset: function () { apply(HOME); tween = null; glideV = null; setFocus(null); request(); changed(); },
-      /* Recentre: ease back to the whole cloud and let go of the focus */
-      recentre: function () { setFocus(null); animateTo(Object.assign({}, HOME), CAM.CAM.focusMs); },
-      state: function () { return { yaw: yaw, pitch: pitch, zoom: zoom, panX: panX, panY: panY, focus: focusId, drawn: projected.length, moving: Boolean(tween || glideV) }; },
-      setView: function (v) { if (v.zoom) setZoom(v.zoom); if (v.yaw != null) yaw = v.yaw; if (v.pitch != null) pitch = v.pitch; if (v.panX != null) panX = v.panX; if (v.panY != null) panY = v.panY; if (v.focus !== undefined) setFocus(v.focus); request(); },
+      reset: function () { apply(Object.assign({ pivot: CAM.ORIGIN }, HOME)); tween = null; glideV = null; setFocus(null); request(); changed(); },
+      /* Recentre: ease back to the whole cloud, the pivot back to the origin, and let go of the focus */
+      recentre: function () { setFocus(null); animateTo(Object.assign({ pivot: CAM.ORIGIN }, HOME), CAM.CAM.focusMs); },
+      state: function () { return { yaw: yaw, pitch: pitch, zoom: zoom, panX: panX, panY: panY, pivot: { x: pivot.x, y: pivot.y, z: pivot.z }, focus: focusId, drawn: projected.length, moving: Boolean(tween || glideV) }; },
+      setView: function (v) { if (v.zoom) setZoom(v.zoom); if (v.yaw != null) yaw = v.yaw; if (v.pitch != null) pitch = v.pitch; if (v.panX != null) panX = v.panX; if (v.panY != null) panY = v.panY; if (v.pivot && isFinite(v.pivot.x) && isFinite(v.pivot.y) && isFinite(v.pivot.z)) pivot = { x: v.pivot.x, y: v.pivot.y, z: v.pivot.z }; if (v.focus !== undefined) setFocus(v.focus); request(); },
       project: function (id) { return pos[id] ? project(pos[id]) : null; },
       focusNode: focusNode,
       clearFocus: function () { setFocus(null); request(); }

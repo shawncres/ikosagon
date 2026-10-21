@@ -189,7 +189,9 @@
     d.appendChild(Object.assign(doc.createElement("span"), { className: "gc-bleed" }));
     if (spec.tier >= 3) d.appendChild(Object.assign(doc.createElement("span"), { className: "gc-sheen" }));
     if (size === "mini") return d;
-    var links = chainLinks(spec.chain, size === "full");
+    /* one layout for every size (a 5:7 trading card): plate on top, title, chain, then the tier and pips at the foot */
+    var t = doc.createElement("span"); t.className = "gc-title"; t.textContent = spec.label; t.title = spec.label; d.appendChild(t);
+    var links = chainLinks(spec.chain, false);
     if (links.length) {
       var c = doc.createElement("span"); c.className = "gc-chain";
       links.forEach(function (l, i) {
@@ -198,7 +200,6 @@
       });
       d.appendChild(c);
     }
-    var t = doc.createElement("span"); t.className = "gc-title"; t.textContent = spec.label; d.appendChild(t);
     if (size === "full") {
       d.appendChild(Object.assign(doc.createElement("span"), { className: "gc-rule" }));
       if (spec.blurb) { var b = doc.createElement("span"); b.className = "gc-desc"; b.textContent = spec.blurb; d.appendChild(b); }
@@ -328,10 +329,116 @@
       .sort(function (a, b) { return b.cards - a.cards || (a.subject < b.subject ? -1 : 1); });
   }
 
+  /* ---------- covered vs uncovered (derived from v8 state; nothing new is stored) ---------- */
+  /* covered: merged in, Tinted+ or done (C.isDone) · progress: confirmed, decked, opened or engaged · uncovered: the rest */
+  function coverage(cloud, id) {
+    var n = cloud.nodes[id], e = C.deckEntry(cloud, id);
+    if (!n && !e) return null;
+    if (C.absorbedInto(cloud, id)) return { state: "covered", how: "merged", text: "Merged in" };
+    var g = C.growthOf(cloud, id);
+    if (g.tier >= 3) return { state: "covered", how: "achieved", text: "Covered" };
+    if (g.tier >= 2 || (n && C.isDone(cloud, id))) return { state: "covered", how: "done", text: "Covered" };
+    if (g.tier >= 1 || e || (n && !n.ghost && (n.opened || n.engaged > 0 || n.spent > 0 || n.correct > 0))) return { state: "progress", how: "started", text: "In progress" };
+    return { state: "uncovered", how: n && n.ghost ? "ghost" : "new", text: n && n.ghost ? "Suggested" : "Not started" };
+  }
+  function subtree(cloud, id, ix) {
+    ix = ix || C.index(cloud);
+    var out = [id], seen = {};
+    seen[id] = 1;
+    for (var i = 0; i < out.length; i++) (ix[out[i]] || []).forEach(function (k) { if (!seen[k] && cloud.nodes[k]) { seen[k] = 1; out.push(k); } });
+    return out;
+  }
+  function loose(cloud, id) { var p = C.absorbedInto(cloud, id); return !(p && C.inDeck(cloud, p)); }
+  function cardRank(cloud, id) { var g = C.growthOf(cloud, id) || { tier: 0, level: 0 }; return g.tier * 10 + (g.level || 0); }
+  /*
+   * The album: a page per subject, a row per branch (topic under the subject) led by its own card, then its deck cards
+   * by rarity, then empty slots for known topics not collected. Gone topics keep their place by their stored chain.
+   * -> [{ subject, hue, covered, known, rows: [{ head, label, lead, cards: [id], slots: [id], more }] }]
+   */
+  var ALBUM = { slots: 6 };
+  function albumModel(cloud, opts) {
+    opts = opts || {};
+    var cap = opts.slots == null ? ALBUM.slots : opts.slots, ix = C.index(cloud), pages = [], bySubject = {};
+    var deck = (cloud.deck || []).filter(function (e) { return loose(cloud, e.id); });
+    function page(label, hue, sid) {
+      if (!bySubject[label]) { bySubject[label] = { subject: label, id: sid || null, hue: hue, covered: 0, known: 0, rows: [], byHead: {} }; pages.push(bySubject[label]); }
+      return bySubject[label];
+    }
+    function row(pg, head, label) {
+      var k = head || "~" + label;
+      if (!pg.byHead[k]) { pg.byHead[k] = { head: head, label: label, lead: false, cards: [], slots: [], more: 0 }; pg.rows.push(pg.byHead[k]); }
+      return pg.byHead[k];
+    }
+    deck.forEach(function (e) {
+      var n = cloud.nodes[e.id];
+      if (n) {
+        var a = C.ancestry(cloud, e.id), s = cloud.nodes[a[0]], pg = page(s.label, C.hueOf(cloud, e.id), s.id);
+        if (a.length < 2) { row(pg, null, "Subject card").cards.push(e.id); return; }
+        var hd = cloud.nodes[a[1]];
+        row(pg, hd.id, hd.label).cards.push(e.id);
+      } else {
+        var ch = e.chain && e.chain.length ? e.chain : [e.subject, e.label];
+        row(page(e.subject || ch[0] || "Other", e.hue, null), null, ch.length > 2 ? ch[1] : e.label).cards.push(e.id);
+      }
+    });
+    pages.forEach(function (pg) {
+      pg.rows.forEach(function (r) {
+        r.cards.sort(function (a, b) { return (b === r.head) - (a === r.head) || cardRank(cloud, b) - cardRank(cloud, a) || (C.deckEntry(cloud, a).at - C.deckEntry(cloud, b).at); });
+        r.lead = Boolean(r.head && r.cards[0] === r.head);
+        if (!r.head) return;
+        var empty = subtree(cloud, r.head, ix).filter(function (x) { return !C.inDeck(cloud, x) && !(C.absorbedInto(cloud, x) && C.inDeck(cloud, C.absorbedInto(cloud, x))); });
+        empty.sort(function (a, b) { return (coverage(cloud, b).state === "progress") - (coverage(cloud, a).state === "progress"); });
+        r.slots = empty.slice(0, cap); r.more = Math.max(0, empty.length - cap);
+      });
+      pg.rows.sort(function (a, b) { return (b.lead ? cardRank(cloud, b.head) : 0) - (a.lead ? cardRank(cloud, a.head) : 0) || b.cards.length - a.cards.length; });
+      /* covered of known: topics under the subject (no ghosts) plus cards whose topic is gone */
+      var ids = pg.id ? subtree(cloud, pg.id, ix).slice(1).filter(function (x) { return !cloud.nodes[x].ghost; }) : [];
+      pg.rows.forEach(function (r) { r.cards.forEach(function (x) { if (ids.indexOf(x) < 0) ids.push(x); }); });
+      pg.known = ids.length;
+      pg.covered = ids.filter(function (x) { var cv = coverage(cloud, x); return cv && cv.state === "covered"; }).length;
+      delete pg.byHead;
+    });
+    pages.sort(function (a, b) { return b.rows.reduce(function (t, r) { return t + r.cards.length; }, 0) - a.rows.reduce(function (t, r) { return t + r.cards.length; }, 0); });
+    return pages;
+  }
+  /* A hub's branches with their coverage (order: the orchestrator's), and pending steps -> { core, side, waiting, covered, total } */
+  function hubChildren(cloud, id, order) {
+    var n = cloud.nodes[id];
+    if (!n) return { core: [], side: [], waiting: [], covered: 0, total: 0 };
+    var core = (order && order.core) || C.coreChildren(cloud, id).map(function (c) { return c.id; });
+    var side = (order && order.side) || C.sidePaths(cloud, id);
+    var out = {
+      core: core.filter(function (x) { return cloud.nodes[x]; }).map(function (x) { return { id: x, cov: coverage(cloud, x) }; }),
+      side: side.filter(function (x) { return cloud.nodes[x.id]; }).map(function (x) { return { id: x.id, off: x.off, cov: coverage(cloud, x.id) }; }),
+      waiting: n.pending && Array.isArray(n.pending.steps) ? n.pending.steps.filter(function (l) { var t = C.findTopic(cloud, l, id); return !(t && t.parent === id); }).slice(0, 6) : []
+    };
+    var all = out.core.concat(out.side);
+    out.total = all.length; out.covered = all.filter(function (x) { return x.cov.state === "covered"; }).length;
+    return out;
+  }
+  /* An empty slot: the card's outline, its name and state. */
+  function renderSlot(doc, cloud, id, opts) {
+    opts = opts || {};
+    var n = cloud.nodes[id], cv = coverage(cloud, id) || { state: "uncovered", text: "" };
+    var d = doc.createElement(opts.onOpen ? "button" : "div");
+    d.className = "gslot is-" + cv.state + (n && n.ghost ? " ghost" : "");
+    d.dataset.card = id;
+    if (n) d.style.setProperty("--card-ink", C.colorOf(cloud, n));
+    d.appendChild(Object.assign(doc.createElement("span"), { className: "gs-title", textContent: n ? n.label : opts.label || "" }));
+    d.appendChild(Object.assign(doc.createElement("span"), { className: "gs-state", textContent: opts.text || cv.text }));
+    if (opts.onOpen) {
+      d.type = "button";
+      d.setAttribute("aria-label", (n ? n.label : "") + ", " + cv.text + ", not in your deck yet");
+      d.addEventListener("click", function (e) { e.stopPropagation(); opts.onOpen(id, d); });
+    }
+    return d;
+  }
+
   var api = {
     DETAIL: DETAIL, REVIEW_DAYS: REVIEW_DAYS, DRAW: DRAW,
     seedOf: seedOf, rng: rng, landscape: landscape, cardSpec: cardSpec, chainText: chainText, chainLinks: chainLinks, render: render, artSvg: artSvg,
     renderCorpus: renderCorpus, pipsFor: pipsFor, evolveKey: evolveKey,
+    coverage: coverage, subtree: subtree, albumModel: albumModel, hubChildren: hubChildren, renderSlot: renderSlot, ALBUM: ALBUM,
     dayOf: dayOf, weigh: weigh, drawSession: drawSession, balance: balance
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
