@@ -8,7 +8,9 @@ import {
   buildContents, cardSystem, adjacentSystem, plainReply, parseCloudBlock, parseCard, parseAdjacent, createBlockSplitter,
   PATH_OPEN, PATH_CLOSE, lessonSystem, lessonContents, pathSystem, PATH_SCHEMA, CARD_SCHEMA, parsePath, parseChoices, parseLessonBlock, parseQuestions, parseBlurb, parseChain,
 } from "../lib/ikolearn/prompts.ts";
-import { DEFAULT_MODEL, FALLBACK_MODEL, MODEL_LIMITS, chatBody, jsonBody, readSse, streamText, generateJson } from "../lib/ikolearn/gemini.ts";
+import { DEFAULT_MODEL, FALLBACK_MODEL, GEMINI_BASE, chatBody, jsonBody, readSse } from "../lib/ikolearn/gemini.ts";
+import { MODEL_LIMITS, streamText, generateJson, llmConfig, llmReady } from "../lib/ikolearn/llm.ts";
+import { toMessages } from "../lib/ikolearn/openai-compatible.ts";
 import { LEARN_GUARDS, createLearnState, prepare, chatEvents, eventStream, cardFor, adjacentFor, lessonEvents, pathFor } from "../lib/ikolearn/service.ts";
 
 const require = createRequire(import.meta.url);
@@ -814,6 +816,100 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(re > 1, "re-opening a lesson keeps warming its topic", re.toFixed(2));
   const fav = C.findTopic(y, "Counting").id;
   ok(C.otherBranches(y, C.findTopic(y, "Subtraction").id, 3, [fav])[0] === fav || !C.otherBranches(y, C.findTopic(y, "Subtraction").id, 3).includes(fav), "suggestions put a nearby top-10 topic first");
+}
+
+/* ================= model providers (llm.ts: selection, Gemini + OpenAI-compatible adapters) ================= */
+{
+  // selection by env only
+  let cfg = llmConfig({ GEMINI_API_KEY: "gk" });
+  eq(cfg, { provider: "gemini", key: "gk", model: DEFAULT_MODEL, base: GEMINI_BASE, fallback: FALLBACK_MODEL }, "unset: Gemini with GEMINI_API_KEY and today's models");
+  ok(llmConfig({ GEMINI_API_KEY: "gk", IKOLEARN_GEMINI_MODEL: "models/g-old" }).model === "g-old", "IKOLEARN_GEMINI_MODEL still works");
+  cfg = llmConfig({ GEMINI_API_KEY: "gk", IKOLEARN_LLM_API_KEY: "lk", IKOLEARN_LLM_MODEL: "g-new", IKOLEARN_GEMINI_MODEL: "g-old" });
+  ok(cfg.key === "lk" && cfg.model === "g-new", "gemini: IKOLEARN_LLM_API_KEY and IKOLEARN_LLM_MODEL win when set");
+  eq(llmConfig({}), { error: "no_key" }, "no key at all -> not ready");
+  const OA = { IKOLEARN_LLM_PROVIDER: "OpenAI-Compatible", IKOLEARN_LLM_API_KEY: "ok-key", IKOLEARN_LLM_BASE_URL: "https://api.example.test/openai/v1/", IKOLEARN_LLM_MODEL: "some-model" };
+  eq(llmConfig(OA), { provider: "openai-compatible", key: "ok-key", model: "some-model", base: "https://api.example.test/openai/v1" }, "openai-compatible: key, base (trailing slash dropped) and model from env");
+  eq(llmConfig({ ...OA, IKOLEARN_LLM_API_KEY: "", GEMINI_API_KEY: "gk" }), { error: "no_key" }, "openai-compatible never borrows the Gemini key");
+  eq(llmConfig({ ...OA, IKOLEARN_LLM_BASE_URL: "" }), { error: "no_base" }, "openai-compatible needs a base URL");
+  eq(llmConfig({ ...OA, IKOLEARN_LLM_BASE_URL: "http://api.example.test/v1" }), { error: "no_base" }, "base URL must be https (http only for localhost)");
+  ok(llmConfig({ ...OA, IKOLEARN_LLM_BASE_URL: "http://localhost:8080/v1" }).base === "http://localhost:8080/v1", "a local OpenAI-compatible server is allowed");
+  eq(llmConfig({ ...OA, IKOLEARN_LLM_MODEL: "" }), { error: "no_model" }, "openai-compatible needs a model");
+  eq(llmConfig({ ...OA, IKOLEARN_LLM_PROVIDER: "carrier-pigeon" }), { error: "unknown_provider" }, "unknown provider -> not ready");
+  ok(llmReady(OA) && !llmReady({ ...OA, IKOLEARN_LLM_MODEL: "" }) && llmReady({ GEMINI_API_KEY: "gk" }), "llmReady");
+  const pbody = JSON.stringify({ name: "Sam", messages: [{ role: "user", text: "hi" }], cloud: "", parents: [] });
+  const pbase = { rawBody: pbody, origin: "https://ikosagon.com", host: "ikosagon.com", ip: "7.7.7.7", state: createLearnState(() => T0) };
+  ok(prepare({ ...pbase, env: OA }).ok && prepare({ ...pbase, env: { ...OA, IKOLEARN_LLM_BASE_URL: "" }, ip: "7.7.7.8" }).out.status === 503, "routes: ready with an OpenAI-compatible provider, 503 when it is half set up");
+
+  // Gemini adapter: schemas from the prompts (plain JSON Schema) are upper-cased for Gemini
+  ok(CARD_SCHEMA.type === "object" && CARD_SCHEMA.properties.title.type === "string", "prompts keep provider-neutral (lowercase) schemas");
+  const gjb = jsonBody("s", "u", CARD_SCHEMA).generationConfig.responseSchema;
+  ok(gjb.type === "OBJECT" && gjb.properties.path.type === "ARRAY" && gjb.properties.path.items.type === "STRING" && gjb.required.includes("title"), "Gemini gets its own schema casing");
+
+  // OpenAI-compatible adapter: streaming
+  const enc = new TextEncoder();
+  const oaiSse = (pieces) => new ReadableStream({ start(c) {
+    c.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { role: "assistant" } }] })}\n\n`));
+    c.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { reasoning: "thinking..." } }] })}\n\n`));
+    for (const t of pieces) { const l = `data: ${JSON.stringify({ choices: [{ delta: { content: t } }] })}\n\n`; c.enqueue(enc.encode(l.slice(0, 7))); c.enqueue(enc.encode(l.slice(7))); }
+    c.enqueue(enc.encode("data: [DONE]\n\n")); c.close();
+  } });
+  const reply = ["Fractions are ", "parts of a whole, Sam.", `\n${CLOUD_OPEN}{"topics":[{"name":"Fractions","parent":"Math","signal":"curious"}],`, `"ghosts":[{"name":"Decimals","parent":"Math"}]}${CLOUD_CLOSE}`];
+  let f = fakeFetch([() => res(200, oaiSse(reply))]);
+  const evO = await collect(chatEvents(IN, OA, f));
+  const evG = await collect(chatEvents(IN, ENV, fakeFetch([() => res(200, sse(reply))])));
+  const call = f.calls[0], rb = JSON.parse(call.init.body);
+  ok(call.url === "https://api.example.test/openai/v1/chat/completions" && call.init.headers.Authorization === "Bearer ok-key" && rb.stream === true && rb.model === "some-model", "openai-compatible: POST {base}/chat/completions, Bearer key, streamed, the configured model");
+  ok(rb.messages[0].role === "system" && rb.messages[0].content.includes("Role:") && rb.messages.slice(1).map((m) => m.role).join() === buildContents(IN).map((m) => (m.role === "model" ? "assistant" : "user")).join() && rb.max_tokens === MODEL_LIMITS.chatMaxTokens, "openai-compatible: system first, model turns become assistant, token limit kept");
+  eq(toMessages("sys", [{ role: "user", parts: [{ text: "a" }] }, { role: "model", parts: [{ text: "b" }, { text: "c" }] }]), [{ role: "system", content: "sys" }, { role: "user", content: "a" }, { role: "assistant", content: "bc" }], "toMessages: model -> assistant, parts joined");
+  eq(evO.filter((e) => e.t !== "start"), evG.filter((e) => e.t !== "start"), "the same reply gives the same events from either provider (text, hidden cloud block, done)");
+  ok(evO[0].t === "start" && evO[0].model === "some-model" && !JSON.stringify(evO).includes("ok-key") && !JSON.stringify(evO).includes("thinking"), "openai-compatible: names its model, never the key, reasoning text skipped");
+  const lessonText = ["INTRO: Sets keep one of each, Sam.\nSTEP: Make one.\n", `${PATH_OPEN}{"steps":["Lists"],"next":"Lists","choices":[],"questions":[{"q":"Which of these could be a set?","options":["a, a","a, b"],"answer":1}],"blurb":"A set keeps one of each thing."}${PATH_CLOSE}`];
+  const LI = parseLearnInput({ mode: "notice", name: "Sam", focus: "Sets", trail: "Making & Coding > Python > Sets", wantPath: true, messages: [] });
+  const lO = await collect(lessonEvents(LI, OA, fakeFetch([() => res(200, oaiSse(lessonText))])));
+  const lG = await collect(lessonEvents(LI, ENV, fakeFetch([() => res(200, sse(lessonText))])));
+  eq(lO.filter((e) => e.t !== "start"), lG.filter((e) => e.t !== "start"), "lessons: hidden block (path, questions, card line) parsed the same from either provider");
+  f = fakeFetch([() => res(500, null), () => res(200, oaiSse(["x"]))]);
+  const e5 = await collect(chatEvents(IN, OA, f));
+  ok(f.calls.length === 1 && e5[0].t === "error" && e5[0].reason === "upstream", "openai-compatible: a 5xx is an error (no hidden second call)");
+  f = fakeFetch([() => res(401, null)]);
+  ok((await collect(chatEvents(IN, OA, f)))[0].reason === "refused", "openai-compatible: a bad key (401) is refused");
+  f = fakeFetch([() => res(429, null)]);
+  ok((await collect(chatEvents(IN, OA, f)))[0].reason === "busy", "openai-compatible: 429 -> busy");
+
+  // OpenAI-compatible adapter: one-shot JSON
+  const oj = (obj, extra = {}) => () => res(200, { choices: [{ message: { content: typeof obj === "string" ? obj : JSON.stringify(obj) }, finish_reason: "stop", ...extra }] });
+  const card = { title: "Fractions", body: "A fraction is a part of a whole. Fold a paper in four and shade three.", topic: "Fractions", parent: "Math" };
+  f = fakeFetch([oj(card)]);
+  const cO = await cardFor(IN, OA, f);
+  const cG = await cardFor(IN, ENV, fakeFetch([() => res(200, { candidates: [{ content: { parts: [{ text: JSON.stringify(card) }] } }] })]));
+  const jr = JSON.parse(f.calls[0].init.body);
+  ok(jr.response_format.type === "json_object" && !jr.stream && /JSON Schema: \{"type":"object"/.test(jr.messages[0].content) && jr.max_tokens === MODEL_LIMITS.jsonMaxTokens, "openai-compatible JSON: json_object mode, the schema in the system message");
+  eq(cO.body, cG.body, "a card comes out the same from either provider");
+  f = fakeFetch([oj("```json\n" + JSON.stringify({ steps: ["Pairs To 10", "Making 20"], next: "Making 20" }) + "\n```")]);
+  ok((await pathFor(LI, OA, f)).body.path?.next === "Making 20", "openai-compatible JSON: fenced JSON still parses");
+  f = fakeFetch([oj("{}", { finish_reason: "content_filter" })]);
+  ok((await cardFor(IN, OA, f)).body.reason === "blocked", "openai-compatible JSON: content filter -> blocked");
+
+  // a plain request timeout, so nobody waits 30 s (no extra fallback logic)
+  const hang = (url, init) => new Promise((_, rej) => init.signal.addEventListener("abort", () => rej(Object.assign(new Error("aborted"), { name: "AbortError" }))));
+  const keep = { ...MODEL_LIMITS };
+  ok(MODEL_LIMITS.requestTimeoutMs <= 20_000 && MODEL_LIMITS.requestTimeoutMs + MODEL_LIMITS.streamTimeoutMs < 60_000 && 2 * MODEL_LIMITS.jsonTimeoutMs < 60_000, "timeouts: a plain request timeout; a timeout plus one fallback still ends inside the routes' 60 s");
+  MODEL_LIMITS.requestTimeoutMs = 30; MODEL_LIMITS.jsonTimeoutMs = 30;
+  for (const [name, env, n] of [["gemini", ENV, 2], ["openai-compatible", OA, 1]]) {
+    f = fakeFetch([hang, hang]);
+    const t0 = Date.now(), ev = await collect(chatEvents(IN, env, f));
+    ok(ev[0].reason === "timeout" && f.calls.length === n && Date.now() - t0 < 1000, `${name}: a request that never answers times out quickly (${n} call${n > 1 ? "s" : ""})`);
+    f = fakeFetch([hang, hang]);
+    ok((await cardFor(IN, env, f)).body.reason === "timeout" && f.calls.length === n, `${name}: JSON calls time out too`);
+  }
+  f = fakeFetch([hang, () => res(200, sse(["Fractions are parts."]))]);
+  const ft = await collect(chatEvents(IN, ENV, f));
+  ok(ft[0].model === FALLBACK_MODEL && f.calls[1].url.includes(FALLBACK_MODEL) && ft.some((e) => e.t === "delta"), "gemini: a primary that times out hands over to the fallback model once");
+  Object.assign(MODEL_LIMITS, keep);
+
+  // prompts and service never touch a provider directly
+  const svc = fs.readFileSync("lib/ikolearn/service.ts", "utf8"), pr = fs.readFileSync("lib/ikolearn/prompts.ts", "utf8");
+  ok(/from "\.\/llm"/.test(svc) && !/from "\.\/(gemini|openai-compatible)"/.test(svc + pr) && !/generativelanguage|GEMINI_API_KEY|chat\/completions/.test(svc + pr), "prompts.ts and service.ts only use the model interface");
 }
 
 /* ================= route guards ================= */

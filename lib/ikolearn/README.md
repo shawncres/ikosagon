@@ -3,7 +3,7 @@
 A learning companion with a visible, evolving learning profile: a point cloud centred on the learner's first name that grows into a tree of topics.
 Tapping a card or a topic opens a short lesson; every topic can map an ordered path of smaller topics, one level at a time, as deep as the learner goes.
 Topics the learner spends time with become collectible cards: an ink-sketch landscape, the topic's chain, a title and one line. They start in sepia, take on their chain's colour as the learner shows what they've learned, and are marked Achieved when the branch is finished. Cards stay in the deck for good. Each visit draws a few cards from the deck, balanced over the year and nudged by a living top 10.
-Static client in `public/ikolearn/`, five small server routes in `app/api/ikolearn/`, Gemini (free tier) behind them.
+Static client in `public/ikolearn/`, five small server routes in `app/api/ikolearn/`, Gemini (free tier) behind them by default; the model provider can be swapped with env vars alone (see "Swapping the model provider").
 Unlisted and noindexed while we test with one learner.
 
 ## Files
@@ -11,7 +11,9 @@ Unlisted and noindexed while we test with one learner.
 | Piece | File | What it does |
 | --- | --- | --- |
 | Prompts | `lib/ikolearn/prompts.ts` | Input cleaning, the roles (companion / noticing, card, adjacent, lesson, path), the hidden-block rules, response schemas, parsing, and the streaming block splitter. No UI or network code. |
-| Model adapter | `lib/ikolearn/gemini.ts` | The only file that knows Gemini: streaming (`streamGenerateContent?alt=sse`) and structured JSON (`generateContent` + `responseSchema`), timeouts, fallback model, error codes. |
+| Model interface | `lib/ikolearn/llm.ts`, `llm-types.ts` | What prompts and the service use: `streamText` and `generateJson`, whatever the provider. Picks the provider from env vars (`llmConfig`). Shared types, limits, timeouts and the SSE reader. |
+| Gemini adapter | `lib/ikolearn/gemini.ts` | The default. Streaming (`streamGenerateContent?alt=sse`) and structured JSON (`generateContent` + `responseSchema`), fallback model on 5xx. |
+| OpenAI-compatible adapter | `lib/ikolearn/openai-compatible.ts` | `/chat/completions` with SSE streaming and JSON mode, any base URL: OpenAI, Groq, xAI, OpenRouter and similar. |
 | Service | `lib/ikolearn/service.ts` | Route logic with injectable `fetch`: origin/size/input checks, per-IP rate limit, daily call budget, NDJSON event stream, chat / lesson / card / adjacent / path handlers. |
 | Routes | `app/api/ikolearn/{chat,lesson,card,adjacent,path}/route.ts` | Thin wrappers around the service. All go through the same `prepare()` guards and budget. |
 | Cloud model | `public/ikolearn/cloud-model.js` | Pure data: the recursive topic tree, starters (Math seeded deeper), growth/merge, paths, next topic, lesson engagement, summary for prompts, colours, 3D layout, compact storage and migration. Runs in the browser and in Node tests. |
@@ -126,6 +128,32 @@ The lesson call's hidden block brings 1-2 multiple-choice questions (`{q, option
 
 Each level is drawn at 0.6x the size of the one above and zoom goes to 60x, so a branch can keep opening. Selecting a node focuses its branch (ancestors plus two levels below). Labels fade in by how big a node reads at the current zoom; at most 260 points are drawn, with collision-avoiding labels.
 
+## Swapping the model provider
+
+Nothing outside the adapters knows which provider answers: prompts are plain text, schemas are plain JSON Schema, and the hidden blocks (`<<<CLOUD … CLOUD>>>`, `<<<PATH … PATH>>>`) are written by the model as text, so they are parsed the same way for every provider. The provider is chosen only by env vars on the server:
+
+| Env var | What it is |
+| --- | --- |
+| `IKOLEARN_LLM_PROVIDER` | `gemini` (the default when unset) or `openai-compatible` |
+| `IKOLEARN_LLM_API_KEY` | The provider's key. For `gemini`, `GEMINI_API_KEY` is used when this is unset. |
+| `IKOLEARN_LLM_BASE_URL` | The API base (https). Required for `openai-compatible`. |
+| `IKOLEARN_LLM_MODEL` | The model name. Required for `openai-compatible`; for `gemini`, `IKOLEARN_GEMINI_MODEL` still works. |
+
+With none of them set, IkoLearn runs as before: Gemini with `GEMINI_API_KEY`, the default model and one try on its fallback model when the default fails or times out. If a provider is only half set up (a key without a base URL, say), the routes answer "off" and the app falls back to its local answers.
+
+Example: Groq instead of Gemini (set in Vercel, Production; then redeploy):
+
+```
+IKOLEARN_LLM_PROVIDER=openai-compatible
+IKOLEARN_LLM_API_KEY=<the Groq key>
+IKOLEARN_LLM_BASE_URL=https://api.groq.com/openai/v1
+IKOLEARN_LLM_MODEL=<a Groq model name>
+```
+
+Other bases: `https://api.openai.com/v1`, `https://api.x.ai/v1`, `https://openrouter.ai/api/v1`. To go back, remove the four variables. Check the provider's pricing before switching: only Gemini's free tier is set up today. The privacy page and the footer name Gemini, so update them with a swap.
+
+Timeouts are plain: a request that hasn't started answering in 20 s (the whole answer, for the one-shot JSON calls) gives up; Gemini then tries its fallback model once, and if that fails too the app answers locally. A streamed reply is capped at 38 s, so a timeout plus the fallback still ends inside the routes' 60 s.
+
 ## Privacy and cost
 
 - Free tier only, our key stays on the server. Guards: 8 calls/min and 90/hour per IP, 30/min overall, and a daily cap
@@ -140,5 +168,5 @@ Each level is drawn at 0.6x the size of the one above and zoom goes to 60x, so a
 - **Branching choices.** A path is an ordered list of step ids plus a pick (`node.path = {ids, next, at}`); a fork is `node.fork = {ids, why, picked, at}`; a node can mark its branch as ended.
 - **The draw.** Weights are one function (`IkoDeck.weigh`); new signals (time of year, goals) multiply in there.
 - **Accounts and sync.** Everything goes through `save()`/`load()` in `app.js` and `serialize`/`deserialize`. Swap that pair for a server store when we add sign-in.
-- **Another model.** Replace `lib/ikolearn/gemini.ts` only; it exposes `streamText` and `generateJson`.
+- **Another model.** Set the env vars above. For a provider that isn't OpenAI-compatible, add one adapter next to `gemini.ts` and a branch in `llmConfig`.
 - **New prompt roles.** Add a system builder and schema in `prompts.ts`, a handler in `service.ts`, and a thin route.
