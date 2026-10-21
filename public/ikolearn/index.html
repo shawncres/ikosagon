@@ -36,22 +36,32 @@
         <p id="d-lede" class="d-lede"></p>
         <div id="d-grid" class="deck-grid"></div>
         <p id="d-balance" class="fine"></p>
+        <section id="top" class="top10" hidden aria-labelledby="t-title">
+          <h3 id="t-title">Your top 10</h3>
+          <p id="t-lede" class="fine"></p>
+          <ol id="t-list"></ol>
+        </section>
       </article>
-      <article id="lesson" class="col" hidden aria-live="polite">
-        <button type="button" id="l-back" class="link back">Back to chat</button>
-        <div class="l-top">
-          <div><p class="kicker" id="l-trail"></p><h2 id="l-title"></h2></div>
-          <div id="l-card"></div>
+      <article id="lesson" class="game" hidden>
+        <aside id="holder" class="holder" aria-label="Your card">
+          <div class="tray"><div id="l-card"></div></div>
+          <p id="h-note" class="h-note"></p>
+        </aside>
+        <div class="l-main" aria-live="polite">
+          <button type="button" id="l-back" class="link back">Back to chat</button>
+          <p class="kicker" id="l-trail"></p>
+          <h2 id="l-title"></h2>
+          <div id="l-body" class="lesson"></div>
+          <div id="l-quiz"></div>
+          <div id="l-done" class="actions" hidden>
+            <button type="button" id="l-got" class="btn sm">I've got it</button>
+            <button type="button" id="l-tricky" class="btn sm">Still tricky</button>
+          </div>
+          <p id="l-status" class="status"></p>
+          <div id="l-fork"></div>
+          <div id="l-path"></div>
+          <p class="fine"><button type="button" id="l-chat" class="link">Ask about this in chat</button> · <button type="button" id="l-redo" class="link">Write a fresh version</button></p>
         </div>
-        <div id="l-body" class="lesson"></div>
-        <div id="l-done" class="actions" hidden>
-          <button type="button" id="l-got" class="btn sm">I've got it</button>
-          <button type="button" id="l-tricky" class="btn sm">Still tricky</button>
-        </div>
-        <p id="l-status" class="status"></p>
-        <div id="l-fork"></div>
-        <div id="l-path"></div>
-        <p class="fine"><button type="button" id="l-chat" class="link">Ask about this in chat</button> · <button type="button" id="l-redo" class="link">Write a fresh version</button></p>
       </article>
       <div class="dock" id="dock">
         <div class="col">
@@ -91,6 +101,7 @@
     </section>
   </main>
   <script src="/ikolearn/cloud-model.js"></script>
+  <script src="/ikolearn/rank.js"></script>
   <script src="/ikolearn/deck.js"></script>
   <script src="/ikolearn/cloud-view.js"></script>
   <script src="/ikolearn/lesson.js"></script>
