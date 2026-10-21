@@ -1,16 +1,24 @@
 /**
- * IkoLearn server logic: request checks, per-IP rate limits, a daily call budget, and the three handlers
- * (streamed chat/notice, card, adjacent). Nothing about the learner is stored server-side: every request carries
+ * IkoLearn server logic: request checks, per-IP rate limits, a daily call budget, and the handlers
+ * (streamed chat/notice and lesson, card, adjacent, path). Every handler is one Gemini call and counts against the budget. Nothing about the learner is stored server-side: every request carries
  * the few recent messages and a compact cloud summary from the browser, and the response is not cached.
  */
 import { createRateLimiter } from "../ikoreadtube/service";
 import { originOk } from "../ikoreadtube/summarize";
-import { generateJson, streamText, type Env, type FailCode } from "./gemini";
+import { MODEL_LIMITS, generateJson, streamText, type Content, type Env, type FailCode } from "./gemini";
 import {
   ADJACENT_SCHEMA,
   CARD_SCHEMA,
   LEARN_LIMITS,
+  PATH_CLOSE,
+  PATH_OPEN,
+  PATH_SCHEMA,
   adjacentSystem,
+  lessonContents,
+  lessonSystem,
+  parsePath,
+  pathSystem,
+  type LearnPath,
   buildContents,
   cardSystem,
   companionSystem,
@@ -89,19 +97,30 @@ export type ChatEvent =
   | { t: "start"; model: string }
   | { t: "delta"; text: string }
   | { t: "cloud"; topics: CloudBlock["topics"]; ghosts: CloudBlock["ghosts"] }
+  | { t: "path"; steps: string[]; next: string; end?: boolean }
   | { t: "done" }
   | { t: "error"; reason: FailCode | "cut" };
 
-/** Streams one companion or notice reply as events. The trailing cloud block is never sent as text. */
-export async function* chatEvents(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): AsyncGenerator<ChatEvent> {
-  const system = input.mode === "notice" ? noticeSystem(input) : companionSystem(input);
-  const started = await streamText(system, buildContents(input), env, fetchImpl);
+type StreamSpec = {
+  system: string;
+  contents: Content[];
+  open?: string;
+  close?: string;
+  maxChars: number;
+  maxTokens?: number;
+  /** Turns the hidden trailing block into the event sent before "done" (or null for none). */
+  tail: (block: string, found: boolean) => ChatEvent | null;
+};
+
+/** One streamed reply as events. The trailing structured block is held back and never sent as text. */
+async function* streamEvents(spec: StreamSpec, env: Env, fetchImpl: typeof fetch): AsyncGenerator<ChatEvent> {
+  const started = await streamText(spec.system, spec.contents, env, fetchImpl, { maxTokens: spec.maxTokens });
   if (!started.ok) {
     yield { t: "error", reason: started.code };
     return;
   }
   yield { t: "start", model: started.model };
-  const split = createBlockSplitter();
+  const split = createBlockSplitter(spec.open, spec.close);
   let shown = 0;
   try {
     for await (const piece of started.pieces) {
@@ -109,7 +128,7 @@ export async function* chatEvents(input: LearnInput, env: Env, fetchImpl: typeof
       if (visible) {
         const text = visible.replace(/\*\*|__|`+/g, "");
         shown += text.length;
-        if (shown > LEARN_LIMITS.replyChars) break;
+        if (shown > spec.maxChars) break;
         yield { t: "delta", text };
       }
     }
@@ -125,9 +144,47 @@ export async function* chatEvents(input: LearnInput, env: Env, fetchImpl: typeof
     yield { t: "error", reason: "empty" };
     return;
   }
-  const block = parseCloudBlock(end.block, input.name);
-  yield { t: "cloud", topics: block.topics, ghosts: block.ghosts };
+  const last = spec.tail(end.block, end.found);
+  if (last) yield last;
   yield { t: "done" };
+}
+
+/** Streams one companion or notice reply. Ends with a "cloud" event (empty arrays when the block was missing or bad). */
+export function chatEvents(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): AsyncGenerator<ChatEvent> {
+  return streamEvents(
+    {
+      system: input.mode === "notice" ? noticeSystem(input) : companionSystem(input),
+      contents: buildContents(input),
+      maxChars: LEARN_LIMITS.replyChars,
+      tail: (block) => {
+        const b = parseCloudBlock(block, input.name);
+        return { t: "cloud", topics: b.topics, ghosts: b.ghosts };
+      },
+    },
+    env,
+    fetchImpl,
+  );
+}
+
+/** Streams one lesson (tagged lines). With wantPath, a valid trailing path block becomes a "path" event. */
+export function lessonEvents(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): AsyncGenerator<ChatEvent> {
+  return streamEvents(
+    {
+      system: lessonSystem(input),
+      contents: lessonContents(input),
+      open: PATH_OPEN,
+      close: PATH_CLOSE,
+      maxChars: LEARN_LIMITS.lessonChars,
+      maxTokens: MODEL_LIMITS.lessonMaxTokens,
+      tail: (block, found) => {
+        if (!input.wantPath || !found) return null;
+        const p = parsePath(block, input.name, input.focus);
+        return p ? { t: "path", steps: p.steps, next: p.next, ...(p.end ? { end: true } : {}) } : null;
+      },
+    },
+    env,
+    fetchImpl,
+  );
 }
 
 /** NDJSON stream for the route. */
@@ -168,4 +225,11 @@ export async function adjacentFor(input: LearnInput, env: Env, fetchImpl: typeof
   }, env, fetchImpl);
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
   return json(200, { ok: true, ghosts: r.value });
+}
+
+export async function pathFor(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): Promise<Out> {
+  const user = `Map the learning path for: ${input.focus}${input.trail ? ` (${input.trail})` : ""}`;
+  const r = await generateJson<LearnPath>(pathSystem(input), user, PATH_SCHEMA, (t) => parsePath(t, input.name, input.focus), env, fetchImpl);
+  if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
+  return json(200, { ok: true, path: r.value });
 }
