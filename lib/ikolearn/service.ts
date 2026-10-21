@@ -1,11 +1,11 @@
 /**
  * IkoLearn server logic: request checks, per-IP rate limits, a daily call budget, and the handlers
- * (streamed chat/notice and lesson, card, adjacent, path). Every handler is one Gemini call and counts against the budget. Nothing about the learner is stored server-side: every request carries
+ * (streamed chat/notice and lesson, card, adjacent, path). Every handler is one model call (provider chosen in llm.ts) and counts against the budget. Nothing about the learner is stored server-side: every request carries
  * the few recent messages and a compact cloud summary from the browser, and the response is not cached.
  */
 import { createRateLimiter } from "../ikoreadtube/service";
 import { originOk } from "../ikoreadtube/summarize";
-import { MODEL_LIMITS, generateJson, streamText, type Content, type Env, type FailCode } from "./gemini";
+import { MODEL_LIMITS, generateJson, llmReady, streamText, type Content, type Env, type FailCode } from "./llm";
 import {
   ADJACENT_SCHEMA,
   CARD_SCHEMA,
@@ -85,7 +85,7 @@ export function prepare(opts: { rawBody: string; origin: string | null; host: st
   const input = parseLearnInput(opts.requireFocus && raw && typeof raw === "object" ? { ...(raw as object), mode: "notice" } : raw);
   if ("error" in input) return { ok: false, out: json(422, { error: input.error }) };
   if (opts.requireFocus && !input.focus) return { ok: false, out: json(422, { error: "focus" }) };
-  if (!(env.GEMINI_API_KEY || "").trim()) return { ok: false, out: json(503, { error: "off" }) };
+  if (!llmReady(env)) return { ok: false, out: json(503, { error: "off" }) };
   const rl = state.limiter.check(opts.ip);
   if (!rl.ok) return { ok: false, out: json(429, { error: rl.code, retryAfter: rl.retryAfter }, { "Retry-After": String(rl.retryAfter) }) };
   const day = ptDay(state.now());

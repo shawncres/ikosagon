@@ -1,6 +1,6 @@
 /**
  * IkoLearn prompt templates (roles) and the parsers for their structured output.
- * Kept apart from the model adapter (gemini.ts) and from the UI (public/ikolearn/*), so prompts can change without touching either.
+ * Kept apart from the model layer (llm.ts and its adapters) and from the UI (public/ikolearn/*), so prompts can change without touching either.
  *
  * Roles:
  *  - companion: the chat reply (streamed), ending with a <<<CLOUD {json} CLOUD>>> block that grows the cloud.
@@ -183,13 +183,13 @@ export function noticeSystem(i: LearnInput): string {
   );
 }
 
-/** Gemini contents: recent turns, plus a synthetic user turn for the notice role. */
+/** Conversation turns for the model: recent turns, plus a synthetic user turn for the notice role. */
 export function buildContents(i: LearnInput) {
   const turns = i.messages.map((m) => ({ role: m.role, parts: [{ text: m.text }] }));
   if (i.mode === "notice") {
     turns.push({ role: "user", parts: [{ text: i.focus ? `(I tapped "${i.focus}" on my cloud.)` : "(I tapped my name on my cloud.)" }] });
   }
-  // Gemini wants the conversation to start with a user turn.
+  // Providers want the conversation to start with a user turn.
   while (turns.length && turns[0].role !== "user") turns.shift();
   return turns;
 }
@@ -254,28 +254,29 @@ export function pathSystem(i: LearnInput): string {
   return `${SYSTEM_BASE}\n\nRole: path. Map a learning path for the topic "${i.focus}"${i.trail ? ` (${i.trail})` : ""}. ${pathRules(i)}\n\n${profile(i)}`;
 }
 
+/* Response schemas in plain JSON Schema; each adapter converts or passes them on (llm.ts). */
 export const PATH_SCHEMA = {
-  type: "OBJECT",
-  properties: { steps: { type: "ARRAY", items: { type: "STRING" } }, next: { type: "STRING" }, end: { type: "BOOLEAN" } },
+  type: "object",
+  properties: { steps: { type: "array", items: { type: "string" } }, next: { type: "string" }, end: { type: "boolean" } },
   required: ["steps", "next"],
 };
 
 export const CARD_SCHEMA = {
-  type: "OBJECT",
+  type: "object",
   properties: {
-    title: { type: "STRING" },
-    body: { type: "STRING" },
-    topic: { type: "STRING" },
-    parent: { type: "STRING" },
-    path: { type: "ARRAY", items: { type: "STRING" } },
-    next: { type: "STRING" },
-    chain: { type: "ARRAY", items: { type: "STRING" } },
+    title: { type: "string" },
+    body: { type: "string" },
+    topic: { type: "string" },
+    parent: { type: "string" },
+    path: { type: "array", items: { type: "string" } },
+    next: { type: "string" },
+    chain: { type: "array", items: { type: "string" } },
   },
   required: ["title", "body", "topic", "parent"],
 };
 export const ADJACENT_SCHEMA = {
-  type: "OBJECT",
-  properties: { ghosts: { type: "ARRAY", items: { type: "OBJECT", properties: { name: { type: "STRING" }, parent: { type: "STRING" } }, required: ["name", "parent"] } } },
+  type: "object",
+  properties: { ghosts: { type: "array", items: { type: "object", properties: { name: { type: "string" }, parent: { type: "string" } }, required: ["name", "parent"] } } },
   required: ["ghosts"],
 };
 
