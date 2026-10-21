@@ -63,6 +63,35 @@ a { color: var(--ink); }
 .card h3 { font-weight: normal; font-size: 19px; margin: 0 0 6px; }
 .card p { margin: 0 0 .6em; }
 .card .meta { font-size: 13px; color: var(--soft); margin: 8px 0 0; }
+.card .meta .link { color: var(--soft); }
+.card.open { cursor: pointer; }
+.card.open:hover { border-color: var(--soft); }
+
+/* "Your path": a quiet ordered list; the recommended step is the only bold line */
+.path { margin: 10px 0 4px; }
+.path ol { margin: 4px 0 0; padding-left: 1.4em; }
+.path li { margin: 2px 0; }
+.path li .link { text-decoration-color: var(--rule); }
+.path li.next .link { font-weight: 600; text-decoration-color: var(--ink); }
+.path .tag { font-size: 13px; color: var(--soft); }
+.next-up { margin: 0 0 12px; }
+
+/* lesson: same column as the chat, paper inset for the worked example */
+#lesson { flex: 1; width: 100%; padding-top: 6px; padding-bottom: 40px; }
+#lesson .back { font-size: 14px; color: var(--soft); margin: 4px 0 18px; }
+#l-title { font-weight: normal; font-size: 26px; line-height: 1.25; margin: 2px 0 14px; }
+.lesson p { margin: 0 0 .75em; }
+.l-head { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); margin: 18px 0 4px !important; }
+.l-steps { margin: 0 0 .6em; padding-left: 1.4em; }
+.l-steps li { margin: 0 0 .45em; }
+.l-example { background: var(--sheet); border: 1px solid var(--rule); border-radius: 4px; padding: 4px 16px 6px; margin: 14px 0; }
+.l-example .l-head { margin-top: 10px !important; }
+.l-check { border-left: 2px solid var(--rule); padding: 0 0 0 14px; margin: 14px 0; }
+.l-answer { color: var(--soft); }
+.lesson .caret::after { content: ""; display: inline-block; width: .5em; height: 1em; margin-left: 2px; vertical-align: -2px; background: var(--ink); opacity: .55; animation: blink 1s steps(1) infinite; }
+#l-done { margin-top: 18px; }
+.status { font-size: 15px; color: var(--soft); min-height: 1em; margin: 0 0 8px; }
+.status .link { color: var(--ink); }
 
 .dock { position: sticky; bottom: 0; background: var(--paper); padding: 10px 0 calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--rule); }
 #composer { display: flex; gap: 10px; align-items: flex-end; }
@@ -81,6 +110,7 @@ a { color: var(--ink); }
 #panel { position: absolute; left: 0; right: 0; bottom: 0; max-height: 62vh; overflow: auto; background: var(--paper); border-top: 1px solid var(--rule); }
 .panel-in { max-width: var(--col); margin: 0 auto; padding: 16px 20px 22px; }
 .kicker { font-size: 13px; color: var(--soft); margin: 0; }
+.kicker .link.up { font-size: 13px; color: var(--soft); padding: 0; }
 #p-title { font-weight: normal; font-size: 22px; margin: 2px 0 8px; }
 .note { min-height: 1.6em; margin-bottom: 12px; }
 .note p { margin: 0 0 .6em; }
@@ -94,5 +124,5 @@ a { color: var(--ink); }
   #panel { left: auto; top: 64px; bottom: 16px; right: 16px; width: 380px; max-height: none; border: 1px solid var(--rule); border-radius: 6px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .msg.model.streaming p:last-child::after, .note.streaming p:last-child::after { animation: none; }
+  .msg.model.streaming p:last-child::after, .note.streaming p:last-child::after, .lesson .caret::after { animation: none; }
 }
