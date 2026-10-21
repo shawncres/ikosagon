@@ -68,10 +68,17 @@
     sc = sc || scores(cloud);
     var path = n.path ? n.path.ids.filter(function (x) { return nodeOf(cloud, x) && cloud.nodes[x].parent === pid; }) : [];
     var L = path.length;
-    return C.childrenOf(cloud, pid).map(function (c, i) {
+    /* the core sequence (and children from before roles existed); side paths are listed separately (sidePaths) */
+    return C.coreChildren(cloud, pid).map(function (c, i) {
       var pos = path.indexOf(c.id);
       return { id: c.id, i: i, s: (sc[c.id] || 0) + PLAN.orderWeight * (1 - (pos < 0 ? L : pos) / (L + 1)) + (c.ghost ? 0 : 0.2) };
     }).sort(function (a, b) { return b.s - a.s || a.i - b.i; }).map(function (x) { return x.id; });
+  }
+  /* Side paths of a parent, by rank: [{ id, off }] (off: the core step it branches from). Never block the branch. */
+  function sidePaths(cloud, pid, sc) {
+    sc = sc || scores(cloud);
+    return C.sidePaths(cloud, pid).map(function (x, i) { return { id: x.id, off: x.off, i: i, s: (sc[x.id] || 0) + (cloud.nodes[x.id].ghost ? 0 : 0.2) }; })
+      .sort(function (a, b) { return b.s - a.s || a.i - b.i; }).map(function (x) { return { id: x.id, off: x.off }; });
   }
   /* The next unfinished child of a parent in that order (null when all are done). */
   function nextChild(cloud, pid, sc) {
@@ -160,13 +167,28 @@
   function needsNext(cloud, id) {
     var n = nodeOf(cloud, id);
     if (!n || (!n.parent && !n.path) || n.ghost || n.end || n.pending) return false; /* a subject qualifies once it has its own path (made by a creation call) */
-    var kids = C.childrenOf(cloud, id), done = C.doneChildren(cloud, id).length;
+    var kids = C.coreChildren(cloud, id), done = C.doneCore(cloud, id).length; /* only the core sequence counts: side paths never block */
     if (kids.some(function (c) { return !C.isDone(cloud, c.id) && !c.end; })) return false;
     if (!kids.length && !engaged(cloud, id)) return false;
     var par = nodeOf(cloud, n.parent);
     if (!kids.length && par && par.path && par.path.ids.indexOf(id) >= 0) return false; /* a finished step hands "what next" to its parent (it still grows through its lessons) */
     if (kids.length && !done) return false;
     return n.asked !== done + 1;
+  }
+  /*
+   * A bridge is needed when a topic the learner just talked about landed right under its subject although the model's
+   * chain was shallow (Sets straight under Computer Science). Not for parents made by a creation call (a one-link chain
+   * is right for them), not twice for the same topic (node.bridged).
+   */
+  function needsBridge(cloud, id, chainLen) {
+    var n = nodeOf(cloud, id);
+    if (!n || !n.parent || n.ghost || n.made || n.bridged) return false;
+    var par = nodeOf(cloud, n.parent);
+    return Boolean(par && !par.parent) && (chainLen == null || chainLen < 2);
+  }
+  function bridgeRequest(cloud, id) {
+    var n = nodeOf(cloud, id), subj = n ? C.ancestry(cloud, id).map(function (x) { return cloud.nodes[x]; })[0] : null;
+    return n ? { kind: "bridge", focus: n.label, focusParent: subj ? subj.label : "", trail: C.trail(cloud, id), parents: C.subjectLabels(cloud).slice(0, 12) } : null;
   }
   /* Parents ready for "what comes next", highest ranked first. */
   function readyNext(cloud, now) {
@@ -321,7 +343,7 @@
   }
 
   var api = {
-    PLAN: PLAN, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, nextChild: nextChild,
+    PLAN: PLAN, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, nextChild: nextChild,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
     suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf,
     onboarding: onboarding, interestChips: interestChips, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics,

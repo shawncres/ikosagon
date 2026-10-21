@@ -128,11 +128,13 @@
       /* edges */
       ctx.lineWidth = 1;
       items.forEach(function (it) {
-        var n = it.n, from = n.parent ? at[n.parent] : rootP;
+        var n = it.n, side = n.role === "optional" && n.off && at[n.off], from = side ? at[n.off] : n.parent ? at[n.parent] : rootP;
         if (!from) return;
         ctx.save();
         var fade = Math.min(1, 0.5 + reads(n.id));
-        if (n.ghost) { ctx.setLineDash([2, 4]); ctx.globalAlpha = 0.3 * it.p.f * fade; ctx.strokeStyle = C.colorOf(cloud, n); }
+        /* a side path: a faint dotted twig off its core step */
+        if (side) { ctx.setLineDash([1, 3]); ctx.globalAlpha = 0.22 * it.p.f * fade; ctx.strokeStyle = C.colorOf(cloud, n); }
+        else if (n.ghost) { ctx.setLineDash([2, 4]); ctx.globalAlpha = 0.3 * it.p.f * fade; ctx.strokeStyle = C.colorOf(cloud, n); }
         else if (n.parent) { ctx.globalAlpha = 0.42 * it.p.f * fade; ctx.strokeStyle = C.colorOf(cloud, n); }
         else { ctx.globalAlpha = 0.22; ctx.strokeStyle = INK; }
         ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(it.p.x, it.p.y); ctx.stroke();

@@ -11,7 +11,7 @@
 (function (root) {
   "use strict";
 
-  var VERSION = 6;
+  var VERSION = 7;
   /* nodes: stored cap (localStorage stays small). children / ghosts: per node. There is no depth limit. */
   var LIMITS = { nodes: 600, subjects: 12, children: 16, ghostsPerNode: 6, pathSteps: 6, cards: 60, labelChars: 32, choices: 3, draws: 3000, whyChars: 80, chain: 4, blurbChars: 140 };
   var MASTERED = 0.6;
@@ -115,7 +115,9 @@
       weight: o.ghost ? 0 : (o.weight == null ? 1 : o.weight), mastery: 0, ghost: Boolean(o.ghost),
       born: o.born == null ? Date.now() : o.born, touched: o.born || 0, cards: [], opened: false,
       spent: 0, engaged: 0, end: false, correct: 0, heat: 0, heatAt: 0, blurb: "", achievedAt: 0, pending: null, doneAt: 0,
-      imp: null, impAt: 0, goal: "", asked: 0
+      imp: null, impAt: 0, goal: "", asked: 0,
+      /* v7: role among its siblings (core = the main sequence, optional = a side path off one core step), made by a creation call, bridge cached; absorb groundwork */
+      role: o.role === "core" || o.role === "optional" ? o.role : "", off: o.off || null, made: Boolean(o.made), bridged: 0, absorbedInto: null, absorbed: []
     };
     if (!n.parent) {
       var ph = paletteHue(o.label);
@@ -157,6 +159,9 @@
     all(cloud).forEach(function (n) {
       if (n.path) { n.path.ids = n.path.ids.filter(function (x) { return x !== id; }); if (n.path.next === id) n.path.next = null; }
       if (n.fork) { var i = n.fork.ids.indexOf(id); if (i >= 0) { n.fork.ids.splice(i, 1); n.fork.why.splice(i, 1); } if (n.fork.picked === id) n.fork.picked = null; if (n.fork.ids.length < 2) delete n.fork; }
+      if (n.off === id) n.off = null;
+      if (n.absorbedInto === id) n.absorbedInto = null;
+      if (n.absorbed && n.absorbed.indexOf(id) >= 0) n.absorbed = n.absorbed.filter(function (x) { return x !== id; });
     });
     if (cloud.next === id) cloud.next = null;
     if (cloud.tests) delete cloud.tests[id];
@@ -411,6 +416,7 @@
       if (out.ids.indexOf(hit.id) < 0) out.ids.push(hit.id);
     });
     if (!out.ids.length) return out;
+    out.ids.forEach(function (x) { var k = cloud.nodes[x]; if (k.parent === id && k.role !== "optional") k.role = "core"; }); /* a path is the core sequence */
     var want = norm(nextLabel);
     var pick = out.ids.filter(function (x) { return cloud.nodes[x].key === want && cloud.nodes[x].mastery < MASTERED; })[0];
     n.path = { ids: out.ids, next: pick || null, at: t };
@@ -607,8 +613,18 @@
       var basis = perp(cur.dir);
       var step = 0.42 * levelScale(P.d + 1) / 0.6;
       var a0 = hash(n.key + "fan") * Math.PI * 2;
+      kidsIds = kidsIds.filter(function (x) { return cloud.nodes[x].role !== "optional"; }).concat(kidsIds.filter(function (x) { return cloud.nodes[x].role === "optional"; }));
       kidsIds.forEach(function (cid) {
         var c = cloud.nodes[cid];
+        if (c.role === "optional" && c.off && pos[c.off] && kidsIds.indexOf(c.off) >= 0) {
+          /* a side path sits just off its core step, a little further out */
+          var O = pos[c.off], dir = unit({ x: O.x - P.x, y: O.y - P.y, z: O.z - P.z }), b2 = perp(dir), a2 = hash(c.key + "side") * Math.PI * 2, sd = step * 0.55;
+          var so = { x: dir.x * 0.5 + (b2[0].x * Math.cos(a2) + b2[1].x * Math.sin(a2)) * 0.85, y: dir.y * 0.5 + (b2[0].y * Math.cos(a2) + b2[1].y * Math.sin(a2)) * 0.85, z: dir.z * 0.5 + (b2[0].z * Math.cos(a2) + b2[1].z * Math.sin(a2)) * 0.85 };
+          var sq = { x: O.x + so.x * sd, y: O.y + so.y * sd, z: O.z + so.z * sd, d: P.d + 1 };
+          pos[cid] = sq;
+          stack.push({ id: cid, dir: unit({ x: sq.x - P.x, y: sq.y - P.y, z: sq.z - P.z }) });
+          return;
+        }
         var oi = order.indexOf(cid);
         var a = oi >= 0 ? a0 + oi * (Math.PI * 2 / Math.max(order.length + 1, 5)) : hash(c.key + "a") * Math.PI * 2;
         var theta = 0.7 + (c.ghost ? 0.2 : 0) + hash(c.key + "t") * 0.25;
@@ -728,8 +744,29 @@
       if (card.blurb && (!n.blurb || !opts.focusId)) setBlurb(cloud, n.id, card.blurb);
       if (card.goal && (!n.goal || !opts.focusId)) n.goal = cleanGoal(card.goal); /* "what comes next" never rewrites a parent's card */
       var kids = (Array.isArray(it.children) ? it.children : []).slice().sort(function (a, b) { return (Number(a.order) || 99) - (Number(b.order) || 99); });
+      /* core children are the ordered main sequence (its path); optional ones hang off one core step as side paths */
+      var core = kids.filter(function (c) { return c.role !== "optional"; }), side = kids.filter(function (c) { return c.role === "optional"; });
+      if (!core.length && side.length) core = [side.shift()];
       var before = childrenOf(cloud, n.id).map(function (c) { return c.id; });
-      var r = kids.length ? applyPath(cloud, n.id, kids.map(function (c) { return c.name; }), kids[0].name, t) : { ids: [], added: [] };
+      var r = core.length ? applyPath(cloud, n.id, core.map(function (c) { return c.name; }), core[0].name, t) : { ids: [], added: [] };
+      var coreIds = (n.path ? n.path.ids : []).filter(function (x) { return cloud.nodes[x] && cloud.nodes[x].parent === n.id; });
+      coreIds.forEach(function (x) { if (cloud.nodes[x].role !== "optional") cloud.nodes[x].role = "core"; });
+      side.forEach(function (c) {
+        var lbl = cleanLabel(c.name), kk = norm(lbl);
+        if (!kk || kk === norm(cloud.name) || kk === n.key) return;
+        var hit = childrenOf(cloud, n.id).filter(function (x) { return x.key === kk; })[0];
+        if (!hit && findTopic(cloud, lbl, n.id) && !isAncestor(cloud, n.id, findTopic(cloud, lbl, n.id).id)) return; /* lives elsewhere: leave it there */
+        if (!hit) {
+          if (!makeRoom(cloud, n.id, true, coreIds)) return;
+          hit = addNode(cloud, { label: lbl, parent: n.id, ghost: true, born: t, role: "optional" });
+          r.added.push(hit.id);
+        }
+        if (hit.role !== "core") {
+          hit.role = "optional";
+          var at = coreIds.filter(function (x) { return cloud.nodes[x].key === norm(c.after); })[0];
+          hit.off = at || hit.off || coreIds[0] || null;
+        }
+      });
       kids.forEach(function (c) {
         var hit = childrenOf(cloud, n.id).filter(function (x) { return x.key === norm(c.name); })[0];
         if (!hit) return;
@@ -739,7 +776,8 @@
       });
       r.added.forEach(function (x) { if (out.order.indexOf(x) < 0) out.order.push(x); });
       n.pending = null;
-      if (opts.focusId) n.asked = doneChildren(cloud, n.id).length + 1;
+      if (opts.focusId) n.asked = doneCore(cloud, n.id).length + 1;
+      else n.made = true;
       n.touched = Math.max(n.touched || 0, t);
       if (out.nodes.indexOf(n.id) < 0) out.nodes.push(n.id);
     });
@@ -977,6 +1015,54 @@
     childrenOf(cloud, id).forEach(function (c) { if (ids.indexOf(c.id) < 0) ids.push(c.id); });
     return ids.filter(function (x) { return cloud.nodes[x] && cloud.nodes[x].parent === id && isDone(cloud, x); });
   }
+  /* Core children: the main sequence (and children from before roles existed). Optional ones are side paths and never block. */
+  function coreChildren(cloud, id) { return childrenOf(cloud, id).filter(function (c) { return c.role !== "optional"; }); }
+  function doneCore(cloud, id) { return doneChildren(cloud, id).filter(function (x) { return cloud.nodes[x].role !== "optional"; }); }
+  /* Side paths of a topic: its optional children, each with the core step it branches off. */
+  function sidePaths(cloud, id) {
+    return childrenOf(cloud, id).filter(function (c) { return c.role === "optional"; }).map(function (c) { return { id: c.id, off: c.off && cloud.nodes[c.off] && cloud.nodes[c.off].parent === id ? c.off : null }; });
+  }
+  /*
+   * Groundwork for "powerful cards" (not built yet): a parent may one day absorb its completed children. The fields
+   * (node.absorbed: child ids, child.absorbedInto: parent id) are stored and kept consistent, nothing sets them yet.
+   */
+  function absorbable(cloud, id) { return doneCore(cloud, id).filter(function (x) { return !cloud.nodes[x].absorbedInto; }); }
+
+  /*
+   * A bridge (the creation call, kind "bridge"): the logical in-between topics for a topic that landed too close to its
+   * subject ("Sets" right under Computer Science -> Computer Science > Programming > Python > Sets). Links are placed
+   * through placeChain (existing nodes reused by name and alias), get their card line, and the topic moves under the
+   * deepest one with its whole branch (ids kept). Cached on the topic (bridged), whatever the answer.
+   * -> { moved, created: [ids], chain: [labels] }
+   */
+  function applyBridge(cloud, id, result, t) {
+    t = now_(t);
+    var n = node(cloud, id), out = { moved: false, created: [], chain: [] };
+    if (!n || !n.parent) return out;
+    n.bridged = t;
+    var it = result && Array.isArray(result.items) ? result.items[0] : null;
+    var subj = subjectOf(cloud, id);
+    var chain = (it && it.node && Array.isArray(it.node.chain) ? it.node.chain : []).map(cleanLabel).filter(function (l) { return l && norm(l) !== n.key && norm(l) !== norm(cloud.name); });
+    if (subj && chain.length && !findSubject(cloud, chain[0]) && norm(chain[0]) !== subj.key) chain.unshift(subj.label);
+    if (chain.length < 2) return out;
+    var res = { created: [], promoted: [], strengthened: [], parentsCreated: [] };
+    var deep = placeChain(cloud, chain, t, res);
+    if (!deep || deep.id === n.id || isAncestor(cloud, n.id, deep.id)) return out;
+    var blurbs = {};
+    ((it && it.links) || []).forEach(function (l) { if (l && l.name) blurbs[norm(l.name)] = l.blurb; });
+    ancestry(cloud, deep.id).concat(deep.id).forEach(function (x) { var m = cloud.nodes[x]; if (m.parent && !m.blurb && blurbs[m.key]) setBlurb(cloud, x, blurbs[m.key]); if (m.parent) m.bridged = m.bridged || t; });
+    if (n.parent !== deep.id) {
+      var old = node(cloud, n.parent);
+      if (old && old.path) old.path.ids = old.path.ids.filter(function (x) { return x !== id; });
+      n.parent = deep.id; n.role = ""; n.off = null; out.moved = true;
+    }
+    if (it && it.card && it.card.blurb && !n.blurb) setBlurb(cloud, id, it.card.blurb);
+    out.created = res.parentsCreated.concat(res.created, res.promoted);
+    out.chain = chainOf(cloud, id);
+    cloud.rev += 1;
+    return out;
+  }
+
   /*
    * Child topics that arrived with a lesson (the same call) but wait until the learner has engaged with the topic
    * (orchestrator.js decides when); applyPending then grows them onto the cloud as dotted branches.
@@ -1112,10 +1198,12 @@
       if (x.fork && x.fork.ids.length) forks[id] = [x.fork.ids, x.fork.why, x.fork.picked || 0, s(x.fork.at)];
       var row = [id, x.label, x.parent || 0, (x.ghost ? 1 : 0) | (x.opened ? 2 : 0) | (x.end ? 4 : 0), Math.round(x.weight * 10), Math.round(x.mastery * 100), s(x.born), s(x.touched), x.parent ? -1 : (x.hue == null ? 30 : x.hue), s(x.lastStruggle), x.spent || 0, x.engaged || 0];
       /* v4 and v5 fields only when set, so most rows stay short */
-      var v6 = x.imp != null || x.goal || x.asked, v5 = v6 || x.pending || x.doneAt;
+      var v7 = x.role || x.off || x.made || x.bridged || x.absorbedInto || (x.absorbed && x.absorbed.length);
+      var v6 = v7 || x.imp != null || x.goal || x.asked, v5 = v6 || x.pending || x.doneAt;
       if (v5 || x.correct || x.heat || x.blurb || x.achievedAt) row.push(x.correct || 0, Math.round((x.heat || 0) * 100), s(x.heatAt), x.blurb || "", s(x.achievedAt));
       if (v5) row.push(x.pending ? [x.pending.steps, x.pending.next || ""] : 0, s(x.doneAt));
       if (v6) row.push(x.imp == null ? -1 : Math.round(x.imp * 100), s(x.impAt), x.goal || "", x.asked || 0);
+      if (v7) row.push(x.role === "core" ? 1 : x.role === "optional" ? 2 : 0, x.off || 0, x.made ? 1 : 0, s(x.bridged), x.absorbedInto || 0, x.absorbed && x.absorbed.length ? x.absorbed : 0);
       return row;
     });
     var tests = {};
@@ -1213,7 +1301,7 @@
     try { c = typeof str === "string" ? JSON.parse(str) : str; } catch { return null; }
     if (!c || typeof c.name !== "string") return null;
     var base = { name: cleanLabel(c.name) || "Me", seq: Number(c.seq) || 0, rev: Number(c.rev) || 0, created: Number(c.created) || 0, next: c.next || null };
-    if (c.v >= 2 && c.v <= 6 && Array.isArray(c.n)) {
+    if (c.v >= 2 && c.v <= 7 && Array.isArray(c.n)) {
       var ms = function (s) { return (Number(s) || 0) * 1000; };
       var list = c.n.map(function (a) {
         if (!Array.isArray(a) || typeof a[0] !== "string" || typeof a[1] !== "string") return null;
@@ -1225,13 +1313,17 @@
           correct: Math.max(0, Number(a[12]) || 0), heat: Math.max(0, Number(a[13]) || 0) / 100, heatAt: ms(a[14]), blurb: cleanBlurb(a[15] || ""), achievedAt: ms(a[16]),
           pending: Array.isArray(a[17]) && Array.isArray(a[17][0]) && a[17][0].length ? { steps: a[17][0].map(cleanLabel).filter(Boolean).slice(0, LIMITS.pathSteps), next: cleanLabel(a[17][1]) } : null,
           doneAt: ms(a[18]),
-          imp: Number.isFinite(a[19]) && a[19] >= 0 ? clamp01(a[19] / 100) : null, impAt: ms(a[20]), goal: cleanGoal(a[21] || ""), asked: Math.max(0, Number(a[22]) || 0)
+          imp: Number.isFinite(a[19]) && a[19] >= 0 ? clamp01(a[19] / 100) : null, impAt: ms(a[20]), goal: cleanGoal(a[21] || ""), asked: Math.max(0, Number(a[22]) || 0),
+          role: a[23] === 1 ? "core" : a[23] === 2 ? "optional" : "", off: typeof a[24] === "string" ? a[24] : null, made: a[25] === 1, bridged: ms(a[26]),
+          absorbedInto: typeof a[27] === "string" ? a[27] : null, absorbed: Array.isArray(a[28]) ? a[28].filter(function (x) { return typeof x === "string"; }) : []
         };
       });
       var out = finish(base, list, c.cards, c.p, { forks: c.f, deck: c.k, draws: c.g, sessions: c.ss, tests: c.t, suggest: c.sg, active: c.fl, profile: c.pr });
       var nowS = Math.round(Date.now() / 1000) * 1000; /* whole seconds, as stored, so a migrated cloud round-trips exactly */
       if (c.v < 5) adoptComputerScience(out, nowS); /* v4 and older: Computer Science becomes its own subject */
       if (c.v < 6) { pruneSeeds(out); joinDeck(out, nowS); } /* v5 and older: untouched starter seeds go; everything learned stays */
+      if (c.v < 7) markCore(out); /* v6 and older: the steps of each path become its core sequence */
+      tidyRefs(out);
       return out;
     }
     if (c.v === 1 && c.nodes && Array.isArray(c.order)) return migrateV1(c, base);
@@ -1247,7 +1339,8 @@
         id: id, label: cleanLabel(n.label), key: norm(n.label), parent: n.parent || null, ghost: Boolean(n.ghost), opened: false,
         weight: Number(n.weight) || 0, mastery: clamp01(Number(n.mastery) || 0), born: Number(n.born) || 0, touched: Number(n.touched) || 0,
         hue: n.parent ? undefined : (Number.isFinite(n.hue) ? n.hue : 30), lastStruggle: n.lastStruggle || undefined, cards: [],
-        spent: 0, engaged: 0, end: false, correct: 0, heat: 0, heatAt: 0, blurb: "", achievedAt: 0, pending: null, doneAt: 0, imp: null, impAt: 0, goal: "", asked: 0
+        spent: 0, engaged: 0, end: false, correct: 0, heat: 0, heatAt: 0, blurb: "", achievedAt: 0, pending: null, doneAt: 0, imp: null, impAt: 0, goal: "", asked: 0,
+        role: "", off: null, made: false, bridged: 0, absorbedInto: null, absorbed: []
       };
     });
     var out = finish(base, list, c.cards, {});
@@ -1256,6 +1349,19 @@
     pruneSeeds(out);
     joinDeck(out, t);
     return out;
+  }
+
+  /* v7 migration: a path's steps are its core sequence; every other child keeps no role (shown and counted as before). */
+  function markCore(cloud) {
+    all(cloud).forEach(function (n) { if (n.path) n.path.ids.forEach(function (x) { var k = cloud.nodes[x]; if (k && k.parent === n.id && !k.role) k.role = "core"; }); });
+  }
+  /* References that must point at a live node of the right kind (side path step, absorb links). */
+  function tidyRefs(cloud) {
+    all(cloud).forEach(function (n) {
+      if (n.off && (!cloud.nodes[n.off] || cloud.nodes[n.off].parent !== n.parent || n.role !== "optional")) n.off = null;
+      if (n.absorbedInto && !cloud.nodes[n.absorbedInto]) n.absorbedInto = null;
+      n.absorbed = (n.absorbed || []).filter(function (x) { return cloud.nodes[x]; });
+    });
   }
 
   /* Thread persistence: keep the most recent messages only. */
@@ -1267,7 +1373,7 @@
   var api = {
     VERSION: VERSION, LIMITS: LIMITS, MASTERED: MASTERED, PALETTE: PALETTE, OLD_SEEDS: OLD_SEEDS, HUES: HUES, paletteHue: paletteHue, paletteLabel: paletteLabel, plant: plant,
     AGE_BANDS: AGE_BANDS, newProfile: newProfile, profileOf: profileOf, setProfile: setProfile, cleanRegion: cleanRegion, topicCount: topicCount,
-    applyCreate: applyCreate, pruneSeeds: pruneSeeds, deepenChain: deepenChain,
+    applyCreate: applyCreate, pruneSeeds: pruneSeeds, deepenChain: deepenChain, applyBridge: applyBridge, coreChildren: coreChildren, doneCore: doneCore, sidePaths: sidePaths, absorbable: absorbable, markCore: markCore,
     create: create, applyTopics: applyTopics, addGhosts: addGhosts, applyPath: applyPath, nextFor: nextFor, engage: engage,
     track: track, markEnd: markEnd, activity: activity, hueOf: hueOf,
     GROWTH: GROWTH, growthOf: growthOf, joinDeck: joinDeck, chainOf: chainOf, confirm: confirm, setBlurb: setBlurb, cleanBlurb: cleanBlurb,

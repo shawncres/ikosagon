@@ -37,7 +37,7 @@
   };
   var reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
 
-  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson" };
+  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [] };
   var mini = null, big = null;
 
   /* ---------- storage ---------- */
@@ -265,6 +265,11 @@
     var grown = r.created.concat(r.promoted), main = topics[0] && C.findTopic(state.cloud, topics[0].name);
     var fresh = main && grown.indexOf(main.id) >= 0 ? main.id : grown.filter(function (id) { return nodeOf(id) && nodeOf(id).parent; })[0];
     if (parts.length) push({ role: "grow", text: "Your cloud grew: " + parts.join(" · "), open: fresh || null });
+    /* a topic that landed right under its subject on a shallow chain gets its in-between steps after this reply (one call, once) */
+    topics.forEach(function (tp) {
+      var hit = C.findTopic(state.cloud, tp.name);
+      if (hit && grown.indexOf(hit.id) >= 0 && P.needsBridge(state.cloud, hit.id, (tp.chain || []).length) && state.bridgeQueue.indexOf(hit.id) < 0) state.bridgeQueue.push(hit.id);
+    });
     return { topic: topics[0] || null };
   }
 
@@ -389,7 +394,27 @@
       save();
       lock(false);
       scrollDown();
+      runBridge();
     });
+  }
+  /*
+   * The bridge (procedural, no table): one creation call ("bridge") for the in-between steps of a topic that landed too
+   * close to its subject; the links appear as new (sepia) cards and the topic moves under the deepest one. Cached per topic.
+   */
+  function runBridge() {
+    var id = state.bridgeQueue.shift();
+    if (!id || state.busy || !P.needsBridge(state.cloud, id)) { state.bridgeQueue = []; return; }
+    lock(true);
+    postJson("/create", Object.assign(basePayload(id), { mode: "notice", messages: history().filter(function (m) { return m.role === "user"; }).slice(-1) }, P.bridgeRequest(state.cloud, id))).then(function (j) {
+      if (!(j && j.ok && Array.isArray(j.items))) return;
+      var before = C.trail(state.cloud, id, " → ");
+      var r = C.applyBridge(state.cloud, id, j);
+      save();
+      if (r.moved) {
+        refreshViews(r.created.concat(id));
+        push({ role: "grow", text: "Filled in the steps for " + nodeOf(id).label + ": " + C.trail(state.cloud, id, " → ") + " (was " + before + ")", open: id });
+      }
+    }).then(function () { save(); lock(false); state.bridgeQueue = []; });
   }
 
   function makeCard(topic, parent) {
@@ -578,8 +603,8 @@
     el.hKids.textContent = "";
     var id = state.lessonNode, n = nodeOf(id);
     if (!n) return;
-    var ids = P.orderedChildren(state.cloud, id).slice(0, 6);
-    if (!ids.length) {
+    var ids = P.orderedChildren(state.cloud, id).slice(0, 6), sides = P.sidePaths(state.cloud, id).slice(0, 4);
+    if (!ids.length && !sides.length) {
       if (n.pending) el.hKids.appendChild(mk("p", "fine", "New branches grow here once you've answered a question or said \u201cI've got it\u201d."));
       return;
     }
@@ -592,7 +617,18 @@
       li.appendChild(mk("span", "tag", C.isDone(state.cloud, cid) ? " · done" : lead ? " · start here" : c.ghost ? " · new" : ""));
       ul.appendChild(li);
     });
-    el.hKids.appendChild(ul);
+    if (ids.length) el.hKids.appendChild(ul);
+    /* side paths: optional aspects off one core step; they never block the branch */
+    if (!sides.length) return;
+    el.hKids.appendChild(mk("p", "l-head side-head", "Side paths"));
+    var sl = mk("ul", "side-paths");
+    sides.forEach(function (x) {
+      var c = nodeOf(x.id), li = mk("li", c.ghost ? "ghost" : C.isDone(state.cloud, x.id) ? "done" : "");
+      li.appendChild(linkBtn(c.label, function () { openLesson(x.id); }));
+      li.appendChild(mk("span", "tag", C.isDone(state.cloud, x.id) ? " · done" : x.off && nodeOf(x.off) ? " · off " + nodeOf(x.off).label : " · optional"));
+      sl.appendChild(li);
+    });
+    el.hKids.appendChild(sl);
   }
   /* Slides the card into the holder: from where it was tapped (a deck or draw card), or a short drop-in. */
   function animateIn(from) {
