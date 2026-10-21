@@ -1,9 +1,12 @@
 /*
- * IkoLearn deck: procedural card art and the session draw. Pure functions over the cloud (cloud-model.js) plus a small
- * DOM renderer (SVG built with createElementNS, text via textContent). Runs in the browser (window.IkoDeck) and in Node.
+ * IkoLearn deck: the cards (procedural landscapes, the card face) and the session draw. Pure functions over the cloud
+ * (cloud-model.js) plus a small DOM renderer (SVG built with createElementNS, text via textContent). Runs in the browser
+ * (window.IkoDeck) and in Node.
  *
- * Card art is seeded by the topic id, so a card always looks the same. Colour comes from IkoCloud.cardColor
- * (sepia at first, moving toward the subject's hue as the card grows); ink density follows the same stage.
+ * Every card has a landscape drawn on the device, seeded by the topic id so a card always looks the same: layered ridges,
+ * sometimes water, a few trees or birds, in an ink-sketch style. The detail level (from the growth score) adds hatching,
+ * trees and birds to the same scene; the colour (from IkoCloud.cardColor) moves from sepia toward the chain's hue as
+ * learning is confirmed, and is full when the branch is achieved. No images, no network.
  *
  * The draw: no network, deterministic for a given day, session count and name. See weigh() for the balance rules.
  */
@@ -11,6 +14,8 @@
   "use strict";
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- UMD: Node tests load the model, the browser has window.IkoCloud
   var C = typeof module !== "undefined" && module.exports ? require("./cloud-model.js") : root.IkoCloud;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- UMD, as above
+  var RK = typeof module !== "undefined" && module.exports ? require("./rank.js") : root.IkoRank;
 
   /* ---------- seeded random ---------- */
   function seedOf(str) {
@@ -31,53 +36,67 @@
   }
   function r1(x) { return Math.round(x * 10) / 10; }
 
-  /* ---------- card art ---------- */
-  var W = 100, H = 140;
-  var PATTERNS = ["dots", "hatch", "rings", "waves", "grid", "rays"];
-  /* How much of the pattern is inked at each stage, and how strong the ink is. */
-  var INK = { share: [0.3, 0.46, 0.62, 0.8, 1], weight: [0.6, 0.75, 0.9, 1.05, 1.2], opacity: [0.42, 0.55, 0.68, 0.8, 0.92] };
+  /* ---------- the landscape ---------- */
+  var LW = 120, LH = 90;
+  /* How much of the scene's detail shows at each detail level (0-4): hatching, trees, birds, ripples. */
+  var DETAIL = { hatch: [0.15, 0.35, 0.55, 0.8, 1], trees: [0.3, 0.5, 0.7, 0.85, 1], birds: [0, 0.34, 0.67, 1, 1], ripples: [0.3, 0.5, 0.7, 0.85, 1] };
+
+  /* A ridge line across the frame: a few soft waves plus a little jitter, peaks somewhere in the middle. */
+  function ridge(R, base, amp) {
+    var f1 = 1 + R() * 1.6, f2 = 2.5 + R() * 3, p1 = R() * 6.28, p2 = R() * 6.28, peak = 0.2 + R() * 0.6, pts = [];
+    for (var x = 0; x <= LW; x += 4) {
+      var u = x / LW, hump = Math.exp(-Math.pow((u - peak) / 0.32, 2));
+      var y = base - amp * (0.55 * hump + 0.25 * (0.5 + 0.5 * Math.sin(u * 6.28 * f1 + p1)) + 0.12 * (0.5 + 0.5 * Math.sin(u * 6.28 * f2 + p2))) + (R() - 0.5) * 1.2;
+      pts.push([x, r1(y)]);
+    }
+    return pts;
+  }
+  function yAt(pts, x) {
+    for (var i = 1; i < pts.length; i++) if (pts[i][0] >= x) { var a = pts[i - 1], b = pts[i], t = (x - a[0]) / (b[0] - a[0] || 1); return a[1] + (b[1] - a[1]) * t; }
+    return pts[pts.length - 1][1];
+  }
+  function line(pts) { return "M" + pts.map(function (p) { return p[0] + " " + p[1]; }).join(" L"); }
+  function take(list, share) { return list.slice(0, Math.round(list.length * share)); }
 
   /*
-   * The marks for one card. The full pattern is laid out once from the topic id, in a seeded order; a card at stage s
-   * shows the first INK.share[s] of it. Growing adds ink to the same card rather than changing it.
+   * The scene for one topic. The whole scene is laid out once from the topic id (same random numbers whatever the
+   * detail), then each kind of mark shows the first DETAIL[kind][detail] of its list, so a growing card adds to the
+   * same drawing instead of changing it.
    */
-  function design(id, stage) {
-    var st = Math.max(0, Math.min(4, Math.round(Number(stage) || 0)));
-    var R = rng(seedOf("card:" + id));
-    var pattern = PATTERNS[Math.floor(R() * PATTERNS.length)];
-    var marks = [], x, y, i;
-    var cx = r1(18 + R() * 64), cy = r1(26 + R() * 88), ang = R() * Math.PI;
-    if (pattern === "dots") {
-      var step = 8 + Math.floor(R() * 5);
-      for (y = step / 2; y < H; y += step) for (x = step / 2; x < W; x += step) marks.push({ k: "dot", x: r1(x + (R() - 0.5) * 3), y: r1(y + (R() - 0.5) * 3), r: r1(0.7 + R() * 1.6) });
-    } else if (pattern === "hatch") {
-      var gap = 5 + R() * 4, ca = Math.cos(ang), sa = Math.sin(ang);
-      for (var d = -90; d <= 90; d += gap) {
-        var mx = cx - sa * d, my = cy + ca * d, len = 40 + R() * 60;
-        marks.push({ k: "line", x1: r1(mx - ca * len), y1: r1(my - sa * len), x2: r1(mx + ca * len), y2: r1(my + sa * len) });
+  function landscape(id, detail) {
+    var d = Math.max(0, Math.min(4, Math.round(Number(detail) || 0)));
+    var R = rng(seedOf("land:" + id));
+    var horizon = 34 + R() * 14, hasWater = R() < 0.55, hasTrees = R() < 0.8, hasBirds = R() < 0.65, hasSun = R() < 0.4;
+    var waterY = hasWater ? r1(Math.min(LH - 12, horizon + 24 + R() * 10)) : LH;
+    var n = 3 + (R() < 0.5 ? 1 : 0), layers = [], hatch = [], trees = [], birds = [], ripples = [], i, j;
+    for (i = 0; i < n; i++) {
+      var depth = i / (n - 1); /* 0 far .. 1 near */
+      var base = horizon + i * (hasWater ? 7 : 11) + 6, amp = (1 - depth * 0.6) * (14 + R() * 18);
+      var pts = ridge(R, base, amp);
+      layers.push({ depth: r1(depth), line: line(pts), fill: line(pts) + " L" + LW + " " + LH + " L0 " + LH + " Z" });
+      /* short slanted strokes just under the ridge: the sketch shading */
+      for (j = 0; j < 10 + i * 4; j++) {
+        var hx = r1(R() * LW), hy = yAt(pts, hx) + 1.5 + R() * 7, len = 2 + R() * 3;
+        if (hy < waterY - 1) hatch.push({ depth: r1(depth), x1: hx, y1: r1(hy), x2: r1(hx - len * 0.6), y2: r1(hy + len) });
       }
-    } else if (pattern === "rings") {
-      for (var rr = 3 + R() * 3; rr < 150; rr += 4 + R() * 4) marks.push({ k: "ring", x: cx, y: cy, r: r1(rr) });
-    } else if (pattern === "waves") {
-      var amp = 1.5 + R() * 4, per = 14 + R() * 18, wgap = 7 + R() * 5, phase = R() * 40;
-      for (y = wgap / 2; y < H + amp; y += wgap) {
-        var dd = "M0 " + r1(y);
-        for (x = 5; x <= W; x += 5) dd += " L" + x + " " + r1(y + amp * Math.sin(((x + phase) / per) * 2 * Math.PI));
-        marks.push({ k: "path", d: dd });
-      }
-    } else if (pattern === "grid") {
-      var size = 7 + Math.floor(R() * 5);
-      for (y = 2; y < H - 2; y += size) for (x = 2; x < W - 2; x += size) if (R() < 0.6) marks.push({ k: "box", x: x + 1, y: y + 1, s: r1(size * (0.3 + R() * 0.4)) });
-    } else {
-      var n = 18 + Math.floor(R() * 14), ox = R() < 0.5 ? -4 : W + 4, oy = r1(R() * H), spread = 1.2 + R() * 1.4, a0 = ox < 0 ? -spread / 2 : Math.PI - spread / 2;
-      for (i = 0; i < n; i++) {
-        var a = a0 + (spread * i) / (n - 1), l = 60 + R() * 110;
-        marks.push({ k: "line", x1: ox, y1: oy, x2: r1(ox + Math.cos(a) * l), y2: r1(oy + Math.sin(a) * l) });
+      if (i === n - 1) {
+        for (j = 0; j < 9; j++) {
+          var tx = r1(6 + R() * (LW - 12)), ty = yAt(pts, tx), th = 4 + R() * 5;
+          if (ty + 1 < waterY) trees.push({ d: "M" + tx + " " + r1(ty - th) + " L" + r1(tx - th * 0.32) + " " + r1(ty + 0.5) + " M" + tx + " " + r1(ty - th) + " L" + r1(tx + th * 0.32) + " " + r1(ty + 0.5) + " M" + tx + " " + r1(ty - th * 0.6) + " L" + tx + " " + r1(ty + 1.5) });
+        }
       }
     }
-    for (i = marks.length - 1; i > 0; i--) { var j = Math.floor(R() * (i + 1)), tmp = marks[i]; marks[i] = marks[j]; marks[j] = tmp; }
-    var count = Math.max(3, Math.round(marks.length * INK.share[st]));
-    return { id: String(id), pattern: pattern, stage: st, total: marks.length, marks: marks.slice(0, count), weight: INK.weight[st], opacity: INK.opacity[st] };
+    for (j = 0; j < 3; j++) {
+      var bx = r1(20 + R() * 80), by = r1(8 + R() * Math.max(6, horizon - 22)), bw = 1.6 + R() * 1.4;
+      birds.push({ d: "M" + r1(bx - bw) + " " + r1(by - bw * 0.5) + " Q" + r1(bx - bw * 0.4) + " " + r1(by - bw * 0.7) + " " + bx + " " + by + " Q" + r1(bx + bw * 0.4) + " " + r1(by - bw * 0.7) + " " + r1(bx + bw) + " " + r1(by - bw * 0.5) });
+    }
+    if (hasWater) for (j = 0; j < 12; j++) { var ry = r1(waterY + 2 + R() * (LH - waterY - 3)), rx = r1(R() * (LW - 14)); ripples.push({ x1: rx, x2: r1(rx + 4 + R() * 10), y: ry }); }
+    var sun = hasSun ? { x: r1(18 + R() * 84), y: r1(10 + R() * 12), r: r1(4 + R() * 3) } : null;
+    return {
+      id: String(id), detail: d, w: LW, h: LH, layers: layers, water: hasWater ? { y: waterY } : null, sun: sun,
+      hatch: take(hatch, DETAIL.hatch[d]), trees: hasTrees ? take(trees, DETAIL.trees[d]) : [], birds: hasBirds ? take(birds, DETAIL.birds[d]) : [], ripples: take(ripples, DETAIL.ripples[d]),
+      totals: { hatch: hatch.length, trees: hasTrees ? trees.length : 0, birds: hasBirds ? birds.length : 0, ripples: ripples.length }
+    };
   }
 
   /* Everything a card shows, from the cloud. Works for deck cards whose topic is gone too (from the stored entry). */
@@ -87,9 +106,16 @@
     var n = cloud.nodes[id], e = C.deckEntry(cloud, id), s = n ? C.subjectOf(cloud, id) : null;
     return {
       id: id, label: n ? n.label : e.label, subject: s && s.id !== id ? s.label : e ? e.subject : "",
-      stage: g.stage, stageName: g.name, progress: g.progress, inDeck: g.inDeck, live: Boolean(n),
-      color: C.cardColor(cloud, id), art: design(id, g.stage)
+      chain: C.chainOf(cloud, id), blurb: (n && n.blurb) || (e && e.blurb) || "",
+      stage: g.stage, detail: g.detail, stageName: g.name, achieved: g.achieved, toNext: g.toNext, inDeck: g.inDeck, live: Boolean(n),
+      color: C.cardColor(cloud, id), art: landscape(id, g.detail)
     };
+  }
+  /* "Math → Counting → Counting to 20". withTopic: the full chain (the holder); else the links above the topic, kept to subject → … → parent. */
+  function chainText(chain, withTopic) {
+    var c = (chain || []).slice(0, withTopic ? undefined : -1);
+    if (withTopic ? c.length > 4 : c.length > 2) c = [c[0], "…"].concat(c.slice(withTopic ? -2 : -1));
+    return c.join(" → ");
   }
 
   /* ---------- DOM ---------- */
@@ -99,39 +125,66 @@
     Object.keys(attrs).forEach(function (k) { e.setAttribute(k, String(attrs[k])); });
     return e;
   }
+  function hsla(c, a, dl) { return "hsla(" + c.hue + ", " + c.sat + "%, " + Math.max(10, Math.min(92, c.light + (dl || 0))) + "%, " + a.toFixed(2) + ")"; }
+  function tint(c, a, l) { return "hsla(" + c.base + ", 50%, " + l + "%, " + a.toFixed(2) + ")"; }
+  /* The landscape as SVG: pale far ridges, darker near ones, pen lines over light fills; the chain's hue arrives as a wash. */
   function artSvg(doc, spec) {
-    var svg = svgEl(doc, "svg", { viewBox: "0 0 " + W + " " + H, preserveAspectRatio: "xMidYMid slice", "aria-hidden": "true", focusable: "false", class: "art" });
-    if (spec.stage > 0) svg.appendChild(svgEl(doc, "rect", { x: 0, y: 0, width: W, height: H, fill: spec.color.wash }));
-    var g = svgEl(doc, "g", { stroke: spec.color.ink, fill: "none", "stroke-width": spec.art.weight, "stroke-linecap": "round", opacity: spec.art.opacity });
-    spec.art.marks.forEach(function (m) {
-      if (m.k === "dot") g.appendChild(svgEl(doc, "circle", { cx: m.x, cy: m.y, r: m.r, fill: spec.color.ink, stroke: "none" }));
-      else if (m.k === "ring") g.appendChild(svgEl(doc, "circle", { cx: m.x, cy: m.y, r: m.r }));
-      else if (m.k === "line") g.appendChild(svgEl(doc, "line", { x1: m.x1, y1: m.y1, x2: m.x2, y2: m.y2 }));
-      else if (m.k === "path") g.appendChild(svgEl(doc, "path", { d: m.d }));
-      else if (m.k === "box") g.appendChild(svgEl(doc, "rect", { x: m.x, y: m.y, width: m.s, height: m.s, fill: spec.color.soft }));
+    var a = spec.art, c = spec.color, t = c.mix || 0;
+    var svg = svgEl(doc, "svg", { viewBox: "0 0 " + a.w + " " + a.h, preserveAspectRatio: "xMidYMid slice", "aria-hidden": "true", focusable: "false", class: "art" });
+    svg.appendChild(svgEl(doc, "rect", { x: 0, y: 0, width: a.w, height: a.h, fill: hsla(c, 0.06, 40) }));
+    if (t) svg.appendChild(svgEl(doc, "rect", { x: 0, y: 0, width: a.w, height: a.h, fill: tint(c, 0.04 + 0.1 * t, 74) }));
+    if (a.sun) svg.appendChild(svgEl(doc, "circle", { cx: a.sun.x, cy: a.sun.y, r: a.sun.r, fill: hsla(c, 0.1 + 0.1 * t, 30), stroke: "none" }));
+    a.layers.forEach(function (l) {
+      svg.appendChild(svgEl(doc, "path", { d: l.fill, fill: hsla(c, 0.07 + 0.2 * l.depth + 0.06 * t, 26 - 16 * l.depth), stroke: "none" }));
+      svg.appendChild(svgEl(doc, "path", { d: l.line, fill: "none", stroke: hsla(c, 0.3 + 0.55 * l.depth, 12 - 14 * l.depth), "stroke-width": 0.45 + 0.4 * l.depth, "stroke-linejoin": "round" }));
     });
+    var g = svgEl(doc, "g", { stroke: c.ink, fill: "none", "stroke-width": 0.45, "stroke-linecap": "round" });
+    a.hatch.forEach(function (h) { g.appendChild(svgEl(doc, "line", { x1: h.x1, y1: h.y1, x2: h.x2, y2: h.y2, opacity: (0.3 + 0.5 * h.depth).toFixed(2) })); });
     svg.appendChild(g);
-    if (spec.stage >= 4) svg.appendChild(svgEl(doc, "rect", { x: 5, y: 5, width: W - 10, height: H - 10, fill: "none", stroke: spec.color.ink, "stroke-width": 0.6, opacity: 0.7 }));
+    if (a.water) {
+      svg.appendChild(svgEl(doc, "rect", { x: 0, y: a.water.y, width: a.w, height: a.h - a.water.y, fill: t ? tint(c, 0.12 + 0.26 * t, 62) : hsla(c, 0.1, 34), stroke: "none" }));
+      svg.appendChild(svgEl(doc, "line", { x1: 0, y1: a.water.y, x2: a.w, y2: a.water.y, stroke: hsla(c, 0.55, 0), "stroke-width": 0.5 }));
+      var w = svgEl(doc, "g", { stroke: c.ink, "stroke-width": 0.4, "stroke-linecap": "round", opacity: 0.55 });
+      a.ripples.forEach(function (r) { w.appendChild(svgEl(doc, "line", { x1: r.x1, y1: r.y, x2: r.x2, y2: r.y })); });
+      svg.appendChild(w);
+    }
+    var tr = svgEl(doc, "g", { stroke: hsla(c, 0.9, -8), fill: "none", "stroke-width": 0.7, "stroke-linecap": "round" });
+    a.trees.forEach(function (x) { tr.appendChild(svgEl(doc, "path", { d: x.d })); });
+    a.birds.forEach(function (b) { tr.appendChild(svgEl(doc, "path", { d: b.d, "stroke-width": 0.45 })); });
+    svg.appendChild(tr);
     return svg;
   }
-  /* A card: paper outline with the corner fold, the art, the topic and a quiet line (subject · stage). opts: { onOpen, small, bare } */
+  /*
+   * A card. opts: { onOpen, size: "full" (the holder) | "tile" (deck, draw) | "mini" (art only, in chat) }.
+   * Paper with a thin double border and a folded corner, the landscape top-left, the chain, the title, the line under it,
+   * and a quiet text mark: the colour stage, or "Achieved". No icons.
+   */
   function render(doc, spec, opts) {
     opts = opts || {};
+    var size = opts.size || "tile";
     var d = doc.createElement(opts.onOpen ? "button" : "div");
-    d.className = "dcard stage-" + spec.stage + (opts.small ? " small" : "") + (opts.bare ? " bare" : "");
+    d.className = "gcard size-" + size + " stage-" + spec.stage + (spec.achieved ? " achieved" : "");
     if (opts.onOpen) {
       d.type = "button";
       d.setAttribute("aria-label", spec.label + ", " + spec.stageName + (spec.subject ? ", " + spec.subject : ""));
-      d.addEventListener("click", function (e) { e.stopPropagation(); opts.onOpen(spec.id); });
+      d.addEventListener("click", function (e) { e.stopPropagation(); opts.onOpen(spec.id, d); });
     }
+    d.dataset.card = spec.id;
     d.style.setProperty("--card-ink", spec.color.ink);
-    var face = doc.createElement("span"); face.className = "dc-face";
-    face.appendChild(artSvg(doc, spec));
-    d.appendChild(face);
-    if (!opts.bare) {
-      var t = doc.createElement("span"); t.className = "dc-label"; t.textContent = spec.label; d.appendChild(t);
-      var m = doc.createElement("span"); m.className = "dc-meta"; m.textContent = (spec.subject ? spec.subject + " · " : "") + spec.stageName; d.appendChild(m);
+    d.style.setProperty("--card-wash", spec.color.wash);
+    d.style.setProperty("--card-soft", spec.color.soft);
+    var art = doc.createElement("span"); art.className = "gc-art";
+    art.appendChild(artSvg(doc, spec));
+    d.appendChild(art);
+    if (size === "mini") return d;
+    var ch = chainText(spec.chain, size === "full");
+    if (ch) { var c = doc.createElement("span"); c.className = "gc-chain"; c.textContent = ch; d.appendChild(c); }
+    var t = doc.createElement("span"); t.className = "gc-title"; t.textContent = spec.label; d.appendChild(t);
+    if (size === "full") {
+      d.appendChild(Object.assign(doc.createElement("span"), { className: "gc-rule" }));
+      if (spec.blurb) { var b = doc.createElement("span"); b.className = "gc-desc"; b.textContent = spec.blurb; d.appendChild(b); }
     }
+    var f = doc.createElement("span"); f.className = "gc-mark"; f.textContent = spec.achieved ? "Achieved" : spec.stageName; d.appendChild(f);
     return d;
   }
 
@@ -141,7 +194,7 @@
   function dayOf(t) { var d = new Date(t); return Math.floor((t - d.getTimezoneOffset() * 60000) / DAY); }
   /* Spaced review: a card is due again after this many days, longer for brighter (better known) cards. */
   var REVIEW_DAYS = [1, 2, 4, 7, 14];
-  var DRAW = { size: 3, sameSubject: 0.3, drawnToday: 0.05, struggle: 1.5, struggleDays: 14, yearDays: 365, ease: 0.05 };
+  var DRAW = { size: 3, sameSubject: 0.3, drawnToday: 0.05, struggle: 1.5, struggleDays: 14, yearDays: 365, ease: 0.05, rank: 0.3 };
 
   function subjectKey(cloud, e) {
     var s = cloud.nodes[e.id] ? C.subjectOf(cloud, e.id) : null;
@@ -156,6 +209,8 @@
    *   review           0.35 + days since last drawn / review interval (capped at 3): overdue cards come back
    *   struggle         x1.5 when the learner found it tricky in the last 14 days
    *   today            x0.05 when it was already drawn today (a second session the same day gets new cards)
+   *   ranking          x(1 + 0.3 x rank boost): the learner's top 10 (rank.js) comes up a little more often; the balance
+   *                    term above still evens subjects out over the year
    */
   function weigh(cloud, day) {
     var deck = cloud.deck || [];
@@ -172,17 +227,20 @@
       if (d[0] === day) today[d[1]] = 1;
     });
     var subjects = Object.keys(cardsIn), target = subjects.length ? 1 / subjects.length : 1;
+    var boost = RK ? RK.boost(cloud, (day + 0.5) * DAY) : {};
     return deck.map(function (e) {
       var k = subjectKey(cloud, e);
       var share = counted ? (drawn[k] || 0) / counted : target;
       var bal = (target + DRAW.ease) / (share + DRAW.ease);
       var g = C.growthOf(cloud, e.id), stage = g ? g.stage : e.best || 0;
       var since = Math.max(0, day - (last[e.id] != null ? last[e.id] : dayOf(e.at || 0)));
-      var review = 0.35 + Math.min(3, since / REVIEW_DAYS[stage]);
+      /* a top-10 card is also due back a little sooner (same factor), so the nudge survives spaced review */
+      var rank = 1 + DRAW.rank * (boost[e.id] || 0);
+      var review = 0.35 + Math.min(3, (since * rank) / REVIEW_DAYS[stage]);
       var n = cloud.nodes[e.id];
       var struggle = n && n.lastStruggle && dayOf(n.lastStruggle) > day - DRAW.struggleDays ? DRAW.struggle : 1;
-      var w = (1 / cardsIn[k]) * bal * review * struggle * (today[e.id] ? DRAW.drawnToday : 1);
-      return { id: e.id, subject: k, w: w, balance: bal, review: review, struggle: struggle };
+      var w = (1 / cardsIn[k]) * bal * review * struggle * rank * (today[e.id] ? DRAW.drawnToday : 1);
+      return { id: e.id, subject: k, w: w, balance: bal, review: review, struggle: struggle, rank: rank };
     });
   }
 
@@ -217,8 +275,8 @@
   }
 
   var api = {
-    PATTERNS: PATTERNS, INK: INK, REVIEW_DAYS: REVIEW_DAYS, DRAW: DRAW,
-    seedOf: seedOf, rng: rng, design: design, cardSpec: cardSpec, render: render, artSvg: artSvg,
+    DETAIL: DETAIL, REVIEW_DAYS: REVIEW_DAYS, DRAW: DRAW,
+    seedOf: seedOf, rng: rng, landscape: landscape, cardSpec: cardSpec, chainText: chainText, render: render, artSvg: artSvg,
     dayOf: dayOf, weigh: weigh, drawSession: drawSession, balance: balance
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;

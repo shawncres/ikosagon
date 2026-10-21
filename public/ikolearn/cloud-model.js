@@ -10,9 +10,9 @@
 (function (root) {
   "use strict";
 
-  var VERSION = 3;
+  var VERSION = 4;
   /* nodes: stored cap (localStorage stays small). children / ghosts: per node. There is no depth limit. */
-  var LIMITS = { nodes: 600, subjects: 12, children: 16, ghostsPerNode: 6, pathSteps: 6, cards: 60, labelChars: 32, choices: 3, draws: 3000, whyChars: 80 };
+  var LIMITS = { nodes: 600, subjects: 12, children: 16, ghostsPerNode: 6, pathSteps: 6, cards: 60, labelChars: 32, choices: 3, draws: 3000, whyChars: 80, chain: 4, blurbChars: 140 };
   var MASTERED = 0.6;
   /* Soft spectrum, one hue per subject in order of creation. */
   var HUES = [4, 28, 48, 96, 150, 188, 214, 252, 286, 322, 70, 170];
@@ -119,7 +119,7 @@
       id: id, label: cleanLabel(o.label), key: norm(o.label), parent: o.parent || null,
       weight: o.ghost ? 0 : (o.weight == null ? 1 : o.weight), mastery: 0, ghost: Boolean(o.ghost),
       born: o.born == null ? Date.now() : o.born, touched: o.born || 0, cards: [], opened: false,
-      spent: 0, engaged: 0, end: false
+      spent: 0, engaged: 0, end: false, correct: 0, heat: 0, heatAt: 0, blurb: "", achievedAt: 0
     };
     if (!n.parent) n.hue = HUES[subjects(cloud).length % HUES.length];
     cloud.nodes[id] = n;
@@ -223,6 +223,42 @@
     return findSubject(cloud, "Curiosities") || (subjects(cloud).length < LIMITS.subjects ? addNode(cloud, { label: "Curiosities", parent: null, weight: 1, born: t }) : subjects(cloud)[0]);
   }
 
+  /*
+   * A chain of broader topics, broadest first (e.g. Computer Science, Programming, Python), so a new topic lands at the
+   * right depth with explicit parent -> child links. The deepest link that already exists anywhere is reused; the links
+   * below it are created. Returns the deepest node, or null for an empty chain.
+   */
+  function placeChain(cloud, labels, t, res) {
+    var list = [], keys = [];
+    (Array.isArray(labels) ? labels : []).forEach(function (l) {
+      var c = cleanLabel(l), k = norm(c);
+      if (c && k !== norm(cloud.name) && keys.indexOf(k) < 0) { list.push(c); keys.push(k); }
+    });
+    list = list.slice(-LIMITS.chain); keys = keys.slice(-LIMITS.chain);
+    if (!list.length) return null;
+    var cur = null, at = -1;
+    for (var i = list.length - 1; i >= 0; i--) {
+      cur = i === 0 ? findAny(cloud, list[0]) : findTopic(cloud, list[i]);
+      if (cur) { at = i; break; }
+    }
+    var start = at + 1;
+    if (!cur) {
+      cur = resolveParent(cloud, list[0], t, res);
+      start = cur.key === keys[0] || findSubject(cloud, list[0]) === cur ? 1 : 0;
+    }
+    for (var j = start; j < list.length; j++) {
+      var k = keys[j], hit = null;
+      childrenOf(cloud, cur.id).forEach(function (c) { if (!hit && c.key === k) hit = c; });
+      if (!hit) {
+        if (!makeRoom(cloud, cur.id, false)) break;
+        hit = addNode(cloud, { label: list[j], parent: cur.id, weight: 0.5, born: t });
+        res.created.push(hit.id);
+      } else if (hit.ghost) { hit.ghost = false; hit.born = t; res.promoted.push(hit.id); }
+      cur = hit;
+    }
+    return cur;
+  }
+
   function bumpAncestors(cloud, id, amount, t) {
     var a = ancestry(cloud, id); a.pop();
     a.reverse().forEach(function (x, i) { var n = cloud.nodes[x]; n.weight += amount / (i + 1); n.touched = t; });
@@ -246,7 +282,11 @@
       var n = findTopic(cloud, label, hint ? hint.id : null);
       var parent;
       if (!n) {
-        parent = resolveParent(cloud, tp.parent, t, res);
+        /* an explicit chain (from chat or a card) builds the missing links between the subject and this topic */
+        var links = (Array.isArray(tp.chain) ? tp.chain.slice(0, LIMITS.chain) : []);
+        if (links.length && tp.parent && norm(links[links.length - 1]) !== norm(tp.parent)) links.push(tp.parent);
+        links = links.filter(function (l) { return norm(l) !== norm(label); });
+        parent = (links.length > 1 && placeChain(cloud, links, t, res)) || resolveParent(cloud, tp.parent, t, res);
         if (!makeRoom(cloud, parent.id, false)) { parent.weight += 0.5; parent.touched = t; res.strengthened.push(parent.id); return; }
         n = addNode(cloud, { label: label, parent: parent.id, weight: 0, born: t });
         res.created.push(n.id);
@@ -259,6 +299,7 @@
       n.mastery = clamp01(n.mastery + sig.m);
       if (tp.signal === "struggle") n.lastStruggle = t;
       n.touched = t;
+      warm(n, HEAT.chat * sig.w, t);
       bumpAncestors(cloud, n.id, 0.25, t);
     });
     prune(cloud);
@@ -363,7 +404,8 @@
     t = now_(t);
     var n = node(cloud, id);
     if (!n) return { changed: [], promoted: false, next: null };
-    if (kind === "open" && n.opened && !n.ghost) return { changed: [], promoted: false, next: nextFor(cloud, id) };
+    /* re-opening a lesson changes nothing on the map, but it is use: it warms the topic for the top 10 */
+    if (kind === "open" && n.opened && !n.ghost) { warm(n, HEAT.open, t); return { changed: [], promoted: false, next: nextFor(cloud, id) }; }
     var promoted = false;
     if (n.ghost) { n.ghost = false; n.born = t; promoted = true; n.weight = Math.max(n.weight, 1); }
     if (kind === "open") { if (!n.opened) { n.opened = true; n.mastery = clamp01(n.mastery + 0.05); n.weight += 0.5; } }
@@ -371,6 +413,7 @@
     else if (kind === "tricky") { n.mastery = clamp01(n.mastery - 0.05); n.lastStruggle = t; n.weight += 0.25; }
     n.touched = t;
     n.engaged = (n.engaged || 0) + 1;
+    warm(n, HEAT[kind] || 0, t);
     bumpAncestors(cloud, id, kind === "got" ? 0.3 : 0.1, t);
     var next = nextFor(cloud, id);
     cloud.next = next;
@@ -380,11 +423,11 @@
 
   function attachCard(cloud, card, t) {
     t = now_(t);
-    var res = applyTopics(cloud, [{ name: card.topic, parent: card.parent, signal: "explored" }], t);
+    var res = applyTopics(cloud, [{ name: card.topic, parent: card.parent, chain: card.chain, signal: "explored" }], t);
     var n = findTopic(cloud, card.topic, (findAny(cloud, card.parent) || {}).id) || findSubject(cloud, card.topic);
     var c = { id: "c" + t.toString(36) + Math.floor(hash(card.title + t) * 1e4), title: String(card.title).slice(0, 60), body: String(card.body).slice(0, 700), node: n ? n.id : null, at: t };
     cloud.cards.push(c);
-    if (n) n.cards.push(c.id);
+    if (n) { n.cards.push(c.id); warm(n, HEAT.card, t); if (!n.blurb) setBlurb(cloud, n.id, c.body); }
     while (cloud.cards.length > LIMITS.cards) {
       var old = cloud.cards.shift();
       var on = cloud.nodes[old.node];
@@ -446,16 +489,38 @@
    * The only place card colour is worked out; the deck and any card design read it from here.
    */
   var SEPIA = 34;
-  function mixHue(a, b, t) { var d = ((b - a + 540) % 360) - 180; return Math.round((a + d * t + 360) % 360); }
+  /* How far the ink has moved from sepia toward the chain's hue at each stage (mixed in RGB, so it never passes through other hues). */
+  var MIX = [0, 0.18, 0.4, 0.65, 1];
+  var WASH = [0.06, 0.1, 0.17, 0.25, 0.32];
+  function rgbOf(h, s, l) {
+    s /= 100; l /= 100;
+    var k = function (n) { return (n + h / 30) % 12; }, a = s * Math.min(l, 1 - l);
+    var f = function (n) { return l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1)); };
+    return [f(0) * 255, f(8) * 255, f(4) * 255];
+  }
+  function hslOf(rgb) {
+    var r = rgb[0] / 255, g = rgb[1] / 255, b = rgb[2] / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn, h = 0, s = 0;
+    if (d) {
+      s = d / (1 - Math.abs(2 * l - 1));
+      h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+      h = (h * 60 + 360) % 360;
+    }
+    return [Math.round(h), Math.round(s * 100), Math.round(l * 100)];
+  }
+  /*
+   * A card's colours at a stage (0 sepia .. 4 achieved): ink (lines), soft (fills), wash (the watercolour that bleeds into
+   * the paper, in the chain's own hue from stage 1), plus the numbers for renderers that need their own alpha.
+   */
   function evolveColor(hue, stage) {
-    var st = Math.max(0, Math.min(4, Math.round(Number(stage) || 0))) / 4;
-    var h = mixHue(SEPIA, hue == null ? SEPIA : hue, st);
-    var sat = Math.round(20 + 52 * st), light = Math.round(36 + 6 * st);
+    var st = Math.max(0, Math.min(4, Math.round(Number(stage) || 0))), target = hue == null ? SEPIA : Math.round(hue);
+    var a = rgbOf(SEPIA, 24, 36), b = rgbOf(target, 58, 42), t = MIX[st];
+    var m = [0, 1, 2].map(function (i) { return a[i] + (b[i] - a[i]) * t; }), hsl = hslOf(m);
+    var h = st === 0 ? SEPIA : st === 4 ? target : hsl[0], sat = st === 0 ? 24 : st === 4 ? 58 : hsl[1], light = st === 0 ? 36 : st === 4 ? 42 : hsl[2];
     return {
-      stage: st * 4, hue: h,
+      stage: st, hue: h, sat: sat, light: light, mix: t, base: target,
       ink: "hsl(" + h + ", " + sat + "%, " + light + "%)",
-      soft: "hsla(" + h + ", " + sat + "%, " + light + "%, " + (0.2 + 0.25 * st).toFixed(2) + ")",
-      wash: "hsla(" + h + ", " + (sat + 10) + "%, 62%, " + (0.03 + 0.17 * st).toFixed(2) + ")"
+      soft: "hsla(" + h + ", " + sat + "%, " + light + "%, " + (0.2 + 0.25 * t).toFixed(2) + ")",
+      wash: "hsla(" + (st ? target : SEPIA) + ", 55%, 60%, " + WASH[st].toFixed(2) + ")"
     };
   }
   function cardColor(cloud, id) {
@@ -559,6 +624,7 @@
     if (!n || !add) return n ? n.spent || 0 : 0;
     n.spent = (n.spent || 0) + add;
     n.seenAt = now_(t);
+    warm(n, (add / 60) * HEAT.minute, t);
     return n.spent;
   }
 
@@ -576,34 +642,56 @@
   function activity(cloud, id) {
     var n = node(cloud, id);
     if (!n) return null;
-    return { spent: n.spent || 0, engaged: n.engaged || 0, mastery: n.mastery, opened: n.opened, end: Boolean(n.end), cards: n.cards.length, subject: (subjectOf(cloud, id) || {}).id || null, hue: hueOf(cloud, id) };
+    return { spent: n.spent || 0, engaged: n.engaged || 0, correct: n.correct || 0, mastery: n.mastery, opened: n.opened, end: Boolean(n.end), achieved: Boolean(n.achievedAt), cards: n.cards.length, subject: (subjectOf(cloud, id) || {}).id || null, hue: hueOf(cloud, id) };
   }
 
   /* ---------- growth, the deck, forks ---------- */
   /*
-   * Growth score: minutes spent + 2 per engagement (lesson opened, got it, still tricky) + 4 x mastery + cards (up to 3).
-   * Stages 0..4 at these scores. A card joins the deck for good at GROWTH.join, and its stage never goes back down.
+   * Two things grow on a card:
+   *  - detail (ink): the growth score = minutes spent + 2 per engagement + 3 per correct answer + 4 x mastery + cards (up to 3),
+   *    at the GROWTH.stages scores. A topic joins the deck for good at GROWTH.join (or when achieved).
+   *  - colour: earned only by confirmed learning. Confirmations = correct answers to lesson questions + 2 for "I've got it".
+   *    Colour stages 1-3 at GROWTH.confirm; stage 4 (full colour, "Achieved") only when the branch has ended. A card's colour
+   *    never goes back down, and an achieved card stays achieved.
    */
-  var GROWTH = { stages: [0, 3, 8, 16, 30], join: 3, names: ["New", "Warming up", "Growing", "Bright", "Full colour"] };
-  function scoreOf(n) { return n ? (n.spent || 0) / 60 + 2 * (n.engaged || 0) + 4 * (n.mastery || 0) + Math.min((n.cards || []).length, 3) : 0; }
+  var GROWTH = { stages: [0, 3, 8, 16, 30], join: 3, confirm: [0, 1, 3, 5], names: ["New", "Warming up", "Growing", "Bright", "Achieved"] };
+  function scoreOf(n) { return n ? (n.spent || 0) / 60 + 2 * (n.engaged || 0) + 3 * (n.correct || 0) + 4 * (n.mastery || 0) + Math.min((n.cards || []).length, 3) : 0; }
   function stageFor(score) { var st = 0; for (var i = 1; i < GROWTH.stages.length; i++) if (score >= GROWTH.stages[i]) st = i; return st; }
+  function confirmedOf(n) { return n ? (n.correct || 0) + (n.mastery >= MASTERED ? 2 : 0) : 0; }
+  function tintFor(n) { var c = confirmedOf(n), st = 0; for (var i = 1; i < GROWTH.confirm.length; i++) if (c >= GROWTH.confirm[i]) st = i; return st; }
   function deckEntry(cloud, id) { var d = cloud.deck || []; for (var i = 0; i < d.length; i++) if (d[i].id === id) return d[i]; return null; }
   function inDeck(cloud, id) { return Boolean(deckEntry(cloud, id)); }
+  /* The chain shown on a card: the labels from the subject down to the topic (stored on deck entries too). */
+  function chainOf(cloud, id) {
+    if (cloud.nodes[id]) return ancestry(cloud, id).map(function (x) { return cloud.nodes[x].label; });
+    var e = deckEntry(cloud, id);
+    return e ? (e.chain && e.chain.length ? e.chain.slice() : [e.subject, e.label].filter(Boolean)) : [];
+  }
   function growthOf(cloud, id) {
     var n = node(cloud, id), e = deckEntry(cloud, id);
     if (!n && !e) return null;
-    var score = n ? scoreOf(n) : GROWTH.stages[e.best];
-    var stage = Math.max(stageFor(score), e ? e.best : 0), lo = GROWTH.stages[stage], hi = GROWTH.stages[stage + 1];
-    return { score: Math.round(score * 10) / 10, stage: stage, name: GROWTH.names[stage], progress: hi == null ? 1 : Math.max(0, Math.min(1, (score - lo) / (hi - lo))), inDeck: Boolean(e) };
+    var ach = Boolean((n && (n.achievedAt || (!n.ghost && isTerminal(cloud, id)))) || (e && e.ach));
+    var stage = ach ? 4 : Math.max(n ? tintFor(n) : 0, e ? Math.min(e.best || 0, 3) : 0);
+    var score = n ? scoreOf(n) : 0, c = n ? confirmedOf(n) : 0, want = GROWTH.confirm[stage + 1];
+    return {
+      score: Math.round(score * 10) / 10, stage: stage, detail: Math.max(stageFor(score), stage), name: GROWTH.names[stage],
+      achieved: ach, confirmed: c, toNext: ach || want == null ? 0 : Math.max(0, want - c), inDeck: Boolean(e)
+    };
   }
-  /* Adds every topic past the threshold to the deck (never removes). Keeps each card's best stage and label up to date. Returns ids that joined now. */
+  function isAchieved(cloud, id) { var g = growthOf(cloud, id); return Boolean(g && g.achieved); }
+  /*
+   * Marks topics whose branch has ended as achieved (once, for good), adds every topic past the threshold to the deck
+   * (never removes), and keeps each entry's label, chain, description and best colour up to date. Returns ids that joined now.
+   */
   function joinDeck(cloud, t) {
     t = now_(t);
     cloud.deck = cloud.deck || [];
     var joined = [];
     all(cloud).forEach(function (n) {
-      if (!n.parent || n.ghost || inDeck(cloud, n.id) || scoreOf(n) < GROWTH.join) return;
-      cloud.deck.push({ id: n.id, label: n.label, subject: "", hue: SEPIA, at: t, best: 0 });
+      if (!n.parent || n.ghost) return;
+      if (!n.achievedAt && isTerminal(cloud, n.id)) n.achievedAt = t;
+      if (inDeck(cloud, n.id) || (scoreOf(n) < GROWTH.join && !n.achievedAt)) return;
+      cloud.deck.push({ id: n.id, label: n.label, subject: "", hue: SEPIA, at: t, best: 0, chain: [], blurb: "", ach: 0 });
       joined.push(n.id);
     });
     cloud.deck.forEach(function (e) {
@@ -612,9 +700,52 @@
       var s = subjectOf(cloud, n.id);
       e.label = n.label;
       if (s) { e.subject = s.label; e.hue = s.hue == null ? SEPIA : s.hue; }
-      e.best = Math.max(e.best || 0, stageFor(scoreOf(n)));
+      e.chain = chainOf(cloud, n.id);
+      if (n.blurb) e.blurb = n.blurb;
+      if (n.achievedAt && !e.ach) e.ach = n.achievedAt;
+      e.best = Math.max(e.best || 0, n.achievedAt ? 4 : tintFor(n));
     });
     return joined;
+  }
+  /* A multiple-choice answer from a lesson: a right one is confirmed learning (colour); either way it counts as use. */
+  function confirm(cloud, id, right, t) {
+    t = now_(t);
+    var n = node(cloud, id);
+    if (!n) return false;
+    if (n.ghost) { n.ghost = false; n.born = t; n.weight = Math.max(n.weight, 1); }
+    if (right) { n.correct = (n.correct || 0) + 1; n.mastery = clamp01(n.mastery + 0.1); }
+    warm(n, right ? HEAT.correct : HEAT.wrong, t);
+    n.touched = t;
+    return true;
+  }
+  /* The short line under a card's title (from the lesson's hidden block, or a card's first sentence). */
+  function cleanBlurb(v) {
+    var x = String(v == null ? "" : v).replace(/[\u0000-\u001f\u007f<>{}[\]`*_#|\\]/g, " ").replace(/\s+/g, " ").trim();
+    var m = /^(.{20,}?[.!?])(\s|$)/.exec(x);
+    x = m ? m[1] : x;
+    return x.length > LIMITS.blurbChars ? x.slice(0, LIMITS.blurbChars).replace(/\s+\S*$/, "") + "..." : x;
+  }
+  function setBlurb(cloud, id, text) {
+    var n = node(cloud, id), b = cleanBlurb(text);
+    if (!n || b.length < 8) return false;
+    n.blurb = b;
+    return true;
+  }
+  /*
+   * Usage heat for the ranking (rank.js): points per use, halving every HEAT.halfDays days, so the top 10 follows what the
+   * learner does lately. Kept per node as { heat, heatAt }.
+   */
+  var HEAT = { halfDays: 14, open: 1, minute: 0.25, correct: 1.5, wrong: 0.3, got: 2, tricky: 0.5, card: 1, chat: 0.5 };
+  function heatNow(n, t) {
+    if (!n || !n.heat) return 0;
+    var dt = Math.max(0, now_(t) - (n.heatAt || 0));
+    return n.heat * Math.pow(2, -dt / (HEAT.halfDays * 86400000));
+  }
+  function warm(n, pts, t) {
+    if (!n || !(pts > 0)) return;
+    t = now_(t);
+    n.heat = heatNow(n, t) + pts;
+    n.heatAt = t;
   }
   /* Session draws, for the yearly balance: [day, cardId] pairs, the last 366 days only. */
   function logDraw(cloud, day, ids) {
@@ -669,15 +800,19 @@
     return n.path.ids.every(function (x) { return !cloud.nodes[x] || cloud.nodes[x].mastery >= MASTERED; });
   }
   /* Other branches, offered only once a branch has ended: unfinished nearby branches first, then one from another subject. Local, no call. */
-  function otherBranches(cloud, id, max) {
+  /* prefer: ids in ranked order (the top 10); the first nearby one of them moves to the front. */
+  function otherBranches(cloud, id, max, prefer) {
     max = max || 3;
-    var n = node(cloud, id), out = [];
+    var n = node(cloud, id), out = [], near = [];
     if (!n) return out;
     var ok = function (x) { var m = cloud.nodes[x]; return m && m.parent && m.mastery < MASTERED && !m.end && x !== id && !isAncestor(cloud, id, x) && ancestry(cloud, id).indexOf(x) < 0 && out.indexOf(x) < 0; };
     ancestry(cloud, id).slice(0, -1).reverse().forEach(function (a) {
       var an = cloud.nodes[a];
-      (an.path ? an.path.ids : []).concat(childrenOf(cloud, a).map(function (c) { return c.id; })).forEach(function (x) { if (out.length < max - 1 && ok(x)) out.push(x); });
+      (an.path ? an.path.ids : []).concat(childrenOf(cloud, a).map(function (c) { return c.id; })).forEach(function (x) { if (near.indexOf(x) < 0 && ok(x)) near.push(x); });
     });
+    var pref = (Array.isArray(prefer) ? prefer : []).filter(function (x) { return near.indexOf(x) >= 0; })[0];
+    if (pref) near = [pref].concat(near.filter(function (x) { return x !== pref; }));
+    near.slice(0, max - 1).forEach(function (x) { out.push(x); });
     var own = (subjectOf(cloud, id) || {}).id;
     subjects(cloud).filter(function (s) { return s.id !== own; }).sort(function (a, b) { return a.weight - b.weight || cloud.order.indexOf(a.id) - cloud.order.indexOf(b.id); })
       .some(function (s) {
@@ -692,10 +827,11 @@
   /* ---------- storage ---------- */
   /*
    * Compact form: one array per node
-   * [id, label, parent, flags, weight*10, mastery*100, born(s), touched(s), hue, struggle(s), spent(s), engaged]
+   * [id, label, parent, flags, weight*10, mastery*100, born(s), touched(s), hue, struggle(s), spent(s), engaged,
+   *  then only when set: correct answers, heat*100, heatAt(s), blurb, achieved(s)]
    * (flags: 1 ghost, 2 opened, 4 branch ends here). New fields go on the end of the array, so older saves still load.
    * p: paths { id: [stepIds, next, at] }, f: forks { id: [choiceIds, whys, picked, at] },
-   * k: the deck [[id, label, subject, hue, joined(s), best stage]], g: draw log [[day, id]], ss: session count.
+   * k: the deck [[id, label, subject, hue, joined(s), best stage, chain labels, blurb, achieved(s)]], g: draw log [[day, id]], ss: session count.
    * Node.cards and keys are rebuilt on load.
    */
   function serialize(cloud) {
@@ -705,10 +841,13 @@
       var x = cloud.nodes[id];
       if (x.path && x.path.ids.length) paths[id] = [x.path.ids, x.path.next || 0, s(x.path.at)];
       if (x.fork && x.fork.ids.length) forks[id] = [x.fork.ids, x.fork.why, x.fork.picked || 0, s(x.fork.at)];
-      return [id, x.label, x.parent || 0, (x.ghost ? 1 : 0) | (x.opened ? 2 : 0) | (x.end ? 4 : 0), Math.round(x.weight * 10), Math.round(x.mastery * 100), s(x.born), s(x.touched), x.parent ? -1 : (x.hue == null ? 30 : x.hue), s(x.lastStruggle), x.spent || 0, x.engaged || 0];
+      var row = [id, x.label, x.parent || 0, (x.ghost ? 1 : 0) | (x.opened ? 2 : 0) | (x.end ? 4 : 0), Math.round(x.weight * 10), Math.round(x.mastery * 100), s(x.born), s(x.touched), x.parent ? -1 : (x.hue == null ? 30 : x.hue), s(x.lastStruggle), x.spent || 0, x.engaged || 0];
+      /* v4 fields only when set, so most rows stay short */
+      if (x.correct || x.heat || x.blurb || x.achievedAt) row.push(x.correct || 0, Math.round((x.heat || 0) * 100), s(x.heatAt), x.blurb || "", s(x.achievedAt));
+      return row;
     });
     return JSON.stringify({ v: VERSION, name: cloud.name, seq: cloud.seq, rev: cloud.rev, created: cloud.created, next: cloud.next || 0, n: n, p: paths, f: forks, cards: cloud.cards,
-      k: (cloud.deck || []).map(function (e) { return [e.id, e.label, e.subject, e.hue, s(e.at), e.best || 0]; }), g: cloud.draws || [], ss: cloud.sessions || 0 });
+      k: (cloud.deck || []).map(function (e) { return [e.id, e.label, e.subject, e.hue, s(e.at), e.best || 0, e.chain || [], e.blurb || "", s(e.ach)]; }), g: cloud.draws || [], ss: cloud.sessions || 0 });
   }
 
   function finish(c, list, cards, paths, extra) {
@@ -754,7 +893,10 @@
     out.deck = [];
     (Array.isArray(extra.deck) ? extra.deck : []).forEach(function (e) {
       if (!Array.isArray(e) || typeof e[0] !== "string" || out.deck.some(function (d) { return d.id === e[0]; })) return;
-      out.deck.push({ id: e[0], label: cleanLabel(e[1]) || "Card", subject: cleanLabel(e[2]), hue: Number.isFinite(e[3]) ? e[3] : SEPIA, at: (Number(e[4]) || 0) * 1000, best: Math.max(0, Math.min(4, Number(e[5]) || 0)) });
+      out.deck.push({
+        id: e[0], label: cleanLabel(e[1]) || "Card", subject: cleanLabel(e[2]), hue: Number.isFinite(e[3]) ? e[3] : SEPIA, at: (Number(e[4]) || 0) * 1000, best: Math.max(0, Math.min(4, Number(e[5]) || 0)),
+        chain: (Array.isArray(e[6]) ? e[6] : []).map(cleanLabel).filter(Boolean).slice(-8), blurb: cleanBlurb(e[7] || ""), ach: (Number(e[8]) || 0) * 1000
+      });
     });
     out.draws = (Array.isArray(extra.draws) ? extra.draws : []).filter(function (d) { return Array.isArray(d) && Number.isFinite(d[0]) && typeof d[1] === "string"; }).slice(-LIMITS.draws);
     out.sessions = Math.max(0, Number(extra.sessions) || 0);
@@ -763,13 +905,13 @@
     return out;
   }
 
-  /* Validates stored JSON (v3 or v2, or v1 which is migrated forward without loss); null when unusable. */
+  /* Validates stored JSON (v4, v3 or v2, or v1 which is migrated forward without loss); null when unusable. */
   function deserialize(str) {
     var c;
     try { c = typeof str === "string" ? JSON.parse(str) : str; } catch { return null; }
     if (!c || typeof c.name !== "string") return null;
     var base = { name: cleanLabel(c.name) || "Me", seq: Number(c.seq) || 0, rev: Number(c.rev) || 0, created: Number(c.created) || 0, next: c.next || null };
-    if ((c.v === 2 || c.v === 3) && Array.isArray(c.n)) {
+    if ((c.v === 2 || c.v === 3 || c.v === 4) && Array.isArray(c.n)) {
       var ms = function (s) { return (Number(s) || 0) * 1000; };
       var list = c.n.map(function (a) {
         if (!Array.isArray(a) || typeof a[0] !== "string" || typeof a[1] !== "string") return null;
@@ -777,7 +919,8 @@
           id: a[0], label: cleanLabel(a[1]), key: norm(a[1]), parent: a[2] || null, ghost: Boolean(a[3] & 1), opened: Boolean(a[3] & 2),
           weight: (Number(a[4]) || 0) / 10, mastery: clamp01((Number(a[5]) || 0) / 100), born: ms(a[6]), touched: ms(a[7]),
           hue: a[2] ? undefined : (Number.isFinite(a[8]) && a[8] >= 0 ? a[8] : 30), lastStruggle: a[9] ? ms(a[9]) : undefined, cards: [],
-          end: Boolean(a[3] & 4), spent: Math.max(0, Number(a[10]) || 0), engaged: Math.max(0, Number(a[11]) || 0)
+          end: Boolean(a[3] & 4), spent: Math.max(0, Number(a[10]) || 0), engaged: Math.max(0, Number(a[11]) || 0),
+          correct: Math.max(0, Number(a[12]) || 0), heat: Math.max(0, Number(a[13]) || 0) / 100, heatAt: ms(a[14]), blurb: cleanBlurb(a[15] || ""), achievedAt: ms(a[16])
         };
       });
       return finish(base, list, c.cards, c.p, { forks: c.f, deck: c.k, draws: c.g, sessions: c.ss });
@@ -795,7 +938,7 @@
         id: id, label: cleanLabel(n.label), key: norm(n.label), parent: n.parent || null, ghost: Boolean(n.ghost), opened: false,
         weight: Number(n.weight) || 0, mastery: clamp01(Number(n.mastery) || 0), born: Number(n.born) || 0, touched: Number(n.touched) || 0,
         hue: n.parent ? undefined : (Number.isFinite(n.hue) ? n.hue : 30), lastStruggle: n.lastStruggle || undefined, cards: [],
-        spent: 0, engaged: 0, end: false
+        spent: 0, engaged: 0, end: false, correct: 0, heat: 0, heatAt: 0, blurb: "", achievedAt: 0
       };
     });
     var out = finish(base, list, c.cards, {});
@@ -816,7 +959,8 @@
     VERSION: VERSION, LIMITS: LIMITS, MASTERED: MASTERED, STARTERS: STARTERS, HUES: HUES,
     create: create, applyTopics: applyTopics, addGhosts: addGhosts, applyPath: applyPath, nextFor: nextFor, engage: engage,
     track: track, markEnd: markEnd, activity: activity, hueOf: hueOf,
-    GROWTH: GROWTH, growthOf: growthOf, joinDeck: joinDeck, inDeck: inDeck, deckEntry: deckEntry, logDraw: logDraw,
+    GROWTH: GROWTH, growthOf: growthOf, joinDeck: joinDeck, chainOf: chainOf, confirm: confirm, setBlurb: setBlurb, cleanBlurb: cleanBlurb,
+    isAchieved: isAchieved, placeChain: placeChain, HEAT: HEAT, heatNow: heatNow, inDeck: inDeck, deckEntry: deckEntry, logDraw: logDraw,
     evolveColor: evolveColor, cardColor: cardColor, applyChoices: applyChoices, pickChoice: pickChoice, isTerminal: isTerminal, otherBranches: otherBranches, hash: hash,
     attachCard: attachCard, cardsFor: cardsFor, summarize: summarize, knownUnder: knownUnder, subjectLabels: subjectLabels,
     subjects: subjects, childrenOf: childrenOf, ancestry: ancestry, depthOf: depthOf, subjectOf: subjectOf, trail: trail, index: index,
