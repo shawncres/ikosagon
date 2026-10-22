@@ -376,11 +376,13 @@ export const TEST_SCHEMA = {
  *          for Sets), each with a card line, when the topic landed too close to its subject
  * Children carry a role: core (the ordered main sequence) or optional (a side path, with after = the core step it
  * branches from). A branch ends when its core sequence is done; side paths never block.
+ * Prerequisites (storage v9): a child may name earlier siblings it truly needs first (needs), and an item may name
+ * topics it builds on (node.needs). The device resolves them to ids; such a topic stays open but completes only after them.
  * The orchestrator (public/ikolearn/orchestrator.js) decides when to call and what context to send.
  */
-export type CreateChild = { name: string; order: number; score: number; why: string; role: (typeof CHILD_ROLES)[number]; after: string };
+export type CreateChild = { name: string; order: number; score: number; why: string; role: (typeof CHILD_ROLES)[number]; after: string; needs?: string[] };
 export type CreateLink = { name: string; blurb: string };
-export type CreateItem = { node: { name: string; chain: string[] }; card: { title: string; blurb: string; goal: string }; children: CreateChild[]; links?: CreateLink[] };
+export type CreateItem = { node: { name: string; chain: string[]; needs?: string[] }; card: { title: string; blurb: string; goal: string }; children: CreateChild[]; links?: CreateLink[] };
 export type CreateResult = { items: CreateItem[] };
 
 export function createSystem(i: LearnInput): string {
@@ -399,7 +401,8 @@ export function createSystem(i: LearnInput): string {
     `children: 3 to ${LEARN_LIMITS.createChildren} smaller child topics (1 to 3 words, Title Case) with order (1 = learn first; foundational before advanced), ` +
     "score (0 to 1: how important this child is as a next step inside its topic, given what the learner already has; the most useful, logical next steps score highest), why (a short friendly reason, under 10 words), " +
     'role ("core": the main sequence a learner should follow, foundational to advanced, usually 2 to 4 of them; "optional": an isolated aspect or side path worth exploring but not needed to finish, at most 2) ' +
-    "and after (for an optional child only: the name of the core child it branches off). Order the core children first. ";
+    "and after (for an optional child only: the name of the core child it branches off). Order the core children first. " +
+    "needs is optional: the names of earlier sibling children that truly must be learned first (usually none, at most 3, never a later one). ";
   const card =
     "card: title (the topic, at most 4 words), blurb (one line under 12 words saying what it is, never the learner's name) and goal (one short line: what the learner can do once they have finished it). ";
   /* the repair re-ask: a first bridge left the chain shallow; check each step for a skipped level (no built-in table) */
@@ -491,13 +494,13 @@ export const CREATE_SCHEMA = {
       items: {
         type: "object",
         properties: {
-          node: { type: "object", properties: { name: { type: "string" }, chain: { type: "array", items: { type: "string" } } }, required: ["name", "chain"] },
+          node: { type: "object", properties: { name: { type: "string" }, chain: { type: "array", items: { type: "string" } }, needs: { type: "array", items: { type: "string" } } }, required: ["name", "chain"] },
           card: { type: "object", properties: { title: { type: "string" }, blurb: { type: "string" }, goal: { type: "string" } }, required: ["title", "blurb", "goal"] },
           children: {
             type: "array",
             items: {
               type: "object",
-              properties: { name: { type: "string" }, order: { type: "integer" }, score: { type: "number" }, why: { type: "string" }, role: { type: "string" }, after: { type: "string" } },
+              properties: { name: { type: "string" }, order: { type: "integer" }, score: { type: "number" }, why: { type: "string" }, role: { type: "string" }, after: { type: "string" }, needs: { type: "array", items: { type: "string" } } },
               required: ["name", "order", "score", "role"],
             },
           },
@@ -518,6 +521,13 @@ export const CREATE_SCHEMA = {
  * child's after must name a core child of the same item (else it is cleared); an item always keeps at least 1 core child.
  * Anything short of that is null, so the app falls back instead of growing a half-made branch.
  */
+/* a short list of cleaned, distinct labels from a model array (anything else: none) */
+function labelList(v: unknown): string[] {
+  const out: string[] = [];
+  (Array.isArray(v) ? v : []).slice(0, 6).forEach((x) => { const l = cleanLabel(x); if (l && !out.some((y) => sameLabel(y, l))) out.push(l); });
+  return out;
+}
+
 export function parseCreate(raw: unknown, kind: LearnInput["kind"], learnerName = "", focus = "", known: string[] = []): CreateResult | null {
   const list = jsonObject(raw)?.items;
   if (!Array.isArray(list)) return null;
@@ -536,7 +546,7 @@ export function parseCreate(raw: unknown, kind: LearnInput["kind"], learnerName 
     if (!name || (!focused && taken(name))) continue;
     if (focused && !sameLabel(cleanLabel(nd.name), focus)) continue;
     const chain = kind === "next" ? [] : parseChain(nd.chain, learnerName, name);
-    const kids: (CreateChild & { i: number })[] = [];
+    const kids: (CreateChild & { i: number; raw: unknown })[] = [];
     (Array.isArray(o.children) ? o.children : []).forEach((c, i) => {
       if (!c || typeof c !== "object" || kids.length >= LEARN_LIMITS.createChildren) return;
       const k = c as Record<string, unknown>;
@@ -549,26 +559,29 @@ export function parseCreate(raw: unknown, kind: LearnInput["kind"], learnerName 
       score = Math.max(0, Math.min(1, score));
       const order = Number.isFinite(Number(k.order)) ? Number(k.order) : 99;
       const role = k.role === "optional" ? "optional" : "core";
-      kids.push({ name: cn, order, score: Math.round(score * 100) / 100, why: cleanText(k.why, LEARN_LIMITS.whyChars).replace(/[<>{}[\]`*_#|\\]/g, " ").trim(), role, after: cleanLabel(k.after), i });
+      kids.push({ name: cn, order, score: Math.round(score * 100) / 100, why: cleanText(k.why, LEARN_LIMITS.whyChars).replace(/[<>{}[\]`*_#|\\]/g, " ").trim(), role, after: cleanLabel(k.after), i, raw: k.needs });
     });
     if (kids.length < 2 && kind !== "bridge") continue;
     kids.sort((a, b) => a.order - b.order || a.i - b.i);
     if (kids.length && !kids.some((k) => k.role === "core")) kids[0].role = "core";
     const cores = kids.filter((k) => k.role === "core");
     kids.forEach((k) => { if (k.role === "core" || !cores.some((c) => sameLabel(c.name, k.after))) k.after = k.role === "core" ? "" : cores[0].name; });
+    /* needs: only earlier siblings (never itself or a later one), so prerequisites can never form a loop; at most 3 */
+    kids.forEach((k, j) => { const nd = labelList(k.raw).map((x) => kids.find((y, yi) => yi < j && sameLabel(y.name, x))?.name).filter((x): x is string => Boolean(x)); k.needs = nd.filter((x, xi) => nd.indexOf(x) === xi).slice(0, 3); });
+    const needs = labelList(nd.needs).filter((x) => !sameLabel(x, name) && !(learnerName !== "" && sameLabel(x, learnerName)) && !kids.some((k) => sameLabel(k.name, x))).slice(0, 3);
     const links: CreateLink[] = kind !== "bridge" ? [] : (Array.isArray(o.links) ? o.links : [])
       .filter((l) => l && typeof l === "object")
       .map((l) => ({ name: cleanLabel((l as Record<string, unknown>).name), blurb: parseBlurb((l as Record<string, unknown>).blurb, learnerName) }))
       .filter((l) => l.name && chain.some((c) => sameLabel(c, l.name)));
     seen.push(name, ...kids.map((k) => k.name));
     items.push({
-      node: { name, chain },
+      node: needs.length ? { name, chain, needs } : { name, chain },
       card: {
         title: cleanLabel(cd.title) || name,
         blurb: parseBlurb(cd.blurb, learnerName),
         goal: cleanText(plainReply(cd.goal), LEARN_LIMITS.goalChars).replace(/[<>{}[\]`*_#|\\]/g, " ").replace(/\s+/g, " ").trim(),
       },
-      children: kids.map((k, j) => ({ name: k.name, order: j + 1, score: k.score, why: k.why, role: k.role, after: k.after })),
+      children: kids.map((k, j) => ({ name: k.name, order: j + 1, score: k.score, why: k.why, role: k.role, after: k.after, ...(k.needs && k.needs.length ? { needs: k.needs } : {}) })),
       ...(kind === "bridge" ? { links } : {}),
     });
   }

@@ -110,9 +110,13 @@
       stage: g.stage, detail: g.detail, stageName: g.name, achieved: g.achieved, toNext: g.toNext, inDeck: g.inDeck, live: Boolean(n),
       tier: g.tier, tierKey: g.tierKey, tierName: g.tierName, level: g.level, progress: g.progress, pips: pipsFor(g.tier, g.level),
       corpus: C.corpusOf(cloud, id), absorbedInto: C.absorbedInto(cloud, id),
+      /* v9: prerequisites still to finish (quiet "After X"; the card stays open and learnable) */
+      after: n ? C.lockedBy(cloud, id).map(function (x) { return cloud.nodes[x].label; }) : [],
       color: C.cardColor(cloud, id), art: landscape(id, g.detail)
     };
   }
+  /* "A", "A and B", "A, B and C" */
+  function listOf(xs) { return xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs[xs.length - 1]; }
   /* Rarity, quietly: one corner pip per tier above Sketch, one more per merge level past I (at most 6). */
   function pipsFor(tier, level) { return Math.min(6, tier + Math.max(0, (level || 0) - 1)); }
   /* A number that only goes up as a card evolves (tier, then colour stage, then merge level): the app animates a rise. */
@@ -205,6 +209,7 @@
       if (spec.blurb) { var b = doc.createElement("span"); b.className = "gc-desc"; b.textContent = spec.blurb; d.appendChild(b); }
       if (spec.goal) { var g = doc.createElement("span"); g.className = "gc-goal"; g.textContent = "Goal: " + spec.goal; d.appendChild(g); }
     }
+    if (spec.after && spec.after.length) d.appendChild(Object.assign(doc.createElement("span"), { className: "gc-after", textContent: "After " + listOf(spec.after) }));
     if (spec.corpus.length) d.appendChild(Object.assign(doc.createElement("span"), { className: "gc-corpus", textContent: "Holds " + spec.corpus.length + (spec.corpus.length === 1 ? " card" : " cards") }));
     var foot = doc.createElement("span"); foot.className = "gc-foot";
     var f = doc.createElement("span"); f.className = "gc-mark"; f.textContent = spec.tierName; foot.appendChild(f);
@@ -436,7 +441,7 @@
 
   var api = {
     DETAIL: DETAIL, REVIEW_DAYS: REVIEW_DAYS, DRAW: DRAW,
-    seedOf: seedOf, rng: rng, landscape: landscape, cardSpec: cardSpec, chainText: chainText, chainLinks: chainLinks, render: render, artSvg: artSvg,
+    seedOf: seedOf, rng: rng, landscape: landscape, cardSpec: cardSpec, listOf: listOf, chainText: chainText, chainLinks: chainLinks, render: render, artSvg: artSvg,
     renderCorpus: renderCorpus, pipsFor: pipsFor, evolveKey: evolveKey,
     coverage: coverage, subtree: subtree, albumModel: albumModel, hubChildren: hubChildren, renderSlot: renderSlot, ALBUM: ALBUM,
     dayOf: dayOf, weigh: weigh, drawSession: drawSession, balance: balance

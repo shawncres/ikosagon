@@ -185,7 +185,7 @@ const seeded = (name, t) => {
   // v1 -> v2 migration without loss
   const v1raw = fs.readFileSync("scripts/fixtures/ikolearn-cloud-v1.json", "utf8"), v1 = JSON.parse(v1raw);
   const mig = C.deserialize(v1raw);
-  ok(mig && mig.v === C.VERSION && C.VERSION === 8, "v1 cloud migrates forward (to v8)");
+  ok(mig && mig.v === C.VERSION && C.VERSION === 9, "v1 cloud migrates forward (to v9)");
   const migCs = C.subjects(mig).find((x) => x.label === "Computer Science"), csKeys = C.CS_TOPICS.map(C.norm), seedKeys = C.OLD_SEEDS.map(C.norm);
   const keptV1 = v1.order.filter((id) => mig.nodes[id]), goneV1 = v1.order.filter((id) => !mig.nodes[id]);
   ok(keptV1.every((id) => mig.nodes[id].label === v1.nodes[id].label && mig.nodes[id].ghost === v1.nodes[id].ghost &&
@@ -492,6 +492,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
 {
   const c = seeded("Maya", T0);
   const math = C.findSubject(c, "Math"), cnt = C.findTopic(c, "Counting"), sci = C.findSubject(c, "Science");
+  C.childrenOf(c, cnt.id).forEach((x) => { x.role = "optional"; }); /* its seeded placeholders as side paths: this block is about colour, not the v9 core gate */
   eq(C.GROWTH.stages, [0, 3, 8, 16, 30], "growth (detail) stages");
   eq(C.GROWTH.confirm, [0, 1, 3, 5], "colour stages by confirmed learning");
   let g = C.growthOf(c, cnt.id);
@@ -595,16 +596,16 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   // migration: v2 (PR #56) and v1 saves move to v3; topics past the threshold backfill the deck
   const v2raw = fs.readFileSync("scripts/fixtures/ikolearn-cloud-v2.json", "utf8"), v2 = JSON.parse(v2raw);
   const m2 = C.deserialize(v2raw);
-  ok(m2 && v2.v === 2 && m2.v === 8, "v2 cloud migrates to v8");
+  ok(m2 && v2.v === 2 && m2.v === 9, "v2 cloud migrates to v9");
   ok(v2.n.every((a) => m2.nodes[a[0]] ? m2.nodes[a[0]].label === a[1] && (m2.nodes[a[0]].spent || 0) === (a[10] || 0) : C.OLD_SEEDS.map(C.norm).includes(C.norm(a[1])) && !(a[10] > 0)), "migration keeps every v2 node with its time spent (only untouched old seeds are pruned)");
   const mc = C.findTopic(m2, "Counting"), mnb = C.findTopic(m2, "Number Bonds");
   ok(C.inDeck(m2, mc.id) && C.growthOf(m2, mc.id).stage === 2 && C.growthOf(m2, mc.id).tierKey === "tinted" && !C.inDeck(m2, mnb.id), "backfill: Counting (4 min, got it) joins as a Tinted card (completed); Number Bonds (30 s) not yet");
   ok(C.findTopic(m2, "Counting to 20").end && C.findTopic(m2, "Fractions").path.ids.length === 2, "migration keeps branch ends and paths");
   eq(C.deserialize(C.serialize(m2)).deck, m2.deck, "migrated deck round-trips");
-  ok(C.deserialize(fs.readFileSync("scripts/fixtures/ikolearn-cloud-v1.json", "utf8")).v === 8, "v1 still migrates (to v8)");
+  ok(C.deserialize(fs.readFileSync("scripts/fixtures/ikolearn-cloud-v1.json", "utf8")).v === 9, "v1 still migrates (to v9)");
   // v3 (PR #57) -> v4 without loss: every node, the deck with its best stages, forks, draws and sessions
   const v3raw = fs.readFileSync("scripts/fixtures/ikolearn-cloud-v3.json", "utf8"), v3 = JSON.parse(v3raw), m3 = C.deserialize(v3raw);
-  ok(m3 && v3.v === 3 && m3.v === 8, "v3 cloud migrates to v8");
+  ok(m3 && v3.v === 3 && m3.v === 9, "v3 cloud migrates to v9");
   ok(v3.n.every((a) => m3.nodes[a[0]] ? m3.nodes[a[0]].label === a[1] && m3.nodes[a[0]].spent === a[10] && m3.nodes[a[0]].engaged === a[11] : C.OLD_SEEDS.map(C.norm).includes(C.norm(a[1])) && !(a[10] > 0) && !(a[11] > 0)), "migration keeps every v3 node with its time and engagement (only untouched old seeds are pruned)");
   ok(v3.k.every((e) => C.deckEntry(m3, e[0]) && C.deckEntry(m3, e[0]).best >= e[5]), "migration keeps the deck and each card's best stage");
   eq(m3.draws, v3.g, "migration keeps the draw log"); ok(m3.sessions === v3.ss, "and the session count");
@@ -685,7 +686,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
 
   // weights
   const y = seeded("Maya", T0);
-  const add = (subj, names) => names.forEach((n) => { C.applyTopics(y, [{ name: n, parent: subj, signal: "strength" }], T0); const x = C.findTopic(y, n); C.engage(y, x.id, "open", T0); C.engage(y, x.id, "got", T0); });
+  const add = (subj, names) => names.forEach((n) => { C.applyTopics(y, [{ name: n, parent: subj, signal: "strength" }], T0); const x = C.findTopic(y, n); C.childrenOf(y, x.id).forEach((k) => { k.role = "optional"; }); C.engage(y, x.id, "open", T0); C.engage(y, x.id, "got", T0); }); /* equal stages: seeded placeholders as side paths (the v9 gate is checked on its own) */
   add("Math", ["Counting", "Addition", "Subtraction", "Fractions", "Shapes", "Doubles", "Halves", "Clocks"]);
   add("Science", ["Volcanoes", "Plants"]); add("Art & Music", ["Rhythm"]); add("Reading & Writing", ["Rhymes"]);
   C.joinDeck(y, T0);
@@ -805,7 +806,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const back = C.deserialize(C.serialize(c));
   ok(back.nodes[sets.id].correct === 1 && Math.abs(C.heatNow(back.nodes[sets.id], T0 + 5) - h1) < 0.02 && back.nodes[loops.id].blurb === loops.blurb, "v4 round trip: right answers, heat and card lines");
   ok(C.chainOf(back, sets.id).join(">") === C.chainOf(c, sets.id).join(">"), "v4 round trip: chains");
-  const e1 = C.findTopic(c, "Counting"); e1.end = true; C.engage(c, e1.id, "got", T0 + 7); C.track(c, e1.id, 300, T0 + 7); C.joinDeck(c, T0 + 8);
+  const e1 = C.findTopic(c, "Counting"); C.childrenOf(c, e1.id).forEach((x) => { x.role = "optional"; }); /* v9 gate: an ended branch with open core placeholders waits; here they are side paths */ e1.end = true; C.engage(c, e1.id, "got", T0 + 7); C.track(c, e1.id, 300, T0 + 7); C.joinDeck(c, T0 + 8);
   const back2 = C.deserialize(C.serialize(c));
   ok(C.isAchieved(back2, e1.id) && back2.nodes[e1.id].achievedAt === Math.floor((T0 + 8) / 1000) * 1000 && C.deckEntry(back2, e1.id).ach, "v4 round trip: achieved date on the node and the card");
 
@@ -827,7 +828,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
 
   // a year of draws with a lopsided top 10 stays balanced
   const y = seeded("Maya", T0);
-  const add = (subj, names) => names.forEach((n) => { C.applyTopics(y, [{ name: n, parent: subj, signal: "strength" }], T0); const x = C.findTopic(y, n); C.engage(y, x.id, "open", T0); C.engage(y, x.id, "got", T0); });
+  const add = (subj, names) => names.forEach((n) => { C.applyTopics(y, [{ name: n, parent: subj, signal: "strength" }], T0); const x = C.findTopic(y, n); C.childrenOf(y, x.id).forEach((k) => { k.role = "optional"; }); C.engage(y, x.id, "open", T0); C.engage(y, x.id, "got", T0); }); /* equal stages: seeded placeholders as side paths (the v9 gate is checked on its own) */
   add("Math", ["Counting", "Addition", "Subtraction", "Fractions", "Shapes", "Doubles", "Halves", "Clocks"]);
   add("Science", ["Volcanoes", "Plants"]); add("Art & Music", ["Rhythm"]); add("Reading & Writing", ["Rhymes"]);
   C.joinDeck(y, T0);
@@ -1092,7 +1093,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   // v4 -> v6 migration: nothing the learner used is lost; untouched old seeds are pruned; CS topics move across
   const v4raw = fs.readFileSync("scripts/fixtures/ikolearn-cloud-v4.json", "utf8"), v4 = JSON.parse(v4raw);
   const m5 = C.deserialize(v4raw), seedKeys = C.OLD_SEEDS.map(C.norm);
-  ok(v4.v === 4 && m5 && m5.v === 8, "v4 cloud migrates to v8");
+  ok(v4.v === 4 && m5 && m5.v === 9, "v4 cloud migrates to v9");
   const gone = v4.n.filter((row) => !m5.nodes[row[0]]);
   ok(gone.length > 10 && gone.every((row) => seedKeys.includes(C.norm(row[1])) && !(row[3] & 2) && !(row[10] > 0) && !(row[11] > 0) && !(row[5] > 0)), "v4 -> v6: only untouched seed nodes are pruned (never opened, no time, no engagement, no mastery)", gone.map((r) => r[1]).join());
   ok(["Number Bonds", "Poetry", "Robots"].every((l) => !C.findTopic(m5, l)), "v4 -> v6: untouched Math (and other) seed ghosts are gone");
@@ -1152,13 +1153,14 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(!P.testState(o, add.id).ready && P.testState(o, add.id).need > 0, "no test before enough is completed");
   const kids = add.path.ids.map((x) => o.nodes[x]);
   C.confirm(o, kids[0].id, true, T0 + 4); C.confirm(o, kids[0].id, true, T0 + 5);
+  ok(!P.testState(o, add.id).ready && P.testState(o, add.id).need === 1, "one of three core children done: no test node yet");
   C.engage(o, kids[1].id, "got", T0 + 6);
-  ok(!P.testState(o, add.id).ready, "two of three done: not yet");
+  ok(P.testState(o, add.id).ready && P.testState(o, add.id).done.length === 2, "two of three done: the test node appears (at least half the core, and at least 2)");
   const req0 = P.testRequest(o, add.id);
   ok(req0.material.every((m) => m.label !== kids[2].label), "test material never includes an unlearned topic");
   C.engage(o, kids[2].id, "got", T0 + 7); C.joinDeck(o, T0 + 8);
   const st = P.testState(o, add.id);
-  ok(st.ready && st.done.length === 3, "a test appears once 3 children are completed (or the whole path)");
+  ok(st.ready && st.done.length === 3, "still ready with all 3 done (the attempt has not happened yet)");
   const req = P.testRequest(o, add.id);
   eq(req.material.map((m) => m.label), ["Subtraction", "Taking Away", "Counting Back", "Within 20"], "test material: the parent (opened) and its completed children only");
   const sg = P.suggest(o, { now: T0 + 9 });
@@ -1254,7 +1256,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/\.env\.local/.test(deploy) && /VERCEL_ORG_ID/.test(deploy) && /VERCEL_PROJECT_ID/.test(deploy) && /deploy --prod/.test(deploy) && !/^[^#]*vercel[^\n]*\b(link|env pull|dev)\b/m.test(deploy), "deploy script: ids from env, never links, pulls env or runs dev, and refuses an .env.local");
   // procedural start: no seeded map; a few questions, then one creation call builds the first parents
   const fresh = C.create("Mia", T0);
-  ok(Object.keys(fresh.nodes).length === 0 && fresh.v === 8 && !C.STARTERS && !C.KNOWN_CHAINS && !RK.POPULAR, "a new learner starts with an empty cloud (no seeded subjects, chains or popularity list)");
+  ok(Object.keys(fresh.nodes).length === 0 && fresh.v === 9 && !C.STARTERS && !C.KNOWN_CHAINS && !RK.POPULAR, "a new learner starts with an empty cloud (no seeded subjects, chains or popularity list)");
   ok(!C.PALETTE && !C.AGE_BANDS && !C.cleanRegion && !P.AGE_LABELS && !P.regionFrom && !P.ZONES, "no subject palette, age bands or region guessing are exported any more");
   ok(P.needsOnboarding(fresh) && !P.needsOnboarding(seeded("Old", T0)), "onboarding runs for an empty cloud, not for an existing one");
   const ob = P.onboarding(fresh, true), ob2 = P.onboarding(fresh, false);
@@ -1427,10 +1429,10 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     raw.pr[0] = "10-12"; raw.pr[1] = "Canada / Ontario-ish"; raw.pr[2] = 1; raw.pr[8] = Math.round((T0 + 1200) / 1000); /* as an older build wrote it */
     const oldSave = JSON.stringify(raw);
     const loaded = C.deserialize(oldSave), lp = loaded.profile;
-    ok(loaded && loaded.v === 8 && lp.interests.join() === "Space,Lego" && lp.onboarded === Math.round((T0 + 1000) / 1000) * 1000 && !("age" in lp) && !("region" in lp) && !("regionAuto" in lp) && !("changedAt" in lp), "a v8 save with an age band and region loads (v8); interests and flags kept; age and region ignored");
+    ok(loaded && loaded.v === 9 && lp.interests.join() === "Space,Lego" && lp.onboarded === Math.round((T0 + 1000) / 1000) * 1000 && !("age" in lp) && !("region" in lp) && !("regionAuto" in lp) && !("changedAt" in lp), "a v8 save with an age band and region loads (as v9); interests and flags kept; age and region ignored");
     ok(C.findTopic(loaded, "Fractions") && C.findTopic(loaded, "Fractions").mastery === C.findTopic(pf, "Fractions").mastery && loaded.order.join() === pf.order.join(), "the rest of the old save is untouched (nodes, ids, mastery)");
     const again = JSON.parse(C.serialize(loaded));
-    ok(again.v === 8 && again.pr.length === raw.pr.length && again.pr[0] === "" && again.pr[1] === "" && again.pr[2] === 0 && again.pr[8] === 0 && !/Ontario|10-12/.test(C.serialize(loaded)), "it saves back in the v8 shape with the age and region slots empty");
+    ok(again.v === 9 && again.pr.length === raw.pr.length && again.pr[0] === "" && again.pr[1] === "" && again.pr[2] === 0 && again.pr[8] === 0 && !/Ontario|10-12/.test(C.serialize(loaded)), "it saves back (v9) with the v8 profile shape with the age and region slots empty");
     ok(C.serialize(C.deserialize(C.serialize(loaded))) === C.serialize(loaded), "and round-trips stably after that");
     const app2 = fs.readFileSync("public/ikolearn/app.js", "utf8"), orch2 = fs.readFileSync("public/ikolearn/orchestrator.js", "utf8"), rank2 = fs.readFileSync("public/ikolearn/rank.js", "utf8");
     ok(!/\.age\b|\.region\b|regionAuto|deviceRegion|regionFrom|AGE_BANDS|AGE_LABELS|changedAt/.test(app2 + orch2 + rank2), "no age or region code left in the app, orchestrator or ranking");
@@ -1608,11 +1610,12 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(P.needsNext(rv, RV("Dino Art").id) && P.createRequest(rv, "next", RV("Dino Art").id).focus === "Dino Art", "an engaged side path can become its own parent (what comes next builds its own core and optional children)");
   C.applyCreate(rv, { items: [{ node: { name: "Dino Art", chain: [] }, card: {}, children: [{ name: "Sketching", order: 1, score: 0.8, role: "core" }, { name: "Clay Models", order: 2, score: 0.6, role: "core" }, { name: "Comics", order: 3, score: 0.3, role: "optional", after: "Sketching" }] }] }, { t: T0 + 60, focusId: RV("Dino Art").id });
   ok(RV("Dino Art").path.ids.length === 2 && RV("Comics").role === "optional" && RV("Comics").off === RV("Sketching").id && RV("Dino Art").role === "optional", "recursively: the side path now has its own core sequence and side path");
+  ["Sketching", "Clay Models"].forEach((l, i) => { C.confirm(rv, RV(l).id, true, T0 + 56 + i); C.confirm(rv, RV(l).id, true, T0 + 58 + i); }); /* v9: its own core first */
   C.engage(rv, RV("Dino Art").id, "got", T0 + 61); C.confirm(rv, RV("Dino Art").id, true, T0 + 62); C.confirm(rv, RV("Dino Art").id, true, T0 + 63);
   const tr2 = P.testRequest(rv, dn.id).material.map((m) => m.label);
   ok(["Fossils", "Dino Types", "Extinction", "Dino Art"].every((l) => tr2.includes(l)) && tr2.indexOf("Dino Art") > tr2.indexOf("Extinction") && !tr2.includes("Museums"), "tests: completed core material first, plus completed side paths (never unfinished ones)");
   const rv2 = C.deserialize(C.serialize(rv));
-  ok(rv2.v === 8 && rv2.nodes[RV("Dino Art").id].role === "optional" && rv2.nodes[RV("Dino Art").id].off === RV("Dino Types").id && rv2.nodes[dn.id].made && rv2.nodes[RV("Fossils").id].role === "core", "roles, side-path steps and made round-trip (v7)");
+  ok(rv2.v === 9 && rv2.nodes[RV("Dino Art").id].role === "optional" && rv2.nodes[RV("Dino Art").id].off === RV("Dino Types").id && rv2.nodes[dn.id].made && rv2.nodes[RV("Fossils").id].role === "core", "roles, side-path steps and made round-trip (v7)");
 
   const lp2 = C.create("Mia", T0); C.applyTopics(lp2, [{ name: "Fractions", parent: "Math", signal: "curious", chain: ["Math"] }], T0);
   const fr = C.findTopic(lp2, "Fractions"); C.applyPath(lp2, fr.id, ["Halves", "Quarters"], "Halves", T0);
@@ -1620,12 +1623,12 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   // migrating v5 and v6 saves forward
   const old5 = JSON.parse(C.serialize(rv)); old5.v = 5; old5.n = old5.n.map((a) => a.slice(0, 19)); delete old5.pr;
   const m7 = C.deserialize(JSON.stringify(old5));
-  ok(m7 && m7.v === 8 && Object.values(m7.nodes).every((n) => n.role === "" || n.role === "core") && Object.values(m7.nodes).some((n) => n.role === "core"), "v5 -> v7: path steps become core, everything else keeps no role (shown as before)");
+  ok(m7 && m7.v === 9 && Object.values(m7.nodes).every((n) => n.role === "" || n.role === "core") && Object.values(m7.nodes).some((n) => n.role === "core"), "v5 -> v7: path steps become core, everything else keeps no role (shown as before)");
   ok(Object.values(m7.nodes).filter((n) => n.role === "core").every((n) => m7.nodes[n.parent].path.ids.includes(n.id)) && !Object.values(m7.nodes).some((n) => n.role === "optional" || n.off || n.absorbedInto), "v5 -> v7: no side paths invented, no absorb links");
   const old6 = JSON.parse(C.serialize(rv)); old6.v = 6; old6.n = old6.n.map((a) => a.slice(0, 23));
   const m6 = C.deserialize(JSON.stringify(old6));
-  ok(m6.v === 8 && Object.keys(m6.nodes).length === Object.keys(rv.nodes).length && m6.nodes[RV("Fossils").id].role === "core" && m6.nodes[RV("Dino Art").id].role === "", "v6 -> v7: every node kept; path steps become core");
-  ok(C.deserialize(C.serialize(m7)).v === 8 && C.serialize(C.deserialize(C.serialize(m7))) === C.serialize(m7), "a migrated cloud round-trips exactly");
+  ok(m6.v === 9 && Object.keys(m6.nodes).length === Object.keys(rv.nodes).length && m6.nodes[RV("Fossils").id].role === "core" && m6.nodes[RV("Dino Art").id].role === "", "v6 -> v7: every node kept; path steps become core");
+  ok(C.deserialize(C.serialize(m7)).v === 9 && C.serialize(C.deserialize(C.serialize(m7))) === C.serialize(m7), "a migrated cloud round-trips exactly");
 
   // groundwork for powerful cards (not built): fields only
   const ab = C.deserialize(C.serialize(rv));
@@ -1697,6 +1700,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   {
     const { c, k } = fixture(), f = k("Fossils");
     C.applyTopics(c, [{ name: "Bones", parent: "Fossils", signal: "explored", chain: ["Science", "Dinosaurs", "Fossils"] }], T0); /* a child of its own, so the branch has not ended and the tiers come from answers */
+    k("Bones").role = "optional"; /* a side path: the v9 completion gate (core children) stays out of this ladder */
     const tiers = [];
     tiers.push(C.tierOf(c, f.id).key);
     right(c, f.id, 1, T0 + 10); tiers.push(C.tierOf(c, f.id).key);
@@ -1714,57 +1718,67 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     ok(C.roman(1) === "I" && C.roman(4) === "IV" && C.roman(9) === "IX" && C.roman(0) === "", "merge levels in Roman numerals");
   }
 
-  // merging: form at >= 3 achieved core children, idempotent, repeatable upgrade, deepest first, test trigger
+  // merging (v9): form once the core is sufficiently complete (>= 75%, at least 2) AND the parent is Achieved;
+  // idempotent, repeatable upgrade by batch, deepest first; a passed test no longer merges on its own
   {
-    const { c, d, k } = fixture();
-    ["Fossils", "Eras"].forEach((nm, i) => right(c, k(nm).id, 3, T0 + 100 * i));
-    ok(P.mergePlan(c, d.id) === null && P.settleMerges(c, T0 + 300).length === 0, "no merge with only 2 achieved core children (MERGE.first = 3)");
-    right(c, k("Diets").id, 3, T0 + 400);
+    const { c, d, k } = fixture(); /* Dinosaurs: 5 core children */
+    ok(P.MERGE.share === 0.75 && P.MERGE.min === 2 && P.MERGE.batch === 2, "merge thresholds: 75% of the core, at least 2; upgrades in batches of 2");
+    ["Fossils", "Eras", "Diets"].forEach((nm, i) => right(c, k(nm).id, 3, T0 + 100 * i));
+    right(c, d.id, 3, T0 + 350);
+    ok(C.isAchieved(c, d.id) && P.mergePlan(c, d.id) === null && P.settleMerges(c, T0 + 360).length === 0, "3 of 5 core done, parent Achieved: no merge yet (needs 4 of 5)");
+    right(c, k("Habitats").id, 3, T0 + 400);
     const plan = P.mergePlan(c, d.id);
-    ok(plan && plan.why === "core" && plan.ids.length === 3, "the orchestrator plans a merge once 3 core children are achieved", JSON.stringify(plan));
+    ok(plan && plan.why === "core" && plan.ids.length === 4, "the orchestrator plans a merge at 4 of 5 core done with the parent Achieved", JSON.stringify(plan));
     const nodesBefore = Object.keys(c.nodes).length, evBefore = (c.events || []).length;
     const m1 = P.settleMerges(c, T0 + 500);
-    ok(m1.length === 1 && m1[0].id === d.id && m1[0].level === 1 && d.ml === 1 && d.mergedAt === T0 + 500 && ["Fossils", "Eras", "Diets"].every((nm) => k(nm).absorbedInto === d.id) && d.absorbed.length === 3, "settleMerges forms Merged I: children absorbed, the parent's level 1");
-    ok(Object.keys(c.nodes).length === nodesBefore && c.events.length === evBefore + 1 && c.events[c.events.length - 1].k === "merge" && c.events[c.events.length - 1].ids.length === 3, "children are never lost (same nodes); one event logged");
-    ok(C.inDeck(c, d.id) && C.tierOf(c, d.id).key === "merged" && C.tierOf(c, d.id).name === "Merged I" && D.cardSpec(c, d.id).corpus.length === 3, "the merged parent is in the deck as a Merged I card with its corpus");
+    ok(m1.length === 1 && m1[0].id === d.id && m1[0].level === 1 && d.ml === 1 && d.mergedAt === T0 + 500 && ["Fossils", "Eras", "Diets", "Habitats"].every((nm) => k(nm).absorbedInto === d.id) && d.absorbed.length === 4, "settleMerges forms Merged I: children absorbed, the parent's level 1");
+    ok(Object.keys(c.nodes).length === nodesBefore && c.events.length === evBefore + 1 && c.events[c.events.length - 1].k === "merge" && c.events[c.events.length - 1].ids.length === 4, "children are never lost (same nodes); one event logged");
+    ok(C.inDeck(c, d.id) && C.tierOf(c, d.id).key === "merged" && C.tierOf(c, d.id).name === "Merged I" && D.cardSpec(c, d.id).corpus.length === 4, "the merged parent is in the deck as a Merged I card with its corpus");
     const snap = C.serialize(c);
-    ok(C.mergeInto(c, d.id, ["Fossils", "Eras", "Diets"].map((nm) => k(nm).id), T0 + 600) === null && P.settleMerges(c, T0 + 600).length === 0 && C.serialize(c) === snap, "idempotent: applying the same merge again (or settling again) changes nothing");
-    right(c, k("Habitats").id, 3, T0 + 700);
-    ok(P.settleMerges(c, T0 + 800).length === 0, "one newly achieved child does not upgrade yet (MERGE.batch = 2) while the core is unfinished");
-    right(c, k("Footprints").id, 3, T0 + 900);
+    ok(C.mergeInto(c, d.id, ["Fossils", "Eras", "Diets", "Habitats"].map((nm) => k(nm).id), T0 + 600) === null && P.settleMerges(c, T0 + 600).length === 0 && C.serialize(c) === snap, "idempotent: applying the same merge again (or settling again) changes nothing");
+    ["Feathers", "Eggs"].forEach((nm) => C.applyTopics(c, [{ name: nm, parent: "Dinosaurs", signal: "explored", chain: ["Science", "Dinosaurs"] }], T0 + 650));
+    right(c, k("Feathers").id, 3, T0 + 700);
+    ok(P.settleMerges(c, T0 + 800).length === 0, "one newly completed child does not upgrade yet (MERGE.batch = 2) while the core is unfinished");
+    right(c, k("Eggs").id, 3, T0 + 900);
     const m2 = P.settleMerges(c, T0 + 1000);
-    ok(m2.length === 1 && m2[0].level === 2 && m2[0].ids.length === 2 && d.ml === 2 && d.absorbed.length === 5 && C.tierOf(c, d.id).name === "Merged II", "repeatable: the next batch upgrades it to Merged II");
+    ok(m2.length === 1 && m2[0].level === 2 && m2[0].ids.length === 2 && d.ml === 2 && d.absorbed.length === 6 && C.tierOf(c, d.id).name === "Merged II", "repeatable: the next batch upgrades it to Merged II");
+    right(c, k("Footprints").id, 3, T0 + 1100);
+    const m3 = P.settleMerges(c, T0 + 1200);
+    ok(m3.length === 1 && m3[0].ids.length === 1 && d.ml === 3 && d.absorbed.length === 7, "the last child that completes the whole core upgrades it alone (Merged III)");
     ok(D.cardSpec(c, k("Fossils").id).absorbedInto === d.id && !P.draw(c, { now: T0 + DAYMS, seed: 1 }).picks?.some?.((x) => x.id === k("Fossils").id), "absorbed cards show their parent (and are not drawn loose)");
     const dk = D.weigh ? D.weigh(c, T0 + DAYMS) : null;
     ok(!dk || !dk.some((x) => (x.id || x) === k("Fossils").id), "deck weighting skips absorbed cards whose parent is in the deck");
 
     // persistence: v8 round trip keeps merge, corpus, events and tiers; children removed later stay in the corpus
     const back = C.deserialize(C.serialize(c));
-    ok(JSON.parse(C.serialize(back)).v === 8 && back.nodes[d.id].ml === 2 && back.nodes[d.id].absorbed.length === 5 && back.nodes[k("Eras").id].absorbedInto === d.id && back.events.length === c.events.length && C.tierOf(back, d.id).name === "Merged II", "v8 round trip: merge level, absorbed links, events and tiers survive a reload");
+    ok(JSON.parse(C.serialize(back)).v === 9 && back.nodes[d.id].ml === 3 && back.nodes[d.id].absorbed.length === 7 && back.nodes[k("Eras").id].absorbedInto === d.id && back.events.length === c.events.length && C.tierOf(back, d.id).name === "Merged III", "v8 fields round-trip (v9): merge level, absorbed links, events and tiers survive a reload");
     const foss = k("Fossils").id;
     delete back.nodes[foss]; back.order = back.order.filter((x) => x !== foss); /* a topic gone from the cloud */
     C.joinDeck(back, T0 + 2000);
     const cp = C.corpusOf(back, d.id);
-    ok(cp.length === 5 && cp.some((x) => x.id === foss && x.label === "Fossils" && !x.live), "the corpus keeps a removed child's label (never lost)");
+    ok(cp.length === 7 && cp.some((x) => x.id === foss && x.label === "Fossils" && !x.live), "the corpus keeps a removed child's label (never lost)");
   }
 
   // deepest first: a child merges its own subtopics, then counts as achieved for its parent
   {
     const { c, d, k } = fixture(), f = k("Fossils");
     ["Bones", "Teeth", "Amber"].forEach((nm, i) => { C.applyTopics(c, [{ name: nm, parent: "Fossils", signal: "explored", chain: ["Science", "Dinosaurs", "Fossils"] }], T0); right(c, k(nm).id, 3, T0 + i * 10); });
-    right(c, k("Eras").id, 3, T0 + 100); right(c, k("Diets").id, 3, T0 + 110);
+    right(c, f.id, 3, T0 + 50);
+    right(c, k("Eras").id, 3, T0 + 100); right(c, k("Diets").id, 3, T0 + 110); right(c, k("Habitats").id, 3, T0 + 120); right(c, d.id, 3, T0 + 130);
     const ms = P.settleMerges(c, T0 + 200);
-    ok(ms.length === 2 && ms[0].id === f.id && ms[1].id === d.id && f.ml === 1 && d.ml === 1 && f.absorbedInto === d.id, "settleMerges runs deepest first: Fossils merges its subtopics, then Dinosaurs takes Fossils, Eras and Diets", JSON.stringify(ms.map((m) => [m.id, m.level])));
+    ok(ms.length === 2 && ms[0].id === f.id && ms[1].id === d.id && f.ml === 1 && d.ml === 1 && f.absorbedInto === d.id, "settleMerges runs deepest first: Fossils merges its subtopics, then Dinosaurs takes Fossils, Eras, Diets and Habitats", JSON.stringify(ms.map((m) => [m.id, m.level])));
   }
 
-  // a passed test triggers (or upgrades) a merge
+  // a passed test no longer merges on its own (v9); when the core and the parent are ready it seals the merge (why: test)
   {
     const { c, d, k } = fixture();
     right(c, k("Fossils").id, 2, T0); right(c, k("Eras").id, 2, T0 + 10);
     ok(P.settleMerges(c, T0 + 20).length === 0, "two completed (Tinted) children alone do not merge");
     const tr = C.recordTest(c, d.id, [{ id: k("Fossils").id, right: true }, { id: k("Eras").id, right: true }], T0 + 30);
+    ok(tr.passed && C.testOf(c, d.id).passAt === T0 + 30 && P.settleMerges(c, T0 + 35).length === 0 && !d.ml, "a passed test alone no longer merges (2 of 5 core done, the parent not Achieved)");
+    right(c, k("Diets").id, 2, T0 + 36); right(c, k("Habitats").id, 2, T0 + 37); right(c, d.id, 3, T0 + 38);
     const mt = P.settleMerges(c, T0 + 40);
-    ok(tr.passed && C.testOf(c, d.id).passAt === T0 + 30 && mt.length === 1 && mt[0].why === "test" && d.ml === 1 && d.absorbed.length === 2, "a passed test merges its completed children (why: test)");
+    ok(mt.length === 1 && mt[0].why === "test" && d.ml === 1 && d.absorbed.length === 4, "once the core (4 of 5) and the parent are ready, the earlier pass marks the merge (why: test)");
     ok(P.settleMerges(c, T0 + 50).length === 0, "the same pass never merges twice (passAt <= mergedAt)");
     C.recordTest(c, d.id, [{ id: k("Fossils").id, right: false }, { id: k("Eras").id, right: false }], T0 + 60);
     ok(P.settleMerges(c, T0 + 70).length === 0, "a failed test triggers nothing");
@@ -1774,13 +1788,13 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   // migration: a v7 save loads as v8 (no merges), then settles from existing progress on load (0 calls)
   {
     const { c, d, k } = fixture();
-    ["Fossils", "Eras", "Diets"].forEach((nm, i) => right(c, k(nm).id, 3, T0 + i));
+    ["Fossils", "Eras", "Diets", "Habitats"].forEach((nm, i) => right(c, k(nm).id, 3, T0 + i)); right(c, d.id, 3, T0 + 5);
     const v8 = JSON.parse(C.serialize(c));
     const v7 = JSON.parse(JSON.stringify(v8));
     v7.v = 7; delete v7.ev;
     if (Array.isArray(v7.n)) v7.n = v7.n.map((a) => (Array.isArray(a) ? a.slice(0, 29) : a));
     const old = C.deserialize(JSON.stringify(v7));
-    ok(old && JSON.parse(C.serialize(old)).v === 8 && Object.values(old.nodes).every((n) => n.ml === 0 && !n.absorbedInto && n.repaired === 0) && Array.isArray(old.events), "v7 -> v8: new fields default (ml 0, no absorbs, not repaired, empty event log)");
+    ok(old && JSON.parse(C.serialize(old)).v === 9 && Object.values(old.nodes).every((n) => n.ml === 0 && !n.absorbedInto && n.repaired === 0) && Array.isArray(old.events), "v7 -> v9: v8 fields default (ml 0, no absorbs, not repaired, empty event log)");
     const mm = P.settleMerges(old, T0 + 100);
     ok(mm.length === 1 && old.nodes[d.id].ml === 1, "an existing save forms its merges from progress it already has");
   }
@@ -1789,7 +1803,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   {
     const { c, d, k } = fixture();
     const lay0 = C.layout ? C.layout(c) : null;
-    ["Fossils", "Eras", "Diets"].forEach((nm, i) => right(c, k(nm).id, 3, T0 + i));
+    ["Fossils", "Eras", "Diets", "Habitats"].forEach((nm, i) => right(c, k(nm).id, 3, T0 + i)); right(c, d.id, 3, T0 + 5);
     P.settleMerges(c, T0 + 100);
     const lay1 = C.layout ? C.layout(c) : null;
     if (lay0 && lay1) {
@@ -1914,7 +1928,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(!P.needsOnboarding(decked) && P.hasStarted(decked), "cards in the deck (even if their topics are gone): no onboarding, the deck is kept");
   const snap = C.serialize(decked);
   P.needsOnboarding(decked); P.hasStarted(decked);
-  ok(C.serialize(decked) === snap && JSON.parse(snap).v === 8, "derived only: no new stored fields, storage stays v8");
+  ok(C.serialize(decked) === snap && JSON.parse(snap).v === 9, "derived only: no new stored fields, storage stays v9");
   ok(P.reask(opened, T0 + 1) !== null && P.reask(fresh, T0 + 1) === null, "a started learner who never answered the questions can get the light re-ask instead; a brand-new one gets onboarding");
   const done = C.create("Barry", T0); C.setProfile(done, { onboarded: true });
   ok(!P.needsOnboarding(done), "onboarded: never again");
@@ -1948,11 +1962,11 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const m = C.findTopic(c, "Footprints"); m.doneAt = T0; ok(D.coverage(c, m.id).state === "covered", "coverage: done (\u201cI've got it\u201d) counts as covered"); m.doneAt = 0;
   // merge: absorbed children read as covered (merged in)
   const merged = JSON.parse(JSON.stringify(c)); const mc = C.deserialize(C.serialize(merged));
-  C.confirm(mc, C.findTopic(mc, "Diets").id, true, T0 + 9); /* a third Achieved child: enough for the first merge */
+  C.confirm(mc, C.findTopic(mc, "Habitats").id, true, T0 + 9); /* a fourth completed core child (4 of 5) with Dinosaurs Achieved: enough for the first merge */
   P.settleMerges(mc, T0 + 10);
   const abs = Object.values(mc.nodes).filter((n) => n.absorbedInto);
   ok(abs.length >= 2 && abs.every((n) => D.coverage(mc, n.id).state === "covered" && D.coverage(mc, n.id).how === "merged"), "coverage: cards merged into a parent are covered (merged in)");
-  ok(C.serialize(c) === before && JSON.parse(before).v === 8, "coverage and the album read state only: storage stays v8, nothing new is written");
+  ok(C.serialize(c) === before && JSON.parse(before).v === 9, "coverage and the album read state only: storage stays v9, nothing new is written");
   // 2) the album: a page per subject, a row per branch led by its own card, slots for the known-but-uncovered
   const pages = D.albumModel(c);
   const sci = pages.find((p) => p.subject === "Science");
@@ -2052,13 +2066,159 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     return JSON.stringify({ s: C_.serialize(back), merges, album: D_.albumModel(back), hub: D_.hubChildren(back, d.id), cov: Object.keys(back.nodes).map((k) => D_.coverage(back, k)), spec: D_.cardSpec(back, d.id), draw: D_.drawSession(back, D_.dayOf(T0)), cam: [CAM_.lerpView({ zoom: 1, panX: 0, panY: 0, yaw: 0, pitch: 0 }, { zoom: 3, panX: 4, panY: 5, yaw: 2, pitch: 0.3, pivot: { x: 1, y: 2, z: 3 } }, 0.4), CAM_.focusFrame(390, 760, { sheet: 400, top: 60 }), CAM_.fitAround({ x0: -3, x1: 40, y0: -8, y1: 2 }, 300, 400, 1, 9)] });
   };
   const a = run(C, D, P, CAM), b = run(mC, mD, mP, mCAM);
-  ok(a === b && JSON.parse(JSON.parse(a).s).v === 8, "minify: the same learner run gives identical results (v8 storage, merges, album, hub, coverage, cards, draws, camera)");
+  ok(a === b && JSON.parse(JSON.parse(a).s).v === 9, "minify: the same learner run gives identical results (v9 storage, merges, album, hub, coverage, cards, draws, camera)");
   // the browser path: the scripts in page order set the same window.Iko* globals
   const win = { matchMedia: () => ({ matches: false }) }; win.window = win;
   const ctx = vm.createContext(win);
   ["cloud-model.js", "rank.js", "deck.js", "orchestrator.js", "camera.js", "lesson.js"].forEach((f) => vm.runInContext(min[f].code, ctx, { filename: f }));
   ok(["IkoCloud", "IkoRank", "IkoDeck", "IkoPlan", "IkoCamera", "IkoLesson"].every((g) => win[g] && typeof win[g] === "object"), "minify: in a page, the minified scripts define the same window.Iko* globals");
   ok(/root\.IkoCloudView = /.test(src["cloud-view.js"]) && /\.IkoCloudView=/.test(min["cloud-view.js"].code) && /window\.IkoCloud,/.test(min["app.js"].code), "minify: the view and the app keep their global names");
+}
+
+/* ================= v9: prerequisites, the completion gate, test nodes, stricter merges ================= */
+{
+  const T9 = Date.UTC(2026, 9, 22, 15);
+  const mk9 = () => {
+    const c = C.create("Sam", T9);
+    C.applyTopics(c, [{ name: "Volcanoes", parent: "Science", signal: "explored", chain: ["Science"] }], T9);
+    C.applyCreate(c, { items: [{ node: { name: "Volcanoes", chain: [] }, card: {}, children: [
+      { name: "Magma", order: 1, score: 0.9, role: "core" },
+      { name: "Eruptions", order: 2, score: 0.8, role: "core", needs: ["Magma"] },
+      { name: "Lava Types", order: 3, score: 0.7, role: "core", needs: ["Eruptions", "Lava Types", "Nowhere"] },
+      { name: "Volcano Safety", order: 4, score: 0.6, role: "core", needs: ["Magma"] },
+      { name: "Volcano Art", order: 5, score: 0.3, role: "optional", after: "Magma" }] }] }, { focusId: C.findTopic(c, "Volcanoes").id, t: T9 + 1 });
+    const k = (nm) => C.findTopic(c, nm);
+    return { c, v: k("Volcanoes"), k };
+  };
+  const right9 = (c, id, n, t) => { for (let i = 0; i < n; i++) C.confirm(c, id, true, t + i); };
+
+  // storage: v9, prerequisites default to none, applyCreate resolves needs (siblings; never self or unknown)
+  {
+    const fresh = C.create("Ana", T9);
+    ok(C.VERSION === 9 && fresh.v === 9, "storage is v9");
+    const { c, v, k } = mk9();
+    ok(k("Magma").pre.length === 0 && k("Volcano Art").pre.length === 0, "prerequisites default to none");
+    eq(k("Eruptions").pre, [k("Magma").id], "applyCreate: a child's needs resolve to sibling ids");
+    eq(k("Lava Types").pre, [k("Eruptions").id], "applyCreate: needs naming itself or nothing known are dropped");
+    const back = C.deserialize(C.serialize(c));
+    ok(back.v === 9 && back.nodes[k("Lava Types").id].pre.join() === k("Eruptions").id && C.serialize(back) === C.serialize(c), "v9 round trip: prerequisites survive a reload exactly");
+    // addPrereqs rejects self, ancestors, descendants, subjects and cycles; at most PRE_MAX
+    eq(C.addPrereqs(c, k("Magma").id, [k("Magma").id, v.id, "Science", "Lava Types"]), [], "addPrereqs: no self, ancestor, subject or cycle (Lava Types needs Eruptions needs Magma)");
+    eq(C.addPrereqs(c, v.id, [k("Eruptions").id]), [], "addPrereqs: never a descendant");
+    ok(C.PRE_MAX === 3, "at most 3 prerequisites per topic");
+  }
+
+  // the gate: nothing completes before its prerequisites; a parent needs its core sufficiently done; leaves as before
+  {
+    const { c, v, k } = mk9();
+    right9(c, k("Eruptions").id, 3, T9 + 10); C.joinDeck(c, T9 + 20);
+    ok(!C.isDone(c, k("Eruptions").id) && !k("Eruptions").doneAt && C.tierOf(c, k("Eruptions").id).key === "inked", "nothing completes before its prerequisites (3 right answers, still Inked)");
+    eq(C.lockedBy(c, k("Eruptions").id), [k("Magma").id], "lockedBy names the unmet prerequisite");
+    eq(D.cardSpec(c, k("Eruptions").id).after, ["Magma"], "the card spec carries a quiet \u201cafter Magma\u201d");
+    right9(c, k("Magma").id, 2, T9 + 30);
+    ok(C.isDone(c, k("Magma").id) && C.isDone(c, k("Eruptions").id) && C.lockedBy(c, k("Eruptions").id).length === 0 && D.cardSpec(c, k("Eruptions").id).after.length === 0, "a leaf with no prerequisites completes as before (2 right answers); the waiting topic completes once it is done");
+    C.joinDeck(c, T9 + 40);
+    ok(C.tierOf(c, k("Eruptions").id).key === "achieved", "the answers given while it waited still count (Achieved once unlocked)");
+    // the parent: 4 core children, needs half (2), side paths never count
+    ok(C.GATE.share === 0.5 && C.GATE.min === 2 && C.coreProgress(c, v.id).total === 4 && C.coreProgress(c, v.id).need === 2, "gate: half the core children and at least 2 (Volcanoes: 2 of 4)");
+    const p0 = C.create("Sam", T9);
+    C.applyTopics(p0, [{ name: "Rocks", parent: "Science", signal: "explored", chain: ["Science"] }], T9);
+    C.applyCreate(p0, { items: [{ node: { name: "Rocks", chain: [] }, card: {}, children: [{ name: "Granite", order: 1, score: 0.9, role: "core" }, { name: "Basalt", order: 2, score: 0.8, role: "core" }, { name: "Marble", order: 3, score: 0.7, role: "core" }, { name: "Gems", order: 4, score: 0.3, role: "optional" }] }] }, { focusId: C.findTopic(p0, "Rocks").id, t: T9 + 1 });
+    const rk = C.findTopic(p0, "Rocks"), q = (nm) => C.findTopic(p0, nm);
+    right9(p0, rk.id, 3, T9 + 2); right9(p0, q("Gems").id, 3, T9 + 5); right9(p0, q("Granite").id, 2, T9 + 8);
+    ok(!C.isDone(p0, rk.id) && C.tierOf(p0, rk.id).key === "inked", "a parent with 1 of 3 core done waits (side paths never count)");
+    right9(p0, q("Basalt").id, 2, T9 + 12);
+    ok(C.isDone(p0, rk.id) && C.tierOf(p0, rk.id).key === "achieved", "2 of 3 core done: the parent completes (and its earlier right answers make it Achieved)");
+    ok(C.needOf(1, 0.5, 2) === 1 && C.needOf(2, 0.5, 2) === 2 && C.needOf(4, 0.5, 2) === 2 && C.needOf(5, 0.5, 2) === 3 && C.needOf(0, 0.5, 2) === 0, "gate table: 1->1, 2->2, 4->2, 5->3, none->0");
+    // a dotted suggestion with no role never blocks
+    C.addGhosts(p0, [{ name: "Fossils In Rock", parent: "Rocks" }], T9 + 20, rk.id);
+    ok(C.coreProgress(p0, rk.id).total === 3, "a dotted suggestion (no role yet) is not counted in the gate");
+  }
+
+  // migration: a v8 save keeps everything earned under the old rules (merges, tiers, completion); no prerequisites
+  {
+    const c = C.create("Sam", T9);
+    C.applyTopics(c, [{ name: "Dinosaurs", parent: "Science", signal: "explored", chain: ["Science"] }], T9);
+    ["Fossils", "Eras", "Diets", "Habitats", "Footprints"].forEach((nm) => C.applyTopics(c, [{ name: nm, parent: "Dinosaurs", signal: "explored", chain: ["Science", "Dinosaurs"] }], T9));
+    const d = C.findTopic(c, "Dinosaurs"), k = (nm) => C.findTopic(c, nm);
+    C.applyTopics(c, [{ name: "Bones", parent: "Fossils", signal: "explored", chain: ["Science", "Dinosaurs", "Fossils"] }], T9);
+    ["Eras", "Diets", "Habitats"].forEach((nm, i) => right9(c, k(nm).id, 3, T9 + 10 * i));
+    right9(c, k("Fossils").id, 2, T9 + 40); /* old rules: done (2 right); v9: waits for Bones */
+    C.mergeInto(c, d.id, ["Eras", "Diets", "Habitats"].map((nm) => k(nm).id), T9 + 50, "core"); /* an old-rule merge: 3 of 5, parent not Achieved */
+    const raw = JSON.parse(C.serialize(c)); raw.v = 8;
+    const old = C.deserialize(JSON.stringify(raw)), od = old.nodes[d.id];
+    ok(old && old.v === 9 && Object.values(old.nodes).every((n) => Array.isArray(n.pre) && n.pre.length === 0), "v8 -> v9: loads, prerequisites default to none");
+    ok(od.ml === 1 && od.absorbed.length === 3 && C.tierOf(old, d.id).name === "Merged I" && ["Eras", "Diets", "Habitats"].every((nm) => old.nodes[k(nm).id].absorbedInto === d.id), "v8 -> v9: existing merges kept (level, absorbed links, Merged I tier)");
+    ok(C.isDone(old, k("Fossils").id) && old.nodes[k("Fossils").id].doneAt > 0 && C.tierOf(old, k("Fossils").id).rank >= 2, "v8 -> v9: completion earned under the old rules is stamped and kept (no regression)");
+    const s1 = C.serialize(old), again = C.deserialize(s1);
+    ok(C.serialize(again) === s1 && JSON.parse(s1).v === 9, "v8 -> v9 -> v9: round-trips exactly");
+    ok(P.settleMerges(again, T9 + 100).length === 0 && again.nodes[d.id].ml === 1 && again.nodes[d.id].absorbed.length === 3, "settling after migration never undoes or redoes a merge");
+    // tiers in the deck never fall
+    const before = Object.fromEntries((old.deck || []).map((e) => [e.id, e.tb || 0]));
+    C.joinDeck(old, T9 + 200);
+    ok((old.deck || []).every((e) => (e.tb || 0) >= (before[e.id] || 0)), "v8 -> v9: deck tiers never fall");
+  }
+
+  // test nodes: appear once the core is sufficiently complete (half, at least 2)
+  {
+    const { c, v, k } = mk9();
+    ok(P.PLAN.test.share === 0.5 && P.PLAN.test.min === 2, "test node thresholds: half the core, at least 2");
+    right9(c, k("Magma").id, 2, T9 + 10);
+    ok(!P.testState(c, v.id).ready && P.testState(c, v.id).need === 1, "1 of 4 core done: no test node yet");
+    right9(c, k("Volcano Safety").id, 2, T9 + 20);
+    ok(P.testState(c, v.id).ready && P.readyTests(c, T9 + 30).some((t) => t.id === v.id), "2 of 4 core done: the test node appears");
+    right9(c, k("Volcano Art").id, 2, T9 + 40);
+    const c2 = mk9();
+    right9(c2.c, c2.k("Magma").id, 2, T9); right9(c2.c, c2.k("Volcano Art").id, 2, T9 + 5);
+    ok(!P.testState(c2.c, c2.v.id).ready, "side paths never count toward the test node");
+  }
+
+  // merge thresholds: first merge needs >= 75% core (min 2) AND the parent Achieved; upgrades by batch
+  {
+    ok(C.needOf(2, 0.75, 2) === 2 && C.needOf(3, 0.75, 2) === 3 && C.needOf(4, 0.75, 2) === 3 && C.needOf(5, 0.75, 2) === 4 && C.needOf(8, 0.75, 2) === 6, "merge table: 2->2, 3->3, 4->3, 5->4, 8->6");
+    const { c, v, k } = mk9();
+    ["Magma", "Eruptions", "Lava Types"].forEach((nm, i) => right9(c, k(nm).id, 3, T9 + 10 * i));
+    ok(P.mergePlan(c, v.id) === null, "3 of 4 core done, the parent not Achieved: no merge");
+    right9(c, v.id, 3, T9 + 50);
+    const plan = P.mergePlan(c, v.id);
+    ok(plan && plan.ids.length === 3 && plan.why === "core", "3 of 4 core done and the parent Achieved: it merges (side paths not done stay out)");
+    const m = P.settleMerges(c, T9 + 60);
+    ok(m.length === 1 && v.ml === 1, "the merge forms (Merged I)");
+    right9(c, k("Volcano Art").id, 3, T9 + 70);
+    ok(P.settleMerges(c, T9 + 80).length === 0, "one more side path does not upgrade it (batch of 2, core unfinished)");
+    right9(c, k("Volcano Safety").id, 3, T9 + 90);
+    const m2 = P.settleMerges(c, T9 + 100);
+    ok(m2.length === 1 && v.ml === 2 && v.absorbed.length === 5, "two newly completed (a batch) upgrade it to Merged II");
+  }
+
+  // ranking prefers unlocked topics; the after state shows quietly in the app
+  {
+    const { c, v, k } = mk9();
+    ok(P.PLAN.locked > 0 && P.nextChild(c, v.id) === k("Magma").id && P.orderedChildren(c, v.id)[0] === k("Magma").id, "the suggested next child is unlocked");
+    right9(c, k("Magma").id, 2, T9 + 10);
+    const ord = P.orderedChildren(c, v.id).map((x) => c.nodes[x].label);
+    eq(ord, ["Magma", "Eruptions", "Volcano Safety", "Lava Types"], "ranking: a child still waiting (Lava Types, after Eruptions) moves behind unlocked ones");
+    const app = fs.readFileSync("public/ikolearn/app.js", "utf8"), css = fs.readFileSync("public/ikolearn/styles.css", "utf8"), dk = fs.readFileSync("public/ikolearn/deck.js", "utf8");
+    ok(/function afterOf\(/.test(app) && /Best after /.test(app) && /gc-after/.test(dk) && /\.gc-after \{/.test(css) && /font-style: italic/.test(css), "a locked topic shows a quiet \u201cafter X\u201d (path, branches, holder, hub, card)");
+    ok(D.listOf(["A"]) === "A" && D.listOf(["A", "B"]) === "A and B" && D.listOf(["A", "B", "C"]) === "A, B and C", "after X: names joined plainly");
+  }
+
+  // the create prompt and parser: optional needs (earlier siblings only, at most 3)
+  {
+    const sys = createSystem(parseLearnInput({ mode: "notice", name: "Mia", messages: [], kind: "start", interests: ["Space"] }));
+    ok(/needs is optional/.test(sys) && /never a later one/.test(sys), "create prompt: needs is optional, earlier siblings only");
+    const kidsSchema = CREATE_SCHEMA.properties.items.items.properties.children.items;
+    ok(kidsSchema.properties.needs && !kidsSchema.required.includes("needs") && CREATE_SCHEMA.properties.items.items.properties.node.properties.needs, "schema: needs is an optional list (children and node)");
+    const r = parseCreate({ items: [{ node: { name: "Volcanoes", chain: [], needs: ["Rocks", "Volcanoes", "Magma"] }, card: { title: "Volcanoes", blurb: "Mountains of fire.", goal: "Explain an eruption." }, children: [
+      { name: "Magma", order: 1, score: 0.9, role: "core", needs: ["Eruptions"] },
+      { name: "Eruptions", order: 2, score: 0.8, role: "core", needs: ["Magma", "magma", "Eruptions", "Unknown"] },
+      { name: "Lava Types", order: 3, score: 0.7, role: "core", needs: "Magma" }] }] }, "next", "Mia", "Volcanoes");
+    const ch = r && r.items[0].children;
+    ok(ch && !ch[0].needs && ch[1].needs.join() === "Magma" && !ch[2].needs, "parseCreate: needs keep only earlier siblings (no later, self, duplicate, unknown or non-list)");
+    ok(r && r.items[0].node.needs.join() === "Rocks", "parseCreate: node needs drop itself and its own children");
+    const plain = parseCreate({ items: [{ node: { name: "Volcanoes", chain: [] }, card: { title: "V", blurb: "b", goal: "g" }, children: [{ name: "Magma", order: 1, score: 1, role: "core" }, { name: "Ash", order: 2, score: 1, role: "core" }] }] }, "next", "Mia", "Volcanoes");
+    ok(plain && !("needs" in plain.items[0].node) && plain.items[0].children.every((x) => !("needs" in x)), "parseCreate: no needs, no extra fields (results unchanged)");
+  }
 }
 
 if (fails.length) {

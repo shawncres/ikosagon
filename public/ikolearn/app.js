@@ -148,6 +148,11 @@
     if (!(pick && nodeOf(pick) && !C.isDone(state.cloud, pick))) { var k = P.nextChild(state.cloud, id); if (k) return k; }
     return C.nextFor(state.cloud, id);
   }
+  /* v9 prerequisites still to finish, as quiet text: "after Eruptions" ("" when unlocked) */
+  function afterOf(id) {
+    var l = C.lockedBy(state.cloud, id).map(function (x) { return nodeOf(x) ? nodeOf(x).label : ""; }).filter(Boolean);
+    return l.length ? "after " + D.listOf(l) : "";
+  }
   function pathBlock(id, opts) {
     opts = opts || {};
     var n = nodeOf(id), wrap = mk("div", "path");
@@ -164,7 +169,8 @@
       var s = nodeOf(sid); if (!s) return;
       var li = mk("li", sid === rec ? "next" : "");
       li.appendChild(linkBtn(s.label, function () { (opts.onStep || openLesson)(sid); }));
-      if (s.mastery >= C.MASTERED) li.appendChild(mk("span", "tag", " · done"));
+      if (s.mastery >= C.MASTERED && C.isDone(state.cloud, sid)) li.appendChild(mk("span", "tag", " · done"));
+      else if (afterOf(sid)) li.appendChild(mk("span", "tag after", " · " + afterOf(sid)));
       else if (sid === rec) li.appendChild(mk("span", "tag", " · next"));
       ol.appendChild(li);
     });
@@ -751,8 +757,14 @@
     }
     el.hNote.textContent = sp.level ? "Merged " + C.roman(sp.level) + ". It holds " + sp.corpus.length + " cards and rises a level with each new batch you finish."
       : sp.achieved ? "Achieved. This card stays in your deck for good. Finish a few of its branches and they merge into it."
-      : (sp.inDeck ? "In your deck. " : "") + ["Its first right answer inks it in.", "Finish it (\u201cI've got it\u201d or two right answers) to tint it.", "Three right answers and it's Achieved, in full colour."][sp.tier];
+      : sp.after.length ? "Best after " + D.listOf(sp.after) + ". You can explore it now; it completes once " + (sp.after.length === 1 ? "that's" : "those are") + " done."
+      : (sp.inDeck ? "In your deck. " : "") + (sp.tier < 2 && coreLeftNote(state.lessonNode) || ["Its first right answer inks it in.", "Finish it (\u201cI've got it\u201d or two right answers) to tint it.", "Three right answers and it's Achieved, in full colour."][sp.tier]);
     renderKids();
+  }
+  /* a parent tints once enough of its core branches are done too: "Finish 1 more of its branches to tint it." */
+  function coreLeftNote(id) {
+    var cp = C.coreProgress(state.cloud, id), k = cp.need - cp.done;
+    return k > 0 ? "Finish it, and " + k + " more of its branches, to tint it." : "";
   }
   /* Under the holder: this card's own branches (its children, in the order they're offered), linked from the card. */
   /*
@@ -788,7 +800,8 @@
       var c = nodeOf(cid), li = mk("li", c.ghost ? "ghost" : C.isDone(state.cloud, cid) ? "done" : "");
       li.appendChild(linkBtn(c.label, function () { openLesson(cid); }));
       var lead = cid === P.nextChild(state.cloud, id);
-      li.appendChild(mk("span", "tag", C.isDone(state.cloud, cid) ? " · done" : lead ? " · start here" : c.ghost ? " · new" : ""));
+      var aft = C.isDone(state.cloud, cid) ? "" : afterOf(cid);
+      li.appendChild(mk("span", aft ? "tag after" : "tag", C.isDone(state.cloud, cid) ? " · done" : aft ? " · " + aft : lead ? " · start here" : c.ghost ? " · new" : ""));
       ul.appendChild(li);
     });
     if (ids.length) { box.appendChild(mk("p", "l-head", "Core path")); box.appendChild(ul); }
@@ -1598,6 +1611,7 @@
     el.hubState.textContent = "";
     var st = mk("span"); st.appendChild(mk("span", "cov-dot " + cv.state)); st.appendChild(document.createTextNode(cv.text)); el.hubState.appendChild(st);
     el.hubState.appendChild(mk("span", null, sp.tierName + (sp.inDeck ? " · in your deck" : " · not in your deck yet")));
+    if (sp.after.length) el.hubState.appendChild(mk("span", "after", "Best after " + D.listOf(sp.after)));
     if (sp.absorbedInto && nodeOf(sp.absorbedInto)) { var mi = mk("span", null, "Merged into "); mi.appendChild(linkBtn(nodeOf(sp.absorbedInto).label, function () { openHub(sp.absorbedInto, null, id); })); el.hubState.appendChild(mi); }
     el.hubNote.textContent = sp.blurb || (n && n.ghost ? "A suggested branch you haven't opened yet." : "");
     el.hubLesson.hidden = !n;
@@ -1637,7 +1651,7 @@
         cell.appendChild(csp ? D.render(document, csp, { onOpen: go }) : D.renderSlot(document, state.cloud, x.id, { onOpen: go }));
         var row = mk("span", "hk-cov"), lab = mk("span");
         lab.appendChild(mk("span", "cov-dot " + x.cov.state));
-        lab.appendChild(document.createTextNode(x.cov.text));
+        lab.appendChild(document.createTextNode(x.cov.text + (x.cov.state !== "covered" && afterOf(x.id) ? " · " + afterOf(x.id) : "")));
         row.appendChild(lab);
         row.appendChild(linkBtn(hubKidAction(x.id, x.cov), function () { state.pendingFrom = id; openLesson(x.id); }));
         cell.appendChild(row);
@@ -1831,7 +1845,7 @@
     try { state.tests = JSON.parse(load(LS.tests) || "{}") || {}; } catch { state.tests = {}; }
     try { var v = JSON.parse(load(LS.view) || "null"); state.view = v && Number.isFinite(v.z) ? v : null; } catch { state.view = null; }
     try { var sn = JSON.parse(load(LS.seen) || "null"); if (sn && sn.c && typeof sn.c === "object") state.seen = { c: sn.c, ev: Number(sn.ev) || 0 }; } catch { /* keep the empty default */ }
-    save(); /* writes a migrated (older -> v8) cloud back in the compact format, with the deck backfilled */
+    save(); /* writes a migrated (older -> v9) cloud back in the compact format, with the deck backfilled */
     startChat();
     settleMerges(); /* existing completion data can already form parent cards (0 calls) */
   })();
