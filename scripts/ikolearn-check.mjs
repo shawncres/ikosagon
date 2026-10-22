@@ -2674,12 +2674,71 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const NL = (l) => Object.values(nf.nodes).find((x) => x.label === l);
   C.engage(nf, NL("Data Management").id, "open", T0 + 50);
   const nw = P.whereNext(nf, NL("Data Management").id, null);
-  ok(nw.choices[0].id === NL("Tables").id && nw.choices[1] && nw.choices[1].kind === "branch" && nw.choices[2] && nw.choices[2].kind === "other" && nf.nodes[nw.choices[2].id].label === "Birds", "Where Next without a fork: a different path from the learner's own cloud (procedural, 0 calls)", JSON.stringify(nw.choices.map((c) => nf.nodes[c.id].label)));
+  ok(nw.choices[0].id === NL("Tables").id && nw.choices[1] && nw.choices[1].kind === "branch" && nw.choices[2] && nw.choices[2].kind === "other" && ["Birds", "Songbirds", "Owls"].includes(nf.nodes[nw.choices[2].id].label) && !P.finished(nf, nw.choices[2].id), "Where Next without a fork: a different path from the learner's own cloud (procedural, 0 calls)", JSON.stringify(nw.choices.map((c) => nf.nodes[c.id].label)));
   C.engage(nf, NL("Owls").id, "open", T0 + 60);
   ok(P.whereNext(nf, NL("Data Management").id, null).choices[2].id === NL("Owls").id, "Where Next: the different path prefers something already in progress elsewhere");
   // a finished fork choice drops out
   C.engage(dm, tables, "got", T0 + 2000); dm.nodes[tables].mastery = 1;
   ok(C.isDone(dm, tables) ? !P.whereNext(dm, dmId, null).choices.some((c) => c.id === tables) : true, "Where Next: a finished choice drops out");
+  // Shawn's follow-up: Python Basics was a COMPLETED card. Nothing finished is ever suggested: not in any slot, not in
+  // "Also in progress", whether it came from the model's fork or from the cloud, and whatever made it finished.
+  const shawnDone = (how, owls = true) => {
+    const c = C.create("Shawn", T0);
+    C.applyCreate(c, { items: [
+      { node: { name: "Data Management", chain: ["Computing"] }, card: { title: "Data Management", blurb: "", goal: "" }, children: dkids(["Tables", "Queries", "Filtering"]) },
+      { node: { name: "Coding", chain: ["Computing"] }, card: { title: "Coding", blurb: "", goal: "" }, children: dkids(["Python Basics", "Loops"]) },
+      { node: { name: "Birds", chain: ["Nature"] }, card: { title: "Birds", blurb: "", goal: "" }, children: dkids(["Songbirds", "Owls"]) },
+    ] }, { t: T0 });
+    const L = (l) => Object.values(c.nodes).find((x) => x.label === l);
+    const pyN = L("Python Basics"), coding = L("Coding");
+    for (let i = 0; i < 6; i++) C.engage(c, pyN.id, "open", T0 + 100 + i);
+    pyN.ghost = false;
+    if (how === "completed") { pyN.mastery = 1; pyN.correct = 2; }
+    if (how === "achieved") pyN.achievedAt = T0 + 150;
+    if (how === "merged") { pyN.absorbedInto = coding.id; coding.absorbed = [pyN.id]; coding.ml = 1; }
+    if (how === "covered") { pyN.mastery = 0.3; }
+    if (owls) C.engage(c, L("Owls").id, "open", T0 + 300);
+    C.joinDeck(c, T0 + 400);
+    if (how === "covered") { const e = C.deckEntry(c, pyN.id) || (c.deck.push({ id: pyN.id, label: pyN.label, subject: "", hue: 0, at: T0, best: 0, chain: [], blurb: "", ach: 0, tb: 0, ml: 0, inn: null, co: [] }), c.deck.at(-1)); e.tb = 2; }
+    if (how === "title") { /* the topic is gone; only its achieved card remains. The model offers it by name: a new ghost */
+      C.joinDeck(c, T0 + 401); pyN.achievedAt = T0 + 150; C.joinDeck(c, T0 + 402);
+      delete c.nodes[pyN.id];
+      c.order.splice(c.order.indexOf(pyN.id), 1);
+    }
+    const dmN = L("Data Management");
+    C.engage(c, dmN.id, "open", T0 + 1000);
+    const fk2 = C.applyChoices(c, dmN.id, [{ name: "Python Basics", why: "Review your strong coding skills", kind: "side" }, { name: "Tables", why: "Learn how rows and columns store data", kind: "deeper" }, { name: "Joins", why: "Combine two tables", kind: "deeper" }], T0 + 1100);
+    return { c, L, dmN, fk2 };
+  };
+  for (const how of ["completed", "achieved", "merged", "covered", "title"]) {
+    const { c, L, dmN, fk2 } = shawnDone(how);
+    const pyIds = Object.values(c.nodes).filter((x) => C.norm(x.label) === C.norm("Python Basics")).map((x) => x.id);
+    ok(how === "title" ? pyIds.length === 1 && c.nodes[pyIds[0]].ghost && fk2.ids.includes(pyIds[0]) : P.finished(c, pyIds[0]), `fixture (${how}): Python Basics is finished${how === "title" ? " (a card only; the model's choice is a new ghost by the same name)" : ""}`);
+    const sw = P.whereNext(c, dmN.id, P.pathNext(c, dmN.id));
+    const shown = sw.choices.map((x) => x.id).concat(sw.others);
+    ok(!shown.some((x) => pyIds.includes(x)), `Where Next (${how}): Python Basics appears nowhere (3 slots and Also in progress)`, JSON.stringify(shown.map((x) => c.nodes[x].label)));
+    ok(sw.choices[0].id === L("Tables").id && P.pathNext(c, dmN.id) === L("Tables").id, `Where Next (${how}): continue = Tables = Your Path's next`);
+    const third = sw.choices[2];
+    ok(third && third.kind === "other" && !P.finished(c, third.id) && P.treeDist(c, dmN.id, third.id) >= 3, `Where Next (${how}): the third option is something unfinished on another path`, JSON.stringify(third && c.nodes[third.id].label));
+    ok(shown.every((x) => !P.finished(c, x)), `Where Next (${how}): nothing finished anywhere`);
+  }
+  {
+    // the different path: unfinished in progress elsewhere first (Owls), else an unstarted topic in another branch
+    const a1 = shawnDone("completed", true), w1 = P.whereNext(a1.c, a1.dmN.id, null);
+    ok(a1.c.nodes[w1.choices[2].id].label === "Owls", "Where Next: the different path prefers an unfinished topic in progress elsewhere", a1.c.nodes[w1.choices[2].id].label);
+    const a2 = shawnDone("completed", false), w2 = P.whereNext(a2.c, a2.dmN.id, null), t2 = a2.c.nodes[w2.choices[2].id];
+    ok(t2 && !t2.opened && !(t2.engaged > 0) && !P.finished(a2.c, t2.id) && t2.label !== "Python Basics" && (t2.made || a2.c.nodes[t2.parent].made), "Where Next: ... else an unstarted topic in another branch (never a bare category)", t2 && t2.label);
+    // a slot with nothing unfinished to offer is left out, never padded with finished topics
+    const a3 = shawnDone("completed", false);
+    Object.values(a3.c.nodes).forEach((x) => { if (x.parent && !["Data Management", "Tables", "Queries", "Filtering", "Joins"].includes(x.label)) { x.ghost = false; x.doneAt = T0; } });
+    const w3 = P.whereNext(a3.c, a3.dmN.id, null);
+    ok(w3.choices.every((x) => x.kind !== "other") && w3.choices.every((x) => !P.finished(a3.c, x.id)), "Where Next: no unfinished different path left: the slot is left out (never padded)", JSON.stringify(w3.choices));
+    // the learner's old pick on a card that has since been finished is no longer pre-selected
+    const a4 = shawnDone("completed");
+    const pid4 = Object.values(a4.c.nodes).find((x) => x.label === "Python Basics").id;
+    a4.c.nodes[a4.dmN.id].fork.picked = pid4;
+    ok(P.whereNext(a4.c, a4.dmN.id, null).next === a4.L("Tables").id, "Where Next: a pick that's finished since is not pre-selected (the continuation is)");
+  }
   ok(P.treeDist(dm, tables, DL("Queries").id) === 2 && P.treeDist(dm, dmId, py) === 3 && P.treeDist(dm, tables, DL("Owls").id) === Infinity, "tree distance: siblings 2, a cousin topic 3 (a different path), another subject far");
 
   // the app: wiring (static), the behaviour is covered end to end by scripts/ikolearn-flow-e2e.mjs

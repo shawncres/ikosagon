@@ -449,10 +449,36 @@
    *           global score: a top-10 topic elsewhere is not a continuation.
    *   branch: a related branch or deeper option (near: a child, a sibling, a step on the path). A fork choice first,
    *           else another child or a sibling, nearest in the tree first (the model's order breaks ties).
-   *   other:  a different topic path (far: 3+ steps away in the tree, or another subject). Something in progress
-   *           there, else a fork choice there, else another topic with its own path on the learner's cloud (by rank).
+   *   other:  a different topic path (far: 3+ steps away in the tree, or another subject). Something unfinished in
+   *           progress there, else an unstarted topic in another branch (a far fork choice first, then by rank).
+   * Nothing finished is ever offered (finished(): completed, achieved, merged, covered; fork choices also by title).
+   * A slot with nothing unfinished to offer is left out, never padded.
    * The learner's own earlier fork pick stays pre-selected (it takes the slot it fits). others: in progress, deduped.
    */
+  /*
+   * Finished, for Where Next and Your Path: never suggested again. Everything v9 counts as done: a completed lesson
+   * (C.isDone, doneAt), an achieved card (achievedAt, Achieved tier), a merged card (absorbed into its parent, or a
+   * parent at Merged I+), or a card the deck already shows as covered (Tinted or better, also from its deck entry).
+   */
+  function finished(cloud, x) {
+    var n = nodeOf(cloud, x);
+    if (!n) return true;
+    if (n.doneAt || n.achievedAt || C.isDone(cloud, x) || C.absorbedInto(cloud, x)) return true;
+    var cv = D && D.coverage ? D.coverage(cloud, x) : null;
+    return Boolean(cv && cv.state === "covered");
+  }
+  /* Normalised titles of everything finished (nodes and deck cards whose node is gone): a fork choice that only
+     matches by name (a new ghost for a topic already learned) is finished too. */
+  function finishedNames(cloud) {
+    var out = {};
+    cloud.order.forEach(function (x) { if (finished(cloud, x)) out[C.norm(cloud.nodes[x].label)] = 1; });
+    (cloud.deck || []).forEach(function (e) {
+      if (cloud.nodes[e.id]) return;
+      var cv = D && D.coverage ? D.coverage(cloud, e.id) : null;
+      if (e.label && (e.ach || (e.tb || 0) >= 2 || e.inn || (cv && cv.state === "covered"))) out[C.norm(e.label)] = 1;
+    });
+    return out;
+  }
   function anc(cloud, id) { var out = [], seen = {}, n = nodeOf(cloud, id); while (n && !seen[n.id]) { seen[n.id] = 1; out.unshift(n.id); n = nodeOf(cloud, n.parent); } return out; }
   function treeDist(cloud, a, b) {
     var x = anc(cloud, a), y = anc(cloud, b), k = 0;
@@ -465,11 +491,11 @@
   function pathNext(cloud, id) {
     var n = nodeOf(cloud, id);
     if (!n) return null;
-    var open = function (x) { return x && x !== id && nodeOf(cloud, x) && !C.isDone(cloud, x); };
+    var open = function (x) { return x && x !== id && nodeOf(cloud, x) && !finished(cloud, x); };
     var pick = n.fork && n.fork.picked;
     if (open(pick) && ((n.path && n.path.ids.indexOf(pick) >= 0) || nodeOf(cloud, pick).parent === id)) return pick;
-    var k = nextChild(cloud, id);
-    if (open(k)) return k;
+    var k = orderedChildren(cloud, id).filter(open)[0];
+    if (k) return k;
     var cur = n, guard = 0;
     while (cur && cur.parent && guard++ < 200) {
       var p = nodeOf(cloud, cur.parent);
@@ -486,7 +512,8 @@
     max = max == null ? PLAN.whereNext : max;
     var n = nodeOf(cloud, id), empty = { next: null, path: null, choices: [], others: [] };
     if (!n) return empty;
-    var open = function (x) { return x && x !== id && nodeOf(cloud, x) && !C.isDone(cloud, x); };
+    var done = finishedNames(cloud);
+    var open = function (x) { var m = nodeOf(cloud, x); return Boolean(x && x !== id && m && !finished(cloud, x) && !done[C.norm(m.label)]); };
     var inSubj = function (x) { return treeDist(cloud, id, x) <= PLAN.nearDist; }; /* near enough to be a branch of this lesson */
     var fork = n.fork && n.fork.ids ? n.fork : { ids: [], why: [] };
     var whyOf = function (x) { var i = fork.ids.indexOf(x); return i >= 0 ? fork.why[i] || "" : ""; };
@@ -515,11 +542,12 @@
     /* (c) a different topic path, from the learner's own cloud */
     var touched = function (a, b) { return (nodeOf(cloud, b).touched || 0) - (nodeOf(cloud, a).touched || 0); };
     var away = cloud.order.filter(function (x) { var m = nodeOf(cloud, x); return free(x) && !inSubj(x) && (m.opened || m.engaged > 0 || m.correct > 0); }).sort(touched);
-    if (!away.length) away = fork.ids.filter(function (x) { return free(x) && !inSubj(x); });
     if (!away.length) {
-      var sc = scores(cloud);
-      away = cloud.order.filter(function (x) { var m = nodeOf(cloud, x); return free(x) && m.made && !inSubj(x); }) /* a topic with its own path, never a bare category */
-        .sort(function (a, b) { return (sc[b] || 0) - (sc[a] || 0); });
+      /* an unstarted topic in another branch: a far fork choice first, then by the learner's ranking; never a bare category */
+      var sc = scores(cloud), topic = function (x) { var m = nodeOf(cloud, x), par = nodeOf(cloud, m.parent); return m.made || Boolean(par && par.made); };
+      var unstarted = function (x) { var m = nodeOf(cloud, x); return free(x) && !inSubj(x) && topic(x) && !(m.opened || m.engaged > 0 || m.correct > 0); };
+      away = fork.ids.filter(unstarted).concat(cloud.order.filter(function (x) { return unstarted(x) && fork.ids.indexOf(x) < 0; })
+        .sort(function (a, b) { return (sc[b] || 0) - (sc[a] || 0); }));
     }
     var other = picked && !inSubj(picked) && !used[picked] ? picked : away[0];
     take(other);
@@ -529,7 +557,7 @@
     if (other) choices.push({ id: other, kind: "other", why: "" }); /* the model's reason is about this lesson, not another path */
     var others = cloud.order.filter(function (x) {
       var m = nodeOf(cloud, x);
-      return m && !used[x] && m.parent && !C.isDone(cloud, x) && (m.opened || m.engaged > 0 || m.correct > 0);
+      return m && !used[x] && m.parent && open(x) && (m.opened || m.engaged > 0 || m.correct > 0);
     }).sort(touched);
     return { next: picked || cont || (choices[0] && choices[0].id) || null, path: cont, choices: choices, others: others.slice(0, max) };
   }
@@ -538,7 +566,7 @@
     PLAN: PLAN, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, needsRepair: needsRepair, repairRequest: repairRequest,
     MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
-    suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist,
+    suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished,
     onboarding: onboarding, openQuestion: openQuestion, examples: examples, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics,
     needsNext: needsNext, readyNext: readyNext, createRequest: createRequest, OPENING: OPENING
   };

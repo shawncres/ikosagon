@@ -286,9 +286,9 @@ async function runShawn(width) {
         { node: { name: "Birds", chain: ["Nature"], motif: "leaf" }, card: { title: "Birds", blurb: "Feathered friends.", goal: "" }, children: kids(["Songbirds", "Owls"], ["leaf", "star"]) },
       ] }, { t: T });
       const id = (l) => c.order.find((x) => c.nodes[x].label === l);
-      /* Python Basics: much practised, high in the top 10, not finished */
+      /* Python Basics: much practised, high in the top 10, and COMPLETED (an achieved card, as in Shawn's cloud) */
       for (let i = 0; i < 6; i++) C.engage(c, id("Python Basics"), "open", T + 2000 + i);
-      Object.assign(c.nodes[id("Python Basics")], { ghost: false, correct: 1, mastery: 0.4, doneAt: 0, achievedAt: 0 });
+      Object.assign(c.nodes[id("Python Basics")], { ghost: false, correct: 3, mastery: 1 });
       Object.assign(c.nodes[id("Owls")], { ghost: false, opened: true, engaged: 1, touched: T + 1000, mastery: 0.2 });
       C.joinDeck(c, T + 4000);
       c.active = id("Data Management");
@@ -297,8 +297,8 @@ async function runShawn(width) {
       localStorage.setItem("ikolearn.v1.thread", JSON.stringify([{ id: "m1", at: T, role: "model", local: true, text: "Welcome back, Shawn." }]));
     });
     await p.reload({ waitUntil: "networkidle" }); await p.waitForTimeout(300);
-    const top = await p.evaluate(() => { const C = window.IkoCloud, R = window.IkoRank, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")); const py = c.order.find((x) => c.nodes[x].label === "Python Basics"), tb = c.order.find((x) => c.nodes[x].label === "Tables"); const sc = R.scores(c); return { inTop: R.top(c).some((r) => r.id === py), beats: (sc[py] || 0) > (sc[tb] || 0) }; });
-    if (!SOFT) ok(top.inTop && top.beats, `${tag}: fixture: Python Basics is in the top 10 and outscores Tables`, JSON.stringify(top));
+    const top = await p.evaluate(() => { const C = window.IkoCloud, R = window.IkoRank, P = window.IkoPlan, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")); const py = c.order.find((x) => c.nodes[x].label === "Python Basics"), tb = c.order.find((x) => c.nodes[x].label === "Tables"); const sc = R.scores(c); return { inTop: R.top(c).some((r) => r.id === py), beats: (sc[py] || 0) > (sc[tb] || 0), done: Boolean(P.finished && P.finished(c, py)) || C.isDone(c, py) }; });
+    if (!SOFT) ok(top.inTop && top.beats && top.done, `${tag}: fixture: Python Basics is completed, in the top 10 and outscores Tables`, JSON.stringify(top));
     await p.getByRole("button", { name: /Continue Data Management/ }).first().click();
     await p.waitForSelector("#l-done:not([hidden])");
     await p.waitForTimeout(200);
@@ -310,6 +310,7 @@ async function runShawn(width) {
       items: [...document.querySelectorAll("#l-next .wn-opt")].map((b) => ({ l: b.querySelector(".wn-label").textContent, kind: b.getAttribute("data-kind"), on: b.getAttribute("aria-checked") === "true", why: b.querySelector(".why").textContent })),
       open: (document.querySelector("#l-next .wn-go .btn") || {}).textContent,
       pathNext: ((document.querySelector("#l-path li.next") || {}).textContent || "").replace(/ · .*$/, ""),
+      finished: (() => { const C = window.IkoCloud, P = window.IkoPlan, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")); return [...document.querySelectorAll("#l-next .wn-opt")].filter((b) => P.finished(c, b.getAttribute("data-id"))).map((b) => b.querySelector(".wn-label").textContent); })(),
       next: document.querySelector("#l-next").innerText,
       thatsIt: (document.querySelector("#lesson").innerText.match(/That's it\./g) || []).length,
     }));
@@ -319,10 +320,10 @@ async function runShawn(width) {
       ok(calls.length === n0, `${tag}: answering and "I've got it" make 0 calls`);
       ok(r.items[0] && r.items[0].l === "Tables" && r.items[0].on && r.items[0].kind === "path" && /^Next on this path/.test(r.items[0].why) && r.open === "Open Tables", `${tag}: Tables, the path's next step, is first and pre-selected ("Next on this path")`, JSON.stringify(r.items[0]) + " " + r.open);
       ok(r.pathNext === "Tables", `${tag}: it matches Your Path's "next"`, r.pathNext);
-      const pyAt = r.items.findIndex((x) => x.l.startsWith("Python Basics"));
-      ok(pyAt !== 0 && !(r.items[pyAt] || {}).on && !/top 10|strong coding skills/i.test(r.next), `${tag}: the unrelated top-10 topic doesn't win, and no claims about the learner`, JSON.stringify(r.items));
+      ok(!r.items.some((x) => x.l.startsWith("Python Basics")) && !/Python Basics|top 10|strong coding skills/i.test(r.next), `${tag}: the completed Python Basics appears nowhere in Where Next (no claims about the learner either)`, JSON.stringify(r.items));
+      ok(r.finished.length === 0, `${tag}: nothing finished is offered anywhere in Where Next`, JSON.stringify(r.finished));
       eq(r.items.slice(0, 3).map((x) => x.kind), ["path", "branch", "other"], `${tag}: three clear choices: continue, a related branch, a different path`);
-      ok(/^Try a different path/.test(r.items[2].why) && !["Data Management", "Tables", "Queries", "Filtering"].includes(r.items[2].l), `${tag}: the third is another path from the learner's own cloud`, JSON.stringify(r.items[2]));
+      ok(/^Try a different path/.test(r.items[2].why) && !["Data Management", "Tables", "Queries", "Filtering", "Python Basics"].includes(r.items[2].l), `${tag}: the third is an unfinished topic on another path, from the learner's own cloud`, JSON.stringify(r.items[2]));
       ok(new Set(r.items.map((x) => x.l)).size === r.items.length, `${tag}: no duplicates against the in-progress list`, JSON.stringify(r.items.map((x) => x.l)));
       ok(r.thatsIt === 1, `${tag}: "That's it." shows once`, String(r.thatsIt));
       ok(errs.length === 0, `${tag}: no console errors`, errs.join(" | "));
