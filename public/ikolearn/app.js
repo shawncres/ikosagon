@@ -1016,22 +1016,7 @@
       el.lFork.appendChild(w);
       return;
     }
-    if (!n.fork || n.fork.ids.length < 2) return;
-    var f = mk("div", "fork");
-    f.appendChild(mk("p", "l-head", "Where next? Pick one"));
-    var opts = mk("div", "fork-opts"), tops = topRanks();
-    /* ranked: what this learner (and learners generally) use most comes first */
-    P.orderChoices(state.cloud, n.fork).forEach(function (o) {
-      var cid = o.id, c = nodeOf(cid); if (!c) return;
-      var b = mk("button", "fork-opt" + (n.fork.picked === cid ? " picked" : ""));
-      b.type = "button";
-      b.appendChild(mk("span", null, c.label + (n.fork.picked === cid ? " · your pick" : "")));
-      if (o.why || tops[cid]) b.appendChild(mk("span", "why", (tops[cid] ? "In your top 10. " : "") + o.why));
-      b.addEventListener("click", function () { C.pickChoice(state.cloud, id, cid); save(); refreshViews([cid]); openLesson(cid); });
-      opts.appendChild(b);
-    });
-    f.appendChild(opts);
-    el.lFork.appendChild(f);
+    /* a fork's choices are shown in Where Next (renderWhereNext), with its top pick pre-selected */
   }
 
   /* Opens a node as a lesson: from the cache (no call) or streamed once (one call; maps the path too if it has none). */
@@ -1145,7 +1130,7 @@
     renderLessonCard(Boolean(note));
     renderQuiz();
     renderFork(id);
-    if (state.lessons[id] && state.lessons[id].cl) renderClarify(id, true); /* clarifications already written: shown again, 0 calls */
+    if (state.lessons[id] && state.lessons[id].cl) renderClarify(id, !(n.mastery >= C.MASTERED)); /* clarifications already written: shown again, 0 calls (options only while not done) */
     offerTest(id);
   }
   /*
@@ -1166,6 +1151,9 @@
     refreshViews([id].concat(r.next ? [r.next] : [], kids));
     el.lStatus.textContent = "";
     if (kind === "got") {
+      /* understood: the clarify options go; an answer already shown stays */
+      var co = el.lClar.querySelector(".clar-opts");
+      if (co) co.parentNode.removeChild(co);
       el.lStatus.appendChild(mk("strong", "yes", "That's it. "));
       el.lStatus.appendChild(document.createTextNode((note || n.label + " is growing stronger on your cloud.") + (kids.length ? " " + kidsLine(id, kids) : "")));
     } else {
@@ -1248,34 +1236,45 @@
     var id = state.lessonNode, n = nodeOf(id);
     el.lNext.textContent = "";
     if (!n || state.mode !== "lesson") return;
-    var w = P.whereNext(state.cloud, id, nextStep(id));
-    var items = (w.next ? [w.next] : []).concat(w.others);
+    var w = P.whereNext(state.cloud, id, nextStep(id)), tops = topRanks();
+    var forkIds = w.fork.map(function (o) { return o.id; });
+    var items = (forkIds.length ? forkIds : w.next ? [w.next] : []).concat(w.others);
     var grow = !w.next && !n.end && !C.isTerminal(state.cloud, id) && (!n.path || P.needsNext(state.cloud, id));
     if (!items.length && !grow) return;
     el.lNext.appendChild(mk("p", "l-head", "Where next"));
     if (items.length) {
-      if (items.indexOf(state.pick) < 0) state.pick = items[0];
+      /* the learner's own tap wins; otherwise the computed next step (it can change, e.g. when the fork arrives) */
+      var sel = items.indexOf(state.pick) >= 0 ? state.pick : w.next || items[0];
       var list = mk("div", "wn-opts");
       list.setAttribute("role", "radiogroup");
       list.setAttribute("aria-label", "Where next");
-      items.forEach(function (x) {
-        var m = nodeOf(x), on = x === state.pick;
-        var b = mk("button", "wn-opt" + (on ? " on" : "") + (x === w.next ? " next" : ""));
+      items.forEach(function (x, i) {
+        var m = nodeOf(x), on = x === sel, f = i < forkIds.length ? w.fork[i] : null;
+        var b = mk("button", "wn-opt" + (on ? " on" : "") + (x === w.next ? " next" : "") + (f ? " choice" : ""));
         b.type = "button";
         b.setAttribute("role", "radio");
         b.setAttribute("aria-checked", on ? "true" : "false");
         b.setAttribute("data-id", x);
-        b.appendChild(mk("span", "wn-label", m.label));
-        b.appendChild(mk("span", "why", x === w.next ? (afterOf(x) ? "Next step · " + afterOf(x) : "Next step") : "In progress · " + trailOf(m.parent || x)));
+        b.appendChild(mk("span", "wn-label", m.label + (f && n.fork.picked === x ? " · your pick" : "")));
+        var why = f ? (tops[x] ? "In your top 10. " : "") + (f.why || "") : "";
+        if (x === w.next) why = (f ? "Suggested next" : "Next step") + (afterOf(x) ? " · " + afterOf(x) : "") + (why ? " · " + why : "");
+        else if (!f) why = "In progress · " + trailOf(m.parent || x);
+        b.appendChild(mk("span", "why", why || "Another way to go"));
         b.addEventListener("click", function () { state.pick = x; renderWhereNext(); });
         list.appendChild(b);
       });
       el.lNext.appendChild(list);
-      var pick = nodeOf(state.pick), go = mk("div", "wn-go"), sp = D.cardSpec(state.cloud, state.pick);
+      var pick = nodeOf(sel), go = mk("div", "wn-go"), sp = D.cardSpec(state.cloud, sel);
       if (sp) { var c = D.render(document, sp, { size: "mini" }); c.setAttribute("aria-hidden", "true"); go.appendChild(c); }
       var open = mk("button", "btn sm", "Open " + pick.label);
       open.type = "button";
-      open.addEventListener("click", function () { var to = state.pick; if (nodeOf(to)) openLesson(to); });
+      open.addEventListener("click", function () {
+        var to = sel;
+        if (!nodeOf(to)) return;
+        /* a fork choice: remember it as the learner's pick (it becomes the planned next step) */
+        if (forkIds.indexOf(to) >= 0) { C.pickChoice(state.cloud, id, to); save(); refreshViews([to]); }
+        openLesson(to);
+      });
       go.appendChild(open);
       el.lNext.appendChild(go);
     }

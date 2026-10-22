@@ -1269,7 +1269,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/id="l-phase"/.test(html) && /Check yourself/.test(html) && /id="p-test"/.test(html) && /id="d-suggest"/.test(html) && /id="h-kids"/.test(html), "two-phase lesson, test button, deck suggestions and the card's branches are in the page");
   ok(/P\.childrenReady|growChildren/.test(app) && /C\.setPending\(/.test(app) && /C\.applyPending\(/.test(app) && /P\.lessonContext\(/.test(app), "children piggyback on the lesson call and grow on engagement");
   ok(/"\/test"/.test(app) && /C\.recordTest\(/.test(app) && /setTests/.test(app) && /setTests/.test(view) && /hit\.test/.test(app), "tests: one call, recorded in the model, drawn on the cloud and tappable");
-  ok(/P\.orderChoices\(/.test(app) && /P\.orderedChildren\(/.test(app) && /R\.chains/.test(app), "ranking orders forks and branches; chains show in the top 10");
+  ok((/P\.orderChoices\(/.test(app) || /orderChoices\(cloud, n\.fork\)/.test(fs.readFileSync("public/ikolearn/orchestrator.js", "utf8"))) && /P\.whereNext\(/.test(app) && /P\.orderedChildren\(/.test(app) && /R\.chains/.test(app), "ranking orders forks and branches; chains show in the top 10");
   const deploy = fs.readFileSync("scripts/deploy-ikosagon-prod.sh", "utf8");
   ok(/\.env\.local/.test(deploy) && /VERCEL_ORG_ID/.test(deploy) && /VERCEL_PROJECT_ID/.test(deploy) && /deploy --prod/.test(deploy) && !/^[^#]*vercel[^\n]*\b(link|env pull|dev)\b/m.test(deploy), "deploy script: ids from env, never links, pulls env or runs dev, and refuses an .env.local");
   // procedural start: no seeded map; a few questions, then one creation call builds the first parents
@@ -2624,6 +2624,26 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(P.whereNext(w, cur, cur).next === null && P.whereNext(w, cur, null).next === null, "Where Next: no next step when there is none (never the topic itself)");
   ok(P.PLAN.whereNext === 3 && kids.length > 0, "Where Next: at most 3 others");
 
+  // a lesson that offered a fork: its choices come first (ranked), the top one (or the learner's pick) pre-selected,
+  // then up to 3 in progress, never repeating a choice
+  const wf = seeded("Fern", T0);
+  const fleaves = Object.values(wf.nodes).filter((x) => x.parent && !x.ghost && !C.childrenOf(wf, x.id).length).map((x) => x.id);
+  const fcur = fleaves[0];
+  [1, 2, 3, 4, 5].forEach((i) => C.engage(wf, fleaves[i], "open", T0 + 1000 * i));
+  C.engage(wf, fcur, "open", T0 + 9000);
+  const fk = C.applyChoices(wf, fcur, [{ name: wf.nodes[fleaves[5]].label, why: "Go wider", kind: "wider" }, { name: "Deep Dive Topic", why: "Go deeper", kind: "deeper" }, { name: wf.nodes[fleaves[4]].label, why: "A neighbour", kind: "wider" }], T0 + 9500);
+  ok(fk.ids.length === 3, "fixture: a fork of three choices (two already in progress)");
+  const ord = P.orderChoices(wf, wf.nodes[fcur].fork).map((o) => o.id);
+  let wfn = P.whereNext(wf, fcur, "ignored-when-forked");
+  eq(wfn.fork.map((o) => o.id), ord, "Where Next with a fork: the choices first, in the ranked order");
+  ok(wfn.next === ord[0] && wfn.fork.every((o) => typeof o.why === "string"), "Where Next with a fork: the top choice is the pre-selected next step");
+  ok(wfn.others.length === 3 && wfn.others.every((x) => !fk.ids.includes(x) && x !== fcur), "Where Next with a fork: then 3 in progress, none repeating a choice (deduped)", JSON.stringify(wfn.others));
+  C.pickChoice(wf, fcur, ord[2]);
+  wfn = P.whereNext(wf, fcur, null);
+  ok(wfn.next === ord[2] && wfn.fork[0].id === ord[0], "Where Next with a fork: the learner's own pick is the one pre-selected (order unchanged)");
+  C.engage(wf, ord[1], "got", T0 + 9900);
+  ok(!P.whereNext(wf, fcur, null).fork.some((o) => o.id === ord[1]), "Where Next with a fork: a finished choice drops out");
+
   // the app: wiring (static), the behaviour is covered end to end by scripts/ikolearn-flow-e2e.mjs
   const app = fs.readFileSync("public/ikolearn/app.js", "utf8"), html = fs.readFileSync("public/ikolearn/index.html", "utf8"), css = fs.readFileSync("public/ikolearn/styles.css", "utf8");
   const fin = app.slice(app.indexOf("  function finishLesson(kind) {"), app.indexOf("  /* ---------- \"Still tricky\""));
@@ -2634,7 +2654,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/linkBtn\("Try again", function \(\) \{ clarify\(id, style\); \}\)/.test(cl) && /r\.reason === "aborted"/.test(cl), "clarify: Try again only on a real failure, never after a cancel");
   ok(/\["simpler", "Explain it more simply"\], \["example", "Show me a worked example"\], \["question", "Ask me a question"\]/.test(app), "clarify: the three options");
   const wnx = app.slice(app.indexOf("  function renderWhereNext() {"), app.indexOf("  function askInChat(id)"));
-  ok(/P\.whereNext\(state\.cloud, id, nextStep\(id\)\)/.test(wnx) && /if \(items\.indexOf\(state\.pick\) < 0\) state\.pick = items\[0\];/.test(wnx) && /aria-checked/.test(wnx) && /D\.cardSpec\(state\.cloud, state\.pick\)/.test(wnx) && !/postJson\(|stream\(/.test(wnx), "Where Next: next step pre-selected, the learner picks and opens; its card drawn on the device (0 calls)");
+  ok(/P\.whereNext\(state\.cloud, id, nextStep\(id\)\)/.test(wnx) && /var sel = items\.indexOf\(state\.pick\) >= 0 \? state\.pick : w\.next \|\| items\[0\];/.test(wnx) && /state\.pick = x; renderWhereNext\(\);/.test(wnx) && /aria-checked/.test(wnx) && /D\.cardSpec\(state\.cloud, sel\)/.test(wnx) && !/postJson\(|stream\(/.test(wnx), "Where Next: next step pre-selected, the learner picks and opens; its card drawn on the device (0 calls)");
   ok(/renderWhereNext\(\);/.test(app.slice(app.indexOf("  function renderLessonPath() {"), app.indexOf("  function renderLessonPath() {") + 200)) && /<div id="l-next" class="where-next"><\/div>/.test(html) && /<div id="l-clar" class="l-clar"/.test(html) && /\.wn-opt\.on \{/.test(css) && /\.clar-opts \{/.test(css), "Where Next and the clarifications are part of every lesson");
   const lr2 = app.slice(app.indexOf("  function lessonReady(id, wasNew) {"), app.indexOf("  /* ---------- \"Still tricky\""));
   ok(lr2.length > 500 && !/Next up|nextLine\(/.test(lr2), "lessons: no \"Next up\" link that jumps ahead: Where Next has it, pre-selected");
@@ -2644,6 +2664,10 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/function callSignal\(name\)/.test(app) && /function cancelNav\(\) \{ cancelCall\("notice"\); cancelCall\("bridge"\); \}/.test(app) && /sig = callSignal\("notice"\)/.test(app) && /callSignal\("bridge"\)/.test(app) && /callSignal\("lesson"\)/.test(app) && /callSignal\("clarify"\)/.test(app), "background calls carry a signal; navigation cancels them");
   ok(/function showLesson\(on\) \{\s*if \(!on\) \{ stopClock\(\); cancelNav\(\); \}/.test(app) && /cancelNav\(\);\s*var rect = src/.test(app) && /if \(state\.panelNode !== id\) cancelCall\("notice"\);/.test(app), "leaving a view (Back, a card's hub, another topic) cancels its background calls");
   ok(!/Try again in a few seconds/.test(app) && /state\.queued = function \(\) \{ if \(state\.lessonNode === id && state\.mode === "lesson"/.test(app) && /if \(!on && state\.queued\) \{ var q = state\.queued; state\.queued = null; setTimeout\(q, 0\); \}/.test(app), "busy: a lesson (or test, note, clarification) waits its turn and starts by itself; no false Try again");
+  const rf = app.slice(app.indexOf("  function renderFork(id) {"), app.indexOf("  /* Opens a node as a lesson: from the cache"));
+  ok(rf.length > 100 && !/Pick one|orderChoices|fork-opt/.test(rf) && !/Where next\? Pick one/.test(app) && (app.match(/mk\("p", "l-head", "Where next"\)/g) || []).length === 1, "one Where Next: the fork's choices are in it, no separate fork block");
+  ok(/if \(forkIds\.indexOf\(to\) >= 0\) \{ C\.pickChoice\(state\.cloud, id, to\);/.test(wnx) && /forkIds\.length \? forkIds : w\.next \? \[w\.next\] : \[\]\)\.concat\(w\.others\)/.test(wnx), "Where Next: fork choices first, then in progress; opening a choice records it as the learner's pick");
+  ok(/var co = el\.lClar\.querySelector\("\.clar-opts"\);\s*if \(co\) co\.parentNode\.removeChild\(co\);/.test(fin) && /renderClarify\(id, !\(n\.mastery >= C\.MASTERED\)\)/.test(app), "I've got it hides the clarify options (answers already shown stay)");
   const nt = app.slice(app.indexOf("  function notice(id) {"), app.indexOf("  el.pLesson.addEventListener"));
   ok(nt.length > 300 && !/lock\(/.test(nt), "the note never holds the app busy (navigation and lessons stay available while it's written)");
   ok(/\} else if \(r\.reason === "aborted"\) \{/.test(app) && /reason: signal && signal\.aborted \? "aborted" : "offline"/.test(app), "a cancelled call is never shown as a failure");

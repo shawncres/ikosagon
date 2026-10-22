@@ -436,19 +436,31 @@
   }
 
   /*
-   * Where Next, shown in every lesson (0 calls): the logical next step first (the caller's nextStep: fork pick, best
-   * child, else the walk up the tree), then up to `max` other topics in progress (started, not finished), most recent
-   * first. -> { next: id | null, others: [id] }. The learner chooses; nothing opens by itself.
+   * Where Next, shown in every lesson (0 calls). When the lesson offered a fork, its choices come first (ranked like
+   * before: what this learner uses most, then the model's order), with the learner's own pick or else the top one as
+   * the pre-selected next step; otherwise the logical next step (the caller's nextStep: fork pick, best child, else the
+   * walk up the tree). Then up to `max` other topics in progress (started, not finished), most recent first, never
+   * repeating one above. -> { next: id | null, fork: [{ id, why }], others: [id] }. Nothing opens by itself.
    */
   function whereNext(cloud, id, nextId, max) {
     max = max == null ? PLAN.whereNext : max;
+    var n = nodeOf(cloud, id), fork = [];
+    if (n && n.fork && n.fork.ids.length >= 2) {
+      fork = orderChoices(cloud, n.fork).filter(function (o) { return o.id !== id && nodeOf(cloud, o.id) && !C.isDone(cloud, o.id); })
+        .map(function (o) { return { id: o.id, why: o.why }; });
+    }
+    var nx = null;
+    if (fork.length) nx = fork.some(function (o) { return o.id === n.fork.picked; }) ? n.fork.picked : fork[0].id;
     /* the next step may not be explored yet (a waiting child is still dotted): that's what "next" means */
-    var nx = nextId && nextId !== id && nodeOf(cloud, nextId) && !C.isDone(cloud, nextId) ? nextId : null;
+    else if (nextId && nextId !== id && nodeOf(cloud, nextId) && !C.isDone(cloud, nextId)) nx = nextId;
+    var shown = {};
+    shown[id] = 1; if (nx) shown[nx] = 1;
+    fork.forEach(function (o) { shown[o.id] = 1; });
     var others = cloud.order.filter(function (x) {
-      var n = nodeOf(cloud, x);
-      return n && x !== id && x !== nx && n.parent && !C.isDone(cloud, x) && (n.opened || n.engaged > 0 || n.correct > 0);
+      var m = nodeOf(cloud, x);
+      return m && !shown[x] && m.parent && !C.isDone(cloud, x) && (m.opened || m.engaged > 0 || m.correct > 0);
     }).sort(function (a, b) { return (nodeOf(cloud, b).touched || 0) - (nodeOf(cloud, a).touched || 0); });
-    return { next: nx, others: others.slice(0, max) };
+    return { next: nx, fork: fork, others: others.slice(0, max) };
   }
 
   var api = {
