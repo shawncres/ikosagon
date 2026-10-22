@@ -13,6 +13,8 @@ import {
 import { DEFAULT_MODEL, FALLBACK_MODEL, GEMINI_BASE, chatBody, jsonBody, readSse } from "../lib/ikolearn/gemini.ts";
 import { MODEL_LIMITS, streamText, generateJson, llmConfig, llmReady } from "../lib/ikolearn/llm.ts";
 import { toMessages } from "../lib/ikolearn/openai-compatible.ts";
+import { budgetSpend } from "../lib/ikolearn/service.ts";
+import { clarifySystem, CLARIFY_STYLES } from "../lib/ikolearn/prompts.ts";
 import { LEARN_GUARDS, createLearnState, prepare, chatEvents, eventStream, cardFor, adjacentFor, lessonEvents, pathFor, testFor, createFor, examplesFor, EXAMPLES_CACHE, EXAMPLES_NO_STORE, EXAMPLES_STALE, EXAMPLES_RETRY, retryable } from "../lib/ikolearn/service.ts";
 import { setLlmLogSink, redact, LOG_DETAIL_CHARS } from "../lib/ikolearn/llm.ts";
 /* provider failures log one JSON line each; the checks keep them (quiet output) and assert on them */
@@ -1940,7 +1942,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     const ch = C.findTopic(deep, "Chords");
     C.applyBridge(deep, ch.id, { items: [{ node: { name: "Chords", chain: ["Art & Music", "Instruments", "Guitar"] }, card: {}, children: [] }] }, T0 + 1);
     ok(!P.needsRepair(deep, ch.id), "a chain that is already deep enough needs no repair (0 extra calls)");
-    ok(/function runRepair/.test(app) && /n\.repaired = Date\.now\(\);\s*save\(\);/.test(app) && /P\.repairRequest\(/.test(app) && /C\.applyRepair\(/.test(app) && /return runRepair\(id\)/.test(app), "the app: repair after the bridge, capped before the call");
+    ok(/function runRepair/.test(app) && /n\.repaired = Date\.now\(\);\s*save\(\);/.test(app) && /P\.repairRequest\(/.test(app) && /C\.applyRepair\(/.test(app) && /return runRepair\(id, sig\)/.test(app), "the app: repair after the bridge, capped before the call");
   }
 
   // camera maths: input map, easing, focus, inertia, zoom
@@ -2498,6 +2500,153 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     ok(ef.calls.length === 1 && a.body.growth.join() === GROW.join() && b.body.growth.join() === GROW.join() && a.headers === EXAMPLES_CACHE, "examplesFor: one call serves both lists, cached the same way (0 extra calls)");
   }
   ok(/var list = state\.ex\.status !== "ok" \? \[\] : grow \? state\.ex\.growth : P\.examples\(/.test(app) && /state\.ex\.growth = list\.length \? clean\(j\.growth, 12\) : \[\];/.test(app) && /m\.ex === "growth" \? "growth" : ""/.test(app), "app: the second question shows the growth set (no list of its own), More cycles it on the device");
+}
+
+/* ================= flow: "I've got it", "Still tricky", Where Next, cancel on navigation, the hedged fallback ================= */
+{
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const abortable = (init, ms, make) => new Promise((resolve, rej) => {
+    const t = setTimeout(() => resolve(make()), ms);
+    init.signal.addEventListener("abort", () => { clearTimeout(t); rej(Object.assign(new Error("aborted"), { name: "AbortError" })); });
+  });
+  const keep = { ...MODEL_LIMITS };
+  ok(keep.hedgeAfterMs === 6_000 && keep.hedgeAfterMs < keep.requestTimeoutMs && keep.hedgeAfterMs + keep.requestTimeoutMs + keep.streamTimeoutMs < 60_000, "hedge: the fallback starts at 6 s (before the 12 s timeout), still inside the routes' 60 s");
+  MODEL_LIMITS.hedgeAfterMs = 40; MODEL_LIMITS.requestTimeoutMs = 2_000;
+  const hedgeLines = () => LLM_LOG.filter((l) => l.includes('"ikolearn.llm_hedge"')).map((l) => JSON.parse(l));
+  const failLines = () => LLM_LOG.filter((l) => l.includes('"ikolearn.llm_fail"')).map((l) => JSON.parse(l));
+
+  // a slow primary: the fallback starts at the hedge, streams first and wins; the primary is aborted (not logged as a failure)
+  let n0 = LLM_LOG.length, at = [], sig = [];
+  let f = fakeFetch([(u, init) => { at.push(Date.now()); sig.push(init.signal); return abortable(init, 400, () => res(200, sse(["Too late."]))); },
+    (u, init) => { at.push(Date.now()); sig.push(init.signal); return abortable(init, 10, () => res(200, sse(["Fractions are parts."]))); }]);
+  let t0 = Date.now(), ev = await collect(chatEvents(IN, ENV, f));
+  const took = Date.now() - t0;
+  ok(f.calls.length === 2 && f.calls[1].url.includes(FALLBACK_MODEL) && at[1] - at[0] >= 35 && ev[0].model === FALLBACK_MODEL && ev.some((e) => e.t === "delta" && /Fractions/.test(e.text)) && took < 300, "hedge: slow primary -> the fallback starts at the hedge time and its stream is used", `took ${took}ms, gap ${at[1] - at[0]}ms`);
+  ok(sig[0].aborted, "hedge: the losing primary request is aborted");
+  let newH = hedgeLines().slice(-1)[0], newF = LLM_LOG.slice(n0).filter((l) => l.includes("llm_fail"));
+  ok(newH && newH.winner === "fallback" && newH.route === "chat" && newH.afterMs >= 35 && newH.primary === DEFAULT_MODEL && newH.fallback === FALLBACK_MODEL && newF.length === 0, "hedge: one ikolearn.llm_hedge line (winner, timing); the cancelled loser is not logged as a failure");
+  ok(!LLM_LOG.slice(n0).some((l) => l.includes("test-key") || l.includes("What are fractions")), "hedge log: no key, no prompt");
+
+  // a fast primary: no hedge at all (1 call)
+  n0 = LLM_LOG.length;
+  f = fakeFetch([(u, init) => abortable(init, 5, () => res(200, sse(["Quick."])))]);
+  ev = await collect(chatEvents(IN, ENV, f));
+  ok(f.calls.length === 1 && ev[0].model === DEFAULT_MODEL && !LLM_LOG.slice(n0).some((l) => l.includes("llm_hedge")), "hedge: a primary that starts in time is the only call");
+
+  // the primary starts after the hedge but before the fallback: the primary wins, the fallback is aborted
+  sig = [];
+  f = fakeFetch([(u, init) => { sig.push(init.signal); return abortable(init, 70, () => res(200, sse(["Primary."]))); },
+    (u, init) => { sig.push(init.signal); return abortable(init, 500, () => res(200, sse(["Fallback."]))); }]);
+  ev = await collect(chatEvents(IN, ENV, f));
+  ok(f.calls.length === 2 && ev[0].model === DEFAULT_MODEL && sig[1].aborted && hedgeLines().slice(-1)[0].winner === "primary", "hedge: whichever streams first wins; the fallback is aborted when the primary is first");
+
+  // the day's budget is spent: no hedge (the primary keeps its time); the hedge reserves one call when it runs
+  let spent = 0;
+  f = fakeFetch([(u, init) => abortable(init, 80, () => res(200, sse(["Primary."]))), (u, init) => abortable(init, 5, () => res(200, sse(["Fallback."])))]);
+  ev = await collect(chatEvents(IN, ENV, f, { spend: () => { spent += 1; return false; } }));
+  ok(f.calls.length === 1 && spent === 1 && ev[0].model === DEFAULT_MODEL, "hedge: no budget left -> no parallel call");
+  const bst = createLearnState(() => T0);
+  const sp = budgetSpend(bst, { ...ENV, IKOLEARN_DAILY_CALLS: "2" });
+  ok(sp() && sp() && !sp() && bst.budget.calls === 2, "budgetSpend: a hedge takes one call from the daily budget, none past the cap");
+  f = fakeFetch([(u, init) => abortable(init, 80, () => res(200, sse(["P."]))), (u, init) => abortable(init, 5, () => res(200, sse(["F."])))]);
+  spent = 0;
+  ev = await collect(chatEvents(IN, ENV, f, { spend: () => { spent += 1; return true; } }));
+  ok(f.calls.length === 2 && spent === 1, "hedge: spends exactly one budget call when it starts the fallback");
+
+  // both fail after the hedge: one error (the primary's), both failures logged, hedge winner none
+  n0 = LLM_LOG.length;
+  f = fakeFetch([(u, init) => abortable(init, 60, () => res(503, { error: { status: "UNAVAILABLE", message: "busy" } })), (u, init) => abortable(init, 70, () => res(503, { error: { status: "UNAVAILABLE", message: "busy" } }))]);
+  ev = await collect(chatEvents(IN, ENV, f));
+  const bothF = LLM_LOG.slice(n0).filter((l) => l.includes("llm_fail")).map((l) => JSON.parse(l));
+  ok(ev.length === 1 && ev[0].t === "error" && ev[0].reason === "upstream" && bothF.length === 2 && bothF.some((x) => x.try === "fallback") && hedgeLines().slice(-1)[0].winner === "none", "hedge: both fail -> one error (a real failure), both logged");
+  // a primary that fails fast (before the hedge) still falls back right away, as before
+  f = fakeFetch([() => res(503, null), () => res(200, sse(["Fine."]))]);
+  ev = await collect(chatEvents(IN, ENV, f));
+  ok(f.calls.length === 2 && ev[0].model === FALLBACK_MODEL, "a fast 5xx still falls back at once (no waiting for the hedge)");
+  // 4xx: no fallback, no hedge
+  f = fakeFetch([() => res(400, { error: { message: "bad" } })]);
+  ev = await collect(chatEvents(IN, ENV, f));
+  ok(f.calls.length === 1 && ev[0].t === "error", "a 4xx is final: no fallback, no hedge");
+  void failLines;
+
+  // the learner left: cancelling the NDJSON stream aborts the model request (no tokens spent on a reply nobody reads)
+  let upstream = null;
+  f = fakeFetch([(u, init) => {
+    upstream = init.signal;
+    const enc = new TextEncoder();
+    const body = new ReadableStream({ start(c) { c.enqueue(enc.encode(`data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: "Once upon " }] } }] })}\n\n`)); init.signal.addEventListener("abort", () => c.error(Object.assign(new Error("aborted"), { name: "AbortError" }))); } });
+    return Promise.resolve(res(200, body));
+  }]);
+  const rd = eventStream(chatEvents(IN, ENV, f)).getReader();
+  await rd.read(); await rd.read();
+  await rd.cancel();
+  await wait(5);
+  ok(upstream && upstream.aborted, "cancel on navigation: the server stops the model's reply when the device aborts");
+  const lf = fakeFetch([(u, init) => { upstream = init.signal; const enc = new TextEncoder(); return Promise.resolve(res(200, new ReadableStream({ start(c) { c.enqueue(enc.encode(`data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: "Lesson " }] } }] })}\n\n`)); init.signal.addEventListener("abort", () => c.error(new Error("aborted"))); } }))); }]);
+  const lr = eventStream(lessonEvents(IN, ENV, lf)).getReader();
+  await lr.read(); await lr.read(); await lr.cancel(); await wait(5);
+  ok(upstream.aborted, "cancel on navigation: lessons too");
+  Object.assign(MODEL_LIMITS, keep);
+
+  // "Still tricky": three prepared clarifications, each exactly one call, streamed, nothing added to the cloud
+  eq([...CLARIFY_STYLES], ["simpler", "example", "question"], "clarify: three styles");
+  ok("error" in parseLearnInput({ name: "Sam", mode: "clarify", focus: "Fractions" }) && "error" in parseLearnInput({ name: "Sam", mode: "clarify", clarify: "louder", focus: "Fractions" }) && "error" in parseLearnInput({ name: "Sam", mode: "clarify", clarify: "simpler" }), "clarify input: needs a known style and a focus");
+  for (const style of CLARIFY_STYLES) {
+    const ci = parseLearnInput({ name: "Sam", mode: "clarify", clarify: style, focus: "Fractions", lesson: "A fraction is a part of a whole. " + "x".repeat(3000), messages: [], cloud: "Math", parents: ["Math"] });
+    ok(!("error" in ci) && ci.mode === "clarify" && ci.lesson.length <= LEARN_LIMITS.lessonExcerptChars, `clarify input (${style}): parsed, lesson excerpt capped`);
+    const sys = clarifySystem(ci), turns = buildContents(ci);
+    ok(sys.includes('"Fractions"') && sys.includes("A fraction is a part of a whole") && !sys.includes(CLOUD_OPEN) && turns.at(-1).role === "user" && /still tricky/.test(turns.at(-1).parts[0].text), `clarify prompt (${style}): about the lesson, no hidden block, one clear ask`);
+    n0 = LLM_LOG.length;
+    const cf = fakeFetch([() => res(200, sse(["Think of a pizza ", "cut into 4 slices."]))]);
+    const cev = await collect(chatEvents(ci, ENV, cf));
+    ok(cf.calls.length === 1 && cev.filter((e) => e.t === "delta").length >= 1 && !cev.some((e) => e.t === "cloud") && cev.at(-1).t === "done", `clarify (${style}): exactly 1 call, streamed, nothing added to the cloud`);
+    const csent = JSON.parse(cf.calls[0].init.body);
+    ok(csent.systemInstruction.parts[0].text === sys, `clarify (${style}): the request carries its own prompt`);
+  }
+  ok(/simpler: "Explain the one key idea again, more simply/.test(fs.readFileSync("lib/ikolearn/prompts.ts", "utf8")) && /worked example/.test(clarifySystem(parseLearnInput({ name: "Sam", mode: "clarify", clarify: "example", focus: "Fractions" }))) && /exactly one short, targeted question/.test(clarifySystem(parseLearnInput({ name: "Sam", mode: "clarify", clarify: "question", focus: "Fractions" }))), "clarify: simpler explanation, worked example, one targeted question");
+  f = fakeFetch([() => res(503, null)]);
+  n0 = LLM_LOG.length;
+  const cfail = await collect(chatEvents(parseLearnInput({ name: "Sam", mode: "clarify", clarify: "simpler", focus: "Fractions" }), ENV, fakeFetch([() => res(503, null), () => res(503, null)])));
+  ok(cfail[0].t === "error" && LLM_LOG.slice(n0).some((l) => l.includes('"route":"clarify"')), "clarify: a real failure is an error (logged under route clarify)");
+
+  // Where Next (0 calls): the next step first, then up to 3 topics in progress, most recent first
+  const w = seeded("Wren", T0);
+  const math = C.findSubject(w, "Math"), kids = C.childrenOf(w, math.id).map((x) => x.id);
+  const deep = Object.values(w.nodes).filter((x) => x.parent && !x.ghost && !C.childrenOf(w, x.id).length).map((x) => x.id);
+  const [cur, nx, a, b, c2, d2] = deep;
+  [a, b, c2, d2].forEach((x, i) => { C.engage(w, x, "open", T0 + 1000 * (i + 1)); });
+  C.engage(w, cur, "open", T0 + 9000);
+  const wn = P.whereNext(w, cur, nx);
+  ok(wn.next === nx && wn.others.length === 3 && !wn.others.includes(cur) && !wn.others.includes(nx), "Where Next: the next step, then up to 3 other topics in progress");
+  eq(wn.others, [d2, c2, b], "Where Next: in-progress topics, most recently touched first");
+  C.engage(w, d2, "got", T0 + 10000);
+  ok(!P.whereNext(w, cur, nx).others.includes(d2), "Where Next: finished topics drop out");
+  ok(P.whereNext(w, cur, cur).next === null && P.whereNext(w, cur, null).next === null, "Where Next: no next step when there is none (never the topic itself)");
+  ok(P.PLAN.whereNext === 3 && kids.length > 0, "Where Next: at most 3 others");
+
+  // the app: wiring (static), the behaviour is covered end to end by scripts/ikolearn-flow-e2e.mjs
+  const app = fs.readFileSync("public/ikolearn/app.js", "utf8"), html = fs.readFileSync("public/ikolearn/index.html", "utf8"), css = fs.readFileSync("public/ikolearn/styles.css", "utf8");
+  const fin = app.slice(app.indexOf("  function finishLesson(kind) {"), app.indexOf("  /* ---------- \"Still tricky\""));
+  ok(fin.length > 200 && !/postJson\(|stream\(|openLesson\(|createNext\(|linkBtn\("Try again"/.test(fin) && /That's it\. /.test(fin), "I've got it: confirmed on the device: no call, no auto-advance, no Try again; a short \"That's it.\"");
+  ok(/renderClarify\(id, true\)/.test(fin) && /What would help\?/.test(fin), "Still tricky: stays in the lesson and offers the clarifications");
+  const cl = app.slice(app.indexOf("  function clarify(id, style) {"), app.indexOf("  /* ---------- Where Next"));
+  ok((cl.match(/stream\("\/chat"/g) || []).length === 1 && /mode: "clarify", clarify: style/.test(cl) && /state\.lessons\[id\]\.cl\[style\] = text\.trim\(\)/.test(cl) && /if \(les && les\.cl && les\.cl\[style\]\)/.test(cl), "clarify: one streamed chat call per option, kept with the lesson (asking again: 0 calls)");
+  ok(/linkBtn\("Try again", function \(\) \{ clarify\(id, style\); \}\)/.test(cl) && /r\.reason === "aborted"/.test(cl), "clarify: Try again only on a real failure, never after a cancel");
+  ok(/\["simpler", "Explain it more simply"\], \["example", "Show me a worked example"\], \["question", "Ask me a question"\]/.test(app), "clarify: the three options");
+  const wnx = app.slice(app.indexOf("  function renderWhereNext() {"), app.indexOf("  function askInChat(id)"));
+  ok(/P\.whereNext\(state\.cloud, id, nextStep\(id\)\)/.test(wnx) && /if \(items\.indexOf\(state\.pick\) < 0\) state\.pick = items\[0\];/.test(wnx) && /aria-checked/.test(wnx) && /D\.cardSpec\(state\.cloud, state\.pick\)/.test(wnx) && !/postJson\(|stream\(/.test(wnx), "Where Next: next step pre-selected, the learner picks and opens; its card drawn on the device (0 calls)");
+  ok(/renderWhereNext\(\);/.test(app.slice(app.indexOf("  function renderLessonPath() {"), app.indexOf("  function renderLessonPath() {") + 200)) && /<div id="l-next" class="where-next"><\/div>/.test(html) && /<div id="l-clar" class="l-clar"/.test(html) && /\.wn-opt\.on \{/.test(css) && /\.clar-opts \{/.test(css), "Where Next and the clarifications are part of every lesson");
+  const lr2 = app.slice(app.indexOf("  function lessonReady(id, wasNew) {"), app.indexOf("  /* ---------- \"Still tricky\""));
+  ok(lr2.length > 500 && !/Next up|nextLine\(/.test(lr2), "lessons: no \"Next up\" link that jumps ahead: Where Next has it, pre-selected");
+  const op = app.slice(app.indexOf("  function openPanel(id, keepNote, keepView) {"), app.indexOf("  function openPanel(id, keepNote, keepView) {") + 6000);
+  ok(/if \(!state\.notes\[noteKey\(id\)\]\) \{[\s\S]*?What do you notice here\?[\s\S]*?\} else notice\(id\);/.test(op) && !/quiet/.test(op.slice(0, 200)), "node tap: no note call; \"What do you notice here?\" asks for it (a written note shows, 0 calls)");
+  ok(/function noteKey\(id\)/.test(app) && !/state\.cloud\.rev\]/.test(app) && !/":" \+ state\.cloud\.rev/.test(app), "the note cache doesn't reset on every cloud change (keyed by the topic's own stage)");
+  ok(/function callSignal\(name\)/.test(app) && /function cancelNav\(\) \{ cancelCall\("notice"\); cancelCall\("bridge"\); \}/.test(app) && /sig = callSignal\("notice"\)/.test(app) && /callSignal\("bridge"\)/.test(app) && /callSignal\("lesson"\)/.test(app) && /callSignal\("clarify"\)/.test(app), "background calls carry a signal; navigation cancels them");
+  ok(/function showLesson\(on\) \{\s*if \(!on\) \{ stopClock\(\); cancelNav\(\); \}/.test(app) && /cancelNav\(\);\s*var rect = src/.test(app) && /if \(state\.panelNode !== id\) cancelCall\("notice"\);/.test(app), "leaving a view (Back, a card's hub, another topic) cancels its background calls");
+  ok(!/Try again in a few seconds/.test(app) && /state\.queued = function \(\) \{ if \(state\.lessonNode === id && state\.mode === "lesson"/.test(app) && /if \(!on && state\.queued\) \{ var q = state\.queued; state\.queued = null; setTimeout\(q, 0\); \}/.test(app), "busy: a lesson (or test, note, clarification) waits its turn and starts by itself; no false Try again");
+  const nt = app.slice(app.indexOf("  function notice(id) {"), app.indexOf("  el.pLesson.addEventListener"));
+  ok(nt.length > 300 && !/lock\(/.test(nt), "the note never holds the app busy (navigation and lessons stay available while it's written)");
+  ok(/\} else if \(r\.reason === "aborted"\) \{/.test(app) && /reason: signal && signal\.aborted \? "aborted" : "offline"/.test(app), "a cancelled call is never shown as a failure");
 }
 
 if (fails.length) {

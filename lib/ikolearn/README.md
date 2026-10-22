@@ -349,3 +349,28 @@ own tone when achieved. The creation call picks a `motif` per topic from a fixed
 same list in prompts.ts, cloud-model.js and deck.js); the device draws it in the plate, placed by a seed from the node
 id. Topics without one get a keyword match on the title or chain, else the plain scene. Motifs are stored in an
 optional `mo` map, so storage stays v9.
+
+## The lesson flow: confirm locally, clarify on purpose, choose where next
+
+- **I've got it** is confirmed on the device (0 calls): progress is marked, a short "That's it." note shows, and the
+  learner stays on the lesson. Nothing opens by itself.
+- **Still tricky** stays on the topic and offers three prepared clarifications: *Explain it more simply*, *Show me a
+  worked example*, *Ask me a question*. Each is one streamed `/chat` call with `mode: "clarify"` (`clarify`:
+  `simpler | example | question`, plus the start of the lesson as `lesson`), answered inline and kept with the lesson,
+  so asking again is 0 calls. No hidden block: nothing lands on the cloud.
+- **Where Next** is in every lesson (`IkoPlan.whereNext`, 0 calls): the logical next step first (fork pick, best child,
+  else the walk up the tree), highlighted and pre-selected, then up to 3 other topics in progress, most recent first.
+  Tapping an option selects it; *Open* goes there. The selected topic's card is drawn on the device.
+- **Only new content calls the model**: a node tap never writes a note by itself ("What do you notice here?" asks for
+  it), and the note is cached per topic and stage, not per cloud revision.
+- **Cancel on navigation**: the note, the bridge and its repair, and a lesson or clarification that is no longer on
+  screen carry an `AbortController` signal and are cancelled when the learner moves on; the server then stops the
+  model's reply too (the NDJSON stream's cancel aborts the upstream request). A cancelled call is never shown as a
+  failure. While something else is being written, a lesson, test, note or clarification waits its turn and starts by
+  itself; "Try again" appears only on a real generation failure.
+- **Hedged fallback** (streams): when the primary model hasn't started after 6 s (`hedgeAfterMs`), the fallback starts
+  in parallel; whichever streams first is used and the other is aborted. It costs one call from the daily budget
+  (`budgetSpend`) and only happens on a stall; with no budget left, the old order holds (primary until 12 s, then the
+  fallback). Each hedge logs one `ikolearn.llm_hedge` line (route, models, `afterMs`, `winner`; no key, no prompt).
+
+Browser checks for all of this, with every call mocked: `IKOLEARN_PW=<playwright-core folder> node scripts/ikolearn-flow-e2e.mjs`.

@@ -26,7 +26,7 @@
     thumb: $("thumb"), thumbCanvas: $("thumb-canvas"), reset: $("reset"),
     focusChip: $("focus-chip"), focusText: $("focus-text"), focusClear: $("focus-clear"),
     lesson: $("lesson"), lBack: $("l-back"), lTrail: $("l-trail"), lTitle: $("l-title"), lBody: $("l-body"), lDone: $("l-done"),
-    lGot: $("l-got"), lTricky: $("l-tricky"), lStatus: $("l-status"), lPath: $("l-path"), lChat: $("l-chat"), lRedo: $("l-redo"),
+    lGot: $("l-got"), lTricky: $("l-tricky"), lStatus: $("l-status"), lPath: $("l-path"), lClar: $("l-clar"), lNext: $("l-next"), lChat: $("l-chat"), lRedo: $("l-redo"),
     cloud: $("cloud"), cloudCanvas: $("cloud-canvas"), cloudClose: $("cloud-close"), zin: $("zin"), zout: $("zout"), zreset: $("zreset"),
     panel: $("panel"), cloudTop: document.querySelector(".cloud-top"), pKicker: $("p-kicker"), pTitle: $("p-title"), pNote: $("p-note"), pLesson: $("p-lesson"), pCard: $("p-card"), pAdj: $("p-adj"),
     pChat: $("p-chat"), pPath: $("p-path"), pCards: $("p-cards"), pClose: $("p-close"),
@@ -40,7 +40,7 @@
   };
   var reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
 
-  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], view: null, seen: { c: {}, ev: 0 }, ex: { list: [], growth: [], at: 0, gat: 0, status: "idle" } };
+  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], queued: null, pick: null, view: null, seen: { c: {}, ev: 0 }, ex: { list: [], growth: [], at: 0, gat: 0, status: "idle" } };
   var mini = null, big = null;
 
   /* ---------- storage ---------- */
@@ -434,9 +434,24 @@
     };
   }
 
-  function post(path, body) {
+  /*
+   * Calls that belong to what's on screen (the note, the bridge and its repair, a lesson or clarification being written)
+   * carry a signal: moving on cancels them (cancelNav), so nothing stale holds the app busy. A cancelled call resolves
+   * with reason "aborted", which is never shown as a failure.
+   */
+  var calls = {};
+  function callSignal(name) {
+    cancelCall(name);
+    var c = window.AbortController ? new AbortController() : null;
+    calls[name] = c;
+    return c ? c.signal : undefined;
+  }
+  function cancelCall(name) { var c = calls[name]; calls[name] = null; if (c) c.abort(); }
+  function cancelNav() { cancelCall("notice"); cancelCall("bridge"); }
+  function post(path, body, signal) {
     var ctl = window.AbortController ? new AbortController() : null;
     var timer = setTimeout(function () { if (ctl) ctl.abort(); }, TIMEOUT_MS);
+    if (signal && ctl) { if (signal.aborted) ctl.abort(); else signal.addEventListener("abort", function () { ctl.abort(); }); }
     return fetch(API + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctl ? ctl.signal : undefined })
       .finally(function () { clearTimeout(timer); });
   }
@@ -449,13 +464,14 @@
       .catch(function () { return { ok: false, reason: "offline" }; })
       .finally(function () { clearTimeout(timer); });
   }
-  function postJson(path, body) {
-    return post(path, body).then(function (res) { return res.json().catch(function () { return {}; }); }).catch(function () { return { ok: false, reason: "offline" }; });
+  function postJson(path, body, signal) {
+    return post(path, body, signal).then(function (res) { return res.json().catch(function () { return {}; }); })
+      .catch(function () { return { ok: false, reason: signal && signal.aborted ? "aborted" : "offline" }; });
   }
 
   /* Reads an NDJSON event stream. on: { delta(text), cloud(ev), path(ev) }. Resolves { ok, reason }. */
-  function stream(path, body, on) {
-    return post(path, body).then(function (res) {
+  function stream(path, body, on, signal) {
+    return post(path, body, signal).then(function (res) {
       if (!res.ok || !res.body) {
         return res.json().catch(function () { return {}; }).then(function (j) { return { ok: false, reason: j.reason || j.error || String(res.status) }; });
       }
@@ -485,7 +501,7 @@
         });
       }
       return pump();
-    }).catch(function () { return { ok: false, reason: "offline" }; });
+    }).catch(function () { return { ok: false, reason: signal && signal.aborted ? "aborted" : "offline" }; });
   }
 
   function reasonLead(reason) {
@@ -501,10 +517,12 @@
     return reasonLead(reason) + tip;
   }
 
+  /* One call at a time. A lesson, test or clarification asked for meanwhile waits in state.queued and starts here. */
   function lock(on) {
     state.busy = on;
     [el.send, el.pCard, el.pAdj, el.pLesson, el.pTest, el.lGot, el.lTricky].forEach(function (b) { b.disabled = on; });
-    Array.prototype.forEach.call(document.querySelectorAll(".draw-btn"), function (b) { b.disabled = on; });
+    Array.prototype.forEach.call(document.querySelectorAll(".draw-btn, .clar-opt"), function (b) { b.disabled = on; });
+    if (!on && state.queued) { var q = state.queued; state.queued = null; setTimeout(q, 0); }
   }
 
   /* ---------- chat ---------- */
@@ -538,7 +556,9 @@
     var id = state.bridgeQueue.shift();
     if (!id || state.busy || !P.needsBridge(state.cloud, id)) { state.bridgeQueue = []; return; }
     lock(true);
-    postJson("/create", Object.assign(basePayload(id), { mode: "notice", messages: history().filter(function (m) { return m.role === "user"; }).slice(-1) }, P.bridgeRequest(state.cloud, id))).then(function (j) {
+    var sig = callSignal("bridge"), aborted = false;
+    postJson("/create", Object.assign(basePayload(id), { mode: "notice", messages: history().filter(function (m) { return m.role === "user"; }).slice(-1) }, P.bridgeRequest(state.cloud, id)), sig).then(function (j) {
+      if (j && j.reason === "aborted") { aborted = true; return; }
       if (!(j && j.ok && Array.isArray(j.items))) return;
       var before = C.trail(state.cloud, id, " → ");
       var r = C.applyBridge(state.cloud, id, j);
@@ -547,21 +567,26 @@
         refreshViews(r.created.concat(id));
         push({ role: "grow", text: "Filled in the steps for " + nodeOf(id).label + ": " + C.trail(state.cloud, id, " → ") + " (was " + before + ")", open: id });
       }
-      return runRepair(id);
-    }).then(function () { save(); lock(false); state.bridgeQueue = []; });
+      return runRepair(id, sig);
+    }).then(function (r) {
+      /* moved on before it finished: the bridge waits for the next chat turn */
+      state.bridgeQueue = aborted || r === "aborted" ? [id] : [];
+      save(); lock(false);
+    });
   }
   /*
    * The validation pass after a bridge: if the chain is still shallow (fewer than 2 links under the subject), one repair
    * re-ask names the chain so far and asks for a skipped level. node.repaired is set (and saved) before the call, so a
    * topic gets at most 1 repair, ever, whatever happens to the call.
    */
-  function runRepair(id) {
+  function runRepair(id, sig) {
     if (!P.needsRepair(state.cloud, id)) return null;
     var n = nodeOf(id);
     n.repaired = Date.now();
     save();
     var before = C.trail(state.cloud, id, " → ");
-    return postJson("/create", Object.assign(basePayload(id), { mode: "notice", messages: history().filter(function (m) { return m.role === "user"; }).slice(-1) }, P.repairRequest(state.cloud, id))).then(function (j) {
+    return postJson("/create", Object.assign(basePayload(id), { mode: "notice", messages: history().filter(function (m) { return m.role === "user"; }).slice(-1) }, P.repairRequest(state.cloud, id)), sig).then(function (j) {
+      if (j && j.reason === "aborted") return "aborted"; /* still counts as its one repair (the call may have been made) */
       if (!(j && j.ok && Array.isArray(j.items))) return;
       var r = C.applyRepair(state.cloud, id, j);
       save();
@@ -741,7 +766,7 @@
   window.addEventListener("pagehide", stopClock);
 
   function showLesson(on) {
-    if (!on) stopClock();
+    if (!on) { stopClock(); cancelNav(); }
     if (on) { el.deck.hidden = true; el.hub.hidden = true; }
     el.lesson.hidden = !on;
     el.thread.hidden = on;
@@ -765,6 +790,7 @@
   function renderLessonPath() {
     var id = state.lessonNode;
     el.lPath.textContent = "";
+    renderWhereNext();
     if (!nodeOf(id)) return;
     el.lPath.appendChild(pathBlock(id, { offer: true }));
     renderLessonCard(false);
@@ -1012,6 +1038,10 @@
   function openLesson(id, fresh, from) {
     var n = nodeOf(id);
     if (!n) return;
+    /* moving on cancels what belonged to the last view (the note, a bridge, another lesson or clarification still being written) */
+    cancelNav();
+    if (calls.lessonFor !== id) { cancelCall("lesson"); cancelCall("clarify"); }
+    if (state.lessonNode !== id) state.pick = null;
     if (!el.cloud.hidden) closeCloud(true);
     stopClock();
     state.lessonNode = id;
@@ -1031,6 +1061,7 @@
     el.lDone.hidden = true;
     el.lFork.textContent = "";
     el.lQuiz.textContent = "";
+    el.lClar.textContent = "";
     showReading(null);
     renderLessonPath();
     animateIn(from);
@@ -1043,8 +1074,15 @@
       return;
     }
     state.quiz = { id: id, qs: [], ans: [] };
-    if (state.busy) { paragraphs(el.lBody, "One moment, I'm still finishing something else. Try again in a few seconds."); return; }
+    if (state.busy) {
+      /* something else is still being written: this lesson waits its turn and starts by itself (no "try again") */
+      el.lBody.textContent = "";
+      el.lBody.appendChild(mk("p", "l-intro wait", "Getting this lesson ready. It starts as soon as the last answer is finished."));
+      state.queued = function () { if (state.lessonNode === id && state.mode === "lesson" && !state.lessons[id]) openLesson(id, fresh); };
+      return;
+    }
     lock(true);
+    calls.lessonFor = id;
     /* the orchestrator builds the context: child topics only when wanted, and the planned next step for the fork */
     var ctx = P.lessonContext(state.cloud, id), text = "", wantPath = ctx.wantPath, reading = [];
     el.lBody.textContent = "";
@@ -1068,12 +1106,15 @@
         refreshViews(flash);
         if (state.lessonNode === id) renderLessonPath();
       }
-    }).then(function (r) {
+    }, callSignal("lesson")).then(function (r) {
+      calls.lessonFor = null;
       var parsed = L.parse(text);
       if (r.ok && L.usable(parsed)) {
         state.lessons[id] = { text: text.trim(), at: Date.now(), qs: state.quiz && state.quiz.id === id ? state.quiz.qs : [], ans: [] };
         if (reading.length) state.lessons[id].rd = reading;
         if (state.lessonNode === id) { renderLessonBody(text, false); lessonReady(id, true); showReading(reading); }
+      } else if (r.reason === "aborted") {
+        /* cancelled because the learner moved on: not a failure; it is written next time it's opened */
       } else if (state.lessonNode === id) {
         if (text && L.usable(parsed)) { renderLessonBody(text, false); lessonReady(id, true); }
         else {
@@ -1095,7 +1136,7 @@
     el.lDone.hidden = false;
     var note = growthNote(id, before);
     if (kids.length) note = (note ? note + " " : "") + kidsLine(id, kids);
-    if (n.mastery >= C.MASTERED) el.lStatus.textContent = "You've marked this one as done. " + (C.isTerminal(state.cloud, id) || n.fork ? "" : nextLine(id));
+    if (n.mastery >= C.MASTERED) el.lStatus.textContent = "You've marked this one as done.";
     if (note) el.lStatus.textContent = (el.lStatus.textContent ? el.lStatus.textContent + " " : "") + note;
     save();
     settleMerges();
@@ -1104,12 +1145,14 @@
     renderLessonCard(Boolean(note));
     renderQuiz();
     renderFork(id);
+    if (state.lessons[id] && state.lessons[id].cl) renderClarify(id, true); /* clarifications already written: shown again, 0 calls */
     offerTest(id);
   }
-  function nextLine(id) {
-    var nx = nodeOf(nextStep(id));
-    return nx ? "Next up: " + nx.label + "." : "";
-  }
+  /*
+   * "I've got it": confirmed on the device (0 calls). Progress is marked, a short note says so, and the learner stays
+   * here; Where Next (below) has the next step pre-selected, nothing opens by itself.
+   * "Still tricky": stays on the topic and offers three prepared clarifications (each one chat call, streamed inline).
+   */
   function finishLesson(kind) {
     var id = state.lessonNode, n = nodeOf(id);
     if (!n) return;
@@ -1122,25 +1165,121 @@
     settleMerges();
     refreshViews([id].concat(r.next ? [r.next] : [], kids));
     el.lStatus.textContent = "";
-    if (kids.length) el.lStatus.appendChild(document.createTextNode(kidsLine(id, kids) + " "));
-    var nx = nodeOf(r.next);
     if (kind === "got") {
-      el.lStatus.appendChild(document.createTextNode("Nice work. " + (note || n.label + " is growing stronger on your cloud.") + " "));
-      if (C.isTerminal(state.cloud, id)) { /* other branches show below */ }
-      else if (n.fork && n.fork.ids.length >= 2) el.lStatus.appendChild(document.createTextNode("Pick where to go next below."));
-      else if (nx) { el.lStatus.appendChild(document.createTextNode("Next up: ")); el.lStatus.appendChild(linkBtn(nx.label, function () { openLesson(nx.id); })); }
-      else if (!n.path || P.needsNext(state.cloud, id)) el.lStatus.appendChild(linkBtn("What comes next in " + n.label + "?", function () { createNext(id); }));
-      else el.lStatus.appendChild(document.createTextNode("You've covered this path."));
+      el.lStatus.appendChild(mk("strong", "yes", "That's it. "));
+      el.lStatus.appendChild(document.createTextNode((note || n.label + " is growing stronger on your cloud.") + (kids.length ? " " + kidsLine(id, kids) : "")));
     } else {
-      if (note) el.lStatus.appendChild(document.createTextNode(note + " "));
-      el.lStatus.appendChild(document.createTextNode("That's okay, it takes a few tries. Look at the worked example again, or "));
-      el.lStatus.appendChild(linkBtn("ask about it in chat", function () { askInChat(id); }));
-      el.lStatus.appendChild(document.createTextNode("."));
+      el.lStatus.appendChild(document.createTextNode((note ? note + " " : "") + "That's okay, it takes a few tries. What would help?"));
+      renderClarify(id, true);
     }
     renderLessonPath();
     renderLessonCard(Boolean(note));
     renderFork(id);
     offerTest(id);
+  }
+
+  /* ---------- "Still tricky": prepared clarifications, inline ---------- */
+  var CLARIFY = [["simpler", "Explain it more simply"], ["example", "Show me a worked example"], ["question", "Ask me a question"]];
+  function clarifyLabel(style) { return (CLARIFY.filter(function (c) { return c[0] === style; })[0] || ["", ""])[1]; }
+  /* the three options, plus any answers already written for this lesson (kept with it: asking again is 0 calls) */
+  function renderClarify(id, offer) {
+    el.lClar.textContent = "";
+    if (state.lessonNode !== id) return;
+    var les = state.lessons[id], done = (les && les.cl) || {};
+    if (offer) {
+      var row = mk("div", "clar-opts");
+      CLARIFY.forEach(function (c) {
+        var b = mk("button", "btn sm clar-opt", c[1]);
+        b.type = "button"; b.disabled = state.busy;
+        b.setAttribute("data-style", c[0]);
+        b.addEventListener("click", function () { clarify(id, c[0]); });
+        row.appendChild(b);
+      });
+      el.lClar.appendChild(row);
+    }
+    CLARIFY.forEach(function (c) { if (done[c[0]]) clarBox(c[0], done[c[0]]); });
+  }
+  function clarBox(style, text) {
+    var old = el.lClar.querySelector('.clar[data-style="' + style + '"]');
+    if (old) old.parentNode.removeChild(old);
+    var box = mk("div", "clar");
+    box.setAttribute("data-style", style);
+    box.appendChild(mk("p", "kicker", clarifyLabel(style)));
+    var body = mk("div", "clar-body");
+    box.appendChild(body);
+    if (text) paragraphs(body, text);
+    el.lClar.appendChild(box);
+    return { box: box, body: body };
+  }
+  function clarify(id, style) {
+    var les = state.lessons[id];
+    if (state.lessonNode !== id || !nodeOf(id)) return;
+    if (les && les.cl && les.cl[style]) { clarBox(style, les.cl[style]).box.scrollIntoView({ block: "nearest" }); return; }
+    if (state.busy) { state.queued = function () { clarify(id, style); }; return; }
+    lock(true);
+    var ui = clarBox(style, ""), text = "";
+    ui.body.className = "clar-body streaming";
+    ui.box.scrollIntoView({ block: "nearest" });
+    var body = Object.assign(basePayload(id), { mode: "clarify", clarify: style, lesson: les ? String(les.text).slice(0, 1500) : "", messages: [] });
+    stream("/chat", body, {
+      delta: function (t) { text += t; paragraphs(ui.body, text); }
+    }, callSignal("clarify")).then(function (r) {
+      ui.body.className = "clar-body";
+      if (r.reason === "aborted") { if (ui.box.parentNode) ui.box.parentNode.removeChild(ui.box); }
+      else if (text.trim()) {
+        if (state.lessons[id]) { state.lessons[id].cl = state.lessons[id].cl || {}; state.lessons[id].cl[style] = text.trim(); }
+        paragraphs(ui.body, text.trim());
+      } else {
+        /* a real failure: the only place this offers Try again */
+        ui.body.textContent = "";
+        ui.body.appendChild(mk("p", "l-intro", reasonLead(r.reason)));
+        ui.body.appendChild(linkBtn("Try again", function () { clarify(id, style); }));
+      }
+      save(); lock(false);
+    });
+  }
+
+  /* ---------- Where Next (in every lesson, 0 calls) ---------- */
+  /*
+   * The logical next step first, highlighted and pre-selected, then up to 3 other topics in progress. Tapping an option
+   * selects it; "Open" goes there. The selected topic's card is drawn on the device (deck.js), no call.
+   */
+  function renderWhereNext() {
+    var id = state.lessonNode, n = nodeOf(id);
+    el.lNext.textContent = "";
+    if (!n || state.mode !== "lesson") return;
+    var w = P.whereNext(state.cloud, id, nextStep(id));
+    var items = (w.next ? [w.next] : []).concat(w.others);
+    var grow = !w.next && !n.end && !C.isTerminal(state.cloud, id) && (!n.path || P.needsNext(state.cloud, id));
+    if (!items.length && !grow) return;
+    el.lNext.appendChild(mk("p", "l-head", "Where next"));
+    if (items.length) {
+      if (items.indexOf(state.pick) < 0) state.pick = items[0];
+      var list = mk("div", "wn-opts");
+      list.setAttribute("role", "radiogroup");
+      list.setAttribute("aria-label", "Where next");
+      items.forEach(function (x) {
+        var m = nodeOf(x), on = x === state.pick;
+        var b = mk("button", "wn-opt" + (on ? " on" : "") + (x === w.next ? " next" : ""));
+        b.type = "button";
+        b.setAttribute("role", "radio");
+        b.setAttribute("aria-checked", on ? "true" : "false");
+        b.setAttribute("data-id", x);
+        b.appendChild(mk("span", "wn-label", m.label));
+        b.appendChild(mk("span", "why", x === w.next ? (afterOf(x) ? "Next step · " + afterOf(x) : "Next step") : "In progress · " + trailOf(m.parent || x)));
+        b.addEventListener("click", function () { state.pick = x; renderWhereNext(); });
+        list.appendChild(b);
+      });
+      el.lNext.appendChild(list);
+      var pick = nodeOf(state.pick), go = mk("div", "wn-go"), sp = D.cardSpec(state.cloud, state.pick);
+      if (sp) { var c = D.render(document, sp, { size: "mini" }); c.setAttribute("aria-hidden", "true"); go.appendChild(c); }
+      var open = mk("button", "btn sm", "Open " + pick.label);
+      open.type = "button";
+      open.addEventListener("click", function () { var to = state.pick; if (nodeOf(to)) openLesson(to); });
+      go.appendChild(open);
+      el.lNext.appendChild(go);
+    }
+    if (grow) el.lNext.appendChild(mk("p", "fine")).appendChild(linkBtn("What comes next in " + n.label + "?", function () { createNext(id); }));
   }
   function askInChat(id) {
     var n = nodeOf(id);
@@ -1176,6 +1315,7 @@
   function openTest(pid, from) {
     var p = nodeOf(pid), req = P.testRequest(state.cloud, pid);
     if (!p || !req || req.material.length < 2) return;
+    cancelNav(); cancelCall("lesson"); cancelCall("clarify");
     if (!el.cloud.hidden) closeCloud(true);
     stopClock();
     state.lessonNode = pid; state.mode = "test";
@@ -1188,7 +1328,7 @@
     req.ids.forEach(function (x) { var n = nodeOf(x); if (n) ids[C.norm(n.label)] = x; });
     el.lTrail.textContent = "Test · " + trailOf(pid);
     el.lTitle.textContent = "Test: " + p.label;
-    el.lStatus.textContent = ""; el.lDone.hidden = true; el.lFork.textContent = ""; el.lPath.textContent = ""; el.lQuiz.textContent = "";
+    el.lStatus.textContent = ""; el.lDone.hidden = true; el.lFork.textContent = ""; el.lPath.textContent = ""; el.lQuiz.textContent = ""; el.lClar.textContent = ""; el.lNext.textContent = "";
     el.lBody.textContent = "";
     el.lBody.appendChild(mk("p", "l-intro", "This test only covers what you've finished: " + labels.join(", ") + ". It's optional and there's no timer. Right answers bring colour into those cards, and every attempt makes " + p.label + " stronger."));
     renderLessonCard(false);
@@ -1200,7 +1340,11 @@
       renderTest();
       return;
     }
-    if (state.busy) { el.lQuiz.appendChild(mk("p", "fine", "One moment, I'm still finishing something else. Try again in a few seconds.")); return; }
+    if (state.busy) {
+      el.lQuiz.appendChild(mk("p", "fine wait", "Getting your test ready. It starts as soon as the last answer is finished."));
+      state.queued = function () { if (state.lessonNode === pid && state.mode === "test") openTest(pid); };
+      return;
+    }
     lock(true);
     el.lQuiz.appendChild(mk("p", "fine streaming", "Writing your questions..."));
     postJson("/test", Object.assign(basePayload(pid), { material: req.material })).then(function (j) {
@@ -1371,7 +1515,7 @@
     big.setTests(testMap());
     renderCloudHint();
     big.spin(true); /* a slow idle turn (not with reduced motion; paused by any interaction, a panel, or a hidden tab) */
-    if (state.lessonNode) setTimeout(function () { openPanel(state.lessonNode, false, false, true); }, 0); /* a lesson or a test: its topic */
+    if (state.lessonNode) setTimeout(function () { openPanel(state.lessonNode); }, 0); /* a lesson or a test: its topic */
     renderCloudFlow();
     el.cloudClose.focus();
   }
@@ -1406,8 +1550,9 @@
     else if (hit.node) openPanel(hit.node.id);
   }
 
-  /* keepNote: leave the note as is; keepView: don't move the camera; quiet: no automatic note call (opened by navigation, not a tap) */
-  function openPanel(id, keepNote, keepView, quiet) {
+  /* keepNote: leave the note as is; keepView: don't move the camera. The note is never written by opening a panel (see below). */
+  function openPanel(id, keepNote, keepView) {
+    if (state.panelNode !== id) cancelCall("notice");
     state.panelNode = id;
     var isRoot = id === "root";
     var n = isRoot ? null : nodeOf(id);
@@ -1419,7 +1564,7 @@
     /* the trail above this topic: each step is a quiet link back up the branch */
     if (!isRoot && n.parent) C.ancestry(state.cloud, n.parent).forEach(function (aid, i) {
       if (i) el.pKicker.appendChild(document.createTextNode(" · "));
-      el.pKicker.appendChild(linkBtn(nodeOf(aid).label, function () { openPanel(aid, false, false, true); }, "link up"));
+      el.pKicker.appendChild(linkBtn(nodeOf(aid).label, function () { openPanel(aid); }, "link up"));
     });
     el.pTitle.textContent = isRoot ? state.cloud.name : n.label;
     var ended = !isRoot && C.isTerminal(state.cloud, id);
@@ -1434,19 +1579,19 @@
       var nx = nodeOf(state.cloud.next);
       if (nx) {
         var pnx = mk("p", "next-up", "Next up: ");
-        pnx.appendChild(linkBtn(nx.label, function () { openPanel(nx.id, false, false, true); }));
+        pnx.appendChild(linkBtn(nx.label, function () { openPanel(nx.id); }));
         pnx.appendChild(document.createTextNode(" in " + trailOf(nx.parent)));
         el.pPath.appendChild(pnx);
       }
     } else {
-      el.pPath.appendChild(pathBlock(id, { offer: true, onStep: function (sid) { openPanel(sid, false, false, true); } }));
+      el.pPath.appendChild(pathBlock(id, { offer: true, onStep: function (sid) { openPanel(sid); } }));
       if (ended) {
         var others = C.otherBranches(state.cloud, id, 3, topIds()).map(nodeOf).filter(Boolean);
         if (others.length) {
           var ob = mk("div", "path");
           ob.appendChild(mk("p", "l-head", "Other branches"));
           var ul = mk("ul");
-          others.forEach(function (o) { var li = mk("li"); li.appendChild(linkBtn(o.label, function () { openPanel(o.id, false, false, true); })); ul.appendChild(li); });
+          others.forEach(function (o) { var li = mk("li"); li.appendChild(linkBtn(o.label, function () { openPanel(o.id); })); ul.appendChild(li); });
           ob.appendChild(ul);
           el.pPath.appendChild(ob);
         }
@@ -1454,8 +1599,9 @@
     }
     el.pCards.textContent = "";
     if (!isRoot) C.cardsFor(state.cloud, id).slice().reverse().forEach(function (c) { el.pCards.appendChild(cardNode(c, new Date(c.at).toLocaleDateString())); });
+    /* the note is never written by a tap: shown when already written for this stage, else offered as a link (0 calls) */
     if (!keepNote) {
-      if (quiet && !state.notes[id + ":" + state.cloud.rev]) {
+      if (!state.notes[noteKey(id)]) {
         el.pNote.className = "note"; el.pNote.textContent = "";
         el.pNote.appendChild(linkBtn("What do you notice here?", function () { notice(id); }));
       } else notice(id);
@@ -1492,23 +1638,37 @@
   }
 
   /* Tap on the name or a node: a short personable note, streamed into the panel (cached until the cloud changes). */
+  /*
+   * The note's cache key: the topic and how far along it is (not the whole cloud's revision), so confirming or
+   * answering elsewhere doesn't throw it away; it is written again once this topic itself moves on a stage.
+   */
+  function noteKey(id) {
+    if (id === "root") return "root:" + C.subjectLabels(state.cloud).length;
+    var n = nodeOf(id);
+    return id + ":" + (n ? (C.isDone(state.cloud, id) ? "d" : "") + Math.floor((n.mastery || 0) * 3) : 0);
+  }
+  /*
+   * Only when asked ("What do you notice here?"): never by itself on a tap. It doesn't hold the app busy (navigation,
+   * lessons and chat stay available); moving on cancels it.
+   */
   function notice(id) {
-    var key = id + ":" + state.cloud.rev;
+    var key = noteKey(id);
     var cached = state.notes[key];
     if (cached) { paragraphs(el.pNote, cached); return; }
-    if (state.busy) { paragraphs(el.pNote, "One moment, I'm still finishing something."); return; }
-    lock(true);
+    if (calls.notice) return; /* already being written */
     var text = "";
     el.pNote.className = "note streaming"; paragraphs(el.pNote, "");
-    var body = Object.assign(basePayload(id === "root" ? null : id), { mode: "notice", messages: history() });
+    var body = Object.assign(basePayload(id === "root" ? null : id), { mode: "notice", messages: history() }), sig = callSignal("notice");
     stream("/chat", body, {
       delta: function (t) { text += t; if (state.panelNode === id) paragraphs(el.pNote, text); }
-    }).then(function (r) {
+    }, sig).then(function (r) {
+      if (calls.notice && calls.notice.signal === sig) calls.notice = null;
       el.pNote.className = "note";
+      if (r.reason === "aborted") return; /* moved on: nothing to show, nothing failed */
       if (!r.ok && !text) text = fallbackText(r.reason);
-      else state.notes[id + ":" + state.cloud.rev] = text.trim();
+      else state.notes[key] = text.trim();
       if (state.panelNode === id) paragraphs(el.pNote, text.trim());
-      save(); lock(false);
+      save();
     });
   }
 
@@ -1538,7 +1698,7 @@
   });
   el.pChat.addEventListener("click", function () {
     var id = state.panelNode;
-    var cached = state.notes[id + ":" + state.cloud.rev];
+    var cached = state.notes[noteKey(id)];
     if (cached) push({ role: "model", text: cached, local: false });
     setFocus(id === "root" ? null : id);
     save();
@@ -1546,7 +1706,7 @@
     closeCloud();
   });
   el.pTest.addEventListener("click", function () { if (nodeOf(state.panelNode)) openTest(state.panelNode); });
-  el.pClose.addEventListener("click", function () { liftCloud(false); el.panel.hidden = true; state.panelNode = null; big.clearFocus(); big.hold(false); renderCloudFlow(); });
+  el.pClose.addEventListener("click", function () { cancelCall("notice"); liftCloud(false); el.panel.hidden = true; state.panelNode = null; big.clearFocus(); big.hold(false); renderCloudFlow(); });
   el.cloudClose.addEventListener("click", function () { closeCloud(); });
   el.zin.addEventListener("click", function () { big.zoomBy(1.35); });
   el.zout.addEventListener("click", function () { big.zoomBy(1 / 1.35); });
@@ -1688,6 +1848,7 @@
   /* from: where Back goes ("deck", "cloud", "chat", or the card's id you came from) */
   function openHub(id, src, from) {
     if (!nodeOf(id) && !C.inDeck(state.cloud, id)) return;
+    cancelNav();
     var rect = src && src.getBoundingClientRect ? src.getBoundingClientRect() : null;
     if (!el.cloud.hidden) closeCloud(true);
     if (state.lessonNode) showLesson(false);
@@ -1703,7 +1864,7 @@
     var from = state.hubFrom, id = state.hubNode;
     el.hub.hidden = true; state.hubNode = null;
     if (from && from !== "deck" && from !== "cloud" && from !== "chat" && (nodeOf(from) || C.inDeck(state.cloud, from))) return openHub(from, null, "deck");
-    if (from === "cloud" && nodeOf(id)) { el.thread.hidden = false; el.dock.hidden = false; openCloud(); openPanel(id, false, false, true); return; }
+    if (from === "cloud" && nodeOf(id)) { el.thread.hidden = false; el.dock.hidden = false; openCloud(); openPanel(id); return; }
     if (from === "chat") { el.thread.hidden = false; el.dock.hidden = false; renderDraw(); scrollDown(); return; }
     showDeck(true);
   }
@@ -1796,7 +1957,7 @@
   el.hubCloud.addEventListener("click", function () {
     var id = state.hubNode; if (!nodeOf(id)) return;
     el.hub.hidden = true; state.hubNode = null; el.thread.hidden = false; el.dock.hidden = false;
-    openCloud(); openPanel(id, false, false, true);
+    openCloud(); openPanel(id);
   });
   function renderDeck(opening) {
     var ids = deckIds();

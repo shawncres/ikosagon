@@ -22,6 +22,8 @@
 
   var PLAN = {
     suggest: 3,
+    /* Where Next in a lesson: the next step plus up to this many other topics in progress */
+    whereNext: 3,
     /* a topic counts as engaged (its waiting child topics grow) after a right answer, "I've got it", a second visit or 2 minutes reading */
     engaged: { correct: 1, visits: 2, seconds: 120 },
     /* a test node appears for a parent once its core children are sufficiently complete: at least half of them and
@@ -433,11 +435,27 @@
     return "";
   }
 
+  /*
+   * Where Next, shown in every lesson (0 calls): the logical next step first (the caller's nextStep: fork pick, best
+   * child, else the walk up the tree), then up to `max` other topics in progress (started, not finished), most recent
+   * first. -> { next: id | null, others: [id] }. The learner chooses; nothing opens by itself.
+   */
+  function whereNext(cloud, id, nextId, max) {
+    max = max == null ? PLAN.whereNext : max;
+    /* the next step may not be explored yet (a waiting child is still dotted): that's what "next" means */
+    var nx = nextId && nextId !== id && nodeOf(cloud, nextId) && !C.isDone(cloud, nextId) ? nextId : null;
+    var others = cloud.order.filter(function (x) {
+      var n = nodeOf(cloud, x);
+      return n && x !== id && x !== nx && n.parent && !C.isDone(cloud, x) && (n.opened || n.engaged > 0 || n.correct > 0);
+    }).sort(function (a, b) { return (nodeOf(cloud, b).touched || 0) - (nodeOf(cloud, a).touched || 0); });
+    return { next: nx, others: others.slice(0, max) };
+  }
+
   var api = {
     PLAN: PLAN, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, needsRepair: needsRepair, repairRequest: repairRequest,
     MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
-    suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf,
+    suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf, whereNext: whereNext,
     onboarding: onboarding, openQuestion: openQuestion, examples: examples, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics,
     needsNext: needsNext, readyNext: readyNext, createRequest: createRequest, OPENING: OPENING
   };
