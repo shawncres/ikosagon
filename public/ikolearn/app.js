@@ -40,7 +40,7 @@
   };
   var reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
 
-  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], view: null, seen: { c: {}, ev: 0 }, ex: { list: [], at: 0, status: "idle" } };
+  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], view: null, seen: { c: {}, ev: 0 }, ex: { list: [], growth: [], at: 0, gat: 0, status: "idle" } };
   var mini = null, big = null;
 
   /* ---------- storage ---------- */
@@ -212,7 +212,7 @@
     var go = askHandlers[m.id] || function () {};
     if (m.hint) d.appendChild(mk("p", "ask-hint", m.hint));
     /* tapping an example is exactly typing it and pressing the button */
-    if (m.ex) d.appendChild(exRow(function (t) { go(m.open ? cleanAbout(t) : C.cleanLabel(t), t); }, function () { return !m.done; }));
+    if (m.ex) d.appendChild(exRow(function (t) { go(m.open ? cleanAbout(t) : C.cleanLabel(t), t); }, function () { return !m.done; }, m.ex === "growth" ? "growth" : ""));
     var row = mk("div", "ask-row" + (m.open ? " ask-open" : "")), inp = null;
     if (m.open) inp = openField(m.text, m.ph, function () { ok.click(); });
     else if (m.input) { inp = mk("input", "ask-in"); inp.maxLength = 40; inp.placeholder = "Type here"; inp.setAttribute("aria-label", m.text); }
@@ -237,8 +237,9 @@
    * fetched there is no list, just Try again. Each row re-checks live() so a row whose moment has passed empties.
    */
   var EX_SHOW = 3, exRows = [];
-  function exRow(pick, live) {
-    var r = { node: mk("div", "ex-row"), pick: pick, live: live || function () { return true; } };
+  /* set: "" (the first question's list, personalised once a cloud exists) or "growth" (the second question's, as it came) */
+  function exRow(pick, live, set) {
+    var r = { node: mk("div", "ex-row"), pick: pick, live: live || function () { return true; }, set: set || "" };
     exRows.push(r);
     /* after this tick, once the row is on the page (refreshEx drops rows that aren't) */
     if (state.ex.status === "idle" && r.live()) { state.ex.status = "wait"; setTimeout(loadExamples, 0); }
@@ -254,13 +255,14 @@
       box.appendChild(linkBtn("Try again", function () { loadExamples(); }, "link ex-retry"));
       return;
     }
-    var list = state.ex.status === "ok" ? P.examples(state.cloud, state.ex.list, Date.now()) : [];
+    var grow = r.set === "growth", key = grow ? "gat" : "at";
+    var list = state.ex.status !== "ok" ? [] : grow ? state.ex.growth : P.examples(state.cloud, state.ex.list, Date.now());
     if (!list.length) return;
-    var at = state.ex.at % list.length;
+    var at = state.ex[key] % list.length;
     for (var k = 0; k < Math.min(EX_SHOW, list.length); k++) {
       (function (t) { box.appendChild(linkBtn(t, function () { if (!state.busy && r.live()) r.pick(t); }, "btn ex-chip")); })(list[(at + k) % list.length]);
     }
-    if (list.length > EX_SHOW) box.appendChild(linkBtn("More", function () { state.ex.at = (at + EX_SHOW) % list.length; refreshEx(); }, "link ex-more"));
+    if (list.length > EX_SHOW) box.appendChild(linkBtn("More", function () { state.ex[key] = (at + EX_SHOW) % list.length; refreshEx(); }, "link ex-more"));
   }
   function refreshEx() {
     exRows = exRows.filter(function (r) { return r.node.isConnected; });
@@ -271,10 +273,12 @@
     state.ex.status = "loading";
     refreshEx();
     getJson("/examples").then(function (j) {
-      var list = j && j.ok && Array.isArray(j.examples) ? j.examples.map(function (x) { return cleanAbout(x).slice(0, 40); }).filter(Boolean).slice(0, 24) : [];
+      var clean = function (a, n) { return Array.isArray(a) ? a.map(function (x) { return cleanAbout(x).slice(0, 40); }).filter(Boolean).slice(0, n) : []; };
+      var list = j && j.ok ? clean(j.examples, 24) : [];
       state.ex.list = list;
+      state.ex.growth = list.length ? clean(j.growth, 12) : [];
       state.ex.status = list.length ? "ok" : "off";
-      state.ex.at = 0;
+      state.ex.at = 0; state.ex.gat = 0;
       refreshEx();
     });
   }
@@ -289,7 +293,7 @@
   }
   /* Asks one question in the chat; cb(value) once answered. The answer shows as the learner's reply. */
   function ask(q, cb) {
-    var m = { role: "ask", local: true, text: q.q, hint: q.hint || "", ex: Boolean(q.ex), input: Boolean(q.input), open: Boolean(q.open), ph: q.ph || "", go: q.go };
+    var m = { role: "ask", local: true, text: q.q, hint: q.hint || "", ex: q.ex === "growth" ? "growth" : Boolean(q.ex), input: Boolean(q.input), open: Boolean(q.open), ph: q.ph || "", go: q.go };
     askHandlers[(m.id = "a" + Date.now().toString(36) + (mid++))] = function (val, label) {
       if (m.done) return;
       m.done = true; upsert(m); delete askHandlers[m.id];
@@ -311,6 +315,13 @@
     } else {
       d = mk("div", "msg " + m.role + (m.streaming ? " streaming" : ""));
       var body = mk("div"); paragraphs(body, m.text || ""); d.appendChild(body);
+      /* while a build is being written: the parents that have arrived, then quiet placeholders for the ones still coming */
+      if (m.role === "model" && m.streaming && (m.pending || (m.got && m.got.length))) {
+        var gen = mk("div", "gen"); gen.setAttribute("aria-hidden", "true");
+        (m.got || []).forEach(function (t) { gen.appendChild(mk("span", "gen-got", t)); });
+        for (var g = (m.got || []).length; g < (m.pending || 0); g++) gen.appendChild(mk("span", "gen-ph"));
+        d.appendChild(gen);
+      }
       if (m.role === "model" && m.topic && !m.streaming && !m.fallback) {
         var acts = mk("div", "acts");
         acts.appendChild(linkBtn("Save a note on " + m.topic, function () { makeCard(m.topic, m.parent || ""); }));
@@ -446,7 +457,7 @@
   function stream(path, body, on) {
     return post(path, body).then(function (res) {
       if (!res.ok || !res.body) {
-        return res.json().catch(function () { return {}; }).then(function (j) { return { ok: false, reason: j.error || String(res.status) }; });
+        return res.json().catch(function () { return {}; }).then(function (j) { return { ok: false, reason: j.reason || j.error || String(res.status) }; });
       }
       var reader = res.body.getReader(), dec = new TextDecoder(), buf = "", result = { ok: false, reason: "cut" }, got = false;
       function handle(line) {
@@ -455,8 +466,12 @@
         if (ev.t === "delta" && typeof ev.text === "string") { got = true; on.delta(ev.text); }
         else if (ev.t === "cloud" && on.cloud) on.cloud(ev);
         else if (ev.t === "path" && on.path) on.path(ev);
-        else if (ev.t === "done") result = { ok: true };
+        else if (ev.t === "item" && on.item && ev.item) { got = true; on.item(ev.item); }
+        else if (ev.t === "done") result = { ok: true, items: ev.items };
         else if (ev.t === "error") result = { ok: got, reason: ev.reason };
+        /* a plain JSON answer (a server without streaming): the same as one "done" */
+        else if (ev.ok === true && Array.isArray(ev.items)) result = { ok: true, items: ev.items };
+        else if (ev.ok === false) result = { ok: false, reason: ev.reason || ev.error };
       }
       function pump() {
         return reader.read().then(function (r) {
@@ -584,29 +599,31 @@
   /* ---------- procedural growth: the creation call ---------- */
   function wait(ms) { return new Promise(function (r) { setTimeout(r, reduceMotion && reduceMotion.matches ? 0 : ms); }); }
   /*
-   * Shows the build: each new parent appears on the cloud, then its child placeholders, a beat apart, so the learner
-   * sees their cloud being made. Resolves the ids of the parents.
+   * Shows the build as it arrives: each new parent appears on the cloud, then its child placeholders, a beat apart, so
+   * the learner sees their cloud being made while the rest is still being written (the creation call streams its items).
+   * add(item) queues one; done() resolves the ids of the parents once every queued item is on the cloud.
    */
-  function animateBuild(items, focusId) {
-    var parents = [];
-    openCloud();
-    setCloudCaption("Building your cloud...");
-    var chain = Promise.resolve();
-    items.forEach(function (it) {
-      chain = chain.then(function () {
-        if (focusId) return;
-        var r = C.applyCreate(state.cloud, { items: [{ node: it.node, card: it.card, children: [] }] });
-        parents = parents.concat(r.nodes.filter(function (x) { return parents.indexOf(x) < 0; }));
-        refreshViews(r.order.length ? r.order : r.nodes);
-        return wait(700);
-      }).then(function () {
-        var r = C.applyCreate(state.cloud, { items: [it] }, focusId ? { focusId: focusId } : {});
-        if (focusId) parents = r.nodes;
-        refreshViews(r.children);
-        return wait(700);
-      });
-    });
-    return chain.then(function () { setCloudCaption(""); save(); return parents; });
+  var BUILD_BEAT = 380;
+  function cloudBuilder() {
+    var parents = [], chain = Promise.resolve(), opened = false;
+    return {
+      add: function (it) {
+        if (!it || !it.node) return;
+        if (!opened) { opened = true; openCloud(); setCloudCaption("Building your cloud..."); }
+        chain = chain.then(function () {
+          var r = C.applyCreate(state.cloud, { items: [{ node: it.node, card: it.card, children: [] }] });
+          parents = parents.concat(r.nodes.filter(function (x) { return parents.indexOf(x) < 0; }));
+          refreshViews(r.order.length ? r.order : r.nodes);
+          return wait(BUILD_BEAT);
+        }).then(function () {
+          var r = C.applyCreate(state.cloud, { items: [it] });
+          refreshViews(r.children);
+          save();
+          return wait(BUILD_BEAT);
+        });
+      },
+      done: function () { return chain.then(function () { if (opened) setCloudCaption(""); save(); return parents; }); }
+    };
   }
   /* A slim caption on the cloud while it is being built. */
   var cloudCaption = null;
@@ -627,11 +644,18 @@
     interests = interests || [];
     if (kind === "start" && !about && !interests.length) return; /* nothing offered yet: never a call */
     lock(true);
-    var m = push({ role: "model", local: true, streaming: true, text: kind === "start" ? "Thanks, " + state.name + ". I'm building your first topics now..." : "Let me build something new around " + (about || interests.join(", ") || "that") + "..." });
+    var m = push({ role: "model", local: true, streaming: true, pending: kind === "start" ? 3 : 1, got: [], text: kind === "start" ? "Thanks, " + state.name + ". I'm building your first topics now..." : "Let me build something new around " + (about || interests.join(", ") || "that") + "..." });
     var req = P.createRequest(state.cloud, kind, null, { interests: interests, about: about || "", grow: grow || "" });
-    postJson("/create", Object.assign(basePayload(null), { mode: "notice" }, req)).then(function (j) {
-      if (j && j.ok && Array.isArray(j.items) && j.items.length) {
-        return animateBuild(j.items, null).then(function (ids) {
+    var build = cloudBuilder(), seen = 0;
+    var take = function (it) { if (!it || !it.node) return; seen += 1; m.got.push(C.cleanLabel(it.node.name)); upsert(m); build.add(it); };
+    /* streamed: each parent goes on the cloud as soon as it is written; a plain JSON answer arrives all at once */
+    stream("/create", Object.assign(basePayload(null), { mode: "notice", stream: true }, req), { delta: function () {}, item: take }).then(function (r) {
+      if (r.ok && Array.isArray(r.items)) r.items.slice(seen).forEach(take);
+      return r.ok && seen ? { ok: true } : { ok: false, reason: r.reason };
+    }).then(function (j) {
+      m.pending = 0;
+      if (j && j.ok) {
+        return build.done().then(function (ids) {
           var names = ids.map(function (x) { return nodeOf(x) && nodeOf(x).label; }).filter(Boolean);
           /* what they enjoy, as the model read it: the new parents become the profile's interests (later asks build on them) */
           C.setProfile(state.cloud, { interests: names.slice(0, 5) });
@@ -642,6 +666,7 @@
         });
       }
       m.streaming = false;
+      m.got = [];
       m.text = reasonLead(j && (j.reason || j.error)) + (kind === "start" ? " So I couldn't build your first topics yet. Try again in a moment, or type something you'd like to learn about below." : " Let's try that again a little later.");
       m.retry = { kind: kind, about: about || "", grow: grow || "" };
       upsert(m);

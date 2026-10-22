@@ -63,15 +63,16 @@
    * detail), then each kind of mark shows the first DETAIL[kind][detail] of its list, so a growing card adds to the
    * same drawing instead of changing it.
    */
-  function landscape(id, detail) {
+  function landscape(id, detail, motif) {
     var d = Math.max(0, Math.min(4, Math.round(Number(detail) || 0)));
-    var R = rng(seedOf("land:" + id));
-    var horizon = 34 + R() * 14, hasWater = R() < 0.55, hasTrees = R() < 0.8, hasBirds = R() < 0.65, hasSun = R() < 0.4;
+    var R = rng(seedOf("land:" + id)), place = motifPlace(id, motif || "");
+    /* with a motif the land sits lower and quieter (the emblem layout lowest), so the drawing reads */
+    var horizon = (place ? (place.layout === 1 ? 50 : 42) : 34) + R() * (place ? 8 : 14), hasWater = R() < 0.55, hasTrees = R() < 0.8, hasBirds = R() < 0.65, hasSun = R() < 0.4;
     var waterY = hasWater ? r1(Math.min(LH - 12, horizon + 24 + R() * 10)) : LH;
     var n = 3 + (R() < 0.5 ? 1 : 0), layers = [], hatch = [], trees = [], birds = [], ripples = [], i, j;
     for (i = 0; i < n; i++) {
       var depth = i / (n - 1); /* 0 far .. 1 near */
-      var base = horizon + i * (hasWater ? 7 : 11) + 6, amp = (1 - depth * 0.6) * (14 + R() * 18);
+      var base = horizon + i * (hasWater ? 7 : 11) + 6, amp = (1 - depth * 0.6) * (14 + R() * 18) * (place ? 0.6 : 1);
       var pts = ridge(R, base, amp);
       layers.push({ depth: r1(depth), line: line(pts), fill: line(pts) + " L" + LW + " " + LH + " L0 " + LH + " Z" });
       /* short slanted strokes just under the ridge: the sketch shading */
@@ -93,10 +94,107 @@
     if (hasWater) for (j = 0; j < 12; j++) { var ry = r1(waterY + 2 + R() * (LH - waterY - 3)), rx = r1(R() * (LW - 14)); ripples.push({ x1: rx, x2: r1(rx + 4 + R() * 10), y: ry }); }
     var sun = hasSun ? { x: r1(18 + R() * 84), y: r1(10 + R() * 12), r: r1(4 + R() * 3) } : null;
     return {
-      id: String(id), detail: d, w: LW, h: LH, layers: layers, water: hasWater ? { y: waterY } : null, sun: sun,
+      id: String(id), detail: d, w: LW, h: LH, layers: layers, water: hasWater ? { y: waterY } : null, sun: place ? null : sun, motif: place,
       hatch: take(hatch, DETAIL.hatch[d]), trees: hasTrees ? take(trees, DETAIL.trees[d]) : [], birds: hasBirds ? take(birds, DETAIL.birds[d]) : [], ripples: take(ripples, DETAIL.ripples[d]),
       totals: { hatch: hatch.length, trees: hasTrees ? trees.length : 0, birds: hasBirds ? birds.length : 0, ripples: ripples.length }
     };
+  }
+
+  /* ---------- motifs: a small line drawing that hints at the topic ---------- */
+  /*
+   * One minimal line drawing per motif name (24 x 24 box): "M..." is a path, "c x y r" a circle, "e x y rx ry deg" an
+   * ellipse. Drawn in the card's ink over the landscape. The names are IkoCloud.MOTIFS (the creation call picks one).
+   */
+  var MOTIF_ART = {
+    mountain: ["M2 20 L9 8 L13 14 L16 10 L22 20 Z", "M7.6 10.4 L9 8 L10.4 10.4"],
+    wave: ["M2 14 C5 10 8 10 10 14 C12 18 15 18 18 14 C19.5 12 21 11.5 22 12", "M2 19 C5 16 8 16 10 19 C12 21 15 21 18 19"],
+    leaf: ["M5 19 C5 9 11 4 20 4 C20 13 15 19 5 19 Z", "M5 19 L14 10"],
+    tree: ["M12 21 L12 13", "M12 3 C7 3 5 7 6 10 C4 12 6 15 9 14 C10 16 14 16 15 14 C18 15 20 12 18 10 C19 7 17 3 12 3 Z"],
+    flower: ["M12 21 L12 12", "M12 12 C9 12 8 9 10 8 C8 6 10 3 12 5 C14 3 16 6 14 8 C16 9 15 12 12 12 Z", "M12 17 C14 15 16 15 17 16"],
+    seed: ["M12 21 L12 14", "M12 14 C8 14 6 11 6 8 C9 8 12 10 12 14", "M12 14 C12 10 15 7 19 7 C19 11 16 14 12 14", "M6 21 L18 21"],
+    sun: ["c 12 12 4", "M12 2 L12 5 M12 19 L12 22 M2 12 L5 12 M19 12 L22 12 M4.9 4.9 L7 7 M17 17 L19.1 19.1 M4.9 19.1 L7 17 M17 7 L19.1 4.9"],
+    moon: ["M15 3 A9 9 0 1 0 21 15 A7 7 0 1 1 15 3 Z"],
+    star: ["M12 3 L14.6 9 L21 9.5 L16 13.6 L17.6 20 L12 16.6 L6.4 20 L8 13.6 L3 9.5 L9.4 9 Z"],
+    planet: ["c 12 12 5", "M3.5 15.5 C1 18.5 9 17 14 14 C19 11 23.5 7 20.5 6.2"],
+    cloud: ["M7 18 C4 18 3 15 5 13.5 C4.5 10 8 9 9.5 10.5 C10.5 7 16 7 16.5 11 C19.5 10.5 21.5 13 20 15.5 C21 17.5 19 18 18 18 Z"],
+    flame: ["M12 3 C13 7 18 9 18 14 C18 18 15 21 12 21 C9 21 6 18 6 14 C6 11 8 10 9 8 C9.5 10 10.5 11 11.5 11 C11 8 11 5 12 3 Z", "M12 21 C10.5 20 10 18 11 16 C11.5 17 12.5 17 13 16 C14 18 13.5 20 12 21"],
+    drop: ["M12 3 C15 8 18 11 18 15 A6 6 0 0 1 6 15 C6 11 9 8 12 3 Z", "M9 15 C9 17 10 18 11.5 18.5"],
+    gear: ["c 12 12 6", "c 12 12 2.2", "M12 3 L12 6 M12 18 L12 21 M3 12 L6 12 M18 12 L21 12 M5.6 5.6 L7.8 7.8 M16.2 16.2 L18.4 18.4 M5.6 18.4 L7.8 16.2 M16.2 7.8 L18.4 5.6"],
+    bridge: ["M2 16 L22 16", "M2 16 C6 9 18 9 22 16", "M6 12.6 L6 16 M9 11 L9 16 M12 10.6 L12 16 M15 11 L15 16 M18 12.6 L18 16", "M4 16 L4 20 M20 16 L20 20"],
+    house: ["M3 11 L12 4 L21 11", "M5 9.5 L5 20 L19 20 L19 9.5", "M10 20 L10 14 L14 14 L14 20"],
+    book: ["M12 6 C9 4 6 4 3 5 L3 19 C6 18 9 18 12 20 C15 18 18 18 21 19 L21 5 C18 4 15 4 12 6 Z", "M12 6 L12 20"],
+    pen: ["M4 20 L5 15 L16 4 L20 8 L9 19 Z", "M14 6 L18 10", "M4 20 L8 19"],
+    brush: ["M20 3 L11 12", "M11 12 C8 11 6 13 6 15 C6 18 4 19 3 20 C7 21 11 20 12 17 C13 15 12 13 11 12 Z"],
+    note: ["M9 18 L9 5 L19 3 L19 16", "M9 9 L19 7", "e 6.5 18 2.5 2 0", "e 16.5 16 2.5 2 0"],
+    atom: ["e 12 12 9 3.4 0", "e 12 12 9 3.4 60", "e 12 12 9 3.4 -60", "c 12 12 1.2"],
+    cell: ["e 12 12 9 7 -15", "c 13 11 2.8", "c 7 14 0.8", "c 17 16 0.8", "c 8 9 0.6"],
+    eye: ["M2 12 C6 6 18 6 22 12 C18 18 6 18 2 12 Z", "c 12 12 3.2", "c 12 12 1"],
+    hand: ["M8 21 L6 14 C5 12 7 11 8 13 L9 15 L9 5 C9 3.5 11 3.5 11 5 L11 12 L11 4 C11 2.5 13 2.5 13 4 L13 12 L13 5 C13 3.5 15 3.5 15 5 L15 12 L15 7 C15 5.5 17 5.5 17 7 L17 15 C17 18 15 21 12 21 Z"],
+    heart: ["M12 20 C6 16 3 12 3 8.5 C3 5.5 5.5 4 7.5 4 C9.5 4 11 5.5 12 7 C13 5.5 14.5 4 16.5 4 C18.5 4 21 5.5 21 8.5 C21 12 18 16 12 20 Z"],
+    chart: ["M3 3 L3 21 L21 21", "M6 17 L10 12 L13 15 L20 7", "M17 7 L20 7 L20 10"],
+    clock: ["c 12 12 9", "M12 7 L12 12 L16 14"],
+    map: ["M3 6 L9 4 L15 6 L21 4 L21 18 L15 20 L9 18 L3 20 Z", "M9 4 L9 18 M15 6 L15 20"],
+    compass: ["c 12 12 9", "M12 5 L14 12 L12 19 L10 12 Z", "M10 12 L14 12"],
+    bulb: ["M9 17 C9 14 6 13 6 9 A6 6 0 0 1 18 9 C18 13 15 14 15 17 Z", "M9.5 20 L14.5 20", "M10 17 L10 13 L12 14.5 L14 13 L14 17"],
+    puzzle: ["M4 8 L9 8 C9 5 13 5 13 8 L18 8 L18 12 C21 12 21 16 18 16 L18 20 L4 20 L4 16 C7 16 7 12 4 12 Z"],
+    ball: ["c 12 12 9", "M3.5 9 C8 11 16 11 20.5 9", "M3.5 15 C8 13 16 13 20.5 15", "M12 3 C9 8 9 16 12 21"],
+    bowl: ["M3 11 L21 11 C21 16 17 20 12 20 C7 20 3 16 3 11 Z", "M9 8 C9 6 10 6 10 4 M13 8 C13 6 14 6 14 4", "M8 20 L16 20"],
+    cup: ["M5 8 L17 8 L16 19 C16 20 15 20 14 20 L8 20 C7 20 6 20 6 19 Z", "M17 10 C20 10 20 15 16.5 15", "M9 5 C9 4 10 4 10 3 M13 5 C13 4 14 4 14 3"],
+    globe: ["c 12 12 9", "e 12 12 4 9 0", "M3 12 L21 12", "M4.6 7 L19.4 7 M4.6 17 L19.4 17"],
+    voice: ["M4 5 L20 5 C21 5 21 6 21 7 L21 14 C21 15 20 16 19 16 L11 16 L6 20 L7 16 L5 16 C4 16 3 15 3 14 L3 7 C3 6 3 5 4 5 Z", "M7 9 L17 9 M7 12 L14 12"],
+    people: ["c 8 8 2.5", "c 16 8 2.5", "M3 19 C3 14 13 14 13 19", "M11 19 C11 14 21 14 21 19"],
+    code: ["M8 7 L3 12 L8 17", "M16 7 L21 12 L16 17", "M14 4 L10 20"],
+    scale: ["M12 3 L12 21 M7 21 L17 21 M4 7 L20 7", "M4 7 L1.5 13 L6.5 13 Z", "M20 7 L17.5 13 L22.5 13 Z"],
+    feather: ["M5 21 L18 8", "M18 3 C10 4 6 10 6 18 C14 18 20 14 21 6 C20 4 19 3 18 3 Z", "M10 14 L14 14 M12 11 L16 11"],
+    key: ["c 7 12 4", "M11 12 L21 12 M18 12 L18 15 M15 12 L15 14"],
+    boat: ["M3 15 L21 15 L18 19 L6 19 Z", "M12 15 L12 3 L19 13 L12 13", "M2 21.5 C5 20.5 7 22.5 10 21.5 C13 20.5 15 22.5 18 21.5"],
+    paw: ["e 12 16 4 3.2 0", "c 6.5 10.5 1.8", "c 10 7 1.8", "c 14 7 1.8", "c 17.5 10.5 1.8"]
+  };
+  /*
+   * For topics without a motif from the creation call (older saves, chat-grown topics): a keyword match on the title,
+   * then on the chain above it (the first rule that matches wins); none matching is a plain scene ("").
+   */
+  var MOTIF_WORDS = [
+    ["mountain", /volcan|mountain|hik|climb|geolog|rock|magma|lava|earthquake/], ["wave", /ocean|sea\b|wave|swim|surf|tide|river|lake/],
+    ["paw", /animal|pet|dog|cat\b|wildlife|zoo|mammal|insect|dinosaur|monkey|horse|whale|\bfish|\bbears?\b/], ["feather", /bird|feather|flight|fly/],
+    ["leaf", /plant|garden|leaf|botan|herb|grow(ing)? food|compost/], ["tree", /tree|forest|wood(?!work)/], ["flower", /flower|bloom|petal/],
+    ["seed", /seed|sprout|farm|patien|habit|growth/], ["sun", /\bsun|solar|light\b|season/], ["moon", /moon|night|sleep|dream/],
+    ["star", /\bstars?\b|constell|astronom|galax/], ["planet", /planet|space|orbit|mars|jupiter|rocket/], ["cloud", /weather|cloud|rain|climate|storm|wind/],
+    ["bowl", /bak|bread|cook|recipe|food|kitchen|soup|meal|nutrition|sourdough|pastr/], ["cup", /coffee|\btea\b|drink|brew/],
+    ["flame", /fire|flame|heat|burn|energy|candle/], ["drop", /water|drop|liquid|hydrat/], ["atom", /atom|physic|electr|quantum|chemi|molecul/],
+    ["cell", /cell|biolog|body|gene|dna|microb|anatom|health/], ["gear", /machin|engine|mechan|robot|gear|tool|repair|fix/],
+    ["bridge", /bridge|engineer|construct|build/], ["house", /house|home|architect|room|furniture|shelf|shelves/],
+    ["book", /\bread|book|\bstor(y|ies)\b|literat|novel|poem|poetry|librar/], ["pen", /writ|letter|essay|grammar|spell|journal|calligra/],
+    ["brush", /paint|draw|\bart\b|\barts\b|sketch|colou?r|watercolo|illustrat|design/], ["note", /music|song|guitar|piano|chord|\bsing|rhythm|melod|drum|violin/],
+    ["eye", /see\b|vision|observ|photo|camera|focus|attention|notic/], ["hand", /craft|knit|sew|crochet|origami|clay|pottery|woodwork|hand/],
+    ["heart", /kind|emotion|feel|care|heart|calm|gratitude|confiden/], ["chart", /data|statistic|chart|econom|money|financ|budget|graph|percent/],
+    ["clock", /time|history|clock|calendar|routine|ancient|century|medieval/], ["map", /map|geograph|travel|countr|cit(y|ies)\b|continent/],
+    ["compass", /navig|direction|compass|orient|explor|adventure/], ["bulb", /idea|invent|think|question|curio|creativ|problem solv/],
+    ["puzzle", /puzzle|logic|riddle|chess|game|math|number|fraction|algebra|geometr|count/], ["ball", /sport|ball|football|soccer|tennis|basket|\brun|fitness|exercis|yoga|swim/],
+    ["globe", /world|global|language|culture|french|spanish|japanese|german|earth\b/], ["voice", /speak|talk|voice|convers|listen|present|debate|speech/],
+    ["people", /friend|team|people|social|communit|family|together|collaborat/], ["code", /code|coding|program|python|javascript|software|comput|app\b|web/],
+    ["scale", /law|justice|fair|ethic|balance|right(s)?\b|govern/], ["key", /\bkey|secur|lock|crypt|secret|password/], ["boat", /boat|sail|ship|kayak|canoe/]
+  ];
+  function motifFor(label, chain, own) {
+    if (own && MOTIF_ART[own]) return own;
+    var texts = [String(label || "")].concat((chain || []).slice().reverse());
+    for (var i = 0; i < texts.length; i++) {
+      var t = texts[i].toLowerCase();
+      for (var j = 0; j < MOTIF_WORDS.length; j++) if (MOTIF_WORDS[j][1].test(t)) return MOTIF_WORDS[j][0];
+    }
+    return "";
+  }
+  /*
+   * Where the motif sits in the plate, from the topic id: one of three compositions (standing on the land to one side,
+   * centred above a low horizon like an emblem, or small beside a higher horizon), a size and a slight tilt.
+   */
+  function motifPlace(id, motif) {
+    if (!motif) return null;
+    var R = rng(seedOf("motif:" + id)), v = Math.floor(R() * 3);
+    var size = v === 0 ? 44 + R() * 8 : v === 1 ? 40 + R() * 6 : 34 + R() * 6;
+    var x = v === 0 ? (R() < 0.5 ? 62 + R() * 10 : 10 + R() * 10) : v === 1 ? (LW - size) / 2 + (R() - 0.5) * 6 : (R() < 0.5 ? 8 + R() * 8 : 74 + R() * 6);
+    var y = v === 1 ? 6 + R() * 5 : v === 0 ? 14 + R() * 8 : 10 + R() * 10;
+    return { name: motif, layout: v, x: r1(x), y: r1(y), s: r1(size / 24 * 100) / 100, rot: r1((R() - 0.5) * 14) };
   }
 
   /* Everything a card shows, from the cloud. Works for deck cards whose topic is gone too (from the stored entry). */
@@ -112,7 +210,7 @@
       corpus: C.corpusOf(cloud, id), absorbedInto: C.absorbedInto(cloud, id),
       /* v9: prerequisites still to finish (quiet "After X"; the card stays open and learnable) */
       after: n ? C.lockedBy(cloud, id).map(function (x) { return cloud.nodes[x].label; }) : [],
-      color: C.cardColor(cloud, id), art: landscape(id, g.detail)
+      color: C.cardColor(cloud, id), art: landscape(id, g.detail, motifFor(n ? n.label : e.label, C.chainOf(cloud, id), n ? n.motif : ""))
     };
   }
   /* "A", "A and B", "A, B and C" */
@@ -162,7 +260,22 @@
     a.trees.forEach(function (x) { tr.appendChild(svgEl(doc, "path", { d: x.d })); });
     a.birds.forEach(function (b) { tr.appendChild(svgEl(doc, "path", { d: b.d, "stroke-width": 0.45 })); });
     svg.appendChild(tr);
+    if (a.motif && MOTIF_ART[a.motif.name]) svg.appendChild(motifSvg(doc, a.motif, c, t));
     return svg;
+  }
+  /* The motif: a paper halo under a pen line in the card's ink, the line a touch firmer as the card's colour grows. */
+  function motifSvg(doc, m, c, t) {
+    var g = svgEl(doc, "g", { class: "motif", "data-motif": m.name, transform: "translate(" + m.x + " " + m.y + ") rotate(" + m.rot + " " + 12 * m.s + " " + 12 * m.s + ") scale(" + m.s + ")", fill: "none", "stroke-linecap": "round", "stroke-linejoin": "round" });
+    var w = 1 / m.s;
+    [["hsla(40, 59%, 90%, 0.85)", 3.2 * w], [hsla(c, 0.72 + 0.25 * t, -8), 1.35 * w]].forEach(function (pen) {
+      MOTIF_ART[m.name].forEach(function (p) {
+        var a = p.split(" "), at = { stroke: pen[0], "stroke-width": r1(pen[1] * 100) / 100 };
+        if (a[0] === "c") g.appendChild(svgEl(doc, "circle", Object.assign(at, { cx: a[1], cy: a[2], r: a[3] })));
+        else if (a[0] === "e") g.appendChild(svgEl(doc, "ellipse", Object.assign(at, { cx: a[1], cy: a[2], rx: a[3], ry: a[4], transform: "rotate(" + a[5] + " " + a[1] + " " + a[2] + ")" })));
+        else g.appendChild(svgEl(doc, "path", Object.assign(at, { d: p })));
+      });
+    });
+    return g;
   }
   /*
    * A card. opts: { onOpen, size: "full" (the holder) | "tile" (deck, draw) | "mini" (art only, in chat) }.
@@ -441,7 +554,7 @@
 
   var api = {
     DETAIL: DETAIL, REVIEW_DAYS: REVIEW_DAYS, DRAW: DRAW,
-    seedOf: seedOf, rng: rng, landscape: landscape, cardSpec: cardSpec, listOf: listOf, chainText: chainText, chainLinks: chainLinks, render: render, artSvg: artSvg,
+    seedOf: seedOf, rng: rng, landscape: landscape, motifFor: motifFor, motifPlace: motifPlace, MOTIF_ART: MOTIF_ART, cardSpec: cardSpec, listOf: listOf, chainText: chainText, chainLinks: chainLinks, render: render, artSvg: artSvg,
     renderCorpus: renderCorpus, pipsFor: pipsFor, evolveKey: evolveKey,
     coverage: coverage, subtree: subtree, albumModel: albumModel, hubChildren: hubChildren, renderSlot: renderSlot, ALBUM: ALBUM,
     dayOf: dayOf, weigh: weigh, drawSession: drawSession, balance: balance

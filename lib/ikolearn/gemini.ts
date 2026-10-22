@@ -3,6 +3,7 @@
  * IkoLearn's Gemini adapter (the default provider; see llm.ts for how one is chosen).
  * - geminiStream(): streamGenerateContent?alt=sse, yields text pieces as they arrive.
  * - geminiJson(): generateContent with a response schema (cards, adjacent topics, paths).
+ * - geminiJsonStream(): the same JSON request streamed (the creation call), so the first items can be used as they arrive.
  * Free-tier models only; one fallback model when the request fails, times out or the model name is retired (never mid-reply).
  * The key goes in a header, server-side only, and never appears in responses or logs.
  */
@@ -67,7 +68,15 @@ function shouldFallBack(f: Fail) {
 }
 
 export async function geminiStream(cfg: LlmConfig, system: string, contents: Content[], fetchImpl: typeof fetch, opts: StreamOptions = {}): Promise<StreamStart> {
-  const body = chatBody(system, contents, opts);
+  return streamWithFallback(cfg, chatBody(system, contents, opts), fetchImpl, opts);
+}
+
+/** A JSON (response schema) request, streamed: pieces of the JSON text as they arrive (the caller parses as it goes). */
+export async function geminiJsonStream(cfg: LlmConfig, system: string, user: string, schema: unknown, fetchImpl: typeof fetch, opts: StreamOptions = {}): Promise<StreamStart> {
+  return streamWithFallback(cfg, jsonBody(system, user, schema, opts), fetchImpl, opts);
+}
+
+async function streamWithFallback(cfg: LlmConfig, body: unknown, fetchImpl: typeof fetch, opts: StreamOptions): Promise<StreamStart> {
   const first = await openStream(cfg, cfg.model, body, fetchImpl, opts, "primary");
   if (first.ok || !cfg.fallback || cfg.model === cfg.fallback) return first;
   return shouldFallBack(first) ? openStream(cfg, cfg.fallback, body, fetchImpl, opts, "fallback") : first;

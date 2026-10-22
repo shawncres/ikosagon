@@ -100,7 +100,9 @@
       /* v8: merge level (0 = not merged, 1 = I, 2 = II ...), when it last merged, the one-time chain repair */
       ml: 0, mergedAt: 0, repaired: 0,
       /* v9: prerequisites, node ids that should be done first (from the creation call); none by default */
-      pre: []
+      pre: [],
+      /* the card's line drawing (one of MOTIFS, from the creation call); "" = the device picks by keyword (deck.js) */
+      motif: ""
     };
     if (!n.parent) {
       n.hue = Number.isFinite(o.hue) && !hueUsed(cloud, o.hue) ? o.hue : subjectHue(cloud, o.label); /* the name the model gave is kept as is */
@@ -499,59 +501,62 @@
     var s = cloud.nodes[a[0]];
     return s && s.hue != null ? s.hue : 30;
   }
+  /* A node's own colour on the cloud as { h, s, l } (a dotted placeholder gets the colour it will have): cards use it too. */
+  function toneOf(cloud, n) {
+    if (!n) return { h: SEPIA, s: 30, l: 22 };
+    var h = hueOf(cloud, n.id);
+    if (!n.parent) return { h: h, s: 52, l: 50 };
+    var a = ancestry(cloud, n.id), i = Math.floor(hash(n.key) * 4);
+    return { h: h, s: 46, l: 34 + (((a.length - 2) * 6 + i * 5) % 26) };
+  }
   function colorOf(cloud, n) {
     if (!n) return "hsl(30, 30%, 22%)";
-    var a = ancestry(cloud, n.id);
-    var h = hueOf(cloud, n.id);
-    if (!n.parent) return "hsl(" + h + ", 52%, 50%)";
-    var i = Math.floor(hash(n.key) * 4);
-    var light = 34 + (((a.length - 2) * 6 + i * 5) % 26);
-    return n.ghost ? "hsla(" + h + ", 35%, 55%, 0.55)" : "hsl(" + h + ", 46%, " + light + "%)";
+    var t = toneOf(cloud, n);
+    if (n.ghost) return "hsla(" + t.h + ", 35%, 55%, 0.55)";
+    return "hsl(" + t.h + ", " + t.s + "%, " + t.l + "%)";
   }
 
   /*
-   * Card colour: every card starts sepia and moves toward its subject's hue as it grows (stage 0 to 4).
-   * The only place card colour is worked out; the deck and any card design read it from here.
+   * Card colour: a card always carries its node's colour on the cloud (the same hue), quiet and sepia-toned while it is
+   * new, and fuller as it grows (stage 0 to 4); at stage 4 it is the node's own colour. The only place card colour is
+   * worked out; the deck and any card design read it from here.
    */
   var SEPIA = 34;
   /* How far the ink has moved from sepia toward the chain's hue at each stage (mixed in RGB, so it never passes through other hues). */
-  var MIX = [0, 0.18, 0.4, 0.65, 1];
+  var MIX = [0.38, 0.55, 0.7, 0.85, 1];
   var WASH = [0.06, 0.1, 0.17, 0.25, 0.32];
-  function rgbOf(h, s, l) {
-    s /= 100; l /= 100;
-    var k = function (n) { return (n + h / 30) % 12; }, a = s * Math.min(l, 1 - l);
-    var f = function (n) { return l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1)); };
-    return [f(0) * 255, f(8) * 255, f(4) * 255];
-  }
-  function hslOf(rgb) {
-    var r = rgb[0] / 255, g = rgb[1] / 255, b = rgb[2] / 255, mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn, h = 0, s = 0;
-    if (d) {
-      s = d / (1 - Math.abs(2 * l - 1));
-      h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
-      h = (h * 60 + 360) % 360;
-    }
-    return [Math.round(h), Math.round(s * 100), Math.round(l * 100)];
-  }
   /*
-   * A card's colours at a stage (0 sepia .. 4 achieved): ink (lines), soft (fills), wash (the watercolour that bleeds into
-   * the paper, in the chain's own hue from stage 1), plus the numbers for renderers that need their own alpha.
+   * tone: the node's colour on the cloud ({ h, s, l }, from toneOf); without one, the subject hue at a standard tone.
+   * The hue never changes (so a card always matches its node); saturation and lightness move from quiet sepia-toned
+   * (stage 0) to the node's own (stage 4), with the ink kept dark enough to read.
    */
-  function evolveColor(hue, stage) {
-    var st = Math.max(0, Math.min(4, Math.round(Number(stage) || 0))), target = hue == null ? SEPIA : Math.round(hue);
-    var a = rgbOf(SEPIA, 24, 36), b = rgbOf(target, 58, 42), t = MIX[st];
-    var m = [0, 1, 2].map(function (i) { return a[i] + (b[i] - a[i]) * t; }), hsl = hslOf(m);
-    var h = st === 0 ? SEPIA : st === 4 ? target : hsl[0], sat = st === 0 ? 24 : st === 4 ? 58 : hsl[1], light = st === 0 ? 36 : st === 4 ? 42 : hsl[2];
+  function evolveColor(hue, stage, tone) {
+    var st = Math.max(0, Math.min(4, Math.round(Number(stage) || 0))), t = MIX[st];
+    var h = tone ? Math.round(tone.h) : hue == null ? SEPIA : Math.round(hue);
+    var ts = tone ? tone.s : 58, tl = Math.max(30, Math.min(46, tone ? tone.l : 42));
+    var sat = Math.round(QUIET.s + (ts - QUIET.s) * t), light = Math.round(QUIET.l + (tl - QUIET.l) * t);
     return {
-      stage: st, hue: h, sat: sat, light: light, mix: t, base: target,
+      stage: st, hue: h, sat: sat, light: light, mix: t, base: h,
       ink: "hsl(" + h + ", " + sat + "%, " + light + "%)",
       soft: "hsla(" + h + ", " + sat + "%, " + light + "%, " + (0.2 + 0.25 * t).toFixed(2) + ")",
-      wash: "hsla(" + (st ? target : SEPIA) + ", 55%, 60%, " + WASH[st].toFixed(2) + ")"
+      wash: "hsla(" + h + ", " + Math.round(30 + 25 * t) + "%, 60%, " + WASH[st].toFixed(2) + ")"
     };
   }
+  /* where a new card starts: sepia's quiet saturation and lightness (in the node's own hue) */
+  var QUIET = { s: 16, l: 38 };
   function cardColor(cloud, id) {
-    var g = growthOf(cloud, id), e = deckEntry(cloud, id);
-    return evolveColor(cloud.nodes[id] ? hueOf(cloud, id) : e ? e.hue : SEPIA, g ? g.stage : e ? e.best : 0);
+    var g = growthOf(cloud, id), e = deckEntry(cloud, id), n = cloud.nodes[id];
+    return evolveColor(n ? hueOf(cloud, id) : e ? e.hue : SEPIA, g ? g.stage : e ? e.best : 0, n ? toneOf(cloud, n) : null);
   }
+
+  /*
+   * The card motifs (the fixed vocabulary the creation call picks from; lib/ikolearn/prompts.ts MOTIFS and deck.js
+   * MOTIF_ART carry the same list, the checks keep them equal). Anything else is "".
+   */
+  var MOTIFS = ["mountain", "wave", "leaf", "tree", "flower", "seed", "sun", "moon", "star", "planet", "cloud", "flame", "drop", "gear",
+    "bridge", "house", "book", "pen", "brush", "note", "atom", "cell", "eye", "hand", "heart", "chart", "clock", "map",
+    "compass", "bulb", "puzzle", "ball", "bowl", "cup", "globe", "voice", "people", "code", "scale", "feather", "key", "boat", "paw"];
+  function cleanMotif(v) { var m = String(v == null ? "" : v).trim().toLowerCase(); return MOTIFS.indexOf(m) >= 0 ? m : ""; }
 
   /* Size of a level in the layout: each level down is 0.6x the one above, so the tree can keep branching. */
   function levelScale(depth) { return Math.pow(0.6, Math.max(0, depth - 1)); }
@@ -707,6 +712,7 @@
       }
       if (!n) return;
       if (n.ghost) { n.ghost = false; n.born = t; n.weight = Math.max(n.weight, 0.5); }
+      if (!n.motif) n.motif = cleanMotif(it.node.motif);
       var card = it.card || {};
       if (card.blurb && (!n.blurb || !opts.focusId)) setBlurb(cloud, n.id, card.blurb);
       if (card.goal && (!n.goal || !opts.focusId)) n.goal = cleanGoal(card.goal); /* "what comes next" never rewrites a parent's card */
@@ -740,6 +746,7 @@
         var sc = Number(c.score);
         if (Number.isFinite(sc)) { hit.imp = clamp01(sc > 1 ? sc / 100 : sc); hit.impAt = t; }
         if (Array.isArray(c.needs) && c.needs.length) needs.push([hit.id, c.needs]);
+        if (!hit.motif) hit.motif = cleanMotif(c.motif);
         if (before.indexOf(hit.id) < 0 && out.children.indexOf(hit.id) < 0) out.children.push(hit.id);
       });
       r.added.forEach(function (x) { if (out.order.indexOf(x) < 0) out.order.push(x); });
@@ -1423,7 +1430,13 @@
     return JSON.stringify({ v: VERSION, name: cloud.name, seq: cloud.seq, rev: cloud.rev, created: cloud.created, next: cloud.next || 0, n: n, p: paths, f: forks, cards: cloud.cards,
       k: (cloud.deck || []).map(function (e) { var r = [e.id, e.label, e.subject, e.hue, s(e.at), e.best || 0, e.chain || [], e.blurb || "", s(e.ach)]; if (e.tb || e.ml || e.inn || (e.co && e.co.length)) r.push(e.tb || 0, e.ml || 0, e.inn || 0, e.co && e.co.length ? e.co : 0); return r; }), g: cloud.draws || [], ss: cloud.sessions || 0,
       t: tests, sg: sg, fl: cloud.active || 0, pr: profileRow(cloud.profile),
-      ev: (cloud.events || []).map(function (e) { return [s(e.t), e.k, e.id, e.lv || 0, e.ids || [], e.why || ""]; }) });
+      ev: (cloud.events || []).map(function (e) { return [s(e.t), e.k, e.id, e.lv || 0, e.ids || [], e.why || ""]; }), mo: motifMap(cloud) });
+  }
+  /* the card motifs, { id: motif }, only for nodes that have one (an optional v9 field: older v9 readers ignore it) */
+  function motifMap(cloud) {
+    var m = {};
+    cloud.order.forEach(function (id) { var x = cloud.nodes[id]; if (x.motif) m[id] = x.motif; });
+    return Object.keys(m).length ? m : undefined;
   }
   function profileRow(p) {
     p = p || newProfile();
@@ -1532,13 +1545,15 @@
           role: a[23] === 1 ? "core" : a[23] === 2 ? "optional" : "", off: typeof a[24] === "string" ? a[24] : null, made: a[25] === 1, bridged: ms(a[26]),
           absorbedInto: typeof a[27] === "string" ? a[27] : null, absorbed: Array.isArray(a[28]) ? a[28].filter(function (x) { return typeof x === "string"; }) : [],
           ml: Math.max(0, Math.min(99, Math.floor(Number(a[29]) || 0))), mergedAt: ms(a[30]), repaired: ms(a[31]),
-          pre: Array.isArray(a[32]) ? a[32].filter(function (x) { return typeof x === "string"; }).slice(0, PRE_MAX) : []
+          pre: Array.isArray(a[32]) ? a[32].filter(function (x) { return typeof x === "string"; }).slice(0, PRE_MAX) : [],
+          motif: ""
         };
       });
       /* v8 and older: no prerequisites; completion is stamped with the rules it was earned under (no gate), so nothing regresses */
       gateOff = c.v < 9;
       var out;
       try { out = finish(base, list, c.cards, c.p, { forks: c.f, deck: c.k, draws: c.g, sessions: c.ss, tests: c.t, suggest: c.sg, active: c.fl, profile: c.pr, events: c.ev }); } finally { gateOff = false; }
+      if (c.mo && typeof c.mo === "object") Object.keys(c.mo).forEach(function (id) { if (out.nodes[id]) out.nodes[id].motif = cleanMotif(c.mo[id]); });
       var nowS = Math.round(Date.now() / 1000) * 1000; /* whole seconds, as stored, so a migrated cloud round-trips exactly */
       if (c.v < 5) adoptComputerScience(out, nowS); /* v4 and older: Computer Science becomes its own subject */
       if (c.v < 6) { pruneSeeds(out); joinDeck(out, nowS); } /* v5 and older: untouched starter seeds go; everything learned stays */
@@ -1560,7 +1575,7 @@
         weight: Number(n.weight) || 0, mastery: clamp01(Number(n.mastery) || 0), born: Number(n.born) || 0, touched: Number(n.touched) || 0,
         hue: n.parent ? undefined : (Number.isFinite(n.hue) ? n.hue : 30), lastStruggle: n.lastStruggle || undefined, cards: [],
         spent: 0, engaged: 0, end: false, correct: 0, heat: 0, heatAt: 0, blurb: "", achievedAt: 0, pending: null, doneAt: 0, imp: null, impAt: 0, goal: "", asked: 0,
-        role: "", off: null, made: false, bridged: 0, absorbedInto: null, absorbed: [], ml: 0, mergedAt: 0, repaired: 0, pre: []
+        role: "", off: null, made: false, bridged: 0, absorbedInto: null, absorbed: [], ml: 0, mergedAt: 0, repaired: 0, pre: [], motif: ""
       };
     });
     gateOff = true;
@@ -1607,7 +1622,7 @@
     isAchieved: isAchieved, placeChain: placeChain, HEAT: HEAT, heatNow: heatNow, inDeck: inDeck, deckEntry: deckEntry, logDraw: logDraw,
     isDone: isDone, doneChildren: doneChildren, setPending: setPending, applyPending: applyPending, TEST_PASS: TEST_PASS, testOf: testOf,
     markOffered: markOffered, recordTest: recordTest, adoptComputerScience: adoptComputerScience, CS_TOPICS: CS_TOPICS,
-    evolveColor: evolveColor, cardColor: cardColor, applyChoices: applyChoices, pickChoice: pickChoice, isTerminal: isTerminal, otherBranches: otherBranches, hash: hash,
+    evolveColor: evolveColor, cardColor: cardColor, toneOf: toneOf, MOTIFS: MOTIFS, cleanMotif: cleanMotif, applyChoices: applyChoices, pickChoice: pickChoice, isTerminal: isTerminal, otherBranches: otherBranches, hash: hash,
     attachCard: attachCard, cardsFor: cardsFor, summarize: summarize, knownUnder: knownUnder, subjectLabels: subjectLabels,
     subjects: subjects, childrenOf: childrenOf, ancestry: ancestry, depthOf: depthOf, subjectOf: subjectOf, trail: trail, index: index,
     findSubject: findSubject, findTopic: findTopic, findAny: findAny, norm: norm, cleanLabel: cleanLabel,

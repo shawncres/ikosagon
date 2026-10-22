@@ -332,3 +332,20 @@ The script clones the repo into a temp folder, checks out the sha, writes no `.v
 - **Accounts and sync.** Everything goes through `save()`/`load()` in `app.js` and `serialize`/`deserialize`. Swap that pair for a server store when we add sign-in.
 - **Another model.** Set the env vars above. For a provider that isn't OpenAI-compatible, add one adapter next to `gemini.ts` and a branch in `llmConfig`.
 - **New prompt roles.** Add a system builder and schema in `prompts.ts`, a handler in `service.ts`, and a thin route.
+
+## Speed: the streamed first build
+
+The first build (`/create`, kinds `start` and `more`) asks for `stream: true` and gets NDJSON: `{t:"item",item}` as soon as
+each parent is written and valid (`completeItems` + `createItems`, the same rules as `parseCreate`, prefix-safe), then
+`{t:"done",kind,items}` or `{t:"error",reason}`. The app puts each parent on the cloud as it arrives (`cloudBuilder`,
+380 ms beats) and shows quiet placeholders until then. Measured on the free tier (same input): the first parent at
+~1.7-2.7 s instead of nothing until ~4.3-5 s. Streams give up on a silent provider after 12 s (`requestTimeoutMs`) and
+try the fallback model, instead of 20 s. Thinking is already minimal on these models (no thought tokens measured).
+
+## Cards: colour and motifs
+
+A card's hue is always its node's hue on the cloud (`toneOf`); it starts quiet and sepia-toned and reaches the node's
+own tone when achieved. The creation call picks a `motif` per topic from a fixed vocabulary (`MOTIFS`, ~40 words, the
+same list in prompts.ts, cloud-model.js and deck.js); the device draws it in the plate, placed by a seed from the node
+id. Topics without one get a keyword match on the title or chain, else the plain scene. Motifs are stored in an
+optional `mo` map, so storage stays v9.
