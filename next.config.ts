@@ -38,6 +38,12 @@ const nextConfig: NextConfig = {
         destination: "/projects/ikoagent/:path*",
         permanent: true,
       },
+      // Ikosagon Learn (early homeschool concept) → IkoLearn, which supersedes it
+      {
+        source: "/projects/ikosagon-learn",
+        destination: "/projects/ikolearn",
+        permanent: true,
+      },
     ];
   },
 };

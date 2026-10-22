@@ -1013,6 +1013,9 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     ok(/Parent & instructor dashboard\*\* \(coming\)/.test(mdx), "roadmap names the parent & instructor dashboard as coming");
     ok(!/kickstarter\.com|https?:\/\/[^\s)]*kick|<form|<input/i.test(mdx), "Kickstarter is a plain mention: no link, no form");
     ok(!/shawn|cooper|resume|résumé/i.test(mdx), "no personal name or resume on the project page");
+    const oldFm = (fs.readFileSync("content/projects/ikosagon-learn.mdx", "utf8").split("---")[1]) || "";
+    ok(/unlisted:\s*true/.test(oldFm) && /featured:\s*false/.test(oldFm), "old Ikosagon Learn concept is unlisted (out of grid, homepage, sitemap, chat notes)");
+    ok(/source:\s*"\/projects\/ikosagon-learn",\s*destination:\s*"\/projects\/ikolearn",\s*permanent:\s*true/.test(cfg), "old concept URL permanently redirects to /projects/ikolearn");
   }
   ok(/fold/i.test(css) && /prefers-reduced-motion/.test(css), "card fold + reduced motion");
   const lessonJs = fs.readFileSync("public/ikolearn/lesson.js", "utf8");
