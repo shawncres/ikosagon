@@ -1001,7 +1001,19 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(!/generativelanguage|GEMINI_API_KEY|x-goog-api-key/.test(app + view + model + html), "client never talks to Gemini or sees the key");
   ok(/localStorage/.test(app) && !/document\.cookie/.test(app), "state in localStorage, no cookies");
   ok(/ikolearn\.v1\.name/.test(app) && /ikolearn\.v1\.cloud/.test(app) && /ikolearn\.v1\.thread/.test(app), "storage keys");
-  ok(/unlisted:\s*true/.test(mdx) && /featured:\s*false/.test(mdx) && /demo:\s*"\/ikolearn\/"/.test(mdx), "project page is unlisted and not featured");
+  {
+    const fm = mdx.split("---")[1] || "";
+    ok(!/unlisted:\s*true/.test(fm) && /featured:\s*true/.test(fm) && /demo:\s*"\/ikolearn\/"/.test(fm), "project page is listed and featured, demo opens /ikolearn/");
+    const desc = (fm.match(/^description:\s*"([^"]+)"/m) || [])[1] || "";
+    ok(desc.length >= 80 && desc.length <= 165, `meta description is 80-165 chars (${desc.length})`);
+    ok(/ogImage:\s*"\/projects\/ikolearn\/og\.png"/.test(fm) && /cover:\s*"\/projects\/ikolearn\/cover\.png"/.test(fm), "raster cover + OG image");
+    for (const f of ["cover.png", "og.png", "album.webp", "card-hub.webp", "lesson.webp", "cloud-phone.webp"]) ok(fs.existsSync("public/projects/ikolearn/" + f), "asset " + f);
+    const imgs = [...mdx.matchAll(/!\[([^\]]*)\]\((\/projects\/ikolearn\/[^)]+)\)/g)];
+    ok(imgs.length >= 4 && imgs.every(([, alt, src]) => alt.length > 30 && fs.existsSync("public" + src)), "gallery images exist with descriptive alt text");
+    ok(/Parent & instructor dashboard\*\* \(coming\)/.test(mdx), "roadmap names the parent & instructor dashboard as coming");
+    ok(!/kickstarter\.com|https?:\/\/[^\s)]*kick|<form|<input/i.test(mdx), "Kickstarter is a plain mention: no link, no form");
+    ok(!/shawn|cooper|resume|résumé/i.test(mdx), "no personal name or resume on the project page");
+  }
   ok(/fold/i.test(css) && /prefers-reduced-motion/.test(css), "card fold + reduced motion");
   const lessonJs = fs.readFileSync("public/ikolearn/lesson.js", "utf8");
   ok(/<script src="\/ikolearn\/lesson\.js/.test(html) && html.indexOf("lesson.js") < html.indexOf("app.js") && html.indexOf("cloud-model.js") < html.indexOf("lesson.js"), "lesson.js loads before app.js");

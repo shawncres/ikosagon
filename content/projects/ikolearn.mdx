@@ -1,48 +1,68 @@
 ---
 title: "IkoLearn"
 slug: "ikolearn"
-summary: "A learning companion with a map you can see. We at Ikosagon built IkoLearn around a point cloud centred on the learner's name: every conversation adds or strengthens topics, and dotted branches show what could come next. Calm, sepia, kept on your device."
+summary: "An alternative-education app for structured learning, in active development. We at Ikosagon are building it for homeschooling kids and self-directed learners: a learning cloud that grows from what you're curious about, collectible cards you earn, and short lessons that teach, then check."
+description: "IkoLearn is an alternative-education app for structured learning, for homeschooling kids and self-directed learners: an interest-led cloud, cards and short lessons."
 year: 2026
-updated: "2026-10-21T00:30:00-04:00"
-tags: ["AI", "Education", "Learning profile", "Product"]
-cover: "/projects/ikolearn/cover.svg"
+updated: "2026-10-21T20:00:00-04:00"
+tags: ["Education", "Homeschool", "AI", "Product"]
+cover: "/projects/ikolearn/cover.png"
 coverFit: "cover"
-featured: false
-unlisted: true
-status: "Early test"
+ogImage: "/projects/ikolearn/og.png"
+featured: true
+status: "In active development"
 demo: "/ikolearn/"
 linkLabel: "Open IkoLearn"
 ---
 
-IkoLearn is a chat-style learning companion with a visible, evolving learning profile. [Open IkoLearn](/ikolearn/).
+IkoLearn is an alternative-education app for **structured learning**. We at Ikosagon are building it for homeschooling families and for anyone learning on their own. It starts from what the learner is curious about and turns that into a clear path: topics in a sensible order, short lessons, a quick check, and cards that fill in as the learning sticks. **[Open IkoLearn →](/ikolearn/)**
 
-## A profile you can see
+It is an ongoing project, in active development. Everything shown on this page is the live app.
 
-Most learning tools keep their picture of you hidden. IkoLearn draws it. Your first name sits in the middle of a point cloud. Around it are subjects, each with its own colour, and around those are the topics you have explored, in shades of that colour. Faint dotted branches are related topics you have not tried yet.
+![The IkoLearn deck as an album: subject pages with cards in a fixed trading-card shape, a merged Shark Biology card, Volcanoes cards at different tiers, and dashed outlines for topics not collected yet.](/projects/ikolearn/album.webp)
 
-The cloud is not decoration. It is the structure the companion reads before every reply, so it knows what you have done, what came easily and what felt hard.
+## Built around the learner
 
-## It grows as you talk
+There is no fixed list of topics to pick from. After a name and an optional age band, IkoLearn asks one open question: *what are you curious about, or what do you enjoy?* The learner answers in their own words, for example "I love Minecraft and sharks, and I keep wondering how volcanoes work". From that answer, IkoLearn builds the first subjects and topics. Each topic comes with an order to learn in, from foundations to harder ideas. Skipping the question works too: IkoLearn then starts with popular topics that fit the learner's age and rough region.
 
-After each reply, the companion also notes which topics the conversation touched and how it went: explored, a strength, something hard, or just curiosity. IkoLearn adds or strengthens those topics under the right subject, opens a new subject when one is really needed, and turns a dotted branch into a real one when you explore it. New points pulse for a moment, so you can watch the map fill in.
+From there it keeps growing in the same structured way. When a branch is finished, it works out what should come next. The usual curriculum for the learner's age leads, but their interests and progress steer it.
 
-## What you can do
+## A cloud you can see
 
-- **Talk.** A normal chat: ask anything, get a short, clear answer that streams in as it is written.
-- **Tap the cloud.** Tap your name or any point for a short note on what the companion notices, or two or three ideas for what to try next.
-- **Make a card.** A short learning card on a topic, with one key idea and one small thing to try. Cards attach to their point on the cloud, so you can come back to them.
-- **See what is next.** Ask for related topics and they appear as dotted branches, mixing easy neighbours with skills that will matter later.
+The learner's name sits at the centre of a 3D cloud. Subjects branch out from it, each in its own colour, and topics grow under them. Dotted points are topics waiting to be explored. Tap a point to bring it close, turn the cloud around it, and open its lesson.
 
-## Built for the future of learning
+![The learning cloud on a phone: the learner's name at the centre, Science and Making & Coding as subjects, and their topics branching out.](/projects/ikolearn/cloud-phone.webp)
 
-We want learning that starts from solid foundations and widens toward the skills that will matter: building, thinking clearly, working with AI. A cloud that grows with the learner makes that path visible, for the learner and for a parent reading along.
+## Lessons that teach, then check
 
-## How it works
+Every lesson is short and has two parts. **Learn** explains the idea at the learner's level, with an example and one thing to try. **Check yourself** asks a few quick questions. Right answers, or an honest "I've got it", move the topic forward. Lessons also suggest the next steps, so the path stays clear.
 
-- Replies come from Google's Gemini, through our own small server routes. Our key stays on our server.
-- Your name, conversation, cloud and cards are kept in your browser only. We do not store them.
-- Replies can be wrong. A parent or teacher is the best check.
+![A Magma Chamber lesson: the learner's card in its holder on the left, the lesson on the right, and the next steps in Volcanoes listed under the card.](/projects/ikolearn/lesson.webp)
 
-## Status
+## Cards you earn
 
-An early, unlisted test. One learner, one device, no accounts. Next: views for parents, richer cards and deeper branching.
+Topics the learner spends time with become cards in their deck. Cards start as sepia **sketches** and gain ink and colour as the learning sticks: Sketch, Inked, Tinted, Achieved. When the main topics under a subject are achieved, they **merge** into their parent as a richer card that holds them.
+
+The deck opens like an album, one page per subject. Each card opens its own page with its lesson, a test when it's ready, and every branch beneath it, marked covered, in progress or not started.
+
+![The Shark Biology card page: a merged card with its lesson and test, and its branches Skeleton Types, Senses and Ocean Habits marked covered.](/projects/ikolearn/card-hub.webp)
+
+## Who it's for
+
+- **Homeschooling families** who want structure without a rigid curriculum: a clear order to learn in, short sessions, and visible progress.
+- **Self-directed learners** of any age who want to follow their curiosity and still build real foundations.
+- **Parents and instructors** who want to see what was learned and what comes next. The cloud and the album already show that at a glance, and a dedicated dashboard is on the roadmap.
+
+## How it works today
+
+- Lessons and new topics are written by an AI model through our own small server routes. The key stays on our server, and replies can be wrong, so a parent or teacher is the best check.
+- The learner's name, cloud, cards and lessons are kept in the browser on their device. No account is needed, and we don't store any of it.
+- The app keeps its calls small: browsing the cloud, the album and the cards costs nothing.
+
+## Roadmap
+
+- **Parent & instructor dashboard** (coming): progress across subjects, what each learner is working on, and what comes next.
+- **Several learners and devices:** profiles for siblings, and a way to carry a learner's cloud between devices.
+- **Deeper paths:** longer structured sequences per subject, and more ways to check learning.
+
+We're also preparing a Kickstarter to fund the next stage of development. Nothing to back yet; we'll share it here when it's ready.
