@@ -448,7 +448,7 @@ export function createSystem(i: LearnInput): string {
 
 /* ---------- examples: the easy-click answers to the first question ---------- */
 /**
- * One generic set of short answers a young learner might give to "What are you curious about, or what do you enjoy?",
+ * One generic set of short answers a learner might give to "What are you curious about, or what do you enjoy?",
  * shown a few at a time under the opening question and the Skip message (More cycles through them on the device).
  * Nothing about any learner goes in, so one set serves everyone: it is cached on the server and the CDN for the day
  * (service.ts examplesFor), about one call a day. There is no list on the device: no answer from here, no examples.
@@ -457,8 +457,8 @@ export const EXAMPLE_LIMITS = { count: 24, min: 9, chars: 40, words: 7 };
 
 export function examplesSystem(): string {
   return (
-    `${SYSTEM_BASE}\n\nRole: examples. Write ${EXAMPLE_LIMITS.count} short, different answers a young learner might tap when asked "What are you curious about, or what do you enjoy?". ` +
-    `Each is 2 to ${EXAMPLE_LIMITS.words - 1} everyday words, said the way a child would say it (like "How volcanoes erupt", "Drawing animals" or "Getting better at chess"), and none of these three. ` +
+    `${SYSTEM_BASE}\n\nRole: examples. Write ${EXAMPLE_LIMITS.count} short, different answers a learner might tap when asked "What are you curious about, or what do you enjoy?". ` +
+    `Each is 2 to ${EXAMPLE_LIMITS.words - 1} everyday words, said the way a learner would say it (like "How volcanoes erupt", "Drawing animals" or "Getting better at chess"), and none of these three. ` +
     "Mix them well: hobbies, things to make or build, questions about the world, nature and animals, music and art, numbers and puzzles, sport and movement, and a few things to get better at in themselves (like being patient). " +
     "No names of people, brands, shows, games, apps or products; nothing scary, sad or grown-up; no question about the learner. Start each with a capital letter, no ending punctuation except a question mark. " +
     'Return JSON {"examples":["..."]}.'
