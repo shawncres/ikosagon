@@ -480,3 +480,36 @@ button.gcard:active, button.gslot:active { transform: translateY(-1px) scale(.97
   .btn:active, .chip:active, .fork-opt:active, .link:active, button.gcard:active, button.gslot:active, button.gcard:hover, button.gslot:hover { transform: none; }
   .view-in, .album.opening .album-page, .album.opening .ap-grid > *, .hub-kids.opening .hk-cell, #panel:not([hidden]) { animation: none; }
 }
+
+/* polish: the mini-Deck (header), newcomer hints, further reading */
+.minideck { position: relative; width: 46px; height: 56px; padding: 0; border: 0; background: none; cursor: pointer; flex: none; }
+.md-fan { position: absolute; inset: 0; transform-origin: 50% 100%; animation: md-drift 7s ease-in-out infinite; }
+.md-card { position: absolute; left: 50%; bottom: 5px; width: 30px; height: 42px; margin-left: -15px; overflow: hidden; background: var(--sheet); border: 1px solid var(--rule); border-radius: 3px; box-shadow: 0 1px 2px rgba(60, 40, 20, .14); transform-origin: 50% 100%; transform: rotate(calc((var(--i, 0) - (var(--n, 1) - 1) / 2) * 11deg)); }
+.md-card .art { display: block; width: 100%; height: 64%; }
+.md-card.t2 { border-color: var(--soft); }
+.md-card.t3 { border-color: var(--ink); }
+.md-card.merged { border: 3px double var(--ink); }
+.md-slot { border-style: dashed; background: transparent; box-shadow: none; transform: none; }
+.minideck.empty .md-fan { animation: none; }
+.md-n { position: absolute; right: -4px; top: 2px; min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--paper); border: 1px solid var(--rule); font-size: 11px; line-height: 15px; color: var(--soft); }
+.minideck:hover .md-card, .minideck:focus-visible .md-card { border-color: var(--ink); }
+.minideck.pulse .md-fan { animation: md-pulse 1.4s ease-out 1, md-drift 7s ease-in-out 1.4s infinite; }
+.minideck.pulse::after { content: ""; position: absolute; inset: 4px 2px 2px; border-radius: 6px; animation: md-ring 1.4s ease-out 1; pointer-events: none; }
+@keyframes md-drift { 0%, 100% { transform: rotate(-1.6deg); } 50% { transform: rotate(1.6deg) translateY(-1px); } }
+@keyframes md-pulse { 0% { transform: scale(1); } 30% { transform: scale(1.12) translateY(-2px); } 100% { transform: scale(1); } }
+@keyframes md-ring { 0% { box-shadow: 0 0 0 0 rgba(43, 33, 24, .3); } 100% { box-shadow: 0 0 0 10px rgba(43, 33, 24, 0); } }
+@media (max-width: 699px) { .deck-link { display: none; } } /* on phones the mini-Deck is the way in */
+.hint { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 8px 0 12px; padding: 2px 0 2px 12px; border-left: 2px solid var(--rule); font-size: 14.5px; font-style: italic; color: var(--soft); }
+.hint-x { font-size: 13px; font-style: normal; color: var(--soft); white-space: nowrap; }
+.cloud-hint.newcomer { pointer-events: auto; opacity: 1; font-size: 13.5px; font-style: italic; color: var(--ink); }
+.cloud-hint.newcomer .hint-x { margin-left: 10px; font-size: 12.5px; }
+.further { margin: 22px 0 0; padding-top: 10px; border-top: 1px solid var(--rule); }
+.further summary { cursor: pointer; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--soft); }
+.further ul { list-style: none; padding: 0; margin: 10px 0 0; }
+.further li { margin: 0 0 12px; }
+.fr-title { display: block; }
+.fr-links { font-size: 13.5px; color: var(--soft); }
+.fr-links a { color: var(--soft); }
+@media (prefers-reduced-motion: reduce) {
+  .md-fan, .minideck.pulse .md-fan, .minideck.pulse::after { animation: none; }
+}
