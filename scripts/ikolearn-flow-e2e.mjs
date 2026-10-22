@@ -36,6 +36,7 @@ const CLAR = {
   example: "First, picture a pot of thick soup on the stove. Then, the bottom gets hottest and starts to bubble. Magma works the same way, deep under the ground.",
   question: "Which part feels tricky: where the heat comes from, or why the rock melts? Hint: think about how hot it gets far below us.",
 };
+const FORK = [{ name: "Ash Clouds", why: "What rises into the sky", kind: "deeper" }, { name: "Lava Types", why: "Where the lava goes", kind: "wider" }, { name: "Constellations", why: "Something different", kind: "wider" }];
 const ndjson = (evs) => evs.map((e) => JSON.stringify(e)).join("\n") + "\n";
 
 const browser = await chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" });
@@ -55,7 +56,12 @@ async function run(width) {
     try { body = JSON.parse(route.request().postData() || "{}"); } catch { body = {}; }
     calls.push(at + (at === "/chat" ? ":" + body.mode + (body.clarify ? ":" + body.clarify : "") : ""));
     const done = (status, text, type = "application/x-ndjson") => route.fulfill({ status, contentType: type, body: text }).catch(() => {});
-    if (at === "/lesson") { await sleep(mock.lessonMs); return done(200, ndjson([{ t: "start", model: "m" }, { t: "delta", text: LESSON }, { t: "path", steps: [], next: "", choices: [], questions: [] }, { t: "done" }])); }
+    if (at === "/lesson") {
+      await sleep(mock.lessonMs);
+      /* the Eruptions lesson offers a fork (one choice is already in progress elsewhere: it must not show twice) */
+      const choices = body.focus === "Eruptions" ? FORK : [];
+      return done(200, ndjson([{ t: "start", model: "m" }, { t: "delta", text: LESSON }, { t: "path", steps: [], next: "", choices, questions: [] }, { t: "done" }]));
+    }
     if (at === "/chat" && body.mode === "clarify") {
       await sleep(mock.clarifyMs);
       if (mock.failClarify) return done(200, ndjson([{ t: "error", reason: "upstream" }]));
@@ -148,6 +154,11 @@ async function run(width) {
     const c3 = count(/:clarify:/);
     await p.locator("#l-clar .clar-opt").nth(0).click(); await p.waitForTimeout(200);
     ok(count(/:clarify:/) === c3, `${width}: asking for one already written is 0 calls`);
+    // understood after all: the options go, the answers already shown stay
+    await p.click("#l-got"); await p.waitForTimeout(300);
+    const cl = await p.evaluate(() => ({ opts: document.querySelectorAll("#l-clar .clar-opt").length, answers: document.querySelectorAll("#l-clar .clar").length }));
+    ok(cl.opts === 0 && cl.answers === 3 && count(/:clarify:/) === c3, `${width}: "I've got it" hides the clarify options; the answers stay (0 calls)`, JSON.stringify(cl));
+    await shot("got-after-clarify", "#l-status");
   });
 
   if (SOFT) { await ctx.close(); return { errs }; }
@@ -157,6 +168,32 @@ async function run(width) {
     await p.click("#l-next .wn-go .btn");
     await p.waitForSelector("#l-done:not([hidden])");
     ok((await p.textContent("#l-title")) === "Eruptions" && count(/^\/lesson$/) === l0 + 1, `${width}: Open goes to the picked step (one lesson call)`);
+    // a lesson WITH fork choices: one Where Next, the choices first (top one pre-selected), then in progress, deduped
+    await p.waitForTimeout(300);
+    const wf = await p.evaluate(() => ({
+      heads: [...document.querySelectorAll("#lesson .l-head")].filter((h) => /^Where next/i.test(h.textContent)).length,
+      forkBlock: document.querySelectorAll("#l-fork .fork, #l-fork .fork-opt").length,
+      sections: document.querySelectorAll("#lesson .where-next .wn-opts").length,
+      items: [...document.querySelectorAll("#l-next .wn-opt")].map((b) => ({ l: b.querySelector(".wn-label").textContent, choice: b.classList.contains("choice"), on: b.getAttribute("aria-checked") === "true", next: b.classList.contains("next"), why: b.querySelector(".why").textContent })),
+    }));
+    const labels = wf.items.map((x) => x.l), choices = wf.items.filter((x) => x.choice);
+    ok(wf.heads === 1 && wf.sections === 1 && wf.forkBlock === 0, `${width}: a lesson with a fork shows exactly one Where Next (no separate fork block)`, JSON.stringify(wf));
+    ok(choices.length === 3 && wf.items.slice(0, 3).every((x) => x.choice) && choices.map((x) => x.l).sort().join() === "Ash Clouds,Constellations,Lava Types", `${width}: the fork's choices come first`, JSON.stringify(labels));
+    ok(wf.items[0].on && wf.items[0].next && /Suggested next/.test(wf.items[0].why) && wf.items.filter((x) => x.on).length === 1, `${width}: the top choice is pre-selected and highlighted`, JSON.stringify(wf.items[0]));
+    const rest = wf.items.slice(3);
+    ok(rest.length >= 1 && rest.length <= 3 && rest.every((x) => !x.choice && /In progress/.test(x.why)) && new Set(labels).size === labels.length && !rest.some((x) => x.l === "Constellations" || x.l === "Eruptions"), `${width}: then up to 3 in progress, deduped (Constellations only once, never the lesson itself)`, JSON.stringify(labels));
+    await shot("fork-where-next", "#l-next");
+    // opening a choice records it as the learner's pick; back on Eruptions it stays pre-selected
+    const n1 = calls.length;
+    await p.locator("#l-next .wn-opt").nth(2).click();
+    const pickLabel = (await p.locator("#l-next .wn-opt").nth(2).locator(".wn-label").textContent());
+    ok(calls.length === n1, `${width}: selecting a choice is 0 calls`);
+    await p.click("#l-next .wn-go .btn");
+    await p.waitForSelector("#l-done:not([hidden])");
+    ok((await p.textContent("#l-title")) === pickLabel, `${width}: Open goes to the chosen fork option`);
+    const picked = await p.evaluate((lbl) => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")); const e = c.order.find((x) => c.nodes[x].label === "Eruptions"); const f = c.nodes[e].fork; return Boolean(f && f.picked && c.nodes[f.picked].label === lbl); }, pickLabel);
+    ok(picked, `${width}: opening a choice records it as the learner's pick (pre-selected next time)`);
+
     await p.click("#l-tricky"); await p.waitForTimeout(200);
     mock.failClarify = true;
     await p.locator("#l-clar .clar-opt").nth(2).click();

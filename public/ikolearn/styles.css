@@ -221,13 +221,6 @@ button.gcard:hover { border-color: var(--soft); }
 .h-note { display: block; font-size: 13px; line-height: 1.4; color: var(--soft); margin: 2px 0 0; }
 .l-main { min-width: 0; padding-top: 10px; }
 .l-main #l-trail { display: none; } /* phones: the docked card already shows the chain */
-/* fork: 2 or 3 directions after a lesson */
-.fork { margin: 10px 0 6px; }
-.fork-opts { display: grid; gap: 8px; }
-.fork-opt { font: inherit; text-align: left; color: var(--ink); background: var(--sheet); border: 1px solid var(--rule); border-radius: 4px; padding: 10px 14px; cursor: pointer; }
-.fork-opt:hover { border-color: var(--soft); }
-.fork-opt .why { display: block; font-size: 14px; color: var(--soft); }
-.fork-opt.picked { border-color: var(--ink); }
 .others { margin: 10px 0 6px; }
 .others ul { margin: 4px 0 0; padding-left: 1.2em; }
 
@@ -351,7 +344,6 @@ button.gcard:hover { border-color: var(--soft); }
   .h-lists { max-height: none; }
   .l-main { padding-top: 0; }
   .l-main #l-trail { display: block; }
-  .fork-opts { grid-template-columns: repeat(3, 1fr); }
   .wn-opts { grid-template-columns: repeat(2, 1fr); }
   #panel { left: auto; top: 64px; bottom: 16px; right: 16px; width: 380px; max-height: none; border: 1px solid var(--rule); border-radius: 6px; }
 }
@@ -477,8 +469,8 @@ button.gslot { cursor: pointer; }
 }
 
 /* motion: quiet, short, sepia. Press feedback on everything you can tap; views slide in; cards lift. */
-.btn, .chip, .fork-opt, .gcard, .gslot, .link { transition: transform .14s ease-out, filter .2s ease-out, border-color .2s, background-color .2s; }
-.btn:active, .chip:active, .fork-opt:active { transform: scale(.96); }
+.btn, .chip, .wn-opt, .gcard, .gslot, .link { transition: transform .14s ease-out, filter .2s ease-out, border-color .2s, background-color .2s; }
+.btn:active, .chip:active, .wn-opt:active { transform: scale(.96); }
 .link:active { transform: translateY(1px); }
 button.gcard:active, button.gslot:active { transform: translateY(-1px) scale(.97); }
 @media (hover: hover) {
@@ -496,8 +488,8 @@ button.gcard:active, button.gslot:active { transform: translateY(-1px) scale(.97
 @keyframes sheet-up { from { opacity: .4; transform: translateY(26px); } to { opacity: 1; transform: none; } }
 @media (min-width: 900px) { @keyframes sheet-up { from { opacity: .4; transform: translateX(22px); } to { opacity: 1; transform: none; } } }
 @media (prefers-reduced-motion: reduce) {
-  .btn, .chip, .fork-opt, .gcard, .gslot, .link, .ap-bar::after { transition: none; }
-  .btn:active, .chip:active, .fork-opt:active, .link:active, button.gcard:active, button.gslot:active, button.gcard:hover, button.gslot:hover { transform: none; }
+  .btn, .chip, .wn-opt, .gcard, .gslot, .link, .ap-bar::after { transition: none; }
+  .btn:active, .chip:active, .wn-opt:active, .link:active, button.gcard:active, button.gslot:active, button.gcard:hover, button.gslot:hover { transform: none; }
   .view-in, .album.opening .album-page, .album.opening .ap-grid > *, .hub-kids.opening .hk-cell, #panel:not([hidden]) { animation: none; }
 }
 
