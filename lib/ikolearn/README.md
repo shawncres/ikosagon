@@ -271,6 +271,12 @@ Each level is drawn at 0.6x the size of the one above and zoom goes to 60x, so a
 - **Zoom.** `zoomAbout` keeps the point under the cursor fixed; one wheel event is a capped factor (0.82 to 1.22), so zoom stays deliberate; the buttons animate over 220 ms.
 - The view (yaw, pitch, zoom, pan, focus) is reported through `onView` (debounced) and persisted.
 
+## Provider failures and the examples cache
+
+- **One log line per failed attempt** (both adapters, every route): `{"ev":"ikolearn.llm_fail","route","provider","model","status","code","error","attempt","try"}` via `console.warn`, so it shows in Vercel's runtime logs. `status` is the provider's HTTP status (null for a network error), `error` the provider's own error code and message, redacted (the configured key and anything key-shaped become `[key]`) and cut to 200 characters. Never the key, never prompt text.
+- **Examples retry once** on a 5xx or a network error only (never a 4xx, a 429, a timeout or an unusable reply), after a jittered 400-800 ms, while the per-instance daily attempt cap (3) and the shared budget allow, and only if enough of the route's 30 s is left (`EXAMPLES_RETRY`).
+- **One shared list:** a success carries `Cache-Control: public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400` and `Vercel-CDN-Cache-Control: max-age=86400, stale-while-revalidate=86400`, so Vercel's CDN shares it across instances and serves it stale while it refreshes. Failures are `no-store` on all three headers. There is no built-in fallback list: a failure still shows the retry state.
+
 ## Swapping the model provider
 
 Nothing outside the adapters knows which provider answers: prompts are plain text, schemas are plain JSON Schema, and the hidden blocks (`<<<CLOUD … CLOUD>>>`, `<<<PATH … PATH>>>`) are written by the model as text, so they are parsed the same way for every provider. The provider is chosen only by env vars on the server:

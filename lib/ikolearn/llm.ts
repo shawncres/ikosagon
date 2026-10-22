@@ -13,8 +13,8 @@ import { DEFAULT_MODEL, FALLBACK_MODEL, GEMINI_BASE, geminiJson, geminiStream } 
 import { openaiJson, openaiStream } from "./openai-compatible";
 import type { Content, Env, Fail, JsonResult, LlmConfig, StreamOptions, StreamStart } from "./llm-types";
 
-export { MODEL_LIMITS } from "./llm-types";
-export type { Content, Env, Fail, FailCode, JsonResult, LlmConfig, StreamOptions, StreamStart } from "./llm-types";
+export { MODEL_LIMITS, LOG_DETAIL_CHARS, redact, setLlmLogSink } from "./llm-types";
+export type { Content, Env, Fail, FailCode, JsonResult, LlmConfig, LlmFailLog, StreamOptions, StreamStart } from "./llm-types";
 
 export const PROVIDERS = ["gemini", "openai-compatible"] as const;
 export type ConfigError = "unknown_provider" | "no_key" | "no_base" | "no_model";

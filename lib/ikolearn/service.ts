@@ -60,8 +60,26 @@ export const LEARN_GUARDS = {
   examplesPerDay: 3, // model calls for the examples set, per server instance per day (normally 1; retries after a failure)
 };
 
-/** Examples: browsers keep them an hour, the CDN a day (and serves the old set while it refreshes). Failures are never cached. */
-export const EXAMPLES_CACHE = { "Cache-Control": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400" };
+/**
+ * Examples: browsers keep them an hour; Vercel's CDN shares one successful list for a day across every instance and
+ * region, and serves it stale while it refreshes, so new instances rarely call the model. Vercel-CDN-Cache-Control has
+ * top priority on Vercel's CDN (and isn't passed on); Cache-Control keeps s-maxage for any other cache in between.
+ * Failures are never cached (EXAMPLES_NO_STORE).
+ */
+export const EXAMPLES_CACHE = {
+  "Cache-Control": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400",
+  "Vercel-CDN-Cache-Control": "max-age=86400, stale-while-revalidate=86400",
+};
+/** An older list served after a failed refresh: a short cache, so the next good list replaces it soon. */
+export const EXAMPLES_STALE = { "Cache-Control": "public, max-age=600, s-maxage=600", "Vercel-CDN-Cache-Control": "max-age=600" };
+/** A failure: never kept by the browser or any CDN. */
+export const EXAMPLES_NO_STORE = { "Cache-Control": "no-store", "Vercel-CDN-Cache-Control": "no-store", "CDN-Cache-Control": "no-store" };
+/**
+ * One retry for the examples call, on a 5xx or a network error only (never a 4xx, a 429, a timeout or an unusable
+ * reply), after a jittered 400-800 ms, and only while the instance's daily attempt cap allows and enough of the
+ * route's 30 s limit is left (budgetMs from the first request, minCallMs for the retry itself).
+ */
+export const EXAMPLES_RETRY = { backoffMinMs: 400, backoffMaxMs: 800, budgetMs: 26_000, minCallMs: 6_000 };
 
 export type ExamplesState = { day: string; list: string[]; tries: { day: string; n: number }; pending: Promise<Out> | null };
 
@@ -70,14 +88,20 @@ export type LearnState = {
   budget: { day: string; calls: number };
   examples: ExamplesState;
   now: () => number;
+  /** waits ms (the examples retry backoff); injectable so the checks don't sleep */
+  sleep: (ms: number) => Promise<void>;
+  /** 0..1, for the backoff jitter */
+  random: () => number;
 };
 
-export function createLearnState(now: () => number = () => Date.now()): LearnState {
+export function createLearnState(now: () => number = () => Date.now(), sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)), random: () => number = Math.random): LearnState {
   return {
     limiter: createRateLimiter({ perIpPerMinute: LEARN_GUARDS.perIpPerMinute, perIpPerHour: LEARN_GUARDS.perIpPerHour, globalPerMinute: LEARN_GUARDS.globalPerMinute }, now),
     budget: { day: "", calls: 0 },
     examples: { day: "", list: [], tries: { day: "", n: 0 }, pending: null },
     now,
+    sleep,
+    random,
   };
 }
 
@@ -130,13 +154,15 @@ type StreamSpec = {
   close?: string;
   maxChars: number;
   maxTokens?: number;
+  /** the route name in failure log lines */
+  route: string;
   /** Turns the hidden trailing block into the event sent before "done" (or null for none). */
   tail: (block: string, found: boolean) => ChatEvent | null;
 };
 
 /** One streamed reply as events. The trailing structured block is held back and never sent as text. */
 async function* streamEvents(spec: StreamSpec, env: Env, fetchImpl: typeof fetch): AsyncGenerator<ChatEvent> {
-  const started = await streamText(spec.system, spec.contents, env, fetchImpl, { maxTokens: spec.maxTokens });
+  const started = await streamText(spec.system, spec.contents, env, fetchImpl, { maxTokens: spec.maxTokens, route: spec.route });
   if (!started.ok) {
     yield { t: "error", reason: started.code };
     return;
@@ -177,6 +203,7 @@ export function chatEvents(input: LearnInput, env: Env, fetchImpl: typeof fetch 
     {
       system: input.mode === "notice" ? noticeSystem(input) : companionSystem(input),
       contents: buildContents(input),
+      route: input.mode === "notice" ? "notice" : "chat",
       maxChars: LEARN_LIMITS.replyChars,
       tail: (block) => {
         const b = parseCloudBlock(block, input.name);
@@ -196,6 +223,7 @@ export function lessonEvents(input: LearnInput, env: Env, fetchImpl: typeof fetc
       contents: lessonContents(input),
       open: PATH_OPEN,
       close: PATH_CLOSE,
+      route: "lesson",
       maxChars: LEARN_LIMITS.lessonChars,
       maxTokens: MODEL_LIMITS.lessonMaxTokens,
       tail: (block, found) => {
@@ -234,7 +262,7 @@ const reasonStatus = (code: FailCode) => (code === "busy" ? 429 : code === "no_k
 export async function cardFor(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): Promise<Out> {
   const recent = input.messages.map((m) => `${m.role === "user" ? input.name : "IkoLearn"}: ${m.text}`).join("\n");
   const user = `Focus topic: ${input.focus}${input.focusParent ? ` (in ${input.focusParent})` : ""}\nRecent conversation:\n${recent || "(none)"}`;
-  const r = await generateJson<Card>(cardSystem(input), user, CARD_SCHEMA, parseCard, env, fetchImpl);
+  const r = await generateJson<Card>(cardSystem(input), user, CARD_SCHEMA, parseCard, env, fetchImpl, { route: "card" });
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
   return json(200, { ok: true, card: r.value });
 }
@@ -244,14 +272,14 @@ export async function adjacentFor(input: LearnInput, env: Env, fetchImpl: typeof
   const r = await generateJson<Ghost[]>(adjacentSystem(input), user, ADJACENT_SCHEMA, (t) => {
     const g = parseAdjacent(t, input.name);
     return g.length ? g : null;
-  }, env, fetchImpl);
+  }, env, fetchImpl, { route: "adjacent" });
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
   return json(200, { ok: true, ghosts: r.value });
 }
 
 export async function pathFor(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): Promise<Out> {
   const user = `Map the learning path for: ${input.focus}${input.trail ? ` (${input.trail})` : ""}`;
-  const r = await generateJson<LearnPath>(pathSystem(input), user, PATH_SCHEMA, (t) => parsePath(t, input.name, input.focus), env, fetchImpl);
+  const r = await generateJson<LearnPath>(pathSystem(input), user, PATH_SCHEMA, (t) => parsePath(t, input.name, input.focus), env, fetchImpl, { route: "path" });
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
   return json(200, { ok: true, path: r.value });
 }
@@ -282,7 +310,7 @@ export async function createFor(input: LearnInput, env: Env, fetchImpl: typeof f
       : `Build my ${input.kind === "start" ? "first" : "new"} learning topics.` +
         (input.about ? ` In my own words: "${input.about}"` : input.interests.length ? ` I enjoy: ${input.interests.join(", ")}.` : "") +
         (input.kind === "start" && input.grow ? ` Something I'd like to grow in myself: "${input.grow}"` : "");
-  const r = await generateJson<CreateResult>(createSystem(input), user, CREATE_SCHEMA, (t) => parseCreate(t, input.kind, input.name, input.focus, input.known), env, fetchImpl, { maxTokens: MODEL_LIMITS.createMaxTokens });
+  const r = await generateJson<CreateResult>(createSystem(input), user, CREATE_SCHEMA, (t) => parseCreate(t, input.kind, input.name, input.focus, input.known), env, fetchImpl, { maxTokens: MODEL_LIMITS.createMaxTokens, route: "create" });
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
   return json(200, { ok: true, kind: input.kind, items: r.value.items });
 }
@@ -291,7 +319,7 @@ export async function testFor(input: LearnInput, env: Env, fetchImpl: typeof fet
   const allowed = input.material.map((m) => m.label);
   if (allowed.length < 2) return json(422, { ok: false, reason: "material" });
   const user = `Make my test on ${input.focus}. Topics I have finished: ${allowed.join(", ")}.`;
-  const r = await generateJson<TestQuestion[]>(testSystem(input), user, TEST_SCHEMA, (t) => parseTest(t, allowed), env, fetchImpl);
+  const r = await generateJson<TestQuestion[]>(testSystem(input), user, TEST_SCHEMA, (t) => parseTest(t, allowed), env, fetchImpl, { route: "test" });
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
   return json(200, { ok: true, questions: r.value });
 }
@@ -304,28 +332,47 @@ export async function testFor(input: LearnInput, env: Env, fetchImpl: typeof fet
  * made, yesterday's set is served (briefly cached); with none, the error is not cached and the app shows Try again.
  */
 export async function examplesFor(env: Env, state: LearnState, fetchImpl: typeof fetch = fetch): Promise<Out> {
-  if (!llmReady(env)) return json(503, { ok: false, reason: "off" });
+  if (!llmReady(env)) return json(503, { ok: false, reason: "off" }, EXAMPLES_NO_STORE);
   const ex = state.examples, day = ptDay(state.now());
-  const serve = (list: string[], fresh: boolean): Out => ({ status: 200, body: { ok: true, examples: list }, headers: fresh ? EXAMPLES_CACHE : { "Cache-Control": "public, max-age=600, s-maxage=600" } });
+  const serve = (list: string[], fresh: boolean): Out => ({ status: 200, body: { ok: true, examples: list }, headers: fresh ? EXAMPLES_CACHE : EXAMPLES_STALE });
+  const fail = (code: FailCode): Out => (ex.list.length ? serve(ex.list, false) : json(reasonStatus(code), { ok: false, reason: code }, EXAMPLES_NO_STORE));
   if (ex.day === day && ex.list.length) return serve(ex.list, true);
   if (ex.pending) return ex.pending;
   if (ex.tries.day !== day) ex.tries = { day, n: 0 };
   if (state.budget.day !== day) state.budget = { day, calls: 0 };
-  if (ex.tries.n >= LEARN_GUARDS.examplesPerDay || state.budget.calls >= dailyCap(env)) return ex.list.length ? serve(ex.list, false) : json(429, { ok: false, reason: "busy" });
-  ex.tries.n += 1;
-  state.budget.calls += 1;
+  const canTry = () => ex.tries.n < LEARN_GUARDS.examplesPerDay && state.budget.calls < dailyCap(env);
+  if (!canTry()) return ex.list.length ? serve(ex.list, false) : json(429, { ok: false, reason: "busy" }, EXAMPLES_NO_STORE);
+  const t0 = state.now();
+  const attempt = async (n: number, timeoutMs?: number) => {
+    ex.tries.n += 1;
+    state.budget.calls += 1;
+    return generateJson<string[]>(examplesSystem(), "Today's examples, please.", EXAMPLES_SCHEMA, parseExamples, env, fetchImpl, { maxTokens: 600, route: "examples", attempt: n, timeoutMs });
+  };
   ex.pending = (async () => {
     try {
-      const r = await generateJson<string[]>(examplesSystem(), "Today's examples, please.", EXAMPLES_SCHEMA, parseExamples, env, fetchImpl, { maxTokens: 600 });
+      let r = await attempt(1, EXAMPLES_RETRY.budgetMs);
+      if (!r.ok && retryable(r) && canTry()) {
+        const wait = EXAMPLES_RETRY.backoffMinMs + Math.round(state.random() * (EXAMPLES_RETRY.backoffMaxMs - EXAMPLES_RETRY.backoffMinMs));
+        const left = EXAMPLES_RETRY.budgetMs - (state.now() - t0) - wait;
+        if (left >= EXAMPLES_RETRY.minCallMs) {
+          await state.sleep(wait);
+          r = await attempt(2, left);
+        }
+      }
       if (r.ok) {
         ex.day = day;
         ex.list = r.value;
         return serve(ex.list, true);
       }
-      return ex.list.length ? serve(ex.list, false) : json(reasonStatus(r.code), { ok: false, reason: r.code });
+      return fail(r.code);
     } finally {
       ex.pending = null;
     }
   })();
   return ex.pending;
+}
+
+/** Worth one more try: a provider 5xx or a network error. Never a 4xx (refused), a 429 (busy), a timeout or an unusable reply. */
+export function retryable(f: { code: FailCode; status?: number }): boolean {
+  return f.code === "upstream" && (f.status === undefined || f.status >= 500);
 }
