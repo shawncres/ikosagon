@@ -82,7 +82,76 @@
     }
   }
 
-  var api = { parse: parse, usable: usable, render: render };
+  /*
+   * Further reading & viewing. The model gives only a title and a search phrase per item (never a link). Links are
+   * built here, and only to these search pages; the phrase is URL-encoded and every link is labelled as a search.
+   * "watch" uses a video search with SafeSearch on, limited to YouTube (YouTube's own search has no safe-search
+   * setting in its address; its Restricted Mode is an account or network setting).
+   */
+  var SEARCH = {
+    wiki: { label: "Wikipedia", base: "https://en.wikipedia.org/w/index.php?fulltext=1&search=" },
+    khan: { label: "Khan Academy", base: "https://www.khanacademy.org/search?page_search_query=" },
+    library: { label: "Open Library", base: "https://openlibrary.org/search?q=" },
+    video: { label: "YouTube videos (SafeSearch on)", base: "https://www.google.com/search?tbm=vid&safe=active&q=", tail: " site:youtube.com" }
+  };
+  var SEARCH_HOSTS = ["en.wikipedia.org", "www.khanacademy.org", "openlibrary.org", "www.google.com"];
+  var LINKY = /(https?:|www\.|:\/\/|\b[a-z0-9-]+\.(com|org|net|edu|gov|io|co|uk|ca|tv|be|ly)\b|@|\/)/i;
+  function clip(v, n) { return String(v == null ? "" : v).replace(/[<>{}[\]`*_#|\\"]/g, " ").replace(/\s+/g, " ").trim().slice(0, n).trim(); }
+  /* Re-checked on the device too (cached lessons, older servers): titles and phrases only, at most 3. */
+  function cleanReading(list) {
+    var out = [];
+    (Array.isArray(list) ? list : []).forEach(function (r) {
+      if (!r || typeof r !== "object" || out.length >= 3) return;
+      var title = clip(r.title, 70), q = clip(r.q, 60);
+      if (title.length < 3 || q.length < 3 || LINKY.test(title) || LINKY.test(q)) return;
+      if (out.some(function (x) { return x.q.toLowerCase() === q.toLowerCase(); })) return;
+      out.push({ title: title, q: q, kind: r.kind === "watch" ? "watch" : "read" });
+    });
+    return out;
+  }
+  /* -> [{ href, label }]: read items search Wikipedia, Khan Academy and Open Library; watch items search videos */
+  function searchLinks(item) {
+    var keys = item.kind === "watch" ? ["video", "khan"] : ["wiki", "khan", "library"];
+    return keys.map(function (k) {
+      var s = SEARCH[k];
+      return { href: s.base + encodeURIComponent(item.q + (s.tail || "")), label: "Search " + s.label };
+    });
+  }
+  /* true only for a link this module would build (scheme https, an allowlisted search host) */
+  function allowedHref(href) {
+    var m = /^https:\/\/([^/?#]+)\//.exec(String(href || ""));
+    return Boolean(m) && SEARCH_HOSTS.indexOf(m[1].toLowerCase()) >= 0;
+  }
+  /* The collapsed "Further reading & viewing" fold (null when there is nothing). doc: the document. */
+  function renderReading(doc, list) {
+    var items = cleanReading(list);
+    if (!items.length) return null;
+    var d = doc.createElement("details"); d.className = "further";
+    var sm = doc.createElement("summary"); sm.textContent = "Further reading & viewing"; d.appendChild(sm);
+    var ul = doc.createElement("ul");
+    items.forEach(function (it) {
+      var li = doc.createElement("li");
+      var t = doc.createElement("span"); t.className = "fr-title"; t.textContent = it.title + (it.kind === "watch" ? " (to watch)" : ""); li.appendChild(t);
+      var row = doc.createElement("span"); row.className = "fr-links";
+      searchLinks(it).forEach(function (l, i) {
+        if (!allowedHref(l.href)) return;
+        if (i) row.appendChild(doc.createTextNode(" · "));
+        var a = doc.createElement("a");
+        a.href = l.href; a.target = "_blank"; a.rel = "noopener noreferrer nofollow";
+        a.textContent = l.label;
+        a.setAttribute("aria-label", l.label + " for \u201c" + it.q + "\u201d (opens a search in a new tab)");
+        row.appendChild(a);
+      });
+      li.appendChild(row);
+      ul.appendChild(li);
+    });
+    d.appendChild(ul);
+    var fine = doc.createElement("p"); fine.className = "fine"; fine.textContent = "These open searches on other sites, not pages we chose.";
+    d.appendChild(fine);
+    return d;
+  }
+
+  var api = { parse: parse, usable: usable, render: render, SEARCH: SEARCH, SEARCH_HOSTS: SEARCH_HOSTS, cleanReading: cleanReading, searchLinks: searchLinks, allowedHref: allowedHref, renderReading: renderReading };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.IkoLesson = api;
 })(typeof window !== "undefined" ? window : this);

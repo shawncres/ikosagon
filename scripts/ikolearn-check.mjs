@@ -8,7 +8,7 @@ import {
   LEARN_LIMITS, CLOUD_OPEN, CLOUD_CLOSE, cleanName, cleanLabel, cleanMessages, parseLearnInput, SYSTEM_BASE, companionSystem, noticeSystem,
   buildContents, cardSystem, adjacentSystem, plainReply, parseCloudBlock, parseCard, parseAdjacent, createBlockSplitter,
   PATH_OPEN, PATH_CLOSE, lessonSystem, lessonContents, pathSystem, PATH_SCHEMA, CARD_SCHEMA, parsePath, parseChoices, parseLessonBlock, parseQuestions, parseBlurb, parseChain,
-  parseTest, testSystem, TEST_SCHEMA, createSystem, parseCreate, CREATE_SCHEMA, examplesSystem, parseExamples, EXAMPLES_SCHEMA, EXAMPLE_LIMITS, SIGNALS,
+  parseTest, testSystem, TEST_SCHEMA, createSystem, parseCreate, CREATE_SCHEMA, examplesSystem, parseExamples, EXAMPLES_SCHEMA, EXAMPLE_LIMITS, SIGNALS, parseReading,
 } from "../lib/ikolearn/prompts.ts";
 import { DEFAULT_MODEL, FALLBACK_MODEL, GEMINI_BASE, chatBody, jsonBody, readSse } from "../lib/ikolearn/gemini.ts";
 import { MODEL_LIMITS, streamText, generateJson, llmConfig, llmReady } from "../lib/ikolearn/llm.ts";
@@ -1932,7 +1932,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(P.reask(opened, T0 + 1) !== null && P.reask(fresh, T0 + 1) === null, "a started learner who never answered the questions can get the light re-ask instead; a brand-new one gets onboarding");
   const done = C.create("Barry", T0); C.setProfile(done, { onboarded: true });
   ok(!P.needsOnboarding(done), "onboarded: never again");
-  ok(/function onboardingOpen\(\) \{ return state\.thread\.some\(function \(m\) \{ return m\.role === "ask" && !m\.done; \}\); \}/.test(app) && /el\.draw\.hidden = !el\.lesson\.hidden \|\| !el\.deck\.hidden \|\| !el\.hub\.hidden \|\| onboardingOpen\(\);/.test(app), "while an onboarding question is open, suggestions, Draw, Continue and Your cloud stay hidden");
+  ok(/function onboardingOpen\(\) \{ return state\.thread\.some\(function \(m\) \{ return m\.role === "ask" && !m\.done; \}\); \}/.test(app) && /el\.draw\.hidden = !el\.lesson\.hidden \|\| !el\.deck\.hidden \|\| !el\.hub\.hidden \|\| onboardingOpen\(\) \|\| skipWaiting\(\);/.test(app), "while an onboarding question is open, suggestions, Draw, Continue and Your cloud stay hidden");
   ok((app.match(/[^\w.]ask\(\w+, function/g) || []).length === 1, "only onboarding asks questions in the thread (so hiding on an open ask hides nothing else)");
 }
 
@@ -2219,6 +2219,73 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     const plain = parseCreate({ items: [{ node: { name: "Volcanoes", chain: [] }, card: { title: "V", blurb: "b", goal: "g" }, children: [{ name: "Magma", order: 1, score: 1, role: "core" }, { name: "Ash", order: 2, score: 1, role: "core" }] }] }, "next", "Mia", "Volcanoes");
     ok(plain && !("needs" in plain.items[0].node) && plain.items[0].children.every((x) => !("needs" in x)), "parseCreate: no needs, no extra fields (results unchanged)");
   }
+}
+
+/* ================= polish: further reading (allowlist only), newcomer hints, idle spin, mini-Deck ================= */
+{
+  const app = fs.readFileSync("public/ikolearn/app.js", "utf8"), view = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8");
+  const lessonJs = fs.readFileSync("public/ikolearn/lesson.js", "utf8"), css = fs.readFileSync("public/ikolearn/styles.css", "utf8");
+  // further reading: the model gives titles and search phrases only (inside the lesson block: 0 extra calls)
+  const sysL = lessonSystem(parseLearnInput({ mode: "lesson", name: "Mia", messages: [], focus: "Volcanoes" }));
+  ok(/"reading":\[\{"title":"\.\.\.","q":"\.\.\.","kind":"read\|watch"\}\]/.test(sysL) && /Never a link, web address, website or channel name/.test(sysL), "lesson prompt: reading is titles and search phrases inside the same hidden block (0 extra calls)");
+  const bad = [
+    { title: "How volcanoes erupt", q: "how volcanoes erupt", kind: "read" },
+    { title: "See https://evil.example/x", q: "volcano", kind: "read" },
+    { title: "Lava video", q: "www.evil.example lava", kind: "watch" },
+    { title: "Rocks", q: "rocks at evil.com", kind: "read" },
+    { title: "Magma chambers", q: "magma chamber", kind: "watch" },
+    { title: "Plates", q: "plate tectonics", kind: "read" },
+    { title: "Extra", q: "one too many", kind: "read" },
+  ];
+  const pr = parseReading(bad);
+  eq(pr.map((r) => r.q), ["how volcanoes erupt", "magma chamber", "plate tectonics"], "parseReading: anything link-like is dropped; at most 3");
+  ok(pr[1].kind === "watch" && pr[0].kind === "read" && parseReading("junk").length === 0 && parseReading([{ title: "A b c", q: "x y z", kind: "bogus" }])[0].kind === "read", "parseReading: kind read or watch; junk is nothing");
+  const blk = parseLessonBlock(JSON.stringify({ questions: [{ q: "What is lava?", options: ["Melted rock", "Ice", "Wind"], answer: 0 }], choices: [], reading: bad }), "Mia", "Volcanoes");
+  ok(blk && blk.reading.length === 3 && !JSON.stringify(blk).includes("evil"), "the lesson block carries the cleaned reading list");
+  // the client re-checks and builds links only to the allowlisted search pages
+  eq(L.cleanReading(bad).map((r) => r.q), ["how volcanoes erupt", "magma chamber", "plate tectonics"], "cleanReading (device): the same filter, for cached lessons too");
+  ok(L.SEARCH_HOSTS.join() === "en.wikipedia.org,www.khanacademy.org,openlibrary.org,www.google.com", "allowlist: Wikipedia, Khan Academy, Open Library and a SafeSearch video search");
+  const sl = L.searchLinks({ title: "T", q: "lava & safe=off", kind: "read" }), sv = L.searchLinks({ title: "T", q: "magma", kind: "watch" });
+  ok(sl.length === 3 && sl.every((l) => L.allowedHref(l.href) && /^Search /.test(l.label)) && sl.every((l) => l.href.includes("lava%20%26%20safe%3Doff")), "search links: allowlisted hosts, labelled as searches, the phrase URL-encoded (no injected parameters)");
+  ok(sv.some((l) => l.href.startsWith("https://www.google.com/search?tbm=vid&safe=active&q=magma%20site%3Ayoutube.com") && /SafeSearch on/.test(l.label)), "watch: a video search with SafeSearch on, limited to YouTube");
+  ok(!L.allowedHref("https://evil.example/") && !L.allowedHref("http://en.wikipedia.org/") && !L.allowedHref("javascript:alert(1)") && !L.allowedHref("https://en.wikipedia.org.evil.example/"), "allowedHref: other hosts, http and javascript: are refused");
+  const fk = (tag) => ({ tag, kids: [], attrs: {}, className: "", textContent: "", href: "", appendChild(k) { this.kids.push(k); return k; }, setAttribute(k, v) { this.attrs[k] = v; } });
+  const fdoc = { createElement: fk, createTextNode: (t) => ({ tag: "#text", textContent: t, kids: [] }) };
+  const all = (n, out = []) => { out.push(n); (n.kids || []).forEach((k) => all(k, out)); return out; };
+  const fold = L.renderReading(fdoc, bad.concat([{ title: "Evil", q: "https://evil.example", kind: "read" }]));
+  const anchors = all(fold).filter((n) => n.tag === "a");
+  ok(fold.tag === "details" && !fold.attrs.open && all(fold).some((n) => n.tag === "summary" && n.textContent === "Further reading & viewing"), "further reading: a collapsed fold, \u201cFurther reading & viewing\u201d");
+  ok(anchors.length === 8 && anchors.every((a) => L.allowedHref(a.href) && a.rel === "noopener noreferrer nofollow" && /^Search /.test(a.textContent)) && !all(fold).some((n) => /evil/.test(n.href || "") || /evil/.test(n.textContent || "")), "no model URL is ever rendered: every link is an allowlisted search", String(anchors.length));
+  ok(L.renderReading(fdoc, []) === null && L.renderReading(fdoc, [{ title: "x", q: "https://a.b" }]) === null, "nothing to show: no fold");
+  ok(!/\.href\s*=/.test(app) && (lessonJs.match(/\.href\s*=/g) || []).length === 1 && /if \(!allowedHref\(l\.href\)\) return;/.test(lessonJs), "only lesson.js sets a link, after the allowlist check; the app never does");
+  ok(/reading = L\.cleanReading\(ev\.reading\)/.test(app) && /state\.lessons\[id\]\.rd = reading/.test(app) && /showReading\(cached\.rd\)/.test(app), "the reading list is cached with the lesson (no new call to show it again)");
+
+  // newcomer hints: three, exact copy, remembered in ikolearn.v1.seen
+  ok(app.includes('cloud: "Tap a branch and the cloud grows with you."') && app.includes('card: "Pick or draw a card to open a short lesson."') && app.includes('deck: "Cards are achievements: they stay in your Deck and gain colour as you learn."'), "hints: the three tips");
+  ok(/state\.seen\.h\[k\] = 1;\s*saveSeen\(\);/.test(app) && /store\(LS\.seen, JSON\.stringify\(state\.seen\)\)/.test(app) && /h: sn\.h && typeof sn\.h === "object"/.test(app), "hints: a dismissal is saved in ikolearn.v1.seen and read back on load");
+  ok(/function renderCloudHint\(\)/.test(app) && /hintEl\("cloud", renderCloudHint\)/.test(app) && /CAM\.hint\(/.test(app) && /\.cloud-hint\.newcomer \{ pointer-events: auto;/.test(css), "the cloud's line shows the first tip until dismissed, then the controls line");
+  ok(/if \(hit\.node && !hintSeen\("cloud"\)\)/.test(app) && /dismissHint\("card"\); \/\* they picked a card/.test(app), "a tip also retires once its action is done");
+
+  // the big cloud's idle spin (camera.js: pure)
+  const S = CAM.spinState, R0 = CAM.SPIN.resumeMs;
+  ok(R0 >= 2000 && R0 <= 8000 && CAM.SPIN.rate > 0 && CAM.SPIN.rate * 1000 * 60 < Math.PI * 2, "idle spin: slow (under a turn a minute), resumes after a few idle seconds");
+  ok(S({ reduce: true, active: true, now: 1e6, lastInput: 0 }).on === false && S({ reduce: true, active: true, now: 1e6, lastInput: 0 }).wait === Infinity, "idle spin: off with reduced motion");
+  ok(!S({ hidden: true, active: true, now: 1e6 }).on && !S({ active: false, now: 1e6 }).on && !S({ active: true, paused: true, now: 1e6 }).on, "idle spin: never while the tab is hidden, the cloud is closed or a panel is open");
+  ok(!S({ active: true, busy: true, now: 1e6, lastInput: 0 }).on && S({ active: true, now: 1000, lastInput: 0 }).wait === R0 - 1000 && S({ active: true, now: R0, lastInput: 0 }).on, "idle spin: paused by interaction (and a focus glide), resumes once idle");
+  ok(CAM.spinStep(1000) === CAM.SPIN.rate * CAM.SPIN.maxDt && CAM.spinStep(-5) === 0, "idle spin: a long frame gap never jumps");
+  ok(/\["pointerdown", "pointermove", "wheel"\]\.forEach\(function \(t\) \{ canvas\.addEventListener\(t, touch/.test(view) && /root\.addEventListener\("keydown", touch\)/.test(view) && /visibilitychange/.test(view) && /if \(gesture \|\| tween \|\| glideV\) lastInput = now;/.test(view), "cloud view: pointer, wheel, keys and focus glides pause it; a hidden tab stops it");
+  ok(/big\.spin\(true\)/.test(app) && /big\.spin\(false\)/.test(app) && /big\.hold\(true\)/.test(app) && /big\.hold\(false\)/.test(app), "the app spins it only while the cloud is open, and holds it while a panel is open");
+
+  // the mini-Deck
+  ok(/el\.miniDeck\.addEventListener\("click", function \(\) \{ showDeck\(true\); \}\)/.test(app), "mini-Deck: tapping it opens the album");
+  ok(/return deckIds\(\)\.map\(function \(id\) \{ return D\.cardSpec\(state\.cloud, id\); \}\)/.test(app), "mini-Deck: built from the deck's ids (its real cards)");
+  ok(/var h = state\.cloud && C\.subjects\(state\.cloud\)\.length \? hintEl\("cloud", renderCloudHint\)/.test(app), "the cloud tip never runs before a cloud is loaded (it is first called at script load)");
+  ok(/Your deck \(no cards yet\)/.test(app) && /md-slot/.test(app) && /\.md-slot \{/.test(css), "mini-Deck: an empty slot at 0 cards (not hidden)");
+  ok(/D\.evolveKey\(b\) - D\.evolveKey\(a\)/.test(app) && /\.slice\(0, 3\)/.test(app) && /classList\.add\("pulse"\)/.test(app) && /rise && motionOK\(\)/.test(app), "mini-Deck: the best 3 cards fanned; a pulse when a card joins or rises (not with reduced motion)");
+  ok(/@media \(prefers-reduced-motion: reduce\) \{\s*\.md-fan, \.minideck\.pulse \.md-fan, \.minideck\.pulse::after \{ animation: none; \}/.test(css), "mini-Deck: still with reduced motion");
+
+  // the Skip message: no duplicate Begin panel
+  ok(/function skipWaiting\(\) \{ return waitingForStart\(\) && !state\.busy && state\.thread\.some/.test(app), "after Skip, the waiting message is the only invitation (no Begin panel under it)");
 }
 
 if (fails.length) {

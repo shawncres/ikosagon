@@ -24,6 +24,10 @@
     var yaw = -0.5, pitch = 0.32, zoom = 1, panX = 0, panY = 0, pivot = CAM.ORIGIN;
     var pointers = {}, gesture = null, idleSpin = mini && !reduce, tween = null, glideV = null;
     var focusId = null, focusSet = {};
+    /* the big cloud's idle spin (camera.js spinState): on only while the overlay is open (spinOn) and no panel holds it */
+    var spinOn = false, spinHeld = false, lastInput = 0, lastFrame = 0, spinning = false, resumeTimer = 0;
+    var doc = root.document;
+    function touch() { lastInput = performance.now(); }
     var projected = [];
     /* Test nodes: { parentId: "ready" | "taken" } (from orchestrator.js), drawn as a small diamond hanging off the parent */
     var tests = {}, testMarks = [];
@@ -254,7 +258,15 @@
       ctx.restore();
 
       if (idleSpin) yaw += 0.0025;
-      if (pulsing || idleSpin || gesture || tween || glideV) request();
+      var sp = { on: false, wait: Infinity };
+      if (!mini) {
+        if (gesture || tween || glideV) lastInput = now; /* a drag, a pinch or a focus glide pauses the spin until it has been idle a while */
+        sp = CAM.spinState({ reduce: reduce, hidden: Boolean(doc && doc.hidden), active: spinOn, paused: spinHeld, busy: Boolean(gesture || tween || glideV), now: now, lastInput: lastInput });
+        if (sp.on) yaw += CAM.spinStep(spinning ? now - lastFrame : 16);
+      }
+      spinning = sp.on; lastFrame = now;
+      if (pulsing || idleSpin || sp.on || gesture || tween || glideV) request();
+      else if (sp.wait !== Infinity && !resumeTimer) resumeTimer = setTimeout(function () { resumeTimer = 0; request(); }, sp.wait + 30);
     }
 
     function request() { if (!raf) raf = root.requestAnimationFrame(draw); }
@@ -384,12 +396,22 @@
       canvas.addEventListener("wheel", function (e) { e.preventDefault(); tween = null; glideV = null; zoomAt(CAM.wheelFactor(e.deltaY, e.ctrlKey), local(e)); changed(); }, { passive: false });
     }
 
+    if (!mini) {
+      /* any interaction pauses the idle spin: pointer (even hovering), wheel, keys; it resumes after a few idle seconds */
+      ["pointerdown", "pointermove", "wheel"].forEach(function (t) { canvas.addEventListener(t, touch, { passive: true }); });
+      root.addEventListener("keydown", touch);
+      /* battery: nothing turns while the tab is hidden; coming back counts as a fresh start (idle a while first) */
+      if (doc) doc.addEventListener("visibilitychange", function () { if (!doc.hidden) { touch(); request(); } });
+    }
     root.addEventListener("resize", resize);
     resize();
 
     return {
       setCloud: setCloud,
       setTests: function (map) { tests = map || {}; request(); },
+      /* the idle spin: on while the big cloud is open; hold(true) while a panel is open */
+      spin: function (on) { spinOn = Boolean(on) && !mini; touch(); request(); },
+      hold: function (on) { spinHeld = Boolean(on); touch(); request(); },
       flash: flash,
       resize: resize,
       /* the zoom buttons: a short eased zoom about the centre */
@@ -397,7 +419,7 @@
       reset: function () { apply(Object.assign({ pivot: CAM.ORIGIN }, HOME)); tween = null; glideV = null; setFocus(null); request(); changed(); },
       /* Recentre: ease back to the whole cloud, the pivot back to the origin, and let go of the focus */
       recentre: function () { setFocus(null); animateTo(Object.assign({ pivot: CAM.ORIGIN }, HOME), CAM.CAM.focusMs); },
-      state: function () { return { yaw: yaw, pitch: pitch, zoom: zoom, panX: panX, panY: panY, pivot: { x: pivot.x, y: pivot.y, z: pivot.z }, focus: focusId, drawn: projected.length, moving: Boolean(tween || glideV) }; },
+      state: function () { return { yaw: yaw, pitch: pitch, zoom: zoom, panX: panX, panY: panY, pivot: { x: pivot.x, y: pivot.y, z: pivot.z }, focus: focusId, drawn: projected.length, moving: Boolean(tween || glideV), spinning: spinning }; },
       setView: function (v) { if (v.zoom) setZoom(v.zoom); if (v.yaw != null) yaw = v.yaw; if (v.pitch != null) pitch = v.pitch; if (v.panX != null) panX = v.panX; if (v.panY != null) panY = v.panY; if (v.pivot && isFinite(v.pivot.x) && isFinite(v.pivot.y) && isFinite(v.pivot.z)) pivot = { x: v.pivot.x, y: v.pivot.y, z: v.pivot.z }; if (v.focus !== undefined) setFocus(v.focus); request(); },
       project: function (id) { return pos[id] ? project(pos[id]) : null; },
       focusNode: focusNode,

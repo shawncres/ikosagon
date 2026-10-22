@@ -116,7 +116,9 @@ export type Choice = { name: string; kind: (typeof CHOICE_KINDS)[number]; why: s
 /** A multiple-choice check question: 2-4 options, answer is the index of the right one. */
 export type Question = { q: string; options: string[]; answer: number };
 /** The hidden block at the end of a lesson: path steps (only when asked), fork choices, check questions, the card line, and whether the branch ends here. */
-export type LessonBlock = { steps: string[]; next: string; choices: Choice[]; questions: Question[]; blurb?: string; end?: boolean };
+/** Further reading and viewing: only a title and a search phrase (never a link); the app builds allowlisted search links. */
+export type Reading = { title: string; q: string; kind: "read" | "watch" };
+export type LessonBlock = { steps: string[]; next: string; choices: Choice[]; questions: Question[]; blurb?: string; end?: boolean; reading?: Reading[] };
 
 /* ---------- input cleaning (everything from the browser is untrusted) ---------- */
 
@@ -290,7 +292,7 @@ export function lessonSystem(i: LearnInput): string {
 /** One hidden block after every lesson (no extra call): check questions, the fork of 2 or 3 choices, the card line, and the path when asked. */
 const lessonBlockRules = (i: LearnInput) =>
   `After the lesson, on a new line, write ${PATH_OPEN} then one JSON object then ${PATH_CLOSE}, and nothing after it. The learner never sees this block as text. ` +
-  'The JSON is {"questions":[{"q":"...","options":["...","...","..."],"answer":0}],"blurb":"...","steps":["..."],"next":"...","choices":[{"name":"...","kind":"next|deeper|side","why":"..."}],"end":false}. ' +
+  'The JSON is {"questions":[{"q":"...","options":["...","...","..."],"answer":0}],"blurb":"...","steps":["..."],"next":"...","choices":[{"name":"...","kind":"next|deeper|side","why":"..."}],"reading":[{"title":"...","q":"...","kind":"read|watch"}],"end":false}. ' +
   `questions: 2 or 3 multiple-choice questions that check understanding of what this lesson explained (not new facts, not trick questions), each with 3 short options (one clearly right, the others believable), and answer = the position of the right option counting from 0. Short and kind, at the learner's level. ` +
   `blurb: one line under 12 words that says what "${i.focus}" is, for its card, without the learner's name. ` +
   (i.wantPath ? `steps and next: the child topics of "${i.focus}". ${pathRules(i)} ` : 'steps: [] and next: "" (no child topics wanted this time). ') +
@@ -298,7 +300,8 @@ const lessonBlockRules = (i: LearnInput) =>
   (i.ahead ? `one with kind "next" for their planned next step "${i.ahead}", ` : "") +
   `one with kind "deeper" that goes further into "${i.focus}" itself, and if it fits one with kind "side" for a nearby topic in the same subject. ` +
   "Each name is 1 to 3 words, Title Case, never the learner's name; why is a short friendly reason, under 10 words. " +
-  `If "${i.focus}" is a natural end with nothing deeper worth learning, set "end": true and leave out the "deeper" choice.`;
+  `If "${i.focus}" is a natural end with nothing deeper worth learning, set "end": true and leave out the "deeper" choice. ` +
+  "reading: 2 or 3 good ways to read or watch more about it: title (what to look for, under 8 words) and q (a plain search phrase, 2 to 6 words), kind read or watch. Never a link, web address, website or channel name.";
 
 export function lessonContents(i: LearnInput) {
   return [{ role: "user" as const, parts: [{ text: `Please teach me "${i.focus}".` }] }];
@@ -766,6 +769,23 @@ export function parseChain(raw: unknown, learnerName = "", topic = ""): string[]
   return out.slice(-LEARN_LIMITS.chain);
 }
 
+/** Further reading: titles and search phrases only. Anything that looks like a link or web address is dropped; at most 3. */
+export function parseReading(raw: unknown): Reading[] {
+  const out: Reading[] = [];
+  const linky = /(https?:|www\.|:\/\/|\b[a-z0-9-]+\.(com|org|net|edu|gov|io|co|uk|ca|tv|be|ly)\b|@|\/)/i;
+  for (const r of Array.isArray(raw) ? raw : []) {
+    if (!r || typeof r !== "object") continue;
+    const o = r as Record<string, unknown>;
+    const title = cleanText(plainReply(o.title), READING_LIMITS.titleChars).replace(/[<>{}[\]`*_#|\\]/g, " ").replace(/\s+/g, " ").trim();
+    const q = cleanText(plainReply(o.q), READING_LIMITS.queryChars).replace(/[<>{}[\]`*_#|\\"]/g, " ").replace(/\s+/g, " ").trim();
+    if (title.length < 3 || q.length < 3 || linky.test(title) || linky.test(q) || out.some((x) => sameLabel(x.q, q))) continue;
+    out.push({ title, q, kind: o.kind === "watch" ? "watch" : "read" });
+    if (out.length >= READING_LIMITS.items) break;
+  }
+  return out;
+}
+export const READING_LIMITS = { items: 3, titleChars: 70, queryChars: 60 };
+
 /** The block after a lesson. Steps only count when the client asked for a path. Null when nothing usable is in it. */
 export function parseLessonBlock(raw: unknown, learnerName = "", focus = "", wantPath = false): LessonBlock | null {
   const obj = jsonObject(raw);
@@ -775,11 +795,13 @@ export function parseLessonBlock(raw: unknown, learnerName = "", focus = "", wan
   const questions = parseQuestions(obj.questions);
   const blurb = parseBlurb(obj.blurb, learnerName);
   const end = obj.end === true;
+  const reading = parseReading(obj.reading);
   const steps = p ? p.steps : [];
   if (!steps.length && !choices.length && !questions.length && !end) return null;
   const out: LessonBlock = { steps, next: p ? p.next : "", choices, questions };
   if (blurb) out.blurb = blurb;
   if (end) out.end = true;
+  if (reading.length) out.reading = reading;
   return out;
 }
 
