@@ -258,6 +258,8 @@ function bridgeAsk(input: LearnInput): string {
 
 export async function createFor(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): Promise<Out> {
   if ((input.kind === "next" || input.kind === "bridge") && !input.focus) return json(422, { ok: false, reason: "focus" });
+  /* the learner's path starts only from what they offer: a start or more with nothing in their own words makes no call */
+  if ((input.kind === "start" || input.kind === "more") && !input.about && !input.interests.length) return json(422, { ok: false, reason: "about" });
   const user =
     input.kind === "bridge"
       ? input.repair
@@ -266,7 +268,7 @@ export async function createFor(input: LearnInput, env: Env, fetchImpl: typeof f
       : input.kind === "next"
       ? `What should come next in ${input.focus}?`
       : `Build my ${input.kind === "start" ? "first" : "new"} learning topics.` +
-        (input.about ? ` In my own words: "${input.about}"` : input.interests.length ? ` I enjoy: ${input.interests.join(", ")}.` : input.kind === "start" ? " I skipped the question, so pick popular places to start for me." : "");
+        (input.about ? ` In my own words: "${input.about}"` : ` I enjoy: ${input.interests.join(", ")}.`);
   const r = await generateJson<CreateResult>(createSystem(input), user, CREATE_SCHEMA, (t) => parseCreate(t, input.kind, input.name, input.focus, input.known), env, fetchImpl, { maxTokens: MODEL_LIMITS.createMaxTokens });
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
   return json(200, { ok: true, kind: input.kind, items: r.value.items });
