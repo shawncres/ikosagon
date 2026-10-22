@@ -22,8 +22,11 @@ export type JsonResult<T> = { ok: true; value: T; model: string } | Fail;
 export type LlmConfig = { provider: "gemini" | "openai-compatible"; key: string; model: string; base: string; fallback?: string };
 
 export const MODEL_LIMITS = {
-  /** a request that hasn't answered (response headers) by now gives up, so visitors aren't left waiting */
-  requestTimeoutMs: 20_000,
+  /**
+   * a streamed request that hasn't answered (response headers, which come with the first token) by now gives up and
+   * the fallback model is tried, so a stalled provider queue costs seconds, not most of a minute (normal: 1-4 s)
+   */
+  requestTimeoutMs: 12_000,
   /** a one-shot JSON call (the whole answer) */
   jsonTimeoutMs: 20_000,
   /** hard cap on a whole streamed reply; a timed-out request plus one fallback stays inside the routes' 60 s */

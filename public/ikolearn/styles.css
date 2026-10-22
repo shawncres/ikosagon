@@ -514,3 +514,14 @@ button.gcard:active, button.gslot:active { transform: translateY(-1px) scale(.97
 @media (prefers-reduced-motion: reduce) {
   .md-fan, .minideck.pulse .md-fan, .minideck.pulse::after { animation: none; }
 }
+
+/* a build in progress: the parents that have arrived, then quiet placeholders (a slow shimmer) for the rest */
+.gen { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.gen-got, .gen-ph { display: inline-flex; align-items: center; height: 30px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent); font-size: 14px; }
+.gen-got { padding: 0 12px; background: color-mix(in srgb, var(--paper) 70%, white); animation: gen-in .5s ease-out; }
+.gen-ph { width: 96px; border-style: dashed; background: linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--ink) 7%, transparent) 50%, transparent 100%) 0 0 / 200% 100%; animation: gen-shimmer 1.8s ease-in-out infinite; }
+.gen-ph:nth-child(2) { width: 120px; animation-delay: .2s; }
+.gen-ph:nth-child(3) { width: 84px; animation-delay: .4s; }
+@keyframes gen-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@keyframes gen-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .gen-ph, .gen-got { animation: none; } }

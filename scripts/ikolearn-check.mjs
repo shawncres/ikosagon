@@ -529,7 +529,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
 
   // colour: sepia first, the chain's hue at full colour, all from one place
   const s0 = C.evolveColor(sci.hue, 0), s4 = C.evolveColor(sci.hue, 4), m0 = C.evolveColor(math.hue, 0);
-  ok(s0.hue === 34 && m0.hue === 34 && s0.ink === m0.ink, "stage 0 is the same sepia for every subject");
+  ok(s0.hue === sci.hue && m0.hue === math.hue && s0.sat <= 34 && s0.sat < s4.sat && s0.ink !== m0.ink, "stage 0 is quiet and sepia-toned, but already in its subject's hue (so a card matches its node on the cloud)", JSON.stringify([s0.ink, m0.ink]));
   ok(s4.hue === sci.hue && s4.ink !== s0.ink && s4.base === sci.hue, "stage 4 reaches the chain's own hue");
   const rgb = (c) => { const [h, sa, l] = [c.hue, c.sat / 100, c.light / 100]; const k = (n) => (n + h / 30) % 12, a = sa * Math.min(l, 1 - l); return [0, 8, 4].map((n) => 255 * (l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1)))); };
   const dist = (x, y) => Math.hypot(...x.map((v, i) => v - y[i]));
@@ -541,7 +541,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(closer, "every stage moves the ink closer to the chain's hue (mixed, never through other hues)");
   const washes = [0, 1, 2, 3, 4].map((x) => +/, ([\d.]+)\)$/.exec(C.evolveColor(sci.hue, x).wash)[1]);
   ok(washes.every((v, i) => !i || v > washes[i - 1]), "the colour wash bleeds in a little more at every stage", washes.join(","));
-  eq(C.cardColor(c, cnt.id), C.evolveColor(C.hueOf(c, cnt.id), C.growthOf(c, cnt.id).stage), "cardColor = evolveColor(chain hue, stage)");
+  eq(C.cardColor(c, cnt.id), C.evolveColor(C.hueOf(c, cnt.id), C.growthOf(c, cnt.id).stage, C.toneOf(c, c.nodes[cnt.id])), "cardColor = evolveColor(chain hue, stage, the node's own tone)");
 
   // forks
   const add = C.findTopic(c, "Addition"), aw10 = C.findTopic(c, "Adding Within 10");
@@ -1281,7 +1281,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(!/\b(age|old|years?|grade|where (do )?you live|region)\b/i.test(JSON.stringify(ob2.concat([P.openQuestion(fresh, "grow"), P.openQuestion(fresh, "reask")]))), "onboarding never asks for age, grade or place");
   ok(ob[0].open && ob[0].input && !ob[0].multi && !("chips" in ob[0]) && ob[0].ex === true && /curious|enjoy/.test(ob[0].q), "onboarding: interests are one open question in the learner's own words: a free-text field; its only chips are the API's examples (ex), none in the question");
   const oq2 = P.openQuestion(fresh, "grow");
-  ok(oq2.open && !("chips" in oq2) && !oq2.ex && oq2.go === "Build my path" && ob[0].go === "Next" && /grow in yourself/.test(oq2.q) && /^Optional\./.test(oq2.hint), "onboarding: an optional, soft personal-development second question (free text, no examples), then Build my path");
+  ok(oq2.open && !("chips" in oq2) && oq2.ex === "growth" && oq2.go === "Build my path" && ob[0].go === "Next" && /grow in yourself/.test(oq2.q) && /^Optional\./.test(oq2.hint), "onboarding: an optional, soft personal-development second question (free text, with the API's growth examples), then Build my path");
   ok(P.openQuestion(fresh, "reask").ex === true, "the re-ask shows the examples too");
   { const kid = C.create("Kai", T0); C.setProfile(kid, { age: "4-6" }, T0); ok(P.openQuestion(kid, "curious").q === P.openQuestion(fresh, "curious").q && !("age" in C.profileOf(kid)), "open questions: one wording for everyone; an age in a profile patch is ignored"); }
   ok(!P.interestChips && !P.INTERESTS, "no interest chip list is exported any more");
@@ -1490,7 +1490,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     const exSys = examplesSystem();
     ok(/any age/.test(exSys) && /Don't skew toward childhood activities or toward work and careers/.test(exSys) && /calm and family-friendly/.test(exSys) && !/grown-up|being patient/.test(exSys), "examples prompt: a varied mix for any age, calm and family-friendly, no 'grown-up' or 'being patient'");
     ok(/could be any age/.test(SYSTEM_BASE) && !/young learner|may be a child|reading along should understand/i.test(SYSTEM_BASE + exSys), "prompts: the learner could be any age (no child framing)");
-    ok(examplesSystem.length === 0 && /Role: examples/.test(exSys) && !/Age band|Rough region|Learner's first name|profile/i.test(exSys.replace(SYSTEM_BASE, "")) && EXAMPLES_SCHEMA.required.join() === "examples", "the examples prompt takes no input at all: nothing about any learner goes in (so one set serves everyone)");
+    ok(examplesSystem.length === 0 && /Role: examples/.test(exSys) && !/Age band|Rough region|Learner's first name|profile/i.test(exSys.replace(SYSTEM_BASE, "")) && EXAMPLES_SCHEMA.required.join() === "examples,growth", "the examples prompt takes no input at all: nothing about any learner goes in (so one set serves everyone)");
     // examplesFor: day cache, coalescing, caps, cache headers, failures never cached
     const exOk = () => res(200, { candidates: [{ content: { parts: [{ text: JSON.stringify({ examples: EXS }) }] } }] });
     let t = Date.UTC(2026, 9, 22, 18);
@@ -1617,7 +1617,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     ok((appx.match(/getJson\("\/examples"\)/g) || []).length === 1 && /function getJson\(path\)[\s\S]{0,300}method: "GET"/.test(appx), "the client fetches examples in exactly one place, a plain GET");
     const fill = appx.slice(appx.indexOf("function fillEx("), appx.indexOf("function refreshEx("));
     const moreH = fill.slice(fill.indexOf('linkBtn("More"'), fill.indexOf('"link ex-more"'));
-    ok(moreH.length > 20 && /state\.ex\.at = \(at \+ EX_SHOW\) % list\.length; refreshEx\(\);/.test(moreH) && !/getJson|postJson|stream\(|loadExamples|fetch/.test(moreH), "More cycles through the cached set on the device: no call per tap");
+    ok(moreH.length > 20 && /state\.ex\[key\] = \(at \+ EX_SHOW\) % list\.length; refreshEx\(\);/.test(moreH) && !/getJson|postJson|stream\(|loadExamples|fetch/.test(moreH), "More cycles through the cached set on the device: no call per tap");
     ok(/if \(state\.ex\.status === "off"\) \{[\s\S]{0,260}Try again[\s\S]{0,80}ex-retry"\)\);\s*return;\s*\}/.test(fill) && /state\.ex\.status = list\.length \? "ok" : "off"/.test(appx), "offline (or a failed set): Try again and no list at all");
     ok(/if \(state\.ex\.status === "idle" && r\.live\(\)\) \{ state\.ex\.status = "wait"; setTimeout\(loadExamples, 0\); \}/.test(appx) && /if \(state\.ex\.status === "loading"\) return;/.test(appx) && (appx.match(/loadExamples\(\)/g) || []).length === 2, "examples load once per page (when a row first shows), again only on Try again");
     ok(/if \(m\.ex\) d\.appendChild\(exRow\(function \(t\) \{ go\(m\.open \? cleanAbout\(t\) : C\.cleanLabel\(t\), t\); \}/.test(appx) && /exRow\(function \(t\) \{ send\(t\); \}/.test(appx) && /exRow\(function \(t\) \{ answerReask\(t\); \}\)/.test(appx), "tapping an example acts exactly like typing it: the open question's answer, the chat box, or the re-ask");
@@ -1636,7 +1636,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     ok(gf.calls.length === 1 && /grow in myself: \\"Being more patient/.test(gf.calls[0].init.body) && /In my own words: \\"volcanoes/.test(gf.calls[0].init.body), "createFor(start): one call carries both answers");
     // the create prompt reflects noticed signals and may lightly suggest optional precursors (never forced)
     const cs = createSystem({ ...GR, kind: "more", about: "music" }), cn = createSystem({ ...GR, kind: "next", focus: "Fractions" }), cb = createSystem({ ...GR, kind: "bridge", focus: "Sets", focusParent: "Computer Science" });
-    ok([createSystem(GR), cs, cn].every((x) => /marked strong/.test(x) && /found hard/.test(x) && /matters more as AI tools spread/.test(x) && /always role optional/.test(x) && /never push it/.test(x) && /at most one per item/.test(x) && /never talk about jobs, careers or the future/.test(x)) && !/AI tools/.test(cb), "create prompt: builds on what was noticed (strong / found hard, the SIGNALS) and may add one optional, tied-in precursor toward AI-era directions; never forced; not in bridges");
+    ok(!/marked strong/.test(createSystem(GR)) && /matters more as AI tools spread/.test(createSystem(GR)) && [cs, cn].every((x) => /marked strong/.test(x) && /found hard/.test(x) && /matters more as AI tools spread/.test(x) && /always role optional/.test(x) && /never push it/.test(x) && /at most one per item/.test(x) && /never talk about jobs, careers or the future/.test(x)) && !/AI tools/.test(cb), "create prompt: builds on what was noticed (strong / found hard, the SIGNALS) and may add one optional, tied-in precursor toward AI-era directions; never forced; not in bridges");
     ok(SIGNALS.join() === "explored,strength,struggle,curious" && /", strong"/.test(fs.readFileSync("public/ikolearn/cloud-model.js", "utf8")) && /found hard/.test(fs.readFileSync("public/ikolearn/cloud-model.js", "utf8")), "the noticed signals reach the prompt through the profile summary (strong / found hard)");
   }
 
@@ -1644,7 +1644,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const priv = fs.readFileSync("public/ikolearn/privacy.html", "utf8");
   ok(!/id="you"|you-age|you-region|you-link|About you/.test(html), "no About-you age or region fields remain");
   ok(/No age, no location/.test(priv) && /never asks how old you are or where you live/.test(priv) && !/age band like|Ontario-ish|About you/.test(priv), "privacy page: no age, no location, and old values are cleared");
-  ok(/"\/create"/.test(app) && /P\.createRequest\(/.test(app) && /C\.applyCreate\(/.test(app) && /animateBuild/.test(app) && /mode: "notice"/.test(app), "the app builds from one creation call, visibly");
+  ok(/"\/create"/.test(app) && /P\.createRequest\(/.test(app) && /C\.applyCreate\(/.test(app) && /cloudBuilder/.test(app) && /mode: "notice"/.test(app), "the app builds from one creation call, visibly");
   ok(/P\.onboarding\(/.test(app) && /askTile/.test(app) && /answerReask/.test(app), "onboarding questions and a light re-ask");
   {
     // no seeded topics anywhere in discovery: a failed creation call offers Try again instead
@@ -2375,6 +2375,129 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
 
   // the Skip message: no duplicate Begin panel
   ok(/function skipWaiting\(\) \{ return waitingForStart\(\) && !state\.busy && state\.thread\.some/.test(app), "after Skip, the waiting message is the only invitation (no Begin panel under it)");
+}
+
+/* ================= speed: the streamed creation call; cards: colour and motifs; the second question's examples ================= */
+{
+  const PR = await import("../lib/ikolearn/prompts.ts");
+  const SV = await import("../lib/ikolearn/service.ts");
+  const LM = await import("../lib/ikolearn/llm.ts");
+  const app = fs.readFileSync("public/ikolearn/app.js", "utf8"), css = fs.readFileSync("public/ikolearn/styles.css", "utf8");
+  const route = fs.readFileSync("app/api/ikolearn/create/route.ts", "utf8");
+  const kid = (n, o, m) => ({ name: n, order: o, score: 0.8, why: "First step", role: "core", ...(m ? { motif: m } : {}) });
+  const item = (n, c, m, kids) => ({ node: { name: n, chain: [c], motif: m }, card: { title: n, blurb: "About " + n + ".", goal: "Explain " + n + "." }, children: kids });
+  const FULL = { items: [
+    item("Sourdough Bread", "Baking", "bowl", [kid("Starter Basics", 1, "seed"), kid("Kneading", 2, "hand"), kid("Proofing {rise}", 3, "spaceship")]),
+    item("Weather Patterns", "Earth Science", "Cloud", [kid("Air Pressure", 1), kid("Fronts", 2)]),
+    item("Speaking Up", "Communication", "not-a-motif", [kid("Short Answers", 1, "voice"), kid("Asking Questions", 2)]),
+  ] };
+  const text = JSON.stringify(FULL);
+
+  // completeItems: only finished items of a JSON text still arriving (braces inside strings don't count)
+  const cut = text.indexOf("Weather Patterns") + 5;
+  ok(PR.completeItems(text.slice(0, cut)).length === 1 && PR.completeItems(text).length === 3 && PR.completeItems('{"items":[').length === 0 && PR.completeItems("").length === 0, "completeItems: only the items that have closed so far (a half-written one waits)");
+  ok(PR.completeItems('{"items":[{"node":{"name":"A } ] \\" {"}},{"node"').length === 1, "completeItems: braces and quotes inside strings are not structure");
+  // a prefix of the items gives a prefix of the result, so streamed items never change once sent
+  const all = PR.createItems(FULL.items, "start", "Mia"), pre = PR.createItems(FULL.items.slice(0, 2), "start", "Mia");
+  ok(all.length === 3 && JSON.stringify(pre) === JSON.stringify(all.slice(0, 2)) && JSON.stringify(PR.parseCreate(text, "start", "Mia").items) === JSON.stringify(all), "createItems: prefix-safe, and parseCreate gives the same items");
+
+  // motifs: one fixed vocabulary everywhere; the creation call's motif is kept only when it is in it
+  ok(PR.MOTIFS.length >= 30 && PR.MOTIFS.length <= 45 && JSON.stringify([...PR.MOTIFS]) === JSON.stringify(C.MOTIFS) && JSON.stringify(Object.keys(D.MOTIF_ART).sort()) === JSON.stringify([...PR.MOTIFS].sort()), "motifs: the same ~40-word vocabulary in prompts.ts, cloud-model.js and deck.js (one drawing each)", String(PR.MOTIFS.length));
+  ok(all[0].node.motif === "bowl" && all[1].node.motif === "cloud" && !("motif" in all[2].node) && all[0].children[0].motif === "seed" && !("motif" in all[0].children[2]) && all[2].children[0].motif === "voice", "parseCreate: a known motif is kept (case-folded), anything else dropped, on items and children");
+  ok(PR.CREATE_SCHEMA.properties.items.items.properties.node.properties.motif.type === "string" && PR.CREATE_SCHEMA.properties.items.items.properties.children.items.properties.motif.type === "string", "create schema: motif on the node and on each child (optional)");
+  const S0 = parseLearnInput({ mode: "notice", name: "Mia", messages: [], kind: "start", about: "bread" });
+  const sys0 = createSystem(S0), sysNext = createSystem({ ...S0, kind: "next", focus: "Bread" });
+  ok(PR.MOTIFS.every((m) => sys0.includes(m)) && /motif \(on node\.motif and on each child\)/.test(sys0), "create prompt: lists the motif vocabulary");
+  ok(/children: 3 or 4 smaller child topics/.test(sys0) && /children: 3 to 6 smaller child topics/.test(sysNext) && !/marked strong/.test(sys0), "create prompt (start): fewer children per parent and nothing to 'notice' yet, so the first build is shorter to write");
+
+  // the device keeps the motif (applyCreate), stores it in v9 (an optional map) and falls back by keyword
+  const mc = C.create("Mia", 1000);
+  C.applyCreate(mc, { items: all }, { t: 2000 });
+  const byL = (l) => mc.order.map((x) => mc.nodes[x]).find((n) => n.label === l);
+  ok(byL("Sourdough Bread").motif === "bowl" && byL("Starter Basics").motif === "seed" && byL("Weather Patterns").motif === "cloud" && byL("Speaking Up").motif === "" && byL("Baking").motif === "", "applyCreate: node and child motifs land on the cloud (none: \"\")");
+  const ser = C.serialize(mc), back = C.deserialize(ser), j = JSON.parse(ser);
+  ok(j.v === 9 && j.mo && j.mo[byL("Sourdough Bread").id] === "bowl" && !j.n.some((r) => r.includes("bowl")) && back.nodes[byL("Starter Basics").id].motif === "seed" && back.nodes[byL("Speaking Up").id].motif === "", "storage stays v9: motifs ride in an optional map (rows unchanged) and round-trip");
+  const noMo = JSON.parse(ser); delete noMo.mo;
+  const old9 = C.deserialize(JSON.stringify(noMo));
+  ok(old9 && old9.order.every((x) => old9.nodes[x].motif === "") && C.serialize(old9).length > 0, "a v9 save without motifs loads unchanged (every motif \"\")");
+  const badMo = JSON.parse(ser); badMo.mo = { [byL("Sourdough Bread").id]: "<script>", nope: "star" };
+  ok(C.deserialize(JSON.stringify(badMo)).nodes[byL("Sourdough Bread").id].motif === "", "a stored motif outside the vocabulary is dropped");
+  ok(D.motifFor("Magma", ["Earth Science", "Volcanoes"], "") === "mountain" && D.motifFor("Open Chords", ["Music"], "") === "note" && D.motifFor("Zebra Crossing", [], "") === "" && D.motifFor("Getting Started", [], "") === "" && D.motifFor("Anything", [], "star") === "star", "old topics: a keyword match on the title, then the chain, else a plain scene");
+  const la = D.landscape("n7", 2, "star"), lb = D.landscape("n7", 2, "star"), ln = D.landscape("n7", 2, "");
+  ok(JSON.stringify(la) === JSON.stringify(lb) && la.motif && la.motif.name === "star" && ln.motif === null && la.layers.length === ln.layers.length, "landscape: the motif's place is seeded by the topic id; no motif, the plain scene");
+  const layouts = new Set(Array.from({ length: 40 }, (_, i) => D.landscape("t" + i, 1, "leaf").motif.layout));
+  ok(layouts.size === 3, "motif compositions vary with the topic (three layouts)");
+  const dd = (D.landscape("n9", 0, "book").motif), d4 = D.landscape("n9", 4, "book").motif;
+  ok(JSON.stringify(dd) === JSON.stringify(d4), "a growing card keeps its drawing (the motif doesn't move with detail)");
+
+  // card colour = the node's colour on the cloud (same hue at every stage; full tone at stage 4), merged parents too
+  const hueOf = (css) => +/hsla?\((\d+)/.exec(css)[1];
+  const live = mc.order.filter((x) => !mc.nodes[x].ghost && x !== "root");
+  ok(live.length > 5 && live.every((x) => C.cardColor(mc, x).hue === hueOf(C.colorOf(mc, mc.nodes[x]))), "every card's hue is its node's hue on the cloud");
+  const tn = C.toneOf(mc, byL("Kneading")), s4 = C.evolveColor(0, 4, tn), s0 = C.evolveColor(0, 0, tn);
+  ok(s4.hue === tn.h && s4.sat === tn.s && s4.light === Math.max(30, Math.min(46, tn.l)) && s0.hue === tn.h && s0.sat < s4.sat, "stage 4 is the node's own tone; stage 0 the same hue, quieter");
+  ok(/function toneOf\(cloud, n\)[\s\S]{0,500}function colorOf\(cloud, n\)[\s\S]{0,200}var t = toneOf\(cloud, n\)/.test(fs.readFileSync("public/ikolearn/cloud-model.js", "utf8")), "the cloud and the cards read one colour source (toneOf)");
+
+  // render: the motif is drawn in the plate, in the card's ink, with no network or text
+  {
+    const sp = D.cardSpec(mc, byL("Sourdough Bread").id);
+    ok(sp && sp.art.motif && sp.art.motif.name === "bowl", "cardSpec: the stored motif reaches the card");
+    const sk = D.cardSpec(mc, byL("Air Pressure").id);
+    ok(sk && sk.art.motif && sk.art.motif.name === "cloud", "cardSpec: a topic without one gets the keyword or chain match");
+  }
+
+  // the streamed creation call: items as soon as they close, then done; errors as before
+  const chunks = [text.slice(0, 60), text.slice(60, cut), text.slice(cut, cut + 200), text.slice(cut + 200)];
+  const order = [];
+  const stepper = () => {
+    const enc = new TextEncoder(); let i = 0;
+    return new ReadableStream({ pull(c) { if (i < chunks.length) { order.push("chunk" + i); c.enqueue(enc.encode(`data: ${JSON.stringify({ candidates: [{ content: { parts: [{ text: chunks[i++] }] } }] })}\n\n`)); } else c.close(); } });
+  };
+  const sf = fakeFetch([() => res(200, stepper())]);
+  const evs = [];
+  for await (const e of SV.createEvents(S0, ENV, sf)) { evs.push(e); order.push(e.t); }
+  const its = evs.filter((e) => e.t === "item");
+  ok(its.length === 3 && evs[evs.length - 1].t === "done" && evs[evs.length - 1].items.length === 3 && JSON.stringify(its.map((e) => e.item)) === JSON.stringify(all), "createEvents: every item, then done with the full list (the same as parseCreate)");
+  ok(order.indexOf("item") >= 0 && order.indexOf("item") < order.indexOf("chunk3"), "createEvents: the first item is sent before the rest has been written", order.join(","));
+  ok(sf.calls.length === 1 && /streamGenerateContent\?alt=sse/.test(sf.calls[0].url) && /"responseSchema"/.test(sf.calls[0].init.body) && /"motif"/.test(sf.calls[0].init.body), "createEvents: one streamed JSON call with the create schema");
+  const fb = fakeFetch([() => res(503, { error: { status: "UNAVAILABLE", message: "busy" } }), () => res(200, sse([text]))]);
+  const fbe = await collect(SV.createEvents(S0, ENV, fb));
+  ok(fb.calls.length === 2 && fb.calls[1].url.includes(FALLBACK_MODEL) && fbe.filter((e) => e.t === "item").length === 3, "createEvents: a 5xx before any text tries the fallback model once");
+  const bad = await collect(SV.createEvents(S0, ENV, fakeFetch([() => res(200, sse(['{"items":[{"node":{}}]}']))])));
+  ok(bad.length === 1 && bad[0].t === "error" && bad[0].reason === "bad_output", "createEvents: nothing usable is an error (the app offers Try again)");
+  const refused = await collect(SV.createEvents(S0, ENV, fakeFetch([() => res(400, { error: { message: "bad" } })])));
+  ok(refused.length === 1 && refused[0].t === "error" && refused[0].reason === "refused", "createEvents: a refused call is an error, no fallback");
+  ok(SV.createCheck({ ...S0, about: "", interests: [], grow: "" }).status === 422 && SV.createCheck(S0) === null, "createCheck: a start with nothing in their own words is never a call");
+  ok(MODEL_LIMITS.requestTimeoutMs === 12_000 && MODEL_LIMITS.streamTimeoutMs === 38_000, "streams give up on a silent provider after 12 s (then the fallback), not 20 s");
+  ok(/wantsStream\(raw\) && \(p\.input\.kind === "start" \|\| p\.input\.kind === "more"\)/.test(route) && /createCheck\(p\.input\)/.test(route) && /application\/x-ndjson/.test(route) && /createFor\(p\.input/.test(route) && /prepare\(\{ rawBody: raw/.test(route), "create route: NDJSON when asked (start and more), the same guards; plain JSON otherwise");
+  // streamJson on an OpenAI-compatible provider: one piece (the same JSON call)
+  const OENV = { IKOLEARN_LLM_PROVIDER: "openai-compatible", IKOLEARN_LLM_API_KEY: "k-123456", IKOLEARN_LLM_BASE_URL: "https://llm.example/v1", IKOLEARN_LLM_MODEL: "m1" };
+  const of = fakeFetch([() => res(200, { choices: [{ message: { content: text } }] })]);
+  const os = await LM.streamJson("s", "u", PR.CREATE_SCHEMA, OENV, of);
+  let otext = ""; if (os.ok) for await (const pc of os.pieces) otext += pc;
+  ok(os.ok && otext === text && of.calls.length === 1, "streamJson: an OpenAI-compatible provider answers in one piece");
+
+  // the app: streams the build, adds each parent as it arrives, placeholders while waiting
+  ok(/stream\("\/create", Object\.assign\(basePayload\(null\), \{ mode: "notice", stream: true \}, req\), \{ delta: function \(\) \{\}, item: take \}\)/.test(app) && /function cloudBuilder\(\)/.test(app) && /build\.add\(it\)/.test(app), "app: the first build streams and each parent goes on the cloud as it arrives");
+  ok(/else if \(ev\.t === "item" && on\.item && ev\.item\)/.test(app) && /else if \(ev\.ok === true && Array\.isArray\(ev\.items\)\) result = \{ ok: true, items: ev\.items \}/.test(app), "app: the reader takes items, and a plain JSON answer still works");
+  ok(/var BUILD_BEAT = 380;/.test(app) && !/wait\(700\)/.test(app), "app: the build beat is 380 ms per step (was 700)");
+  ok(/m\.streaming && \(m\.pending \|\| \(m\.got && m\.got\.length\)\)/.test(app) && /"gen-ph"/.test(app) && /\.gen-ph \{/.test(css) && /@media \(prefers-reduced-motion: reduce\) \{ \.gen-ph, \.gen-got \{ animation: none; \} \}/.test(css), "app: quiet placeholders while the build is written (still with reduced motion)");
+
+  // the second question's easy-click answers: from the same cached call, cycled on the device
+  const ES = PR.parseExampleSet({ examples: Array.from({ length: 12 }, (_, i) => "Topic " + "abcdefghijkl"[i]), growth: ["Speaking up more", "Staying focused", "Writing clearly", "Being kinder to myself", "Topic a", "Visit https://x", "Listening well"] });
+  ok(ES && ES.growth.length === 5 && !ES.growth.includes("Topic a") && !ES.growth.some((x) => /http/.test(x)), "parseExampleSet: growth phrases cleaned like examples, none repeated from the first list");
+  ok(PR.parseExampleSet({ examples: Array.from({ length: 12 }, (_, i) => "Topic " + "abcdefghijkl"[i]), growth: ["One", "Two"] }).growth.length === 0 && PR.parseExampleSet({ examples: ["a"] }) === null, "too few growth phrases is none (the examples still serve); too few examples is unusable");
+  ok(/growth: \$\{EXAMPLE_LIMITS\.growth\}/.test(fs.readFileSync("lib/ikolearn/prompts.ts", "utf8")) && /grow in yourself/.test(examplesSystem()) && /never about looks, weight, money or work/.test(examplesSystem()) && /suiting any age/.test(examplesSystem()), "examples prompt: also a universal growth set (any age; never looks, weight, money or work)");
+  {
+    let t = Date.parse("2026-10-22T18:00:00Z");
+    const st = createLearnState(() => t, async () => {}, () => 0.5);
+    const GROW = ["Speaking up more", "Staying focused", "Writing clearly", "Listening well", "Keeping a routine"];
+    const EXS2 = Array.from({ length: 12 }, (_, i) => "Topic " + "abcdefghijkl"[i]);
+    const ef = fakeFetch([() => res(200, { candidates: [{ content: { parts: [{ text: JSON.stringify({ examples: EXS2, growth: GROW }) }] } }] })]);
+    const a = await examplesFor(ENV, st, ef), b = await examplesFor(ENV, st, ef);
+    ok(ef.calls.length === 1 && a.body.growth.join() === GROW.join() && b.body.growth.join() === GROW.join() && a.headers === EXAMPLES_CACHE, "examplesFor: one call serves both lists, cached the same way (0 extra calls)");
+  }
+  ok(/var list = state\.ex\.status !== "ok" \? \[\] : grow \? state\.ex\.growth : P\.examples\(/.test(app) && /state\.ex\.growth = list\.length \? clean\(j\.growth, 12\) : \[\];/.test(app) && /m\.ex === "growth" \? "growth" : ""/.test(app), "app: the second question shows the growth set (no list of its own), More cycles it on the device");
 }
 
 if (fails.length) {

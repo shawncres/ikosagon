@@ -9,7 +9,7 @@
  *
  * With none of these set, IkoLearn behaves exactly as before: Gemini, GEMINI_API_KEY, the default and fallback models.
  */
-import { DEFAULT_MODEL, FALLBACK_MODEL, GEMINI_BASE, geminiJson, geminiStream } from "./gemini";
+import { DEFAULT_MODEL, FALLBACK_MODEL, GEMINI_BASE, geminiJson, geminiJsonStream, geminiStream } from "./gemini";
 import { openaiJson, openaiStream } from "./openai-compatible";
 import type { Content, Env, Fail, JsonResult, LlmConfig, StreamOptions, StreamStart } from "./llm-types";
 
@@ -63,4 +63,18 @@ export async function generateJson<T>(system: string, user: string, schema: unkn
   const cfg = llmConfig(env);
   if ("error" in cfg) return notReady();
   return cfg.provider === "gemini" ? geminiJson(cfg, system, user, schema, parse, fetchImpl, opts) : openaiJson(cfg, system, user, schema, parse, fetchImpl, opts);
+}
+
+/**
+ * One structured (JSON) call, streamed: the JSON text arrives in pieces so the caller can use complete parts early (the
+ * creation call shows its first parents while the rest is written). Gemini streams it; an OpenAI-compatible provider
+ * answers in one piece (the same JSON call), so callers work the same either way.
+ */
+export async function streamJson(system: string, user: string, schema: unknown, env: Env, fetchImpl: typeof fetch = fetch, opts: StreamOptions = {}): Promise<StreamStart> {
+  const cfg = llmConfig(env);
+  if ("error" in cfg) return notReady();
+  if (cfg.provider === "gemini") return geminiJsonStream(cfg, system, user, schema, fetchImpl, opts);
+  const r = await openaiJson(cfg, system, user, schema, (t) => t || null, fetchImpl, opts);
+  if (!r.ok) return r;
+  return { ok: true, model: r.model, pieces: (async function* () { yield r.value; })(), abort: () => {} };
 }

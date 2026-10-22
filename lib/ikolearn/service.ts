@@ -6,7 +6,7 @@
  */
 import { createRateLimiter } from "../ikoreadtube/service";
 import { originOk } from "../ikoreadtube/summarize";
-import { MODEL_LIMITS, generateJson, llmReady, streamText, type Content, type Env, type FailCode } from "./llm";
+import { MODEL_LIMITS, generateJson, llmReady, streamJson, streamText, type Content, type Env, type FailCode } from "./llm";
 import {
   ADJACENT_SCHEMA,
   CARD_SCHEMA,
@@ -18,9 +18,13 @@ import {
   CREATE_SCHEMA,
   EXAMPLES_SCHEMA,
   examplesSystem,
-  parseExamples,
+  parseExampleSet,
+  type ExampleSet,
   createSystem,
   parseCreate,
+  createItems,
+  completeItems,
+  type CreateItem,
   type CreateResult,
   adjacentSystem,
   parseTest,
@@ -81,7 +85,7 @@ export const EXAMPLES_NO_STORE = { "Cache-Control": "no-store", "Vercel-CDN-Cach
  */
 export const EXAMPLES_RETRY = { backoffMinMs: 400, backoffMaxMs: 800, budgetMs: 26_000, minCallMs: 6_000 };
 
-export type ExamplesState = { day: string; list: string[]; tries: { day: string; n: number }; pending: Promise<Out> | null };
+export type ExamplesState = { day: string; list: string[]; growth: string[]; tries: { day: string; n: number }; pending: Promise<Out> | null };
 
 export type LearnState = {
   limiter: ReturnType<typeof createRateLimiter>;
@@ -98,7 +102,7 @@ export function createLearnState(now: () => number = () => Date.now(), sleep: (m
   return {
     limiter: createRateLimiter({ perIpPerMinute: LEARN_GUARDS.perIpPerMinute, perIpPerHour: LEARN_GUARDS.perIpPerHour, globalPerMinute: LEARN_GUARDS.globalPerMinute }, now),
     budget: { day: "", calls: 0 },
-    examples: { day: "", list: [], tries: { day: "", n: 0 }, pending: null },
+    examples: { day: "", list: [], growth: [], tries: { day: "", n: 0 }, pending: null },
     now,
     sleep,
     random,
@@ -238,7 +242,7 @@ export function lessonEvents(input: LearnInput, env: Env, fetchImpl: typeof fetc
 }
 
 /** NDJSON stream for the route. */
-export function eventStream(events: AsyncGenerator<ChatEvent>): ReadableStream<Uint8Array> {
+export function eventStream<E = ChatEvent>(events: AsyncGenerator<E>): ReadableStream<Uint8Array> {
   const enc = new TextEncoder();
   return new ReadableStream({
     async pull(controller) {
@@ -296,11 +300,16 @@ function bridgeAsk(input: LearnInput): string {
   return q ? ` The learner asked: "${q.text.slice(0, 300)}"` : "";
 }
 
-export async function createFor(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): Promise<Out> {
+/** A creation request that can't be made (422), or null when it can. */
+export function createCheck(input: LearnInput): Out | null {
   if ((input.kind === "next" || input.kind === "bridge") && !input.focus) return json(422, { ok: false, reason: "focus" });
   /* the learner's path starts only from what they offer: a start or more with nothing in their own words makes no call */
   if ((input.kind === "start" || input.kind === "more") && !input.about && !input.interests.length && !(input.kind === "start" && input.grow)) return json(422, { ok: false, reason: "about" });
-  const user =
+  return null;
+}
+
+function createUser(input: LearnInput): string {
+  return (
     input.kind === "bridge"
       ? input.repair
         ? `Check the chain for ${input.focus}: ${input.trail || input.focusParent}. Was a level skipped? Give the corrected chain.${bridgeAsk(input)}`
@@ -309,10 +318,53 @@ export async function createFor(input: LearnInput, env: Env, fetchImpl: typeof f
       ? `What should come next in ${input.focus}?`
       : `Build my ${input.kind === "start" ? "first" : "new"} learning topics.` +
         (input.about ? ` In my own words: "${input.about}"` : input.interests.length ? ` I enjoy: ${input.interests.join(", ")}.` : "") +
-        (input.kind === "start" && input.grow ? ` Something I'd like to grow in myself: "${input.grow}"` : "");
+        (input.kind === "start" && input.grow ? ` Something I'd like to grow in myself: "${input.grow}"` : "")
+  );
+}
+
+export async function createFor(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): Promise<Out> {
+  const bad = createCheck(input);
+  if (bad) return bad;
+  const user = createUser(input);
   const r = await generateJson<CreateResult>(createSystem(input), user, CREATE_SCHEMA, (t) => parseCreate(t, input.kind, input.name, input.focus, input.known), env, fetchImpl, { maxTokens: MODEL_LIMITS.createMaxTokens, route: "create" });
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
   return json(200, { ok: true, kind: input.kind, items: r.value.items });
+}
+
+export type CreateEvent = { t: "item"; item: CreateItem } | { t: "done"; kind: LearnInput["kind"]; items: CreateItem[] } | { t: "error"; reason: FailCode | "cut" | "bad_output" };
+
+/**
+ * The creation call, streamed (start and more): the model's JSON arrives in pieces and each item is sent ("item") as
+ * soon as it is complete and valid, so the learner sees the first parent while the rest is still being written. The
+ * same validation as createFor (createItems on the items so far: a prefix of the items gives a prefix of the result).
+ * Ends with "done" and the full list, or "error" when nothing usable came (the app shows Try again, as before).
+ * A provider that answers in one piece just sends every item at the end. Call createCheck first.
+ */
+export async function* createEvents(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): AsyncGenerator<CreateEvent> {
+  const started = await streamJson(createSystem(input), createUser(input), CREATE_SCHEMA, env, fetchImpl, { maxTokens: MODEL_LIMITS.createMaxTokens, route: "create" });
+  if (!started.ok) {
+    yield { t: "error", reason: started.code };
+    return;
+  }
+  let text = "", sent: CreateItem[] = [], cut = false;
+  const fresh = (): CreateItem[] => createItems(completeItems(text), input.kind, input.name, input.focus, input.known);
+  try {
+    for await (const piece of started.pieces) {
+      text += piece;
+      if (text.length > 40_000) break;
+      const now = fresh();
+      for (let i = sent.length; i < now.length; i++) yield { t: "item", item: now[i] };
+      if (now.length > sent.length) sent = now;
+    }
+  } catch {
+    cut = true;
+  }
+  /* the whole answer, parsed the usual way; when it ends cut short, the items already sent are what was made */
+  const full = cut ? null : parseCreate(text, input.kind, input.name, input.focus, input.known);
+  const items = full ? full.items : sent;
+  for (let i = sent.length; i < items.length; i++) yield { t: "item", item: items[i] };
+  if (items.length && (full || sent.length)) yield { t: "done", kind: input.kind, items };
+  else yield { t: "error", reason: cut ? "cut" : "bad_output" };
 }
 
 export async function testFor(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): Promise<Out> {
@@ -334,7 +386,8 @@ export async function testFor(input: LearnInput, env: Env, fetchImpl: typeof fet
 export async function examplesFor(env: Env, state: LearnState, fetchImpl: typeof fetch = fetch): Promise<Out> {
   if (!llmReady(env)) return json(503, { ok: false, reason: "off" }, EXAMPLES_NO_STORE);
   const ex = state.examples, day = ptDay(state.now());
-  const serve = (list: string[], fresh: boolean): Out => ({ status: 200, body: { ok: true, examples: list }, headers: fresh ? EXAMPLES_CACHE : EXAMPLES_STALE });
+  /* the first question's list and the second question's (growth), from the same call */
+  const serve = (list: string[], fresh: boolean): Out => ({ status: 200, body: { ok: true, examples: list, growth: ex.growth || [] }, headers: fresh ? EXAMPLES_CACHE : EXAMPLES_STALE });
   const fail = (code: FailCode): Out => (ex.list.length ? serve(ex.list, false) : json(reasonStatus(code), { ok: false, reason: code }, EXAMPLES_NO_STORE));
   if (ex.day === day && ex.list.length) return serve(ex.list, true);
   if (ex.pending) return ex.pending;
@@ -346,7 +399,7 @@ export async function examplesFor(env: Env, state: LearnState, fetchImpl: typeof
   const attempt = async (n: number, timeoutMs?: number) => {
     ex.tries.n += 1;
     state.budget.calls += 1;
-    return generateJson<string[]>(examplesSystem(), "Today's examples, please.", EXAMPLES_SCHEMA, parseExamples, env, fetchImpl, { maxTokens: 600, route: "examples", attempt: n, timeoutMs });
+    return generateJson<ExampleSet>(examplesSystem(), "Today's examples, please.", EXAMPLES_SCHEMA, parseExampleSet, env, fetchImpl, { maxTokens: 900, route: "examples", attempt: n, timeoutMs });
   };
   ex.pending = (async () => {
     try {
@@ -361,7 +414,8 @@ export async function examplesFor(env: Env, state: LearnState, fetchImpl: typeof
       }
       if (r.ok) {
         ex.day = day;
-        ex.list = r.value;
+        ex.list = r.value.examples;
+        ex.growth = r.value.growth;
         return serve(ex.list, true);
       }
       return fail(r.code);

@@ -160,7 +160,8 @@
       grow: ["And is there something you'd like to grow in yourself?", "Optional. A habit, a strength, a way of being. Or go ahead and build your path."],
       reask: ["What's caught your interest lately?", ""]
     }[kind];
-    return { id: kind, q: Q[0], hint: Q[1], open: true, input: true, ex: kind !== "grow", go: kind === "curious" ? "Next" : "Build my path", ph: "In your own words" };
+    /* ex: the API's easy-click answers under it ("growth": the second set from the same cached call) */
+    return { id: kind, q: Q[0], hint: Q[1], open: true, input: true, ex: kind === "grow" ? "growth" : true, go: kind === "curious" ? "Next" : "Build my path", ph: "In your own words" };
   }
   /*
    * A learner who has already started is not new: a card in the deck, a lesson in progress, or a topic they opened,
