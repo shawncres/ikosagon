@@ -40,7 +40,7 @@
   };
   var reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
 
-  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], view: null, seen: { c: {}, ev: 0 } };
+  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], view: null, seen: { c: {}, ev: 0 }, ex: { list: [], at: 0, status: "idle" } };
   var mini = null, big = null;
 
   /* ---------- storage ---------- */
@@ -197,42 +197,80 @@
     return d;
   }
 
-  /* A first-run question: an open question answered in a free-text field (or chips, when a question brings them); Skip either way. */
+  /* A first-run question: an open question answered in a free-text field, with the API's easy-click examples when it has them (m.ex); Skip either way. */
   var askHandlers = {};
   function renderAsk(m) {
     var d = mk("div", "msg model ask");
     var body = mk("div"); paragraphs(body, m.text || ""); d.appendChild(body);
     if (m.done) return d;
-    var picked = {}, go = askHandlers[m.id] || function () {};
-    var chips = mk("div", "chips ask-chips");
-    (m.chips || []).forEach(function (c) {
-      var b = linkBtn(c.label, function () {
-        if (!m.multi) { go(c.value, c.label); return; }
-        picked[c.value] = !picked[c.value];
-        b.classList.toggle("on", picked[c.value]); b.setAttribute("aria-pressed", picked[c.value] ? "true" : "false");
-      }, "btn chip-q");
-      if (m.multi) b.setAttribute("aria-pressed", "false");
-      chips.appendChild(b);
-    });
-    if (chips.childNodes.length) d.appendChild(chips);
+    var go = askHandlers[m.id] || function () {};
     if (m.hint) d.appendChild(mk("p", "ask-hint", m.hint));
+    /* tapping an example is exactly typing it and pressing the button */
+    if (m.ex) d.appendChild(exRow(function (t) { go(m.open ? cleanAbout(t) : C.cleanLabel(t), t); }, function () { return !m.done; }));
     var row = mk("div", "ask-row" + (m.open ? " ask-open" : "")), inp = null;
     if (m.open) inp = openField(m.text, m.ph, function () { ok.click(); });
     else if (m.input) { inp = mk("input", "ask-in"); inp.maxLength = 40; inp.placeholder = "Type here"; inp.setAttribute("aria-label", m.text); }
     if (inp) row.appendChild(inp);
     var ok = null;
-    if (m.multi || m.input) {
+    if (m.input) {
       ok = linkBtn(m.go || "Done", function () {
-        var vals = Object.keys(picked).filter(function (k) { return picked[k]; });
         var typed = inp ? (m.open ? cleanAbout(inp.value) : C.cleanLabel(inp.value)) : "";
-        if (typed) vals.push(typed);
-        go(m.multi ? vals : typed, (m.multi ? vals.join(", ") : typed) || "Skip");
+        go(typed, typed || "Skip");
       }, "btn draw-btn sm");
       row.appendChild(ok);
     }
-    row.appendChild(linkBtn("Skip", function () { go(m.multi ? [] : "", "Skip"); }, "link"));
+    row.appendChild(linkBtn("Skip", function () { go("", "Skip"); }, "link"));
     d.appendChild(row);
     return d;
+  }
+
+  /*
+   * Easy-click examples. The set comes only from the API (GET /examples: generic, cached on the server and the CDN for
+   * the day, about one model call a day); P.examples personalises it from the ranking once a cloud exists. It is
+   * fetched once per page (when a row first shows) and More steps through it here, with no call. When it can't be
+   * fetched there is no list, just Try again. Each row re-checks live() so a row whose moment has passed empties.
+   */
+  var EX_SHOW = 3, exRows = [];
+  function exRow(pick, live) {
+    var r = { node: mk("div", "ex-row"), pick: pick, live: live || function () { return true; } };
+    exRows.push(r);
+    /* after this tick, once the row is on the page (refreshEx drops rows that aren't) */
+    if (state.ex.status === "idle" && r.live()) { state.ex.status = "wait"; setTimeout(loadExamples, 0); }
+    fillEx(r);
+    return r.node;
+  }
+  function fillEx(r) {
+    var box = r.node;
+    box.textContent = "";
+    if (!r.live()) return;
+    if (state.ex.status === "off") {
+      box.appendChild(mk("span", "ex-note", "Examples couldn't load just now."));
+      box.appendChild(linkBtn("Try again", function () { loadExamples(); }, "link ex-retry"));
+      return;
+    }
+    var list = state.ex.status === "ok" ? P.examples(state.cloud, state.ex.list, Date.now()) : [];
+    if (!list.length) return;
+    var at = state.ex.at % list.length;
+    for (var k = 0; k < Math.min(EX_SHOW, list.length); k++) {
+      (function (t) { box.appendChild(linkBtn(t, function () { if (!state.busy && r.live()) r.pick(t); }, "btn ex-chip")); })(list[(at + k) % list.length]);
+    }
+    if (list.length > EX_SHOW) box.appendChild(linkBtn("More", function () { state.ex.at = (at + EX_SHOW) % list.length; refreshEx(); }, "link ex-more"));
+  }
+  function refreshEx() {
+    exRows = exRows.filter(function (r) { return r.node.isConnected; });
+    exRows.forEach(fillEx);
+  }
+  function loadExamples() {
+    if (state.ex.status === "loading") return;
+    state.ex.status = "loading";
+    refreshEx();
+    getJson("/examples").then(function (j) {
+      var list = j && j.ok && Array.isArray(j.examples) ? j.examples.map(function (x) { return cleanAbout(x).slice(0, 40); }).filter(Boolean).slice(0, 24) : [];
+      state.ex.list = list;
+      state.ex.status = list.length ? "ok" : "off";
+      state.ex.at = 0;
+      refreshEx();
+    });
   }
   /* An open answer in the learner's own words: one line of plain text, at most 300 characters. */
   function cleanAbout(v) { return String(v || "").replace(/[\u0000-\u001f\u007f<>{}[\]`*_#|\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 300); }
@@ -245,7 +283,7 @@
   }
   /* Asks one question in the chat; cb(value) once answered. The answer shows as the learner's reply. */
   function ask(q, cb) {
-    var m = { role: "ask", local: true, text: q.q, hint: q.hint || "", chips: q.chips || [], multi: Boolean(q.multi), input: Boolean(q.input), open: Boolean(q.open), ph: q.ph || "", go: q.go };
+    var m = { role: "ask", local: true, text: q.q, hint: q.hint || "", ex: Boolean(q.ex), input: Boolean(q.input), open: Boolean(q.open), ph: q.ph || "", go: q.go };
     askHandlers[(m.id = "a" + Date.now().toString(36) + (mid++))] = function (val, label) {
       if (m.done) return;
       m.done = true; upsert(m); delete askHandlers[m.id];
@@ -281,17 +319,11 @@
       /* (an old save's empty start, from the retired Skip call, has nothing to retry: typing below starts the path) */
       if (m.role === "model" && m.retry && !m.streaming && (m.retry.kind !== "start" || (!state.cloud.order.length && m.retry.about))) {
         var again = mk("div", "acts"), rt = m.retry;
-        again.appendChild(linkBtn("Try again", function () { if (!state.busy) { m.retry = null; upsert(m); buildCloud(rt.kind, [], rt.about || ""); } }, "btn draw-btn sm"));
+        again.appendChild(linkBtn("Try again", function () { if (!state.busy) { m.retry = null; upsert(m); buildCloud(rt.kind, [], rt.about || "", rt.grow || ""); } }, "btn draw-btn sm"));
         d.appendChild(again);
       }
-      if (m.chips && m.chips.length) {
-        var wrap = mk("div");
-        wrap.appendChild(d);
-        var chips = mk("div", "chips");
-        m.chips.forEach(function (c) { chips.appendChild(linkBtn(c, function () { if (!state.busy) send(c); }, "btn")); });
-        wrap.appendChild(chips);
-        d = wrap;
-      }
+      /* the API's examples under the Skip message ("start": the first one tapped starts the path) or the welcome back ("chat"); an old save's own chips are not shown */
+      if (m.role === "model" && m.ex) d.appendChild(exRow(function (t) { send(t); }, function () { return m.ex === "start" ? waitingForStart() : state.thread[state.thread.length - 1] === m; }));
     }
     d.dataset.id = m.id;
     return d;
@@ -309,7 +341,7 @@
   }
   function scrollDown() { if (!state.lessonNode) window.scrollTo(0, document.documentElement.scrollHeight); }
   var mid = 0;
-  function push(m) { m.id = m.id || ("m" + Date.now().toString(36) + (mid++)); m.at = m.at || Date.now(); state.thread.push(m); upsert(m); scrollDown(); return m; }
+  function push(m) { m.id = m.id || ("m" + Date.now().toString(36) + (mid++)); m.at = m.at || Date.now(); state.thread.push(m); upsert(m); refreshEx(); scrollDown(); return m; }
 
   function setFocus(id) {
     state.focus = nodeOf(id) ? id : null;
@@ -389,6 +421,15 @@
     var ctl = window.AbortController ? new AbortController() : null;
     var timer = setTimeout(function () { if (ctl) ctl.abort(); }, TIMEOUT_MS);
     return fetch(API + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctl ? ctl.signal : undefined })
+      .finally(function () { clearTimeout(timer); });
+  }
+  /* A GET for the shared, cached answers (the examples): no body, nothing about the learner. */
+  function getJson(path) {
+    var ctl = window.AbortController ? new AbortController() : null;
+    var timer = setTimeout(function () { if (ctl) ctl.abort(); }, TIMEOUT_MS);
+    return fetch(API + path, { method: "GET", headers: { Accept: "application/json" }, signal: ctl ? ctl.signal : undefined })
+      .then(function (res) { return res.json().catch(function () { return {}; }); })
+      .catch(function () { return { ok: false, reason: "offline" }; })
       .finally(function () { clearTimeout(timer); });
   }
   function postJson(path, body) {
@@ -575,13 +616,13 @@
    * built without them (Skip makes no call). Nothing is seeded on the device: when the call can't be made, the
    * message says why and offers Try again (and the chat box stays open for typing a topic).
    */
-  function buildCloud(kind, interests, about) {
+  function buildCloud(kind, interests, about, grow) {
     if (state.busy) return;
     interests = interests || [];
     if (kind === "start" && !about && !interests.length) return; /* nothing offered yet: never a call */
     lock(true);
     var m = push({ role: "model", local: true, streaming: true, text: kind === "start" ? "Thanks, " + state.name + ". I'm building your first topics now..." : "Let me build something new around " + (about || interests.join(", ") || "that") + "..." });
-    var req = P.createRequest(state.cloud, kind, null, { interests: interests, about: about || "" });
+    var req = P.createRequest(state.cloud, kind, null, { interests: interests, about: about || "", grow: grow || "" });
     postJson("/create", Object.assign(basePayload(null), { mode: "notice" }, req)).then(function (j) {
       if (j && j.ok && Array.isArray(j.items) && j.items.length) {
         return animateBuild(j.items, null).then(function (ids) {
@@ -596,9 +637,9 @@
       }
       m.streaming = false;
       m.text = reasonLead(j && (j.reason || j.error)) + (kind === "start" ? " So I couldn't build your first topics yet. Try again in a moment, or type something you'd like to learn about below." : " Let's try that again a little later.");
-      m.retry = { kind: kind, about: about || "" };
+      m.retry = { kind: kind, about: about || "", grow: grow || "" };
       upsert(m);
-    }).then(function () { save(); lock(false); renderDraw(); });
+    }).then(function () { save(); lock(false); refreshEx(); renderDraw(); });
   }
   /* "What comes next" for a parent: one creation call (the orchestrator only offers it when needed, and it is cached). */
   function createNext(id) {
@@ -618,24 +659,25 @@
     }).then(function () { save(); lock(false); if (!el.draw.hidden) renderDraw(); });
   }
   /*
-   * The soft opening (on the device, no call): P.OPENING and one open question in the learner's own words and, when
-   * they answered it, an optional second. Then ONE creation call ("start") builds the first parents from what they
-   * wrote. Skip makes no call: the question stays open, gently, and the first thing they type in the chat box starts
-   * the path (sendOrStart). The light re-ask is held back for its usual few days.
+   * The soft opening: P.OPENING and one open question in the learner's own words (with the API's examples) and, when
+   * they answered it, an optional, soft personal-development question. Then ONE creation call ("start") builds the
+   * first parents from both answers. Onboarding makes at most 2 calls: the shared examples (GET, cached) and the start.
+   * Skip makes no call: the question stays open, gently, and the first thing they type (or tap) starts the path
+   * (waitingForStart). The light re-ask is held back for its usual few days.
    */
   function runOnboarding() {
-    var qs = P.onboarding(state.cloud, true), said = [], i = 0;
+    var qs = P.onboarding(state.cloud, true), about = "", grow = "", i = 0;
     var next = function () {
       if (i >= qs.length) {
         C.setProfile(state.cloud, { onboarded: true, askedAt: true });
         save();
-        if (said.length) buildCloud("start", [], said.join(". "));
-        else { push({ role: "model", local: true, text: waitingText() }); save(); renderDraw(); }
+        if (about) buildCloud("start", [], about, grow);
+        else { push({ role: "model", local: true, text: waitingText(), ex: "start" }); save(); renderDraw(); }
         return;
       }
       var q = qs[i++];
       ask(q, function (v) {
-        if (q.open && v) { said.push(v); if (q.id === "curious") qs.push(P.openQuestion(state.cloud, "more")); }
+        if (q.open && v) { if (q.id === "grow") grow = v; else { about = v; qs.push(P.openQuestion(state.cloud, "grow")); } }
         save(); next();
       });
     };
@@ -1212,6 +1254,7 @@
     var box = mk("div", "ask-tile");
     box.appendChild(mk("p", "gc-chain", "A quick question"));
     box.appendChild(mk("p", "ask-q", it.q));
+    if (it.ex) box.appendChild(exRow(function (t) { answerReask(t); }));
     var f = mk("form", "ask-row ask-open"), inp = openField(it.q, it.ph, function () { f.requestSubmit(); });
     f.appendChild(inp);
     f.appendChild(linkBtn("Build", function () { f.requestSubmit(); }, "btn draw-btn sm"));
@@ -1758,11 +1801,11 @@
     save();
   }
   function greet() {
-    if (!C.subjects(state.cloud).length) { push({ role: "model", local: true, text: "Hi " + state.name + ", welcome back. " + P.OPENING + " " + waitingText().replace(/^That's fine, [^.]*\. /, "") }); save(); return; }
+    if (!C.subjects(state.cloud).length) { push({ role: "model", local: true, ex: "start", text: "Hi " + state.name + ", welcome back. " + P.OPENING + " " + waitingText().replace(/^That's fine, [^.]*\. /, "") }); save(); return; }
     push({
       role: "model", local: true,
       text: "Hi " + state.name + ", welcome back. Your learning cloud grows with the topics you explore. Tap any point to open it as a short lesson. Topics you spend time with become cards in your deck. They start in sepia and fill with colour as you show what you've learned. Pick a card above, tap Draw a card, or tell me what you'd like to learn about today.",
-      chips: C.profileOf(state.cloud).interests.slice(-2).map(function (x) { return "Tell me something new about " + x; }).concat(["What could I learn next?"])
+      ex: "chat" /* the API's examples, led by this learner's best-ranked next steps; no chips made up on the device */
     });
     save();
   }

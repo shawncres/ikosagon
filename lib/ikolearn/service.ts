@@ -2,6 +2,7 @@
  * IkoLearn server logic: request checks, per-IP rate limits, a daily call budget, and the handlers
  * (streamed chat/notice and lesson, card, adjacent, path, test). Every handler is one model call (provider chosen in llm.ts) and counts against the budget. Nothing about the learner is stored server-side: every request carries
  * the few recent messages and a compact cloud summary from the browser, and the response is not cached.
+ * The one exception is the examples set (examplesFor): generic, the same for everyone, cached for the day.
  */
 import { createRateLimiter } from "../ikoreadtube/service";
 import { originOk } from "../ikoreadtube/summarize";
@@ -15,6 +16,9 @@ import {
   PATH_SCHEMA,
   TEST_SCHEMA,
   CREATE_SCHEMA,
+  EXAMPLES_SCHEMA,
+  examplesSystem,
+  parseExamples,
   createSystem,
   parseCreate,
   type CreateResult,
@@ -53,11 +57,18 @@ export const LEARN_GUARDS = {
   perIpPerHour: 90,
   globalPerMinute: 30,
   dailyCalls: 400, // our own cap (all IkoLearn calls, per server instance), well under the free-tier daily request limit
+  examplesPerDay: 3, // model calls for the examples set, per server instance per day (normally 1; retries after a failure)
 };
+
+/** Examples: browsers keep them an hour, the CDN a day (and serves the old set while it refreshes). Failures are never cached. */
+export const EXAMPLES_CACHE = { "Cache-Control": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400" };
+
+export type ExamplesState = { day: string; list: string[]; tries: { day: string; n: number }; pending: Promise<Out> | null };
 
 export type LearnState = {
   limiter: ReturnType<typeof createRateLimiter>;
   budget: { day: string; calls: number };
+  examples: ExamplesState;
   now: () => number;
 };
 
@@ -65,6 +76,7 @@ export function createLearnState(now: () => number = () => Date.now()): LearnSta
   return {
     limiter: createRateLimiter({ perIpPerMinute: LEARN_GUARDS.perIpPerMinute, perIpPerHour: LEARN_GUARDS.perIpPerHour, globalPerMinute: LEARN_GUARDS.globalPerMinute }, now),
     budget: { day: "", calls: 0 },
+    examples: { day: "", list: [], tries: { day: "", n: 0 }, pending: null },
     now,
   };
 }
@@ -259,7 +271,7 @@ function bridgeAsk(input: LearnInput): string {
 export async function createFor(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): Promise<Out> {
   if ((input.kind === "next" || input.kind === "bridge") && !input.focus) return json(422, { ok: false, reason: "focus" });
   /* the learner's path starts only from what they offer: a start or more with nothing in their own words makes no call */
-  if ((input.kind === "start" || input.kind === "more") && !input.about && !input.interests.length) return json(422, { ok: false, reason: "about" });
+  if ((input.kind === "start" || input.kind === "more") && !input.about && !input.interests.length && !(input.kind === "start" && input.grow)) return json(422, { ok: false, reason: "about" });
   const user =
     input.kind === "bridge"
       ? input.repair
@@ -268,7 +280,8 @@ export async function createFor(input: LearnInput, env: Env, fetchImpl: typeof f
       : input.kind === "next"
       ? `What should come next in ${input.focus}?`
       : `Build my ${input.kind === "start" ? "first" : "new"} learning topics.` +
-        (input.about ? ` In my own words: "${input.about}"` : ` I enjoy: ${input.interests.join(", ")}.`);
+        (input.about ? ` In my own words: "${input.about}"` : input.interests.length ? ` I enjoy: ${input.interests.join(", ")}.` : "") +
+        (input.kind === "start" && input.grow ? ` Something I'd like to grow in myself: "${input.grow}"` : "");
   const r = await generateJson<CreateResult>(createSystem(input), user, CREATE_SCHEMA, (t) => parseCreate(t, input.kind, input.name, input.focus, input.known), env, fetchImpl, { maxTokens: MODEL_LIMITS.createMaxTokens });
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
   return json(200, { ok: true, kind: input.kind, items: r.value.items });
@@ -281,4 +294,38 @@ export async function testFor(input: LearnInput, env: Env, fetchImpl: typeof fet
   const r = await generateJson<TestQuestion[]>(testSystem(input), user, TEST_SCHEMA, (t) => parseTest(t, allowed), env, fetchImpl);
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
   return json(200, { ok: true, questions: r.value });
+}
+
+/*
+ * The easy-click examples for the first question: one generic set (nothing about any learner goes in or comes back),
+ * so it is made once and shared. Per server instance it is kept for the Pacific day; the CDN keeps the answer a day
+ * (EXAMPLES_CACHE), so a normal day costs about one model call. Concurrent misses share one call; at most
+ * LEARN_GUARDS.examplesPerDay calls per instance per day, each one counted in the daily budget. When a new set can't be
+ * made, yesterday's set is served (briefly cached); with none, the error is not cached and the app shows Try again.
+ */
+export async function examplesFor(env: Env, state: LearnState, fetchImpl: typeof fetch = fetch): Promise<Out> {
+  if (!llmReady(env)) return json(503, { ok: false, reason: "off" });
+  const ex = state.examples, day = ptDay(state.now());
+  const serve = (list: string[], fresh: boolean): Out => ({ status: 200, body: { ok: true, examples: list }, headers: fresh ? EXAMPLES_CACHE : { "Cache-Control": "public, max-age=600, s-maxage=600" } });
+  if (ex.day === day && ex.list.length) return serve(ex.list, true);
+  if (ex.pending) return ex.pending;
+  if (ex.tries.day !== day) ex.tries = { day, n: 0 };
+  if (state.budget.day !== day) state.budget = { day, calls: 0 };
+  if (ex.tries.n >= LEARN_GUARDS.examplesPerDay || state.budget.calls >= dailyCap(env)) return ex.list.length ? serve(ex.list, false) : json(429, { ok: false, reason: "busy" });
+  ex.tries.n += 1;
+  state.budget.calls += 1;
+  ex.pending = (async () => {
+    try {
+      const r = await generateJson<string[]>(examplesSystem(), "Today's examples, please.", EXAMPLES_SCHEMA, parseExamples, env, fetchImpl, { maxTokens: 600 });
+      if (r.ok) {
+        ex.day = day;
+        ex.list = r.value;
+        return serve(ex.list, true);
+      }
+      return ex.list.length ? serve(ex.list, false) : json(reasonStatus(r.code), { ok: false, reason: r.code });
+    } finally {
+      ex.pending = null;
+    }
+  })();
+  return ex.pending;
 }
