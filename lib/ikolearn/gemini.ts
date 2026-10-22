@@ -7,7 +7,7 @@
  * Free-tier models only; one fallback model when the request fails, times out or the model name is retired (never mid-reply).
  * The key goes in a header, server-side only, and never appears in responses or logs.
  */
-import { MODEL_LIMITS, errorFail, failFromResponse, logFail, readSseWith, statusFail, timedFetch, upperTypes, type Content, type Fail, type JsonResult, type LlmConfig, type StreamOptions, type StreamStart } from "./llm-types";
+import { MODEL_LIMITS, errorFail, failFromResponse, logFail, logHedge, readSseWith, statusFail, timedFetch, upperTypes, type Content, type Fail, type JsonResult, type LlmConfig, type StreamOptions, type StreamStart } from "./llm-types";
 
 export const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
 export const DEFAULT_MODEL = "gemini-3.5-flash-lite";
@@ -38,13 +38,13 @@ export function jsonBody(system: string, user: string, schema: unknown, opts: St
 /** Reads a Gemini SSE body and yields each event's visible text (thought parts skipped). */
 export const readSse = (body: ReadableStream<Uint8Array>) => readSseWith(body, textOf);
 
-async function openStream(cfg: LlmConfig, model: string, body: unknown, fetchImpl: typeof fetch, opts: StreamOptions, which: "primary" | "fallback"): Promise<StreamStart> {
+async function openStream(cfg: LlmConfig, model: string, body: unknown, fetchImpl: typeof fetch, opts: StreamOptions, which: "primary" | "fallback", cancel?: AbortSignal): Promise<StreamStart> {
   try {
     const { res, done, abort } = await timedFetch(fetchImpl, `${cfg.base}/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
       method: "POST",
       headers: { "x-goog-api-key": cfg.key, "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    }, MODEL_LIMITS.requestTimeoutMs, MODEL_LIMITS.streamTimeoutMs);
+    }, MODEL_LIMITS.requestTimeoutMs, MODEL_LIMITS.streamTimeoutMs, cancel);
     if (!res.ok || !res.body) {
       done();
       return logFail(cfg, model, opts, res.ok ? { ...statusFail(502), detail: "empty stream body" } : await failFromResponse(res), which);
@@ -56,8 +56,9 @@ async function openStream(cfg: LlmConfig, model: string, body: unknown, fetchImp
         done();
       }
     })();
-    return { ok: true, model, pieces, abort };
+    return { ok: true, model, pieces, abort: () => { abort(); done(); } };
   } catch (e) {
+    if (cancel?.aborted) return { ok: false, code: "timeout", detail: "cancelled: the other model started first" }; /* the hedge's loser: not a failure */
     return logFail(cfg, model, opts, errorFail(e), which);
   }
 }
@@ -76,10 +77,49 @@ export async function geminiJsonStream(cfg: LlmConfig, system: string, user: str
   return streamWithFallback(cfg, jsonBody(system, user, schema, opts), fetchImpl, opts);
 }
 
-async function streamWithFallback(cfg: LlmConfig, body: unknown, fetchImpl: typeof fetch, opts: StreamOptions): Promise<StreamStart> {
-  const first = await openStream(cfg, cfg.model, body, fetchImpl, opts, "primary");
-  if (first.ok || !cfg.fallback || cfg.model === cfg.fallback) return first;
-  return shouldFallBack(first) ? openStream(cfg, cfg.fallback, body, fetchImpl, opts, "fallback") : first;
+/**
+ * The primary model, and the fallback once if it fails (5xx, network, timeout, 404). Hedged: when the primary hasn't
+ * started streaming after MODEL_LIMITS.hedgeAfterMs, the fallback starts in parallel (one call from the daily budget,
+ * via opts.spend); the first to start streaming is used and the other is aborted. A hedge is logged (ikolearn.llm_hedge).
+ */
+export async function streamWithFallback(cfg: LlmConfig, body: unknown, fetchImpl: typeof fetch, opts: StreamOptions): Promise<StreamStart> {
+  const fb = cfg.fallback && cfg.fallback !== cfg.model ? cfg.fallback : "";
+  const pCancel = new AbortController(), fCancel = new AbortController();
+  const primary = openStream(cfg, cfg.model, body, fetchImpl, opts, "primary", pCancel.signal);
+  if (!fb) return primary;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const t0 = Date.now();
+  const hedge = new Promise<"hedge">((r) => { timer = setTimeout(() => r("hedge"), MODEL_LIMITS.hedgeAfterMs); });
+  const early = await Promise.race([primary, hedge]);
+  if (early !== "hedge") {
+    clearTimeout(timer);
+    if (early.ok || !shouldFallBack(early)) return early;
+    return openStream(cfg, fb, body, fetchImpl, opts, "fallback");
+  }
+  /* the primary is slow to start: hedge, unless the day's budget is spent */
+  if (opts.spend && !opts.spend()) {
+    const first = await primary;
+    return first.ok || !shouldFallBack(first) ? first : openStream(cfg, fb, body, fetchImpl, opts, "fallback");
+  }
+  const fallback = openStream(cfg, fb, body, fetchImpl, opts, "fallback", fCancel.signal);
+  const afterMs = Date.now() - t0;
+  const tagged = (p: Promise<StreamStart>, who: "primary" | "fallback") => p.then((r) => ({ r, who }));
+  const pending = new Map([["primary", tagged(primary, "primary")], ["fallback", tagged(fallback, "fallback")]] as const);
+  let lastFail: StreamStart | null = null;
+  while (pending.size) {
+    const { r, who } = await Promise.race(pending.values());
+    pending.delete(who);
+    if (r.ok) {
+      /* the winner: cancel the other (still waiting to start, or started later; its pieces are dropped) */
+      if (who === "primary") fCancel.abort(); else pCancel.abort();
+      void (who === "primary" ? fallback : primary).then((o) => { if (o.ok) o.abort(); });
+      logHedge(cfg, opts, afterMs, who);
+      return r;
+    }
+    lastFail = who === "primary" || !lastFail ? r : lastFail; /* report the primary's failure when both fail */
+  }
+  logHedge(cfg, opts, afterMs, "none");
+  return lastFail as StreamStart;
 }
 
 async function jsonOnce<T>(cfg: LlmConfig, model: string, body: unknown, parse: (t: string) => T | null, fetchImpl: typeof fetch, opts: StreamOptions, which: "primary" | "fallback", timeoutMs: number): Promise<JsonResult<T>> {

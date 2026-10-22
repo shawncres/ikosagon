@@ -286,6 +286,24 @@ button.gcard:hover { border-color: var(--soft); }
 .lesson .caret::after { content: ""; display: inline-block; width: .5em; height: 1em; margin-left: 2px; vertical-align: -2px; background: var(--ink); opacity: .55; animation: blink 1s steps(1) infinite; }
 #l-done { margin-top: 18px; }
 .status { font-size: 15px; color: var(--soft); min-height: 1em; margin: 0 0 8px; }
+.status .yes { color: var(--ink); font-weight: 600; }
+.l-intro.wait, .fine.wait { color: var(--soft); font-style: italic; }
+/* "Still tricky": three prepared clarifications, answered inline */
+.clar-opts { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; }
+.clar { border-left: 2px solid var(--rule); padding: 2px 0 2px 14px; margin: 0 0 14px; }
+.clar .kicker { margin: 0 0 4px; }
+.clar-body p { margin: 0 0 8px; }
+.clar-body.streaming p:last-child::after { content: "\2026"; color: var(--soft); }
+/* Where Next: the next step pre-selected, then topics in progress; the learner opens the one they pick */
+.where-next { margin: 18px 0 10px; }
+.wn-opts { display: grid; gap: 6px; }
+.wn-opt { font: inherit; text-align: left; color: var(--ink); background: transparent; border: 1px solid var(--rule); border-radius: 4px; padding: 8px 12px; cursor: pointer; }
+.wn-opt .why { display: block; font-size: 13px; color: var(--soft); }
+.wn-opt:hover { border-color: var(--soft); }
+.wn-opt.next .wn-label { font-weight: 600; }
+.wn-opt.on { background: var(--sheet); border-color: var(--ink); box-shadow: inset 3px 0 0 var(--ink); }
+.wn-go { display: flex; align-items: center; gap: 12px; margin: 10px 0 0; }
+.wn-go .gcard { flex: 0 0 auto; pointer-events: none; }
 .status .link { color: var(--ink); }
 
 .dock { position: sticky; bottom: 0; background: var(--paper); padding: 10px 0 calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--rule); }
@@ -334,6 +352,7 @@ button.gcard:hover { border-color: var(--soft); }
   .l-main { padding-top: 0; }
   .l-main #l-trail { display: block; }
   .fork-opts { grid-template-columns: repeat(3, 1fr); }
+  .wn-opts { grid-template-columns: repeat(2, 1fr); }
   #panel { left: auto; top: 64px; bottom: 16px; right: 16px; width: 380px; max-height: none; border: 1px solid var(--rule); border-radius: 6px; }
 }
 @media (prefers-reduced-motion: reduce) {

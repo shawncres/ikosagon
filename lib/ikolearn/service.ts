@@ -42,6 +42,7 @@ import {
   companionSystem,
   createBlockSplitter,
   noticeSystem,
+  clarifySystem,
   parseAdjacent,
   parseCard,
   parseCloudBlock,
@@ -116,6 +117,20 @@ function dailyCap(env: Env) {
   return Number.isFinite(n) && n > 0 ? Math.min(n, 1_000) : LEARN_GUARDS.dailyCalls;
 }
 
+/** Streams' options from the route: spend reserves one extra call (a hedged fallback) from the day's budget. */
+export type StreamRun = { spend?: () => boolean };
+
+/** One call from the instance's daily budget, for a hedged fallback; false when the day's budget is spent. */
+export function budgetSpend(state: LearnState, env: Env): () => boolean {
+  return () => {
+    const day = ptDay(state.now());
+    if (state.budget.day !== day) state.budget = { day, calls: 0 };
+    if (state.budget.calls >= dailyCap(env)) return false;
+    state.budget.calls += 1;
+    return true;
+  };
+}
+
 export type Prepared = { ok: true; input: LearnInput } | { ok: false; out: Out };
 
 /** Shared checks for every route: origin, size, JSON, input, key, rate limit, daily budget (reserves one call). */
@@ -165,13 +180,23 @@ type StreamSpec = {
 };
 
 /** One streamed reply as events. The trailing structured block is held back and never sent as text. */
-async function* streamEvents(spec: StreamSpec, env: Env, fetchImpl: typeof fetch): AsyncGenerator<ChatEvent> {
-  const started = await streamText(spec.system, spec.contents, env, fetchImpl, { maxTokens: spec.maxTokens, route: spec.route });
+async function* streamEvents(spec: StreamSpec, env: Env, fetchImpl: typeof fetch, run: StreamRun = {}): AsyncGenerator<ChatEvent> {
+  const started = await streamText(spec.system, spec.contents, env, fetchImpl, { maxTokens: spec.maxTokens, route: spec.route, spend: run.spend });
   if (!started.ok) {
     yield { t: "error", reason: started.code };
     return;
   }
-  yield { t: "start", model: started.model };
+  /* the learner left (the device aborted, so the stream was cancelled): stop the model's reply too */
+  try {
+    yield { t: "start", model: started.model };
+    yield* replyEvents(spec, started.pieces);
+  } finally {
+    started.abort();
+  }
+}
+
+async function* replyEvents(spec: StreamSpec, pieces: AsyncGenerator<string>): AsyncGenerator<ChatEvent> {
+  const started = { pieces };
   const split = createBlockSplitter(spec.open, spec.close);
   let shown = 0;
   try {
@@ -202,25 +227,27 @@ async function* streamEvents(spec: StreamSpec, env: Env, fetchImpl: typeof fetch
 }
 
 /** Streams one companion or notice reply. Ends with a "cloud" event (empty arrays when the block was missing or bad). */
-export function chatEvents(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): AsyncGenerator<ChatEvent> {
+export function chatEvents(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch, run: StreamRun = {}): AsyncGenerator<ChatEvent> {
   return streamEvents(
     {
-      system: input.mode === "notice" ? noticeSystem(input) : companionSystem(input),
+      system: input.mode === "notice" ? noticeSystem(input) : input.mode === "clarify" ? clarifySystem(input) : companionSystem(input),
       contents: buildContents(input),
-      route: input.mode === "notice" ? "notice" : "chat",
+      route: input.mode,
       maxChars: LEARN_LIMITS.replyChars,
       tail: (block) => {
+        if (input.mode === "clarify") return null; /* inline help only: nothing lands on the cloud */
         const b = parseCloudBlock(block, input.name);
         return { t: "cloud", topics: b.topics, ghosts: b.ghosts };
       },
     },
     env,
     fetchImpl,
+    run,
   );
 }
 
 /** Streams one lesson (tagged lines). The hidden trailing block (path steps when asked, fork choices, 1-2 questions, the card line, branch end) becomes one "path" event. */
-export function lessonEvents(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): AsyncGenerator<ChatEvent> {
+export function lessonEvents(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch, run: StreamRun = {}): AsyncGenerator<ChatEvent> {
   return streamEvents(
     {
       system: lessonSystem(input),
@@ -238,6 +265,7 @@ export function lessonEvents(input: LearnInput, env: Env, fetchImpl: typeof fetc
     },
     env,
     fetchImpl,
+    run,
   );
 }
 
@@ -340,12 +368,21 @@ export type CreateEvent = { t: "item"; item: CreateItem } | { t: "done"; kind: L
  * Ends with "done" and the full list, or "error" when nothing usable came (the app shows Try again, as before).
  * A provider that answers in one piece just sends every item at the end. Call createCheck first.
  */
-export async function* createEvents(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): AsyncGenerator<CreateEvent> {
-  const started = await streamJson(createSystem(input), createUser(input), CREATE_SCHEMA, env, fetchImpl, { maxTokens: MODEL_LIMITS.createMaxTokens, route: "create" });
+export async function* createEvents(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch, run: StreamRun = {}): AsyncGenerator<CreateEvent> {
+  const started = await streamJson(createSystem(input), createUser(input), CREATE_SCHEMA, env, fetchImpl, { maxTokens: MODEL_LIMITS.createMaxTokens, route: "create", spend: run.spend });
   if (!started.ok) {
     yield { t: "error", reason: started.code };
     return;
   }
+  try {
+    yield* createItemEvents(input, started.pieces);
+  } finally {
+    started.abort(); /* the learner left: stop the model too */
+  }
+}
+
+async function* createItemEvents(input: LearnInput, pieces: AsyncGenerator<string>): AsyncGenerator<CreateEvent> {
+  const started = { pieces };
   let text = "", sent: CreateItem[] = [], cut = false;
   const fresh = (): CreateItem[] => createItems(completeItems(text), input.kind, input.name, input.focus, input.known);
   try {

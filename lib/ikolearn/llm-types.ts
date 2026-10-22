@@ -14,7 +14,11 @@ export type Fail = { ok: false; code: FailCode; status?: number; detail?: string
  * route and attempt label the failure log line (attempt: the caller's call number, 1 unless it retried);
  * timeoutMs caps a one-shot JSON call below MODEL_LIMITS.jsonTimeoutMs, so a retry fits inside a route's time limit.
  */
-export type StreamOptions = { maxTokens?: number; route?: string; attempt?: number; timeoutMs?: number };
+/**
+ * spend: asked once before a hedged fallback starts (streams only); it reserves one call from the daily budget and
+ * returns false when none is left (then no hedge: the primary keeps its full time, the usual fallback after it).
+ */
+export type StreamOptions = { maxTokens?: number; route?: string; attempt?: number; timeoutMs?: number; spend?: () => boolean };
 export type StreamStart = { ok: true; model: string; pieces: AsyncGenerator<string>; abort: () => void } | Fail;
 export type JsonResult<T> = { ok: true; value: T; model: string } | Fail;
 
@@ -27,6 +31,11 @@ export const MODEL_LIMITS = {
    * the fallback model is tried, so a stalled provider queue costs seconds, not most of a minute (normal: 1-4 s)
    */
   requestTimeoutMs: 12_000,
+  /**
+   * hedge: a stream whose primary model hasn't started by now also starts the fallback model in parallel; whichever
+   * starts first is used and the other is aborted (a stall costs ~6 s instead of 12 s, an extra call only when stalled)
+   */
+  hedgeAfterMs: 6_000,
   /** a one-shot JSON call (the whole answer) */
   jsonTimeoutMs: 20_000,
   /** hard cap on a whole streamed reply; a timed-out request plus one fallback stays inside the routes' 60 s */
@@ -91,6 +100,9 @@ export async function failFromResponse(res: Response): Promise<Fail> {
 
 export type LlmFailLog = { ev: "ikolearn.llm_fail"; route: string; provider: string; model: string; status: number | null; code: FailCode; error: string; attempt: number; try: "primary" | "fallback" };
 
+/** One line when a stream was hedged: who won and after how long (no key, no prompt). */
+export type LlmHedgeLog = { ev: "ikolearn.llm_hedge"; route: string; provider: string; primary: string; fallback: string; afterMs: number; winner: "primary" | "fallback" | "none" };
+
 let logSink: (line: string) => void = (line) => console.warn(line);
 /** Swaps where failure lines go (the checks capture them); returns the previous sink. */
 export function setLlmLogSink(fn: (line: string) => void): (line: string) => void {
@@ -120,15 +132,27 @@ export function logFail(cfg: LlmConfig, model: string, opts: StreamOptions, f: F
   return f;
 }
 
+export function logHedge(cfg: LlmConfig, opts: StreamOptions, afterMs: number, winner: LlmHedgeLog["winner"]) {
+  const line: LlmHedgeLog = { ev: "ikolearn.llm_hedge", route: opts.route || "unknown", provider: cfg.provider, primary: cfg.model, fallback: cfg.fallback || "", afterMs, winner };
+  try {
+    logSink(JSON.stringify(line));
+  } catch {
+    /* logging never breaks a reply */
+  }
+}
+
 /**
  * fetch with a plain request timeout: aborts if the response hasn't started within `requestMs`. For streams, `totalMs`
  * keeps running until `done()` is called (the reply finished or was dropped).
  */
-export async function timedFetch(fetchImpl: typeof fetch, url: string, init: RequestInit, requestMs: number, totalMs = requestMs) {
+export async function timedFetch(fetchImpl: typeof fetch, url: string, init: RequestInit, requestMs: number, totalMs = requestMs, outer?: AbortSignal) {
   const controller = new AbortController();
   const first = setTimeout(() => controller.abort(), requestMs);
   const total = setTimeout(() => controller.abort(), totalMs);
-  const done = () => { clearTimeout(first); clearTimeout(total); };
+  /* outer: the hedge cancels the losing request (before or after it started) */
+  const cancel = () => controller.abort();
+  if (outer) { if (outer.aborted) controller.abort(); else outer.addEventListener("abort", cancel, { once: true }); }
+  const done = () => { clearTimeout(first); clearTimeout(total); if (outer) outer.removeEventListener("abort", cancel); };
   try {
     const res = await fetchImpl(url, { ...init, signal: controller.signal, cache: "no-store" });
     clearTimeout(first);
