@@ -37,6 +37,9 @@ const CLAR = {
   question: "Which part feels tricky: where the heat comes from, or why the rock melts? Hint: think about how hot it gets far below us.",
 };
 const FORK = [{ name: "Ash Clouds", why: "What rises into the sky", kind: "deeper" }, { name: "Lava Types", why: "Where the lava goes", kind: "wider" }, { name: "Constellations", why: "Something different", kind: "wider" }];
+/* Shawn's case (Oct 22): the model's fork offers an unrelated top-10 topic (with a claim about the learner) and the path's own next step */
+const DM_FORK = [{ name: "Python Basics", why: "Review your strong coding skills", kind: "side" }, { name: "Tables", why: "Learn how rows and columns store data", kind: "deeper" }];
+const DM_LESSON = "INTRO: Data management is keeping information organised so you can find it again.\nEXPLAIN: Most data lives in tables.\nSTEP: Each row is one thing.\nSTEP: Each column is one detail about it.\nEXAMPLE: A class list with names and birthdays.";
 const ndjson = (evs) => evs.map((e) => JSON.stringify(e)).join("\n") + "\n";
 
 const browser = await chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" });
@@ -59,8 +62,7 @@ async function run(width) {
     if (at === "/lesson") {
       await sleep(mock.lessonMs);
       /* the Eruptions lesson offers a fork (one choice is already in progress elsewhere: it must not show twice) */
-      const choices = body.focus === "Eruptions" ? FORK : [];
-      return done(200, ndjson([{ t: "start", model: "m" }, { t: "delta", text: LESSON }, { t: "path", steps: [], next: "", choices, questions: [] }, { t: "done" }]));
+      return done(200, ndjson([{ t: "start", model: "m" }, { t: "delta", text: LESSON }, { t: "path", steps: [], next: "", choices: body.focus === "Eruptions" ? FORK : [], questions: [] }, { t: "done" }]));
     }
     if (at === "/chat" && body.mode === "clarify") {
       await sleep(mock.clarifyMs);
@@ -111,25 +113,26 @@ async function run(width) {
     await p.getByRole("button", { name: /Continue Magma/ }).first().click();
     await p.waitForSelector("#l-done:not([hidden])");
     ok(count(/^\/lesson$/) === 1, `${width}: opening a new lesson is one call`);
-    const wn0 = await p.evaluate(() => [...document.querySelectorAll("#l-next .wn-opt")].map((b) => b.classList.contains("on") && b.classList.contains("next")));
+    const wn0 = await p.evaluate(() => [...document.querySelectorAll("#l-next .wn-opt")].map((b) => b.classList.contains("on") && b.classList.contains("path")));
     if (!SOFT) ok(wn0[0] === true, `${width}: Where Next is in the lesson from the start, the next step pre-selected`);
     const n0 = calls.length, title0 = await p.textContent("#l-title");
     await p.click("#l-got");
     await p.waitForTimeout(400);
     const after = await p.evaluate(() => ({ title: document.querySelector("#l-title").textContent, status: document.querySelector("#l-status").innerText, lessonShown: !document.querySelector("#lesson").hidden, retry: /Try again/.test(document.querySelector("#lesson").innerText),
-      wn: [...document.querySelectorAll("#l-next .wn-opt")].map((b) => ({ l: b.querySelector(".wn-label")?.textContent, on: b.classList.contains("on"), next: b.classList.contains("next"), why: b.querySelector(".why")?.textContent })), card: Boolean(document.querySelector("#l-next .wn-go .gcard")) }));
+      wn: [...document.querySelectorAll("#l-next .wn-opt")].map((b) => ({ l: b.querySelector(".wn-label")?.textContent, on: b.classList.contains("on"), kind: b.getAttribute("data-kind"), why: b.querySelector(".why")?.textContent })), card: Boolean(document.querySelector("#l-next .wn-go .gcard")) }));
     ok(calls.length === n0, `${width}: "I've got it" makes 0 calls`, calls.slice(n0).join());
     ok(after.lessonShown && after.title === title0, `${width}: "I've got it" stays on the lesson (no auto-advance)`);
     ok(!after.retry, `${width}: no Try again after a confirmation`);
     await shot("got-where-next", "#l-status");
     if (SOFT) return;
     ok(/^That's it\./.test(after.status), `${width}: a short "That's it." note`, after.status);
-    ok(after.wn.length === 4 && after.wn[0].next && after.wn[0].on && after.wn.slice(1).every((x) => !x.next && !x.on && /In progress/.test(x.why)), `${width}: Where Next: the next step pre-selected, then 3 in progress`, JSON.stringify(after.wn));
-    eq(after.wn.map((x) => x.l), ["Eruptions", "Starter Basics", "Constellations", "Kneading"], `${width}: Where Next order: the path's next step, then the most recent in progress`);
+    eq(after.wn.map((x) => x.kind), ["path", "branch", "other", "progress", "progress", "progress"], `${width}: Where Next: continue, a related branch, a different path, then 3 in progress`);
+    ok(after.wn[0].on && after.wn.filter((x) => x.on).length === 1 && /^Next on this path/.test(after.wn[0].why) && /^Try a different path/.test(after.wn[2].why), `${width}: Where Next: the path's next step pre-selected, with honest reasons`, JSON.stringify(after.wn));
+    eq(after.wn.map((x) => x.l), ["Eruptions", "Lava Types", "Starter Basics", "Constellations", "Kneading", "Planets"], `${width}: Where Next order: the path's next step, its sibling, another subject in progress, then the most recent in progress (deduped)`);
     ok(after.card, `${width}: the picked topic's card is drawn on the device`);
     await p.locator("#l-next .wn-opt").nth(1).click();
     const picked = await p.evaluate(() => ({ on: [...document.querySelectorAll("#l-next .wn-opt")].map((b) => b.getAttribute("aria-checked")), open: document.querySelector("#l-next .wn-go .btn").textContent }));
-    ok(picked.on.join() === "false,true,false,false" && picked.open === "Open Starter Basics" && calls.length === n0, `${width}: tapping an option selects it (0 calls); Open names it`, JSON.stringify(picked));
+    ok(picked.on.join() === "false,true,false,false,false,false" && picked.open === "Open Lava Types" && calls.length === n0, `${width}: tapping an option selects it (0 calls); Open names it`, JSON.stringify(picked));
     await p.locator("#l-next .wn-opt").nth(0).click();
   });
 
@@ -174,19 +177,19 @@ async function run(width) {
       heads: [...document.querySelectorAll("#lesson .l-head")].filter((h) => /^Where next/i.test(h.textContent)).length,
       forkBlock: document.querySelectorAll("#l-fork .fork, #l-fork .fork-opt").length,
       sections: document.querySelectorAll("#lesson .where-next .wn-opts").length,
-      items: [...document.querySelectorAll("#l-next .wn-opt")].map((b) => ({ l: b.querySelector(".wn-label").textContent, choice: b.classList.contains("choice"), on: b.getAttribute("aria-checked") === "true", next: b.classList.contains("next"), why: b.querySelector(".why").textContent })),
+      items: [...document.querySelectorAll("#l-next .wn-opt")].map((b) => ({ l: b.querySelector(".wn-label").textContent, kind: b.getAttribute("data-kind"), on: b.getAttribute("aria-checked") === "true", why: b.querySelector(".why").textContent })),
     }));
-    const labels = wf.items.map((x) => x.l), choices = wf.items.filter((x) => x.choice);
+    const labels = wf.items.map((x) => x.l);
     ok(wf.heads === 1 && wf.sections === 1 && wf.forkBlock === 0, `${width}: a lesson with a fork shows exactly one Where Next (no separate fork block)`, JSON.stringify(wf));
-    ok(choices.length === 3 && wf.items.slice(0, 3).every((x) => x.choice) && choices.map((x) => x.l).sort().join() === "Ash Clouds,Constellations,Lava Types", `${width}: the fork's choices come first`, JSON.stringify(labels));
-    ok(wf.items[0].on && wf.items[0].next && /Suggested next/.test(wf.items[0].why) && wf.items.filter((x) => x.on).length === 1, `${width}: the top choice is pre-selected and highlighted`, JSON.stringify(wf.items[0]));
+    eq(wf.items.slice(0, 3).map((x) => x.kind), ["path", "branch", "other"], `${width}: a fork lesson: continue, a related branch, a different path`);
+    ok(wf.items[0].on && wf.items.filter((x) => x.on).length === 1 && labels[0] === "Ash Clouds" && labels[1] === "Lava Types", `${width}: the continuation (the new deeper step) is pre-selected; the nearby fork choice is the branch`, JSON.stringify(labels));
     const rest = wf.items.slice(3);
-    ok(rest.length >= 1 && rest.length <= 3 && rest.every((x) => !x.choice && /In progress/.test(x.why)) && new Set(labels).size === labels.length && !rest.some((x) => x.l === "Constellations" || x.l === "Eruptions"), `${width}: then up to 3 in progress, deduped (Constellations only once, never the lesson itself)`, JSON.stringify(labels));
+    ok(rest.length <= 3 && rest.every((x) => x.kind === "progress" && /In progress/.test(x.why)) && new Set(labels).size === labels.length && labels.filter((x) => x === "Constellations").length === 1 && !labels.includes("Eruptions"), `${width}: then up to 3 in progress, deduped (Constellations only once, never the lesson itself)`, JSON.stringify(labels));
     await shot("fork-where-next", "#l-next");
     // opening a choice records it as the learner's pick; back on Eruptions it stays pre-selected
     const n1 = calls.length;
-    await p.locator("#l-next .wn-opt").nth(2).click();
-    const pickLabel = (await p.locator("#l-next .wn-opt").nth(2).locator(".wn-label").textContent());
+    await p.locator("#l-next .wn-opt").nth(1).click();
+    const pickLabel = (await p.locator("#l-next .wn-opt").nth(1).locator(".wn-label").textContent());
     ok(calls.length === n1, `${width}: selecting a choice is 0 calls`);
     await p.click("#l-next .wn-go .btn");
     await p.waitForSelector("#l-done:not([hidden])");
@@ -252,8 +255,84 @@ async function run(width) {
   return { errs };
 }
 
+/* Shawn's case: a Data Management lesson (path Tables > Queries > Filtering), the quiz answered right, "I've got it". */
+async function runShawn(width) {
+  const ctx = await browser.newContext({ viewport: { width, height: width < 500 ? 844 : 860 }, timezoneId: "America/Toronto" });
+  const p = await ctx.newPage();
+  p.setDefaultTimeout(6000);
+  const errs = [], calls = [];
+  p.on("pageerror", (e) => errs.push("pageerror " + e.message));
+  p.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource/.test(m.text())) errs.push(m.text()); });
+  await p.route("**/api/ikolearn/**", async (route) => {
+    const at = new URL(route.request().url()).pathname.replace("/api/ikolearn", "");
+    let body = {}; try { body = JSON.parse(route.request().postData() || "{}"); } catch { body = {}; }
+    calls.push(at);
+    if (at === "/lesson" && body.focus === "Data Management") {
+      await sleep(60);
+      const questions = [{ q: "How does a table store data?", options: ["As one long sentence", "In a single number", "In rows and columns", "As a picture"], answer: 2 }];
+      return route.fulfill({ status: 200, contentType: "application/x-ndjson", body: ndjson([{ t: "start", model: "m" }, { t: "delta", text: DM_LESSON }, { t: "path", steps: [], next: "", choices: DM_FORK, questions }, { t: "done" }]) });
+    }
+    return route.fulfill({ status: 503, contentType: "application/json", body: '{"ok":false,"reason":"off"}' });
+  });
+  const tag = `${width}: Shawn's case`;
+  try {
+    await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
+    await p.evaluate(() => {
+      const C = window.IkoCloud, T = Date.now() - 3 * 864e5, c = C.create("Shawn", T);
+      const kids = (names, m) => names.map((n, i) => ({ name: n, order: i + 1, score: 0.6 - i * 0.05, why: "", role: "core", motif: m[i] }));
+      C.applyCreate(c, { items: [
+        { node: { name: "Data Management", chain: ["Computing"], motif: "grid" }, card: { title: "Data Management", blurb: "Keeping information in order.", goal: "" }, children: kids(["Tables", "Queries", "Filtering"], ["grid", "seed", "drop"]) },
+        { node: { name: "Coding", chain: ["Computing"], motif: "spark" }, card: { title: "Coding", blurb: "Writing programs.", goal: "" }, children: kids(["Python Basics", "Loops"], ["spark", "clock"]) },
+        { node: { name: "Birds", chain: ["Nature"], motif: "leaf" }, card: { title: "Birds", blurb: "Feathered friends.", goal: "" }, children: kids(["Songbirds", "Owls"], ["leaf", "star"]) },
+      ] }, { t: T });
+      const id = (l) => c.order.find((x) => c.nodes[x].label === l);
+      /* Python Basics: much practised, high in the top 10, and COMPLETED (an achieved card, as in Shawn's cloud) */
+      for (let i = 0; i < 6; i++) C.engage(c, id("Python Basics"), "open", T + 2000 + i);
+      Object.assign(c.nodes[id("Python Basics")], { ghost: false, correct: 3, mastery: 1 });
+      Object.assign(c.nodes[id("Owls")], { ghost: false, opened: true, engaged: 1, touched: T + 1000, mastery: 0.2 });
+      C.joinDeck(c, T + 4000);
+      c.active = id("Data Management");
+      localStorage.setItem("ikolearn.v1.name", "Shawn"); localStorage.setItem("ikolearn.v1.cloud", C.serialize(c));
+      localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { cloud: 1, card: 1, chat: 1, draw: 1 } }));
+      localStorage.setItem("ikolearn.v1.thread", JSON.stringify([{ id: "m1", at: T, role: "model", local: true, text: "Welcome back, Shawn." }]));
+    });
+    await p.reload({ waitUntil: "networkidle" }); await p.waitForTimeout(300);
+    const top = await p.evaluate(() => { const C = window.IkoCloud, R = window.IkoRank, P = window.IkoPlan, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")); const py = c.order.find((x) => c.nodes[x].label === "Python Basics"), tb = c.order.find((x) => c.nodes[x].label === "Tables"); const sc = R.scores(c); return { inTop: R.top(c).some((r) => r.id === py), beats: (sc[py] || 0) > (sc[tb] || 0), done: Boolean(P.finished && P.finished(c, py)) || C.isDone(c, py) }; });
+    if (!SOFT) ok(top.inTop && top.beats && top.done, `${tag}: fixture: Python Basics is completed, in the top 10 and outscores Tables`, JSON.stringify(top));
+    await p.getByRole("button", { name: /Continue Data Management/ }).first().click();
+    await p.waitForSelector("#l-done:not([hidden])");
+    await p.waitForTimeout(200);
+    await p.locator("#l-quiz label.opt").nth(2).click();
+    await p.waitForTimeout(200);
+    const n0 = calls.length;
+    await p.click("#l-got"); await p.waitForTimeout(400);
+    const r = await p.evaluate(() => ({
+      items: [...document.querySelectorAll("#l-next .wn-opt")].map((b) => ({ l: b.querySelector(".wn-label").textContent, kind: b.getAttribute("data-kind"), on: b.getAttribute("aria-checked") === "true", why: b.querySelector(".why").textContent })),
+      open: (document.querySelector("#l-next .wn-go .btn") || {}).textContent,
+      pathNext: ((document.querySelector("#l-path li.next") || {}).textContent || "").replace(/ · .*$/, ""),
+      finished: (() => { const C = window.IkoCloud, P = window.IkoPlan, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")); return [...document.querySelectorAll("#l-next .wn-opt")].filter((b) => P.finished(c, b.getAttribute("data-id"))).map((b) => b.querySelector(".wn-label").textContent); })(),
+      next: document.querySelector("#l-next").innerText,
+      thatsIt: (document.querySelector("#lesson").innerText.match(/That's it\./g) || []).length,
+    }));
+    await p.evaluate(() => document.querySelector("#l-quiz").scrollIntoView({ block: "start" })); await p.waitForTimeout(200);
+    if (SHOTS) await p.screenshot({ path: path.join(SHOTS, `flow-${TAG}-${width}-shawn-where-next.png`) });
+    if (!SOFT) {
+      ok(calls.length === n0, `${tag}: answering and "I've got it" make 0 calls`);
+      ok(r.items[0] && r.items[0].l === "Tables" && r.items[0].on && r.items[0].kind === "path" && /^Next on this path/.test(r.items[0].why) && r.open === "Open Tables", `${tag}: Tables, the path's next step, is first and pre-selected ("Next on this path")`, JSON.stringify(r.items[0]) + " " + r.open);
+      ok(r.pathNext === "Tables", `${tag}: it matches Your Path's "next"`, r.pathNext);
+      ok(!r.items.some((x) => x.l.startsWith("Python Basics")) && !/Python Basics|top 10|strong coding skills/i.test(r.next), `${tag}: the completed Python Basics appears nowhere in Where Next (no claims about the learner either)`, JSON.stringify(r.items));
+      ok(r.finished.length === 0, `${tag}: nothing finished is offered anywhere in Where Next`, JSON.stringify(r.finished));
+      eq(r.items.slice(0, 3).map((x) => x.kind), ["path", "branch", "other"], `${tag}: three clear choices: continue, a related branch, a different path`);
+      ok(/^Try a different path/.test(r.items[2].why) && !["Data Management", "Tables", "Queries", "Filtering", "Python Basics"].includes(r.items[2].l), `${tag}: the third is an unfinished topic on another path, from the learner's own cloud`, JSON.stringify(r.items[2]));
+      ok(new Set(r.items.map((x) => x.l)).size === r.items.length, `${tag}: no duplicates against the in-progress list`, JSON.stringify(r.items.map((x) => x.l)));
+      ok(r.thatsIt === 1, `${tag}: "That's it." shows once`, String(r.thatsIt));
+      ok(errs.length === 0, `${tag}: no console errors`, errs.join(" | "));
+    } else console.log("BEFORE", width, JSON.stringify(r));
+  } catch (e) { fails.push(`${tag} threw -> ${String(e.message || e).split("\n")[0]}`); }
+  await ctx.close();
+}
 const eq = (a, b, n) => ok(JSON.stringify(a) === JSON.stringify(b), n, `${JSON.stringify(a)} != ${JSON.stringify(b)}`);
-for (const w of [390, 1280]) await run(w);
+for (const w of [390, 1280]) { await run(w); await runShawn(w); }
 await browser.close();
 server.close();
 if (SHOTS) console.log("screenshots:", fs.readdirSync(SHOTS).filter((f) => f.startsWith(`flow-${TAG}-`)).join(", "));

@@ -162,7 +162,7 @@
       else if (opts.offer) wrap.appendChild(linkBtn("What comes next in " + n.label + "?", function () { createNext(id); }));
       return wrap;
     }
-    var rec = nextStep(id);
+    var rec = P.pathNext(state.cloud, id); /* the same "next" Where Next continues with */
     wrap.appendChild(mk("p", "l-head", opts.heading || "Your path"));
     var ol = mk("ol");
     n.path.ids.forEach(function (sid) {
@@ -941,7 +941,10 @@
       wrap.appendChild(set);
     });
     el.lQuiz.appendChild(wrap);
+    if (quizSaidIt()) { var dup = el.lStatus.querySelector("strong.yes"); if (dup) dup.parentNode.removeChild(dup); }
   }
+  /* "That's it." is said once: a right quiz answer already says it, so the status line doesn't repeat it */
+  function quizSaidIt() { return [].some.call(el.lQuiz.querySelectorAll(".q-fb"), function (x) { return x.textContent === "That's it."; }); }
   function answerQ(qi, oi) {
     var q = state.quiz, id = q && q.id;
     if (!q || id !== state.lessonNode || Number.isInteger(q.ans[qi]) || !q.qs[qi]) return;
@@ -1154,7 +1157,7 @@
       /* understood: the clarify options go; an answer already shown stays */
       var co = el.lClar.querySelector(".clar-opts");
       if (co) co.parentNode.removeChild(co);
-      el.lStatus.appendChild(mk("strong", "yes", "That's it. "));
+      if (!quizSaidIt()) el.lStatus.appendChild(mk("strong", "yes", "That's it. ")); /* said once: the quiz may already have */
       el.lStatus.appendChild(document.createTextNode((note || n.label + " is growing stronger on your cloud.") + (kids.length ? " " + kidsLine(id, kids) : "")));
     } else {
       el.lStatus.appendChild(document.createTextNode((note ? note + " " : "") + "That's okay, it takes a few tries. What would help?"));
@@ -1236,33 +1239,43 @@
     var id = state.lessonNode, n = nodeOf(id);
     el.lNext.textContent = "";
     if (!n || state.mode !== "lesson") return;
-    var w = P.whereNext(state.cloud, id, nextStep(id)), tops = topRanks();
-    var forkIds = w.fork.map(function (o) { return o.id; });
-    var items = (forkIds.length ? forkIds : w.next ? [w.next] : []).concat(w.others);
-    var grow = !w.next && !n.end && !C.isTerminal(state.cloud, id) && (!n.path || P.needsNext(state.cloud, id));
+    var w = P.whereNext(state.cloud, id, nextStep(id));
+    var forkIds = n.fork && n.fork.ids ? n.fork.ids : [];
+    var items = w.choices.map(function (c) { return c.id; }).concat(w.others);
+    var grow = !w.path && !n.end && !C.isTerminal(state.cloud, id) && (!n.path || P.needsNext(state.cloud, id));
     if (!items.length && !grow) return;
     el.lNext.appendChild(mk("p", "l-head", "Where next"));
     if (items.length) {
-      /* the learner's own tap wins; otherwise the computed next step (it can change, e.g. when the fork arrives) */
+      /* the learner's own tap wins; otherwise the computed pick (it can change, e.g. when the fork arrives) */
       var sel = items.indexOf(state.pick) >= 0 ? state.pick : w.next || items[0];
+      var onPath = P.pathNext(state.cloud, id);
       var list = mk("div", "wn-opts");
       list.setAttribute("role", "radiogroup");
       list.setAttribute("aria-label", "Where next");
-      items.forEach(function (x, i) {
-        var m = nodeOf(x), on = x === sel, f = i < forkIds.length ? w.fork[i] : null;
-        var b = mk("button", "wn-opt" + (on ? " on" : "") + (x === w.next ? " next" : "") + (f ? " choice" : ""));
+      var row = function (x, kind, why) {
+        var m = nodeOf(x), on = x === sel;
+        var b = mk("button", "wn-opt " + kind + (on ? " on" : ""));
         b.type = "button";
         b.setAttribute("role", "radio");
         b.setAttribute("aria-checked", on ? "true" : "false");
         b.setAttribute("data-id", x);
-        b.appendChild(mk("span", "wn-label", m.label + (f && n.fork.picked === x ? " · your pick" : "")));
-        var why = f ? (tops[x] ? "In your top 10. " : "") + (f.why || "") : "";
-        if (x === w.next) why = (f ? "Suggested next" : "Next step") + (afterOf(x) ? " · " + afterOf(x) : "") + (why ? " · " + why : "");
-        else if (!f) why = "In progress · " + trailOf(m.parent || x);
-        b.appendChild(mk("span", "why", why || "Another way to go"));
+        b.setAttribute("data-kind", kind);
+        b.appendChild(mk("span", "wn-label", m.label + (n.fork && n.fork.picked === x ? " · your pick" : "")));
+        b.appendChild(mk("span", "why", why));
         b.addEventListener("click", function () { state.pick = x; renderWhereNext(); });
         list.appendChild(b);
+      };
+      /* honest reasons, from the cloud itself; the model's own reason only for choices in this subject */
+      var join = function (a, c) { return c ? a + " · " + c : a; };
+      w.choices.forEach(function (c) {
+        var m = nodeOf(c.id), par = nodeOf(m.parent), why;
+        if (c.kind === "path") why = join(join(c.id === onPath ? "Next on this path" : "Closest to this lesson", afterOf(c.id)), c.why);
+        else if (c.kind === "branch") why = join(m.parent === id ? "Goes deeper into " + n.label : par ? "Related · in " + par.label : "Related", c.why);
+        else why = join("Try a different path", m.parent ? trailOf(m.parent) : "");
+        row(c.id, c.kind, why);
       });
+      if (w.others.length && w.choices.length) list.appendChild(mk("p", "wn-sub", "Also in progress"));
+      w.others.forEach(function (x) { row(x, "progress", "In progress · " + trailOf(nodeOf(x).parent || x)); });
       el.lNext.appendChild(list);
       var pick = nodeOf(sel), go = mk("div", "wn-go"), sp = D.cardSpec(state.cloud, sel);
       if (sp) { var c = D.render(document, sp, { size: "mini" }); c.setAttribute("aria-hidden", "true"); go.appendChild(c); }
@@ -1416,7 +1429,6 @@
   }
 
   /* ---------- suggestions and Draw (orchestrator.js, no calls) ---------- */
-  function topRanks() { var o = {}; (R ? R.top(state.cloud) : []).forEach(function (r) { o[r.id] = r.rank; }); return o; }
   function refreshSuggest() { state.suggest = P.suggest(state.cloud); save(); return state.suggest; }
   /* A test as a card-shaped tile: the parent, how much is finished under it. */
   function testTile(pid, onOpen) {

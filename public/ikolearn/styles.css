@@ -293,7 +293,8 @@ button.gcard:hover { border-color: var(--soft); }
 .wn-opt { font: inherit; text-align: left; color: var(--ink); background: transparent; border: 1px solid var(--rule); border-radius: 4px; padding: 8px 12px; cursor: pointer; }
 .wn-opt .why { display: block; font-size: 13px; color: var(--soft); }
 .wn-opt:hover { border-color: var(--soft); }
-.wn-opt.next .wn-label { font-weight: 600; }
+.wn-opt.path .wn-label { font-weight: 600; }
+.wn-sub { grid-column: 1 / -1; margin: 6px 0 0; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--soft); }
 .wn-opt.on { background: var(--sheet); border-color: var(--ink); box-shadow: inset 3px 0 0 var(--ink); }
 .wn-go { display: flex; align-items: center; gap: 12px; margin: 10px 0 0; }
 .wn-go .gcard { flex: 0 0 auto; pointer-events: none; }

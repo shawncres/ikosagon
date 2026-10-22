@@ -24,6 +24,7 @@
     suggest: 3,
     /* Where Next in a lesson: the next step plus up to this many other topics in progress */
     whereNext: 3,
+    nearDist: 2, /* Where Next: within 2 steps in the tree (a child, a sibling) is a related branch; further is a different path */
     /* a topic counts as engaged (its waiting child topics grow) after a right answer, "I've got it", a second visit or 2 minutes reading */
     engaged: { correct: 1, visits: 2, seconds: 120 },
     /* a test node appears for a parent once its core children are sufficiently complete: at least half of them and
@@ -442,32 +443,130 @@
    * walk up the tree). Then up to `max` other topics in progress (started, not finished), most recent first, never
    * repeating one above. -> { next: id | null, fork: [{ id, why }], others: [id] }. Nothing opens by itself.
    */
+  /*
+   * Where Next: up to three clear choices after a lesson, then what's in progress elsewhere. 0 model calls.
+   *   path:   continue this path. The lesson's own next step (the same "next" Your Path marks), never outranked by a
+   *           global score: a top-10 topic elsewhere is not a continuation.
+   *   branch: a related branch or deeper option (near: a child, a sibling, a step on the path). A fork choice first,
+   *           else another child or a sibling, nearest in the tree first (the model's order breaks ties).
+   *   other:  a different topic path (far: 3+ steps away in the tree, or another subject). Something unfinished in
+   *           progress there, else an unstarted topic in another branch (a far fork choice first, then by rank).
+   * Nothing finished is ever offered (finished(): completed, achieved, merged, covered; fork choices also by title).
+   * A slot with nothing unfinished to offer is left out, never padded.
+   * The learner's own earlier fork pick stays pre-selected (it takes the slot it fits). others: in progress, deduped.
+   */
+  /*
+   * Finished, for Where Next and Your Path: never suggested again. Everything v9 counts as done: a completed lesson
+   * (C.isDone, doneAt), an achieved card (achievedAt, Achieved tier), a merged card (absorbed into its parent, or a
+   * parent at Merged I+), or a card the deck already shows as covered (Tinted or better, also from its deck entry).
+   */
+  function finished(cloud, x) {
+    var n = nodeOf(cloud, x);
+    if (!n) return true;
+    if (n.doneAt || n.achievedAt || C.isDone(cloud, x) || C.absorbedInto(cloud, x)) return true;
+    var cv = D && D.coverage ? D.coverage(cloud, x) : null;
+    return Boolean(cv && cv.state === "covered");
+  }
+  /* Normalised titles of everything finished (nodes and deck cards whose node is gone): a fork choice that only
+     matches by name (a new ghost for a topic already learned) is finished too. */
+  function finishedNames(cloud) {
+    var out = {};
+    cloud.order.forEach(function (x) { if (finished(cloud, x)) out[C.norm(cloud.nodes[x].label)] = 1; });
+    (cloud.deck || []).forEach(function (e) {
+      if (cloud.nodes[e.id]) return;
+      var cv = D && D.coverage ? D.coverage(cloud, e.id) : null;
+      if (e.label && (e.ach || (e.tb || 0) >= 2 || e.inn || (cv && cv.state === "covered"))) out[C.norm(e.label)] = 1;
+    });
+    return out;
+  }
+  function anc(cloud, id) { var out = [], seen = {}, n = nodeOf(cloud, id); while (n && !seen[n.id]) { seen[n.id] = 1; out.unshift(n.id); n = nodeOf(cloud, n.parent); } return out; }
+  function treeDist(cloud, a, b) {
+    var x = anc(cloud, a), y = anc(cloud, b), k = 0;
+    if (!x.length || !y.length || x[0] !== y[0]) return Infinity;
+    while (k < x.length && k < y.length && x[k] === y[k]) k++;
+    return x.length + y.length - 2 * k;
+  }
+  /* The lesson's own next step: the learner's pick when it is on this path, else its next child, else the next step
+     on the paths above it (the same as Your Path's "next"). */
+  function pathNext(cloud, id) {
+    var n = nodeOf(cloud, id);
+    if (!n) return null;
+    var open = function (x) { return x && x !== id && nodeOf(cloud, x) && !finished(cloud, x); };
+    var pick = n.fork && n.fork.picked;
+    if (open(pick) && ((n.path && n.path.ids.indexOf(pick) >= 0) || nodeOf(cloud, pick).parent === id)) return pick;
+    var k = orderedChildren(cloud, id).filter(open)[0];
+    if (k) return k;
+    var cur = n, guard = 0;
+    while (cur && cur.parent && guard++ < 200) {
+      var p = nodeOf(cloud, cur.parent);
+      if (p && p.path) {
+        var i = p.path.ids.indexOf(cur.id);
+        var rest = p.path.ids.slice(i + 1).concat(p.path.ids.slice(0, Math.max(0, i))).filter(open);
+        if (rest.length) return rest[0];
+      }
+      cur = p;
+    }
+    return null;
+  }
   function whereNext(cloud, id, nextId, max) {
     max = max == null ? PLAN.whereNext : max;
-    var n = nodeOf(cloud, id), fork = [];
-    if (n && n.fork && n.fork.ids.length >= 2) {
-      fork = orderChoices(cloud, n.fork).filter(function (o) { return o.id !== id && nodeOf(cloud, o.id) && !C.isDone(cloud, o.id); })
-        .map(function (o) { return { id: o.id, why: o.why }; });
+    var n = nodeOf(cloud, id), empty = { next: null, path: null, choices: [], others: [] };
+    if (!n) return empty;
+    var done = finishedNames(cloud);
+    var open = function (x) { var m = nodeOf(cloud, x); return Boolean(x && x !== id && m && !finished(cloud, x) && !done[C.norm(m.label)]); };
+    var inSubj = function (x) { return treeDist(cloud, id, x) <= PLAN.nearDist; }; /* near enough to be a branch of this lesson */
+    var fork = n.fork && n.fork.ids ? n.fork : { ids: [], why: [] };
+    var whyOf = function (x) { var i = fork.ids.indexOf(x); return i >= 0 ? fork.why[i] || "" : ""; };
+    var picked = open(fork.picked) ? fork.picked : null;
+    var near = function (ids) {
+      return ids.map(function (x, i) { return { id: x, i: i, d: treeDist(cloud, id, x) }; })
+        .sort(function (a, b) { return a.d - b.d || a.i - b.i; }).map(function (o) { return o.id; });
+    };
+    var used = {}; used[id] = 1;
+    var take = function (x) { if (x) used[x] = 1; return x || null; };
+    var free = function (x) { return open(x) && !used[x]; };
+    /* (a) continue this path */
+    var cont = pathNext(cloud, id);
+    if (!open(cont) && open(nextId) && nextId !== picked && inSubj(nextId)) cont = nextId;
+    if (!open(cont)) cont = near(fork.ids.filter(function (x) { return open(x) && inSubj(x); }))[0] || null;
+    take(cont);
+    /* (b) a related branch: fork choices in this subject first, then children and siblings, nearest first */
+    var rel = near(fork.ids.filter(function (x) { return free(x) && inSubj(x); }));
+    if (!rel.length) {
+      var kids = C.childrenOf(cloud, id).map(function (c) { return c.id; });
+      var sibs = n.parent ? C.childrenOf(cloud, n.parent).map(function (c) { return c.id; }) : [];
+      rel = kids.concat(sibs).filter(free);
     }
-    var nx = null;
-    if (fork.length) nx = fork.some(function (o) { return o.id === n.fork.picked; }) ? n.fork.picked : fork[0].id;
-    /* the next step may not be explored yet (a waiting child is still dotted): that's what "next" means */
-    else if (nextId && nextId !== id && nodeOf(cloud, nextId) && !C.isDone(cloud, nextId)) nx = nextId;
-    var shown = {};
-    shown[id] = 1; if (nx) shown[nx] = 1;
-    fork.forEach(function (o) { shown[o.id] = 1; });
+    var branch = picked && inSubj(picked) && !used[picked] ? picked : rel[0];
+    take(branch);
+    /* (c) a different topic path, from the learner's own cloud */
+    var touched = function (a, b) { return (nodeOf(cloud, b).touched || 0) - (nodeOf(cloud, a).touched || 0); };
+    var away = cloud.order.filter(function (x) { var m = nodeOf(cloud, x); return free(x) && !inSubj(x) && (m.opened || m.engaged > 0 || m.correct > 0); }).sort(touched);
+    if (!away.length) {
+      /* an unstarted topic in another branch: a far fork choice first, then by the learner's ranking; never a bare category */
+      var sc = scores(cloud), topic = function (x) { var m = nodeOf(cloud, x), par = nodeOf(cloud, m.parent); return m.made || Boolean(par && par.made); };
+      var unstarted = function (x) { var m = nodeOf(cloud, x); return free(x) && !inSubj(x) && topic(x) && !(m.opened || m.engaged > 0 || m.correct > 0); };
+      away = fork.ids.filter(unstarted).concat(cloud.order.filter(function (x) { return unstarted(x) && fork.ids.indexOf(x) < 0; })
+        .sort(function (a, b) { return (sc[b] || 0) - (sc[a] || 0); }));
+    }
+    var other = picked && !inSubj(picked) && !used[picked] ? picked : away[0];
+    take(other);
+    var choices = [];
+    if (cont) choices.push({ id: cont, kind: "path", why: whyOf(cont) });
+    if (branch) choices.push({ id: branch, kind: "branch", why: whyOf(branch) });
+    if (other) choices.push({ id: other, kind: "other", why: "" }); /* the model's reason is about this lesson, not another path */
     var others = cloud.order.filter(function (x) {
       var m = nodeOf(cloud, x);
-      return m && !shown[x] && m.parent && !C.isDone(cloud, x) && (m.opened || m.engaged > 0 || m.correct > 0);
-    }).sort(function (a, b) { return (nodeOf(cloud, b).touched || 0) - (nodeOf(cloud, a).touched || 0); });
-    return { next: nx, fork: fork, others: others.slice(0, max) };
+      return m && !used[x] && m.parent && open(x) && (m.opened || m.engaged > 0 || m.correct > 0);
+    }).sort(touched);
+    return { next: picked || cont || (choices[0] && choices[0].id) || null, path: cont, choices: choices, others: others.slice(0, max) };
   }
 
   var api = {
     PLAN: PLAN, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, needsRepair: needsRepair, repairRequest: repairRequest,
     MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
-    suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf, whereNext: whereNext,
+    suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished,
     onboarding: onboarding, openQuestion: openQuestion, examples: examples, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics,
     needsNext: needsNext, readyNext: readyNext, createRequest: createRequest, OPENING: OPENING
   };
