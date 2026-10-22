@@ -24,9 +24,11 @@
     suggest: 3,
     /* a topic counts as engaged (its waiting child topics grow) after a right answer, "I've got it", a second visit or 2 minutes reading */
     engaged: { correct: 1, visits: 2, seconds: 120 },
-    /* a test is offered for a parent once 3 of its child topics are completed, or every step of its path (at least 2);
-       after an attempt it is offered again once 2 more are completed */
-    test: { minDone: 3, pathAll: 2, again: 2, questions: 5 },
+    /* a test node appears for a parent once its core children are sufficiently complete: at least half of them and
+       at least 2 (so 2 of 2, 2 of 4, 3 of 5); after an attempt it is offered again once 2 more children are completed */
+    test: { share: 0.5, min: 2, again: 2, questions: 5 },
+    /* a node still waiting on a prerequisite ("after X") ranks this much lower, so unlocked topics come first */
+    locked: 2,
     /* chains touched within this many days count as active (their next step is suggested) */
     recentDays: 10,
     depth: 7,
@@ -40,7 +42,12 @@
   var DAY = 86400000;
 
   function nodeOf(cloud, id) { return id && cloud.nodes[id] ? cloud.nodes[id] : null; }
-  function scores(cloud, now) { return RK ? RK.scores(cloud, now) : {}; }
+  /* rank scores, with topics still waiting on a prerequisite moved behind unlocked ones (they stay visible and learnable) */
+  function scores(cloud, now) {
+    var sc = RK ? RK.scores(cloud, now) : {};
+    cloud.order.forEach(function (id) { if (cloud.nodes[id] && C.lockedBy(cloud, id).length) sc[id] = (sc[id] || 0) - PLAN.locked; });
+    return sc;
+  }
   function topRank(cloud, now) { var out = {}; (RK ? RK.top(cloud, { now: now }) : []).forEach(function (r) { out[r.id] = r.rank; }); return out; }
 
   function engaged(cloud, id) {
@@ -97,15 +104,14 @@
   function testState(cloud, pid) {
     var p = nodeOf(cloud, pid), T = PLAN.test;
     if (!p || p.ghost) return null;
-    var done = C.doneChildren(cloud, pid);
-    var steps = p.path ? p.path.ids.filter(function (x) { return nodeOf(cloud, x); }) : [];
-    var pathAll = steps.length >= T.pathAll && steps.every(function (x) { return C.isDone(cloud, x); });
-    var enough = done.length >= T.minDone || pathAll;
+    var done = C.doneChildren(cloud, pid), cp = C.coreProgress(cloud, pid);
+    var want = C.needOf(cp.total, T.share, T.min);
+    var enough = cp.total >= T.min && cp.done >= want;
     var t = C.testOf(cloud, pid), tried = Boolean(t && t.attempts);
     var fresh = !tried || done.length >= (t.n || 0) + T.again;
     return {
       id: pid, ready: enough && fresh, done: done, taken: tried, best: t ? t.best || 0 : 0, attempts: t ? t.attempts || 0 : 0,
-      need: enough ? 0 : Math.max(0, Math.min(T.minDone - done.length, steps.length ? steps.filter(function (x) { return !C.isDone(cloud, x); }).length : T.minDone))
+      need: enough ? 0 : Math.max(0, (cp.total >= T.min ? want : T.min) - cp.done)
     };
   }
   /* Every parent with a test ready, highest ranked first. */
@@ -228,29 +234,31 @@
   }
 
   /*
-   * Merging: when a parent is ready to form (or upgrade) a higher-valued card. No calls, deterministic.
-   *   form     >= MERGE.first core children at the Achieved tier (or merged themselves), not yet absorbed
-   *   upgrade  a merged parent takes the next batch: >= MERGE.batch newly achieved children, or the last ones that
+   * Merging: when a parent is ready to form (or upgrade) a higher-valued card. No calls, deterministic, quiet.
+   *   form     the parent is Achieved itself AND its core is sufficiently complete: at least MERGE.share of its core
+   *            children done and at least MERGE.min (so 2 of 2, 3 of 4, 4 of 5); every completed child not yet absorbed joins
+   *   upgrade  a merged parent takes the next batch: >= MERGE.batch newly completed children, or the last ones that
    *            complete its whole core sequence
-   *   test     a test passed since the last merge absorbs every completed child not yet absorbed (>= 1)
-   * Plans run deepest first, so a child can merge its own subtopics and then count as achieved for its parent.
+   *   a passed test never merges on its own any more; when it coincides with a merge, the merge is marked "test"
+   * Merges are never undone: absorbed links and merge levels only grow. Plans run deepest first, so a child can merge
+   * its own subtopics and then count for its parent.
    */
-  var MERGE = { first: 3, batch: 2 };
+  var MERGE = { share: 0.75, min: 2, batch: 2 };
   function mergePlan(cloud, pid) {
     var p = nodeOf(cloud, pid);
     if (!p || !p.parent || p.ghost) return null;
-    var kids = C.childrenOf(cloud, pid).filter(function (c) { return !c.ghost && !c.absorbedInto; });
-    var ready = kids.filter(function (c) { var t = C.tierOf(cloud, c.id); return t && t.rank >= 3; });
-    var t = C.testOf(cloud, pid);
-    if (t && t.passAt && t.passAt > (p.mergedAt || 0)) {
-      var done = kids.filter(function (c) { return C.isDone(cloud, c.id); });
-      if (done.length) return { id: pid, ids: done.map(function (c) { return c.id; }), why: "test" };
+    var fresh = C.childrenOf(cloud, pid).filter(function (c) { return !c.ghost && !c.absorbedInto && C.isDone(cloud, c.id); });
+    if (!fresh.length) return null;
+    var ids = fresh.map(function (c) { return c.id; });
+    var t = C.testOf(cloud, pid), tested = Boolean(t && t.passAt && t.passAt > (p.mergedAt || 0));
+    if (!p.ml) {
+      var cp = C.coreProgress(cloud, pid);
+      if (!cp.total || cp.done < C.needOf(cp.total, MERGE.share, MERGE.min) || !C.isAchieved(cloud, pid)) return null;
+      return { id: pid, ids: ids, why: tested ? "test" : "core" };
     }
-    if (!ready.length) return null;
-    var core = ready.filter(function (c) { return c.role !== "optional"; });
-    if (!p.ml) return core.length >= MERGE.first ? { id: pid, ids: ready.map(function (c) { return c.id; }), why: "core" } : null;
-    var coreLeft = C.coreChildren(cloud, pid).filter(function (c) { return !c.ghost && !c.absorbedInto && ready.indexOf(c) < 0; }).length;
-    return ready.length >= MERGE.batch || (core.length && !coreLeft) ? { id: pid, ids: ready.map(function (c) { return c.id; }), why: "batch" } : null;
+    var coreLeft = C.gateCore(cloud, pid).filter(function (c) { return !c.absorbedInto && ids.indexOf(c.id) < 0; }).length;
+    var coreNow = fresh.some(function (c) { return c.role !== "optional"; });
+    return fresh.length >= MERGE.batch || (coreNow && !coreLeft) ? { id: pid, ids: ids, why: tested ? "test" : "batch" } : null;
   }
   function mergePlans(cloud) {
     return cloud.order.filter(function (id) { var n = cloud.nodes[id]; return n && n.parent; })

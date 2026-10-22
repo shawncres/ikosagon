@@ -11,7 +11,7 @@
 (function (root) {
   "use strict";
 
-  var VERSION = 8;
+  var VERSION = 9;
   /* nodes: stored cap (localStorage stays small). children / ghosts: per node. There is no depth limit. */
   var LIMITS = { nodes: 600, subjects: 12, children: 16, ghostsPerNode: 6, pathSteps: 6, cards: 60, labelChars: 32, choices: 3, draws: 3000, whyChars: 80, chain: 4, blurbChars: 140 };
   var MASTERED = 0.6;
@@ -98,7 +98,9 @@
       /* v7: role among its siblings (core = the main sequence, optional = a side path off one core step), made by a creation call, bridge cached; absorb groundwork */
       role: o.role === "core" || o.role === "optional" ? o.role : "", off: o.off || null, made: Boolean(o.made), bridged: 0, absorbedInto: null, absorbed: [],
       /* v8: merge level (0 = not merged, 1 = I, 2 = II ...), when it last merged, the one-time chain repair */
-      ml: 0, mergedAt: 0, repaired: 0
+      ml: 0, mergedAt: 0, repaired: 0,
+      /* v9: prerequisites, node ids that should be done first (from the creation call); none by default */
+      pre: []
     };
     if (!n.parent) {
       n.hue = Number.isFinite(o.hue) && !hueUsed(cloud, o.hue) ? o.hue : subjectHue(cloud, o.label); /* the name the model gave is kept as is */
@@ -684,6 +686,7 @@
   function applyCreate(cloud, result, opts) {
     opts = opts || {};
     var t = now_(opts.t), out = { nodes: [], children: [], order: [] }, res = { created: [], promoted: [], strengthened: [], parentsCreated: [] };
+    var needs = []; /* v9: [node id, names it needs first], resolved once every item is placed */
     (result && Array.isArray(result.items) ? result.items : []).forEach(function (it) {
       if (!it || !it.node) return;
       var label = cleanLabel(it.node.name), k = norm(label), n = null;
@@ -736,9 +739,11 @@
         if (!hit) return;
         var sc = Number(c.score);
         if (Number.isFinite(sc)) { hit.imp = clamp01(sc > 1 ? sc / 100 : sc); hit.impAt = t; }
+        if (Array.isArray(c.needs) && c.needs.length) needs.push([hit.id, c.needs]);
         if (before.indexOf(hit.id) < 0 && out.children.indexOf(hit.id) < 0) out.children.push(hit.id);
       });
       r.added.forEach(function (x) { if (out.order.indexOf(x) < 0) out.order.push(x); });
+      if (Array.isArray(it.node.needs) && it.node.needs.length) needs.push([n.id, it.node.needs]);
       n.pending = null;
       if (opts.focusId) n.asked = doneCore(cloud, n.id).length + 1;
       else n.made = true;
@@ -746,6 +751,7 @@
       if (out.nodes.indexOf(n.id) < 0) out.nodes.push(n.id);
     });
     if (out.nodes.length) { cloud.rev += 1; prune(cloud); }
+    needs.forEach(function (x) { if (cloud.nodes[x[0]]) addPrereqs(cloud, x[0], x[1]); });
     return out;
   }
 
@@ -861,7 +867,7 @@
   function growthOf(cloud, id) {
     var n = node(cloud, id), e = deckEntry(cloud, id);
     if (!n && !e) return null;
-    var ended = Boolean((n && (n.achievedAt || (!n.ghost && isTerminal(cloud, id)))) || (e && e.ach));
+    var ended = Boolean((n && (n.achievedAt || (!n.ghost && isTerminal(cloud, id) && completable(cloud, id)))) || (e && e.ach));
     var tier = tierRank(cloud, id, n, e, ended), ml = mergeLevel(cloud, id);
     var stage = Math.max(TIER_STAGE[tier], n ? tintFor(n) : 0, e ? Math.min(e.best || 0, 4) : 0);
     var score = n ? scoreOf(n) : 0, c = n ? confirmedOf(n) : 0, want = GROWTH.confirm[stage + 1];
@@ -890,7 +896,7 @@
     var joined = [];
     all(cloud).forEach(function (n) {
       if (!n.parent || n.ghost) return;
-      if (!n.achievedAt && isTerminal(cloud, n.id)) n.achievedAt = t;
+      if (!n.achievedAt && isTerminal(cloud, n.id) && completable(cloud, n.id)) n.achievedAt = t;
       if (!n.doneAt && isDone(cloud, n.id)) n.doneAt = t; /* completion is kept for good, even if mastery later dips */
       if (inDeck(cloud, n.id) || (scoreOf(n) < GROWTH.join && !n.achievedAt && !n.ml)) return; /* a merged parent is always in the deck */
       cloud.deck.push({ id: n.id, label: n.label, subject: "", hue: SEPIA, at: t, best: 0, chain: [], blurb: "", ach: 0, tb: 0, ml: 0, inn: null, co: [] });
@@ -1007,12 +1013,89 @@
     if (n.mastery < MASTERED || !n.path || !n.path.ids.length) return false;
     return n.path.ids.every(function (x) { return !cloud.nodes[x] || cloud.nodes[x].mastery >= MASTERED; });
   }
-  /* ---------- completion, children waiting for engagement, tests (v5) ---------- */
-  /* A completed topic: done once (doneAt), or mastered, or 2+ right answers, or its branch has ended. Ghosts never are. */
+  /* ---------- completion, children waiting for engagement, tests (v5); prerequisites and the completion gate (v9) ---------- */
+  /*
+   * A completed topic: done once (doneAt or achievedAt, kept for good), or now: mastered, or 2+ right answers, or its
+   * branch has ended, AND it is completable (v9 gate). Ghosts never are.
+   */
   function isDone(cloud, id) {
     var n = node(cloud, id);
     if (!n || !n.parent || n.ghost) return false;
-    return Boolean(n.doneAt || n.achievedAt || n.mastery >= MASTERED || (n.correct || 0) >= 2 || isTerminal(cloud, id));
+    if (n.doneAt || n.achievedAt) return true;
+    return Boolean((n.mastery >= MASTERED || (n.correct || 0) >= 2 || isTerminal(cloud, id)) && completable(cloud, id));
+  }
+  /*
+   * The completion gate (v9). A topic can only reach done (Tinted) or Achieved once
+   *   1. every prerequisite (node.pre: ids from the creation call) is done, and
+   *   2. when it has core children, enough of them are done: GATE.share of them, at least GATE.min (all of them when it
+   *      has fewer).
+   * A leaf with no prerequisites completes exactly as before. Locked topics stay visible and learnable (lessons,
+   * answers, colour up to Inked); completion simply waits. Completion already recorded (doneAt, achievedAt) is never
+   * taken back, and saves from before v9 are stamped with the old rules on load, so nothing regresses.
+   */
+  var GATE = { share: 0.5, min: 2 };
+  /* how many of `total` are needed for a share, at least `min` (never more than total; 0 of 0) */
+  function needOf(total, share, min) { return total > 0 ? Math.min(total, Math.max(min, Math.ceil(share * total - 1e-9))) : 0; }
+  /* core children of a topic and how many are done: { total, done, need } (need: for the completion gate) */
+  /* the core the v9 gate counts: the main sequence (role core, placeholders included) and opened children from before roles;
+     a dotted suggestion with no role yet never blocks completion */
+  function gateCore(cloud, id) { return coreChildren(cloud, id).filter(function (c) { return c.role === "core" || !c.ghost; }); }
+  function coreProgress(cloud, id) {
+    var core = gateCore(cloud, id), done = 0;
+    core.forEach(function (c) { if (isDone(cloud, c.id)) done++; });
+    return { total: core.length, done: done, need: needOf(core.length, GATE.share, GATE.min) };
+  }
+  /* live prerequisites of a topic (ids) */
+  function prereqs(cloud, id) { var n = node(cloud, id); return n && n.pre ? n.pre.filter(function (x) { return x !== id && cloud.nodes[x]; }) : []; }
+  /* the prerequisites still to finish: [] when unlocked ("after X" uses these) */
+  function lockedBy(cloud, id) {
+    var n = node(cloud, id);
+    if (!n || n.doneAt || n.achievedAt) return [];
+    return prereqs(cloud, id).filter(function (x) { return !isDone(cloud, x); });
+  }
+  var gateOff = false, gating = {};
+  function completable(cloud, id) {
+    if (gateOff) return true; /* loading a pre-v9 save: completion is stamped with the old rules first */
+    if (gating[id]) return false; /* a cycle that slipped in: nothing in it completes until it is cut */
+    gating[id] = 1;
+    try {
+      if (lockedBy(cloud, id).length) return false;
+      var cp = coreProgress(cloud, id);
+      return cp.done >= cp.need;
+    } finally { delete gating[id]; }
+  }
+  /* every prerequisite reachable from id (to keep the graph acyclic) */
+  function preClosure(cloud, id) {
+    var seen = {}, stack = prereqs(cloud, id).slice();
+    while (stack.length) { var x = stack.pop(); if (seen[x]) continue; seen[x] = 1; prereqs(cloud, x).forEach(function (y) { stack.push(y); }); }
+    return seen;
+  }
+  /*
+   * Sets a topic's prerequisites (ids, or labels resolved among its siblings first, then anywhere on the cloud). Never
+   * itself, an ancestor or a descendant (that would deadlock with the core gate), nothing that would make a cycle, at
+   * most PRE_MAX. Adds to what is there. -> the ids added.
+   */
+  var PRE_MAX = 3;
+  function addPrereqs(cloud, id, refs) {
+    var n = node(cloud, id), added = [];
+    if (!n || !n.parent) return added;
+    n.pre = n.pre || [];
+    (Array.isArray(refs) ? refs : []).forEach(function (r) {
+      if (n.pre.length >= PRE_MAX) return;
+      var x = cloud.nodes[r] ? r : null;
+      if (!x) {
+        var k = norm(r);
+        var sib = k ? childrenOf(cloud, n.parent).filter(function (c) { return c.key === k; })[0] : null;
+        var any = sib || (k ? findTopic(cloud, cleanLabel(r)) : null);
+        x = any ? any.id : null;
+      }
+      if (!x || x === id || n.pre.indexOf(x) >= 0 || !cloud.nodes[x].parent) return;
+      if (isAncestor(cloud, x, id) || isAncestor(cloud, id, x)) return;
+      if (preClosure(cloud, x)[id]) return;
+      n.pre.push(x);
+      added.push(x);
+    });
+    return added;
   }
   /* The completed children of a topic (its direct children, path steps first). */
   function doneChildren(cloud, id) {
@@ -1322,7 +1405,8 @@
       if (x.fork && x.fork.ids.length) forks[id] = [x.fork.ids, x.fork.why, x.fork.picked || 0, s(x.fork.at)];
       var row = [id, x.label, x.parent || 0, (x.ghost ? 1 : 0) | (x.opened ? 2 : 0) | (x.end ? 4 : 0), Math.round(x.weight * 10), Math.round(x.mastery * 100), s(x.born), s(x.touched), x.parent ? -1 : (x.hue == null ? 30 : x.hue), s(x.lastStruggle), x.spent || 0, x.engaged || 0];
       /* v4 and v5 fields only when set, so most rows stay short */
-      var v8 = x.ml || x.mergedAt || x.repaired;
+      var v9 = x.pre && x.pre.length;
+      var v8 = v9 || x.ml || x.mergedAt || x.repaired;
       var v7 = v8 || x.role || x.off || x.made || x.bridged || x.absorbedInto || (x.absorbed && x.absorbed.length);
       var v6 = v7 || x.imp != null || x.goal || x.asked, v5 = v6 || x.pending || x.doneAt;
       if (v5 || x.correct || x.heat || x.blurb || x.achievedAt) row.push(x.correct || 0, Math.round((x.heat || 0) * 100), s(x.heatAt), x.blurb || "", s(x.achievedAt));
@@ -1330,6 +1414,7 @@
       if (v6) row.push(x.imp == null ? -1 : Math.round(x.imp * 100), s(x.impAt), x.goal || "", x.asked || 0);
       if (v7) row.push(x.role === "core" ? 1 : x.role === "optional" ? 2 : 0, x.off || 0, x.made ? 1 : 0, s(x.bridged), x.absorbedInto || 0, x.absorbed && x.absorbed.length ? x.absorbed : 0);
       if (v8) row.push(x.ml || 0, s(x.mergedAt), s(x.repaired));
+      if (v9) row.push(x.pre.slice());
       return row;
     });
     var tests = {};
@@ -1431,7 +1516,7 @@
     try { c = typeof str === "string" ? JSON.parse(str) : str; } catch { return null; }
     if (!c || typeof c.name !== "string") return null;
     var base = { name: cleanLabel(c.name) || "Me", seq: Number(c.seq) || 0, rev: Number(c.rev) || 0, created: Number(c.created) || 0, next: c.next || null };
-    if (c.v >= 2 && c.v <= 8 && Array.isArray(c.n)) {
+    if (c.v >= 2 && c.v <= 9 && Array.isArray(c.n)) {
       var ms = function (s) { return (Number(s) || 0) * 1000; };
       var list = c.n.map(function (a) {
         if (!Array.isArray(a) || typeof a[0] !== "string" || typeof a[1] !== "string") return null;
@@ -1446,10 +1531,14 @@
           imp: Number.isFinite(a[19]) && a[19] >= 0 ? clamp01(a[19] / 100) : null, impAt: ms(a[20]), goal: cleanGoal(a[21] || ""), asked: Math.max(0, Number(a[22]) || 0),
           role: a[23] === 1 ? "core" : a[23] === 2 ? "optional" : "", off: typeof a[24] === "string" ? a[24] : null, made: a[25] === 1, bridged: ms(a[26]),
           absorbedInto: typeof a[27] === "string" ? a[27] : null, absorbed: Array.isArray(a[28]) ? a[28].filter(function (x) { return typeof x === "string"; }) : [],
-          ml: Math.max(0, Math.min(99, Math.floor(Number(a[29]) || 0))), mergedAt: ms(a[30]), repaired: ms(a[31])
+          ml: Math.max(0, Math.min(99, Math.floor(Number(a[29]) || 0))), mergedAt: ms(a[30]), repaired: ms(a[31]),
+          pre: Array.isArray(a[32]) ? a[32].filter(function (x) { return typeof x === "string"; }).slice(0, PRE_MAX) : []
         };
       });
-      var out = finish(base, list, c.cards, c.p, { forks: c.f, deck: c.k, draws: c.g, sessions: c.ss, tests: c.t, suggest: c.sg, active: c.fl, profile: c.pr, events: c.ev });
+      /* v8 and older: no prerequisites; completion is stamped with the rules it was earned under (no gate), so nothing regresses */
+      gateOff = c.v < 9;
+      var out;
+      try { out = finish(base, list, c.cards, c.p, { forks: c.f, deck: c.k, draws: c.g, sessions: c.ss, tests: c.t, suggest: c.sg, active: c.fl, profile: c.pr, events: c.ev }); } finally { gateOff = false; }
       var nowS = Math.round(Date.now() / 1000) * 1000; /* whole seconds, as stored, so a migrated cloud round-trips exactly */
       if (c.v < 5) adoptComputerScience(out, nowS); /* v4 and older: Computer Science becomes its own subject */
       if (c.v < 6) { pruneSeeds(out); joinDeck(out, nowS); } /* v5 and older: untouched starter seeds go; everything learned stays */
@@ -1471,10 +1560,12 @@
         weight: Number(n.weight) || 0, mastery: clamp01(Number(n.mastery) || 0), born: Number(n.born) || 0, touched: Number(n.touched) || 0,
         hue: n.parent ? undefined : (Number.isFinite(n.hue) ? n.hue : 30), lastStruggle: n.lastStruggle || undefined, cards: [],
         spent: 0, engaged: 0, end: false, correct: 0, heat: 0, heatAt: 0, blurb: "", achievedAt: 0, pending: null, doneAt: 0, imp: null, impAt: 0, goal: "", asked: 0,
-        role: "", off: null, made: false, bridged: 0, absorbedInto: null, absorbed: [], ml: 0, mergedAt: 0, repaired: 0
+        role: "", off: null, made: false, bridged: 0, absorbedInto: null, absorbed: [], ml: 0, mergedAt: 0, repaired: 0, pre: []
       };
     });
-    var out = finish(base, list, c.cards, {});
+    gateOff = true;
+    var out;
+    try { out = finish(base, list, c.cards, {}); } finally { gateOff = false; }
     var t = Date.now();
     adoptComputerScience(out, t);
     pruneSeeds(out);
@@ -1493,6 +1584,8 @@
       if (n.absorbedInto && (!cloud.nodes[n.absorbedInto] || n.parent !== n.absorbedInto)) n.absorbedInto = null;
       n.absorbed = (n.absorbed || []).filter(function (x) { return cloud.nodes[x] && cloud.nodes[x].absorbedInto === n.id; });
     });
+    /* v9: prerequisites must be live topics, never the topic, its ancestors or descendants, and never a cycle (re-added in order) */
+    all(cloud).forEach(function (n) { var want = n.pre || []; n.pre = []; if (want.length) addPrereqs(cloud, n.id, want.filter(function (x) { return cloud.nodes[x]; })); });
   }
 
   /* Thread persistence: keep the most recent messages only. */
@@ -1505,6 +1598,7 @@
     VERSION: VERSION, LIMITS: LIMITS, MASTERED: MASTERED, OLD_SEEDS: OLD_SEEDS, HUES: HUES, subjectHue: subjectHue, plant: plant,
     newProfile: newProfile, profileOf: profileOf, setProfile: setProfile, topicCount: topicCount,
     TIERS: TIERS, TIER_NAMES: TIER_NAMES, TIER_STAGE: TIER_STAGE, ACHIEVE_RIGHT: ACHIEVE_RIGHT, roman: roman, tierOf: tierOf, mergeLevel: mergeLevel, mergeInto: mergeInto, corpusOf: corpusOf, absorbedInto: absorbedInto,
+    GATE: GATE, needOf: needOf, gateCore: gateCore, coreProgress: coreProgress, prereqs: prereqs, lockedBy: lockedBy, completable: completable, addPrereqs: addPrereqs, PRE_MAX: PRE_MAX,
     checkChain: checkChain, applyRepair: applyRepair, moveUnder: moveUnder, EVENTS_MAX: EVENTS_MAX,
     applyCreate: applyCreate, pruneSeeds: pruneSeeds, deepenChain: deepenChain, applyBridge: applyBridge, coreChildren: coreChildren, doneCore: doneCore, sidePaths: sidePaths, absorbable: absorbable, markCore: markCore,
     create: create, applyTopics: applyTopics, addGhosts: addGhosts, applyPath: applyPath, nextFor: nextFor, engage: engage,
