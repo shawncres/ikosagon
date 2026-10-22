@@ -8,12 +8,12 @@ import {
   LEARN_LIMITS, CLOUD_OPEN, CLOUD_CLOSE, cleanName, cleanLabel, cleanMessages, parseLearnInput, SYSTEM_BASE, companionSystem, noticeSystem,
   buildContents, cardSystem, adjacentSystem, plainReply, parseCloudBlock, parseCard, parseAdjacent, createBlockSplitter,
   PATH_OPEN, PATH_CLOSE, lessonSystem, lessonContents, pathSystem, PATH_SCHEMA, CARD_SCHEMA, parsePath, parseChoices, parseLessonBlock, parseQuestions, parseBlurb, parseChain,
-  parseTest, testSystem, TEST_SCHEMA, createSystem, parseCreate, CREATE_SCHEMA,
+  parseTest, testSystem, TEST_SCHEMA, createSystem, parseCreate, CREATE_SCHEMA, examplesSystem, parseExamples, EXAMPLES_SCHEMA, EXAMPLE_LIMITS, SIGNALS,
 } from "../lib/ikolearn/prompts.ts";
 import { DEFAULT_MODEL, FALLBACK_MODEL, GEMINI_BASE, chatBody, jsonBody, readSse } from "../lib/ikolearn/gemini.ts";
 import { MODEL_LIMITS, streamText, generateJson, llmConfig, llmReady } from "../lib/ikolearn/llm.ts";
 import { toMessages } from "../lib/ikolearn/openai-compatible.ts";
-import { LEARN_GUARDS, createLearnState, prepare, chatEvents, eventStream, cardFor, adjacentFor, lessonEvents, pathFor, testFor, createFor } from "../lib/ikolearn/service.ts";
+import { LEARN_GUARDS, createLearnState, prepare, chatEvents, eventStream, cardFor, adjacentFor, lessonEvents, pathFor, testFor, createFor, examplesFor, EXAMPLES_CACHE } from "../lib/ikolearn/service.ts";
 
 const require = createRequire(import.meta.url);
 const C = require("../public/ikolearn/cloud-model.js");
@@ -1260,15 +1260,18 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const ob = P.onboarding(fresh, true), ob2 = P.onboarding(fresh, false);
   ok(ob.length === 1 && ob2.length === 2 && ob2[0].id === "name" && ob.map((x) => x.id).join() === "curious", "onboarding: one open question (plus the name only when missing); no age question");
   ok(P.OPENING === "Let's begin making a learning path together. We can add more as we go along." && ob[0].q.startsWith("Hi Mia. " + P.OPENING + "\n\n") && ob2[1].q.startsWith(P.OPENING), "the soft opening: the exact joint opening line comes first, before the open question");
-  ok(!/\b(age|old|years?|grade|where (do )?you live|region)\b/i.test(JSON.stringify(ob2.concat([P.openQuestion(fresh, "more"), P.openQuestion(fresh, "reask")]))), "onboarding never asks for age, grade or place");
-  ok(ob[0].open && ob[0].input && !ob[0].multi && !(ob[0].chips || []).length && /curious|enjoy/.test(ob[0].q), "onboarding: interests are one open question in the learner's own words: a free-text field, no chips");
-  const oq2 = P.openQuestion(fresh, "more");
-  ok(oq2.open && !(oq2.chips || []).length && oq2.go === "Build my cloud" && ob[0].go === "Next", "onboarding: an optional second open question (asked only after a first answer), then Build my cloud");
+  ok(!/\b(age|old|years?|grade|where (do )?you live|region)\b/i.test(JSON.stringify(ob2.concat([P.openQuestion(fresh, "grow"), P.openQuestion(fresh, "reask")]))), "onboarding never asks for age, grade or place");
+  ok(ob[0].open && ob[0].input && !ob[0].multi && !("chips" in ob[0]) && ob[0].ex === true && /curious|enjoy/.test(ob[0].q), "onboarding: interests are one open question in the learner's own words: a free-text field; its only chips are the API's examples (ex), none in the question");
+  const oq2 = P.openQuestion(fresh, "grow");
+  ok(oq2.open && !("chips" in oq2) && !oq2.ex && oq2.go === "Build my path" && ob[0].go === "Next" && /grow in yourself/.test(oq2.q) && /^Optional\./.test(oq2.hint), "onboarding: an optional, soft personal-development second question (free text, no examples), then Build my path");
+  ok(P.openQuestion(fresh, "reask").ex === true, "the re-ask shows the examples too");
   { const kid = C.create("Kai", T0); C.setProfile(kid, { age: "4-6" }, T0); ok(P.openQuestion(kid, "curious").q === P.openQuestion(fresh, "curious").q && !("age" in C.profileOf(kid)), "open questions: one wording for everyone; an age in a profile patch is ignored"); }
   ok(!P.interestChips && !P.INTERESTS, "no interest chip list is exported any more");
   C.setProfile(fresh, { age: "7-9", region: "Canada / Ontario-ish", interests: ["Dinosaurs", "Building things"], onboarded: true }, T0);
   ok(!P.needsOnboarding(fresh) && C.profileOf(fresh).interests.length === 2 && !("age" in C.profileOf(fresh)) && !("region" in C.profileOf(fresh)), "answers are kept on the profile; age and region in a patch are ignored");
   const rq = P.createRequest(fresh, "start");
+  { const g1 = P.createRequest(fresh, "start", null, { about: "volcanoes", grow: "being more patient" }), g2 = P.createRequest(fresh, "more", null, { about: "music", grow: "x" });
+    ok(g1.grow === "being more patient" && g1.about === "volcanoes" && !("grow" in g2) && !("grow" in rq), "createRequest: the personal-development answer rides in the start call only (no extra call)"); }
   ok(rq.kind === "start" && !("age" in rq) && !("region" in rq) && rq.interests.join() === "Dinosaurs,Building things" && Array.isArray(rq.favorites), "createRequest(start): interests and favorites only, no age or region");
   const CI = parseLearnInput({ mode: "notice", name: "Mia", messages: [], kind: "start", age: "7-9", region: "Canada / Ontario-ish M5V 2T6", interests: ["Dinosaurs", "<b>Building</b> things", "", "a", "b", "c", "d"] });
   ok(!("age" in CI) && !("region" in CI) && CI.interests.length === 5 && !CI.interests[1].includes("<"), "create input: age and region from an older client are dropped on the server; interests cleaned and capped");
@@ -1451,12 +1454,99 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   {
     const app4 = fs.readFileSync("public/ikolearn/app.js", "utf8");
     const ro = app4.slice(app4.indexOf("function runOnboarding("), app4.indexOf("function answerReask("));
-    ok(/if \(said\.length\) buildCloud\("start", \[\], said\.join\("\. "\)\)/.test(ro) && /else \{ push\(\{ role: "model", local: true, text: waitingText\(\) \}\)/.test(ro), "Skip makes no creation call: a gentle message leaves the question open");
+    ok(/if \(about\) buildCloud\("start", \[\], about, grow\)/.test(ro) && /else \{ push\(\{ role: "model", local: true, text: waitingText\(\), ex: "start" \}\)/.test(ro), "Skip makes no creation call: a gentle message (with the API's examples) leaves the question open");
     ok(!/a couple of quick questions|Roughly how old/.test(app4) && /There's no rush/.test(app4) && /we'll begin your path from there/.test(app4), "no age question or old welcome; the waiting message is soft and joint");
     ok(/if \(waitingForStart\(\)\) \{ var about = cleanAbout\(text\);[\s\S]{0,120}?buildCloud\("start", \[\], about\)/.test(app4) && /function waitingForStart\(\) \{ return Boolean\(state\.cloud\) && !C\.subjects\(state\.cloud\)\.length && !P\.needsOnboarding\(state\.cloud\); \}/.test(app4), "after a Skip, the first thing typed (while the cloud is empty) is the one start call, in their own words");
     ok(/if \(kind === "start" && !about && !interests\.length\) return;/.test(app4), "buildCloud never makes an empty start call");
     ok(/linkBtn\("Begin", runOnboarding/.test(app4) && !/few quick questions", runOnboarding|build your cloud, " \+ state/.test(app4), "an empty cloud offers a soft Begin (the same no-call opening), not a quiz");
     ok(/Hi " \+ state\.name \+ ", welcome back\. " \+ P\.OPENING/.test(app4), "returning to an empty cloud: the opening line again, no call");
+  }
+
+  // ---------- discovery (PR B): the API's examples, the personal-development question, the create prompt ----------
+  {
+    const EXS = ["How volcanoes erupt", "Drawing animals", "Why is the sky blue?", "Getting better at chess", "Building a treehouse", "How planes stay up", "Writing my own stories", "Growing tomatoes", "Learning to juggle", "How bees make honey", "Being more patient", "Stars and planets"];
+    // parseExamples: strict, short, deduped
+    const px = parseExamples(JSON.stringify({ examples: [...EXS, "drawing animals", "Visit https://x.y now", "A".repeat(60), "one two three four five six seven eight", 7, "  growing  tomatoes. ", "Making music."] }));
+    ok(px && px.length === EXS.length + 1 && px.includes("Making music") && !px.some((x) => /http|AAAA|eight/.test(x)) && px.filter((x) => /tomatoes/i.test(x)).length === 1, "parseExamples: short plain phrases, deduped, links and long ones dropped, end punctuation trimmed (a question keeps its ?)");
+    ok(px.includes("Why is the sky blue?") && parseExamples({ examples: EXS.slice(0, EXAMPLE_LIMITS.min - 1) }) === null && parseExamples("junk") === null && parseExamples({ examples: Array.from({ length: 40 }, (_, i) => "Topic number " + "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN"[i]) }).length === EXAMPLE_LIMITS.count, "parseExamples: too few is unusable (null); at most " + EXAMPLE_LIMITS.count);
+    const exSys = examplesSystem();
+    ok(examplesSystem.length === 0 && /Role: examples/.test(exSys) && !/Age band|Rough region|Learner's first name|profile/i.test(exSys.replace(SYSTEM_BASE, "")) && EXAMPLES_SCHEMA.required.join() === "examples", "the examples prompt takes no input at all: nothing about any learner goes in (so one set serves everyone)");
+    // examplesFor: day cache, coalescing, caps, cache headers, failures never cached
+    const exOk = () => res(200, { candidates: [{ content: { parts: [{ text: JSON.stringify({ examples: EXS }) }] } }] });
+    let t = Date.UTC(2026, 9, 22, 18);
+    const st = createLearnState(() => t);
+    const ef = fakeFetch([exOk]);
+    const e1 = await examplesFor(ENV, st, ef);
+    ok(e1.status === 200 && e1.body.ok && e1.body.examples.join() === EXS.join() && ef.calls.length === 1 && ef.calls[0].url.includes(":generateContent") && st.budget.calls === 1, "examplesFor: one model call makes the set (counted in the daily budget)");
+    ok(e1.headers["Cache-Control"] === EXAMPLES_CACHE["Cache-Control"] && /public/.test(e1.headers["Cache-Control"]) && /s-maxage=86400/.test(e1.headers["Cache-Control"]) && /stale-while-revalidate/.test(e1.headers["Cache-Control"]), "examplesFor: the answer is cacheable for a day on the CDN (s-maxage), an hour in the browser");
+    const sentEx = JSON.stringify(ef.calls[0].init.body);
+    ok(!/Learner's first name|Learning profile \(|Current focus|Age band|Rough region|In my own words/.test(sentEx) && /Today's examples, please/.test(sentEx), "examplesFor: the call carries no learner data (no name, profile, focus, words, age or region)");
+    const many = await Promise.all([1, 2, 3, 4, 5].map(() => examplesFor(ENV, st, ef)));
+    t += 3 * 3600e3;
+    const later = await examplesFor(ENV, st, ef);
+    ok(ef.calls.length === 1 && many.every((o) => o.status === 200 && o.body.examples.length === EXS.length) && later.status === 200 && st.budget.calls === 1, "examplesFor: the rest of the day is served from the cache: 0 further calls");
+    t += 24 * 3600e3;
+    await examplesFor(ENV, st, ef);
+    ok(ef.calls.length === 2, "examplesFor: a new Pacific day makes one new set");
+    const s2 = createLearnState(() => t);
+    const slow = fakeFetch([async () => { await new Promise((r) => setTimeout(r, 20)); return exOk(); }]);
+    const burst = await Promise.all([1, 2, 3, 4, 5, 6].map(() => examplesFor(ENV, s2, slow)));
+    ok(slow.calls.length === 1 && burst.every((o) => o.status === 200), "examplesFor: concurrent misses share one call");
+    const s3 = createLearnState(() => t);
+    const bad = fakeFetch([() => res(200, { candidates: [{ content: { parts: [{ text: "{\"examples\":[\"Hi\"]}" }] } }] })]);
+    const b1 = await examplesFor(ENV, s3, bad), b2 = await examplesFor(ENV, s3, bad), b3 = await examplesFor(ENV, s3, bad), b4 = await examplesFor(ENV, s3, bad), b5 = await examplesFor(ENV, s3, bad);
+    ok(!b1.body.ok && b1.status >= 400 && b1.headers["Cache-Control"] === "no-store" && bad.calls.length >= LEARN_GUARDS.examplesPerDay && b5.status === 429 && b5.body.reason === "busy" && b5.headers["Cache-Control"] === "no-store", "examplesFor: a failure is never cached; at most " + LEARN_GUARDS.examplesPerDay + " tries a day per instance, then 429 with no call");
+    const callsCapped = bad.calls.length; await examplesFor(ENV, s3, bad);
+    ok(bad.calls.length === callsCapped && [b2, b3, b4].every((o) => !o.body.ok), "examplesFor: past the cap, no more model calls that day");
+    const s4 = createLearnState(() => t);
+    await examplesFor(ENV, s4, fakeFetch([exOk]));
+    t += 24 * 3600e3;
+    const stale = await examplesFor(ENV, s4, fakeFetch([() => res(500, {})]));
+    ok(stale.status === 200 && stale.body.examples.length === EXS.length && /max-age=600/.test(stale.headers["Cache-Control"]) && !/86400/.test(stale.headers["Cache-Control"]), "examplesFor: when a new set fails, yesterday's is served, cached only briefly");
+    const s5 = createLearnState(() => t), off = fakeFetch([exOk]);
+    const o5 = await examplesFor({}, s5, off);
+    ok(o5.status === 503 && o5.body.reason === "off" && o5.headers["Cache-Control"] === "no-store" && off.calls.length === 0, "examplesFor: no provider configured -> 503 off, not cached, no call");
+    const s6 = createLearnState(() => t); s6.budget = { day: new Date(t).toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" }), calls: 400 };
+    const bf = fakeFetch([exOk]); const o6 = await examplesFor(ENV, s6, bf);
+    ok(o6.status === 429 && bf.calls.length === 0, "examplesFor: respects the shared daily budget");
+    const route = fs.readFileSync("app/api/ikolearn/examples/route.ts", "utf8");
+    ok(/export async function GET\(\)/.test(route) && !/POST/.test(route) && /force-dynamic/.test(route) && /examplesFor\(process\.env, state\)/.test(route), "the examples route: a GET with no input, never made at build time");
+
+    // no examples on the device: they come only from the API (P.examples adds the ranking, never a list of its own)
+    const appx = fs.readFileSync("public/ikolearn/app.js", "utf8"), orchx = fs.readFileSync("public/ikolearn/orchestrator.js", "utf8");
+    ok(P.examples(null, []).length === 0 && P.examples(C.create("Mia", T0), undefined).length === 0 && P.examples(C.create("Mia", T0), ["A b", "C d"]).join() === "A b,C d", "P.examples: with no API set and no cloud there is nothing to show; otherwise the API's set as given");
+    const exc = seeded("Ex", T0);
+    const mine = P.examples(exc, ["Drawing animals", exc.nodes[exc.order.find((id) => exc.nodes[id].parent)].label, "Stars and planets"], T0 + 1000);
+    const labels = new Set(exc.order.map((id) => exc.nodes[id].label));
+    ok(mine.length >= 3 && labels.has(mine[0]) && mine.indexOf("Drawing animals") > mine.findIndex((x) => labels.has(x)) && mine.filter((x) => x === "Drawing animals").length === 1, "P.examples: once a cloud exists, its best-ranked next topics come first, then the API's set");
+    { const sg = P.suggest(exc, { now: T0 + 1000 }); const m2 = P.examples(exc, ["Drawing animals"], T0 + 1000); const sl = new Set(sg.filter((x) => exc.nodes[x.id]).map((x) => exc.nodes[x.id].label));
+      ok(sg.length > 0 && !m2.some((x) => sl.has(x)) && m2.includes("Drawing animals") && new Set(m2.map((x) => x.toLowerCase())).size === m2.length, "P.examples: never repeats the cards already suggested above it, nor itself"); }
+    const strip2 = (t2) => t2.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+    ok(!EXS.some((x) => (strip2(appx) + strip2(orchx)).includes(x)) && !/Tell me something new about|What could I learn next\?/.test(appx) && !/chips:\s*\[|chips:\s*C\.|\.chips\b/.test(strip2(appx)) && !/chips/.test(strip2(orchx)), "no hardcoded examples or chips in the client: the only examples are the API's (getJson('/examples'))");
+    ok((appx.match(/getJson\("\/examples"\)/g) || []).length === 1 && /function getJson\(path\)[\s\S]{0,300}method: "GET"/.test(appx), "the client fetches examples in exactly one place, a plain GET");
+    const fill = appx.slice(appx.indexOf("function fillEx("), appx.indexOf("function refreshEx("));
+    const moreH = fill.slice(fill.indexOf('linkBtn("More"'), fill.indexOf('"link ex-more"'));
+    ok(moreH.length > 20 && /state\.ex\.at = \(at \+ EX_SHOW\) % list\.length; refreshEx\(\);/.test(moreH) && !/getJson|postJson|stream\(|loadExamples|fetch/.test(moreH), "More cycles through the cached set on the device: no call per tap");
+    ok(/if \(state\.ex\.status === "off"\) \{[\s\S]{0,260}Try again[\s\S]{0,80}ex-retry"\)\);\s*return;\s*\}/.test(fill) && /state\.ex\.status = list\.length \? "ok" : "off"/.test(appx), "offline (or a failed set): Try again and no list at all");
+    ok(/if \(state\.ex\.status === "idle" && r\.live\(\)\) \{ state\.ex\.status = "wait"; setTimeout\(loadExamples, 0\); \}/.test(appx) && /if \(state\.ex\.status === "loading"\) return;/.test(appx) && (appx.match(/loadExamples\(\)/g) || []).length === 2, "examples load once per page (when a row first shows), again only on Try again");
+    ok(/if \(m\.ex\) d\.appendChild\(exRow\(function \(t\) \{ go\(m\.open \? cleanAbout\(t\) : C\.cleanLabel\(t\), t\); \}/.test(appx) && /exRow\(function \(t\) \{ send\(t\); \}/.test(appx) && /exRow\(function \(t\) \{ answerReask\(t\); \}\)/.test(appx), "tapping an example acts exactly like typing it: the open question's answer, the chat box, or the re-ask");
+    ok(/ex: "start" \}\); save\(\); renderDraw\(\);/.test(appx) && /local: true, ex: "start", text: "Hi "/.test(appx) && /ex: "chat"/.test(appx), "examples show on the opening question, the Skip message, the welcome back and the re-ask");
+    // the onboarding call budget: examples (1 GET, shared) + the start call (1) = at most 2; the second question adds none
+    const ro2 = appx.slice(appx.indexOf("function runOnboarding("), appx.indexOf("function waitingText("));
+    const askF = appx.slice(appx.indexOf("function ask(q, cb)"), appx.indexOf("function renderMsg("));
+    ok((ro2.match(/buildCloud\(/g) || []).length === 1 && !/postJson|stream\(|getJson|fetch/.test(ro2 + askF) && /if \(about\) buildCloud\("start", \[\], about, grow\)/.test(ro2), "onboarding call budget: questions make no calls; one start call carries both answers (examples are the only other call): at most 2");
+    // the server reads the personal-development answer in the same start call
+    const it4 = (n, c) => ({ node: { name: n, chain: [c] }, card: { title: n, blurb: "About " + n + ".", goal: "Explain " + n + "." }, children: [{ name: n + " Basics", order: 1, score: 0.9, role: "core" }, { name: n + " Next", order: 2, score: 0.7, role: "core" }, { name: n + " Later", order: 3, score: 0.5, role: "core" }] });
+    const GR = parseLearnInput({ mode: "notice", name: "Mia", messages: [], kind: "start", about: "volcanoes", grow: "Being more patient <b>" });
+    ok(GR.grow === "Being more patient  b".replace(/\s+/g, " ").trim() || GR.grow === "Being more patient b", "parseLearnInput: the grow answer is cleaned like their other words");
+    ok(/grow in themselves/.test(createSystem(GR)) && !/grow in themselves/.test(createSystem({ ...GR, grow: "" })) && !/grow in themselves/.test(createSystem({ ...GR, kind: "more" })), "create prompt: the personal-development answer is read only when given, on start");
+    const gf = fakeFetch([() => res(200, { candidates: [{ content: { parts: [{ text: JSON.stringify({ items: [it4("Volcanoes", "Science"), it4("Patience", "Growing Myself")] }) }] } }] })]);
+    await createFor(GR, ENV, gf);
+    ok(gf.calls.length === 1 && /grow in myself: \\"Being more patient/.test(gf.calls[0].init.body) && /In my own words: \\"volcanoes/.test(gf.calls[0].init.body), "createFor(start): one call carries both answers");
+    // the create prompt reflects noticed signals and may lightly suggest optional precursors (never forced)
+    const cs = createSystem({ ...GR, kind: "more", about: "music" }), cn = createSystem({ ...GR, kind: "next", focus: "Fractions" }), cb = createSystem({ ...GR, kind: "bridge", focus: "Sets", focusParent: "Computer Science" });
+    ok([createSystem(GR), cs, cn].every((x) => /marked strong/.test(x) && /found hard/.test(x) && /matters more as AI tools spread/.test(x) && /always role optional/.test(x) && /never push it/.test(x) && /at most one per item/.test(x) && /never talk about jobs, careers or the future/.test(x)) && !/AI tools/.test(cb), "create prompt: builds on what was noticed (strong / found hard, the SIGNALS) and may add one optional, tied-in precursor toward AI-era directions; never forced; not in bridges");
+    ok(SIGNALS.join() === "explored,strength,struggle,curious" && /", strong"/.test(fs.readFileSync("public/ikolearn/cloud-model.js", "utf8")) && /found hard/.test(fs.readFileSync("public/ikolearn/cloud-model.js", "utf8")), "the noticed signals reach the prompt through the profile summary (strong / found hard)");
   }
 
   // UI wiring for the procedural flow
@@ -1468,8 +1558,8 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   {
     // no seeded topics anywhere in discovery: a failed creation call offers Try again instead
     const bc = app.slice(app.indexOf("function buildCloud("), app.indexOf("function createNext("));
-    ok(!/fallbackParents|C\.plant\(|PALETTE/.test(app) && /m\.retry = \{ kind: kind, about: about \|\| "" \}/.test(bc) && /Try again/.test(app) && /type something you'd like to learn about below/.test(bc), "offline / failed build: the reason, Try again and the chat box; nothing seeded on the device");
-    ok(/textarea/.test(app) && /function openField\(/.test(app) && /q\.open && v/.test(app) && /P\.openQuestion\(state\.cloud, "more"\)/.test(app) && /buildCloud\("start", \[\], said\.join/.test(app), "onboarding: open answers (a textarea), an optional follow-up, then ONE start call with their words");
+    ok(!/fallbackParents|C\.plant\(|PALETTE/.test(app) && /m\.retry = \{ kind: kind, about: about \|\| "", grow: grow \|\| "" \}/.test(bc) && /Try again/.test(app) && /type something you'd like to learn about below/.test(bc), "offline / failed build: the reason, Try again and the chat box; nothing seeded on the device");
+    ok(/textarea/.test(app) && /function openField\(/.test(app) && /q\.open && v/.test(app) && /P\.openQuestion\(state\.cloud, "grow"\)/.test(app) && /if \(q\.id === "grow"\) grow = v; else \{ about = v;/.test(app) && /buildCloud\("start", \[\], about, grow\)/.test(app), "onboarding: open answers (a textarea), the optional personal-development follow-up, then ONE start call with both");
     ok(/onboarded: true, askedAt: true/.test(app), "the 'curious lately' re-ask is held back right after onboarding (askedAt is stamped then)");
     const ob3 = C.create("Ivy", T0); C.setProfile(ob3, { onboarded: true, askedAt: true }, T0);
     ok(P.reask(ob3, T0 + 60e3) === null && P.reask(ob3, T0 + 2 * DAYMS) === null, "re-ask: nothing right after onboarding, even with a thin cloud");

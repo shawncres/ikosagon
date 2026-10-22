@@ -143,17 +143,18 @@
     return qs;
   }
   /*
-   * An open question in the learner's own words (a free-text field, no chips). "curious": the first one; "more": the
-   * optional follow-up after a first answer; "reask": later, when the cloud is thin or they seem stuck. One wording for
-   * everyone (no age-based variants), never a list of topics.
+   * An open question in the learner's own words (a free-text field). "curious": the first one, with easy-click examples
+   * (ex: they come only from the API, see examples() below; there is no topic list on the device); "grow": the optional,
+   * soft personal-development follow-up after a first answer, folded into the same start call (no extra call);
+   * "reask": later, when the cloud is thin or they seem stuck. One wording for everyone (no age-based variants).
    */
   function openQuestion(cloud, kind) {
     var Q = {
       curious: ["What are you curious about, or what do you enjoy?", "Anything goes: a hobby, something you've wondered about, a thing you'd like to be better at."],
-      more: ["Anything else you'd like to learn, or get better at?", "Optional. Or go ahead and build your cloud."],
+      grow: ["And is there something you'd like to grow in yourself?", "Optional. A habit, a strength, a way of being. Or go ahead and build your path."],
       reask: ["What's caught your interest lately?", ""]
     }[kind];
-    return { id: kind, q: Q[0], hint: Q[1], open: true, input: true, go: kind === "curious" ? "Next" : "Build my cloud", ph: "In your own words" };
+    return { id: kind, q: Q[0], hint: Q[1], open: true, input: true, ex: kind !== "grow", go: kind === "curious" ? "Next" : "Build my path", ph: "In your own words" };
   }
   /*
    * A learner who has already started is not new: a card in the deck, a lesson in progress, or a topic they opened,
@@ -178,7 +179,7 @@
     var thin = openTopics(cloud) < R.open, stuck = (p.visits || 0) - (p.lessonVisit || 0) >= R.stuckVisits;
     if (!thin && !stuck) return null;
     var o = openQuestion(cloud, "reask");
-    return { q: thin ? o.q : "Want to try something different? What do you enjoy these days?", open: true, ph: o.ph, why: thin ? "thin" : "stuck" };
+    return { q: thin ? o.q : "Want to try something different? What do you enjoy these days?", open: true, ex: true, ph: o.ph, why: thin ? "thin" : "stuck" };
   }
   /*
    * "What comes next" for a parent: when it has no unfinished children left (all done, or none yet after it was
@@ -282,10 +283,37 @@
     var req = { kind: kind, interests: (extra && extra.interests) || (p.interests || []).slice(-5), favorites: (RK ? RK.top(cloud, { n: 5 }) : []).map(function (r) { return r.label; }) };
     /* the learner's own words (start / more): sent once, never stored; the model reads it, nothing on the device matches it */
     if (extra && extra.about) req.about = String(extra.about).slice(0, 300);
+    /* start only: the optional personal-development answer, in the same call */
+    if (kind === "start" && extra && extra.grow) req.grow = String(extra.grow).slice(0, 200);
     /* subjects to file new parents under: only the learner's own (no subject names are built in) */
     req.parents = C.subjectLabels(cloud).slice(0, 12);
     if (kind === "next" && n) { req.focus = n.label; req.trail = C.trail(cloud, id); req.known = C.childrenOf(cloud, id).map(function (c) { return c.label; }).slice(0, 16); }
     return req;
+  }
+
+  /*
+   * The easy-click examples, a few at a time (More steps through them on the device, no call). `generic` is the set the
+   * API made (one cached call a day, the same for everyone); this file holds no examples of its own. Once a cloud exists
+   * they are personalised from the ranking: the learner's next steps and something new in each subject (labels the
+   * creation calls made, best ranked first, minus the cards already suggested) come before the generic ones, and
+   * generic ones already on the cloud drop out.
+   * -> [string]. With no API set and no cloud there is nothing to show (the app offers Try again instead).
+   */
+  function examples(cloud, generic, now) {
+    var out = [], seen = {}, onCloud = {};
+    var add = function (t) { t = String(t || "").trim(); var k = t.toLowerCase(); if (t && !seen[k]) { seen[k] = 1; out.push(t); } };
+    if (cloud && C.subjects(cloud).length) {
+      now = now || Date.now();
+      var sc = scores(cloud, now);
+      cloud.order.forEach(function (id) { var n = cloud.nodes[id]; if (n && n.parent) onCloud[n.label.toLowerCase()] = 1; });
+      var mine = nextSteps(cloud, now, sc).map(function (x) { return x.id; })
+        .concat(exploreAll(cloud, now, sc, function (id) { return C.isDone(cloud, id); }, 6).map(function (x) { return x.id; }));
+      /* not the cards already offered above (the suggestions): the row adds to them, never repeats them */
+      var shown = {}; ((cloud.suggest && cloud.suggest.items) || []).forEach(function (x) { shown[x.id] = 1; });
+      mine.forEach(function (id) { var n = nodeOf(cloud, id); if (n && !shown[id]) add(n.label); });
+    }
+    (Array.isArray(generic) ? generic : []).forEach(function (t) { if (!onCloud[String(t || "").trim().toLowerCase()]) add(t); });
+    return out;
   }
 
   /* ---------- suggestions and Draw ---------- */
@@ -401,7 +429,7 @@
     MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
     suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf,
-    onboarding: onboarding, openQuestion: openQuestion, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics,
+    onboarding: onboarding, openQuestion: openQuestion, examples: examples, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics,
     needsNext: needsNext, readyNext: readyNext, createRequest: createRequest, OPENING: OPENING
   };
   if (node_) module.exports = api;

@@ -55,8 +55,6 @@ a { color: var(--ink); }
 .msg .acts { margin-top: 6px; font-size: 14px; color: var(--soft); }
 .msg .acts .link { color: var(--soft); }
 .grow { font-size: 13px; color: var(--soft); margin: -12px 0 22px; }
-.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: -6px 0 24px; }
-.chips .btn { font-size: 14px; min-height: 34px; padding: 4px 12px; }
 
 /* learning card: light paper outline with a small shaded corner fold */
 .card { position: relative; background: var(--sheet); border: 1px solid var(--rule); border-radius: 4px; padding: 16px 40px 14px 18px; margin: 0 0 22px; }
@@ -344,9 +342,14 @@ button.gcard:hover { border-color: var(--soft); }
 }
 
 /* ---------- procedural start: questions, the build, About you ---------- */
-.msg.ask .ask-chips { margin-top: 10px; }
-.chip-q { font-size: 0.92rem; padding: 6px 12px; }
-.chip-q.on { background: var(--ink, #3b2f22); color: var(--paper, #f3ead8); border-color: var(--ink, #3b2f22); }
+/* easy-click examples (from the API only): quiet outlined pills, More as a plain link */
+.ex-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+.ex-row:empty { display: none; }
+.ex-chip { font-size: 14px; min-height: 34px; padding: 4px 12px; border-color: var(--rule); }
+.ex-chip:hover { border-color: var(--ink); }
+.ex-more, .ex-retry { font-size: 14px; color: var(--soft); }
+.ex-note { font-size: 13px; color: var(--soft); font-style: italic; }
+.ask-tile .ex-row { margin: 4px 0 8px; }
 .ask-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
 .ask-in { flex: 1 1 180px; min-width: 0; font: inherit; padding: 7px 10px; border: 1px solid rgba(59, 47, 34, 0.35); border-radius: 8px; background: transparent; color: inherit; }
 /* an open question: a quiet lined-paper field in the learner's own words */
