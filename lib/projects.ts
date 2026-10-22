@@ -17,6 +17,8 @@ export type ProjectMeta = {
   title: string;
   slug: string;
   summary: string;
+  /** Optional short meta description (about 160 characters) for search results; the summary is used when absent. */
+  description?: string;
   year: number;
   /** ISO timestamp used for homepage / archive ordering (frontmatter or file mtime). */
   updated: string;
@@ -27,6 +29,8 @@ export type ProjectMeta = {
    * art drawn at the card ratio (≈1.9:1, safe centre band); default "contain".
    */
   coverFit?: "contain" | "cover";
+  /** Optional 1200x630 social preview (PNG/JPEG under public/). Pages without one use the site image. */
+  ogImage?: string;
   featured: boolean;
   /**
    * Unlisted projects keep their content and notes page (reachable by direct URL, noindex) but are left out of
@@ -103,11 +107,13 @@ export async function getAllProjects(): Promise<Project[]> {
         title: String(data.title),
         slug: String(data.slug),
         summary: String(data.summary),
+        description: typeof data.description === "string" && data.description.trim() ? data.description.trim() : undefined,
         year,
         updated: resolveUpdated(data.updated, stat.mtimeMs, year),
         tags: Array.isArray(data.tags) ? data.tags.map(String) : [],
         cover: String(data.cover),
         coverFit: data.coverFit === "cover" ? "cover" : undefined,
+        ogImage: typeof data.ogImage === "string" && data.ogImage.startsWith("/") ? data.ogImage : undefined,
         featured: Boolean(data.featured),
         unlisted: data.unlisted === true ? true : undefined,
         repo: data.repo ? String(data.repo) : undefined,

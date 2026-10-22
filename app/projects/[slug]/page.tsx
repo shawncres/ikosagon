@@ -18,9 +18,17 @@ export async function generateMetadata({ params }: { params: Promise<Params> }):
   const { slug } = await params;
   const project = await getProjectBySlug(slug);
   if (!project) return {};
+  const description = project.description ?? project.summary;
+  const url = `/projects/${project.slug}`;
+  const images = project.ogImage
+    ? [{ url: project.ogImage, width: 1200, height: 630, alt: `${project.title} by Ikosagon` }]
+    : [{ url: "/opengraph-image" }];
   return {
     title: project.title,
-    description: project.summary,
+    description,
+    alternates: { canonical: url },
+    openGraph: { title: `${project.title} | Ikosagon`, description, url, siteName: "Ikosagon", type: "website", images },
+    twitter: { card: "summary_large_image", title: `${project.title} | Ikosagon`, description, images: images.map((i) => i.url) },
     ...(project.unlisted ? { robots: { index: false, follow: false } } : {}),
   };
 }
