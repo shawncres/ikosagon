@@ -13,7 +13,11 @@ import {
 import { DEFAULT_MODEL, FALLBACK_MODEL, GEMINI_BASE, chatBody, jsonBody, readSse } from "../lib/ikolearn/gemini.ts";
 import { MODEL_LIMITS, streamText, generateJson, llmConfig, llmReady } from "../lib/ikolearn/llm.ts";
 import { toMessages } from "../lib/ikolearn/openai-compatible.ts";
-import { LEARN_GUARDS, createLearnState, prepare, chatEvents, eventStream, cardFor, adjacentFor, lessonEvents, pathFor, testFor, createFor, examplesFor, EXAMPLES_CACHE } from "../lib/ikolearn/service.ts";
+import { LEARN_GUARDS, createLearnState, prepare, chatEvents, eventStream, cardFor, adjacentFor, lessonEvents, pathFor, testFor, createFor, examplesFor, EXAMPLES_CACHE, EXAMPLES_NO_STORE, EXAMPLES_STALE, EXAMPLES_RETRY, retryable } from "../lib/ikolearn/service.ts";
+import { setLlmLogSink, redact, LOG_DETAIL_CHARS } from "../lib/ikolearn/llm.ts";
+/* provider failures log one JSON line each; the checks keep them (quiet output) and assert on them */
+const LLM_LOG = [];
+setLlmLogSink((line) => LLM_LOG.push(line));
 
 const require = createRequire(import.meta.url);
 const C = require("../public/ikolearn/cloud-model.js");
@@ -283,7 +287,7 @@ const sse = (pieces, { thought = false } = {}) => {
   const enc = new TextEncoder();
   return new ReadableStream({ start(c) { for (const l of lines) { c.enqueue(enc.encode(l.slice(0, 9))); c.enqueue(enc.encode(l.slice(9))); } c.close(); } });
 };
-const res = (status, body) => ({ ok: status >= 200 && status < 300, status, body, json: async () => body });
+const res = (status, body) => ({ ok: status >= 200 && status < 300, status, body, json: async () => body, text: async () => (typeof body === "string" ? body : JSON.stringify(body)) });
 function fakeFetch(plan) {
   const calls = [];
   const f = async (url, init) => {
@@ -1526,6 +1530,77 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     const bf = fakeFetch([exOk]); const o6 = await examplesFor(ENV, s6, bf);
     ok(o6.status === 429 && bf.calls.length === 0, "examplesFor: respects the shared daily budget");
     const route = fs.readFileSync("app/api/ikolearn/examples/route.ts", "utf8");
+    // ---- examples reliability: one jittered retry on 5xx/network only, CDN-shared success, failures never cached, safe logs ----
+    {
+      const dayOf = (x) => new Date(x).toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+      const mk = (clock) => { const slept = []; const st = createLearnState(clock || (() => t), async (ms) => { slept.push(ms); }, () => 0.5); return { st, slept }; };
+      const g503 = () => res(503, { error: { code: 503, status: "UNAVAILABLE", message: "The model is overloaded. Please try again later." } });
+      const lines = () => LLM_LOG.splice(0).map((l) => JSON.parse(l));
+      LLM_LOG.length = 0;
+      // 5xx: primary + fallback fail, one retry after a jittered backoff succeeds
+      { const { st, slept } = mk(); const f = fakeFetch([g503, g503, exOk]);
+        const o = await examplesFor(ENV, st, f), L = lines();
+        ok(o.status === 200 && o.body.examples.length === EXS.length && f.calls.length === 3 && slept.length === 1 && slept[0] === 600 && st.examples.tries.n === 2 && st.budget.calls === 2, "examples retry: a 5xx is retried once, after a jittered 400-800 ms backoff (counted as a second try)");
+        ok(slept.every((ms) => ms >= EXAMPLES_RETRY.backoffMinMs && ms <= EXAMPLES_RETRY.backoffMaxMs) && EXAMPLES_RETRY.backoffMinMs === 400 && EXAMPLES_RETRY.backoffMaxMs === 800, "examples retry: the backoff stays within 400-800 ms");
+        ok(o.headers["Cache-Control"] === "public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400" && o.headers["Vercel-CDN-Cache-Control"] === "max-age=86400, stale-while-revalidate=86400", "examples: a success is shared by the CDN for a day (s-maxage=86400, stale-while-revalidate; Vercel-CDN-Cache-Control)");
+        ok(L.length === 2 && L.every((x) => x.ev === "ikolearn.llm_fail" && x.route === "examples" && x.provider === "gemini" && x.status === 503 && x.code === "upstream" && x.attempt === 1) && L[0].try === "primary" && L[0].model === DEFAULT_MODEL && L[1].try === "fallback" && L[1].model === FALLBACK_MODEL && /^UNAVAILABLE: The model is overloaded/.test(L[0].error), "failure log: route, provider, model, HTTP status, the provider's code and message, attempt and try"); }
+      // 5xx on both tries: one retry only, then a failure that is never cached
+      { const { st, slept } = mk(); const f = fakeFetch([g503]);
+        const o = await examplesFor(ENV, st, f), L = lines();
+        ok(o.status === 502 && o.body.reason === "upstream" && f.calls.length === 4 && slept.length === 1 && L.length === 4 && L.filter((x) => x.attempt === 2).length === 2, "examples retry: at most one retry (2 calls of primary + fallback), then the error");
+        ok(o.headers["Cache-Control"] === "no-store" && o.headers["Vercel-CDN-Cache-Control"] === "no-store" && o.headers["CDN-Cache-Control"] === "no-store" && JSON.stringify(EXAMPLES_NO_STORE) === JSON.stringify(o.headers), "examples: a failure is never cached (no-store for the browser, Vercel's CDN and any CDN)"); }
+      // network error: retried too
+      { const { st, slept } = mk(); const f = fakeFetch(["network", "network", exOk]);
+        const o = await examplesFor(ENV, st, f), L = lines();
+        ok(o.status === 200 && f.calls.length === 3 && slept.length === 1 && L.length === 2 && L[0].status === null && L[0].code === "upstream" && /network/.test(L[0].error), "examples retry: a network error is retried once (logged with status null)"); }
+      // 4xx and 429: never retried
+      for (const [st4, body4, code4] of [[400, { error: { code: 400, status: "INVALID_ARGUMENT", message: "Invalid JSON payload received." } }, "refused"], [403, { error: { status: "PERMISSION_DENIED", message: "denied" } }, "refused"], [429, { error: { status: "RESOURCE_EXHAUSTED", message: "Quota exceeded" } }, "busy"]]) {
+        const { st, slept } = mk(); const f = fakeFetch([() => res(st4, body4), exOk]);
+        const o = await examplesFor(ENV, st, f), L = lines();
+        ok(!o.body.ok && o.body.reason === code4 && f.calls.length === 1 && slept.length === 0 && st.examples.tries.n === 1 && o.headers["Cache-Control"] === "no-store" && o.headers["Vercel-CDN-Cache-Control"] === "no-store" && L.length === 1 && L[0].status === st4, `examples retry: a ${st4} is not retried (one call, no backoff, not cached)`);
+      }
+      // a timeout or an unusable reply: not retried
+      ok(!retryable({ code: "timeout" }) && !retryable({ code: "empty", status: 200 }) && !retryable({ code: "refused", status: 400 }) && !retryable({ code: "busy", status: 429 }) && retryable({ code: "upstream", status: 503 }) && retryable({ code: "upstream" }), "retryable: only a 5xx or a network error");
+      { const { st, slept } = mk(); const badEx = () => res(200, { candidates: [{ content: { parts: [{ text: "{\"examples\":[\"Hi\"]}" }] } }] }); const f = fakeFetch([badEx, exOk]);
+        const o = await examplesFor(ENV, st, f), L = lines();
+        ok(!o.body.ok && o.body.reason === "empty" && f.calls.length === 1 && slept.length === 0 && L.length === 1 && L[0].code === "empty" && L[0].status === 200, "examples retry: an unusable reply is not retried (logged as empty)"); }
+      // the per-instance daily cap still holds: no retry when the last try of the day failed
+      { const { st, slept } = mk(); st.examples.tries = { day: dayOf(t), n: LEARN_GUARDS.examplesPerDay - 1 }; const f = fakeFetch([g503, g503, exOk]);
+        const o = await examplesFor(ENV, st, f); lines();
+        ok(!o.body.ok && f.calls.length === 2 && slept.length === 0 && st.examples.tries.n === LEARN_GUARDS.examplesPerDay, "examples retry: never past the per-instance daily attempt cap"); }
+      { const { st, slept } = mk(); st.budget = { day: dayOf(t), calls: 399 }; const f = fakeFetch([g503, g503, exOk]);
+        await examplesFor(ENV, st, f); lines();
+        ok(f.calls.length === 2 && slept.length === 0 && st.budget.calls === 400, "examples retry: never past the shared daily budget"); }
+      // the function time limit: a slow first failure leaves no room, so no retry
+      { let clock = t; const { st, slept } = mk(() => clock); const slow503 = () => { clock += 11_000; return g503(); }; const f = fakeFetch([slow503, slow503, exOk]);
+        const o = await examplesFor(ENV, st, f); lines();
+        ok(!o.body.ok && f.calls.length === 2 && slept.length === 0, "examples retry: skipped when the route's time limit (" + EXAMPLES_RETRY.budgetMs + " ms budget) is nearly used");
+        ok(EXAMPLES_RETRY.budgetMs + EXAMPLES_RETRY.backoffMaxMs < 30_000 && /maxDuration = 30/.test(route), "examples retry: the whole call, backoff and retry fit inside the route's 30 s"); }
+      // the retry's call gets only the time that is left (timeoutMs passed down)
+      { let clock = t; const { st } = mk(() => clock); const seen = []; const f = fakeFetch([() => { clock += 5_000; return g503(); }, () => g503(), (u, init) => { seen.push(init.signal); return exOk(); }]);
+        const o = await examplesFor(ENV, st, f); lines();
+        ok(o.status === 200 && seen.length === 1, "examples retry: the retry runs with the time that is left"); }
+      // a stale list after a failed refresh: short cache, still shared
+      ok(EXAMPLES_STALE["Cache-Control"] === "public, max-age=600, s-maxage=600" && EXAMPLES_STALE["Vercel-CDN-Cache-Control"] === "max-age=600", "examples: yesterday's list after a failed refresh is cached only briefly");
+      // logs never carry the key or the prompt; long messages are cut
+      { const KEY = ["AI", "za", "SyTESTKEY0123456789abcdefghijklmno"].join(""); /* built at run time so no key-shaped literal sits in the source */ const E2 = { GEMINI_API_KEY: KEY };
+        const leaky = () => res(500, { error: { status: "INTERNAL", message: `bad key ${KEY} at https://x.test/?key=${KEY} Bearer abc.def ` + "x".repeat(400) } });
+        const { st } = mk(); await examplesFor(E2, st, fakeFetch([leaky])); const raw = LLM_LOG.join("\n"); const L = lines();
+        ok(L.length === 4 && !raw.includes(KEY) && !raw.includes("AIzaSy") && !/Bearer abc/.test(raw) && /\[key\]/.test(raw), "failure log: never the key (the configured key and key-shaped strings are redacted)");
+        ok(L.every((x) => x.error.length <= LOG_DETAIL_CHARS) && LOG_DETAIL_CHARS === 200, "failure log: the provider message is cut to 200 characters");
+        ok(!/Today's examples|Role: examples|You are IkoLearn/.test(raw) && L.every((x) => Object.keys(x).sort().join() === "attempt,code,error,ev,model,provider,route,status,try"), "failure log: no prompt text, only the fixed fields");
+        ok(redact("k=SECRETKEY123 and SECRETKEY123", "SECRETKEY123") === "k=[key] and [key]" && redact("sk-abcdefghijklmnop1234") === "[key]", "redact: removes the key wherever it appears"); }
+      // the shared adapter: /create, the lesson stream and the OpenAI-compatible provider log too
+      { const CI = parseLearnInput({ mode: "notice", name: "Sam", messages: [], kind: "start", about: "I like rocks" });
+        await createFor(CI, ENV, fakeFetch([g503])); const Lc = lines();
+        ok(Lc.length === 2 && Lc.every((x) => x.route === "create" && x.status === 503) && Lc[1].try === "fallback", "failure log: /create failures are logged (shared adapter)");
+        await collect(lessonEvents(IN, ENV, fakeFetch([() => res(429, { error: { status: "RESOURCE_EXHAUSTED", message: "Quota exceeded for metric" } })]))); const Ll = lines();
+        ok(Ll.length === 1 && Ll[0].route === "lesson" && Ll[0].status === 429 && Ll[0].code === "busy" && /RESOURCE_EXHAUSTED: Quota exceeded/.test(Ll[0].error), "failure log: lesson stream failures are logged, with the provider's message");
+        const OA2 = { IKOLEARN_LLM_PROVIDER: "openai-compatible", IKOLEARN_LLM_API_KEY: "sk-test-abcdefghijklmnop", IKOLEARN_LLM_BASE_URL: "https://api.example.test/v1", IKOLEARN_LLM_MODEL: "m1" };
+        await cardFor(IN, OA2, fakeFetch([() => res(502, { error: { type: "server_error", message: "upstream sk-test-abcdefghijklmnop broke" } })])); const Lo = lines();
+        ok(Lo.length === 1 && Lo[0].provider === "openai-compatible" && Lo[0].route === "card" && Lo[0].model === "m1" && Lo[0].status === 502 && /^server_error: upstream \[key\] broke/.test(Lo[0].error), "failure log: the OpenAI-compatible adapter logs the same line, key redacted"); }
+      LLM_LOG.length = 0;
+    }
     ok(/export async function GET\(\)/.test(route) && !/POST/.test(route) && /force-dynamic/.test(route) && /examplesFor\(process\.env, state\)/.test(route), "the examples route: a GET with no input, never made at build time");
 
     // no examples on the device: they come only from the API (P.examples adds the ranking, never a list of its own)

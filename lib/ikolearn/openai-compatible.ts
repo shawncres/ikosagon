@@ -5,7 +5,7 @@
  * or one-shot JSON (response_format json_object, the schema given in the system message).
  * Selected only by env vars (see llm.ts). The key stays on the server.
  */
-import { MODEL_LIMITS, errorFail, readSseWith, statusFail, timedFetch, type Content, type JsonResult, type LlmConfig, type StreamOptions, type StreamStart } from "./llm-types";
+import { MODEL_LIMITS, errorFail, failFromResponse, logFail, readSseWith, statusFail, timedFetch, type Content, type JsonResult, type LlmConfig, type StreamOptions, type StreamStart } from "./llm-types";
 
 /** Provider-neutral turns -> chat messages ("model" -> "assistant"), with the system prompt first. */
 export function toMessages(system: string, contents: Content[]) {
@@ -37,7 +37,7 @@ export async function openaiStream(cfg: LlmConfig, system: string, contents: Con
     }, MODEL_LIMITS.requestTimeoutMs, MODEL_LIMITS.streamTimeoutMs);
     if (!res.ok || !res.body) {
       done();
-      return statusFail(res.ok ? 502 : res.status);
+      return logFail(cfg, cfg.model, opts, res.ok ? { ...statusFail(502), detail: "empty stream body" } : await failFromResponse(res));
     }
     const pieces = (async function* () {
       try {
@@ -48,7 +48,7 @@ export async function openaiStream(cfg: LlmConfig, system: string, contents: Con
     })();
     return { ok: true, model: cfg.model, pieces, abort };
   } catch (e) {
-    return errorFail(e);
+    return logFail(cfg, cfg.model, opts, errorFail(e));
   }
 }
 
@@ -57,15 +57,15 @@ export async function openaiJson<T>(cfg: LlmConfig, system: string, user: string
   try {
     const r = await timedFetch(fetchImpl, `${cfg.base}/chat/completions`, {
       method: "POST", headers: headers(cfg), body: JSON.stringify(jsonRequest(cfg, system, user, schema, opts)),
-    }, MODEL_LIMITS.jsonTimeoutMs);
+    }, Math.min(opts.timeoutMs || MODEL_LIMITS.jsonTimeoutMs, MODEL_LIMITS.jsonTimeoutMs));
     done = r.done;
-    if (!r.res.ok) return statusFail(r.res.status);
+    if (!r.res.ok) return logFail(cfg, cfg.model, opts, await failFromResponse(r.res));
     const data = (await r.res.json()) as any;
-    if (data?.choices?.[0]?.finish_reason === "content_filter") return { ok: false, code: "blocked" };
+    if (data?.choices?.[0]?.finish_reason === "content_filter") return logFail(cfg, cfg.model, opts, { ok: false, code: "blocked", status: r.res.status, detail: "finish_reason: content_filter" });
     const value = parse(messageOf(data));
-    return value ? { ok: true, value, model: cfg.model } : { ok: false, code: "empty" };
+    return value ? { ok: true, value, model: cfg.model } : logFail(cfg, cfg.model, opts, { ok: false, code: "empty", status: r.res.status, detail: `unusable reply (finish_reason: ${data?.choices?.[0]?.finish_reason || "none"})` });
   } catch (e) {
-    return errorFail(e);
+    return logFail(cfg, cfg.model, opts, errorFail(e));
   } finally {
     done();
   }

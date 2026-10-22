@@ -6,7 +6,7 @@
  * Free-tier models only; one fallback model when the request fails, times out or the model name is retired (never mid-reply).
  * The key goes in a header, server-side only, and never appears in responses or logs.
  */
-import { MODEL_LIMITS, errorFail, readSseWith, statusFail, timedFetch, upperTypes, type Content, type Fail, type JsonResult, type LlmConfig, type StreamOptions, type StreamStart } from "./llm-types";
+import { MODEL_LIMITS, errorFail, failFromResponse, logFail, readSseWith, statusFail, timedFetch, upperTypes, type Content, type Fail, type JsonResult, type LlmConfig, type StreamOptions, type StreamStart } from "./llm-types";
 
 export const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
 export const DEFAULT_MODEL = "gemini-3.5-flash-lite";
@@ -37,7 +37,7 @@ export function jsonBody(system: string, user: string, schema: unknown, opts: St
 /** Reads a Gemini SSE body and yields each event's visible text (thought parts skipped). */
 export const readSse = (body: ReadableStream<Uint8Array>) => readSseWith(body, textOf);
 
-async function openStream(cfg: LlmConfig, model: string, body: unknown, fetchImpl: typeof fetch): Promise<StreamStart> {
+async function openStream(cfg: LlmConfig, model: string, body: unknown, fetchImpl: typeof fetch, opts: StreamOptions, which: "primary" | "fallback"): Promise<StreamStart> {
   try {
     const { res, done, abort } = await timedFetch(fetchImpl, `${cfg.base}/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
       method: "POST",
@@ -46,7 +46,7 @@ async function openStream(cfg: LlmConfig, model: string, body: unknown, fetchImp
     }, MODEL_LIMITS.requestTimeoutMs, MODEL_LIMITS.streamTimeoutMs);
     if (!res.ok || !res.body) {
       done();
-      return statusFail(res.ok ? 502 : res.status);
+      return logFail(cfg, model, opts, res.ok ? { ...statusFail(502), detail: "empty stream body" } : await failFromResponse(res), which);
     }
     const pieces = (async function* () {
       try {
@@ -57,7 +57,7 @@ async function openStream(cfg: LlmConfig, model: string, body: unknown, fetchImp
     })();
     return { ok: true, model, pieces, abort };
   } catch (e) {
-    return errorFail(e);
+    return logFail(cfg, model, opts, errorFail(e), which);
   }
 }
 
@@ -68,27 +68,27 @@ function shouldFallBack(f: Fail) {
 
 export async function geminiStream(cfg: LlmConfig, system: string, contents: Content[], fetchImpl: typeof fetch, opts: StreamOptions = {}): Promise<StreamStart> {
   const body = chatBody(system, contents, opts);
-  const first = await openStream(cfg, cfg.model, body, fetchImpl);
+  const first = await openStream(cfg, cfg.model, body, fetchImpl, opts, "primary");
   if (first.ok || !cfg.fallback || cfg.model === cfg.fallback) return first;
-  return shouldFallBack(first) ? openStream(cfg, cfg.fallback, body, fetchImpl) : first;
+  return shouldFallBack(first) ? openStream(cfg, cfg.fallback, body, fetchImpl, opts, "fallback") : first;
 }
 
-async function jsonOnce<T>(cfg: LlmConfig, model: string, body: unknown, parse: (t: string) => T | null, fetchImpl: typeof fetch): Promise<JsonResult<T>> {
+async function jsonOnce<T>(cfg: LlmConfig, model: string, body: unknown, parse: (t: string) => T | null, fetchImpl: typeof fetch, opts: StreamOptions, which: "primary" | "fallback", timeoutMs: number): Promise<JsonResult<T>> {
   let done = () => {};
   try {
     const r = await timedFetch(fetchImpl, `${cfg.base}/models/${encodeURIComponent(model)}:generateContent`, {
       method: "POST",
       headers: { "x-goog-api-key": cfg.key, "Content-Type": "application/json" },
       body: JSON.stringify(body),
-    }, MODEL_LIMITS.jsonTimeoutMs);
+    }, timeoutMs);
     done = r.done;
-    if (!r.res.ok) return statusFail(r.res.status);
+    if (!r.res.ok) return logFail(cfg, model, opts, await failFromResponse(r.res), which);
     const data = (await r.res.json()) as any;
-    if (!data?.candidates?.[0] && data?.promptFeedback?.blockReason) return { ok: false, code: "blocked" };
+    if (!data?.candidates?.[0] && data?.promptFeedback?.blockReason) return logFail(cfg, model, opts, { ok: false, code: "blocked", status: r.res.status, detail: `blockReason: ${data.promptFeedback.blockReason}` }, which);
     const value = parse(textOf(data));
-    return value ? { ok: true, value, model } : { ok: false, code: "empty" };
+    return value ? { ok: true, value, model } : logFail(cfg, model, opts, { ok: false, code: "empty", status: r.res.status, detail: `unusable reply (finishReason: ${data?.candidates?.[0]?.finishReason || "none"})` }, which);
   } catch (e) {
-    return errorFail(e);
+    return logFail(cfg, model, opts, errorFail(e), which);
   } finally {
     done();
   }
@@ -96,7 +96,11 @@ async function jsonOnce<T>(cfg: LlmConfig, model: string, body: unknown, parse: 
 
 export async function geminiJson<T>(cfg: LlmConfig, system: string, user: string, schema: unknown, parse: (t: string) => T | null, fetchImpl: typeof fetch, opts: StreamOptions = {}): Promise<JsonResult<T>> {
   const body = jsonBody(system, user, schema, opts);
-  const first = await jsonOnce(cfg, cfg.model, body, parse, fetchImpl);
+  /* opts.timeoutMs is the whole call's budget: the fallback only gets what the first attempt left (and none below 2 s) */
+  const budget = Math.min(opts.timeoutMs || MODEL_LIMITS.jsonTimeoutMs, MODEL_LIMITS.jsonTimeoutMs), t0 = Date.now();
+  const first = await jsonOnce(cfg, cfg.model, body, parse, fetchImpl, opts, "primary", budget);
   if (first.ok || !cfg.fallback || cfg.model === cfg.fallback || !shouldFallBack(first)) return first;
-  return jsonOnce(cfg, cfg.fallback, body, parse, fetchImpl);
+  const left = opts.timeoutMs ? Math.min(MODEL_LIMITS.jsonTimeoutMs, opts.timeoutMs - (Date.now() - t0)) : MODEL_LIMITS.jsonTimeoutMs;
+  if (opts.timeoutMs && left < 2_000) return first;
+  return jsonOnce(cfg, cfg.fallback, body, parse, fetchImpl, opts, "fallback", left);
 }
