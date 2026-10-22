@@ -6,9 +6,8 @@
  *   childrenReady() whether child topics that arrived with a lesson may now grow onto the cloud (the topic was engaged)
  *   testState()    whether a parent is ready for a test, built only from what has been completed under it
  *   lessonContext() / testRequest() / createRequest()  the prompt context for the one call that follows
- *   onboarding()   the few first-run questions (static, on the device), needsOnboarding() / reask() when to ask
+ *   onboarding()   the soft opening (one open question, on the device), needsOnboarding() / reask() when to ask
  *   needsNext()    whether a parent is ready for "what comes next" (one creation call, cached, only when needed)
- *   regionFrom()   a coarse region from the browser's time zone and locale (no permission prompt, no lookup service)
  * It reads the cloud, the deck, completion, the profile and the ranking (rank.js). It never calls the model itself:
  * it decides when a call is worth making and what context goes with it.
  */
@@ -58,8 +57,8 @@
 
   /*
    * A parent's children in the order to offer them: the logical order (its path, foundational first, as the model
-   * ordered them) mixed with the ranking (the learner's use, chain heat and the model's importance for their age and
-   * region): key = rank score + PLAN.orderWeight x (1 - place / (steps + 1)), explored ones a little ahead of dotted ones.
+   * ordered them) mixed with the ranking (the learner's use, chain heat and the model's importance score from the
+   * creation call): key = rank score + PLAN.orderWeight x (1 - place / (steps + 1)), explored ones a little ahead of dotted ones.
    * So the first logical step usually leads, but a much more important or much-used child moves up. Nothing is hidden.
    */
   function orderedChildren(cloud, pid, sc) {
@@ -126,34 +125,35 @@
   }
 
   /* ---------- onboarding, the light re-ask, and "what comes next" ---------- */
-  var AGE_LABELS = { "4-6": "4 to 6", "7-9": "7 to 9", "10-12": "10 to 12", "13-15": "13 to 15", "16-18": "16 to 18", adult: "Grown-up" };
+  /* The soft opening: said once, before the first open question. Joint and unhurried; nothing is asked about age or place. */
+  var OPENING = "Let's begin making a learning path together. We can add more as we go along.";
   /*
-   * The first-run questions, in order, each skippable: the name (only when missing), a rough age (bands, not topics),
-   * then one or two open questions answered in the learner's own words. There is no topic list anywhere: the answer
-   * (or nothing, on Skip) goes to one creation call ("start"), and the model proposes the first parents from it.
+   * The first-run questions, in order, each skippable: the name (only when missing), then one open question answered
+   * in the learner's own words, opened by OPENING. There is no topic list and no age or region anywhere: the answer
+   * goes to one creation call ("start"), and the model proposes the first parents from it. Skip makes no call: the
+   * question stays open (the chat box), and the path starts from the first thing the learner offers.
    */
   function onboarding(cloud, hasName) {
     var name = cloud && cloud.name ? cloud.name : "";
     var qs = [];
     if (!hasName) qs.push({ id: "name", q: "First, what's your first name?", input: true });
-    qs.push({ id: "age", q: "Nice to meet you" + (name ? ", " + name : "") + ". Roughly how old are you? It helps us pick the right level. You can skip this.", chips: C.AGE_BANDS.map(function (a) { return { value: a, label: AGE_LABELS[a] }; }) });
-    qs.push(openQuestion(cloud, "curious"));
+    var first = openQuestion(cloud, "curious");
+    first.q = (name && hasName ? "Hi " + name + ". " : "") + OPENING + "\n\n" + first.q;
+    qs.push(first);
     return qs;
   }
   /*
    * An open question in the learner's own words (a free-text field, no chips). "curious": the first one; "more": the
-   * optional follow-up after a first answer; "reask": later, when the cloud is thin or they seem stuck. Wording
-   * follows the age band (simpler for the youngest), never a list of topics.
+   * optional follow-up after a first answer; "reask": later, when the cloud is thin or they seem stuck. One wording for
+   * everyone (no age-based variants), never a list of topics.
    */
   function openQuestion(cloud, kind) {
-    var p = cloud ? C.profileOf(cloud) : {}, young = p.age === "4-6" || p.age === "7-9";
     var Q = {
-      curious: young ? ["What do you love doing, or what do you wonder about?", "Anything at all: a game you play, an animal you like, a question you keep asking."]
-        : ["What are you curious about, or what do you enjoy?", "Anything goes: a hobby, something you've wondered about, a thing you'd like to be better at."],
-      more: young ? ["Is there anything else you'd like to find out about?", "Or tap Build my cloud."] : ["Anything else you'd like to learn, or get better at?", "Optional. Or go ahead and build your cloud."],
-      reask: young ? ["What would you like to find out about next?", ""] : ["What's caught your interest lately?", ""]
+      curious: ["What are you curious about, or what do you enjoy?", "Anything goes: a hobby, something you've wondered about, a thing you'd like to be better at."],
+      more: ["Anything else you'd like to learn, or get better at?", "Optional. Or go ahead and build your cloud."],
+      reask: ["What's caught your interest lately?", ""]
     }[kind];
-    return { id: kind, q: Q[0], hint: Q[1], open: true, input: true, go: kind === "curious" ? "Next" : "Build my cloud", ph: young ? "Tell me here" : "In your own words" };
+    return { id: kind, q: Q[0], hint: Q[1], open: true, input: true, go: kind === "curious" ? "Next" : "Build my cloud", ph: "In your own words" };
   }
   /*
    * A learner who has already started is not new: a card in the deck, a lesson in progress, or a topic they opened,
@@ -279,39 +279,13 @@
    */
   function createRequest(cloud, kind, id, extra) {
     var p = C.profileOf(cloud), n = nodeOf(cloud, id);
-    var req = { kind: kind, age: p.age || "", region: p.region || "", interests: (extra && extra.interests) || (p.interests || []).slice(-5), favorites: (RK ? RK.top(cloud, { n: 5 }) : []).map(function (r) { return r.label; }) };
+    var req = { kind: kind, interests: (extra && extra.interests) || (p.interests || []).slice(-5), favorites: (RK ? RK.top(cloud, { n: 5 }) : []).map(function (r) { return r.label; }) };
     /* the learner's own words (start / more): sent once, never stored; the model reads it, nothing on the device matches it */
     if (extra && extra.about) req.about = String(extra.about).slice(0, 300);
-    /* subjects to file new parents under: only the learner's own (the palette is colour data, never offered) */
+    /* subjects to file new parents under: only the learner's own (no subject names are built in) */
     req.parents = C.subjectLabels(cloud).slice(0, 12);
     if (kind === "next" && n) { req.focus = n.label; req.trail = C.trail(cloud, id); req.known = C.childrenOf(cloud, id).map(function (c) { return c.label; }).slice(0, 16); }
     return req;
-  }
-
-  /*
-   * A coarse region from the browser alone (no permission prompt, no lookup service): the time zone gives a
-   * province / state / country ("America/Toronto" -> "Canada / Ontario-ish"), the locale's region code fills in a
-   * country when the zone is unknown. -> "" when nothing fits. Shown and editable or clearable in the settings spot.
-   */
-  var ZONES = {
-    "America/Toronto": "Canada / Ontario", "America/Montreal": "Canada / Quebec", "America/Halifax": "Canada / Nova Scotia", "America/St_Johns": "Canada / Newfoundland",
-    "America/Winnipeg": "Canada / Manitoba", "America/Regina": "Canada / Saskatchewan", "America/Edmonton": "Canada / Alberta", "America/Vancouver": "Canada / British Columbia",
-    "America/New_York": "USA / East", "America/Detroit": "USA / East", "America/Chicago": "USA / Central", "America/Denver": "USA / Mountain", "America/Phoenix": "USA / Arizona",
-    "America/Los_Angeles": "USA / Pacific", "America/Anchorage": "USA / Alaska", "Pacific/Honolulu": "USA / Hawaii", "America/Mexico_City": "Mexico",
-    "Europe/London": "United Kingdom", "Europe/Dublin": "Ireland", "Europe/Paris": "France", "Europe/Berlin": "Germany", "Europe/Madrid": "Spain", "Europe/Rome": "Italy",
-    "Europe/Amsterdam": "Netherlands", "Europe/Stockholm": "Sweden", "Europe/Oslo": "Norway", "Europe/Warsaw": "Poland", "Asia/Kolkata": "India", "Asia/Tokyo": "Japan",
-    "Asia/Singapore": "Singapore", "Asia/Shanghai": "China", "Asia/Manila": "Philippines", "Africa/Johannesburg": "South Africa", "Africa/Lagos": "Nigeria", "Africa/Nairobi": "Kenya",
-    "Australia/Sydney": "Australia / New South Wales", "Australia/Melbourne": "Australia / Victoria", "Australia/Brisbane": "Australia / Queensland", "Australia/Perth": "Australia / Western Australia",
-    "Pacific/Auckland": "New Zealand", "America/Sao_Paulo": "Brazil", "America/Argentina/Buenos_Aires": "Argentina"
-  };
-  function regionFrom(tz, locale) {
-    var z = ZONES[String(tz || "")];
-    if (z) return z.indexOf(" / ") > 0 ? z + "-ish" : z;
-    var m = /[-_]([A-Z]{2})\b/.exec(String(locale || ""));
-    if (m) {
-      try { var dn = new Intl.DisplayNames(["en"], { type: "region" }).of(m[1]); if (dn && dn !== m[1]) return dn; } catch { /* older browsers */ }
-    }
-    return "";
   }
 
   /* ---------- suggestions and Draw ---------- */
@@ -428,7 +402,7 @@
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
     suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf,
     onboarding: onboarding, openQuestion: openQuestion, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics,
-    needsNext: needsNext, readyNext: readyNext, createRequest: createRequest, regionFrom: regionFrom, ZONES: ZONES, AGE_LABELS: AGE_LABELS
+    needsNext: needsNext, readyNext: readyNext, createRequest: createRequest, OPENING: OPENING
   };
   if (node_) module.exports = api;
   else root.IkoPlan = api;

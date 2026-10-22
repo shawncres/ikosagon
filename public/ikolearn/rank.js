@@ -8,8 +8,8 @@
  *   local    this learner's use of each topic (weight 1)
  *   chain    use of everything under a topic, so the parents of an active chain rank too (weight 0.5)
  *   model    model-informed importance (weight 0.35): the creation call scores each child it makes (0-1, how important
- *            and typical it is for this learner's age band and rough region). A score made before the learner changed
- *            their age or region counts half until it is refreshed. A prior: it only orders things and never puts an
+ *            it is as a next step in its topic, given what the learner already has; no age or place is ever sent).
+ *            A prior: it only orders things and never puts an
  *            unused topic in the top 10, and it never hides anything (low scores are still offered, just later).
  * A shared, across-learners source can register later with the same shape (register({ name, weight, prior, scores })).
  *
@@ -55,11 +55,11 @@
   var model = {
     name: "model", weight: 0.35, prior: true,
     scores: function (cloud) {
-      var out = {}, changed = (cloud.profile && cloud.profile.changedAt) || 0;
+      var out = {};
       cloud.order.forEach(function (id) {
         var n = cloud.nodes[id];
         if (!n || !n.parent || n.imp == null) return;
-        var v = n.imp * (changed && (n.impAt || 0) < changed ? 0.5 : 1);
+        var v = n.imp;
         if (v > 0) out[n.key] = Math.max(out[n.key] || 0, v);
       });
       return out;

@@ -36,8 +36,7 @@
     lCard: $("l-card"), lFork: $("l-fork"), lQuiz: $("l-quiz"), hNote: $("h-note"),
     top: $("top"), tLede: $("t-lede"), tList: $("t-list"),
     dSuggest: $("d-suggest"), hKids: $("h-kids"), lPhase: $("l-phase"), phLearn: $("ph-learn"), phCheck: $("ph-check"), pTest: $("p-test"),
-    lMain: document.querySelector("#lesson .l-main"), cloudHint: document.querySelector("#cloud .cloud-hint"),
-    youAge: $("you-age"), youRegion: $("you-region"), youGuess: $("you-guess"), youClear: $("you-clear"), youSaved: $("you-saved"), youLink: $("you-link"), you: $("you")
+    lMain: document.querySelector("#lesson .l-main"), cloudHint: document.querySelector("#cloud .cloud-hint")
   };
   var reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
 
@@ -198,7 +197,7 @@
     return d;
   }
 
-  /* A first-run question: chips (the age bands), or an open question answered in a free-text field; Skip either way. */
+  /* A first-run question: an open question answered in a free-text field (or chips, when a question brings them); Skip either way. */
   var askHandlers = {};
   function renderAsk(m) {
     var d = mk("div", "msg model ask");
@@ -279,7 +278,8 @@
         d.appendChild(go);
       }
       /* a creation call that couldn't run: try it again (a first build only while the cloud is still empty) */
-      if (m.role === "model" && m.retry && !m.streaming && (m.retry.kind !== "start" || !state.cloud.order.length)) {
+      /* (an old save's empty start, from the retired Skip call, has nothing to retry: typing below starts the path) */
+      if (m.role === "model" && m.retry && !m.streaming && (m.retry.kind !== "start" || (!state.cloud.order.length && m.retry.about))) {
         var again = mk("div", "acts"), rt = m.retry;
         again.appendChild(linkBtn("Try again", function () { if (!state.busy) { m.retry = null; upsert(m); buildCloud(rt.kind, [], rt.about || ""); } }, "btn draw-btn sm"));
         d.appendChild(again);
@@ -378,9 +378,8 @@
   }
   function basePayload(focusId) {
     var n = nodeOf(focusId);
-    var p = n && n.parent ? nodeOf(n.parent) : null, pr = C.profileOf(state.cloud);
+    var p = n && n.parent ? nodeOf(n.parent) : null; /* no age, no region: nothing about who or where the learner is goes along */
     return {
-      age: pr.age || "", region: pr.region || "", /* coarse only: an age band and a rough region, never precise data */
       name: state.name, focus: n ? n.label : "", focusParent: p ? p.label : "", trail: n ? C.trail(state.cloud, n.id) : "",
       known: n ? C.knownUnder(state.cloud, n.id) : [], cloud: C.summarize(state.cloud), parents: C.subjectLabels(state.cloud)
     };
@@ -450,6 +449,7 @@
   function send(text) {
     text = String(text || "").replace(/\s+$/, "").trim().slice(0, 1500);
     if (!text || state.busy) return;
+    if (waitingForStart()) { var about = cleanAbout(text); push({ role: "user", text: text }); buildCloud("start", [], about); return; }
     lock(true);
     push({ role: "user", text: text });
     var m = push({ role: "model", text: "", streaming: true });
@@ -570,14 +570,15 @@
     if (!t) renderCloudFlow();
   }
   /*
-   * One creation call for new parents: "start" (after the first questions, or Skip) or "more" (after a light re-ask),
-   * then the visible build. `about` is the learner's answer in their own words ("" after Skip: the model then picks
-   * broad, popular starting points for their age and region). Nothing is seeded on the device: when the call can't be
-   * made, the message says why and offers Try again (and the chat box stays open for typing a topic).
+   * One creation call for new parents: "start" (the learner's first answer, or the first thing they type after a Skip)
+   * or "more" (after a light re-ask), then the visible build. `about` is always the learner's own words: nothing is
+   * built without them (Skip makes no call). Nothing is seeded on the device: when the call can't be made, the
+   * message says why and offers Try again (and the chat box stays open for typing a topic).
    */
   function buildCloud(kind, interests, about) {
     if (state.busy) return;
     interests = interests || [];
+    if (kind === "start" && !about && !interests.length) return; /* nothing offered yet: never a call */
     lock(true);
     var m = push({ role: "model", local: true, streaming: true, text: kind === "start" ? "Thanks, " + state.name + ". I'm building your first topics now..." : "Let me build something new around " + (about || interests.join(", ") || "that") + "..." });
     var req = P.createRequest(state.cloud, kind, null, { interests: interests, about: about || "" });
@@ -587,10 +588,8 @@
           var names = ids.map(function (x) { return nodeOf(x) && nodeOf(x).label; }).filter(Boolean);
           /* what they enjoy, as the model read it: the new parents become the profile's interests (later asks build on them) */
           C.setProfile(state.cloud, { interests: names.slice(0, 5) });
-          var pr = C.profileOf(state.cloud);
           m.streaming = false;
-          m.text = (kind === "start" ? (about ? "Here's your cloud to start: " : "Here are a few popular places to start: ") : "New on your cloud: ") + names.join(", ") + ". Each one has a few smaller topics waiting, best first. Pick a card, or draw one." +
-            (kind === "start" && pr.region ? " I'm fitting things to " + pr.region + (pr.age ? ", age " + P.AGE_LABELS[pr.age] : "") + ". You can change that under About you." : "");
+          m.text = (kind === "start" ? "Here's where your path begins: " : "New on your cloud: ") + names.join(", ") + ". Each one has a few smaller topics waiting, best first. Pick a card, or draw one. We can add more as we go along.";
           m.opens = ids.slice(0, 5);
           upsert(m);
         });
@@ -619,30 +618,35 @@
     }).then(function () { save(); lock(false); if (!el.draw.hidden) renderDraw(); });
   }
   /*
-   * The first-run questions (on the device, no call): age, then one open question in the learner's own words and,
-   * when they answered it, an optional second. Then ONE creation call ("start") builds the first parents from what
-   * they wrote, or, on Skip, from their age and region alone. The light re-ask is held back for its usual few days.
+   * The soft opening (on the device, no call): P.OPENING and one open question in the learner's own words and, when
+   * they answered it, an optional second. Then ONE creation call ("start") builds the first parents from what they
+   * wrote. Skip makes no call: the question stays open, gently, and the first thing they type in the chat box starts
+   * the path (sendOrStart). The light re-ask is held back for its usual few days.
    */
   function runOnboarding() {
-    var qs = P.onboarding(state.cloud, true), answers = {}, said = [], i = 0;
-    push({ role: "model", local: true, text: "Hi " + state.name + ", welcome to IkoLearn. Around your name is your learning cloud. Before we start, a couple of quick questions so I can build it around you. Each one is optional." });
+    var qs = P.onboarding(state.cloud, true), said = [], i = 0;
     var next = function () {
       if (i >= qs.length) {
-        C.setProfile(state.cloud, { age: answers.age || "", onboarded: true, askedAt: true });
+        C.setProfile(state.cloud, { onboarded: true, askedAt: true });
         save();
-        buildCloud("start", [], said.join(". "));
+        if (said.length) buildCloud("start", [], said.join(". "));
+        else { push({ role: "model", local: true, text: waitingText() }); save(); renderDraw(); }
         return;
       }
       var q = qs[i++];
       ask(q, function (v) {
-        answers[q.id] = v;
-        if (q.id === "age") C.setProfile(state.cloud, { age: v || "" });
         if (q.open && v) { said.push(v); if (q.id === "curious") qs.push(P.openQuestion(state.cloud, "more")); }
         save(); next();
       });
     };
     next();
   }
+  /* After a Skip, or when the cloud is still empty: the question stays open, with no call and no list of topics. */
+  function waitingText() {
+    return "That's fine, " + state.name + ". There's no rush. Whenever something comes to mind, a hobby, a question, anything you'd like to get better at, write it in the box below and we'll begin your path from there.";
+  }
+  /* Nothing on the cloud yet: what they type is what the path starts from (one creation call), not a chat turn. */
+  function waitingForStart() { return Boolean(state.cloud) && !C.subjects(state.cloud).length && !P.needsOnboarding(state.cloud); }
   /* The light re-ask (one open question): its answer is one creation call for 1 or 2 new parents. */
   function answerReask(v) {
     var about = cleanAbout(v);
@@ -1222,7 +1226,7 @@
     var box = mk("div", "flow-in");
     box.appendChild(mk("p", "kicker", "Pick up a card"));
     var empty = !state.cloud.order.length;
-    box.appendChild(mk("p", "d-head", empty ? "Let's build your cloud, " + state.name + "." : items.length ? "Here are a few good next cards, " + state.name + ". Pick one, or draw one." : "Draw a card to start, " + state.name + ", or ask me anything below."));
+    box.appendChild(mk("p", "d-head", empty ? "Let's begin your path together, " + state.name + "." : items.length ? "Here are a few good next cards, " + state.name + ". Pick one, or draw one." : "Draw a card to start, " + state.name + ", or ask me anything below."));
     var row = mk("div", "draw-row");
     items.forEach(function (it) {
       var cell = mk("div", "sg sg-" + it.kind);
@@ -1234,7 +1238,7 @@
       row.appendChild(cell);
     });
     if (empty && state.thread.some(function (m) { return m.role === "ask" && !m.done; })) return box; /* the questions are already on screen */
-    if (empty && !state.busy) { var start = linkBtn("Start: a few quick questions", runOnboarding, "btn draw-btn"); box.appendChild(start); return box; }
+    if (empty && !state.busy) { var start = linkBtn("Begin", runOnboarding, "btn draw-btn"); box.appendChild(start); return box; }
     if (items.length) box.appendChild(row);
     var acts = mk("div", "flow-acts");
     var draw = mk("button", "btn draw-btn", "Draw a card"); draw.type = "button";
@@ -1614,31 +1618,7 @@
     el.hub.hidden = true; state.hubNode = null; el.thread.hidden = false; el.dock.hidden = false;
     openCloud(); openPanel(id, false, false, true);
   });
-  /* ---------- About you: the quiet settings spot (age band, rough region) ---------- */
-  function renderYou() {
-    var pr = C.profileOf(state.cloud);
-    if (!el.youAge.options.length) {
-      el.youAge.appendChild(new Option("Not set", ""));
-      C.AGE_BANDS.forEach(function (a) { el.youAge.appendChild(new Option(P.AGE_LABELS[a], a)); });
-    }
-    el.youAge.value = pr.age || "";
-    el.youRegion.value = pr.region || "";
-    el.youSaved.textContent = "";
-  }
-  function youSaved(patch) {
-    C.setProfile(state.cloud, patch);
-    save();
-    renderYou();
-    el.youSaved.textContent = " Saved.";
-  }
-  el.youAge.addEventListener("change", function () { youSaved({ age: el.youAge.value }); });
-  el.youRegion.addEventListener("change", function () { youSaved({ region: el.youRegion.value, regionAuto: false }); });
-  el.youGuess.addEventListener("click", function () { youSaved({ region: deviceRegion(), regionAuto: true }); });
-  el.youClear.addEventListener("click", function () { youSaved({ region: "", regionAuto: false }); });
-  el.youLink.addEventListener("click", function () { showDeck(true); setTimeout(function () { el.you.scrollIntoView({ block: "start" }); el.youAge.focus(); }, 0); });
-
   function renderDeck(opening) {
-    renderYou();
     var ids = deckIds();
     refreshSuggest();
     el.dSuggest.textContent = "";
@@ -1771,21 +1751,14 @@
     startSession();
     setTimeout(function () { el.input.focus(); }, 0);
   }
-  /* Once per browser session: for "seems stuck" (visits without a lesson). A coarse region guess the first time, unless cleared. */
+  /* Once per browser session: for "seems stuck" (visits without a lesson). */
   function countVisit() {
     var pr = C.profileOf(state.cloud);
     try { if (!sessionStorage.getItem(VISIT)) { sessionStorage.setItem(VISIT, "1"); pr.visits = (pr.visits || 0) + 1; } } catch { /* ignore */ }
-    if (!pr.region && pr.regionAuto) C.setProfile(state.cloud, { region: deviceRegion(), regionAuto: true });
     save();
   }
-  function deviceRegion() {
-    var tz = "", loc = "";
-    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { /* ignore */ }
-    try { loc = (navigator.languages && navigator.languages[0]) || navigator.language || ""; } catch { /* ignore */ }
-    return P.regionFrom(tz, loc);
-  }
-
   function greet() {
+    if (!C.subjects(state.cloud).length) { push({ role: "model", local: true, text: "Hi " + state.name + ", welcome back. " + P.OPENING + " " + waitingText().replace(/^That's fine, [^.]*\. /, "") }); save(); return; }
     push({
       role: "model", local: true,
       text: "Hi " + state.name + ", welcome back. Your learning cloud grows with the topics you explore. Tap any point to open it as a short lesson. Topics you spend time with become cards in your deck. They start in sepia and fill with colour as you show what you've learned. Pick a card above, tap Draw a card, or tell me what you'd like to learn about today.",

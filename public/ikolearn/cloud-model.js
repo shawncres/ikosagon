@@ -4,7 +4,7 @@
  * Every node has a stable id ("n12", never reused) and a path of labels from its subject ("Math > Addition > Number Bonds").
  * It starts empty (just the learner's name) and grows procedurally: from the creation call (the first parents a new
  * learner gets, and "what comes next" for a parent), from the structured block the companion appends to each reply,
- * from cards, from lesson paths and from "related topics". Nothing is pre-seeded; PALETTE only keeps subject colours stable. Nodes keep weight (how much it came up), mastery (0..1, raised by lessons) and an optional ordered
+ * from cards, from lesson paths and from "related topics". Nothing is pre-seeded and no subject names are built in (HUES is colour data only). Nodes keep weight (how much it came up), mastery (0..1, raised by lessons) and an optional ordered
  * learning path of subtopics with a recommended next step.
  * Works in the browser (window.IkoCloud) and in Node (module.exports) so the check script can test it.
  */
@@ -15,34 +15,14 @@
   /* nodes: stored cap (localStorage stays small). children / ghosts: per node. There is no depth limit. */
   var LIMITS = { nodes: 600, subjects: 12, children: 16, ghostsPerNode: 6, pathSteps: 6, cards: 60, labelChars: 32, choices: 3, draws: 3000, whyChars: 80, chain: 4, blurbChars: 140 };
   var MASTERED = 0.6;
-  /* Soft spectrum, one hue per subject in order of creation. */
+  /* Soft spectrum: colour data only. A new subject takes a stable hue from its name (subjectHue), never from a list of subject names. */
   var HUES = [4, 28, 48, 96, 150, 188, 214, 252, 286, 322, 70, 170];
 
-  /*
-   * Broad subject names and their hues: data only, a palette and a fallback, never a curriculum. A subject the model
-   * names that matches one (or its aliases) takes that hue, so colours stay the same for every learner and across years.
-   * Other subjects take the free hues in HUES, starting with the ones no palette subject owns.
-   */
-  var PALETTE = [
-    { label: "Reading & Writing", hue: 4 }, { label: "Math", hue: 28 }, { label: "Science", hue: 48 }, { label: "People & Places", hue: 96 },
-    { label: "Art & Music", hue: 150 }, { label: "Making & Coding", hue: 188 }, { label: "Computer Science", hue: 252 }
-  ];
   /* Migration only: the labels the old starter map (v1-v5) planted. Untouched ones are pruned from older saves (pruneSeeds). */
   var OLD_SEEDS = ["Reading & Writing", "Stories", "Vocabulary", "Poetry", "Math", "Counting", "Counting to 20", "Skip Counting", "Number Sense", "Comparing Numbers",
     "Place Value", "Addition", "Adding Within 10", "Number Bonds", "Adding Within 20", "Subtraction", "Multiplication", "Fractions", "Shapes", "Science", "Living Things",
     "Space", "Weather", "People & Places", "History", "Maps", "Cultures", "Art & Music", "Drawing", "Rhythm", "Color Mixing", "Making & Coding", "Building", "Puzzles",
     "Robots", "Computer Science", "Algorithms", "Programming", "How Computers Work", "How AI Works"];
-
-  /* Words that point at an existing subject, so "maths" or "biology" lands under Math or Science. */
-  var SUBJECT_ALIASES = {
-    "reading and writing": ["reading", "writing", "english", "literacy", "language", "language arts", "spelling", "grammar", "literature"],
-    math: ["maths", "mathematic", "mathematics", "arithmetic", "numeracy", "geometry", "algebra"],
-    science: ["sciences", "biology", "physic", "physics", "chemistry", "nature", "earth science"],
-    "people and places": ["history", "geography", "social studies", "social study", "civics", "world"],
-    "art and music": ["art", "arts", "music", "drawing and music", "creative arts"],
-    "making and coding": ["technology", "tech", "engineering", "making", "building", "crafts", "maker"],
-    "computer science": ["cs", "computing", "computers", "computer", "coding", "programming", "code", "software", "comp sci"]
-  };
 
   /* Topics that belong to Computer Science, not Making & Coding (moved once, on load, from older clouds). */
   var CS_TOPICS = ["Coding", "Programming", "Python", "JavaScript", "Scratch", "Java", "Algorithms", "How AI Works", "How Computers Work", "Computers", "Web Pages", "HTML", "Internet", "Data", "Apps", "Code"];
@@ -108,7 +88,6 @@
   function newId(cloud) { cloud.seq = (cloud.seq || 0) + 1; return "n" + cloud.seq; }
 
   function addNode(cloud, o) {
-    if (!o.parent) o = Object.assign({}, o, { label: paletteLabel(o.label) }); /* "Engineering" as a new subject is Making & Coding */
     var id = newId(cloud);
     var n = {
       id: id, label: cleanLabel(o.label), key: norm(o.label), parent: o.parent || null,
@@ -122,37 +101,24 @@
       ml: 0, mergedAt: 0, repaired: 0
     };
     if (!n.parent) {
-      var ph = paletteHue(o.label);
-      n.hue = Number.isFinite(o.hue) && !hueUsed(cloud, o.hue) ? o.hue : ph != null && !hueUsed(cloud, ph) ? ph : freeHue(cloud);
+      n.hue = Number.isFinite(o.hue) && !hueUsed(cloud, o.hue) ? o.hue : subjectHue(cloud, o.label); /* the name the model gave is kept as is */
     }
     cloud.nodes[id] = n;
     cloud.order.push(id);
     return n;
   }
 
-  /* Each subject keeps its own hue: the first one in HUES order that no subject uses yet. */
+  /*
+   * Each subject keeps its own hue (stored on the subject, so a save's colours never change). A new subject's hue comes
+   * from its name: a stable hash picks a starting slot in HUES and the first free hue from there is taken, so the same
+   * name gets the same colour for every learner (unless that hue is already taken in this cloud). No subject names are
+   * built in, and nothing is renamed.
+   */
   function hueUsed(cloud, h) { return subjects(cloud).some(function (s) { return s.hue === h; }); }
-  function freeHue(cloud) {
-    var owned = PALETTE.map(function (p) { return p.hue; }), i;
-    for (i = 0; i < HUES.length; i++) if (owned.indexOf(HUES[i]) < 0 && !hueUsed(cloud, HUES[i])) return HUES[i];
-    for (i = 0; i < HUES.length; i++) if (!hueUsed(cloud, HUES[i])) return HUES[i];
-    return HUES[subjects(cloud).length % HUES.length];
-  }
-  /* A new subject's name: the palette name when it is one of its aliases ("Language" -> "Reading & Writing"), else as given. */
-  function paletteLabel(label) {
-    var k = norm(label);
-    for (var i = 0; k && i < PALETTE.length; i++) if ((SUBJECT_ALIASES[norm(PALETTE[i].label)] || []).indexOf(k) >= 0) return PALETTE[i].label;
-    return label;
-  }
-  /* The palette hue for a subject name (exact, or through its aliases), or null. */
-  function paletteHue(label) {
-    var k = norm(label);
-    if (!k) return null;
-    for (var i = 0; i < PALETTE.length; i++) {
-      var pk = norm(PALETTE[i].label), al = SUBJECT_ALIASES[pk] || [];
-      if (pk === k || al.indexOf(k) >= 0) return PALETTE[i].hue;
-    }
-    return null;
+  function subjectHue(cloud, label) {
+    var start = Math.floor(hash(norm(label) || "subject") * HUES.length) % HUES.length;
+    for (var i = 0; i < HUES.length; i++) { var h = HUES[(start + i) % HUES.length]; if (!hueUsed(cloud, h)) return h; }
+    return HUES[start];
   }
 
   function removeNode(cloud, id) {
@@ -180,7 +146,6 @@
     if (!k) return null;
     var ss = subjects(cloud), i;
     for (i = 0; i < ss.length; i++) if (ss[i].key === k) return ss[i];
-    for (i = 0; i < ss.length; i++) { var al = SUBJECT_ALIASES[ss[i].key]; if (al && al.indexOf(k) >= 0) return ss[i]; }
     /* "Science & Nature" vs "Science": first word match on multi-word subjects */
     for (i = 0; i < ss.length; i++) { var a = ss[i].key.split(" ")[0], b = k.split(" ")[0]; if (a.length > 3 && a === b) return ss[i]; }
     return null;
@@ -685,28 +650,24 @@
 
   /* ---------- the learner's profile (v6) ---------- */
   /*
-   * age: an optional band (AGE_BANDS); region: a coarse place like "Canada / Ontario-ish", guessed on the device from
-   * the locale and time zone (regionAuto) or typed by the learner, or empty. interests: what they said they enjoy.
-   * onboarded: when the first questions were answered or skipped; askedAt: the last light re-ask; visits / lessonVisit:
-   * for "seems stuck"; changedAt: when age or region last changed (older model scores then count for less).
+   * interests: what they said they enjoy. onboarded: when the first question was answered or skipped; askedAt: the last
+   * light re-ask; visits / lessonVisit: for "seems stuck". There is no age and no region: IkoLearn never asks for either,
+   * and nothing about the learner's age or place is kept or sent. Older (v6-v8) saves carry an age band, a region and a
+   * changedAt in the first slots of the profile row: they are ignored on read and written back empty (the row keeps its
+   * v8 shape, so no version bump).
    */
-  var AGE_BANDS = ["4-6", "7-9", "10-12", "13-15", "16-18", "adult"];
-  function newProfile() { return { age: "", region: "", regionAuto: true, interests: [], onboarded: 0, askedAt: 0, visits: 0, lessonVisit: 0, changedAt: 0 }; }
-  function cleanRegion(v) { return String(v == null ? "" : v).replace(/[^\p{L}\p{M} /,.&'-]/gu, " ").replace(/\s+/g, " ").trim().slice(0, 40).trim(); }
+  function newProfile() { return { interests: [], onboarded: 0, askedAt: 0, visits: 0, lessonVisit: 0 }; }
   function cleanInterest(v) { return String(v == null ? "" : v).replace(/[\u0000-\u001f\u007f"<>{}[\]`*_#|\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40).trim(); }
   function profileOf(cloud) { if (!cloud.profile) cloud.profile = newProfile(); return cloud.profile; }
   function setProfile(cloud, patch, t) {
     t = now_(t);
-    var p = profileOf(cloud), changed = false;
-    if (patch && "age" in patch) { var a = AGE_BANDS.indexOf(String(patch.age)) >= 0 ? String(patch.age) : patch.age === "" || patch.age == null ? "" : null; if (a !== null && a !== p.age) { p.age = a; changed = true; } } /* "" clears; an unknown band is ignored */
-    if (patch && "region" in patch) { var r = cleanRegion(patch.region); if (r !== p.region) { p.region = r; changed = true; } p.regionAuto = Boolean(patch.regionAuto); }
+    var p = profileOf(cloud); /* any age or region in a patch is ignored */
     if (patch && Array.isArray(patch.interests)) {
       patch.interests.map(cleanInterest).filter(Boolean).forEach(function (x) { if (!p.interests.some(function (y) { return norm(y) === norm(x); })) p.interests.push(x); });
       p.interests = p.interests.slice(-12);
     }
     if (patch && patch.onboarded) p.onboarded = p.onboarded || t;
     if (patch && patch.askedAt) p.askedAt = t;
-    if (changed) p.changedAt = t;
     return p;
   }
   /* Topics the learner has (explored, below a subject). */
@@ -716,7 +677,7 @@
   /*
    * Applies one creation result (the "create" call): { items: [{ node: { name, chain }, card: { title, blurb, goal },
    * children: [{ name, order, score }] }] }. Each node is placed through its chain (missing links are created, a broad
-   * subject takes its palette colour), gets its card line and goal, and its children arrive as dotted placeholders in
+   * subject takes its stable hue), gets its card line and goal, and its children arrive as dotted placeholders in
    * their logical order (its path) with the model's importance score (imp) for the ranking. opts.focusId: "what comes
    * next" for that existing parent. Never removes anything. -> { nodes: [ids], children: [ids], order: [ids as created] }
    */
@@ -1298,7 +1259,7 @@
     var movable = making ? childrenOf(cloud, making.id).filter(function (c) { return keys.indexOf(c.key) >= 0; }) : [];
     if (!cs) {
       if (!movable.length || subjects(cloud).length >= LIMITS.subjects) return { moved: moved, created: false };
-      cs = addNode(cloud, { label: label, parent: null, weight: 1, born: t, hue: paletteHue(label) });
+      cs = addNode(cloud, { label: label, parent: null, weight: 1, born: t });
       created = true;
     }
     if (making) childrenOf(cloud, making.id).filter(function (c) { return keys.indexOf(c.key) >= 0; }).forEach(function (c) {
@@ -1382,17 +1343,16 @@
   function profileRow(p) {
     p = p || newProfile();
     var s = function (ms) { return ms ? Math.round(ms / 1000) : 0; };
-    return [p.age || "", p.region || "", p.regionAuto ? 1 : 0, p.interests || [], s(p.onboarded), s(p.askedAt), p.visits || 0, p.lessonVisit || 0, s(p.changedAt)];
+    /* v8 row shape; slots 0-2 and 8 (the old age band, region, region-guess flag and changedAt) are always written empty */
+    return ["", "", 0, p.interests || [], s(p.onboarded), s(p.askedAt), p.visits || 0, p.lessonVisit || 0, 0];
   }
   function profileFrom(a) {
     var p = newProfile();
     if (!Array.isArray(a)) return p;
-    p.age = AGE_BANDS.indexOf(String(a[0])) >= 0 ? String(a[0]) : "";
-    p.region = cleanRegion(a[1]);
-    p.regionAuto = a[2] !== 0;
+    /* a[0..2] and a[8] (age band, region, region-guess flag, changedAt from older saves) are ignored */
     p.interests = (Array.isArray(a[3]) ? a[3] : []).map(cleanInterest).filter(Boolean).slice(-12);
     var ms = function (x) { return (Number(x) || 0) * 1000; };
-    p.onboarded = ms(a[4]); p.askedAt = ms(a[5]); p.visits = Math.max(0, Number(a[6]) || 0); p.lessonVisit = Math.max(0, Number(a[7]) || 0); p.changedAt = ms(a[8]);
+    p.onboarded = ms(a[4]); p.askedAt = ms(a[5]); p.visits = Math.max(0, Number(a[6]) || 0); p.lessonVisit = Math.max(0, Number(a[7]) || 0);
     return p;
   }
 
@@ -1542,8 +1502,8 @@
   }
 
   var api = {
-    VERSION: VERSION, LIMITS: LIMITS, MASTERED: MASTERED, PALETTE: PALETTE, OLD_SEEDS: OLD_SEEDS, HUES: HUES, paletteHue: paletteHue, paletteLabel: paletteLabel, plant: plant,
-    AGE_BANDS: AGE_BANDS, newProfile: newProfile, profileOf: profileOf, setProfile: setProfile, cleanRegion: cleanRegion, topicCount: topicCount,
+    VERSION: VERSION, LIMITS: LIMITS, MASTERED: MASTERED, OLD_SEEDS: OLD_SEEDS, HUES: HUES, subjectHue: subjectHue, plant: plant,
+    newProfile: newProfile, profileOf: profileOf, setProfile: setProfile, topicCount: topicCount,
     TIERS: TIERS, TIER_NAMES: TIER_NAMES, TIER_STAGE: TIER_STAGE, ACHIEVE_RIGHT: ACHIEVE_RIGHT, roman: roman, tierOf: tierOf, mergeLevel: mergeLevel, mergeInto: mergeInto, corpusOf: corpusOf, absorbedInto: absorbedInto,
     checkChain: checkChain, applyRepair: applyRepair, moveUnder: moveUnder, EVENTS_MAX: EVENTS_MAX,
     applyCreate: applyCreate, pruneSeeds: pruneSeeds, deepenChain: deepenChain, applyBridge: applyBridge, coreChildren: coreChildren, doneCore: doneCore, sidePaths: sidePaths, absorbable: absorbable, markCore: markCore,
