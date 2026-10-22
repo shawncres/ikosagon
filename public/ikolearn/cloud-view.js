@@ -13,7 +13,7 @@
   var C = root.IkoCloud, CAM = root.IkoCamera;
   var INK = "#2b2118", PAPER = "#f3ead8";
   var FONT = "Georgia, 'Iowan Old Style', serif";
-  var DRAW_CAP = 260, ZMIN = CAM.CAM.zmin, ZMAX = CAM.CAM.zmax, HOME = { yaw: -0.5, pitch: 0.32, zoom: 1, panX: 0, panY: 0 };
+  var DRAW_CAP = 260, ZMIN = CAM.CAM.zmin, ZMAX = CAM.CAM.zmax, HOME = { yaw: -0.5, pitch: 0.32, zoom: 1, panX: 0, panY: 40 }; /* panY: the home view sits a little low, so the top branches stay clear of the controls and the hint line */
   var reduce = root.matchMedia && root.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   function createView(canvas, opts) {
@@ -21,7 +21,7 @@
     var mini = Boolean(opts.mini);
     var ctx = canvas.getContext("2d");
     var cloud = null, pos = {}, depth = {}, pathRank = {}, highlight = {}, raf = 0, w = 0, h = 0, dpr = 1;
-    var yaw = -0.5, pitch = 0.32, zoom = 1, panX = 0, panY = 0, pivot = CAM.ORIGIN;
+    var yaw = HOME.yaw, pitch = HOME.pitch, zoom = HOME.zoom, panX = HOME.panX, panY = HOME.panY, pivot = CAM.ORIGIN;
     var pointers = {}, gesture = null, idleSpin = mini && !reduce, tween = null, glideV = null;
     var focusId = null, focusSet = {};
     /* the big cloud's idle spin (camera.js spinState): on only while the overlay is open (spinOn) and no panel holds it */

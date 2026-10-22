@@ -1,7 +1,7 @@
 # IkoLearn v2: lessons, cards, the deck and the card game
 
 A learning companion with a visible, evolving learning profile: a point cloud centred on the learner's first name that grows into a tree of topics.
-Who it's for: curious people and lifelong learners, and parents who homeschool, as a planning and teaching tool. The privacy page says IkoLearn is intended for users 18 and over (the Gemini API terms bar services directed at or likely used by under-18s).
+Who it's for: anyone curious, at any age (a thoughtful learning harness, framed neither for kids nor for adults). Parents can also use it to plan and guide homeschool learning, as one use among others.
 Tapping a card or a topic opens a short lesson; every topic can map an ordered path of smaller topics, one level at a time, as deep as the learner goes.
 There is no pre-built map: a new learner answers a few short questions and the companion builds their first topics on the fly, then keeps growing branches as they finish them (see "A procedural start").
 Topics the learner spends time with become collectible cards: an ink-sketch landscape, the topic's chain, a title and one line. They start in sepia, take on their chain's colour as the learner shows what they've learned, and are marked Achieved when the branch is finished. Cards stay in the deck for good. Every visit opens with a few suggested cards and a Draw button; a small on-device orchestrator picks them, balanced over the year and ordered by a living top 10, offers children once a topic is engaged, and offers an optional Test when a branch has enough finished topics.

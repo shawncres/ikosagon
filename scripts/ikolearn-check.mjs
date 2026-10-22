@@ -381,7 +381,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(ls.includes("Role: lesson") && /INTRO:/.test(ls) && /STEP:/.test(ls) && /EXAMPLE:/.test(ls) && /NEXT:/.test(ls) && !/\nCHECK:/.test(ls) && !/\nANSWER:/.test(ls), "lesson prompt: intro, steps, example, next (questions moved to the hidden block)");
   ok(/questions: 2 or 3 multiple-choice questions that check understanding of what this lesson explained/.test(ls) && /answer = the position of the right option/.test(ls) && /"questions":\[\{"q"/.test(ls) && /questions/.test(lsNo), "every lesson block asks for 2-3 multiple-choice questions on what it taught, with the answer index");
   ok(/blurb: one line under 12 words/.test(ls) && /without the learner's name/.test(ls), "lesson block asks for the card's one-line description");
-  ok(ls.includes("Math > Addition > Number Bonds") && /parent reading along/.test(ls), "lesson prompt: knows where the topic sits, readable by a parent");
+  ok(ls.includes("Math > Addition > Number Bonds") && /Anyone reading along should be able to follow it/.test(ls) && !/parent reading along/.test(ls), "lesson prompt: knows where the topic sits, readable by anyone reading along");
   ok(ls.includes(PATH_OPEN) && ls.includes(PATH_CLOSE) && lsNo.includes(PATH_OPEN), "every lesson ends with the hidden block (fork choices, no extra call)");
   ok(/easiest and most foundational first/.test(ls) && !/easiest and most foundational first/.test(lsNo) && /steps: \[\]/.test(lsNo), "lesson block asks for path steps only with wantPath");
   ok(/kind "deeper"/.test(ls) && /2 or 3 directions/.test(ls) && !/kind "next" for their planned/.test(ls), "fork rules: 2 or 3 choices, no planned step when none is known");
@@ -1007,6 +1007,18 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     ok(!/unlisted:\s*true/.test(fm) && /featured:\s*true/.test(fm) && /demo:\s*"\/ikolearn\/"/.test(fm), "project page is listed and featured, demo opens /ikolearn/");
     const desc = (fm.match(/^description:\s*"([^"]+)"/m) || [])[1] || "";
     ok(desc.length >= 80 && desc.length <= 165, `meta description is 80-165 chars (${desc.length})`);
+    /* universal positioning: for anyone curious, at any age; neither kid-directed nor adults-only; homeschool parents as one use */
+    const sum = (fm.match(/^summary:\s*"([^"]+)"/m) || [])[1] || "";
+    ok(/anyone curious, at any age/.test(sum) && /anyone curious, at any age/.test(desc) && /homeschool/.test(sum) && /homeschool/.test(desc), "project copy: universal (anyone curious, at any age), homeschool parents as a secondary use");
+    ok(!/18 and over|adults? only|\bfor (kids|children)\b|young learners|lifelong learners/i.test(mdx + privacy), "project page and privacy: no age framing (no 18+, no kids or adults-only wording)");
+    {
+      const css2 = fs.readFileSync("public/ikolearn/styles.css", "utf8");
+      ok(/\.gcard\.test-tile > \.gc-chain, \.gcard\.grow-tile > \.gc-chain \{ flex-shrink: 0; min-height: 1\.4em; font-size: 11px/.test(css2), "test and grow tiles: the corner label never shrinks or clips");
+      const cv2 = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8");
+      ok(/HOME = \{ yaw: -0\.5, pitch: 0\.32, zoom: 1, panX: 0, panY: 40 \}/.test(cv2) && /var yaw = HOME\.yaw, pitch = HOME\.pitch, zoom = HOME\.zoom, panX = HOME\.panX, panY = HOME\.panY/.test(cv2), "the cloud opens on the home view, a little low, so the top branches clear the hint line");
+      ok(/\.cloud-hint \{[^}]*width: fit-content;[^}]*background: color-mix\(in srgb, var\(--paper\)/.test(css2), "cloud hint sits on a paper pill, readable over branches");
+    }
+    ok(/IkoLearn is for anyone curious, at any age\. Parents can also use it to plan and guide homeschool learning\./.test(privacy), "privacy: the neutral who-it's-for line");
     ok(/ogImage:\s*"\/projects\/ikolearn\/og\.png"/.test(fm) && /cover:\s*"\/projects\/ikolearn\/cover\.png"/.test(fm), "raster cover + OG image");
     for (const f of ["cover.png", "og.png", "album.webp", "card-hub.webp", "lesson.webp", "cloud-phone.webp"]) ok(fs.existsSync("public/projects/ikolearn/" + f), "asset " + f);
     const imgs = [...mdx.matchAll(/!\[([^\]]*)\]\((\/projects\/ikolearn\/[^)]+)\)/g)];
@@ -1472,6 +1484,8 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     ok(px && px.length === EXS.length + 1 && px.includes("Making music") && !px.some((x) => /http|AAAA|eight/.test(x)) && px.filter((x) => /tomatoes/i.test(x)).length === 1, "parseExamples: short plain phrases, deduped, links and long ones dropped, end punctuation trimmed (a question keeps its ?)");
     ok(px.includes("Why is the sky blue?") && parseExamples({ examples: EXS.slice(0, EXAMPLE_LIMITS.min - 1) }) === null && parseExamples("junk") === null && parseExamples({ examples: Array.from({ length: 40 }, (_, i) => "Topic number " + "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN"[i]) }).length === EXAMPLE_LIMITS.count, "parseExamples: too few is unusable (null); at most " + EXAMPLE_LIMITS.count);
     const exSys = examplesSystem();
+    ok(/any age/.test(exSys) && /Don't skew toward childhood activities or toward work and careers/.test(exSys) && /calm and family-friendly/.test(exSys) && !/grown-up|being patient/.test(exSys), "examples prompt: a varied mix for any age, calm and family-friendly, no 'grown-up' or 'being patient'");
+    ok(/could be any age/.test(SYSTEM_BASE) && !/young learner|may be a child|reading along should understand/i.test(SYSTEM_BASE + exSys), "prompts: the learner could be any age (no child framing)");
     ok(examplesSystem.length === 0 && /Role: examples/.test(exSys) && !/Age band|Rough region|Learner's first name|profile/i.test(exSys.replace(SYSTEM_BASE, "")) && EXAMPLES_SCHEMA.required.join() === "examples", "the examples prompt takes no input at all: nothing about any learner goes in (so one set serves everyone)");
     // examplesFor: day cache, coalescing, caps, cache headers, failures never cached
     const exOk = () => res(200, { candidates: [{ content: { parts: [{ text: JSON.stringify({ examples: EXS }) }] } }] });
