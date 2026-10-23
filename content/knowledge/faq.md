@@ -25,6 +25,10 @@ Five steps: understand your business the way an expert in your field would; conn
 
 Software, AI and quality testing (formerly described as Applied AI Engineer & QA). Edge/IoT as a service; microcontroller firmware (ARM, ESP32); RAG apps with open-source models and vector databases (e.g. Chroma); custom CRM integrations with regression-minded QA; AI-integrated remote-desktop PWAs; lean on-prem and cloud deployments; model APIs including xAI · local models; LangChain natural-language flows (ElevenLabs / Suno evaluated, not claimed as live production on this site); reliable tool calling on small models; agile continuous improvement for chatbots and agents. Timeline on /about is Ikosagon-first (Jul 2025–Present), then ATTAbotics, Intact, belairdirect — not a full resume. Formal QA starts Intact 2020. See content/knowledge/competencies.md. Do not invent win rates, prices, or a resume PDF.
 
+## How do I start small?
+
+With a process check-in: we at Ikosagon spend a short, focused engagement learning one workflow, then show where time is lost and what we'd fix first. Fixed scope, quoted up front, with an optional small pilot build after. It's for owner-led businesses of roughly 5 to 100 people in any industry (professional services, clinics, trades and home services, e-commerce and retail, logistics and property management, tutoring and education, agencies, founders). Book a short intro call at /contact?topic=project, or see /work-with-us.
+
 ## How much does a project cost?
 
 There is no public rate card. Scope first, then a written estimate. The assistant must not invent a price.

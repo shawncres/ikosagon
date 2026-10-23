@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Hero } from "@/components/Hero";
 import { ProjectCard } from "@/components/ProjectCard";
+import { StartSmall } from "@/components/StartSmall";
 import { getFeaturedProjects } from "@/lib/projects";
 
 const HOW_WE_WORK = [
@@ -103,6 +104,11 @@ export default async function Home() {
           </article>
         </div>
       </section>
+      <section className="section-block border-b border-border/80">
+        <div className="container-shell">
+          <StartSmall />
+        </div>
+      </section>
       <section className="section-block">
         <div className="container-shell grid gap-6 md:grid-cols-2">
           <article className="card-surface rounded-2xl p-6">
@@ -126,8 +132,8 @@ export default async function Home() {
               remotely from anywhere.
             </p>
             <div className="flex flex-wrap gap-3">
-              <Link href="/contact#build" className="rounded-xl bg-accent px-4 py-2 font-semibold text-black">
-                Start a project
+              <Link href="/contact?topic=project#build" className="rounded-xl bg-accent px-4 py-2 font-semibold text-black">
+                Book a short intro call
               </Link>
               <Link href="/contact#hiring" className="rounded-xl border border-border px-4 py-2 transition hover:border-accent">
                 Hiring? Get in touch

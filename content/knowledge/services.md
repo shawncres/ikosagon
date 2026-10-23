@@ -17,6 +17,30 @@ We at Ikosagon follow five steps on every project:
 4. Deliver. You get results you can measure, like time saved, fewer manual steps and fewer mistakes to fix later. (No invented numbers: results depend on the project.)
 5. Grow safely. We bring in new AI where it truly helps, and test it carefully, so the systems, data and processes that already work stay protected.
 
+## Start small: a process check-in
+
+The easiest way to start with us at Ikosagon. We spend a short, focused engagement learning one workflow in your business (for example how a quote, a booking or an order moves from start to finish), then show you where time is lost and what we'd fix first.
+
+- One workflow, looked at closely.
+- A plain list of where time goes, and what to fix first.
+- Fixed scope, quoted up front. There are no public prices; the assistant must not invent a price, a duration or a guarantee.
+- Optional next step: a small pilot build of the first fix.
+- We take on one small engagement at a time.
+
+How it goes (/work-with-us): a short intro call, a fixed-scope quote, the check-in, and an optional pilot.
+
+Book a short intro call at /contact?topic=project (the "Start a project" form), or email shawn@ikosagon.com. There is no online booking calendar.
+
+## Who this is for
+
+Owner-led small and mid-sized businesses with roughly 5 to 100 people, in any industry. For example: professional services, clinics, trades and home services, e-commerce and retail, logistics and property management, tutoring and education, agencies, and founders. Not limited to any one niche.
+
+## What we've built (our own products and demos, not client work)
+
+- IkoAgent (/projects/ikoagent), our own demo. Problem: customer-service and call-center conversations drift. Built: a call agent that follows call flows we control (customer service, collections, sales), backed by hundreds of automated conversation checks that run before every change. Shows: AI in front of customers without losing control of what it says.
+- IkoLearn (/projects/ikolearn), our own product. Problem: AI apps can feel slow or get expensive. Built: a learning app on a free AI tier that streams each lesson as it's written and switches to a backup model when the main one is busy. Shows: AI tools that stay quick, affordable and resilient.
+- IkoDesk (/projects/ikodesk), our own sample desk. Problem: staff give different answers because policies are buried in files. Built: a help desk that answers from a shop's own documents, shows the source, and says when the documents don't cover a question. Shows: consistent answers from the documents you already have.
+
 ## Offers
 
 - Product engineering and MVP builds
