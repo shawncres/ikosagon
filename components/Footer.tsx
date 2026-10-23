@@ -9,6 +9,10 @@ export function Footer() {
           </p>
         </div>
         <p className="font-mono">
+          <a href="/work-with-us" className="hover:text-accent">
+            Work with us
+          </a>
+          {" · "}
           <a href="mailto:shawn@ikosagon.com" className="hover:text-accent">
             shawn@ikosagon.com
           </a>

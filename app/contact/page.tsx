@@ -7,12 +7,14 @@ export const metadata: Metadata = {
 };
 
 type ContactPageProps = {
-  searchParams: Promise<{ sent?: string }>;
+  searchParams: Promise<{ sent?: string; topic?: string }>;
 };
 
 export default async function ContactPage({ searchParams }: ContactPageProps) {
-  const { sent } = await searchParams;
+  const { sent, topic } = await searchParams;
   const showSuccess = sent === "1";
+  /* "Book a short intro call" links here with ?topic=project: the Start a project form is the one to use */
+  const introCall = topic === "project";
 
   return (
     <div className="container-shell section-block">
@@ -41,6 +43,12 @@ export default async function ContactPage({ searchParams }: ContactPageProps) {
             Tell us how things work today, where they get stuck, and what a good result would look
             like. We&apos;ll take it from there.
           </p>
+          {introCall ? (
+            <p className="mb-4 rounded-xl border border-accent/40 bg-accent/10 px-4 py-3 text-sm text-accent" role="note">
+              Booking a short intro call: share a line or two about your business and the workflow you&apos;d
+              like to improve, and we&apos;ll suggest a time to talk.
+            </p>
+          ) : null}
           <form action="/api/contact" method="POST" className="card-surface space-y-4 rounded-2xl p-6">
             <input type="hidden" name="door" value="build" />
             <input name="name" required placeholder="Name" className="w-full rounded-xl border border-border bg-black/40 px-4 py-2" />
@@ -54,6 +62,7 @@ export default async function ContactPage({ searchParams }: ContactPageProps) {
             <input
               name="projectType"
               placeholder="Project type (new app, linking tools, AI helper...)"
+              defaultValue={introCall ? "Short intro call" : undefined}
               className="w-full rounded-xl border border-border bg-black/40 px-4 py-2"
             />
             <textarea
