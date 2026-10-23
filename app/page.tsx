@@ -1,8 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Hero } from "@/components/Hero";
 import { ProjectCard } from "@/components/ProjectCard";
 import { StartSmall } from "@/components/StartSmall";
 import { getFeaturedProjects } from "@/lib/projects";
+
+/** Title and description come from the root layout; the home page only sets its own canonical. */
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+};
 
 const HOW_WE_WORK = [
   {

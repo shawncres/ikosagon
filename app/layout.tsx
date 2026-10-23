@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SITE_URL } from "@/lib/site";
 import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import { ChatWidget } from "@/components/ChatWidget";
@@ -22,7 +23,7 @@ const jetBrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://www.ikosagon.com"),
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "Ikosagon | Software & AI, built around your business",
     template: "%s | Ikosagon",
@@ -33,7 +34,7 @@ export const metadata: Metadata = {
     title: "Ikosagon | Software & AI, built around your business",
     description:
       "We at Ikosagon learn your business, connect your tools and data, improve how work gets done, and add AI carefully, so you save time without risking what already works.",
-    url: "https://www.ikosagon.com",
+    url: "/",
     siteName: "Ikosagon",
     images: [{ url: "/opengraph-image" }],
     type: "website",

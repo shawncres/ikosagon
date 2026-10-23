@@ -17,7 +17,7 @@ export function Footer() {
             shawn@ikosagon.com
           </a>
           {" · "}
-          www.ikosagon.com
+          ikosagon.com
         </p>
       </div>
     </footer>

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/contact" },
   title: "Contact",
   description:
     "Start a project with Ikosagon, or get in touch about a role (contract or selected full-time, Toronto hybrid or remote).",

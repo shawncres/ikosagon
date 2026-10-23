@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/about" },
   title: "About",
   description:
     "About Ikosagon and its founder, Shawn Cooper: software, AI and careful testing for businesses that want to improve how they work.",
