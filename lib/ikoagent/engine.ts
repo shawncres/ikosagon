@@ -773,6 +773,44 @@ export function stripAgentGuidance(text: string, agentTexts: string[], allowed: 
 /** Generic close when the node's own line was already spoken */
 export const CLOSE_FALLBACK = "Thank you for your time today — goodbye.";
 
+/** Short goodbye that ends the call after the caller says goodbye */
+export const GOODBYE_LINE = "Thanks for calling — goodbye.";
+
+const GOODBYE_TERMS =
+  /\b(?:good[- ]?bye|bye(?:[- ]?bye)?|bye for now|see (?:you|ya)(?: later| soon)?|talk (?:to you )?(?:later|soon)|take care(?! of)|have a (?:good|great|nice) (?:day|one|night|evening|weekend)|(?:gotta|got to|have to|need to) go(?=\s*(?:[.!,]|now\b|$)))\b/i;
+
+/**
+ * An explicit goodbye from the caller ("bye", "thanks, goodbye", "ok I have to go now").
+ * Not a question, not "don't hang up yet", and short: a long line with "bye" in it is
+ * still the caller talking about their issue.
+ */
+export function looksLikeGoodbye(text: string): boolean {
+  const t = text.trim();
+  if (!t || t.length > 80 || /\?\s*$/.test(t)) return false;
+  if (/\b(?:don'?t|do not|not yet|before (?:you|we|I) go|wait)\b/i.test(t)) return false;
+  return GOODBYE_TERMS.test(t);
+}
+
+/** Nothing but a goodbye (plus thanks / ok / "that's all"): no issue, no ask */
+export function isPureGoodbye(text: string): boolean {
+  if (!looksLikeGoodbye(text)) return false;
+  const rest = text
+    .toLowerCase()
+    .replace(new RegExp(GOODBYE_TERMS.source, "gi"), " ")
+    .replace(/\b(?:ok(?:ay)?|alright|all right|right|well|great|cool|perfect|thanks?(?: you)?(?: so much| again| very much)?|cheers|that'?s (?:all|it)(?: for now)?|nothing else|i'?m (?:good|all set)|no|nope|for now|then|you too|so|and|again)\b/g, " ")
+    .replace(/[^a-z0-9]+/g, "");
+  return rest.length === 0;
+}
+
+/** Drop the sentences of a line that ask something ("Is there anything else I can help with?") */
+export function withoutQuestions(line: string): string {
+  return line
+    .split(/(?<=[.!?])\s+/)
+    .filter((s) => s.trim() && !/\?\s*$/.test(s))
+    .join(" ")
+    .trim();
+}
+
 const STAY_FALLBACKS = [
   "Sorry — could you say that another way so I can help?",
   "I want to make sure I get this right — could you tell me a little more?",

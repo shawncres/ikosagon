@@ -12,12 +12,16 @@ import {
   applyTransition,
   extractAccountId,
   getCurrentNode,
+  GOODBYE_LINE,
   isGreetingOrAck,
+  isPureGoodbye,
+  looksLikeGoodbye,
   looksLikeIdentityAffirmation,
   runToolsForTurn,
   scrubWeakSlots,
   slotsFilled,
   topicFromText,
+  withoutQuestions,
 } from "./engine";
 import { extractCustomerName, looksLikeNoAccount, sanitizeAccountId } from "./crm";
 import { applyToolSlots, runTool } from "./tools";
@@ -59,6 +63,10 @@ export type TurnState = {
   topic: string;
   /** createCustomer would run for this intent (route applies the create rate limit) */
   createPossible: boolean;
+  /** The caller said an explicit goodbye ("bye", "thanks, goodbye") */
+  goodbye: boolean;
+  /** …and nothing else (no issue, no ask): the call can end on any step */
+  pureGoodbye: boolean;
 };
 
 /**
@@ -150,6 +158,19 @@ export function deriveTurnState(opts: {
     intentForGraph = "verify_identity";
   }
 
+  // An explicit goodbye at a step that can wrap up is "we're done", whatever the model
+  // read it as ("bye" once came back as describe_issue / affirm). Real asks keep their
+  // intent: a supervisor, a callback, a ticket, a cancellation, a cease request.
+  const goodbye = looksLikeGoodbye(userText);
+  const pureGoodbye = isPureGoodbye(userText);
+  if (
+    goodbye &&
+    listenIds.has("resolve") &&
+    (!intentForGraph || (SOFT_INTENTS.has(intentForGraph) && (pureGoodbye || intentForGraph !== "describe_issue")))
+  ) {
+    intentForGraph = "resolve";
+  }
+
   // ---- Vertical-specific deterministic slots (never taken from the model) ----
   slots = { ...slots };
   if (flow.vertical === "collections") {
@@ -207,7 +228,37 @@ export function deriveTurnState(opts: {
     Boolean(slots.customerName) &&
     !sanitizeAccountId(slots.accountId || "");
 
-  return { intentForGraph, slots, topic, createPossible };
+  return { intentForGraph, slots, topic, createPossible, goodbye, pureGoodbye };
+}
+
+/** The caller left mid-call with a plain goodbye (no step had a wrap-up for it) */
+export const CALLER_GOODBYE: FlowExit = { type: "resolve", label: "Caller said goodbye", goodbye: true, say: [GOODBYE_LINE] };
+
+/** Intents a goodbye may override (nothing the caller actually asked for) */
+const SOFT_INTENTS = new Set(["greeting", "describe_issue", "affirm", "ask_policy", "resolve", "thanks"]);
+
+/** A wrap-up close step: every move ends the call resolved ("* → exit:resolve") (CS resolve_close, collections ptp_close / disposition, sales close) */
+export function isWrapUpClose(node: FlowNode): boolean {
+  return (
+    node.transitions.length > 0 &&
+    node.transitions.every((t) => t.to === "exit:resolve" || t.to.startsWith("exit:resolve:")) &&
+    Boolean(node.exits?.some((e) => e.type === "resolve"))
+  );
+}
+
+/**
+ * The exit spoken when the caller says goodbye on (or on the way into) a wrap-up close.
+ * Landing there this turn: the close line's facts without its "anything else?" question,
+ * then a short goodbye. Already on it (the wrap-up was heard): the exit's own close
+ * line, else just the goodbye.
+ */
+export function goodbyeExit(close: FlowNode, exit: FlowExit, landing: boolean): FlowExit {
+  if (!landing) {
+    const own = (exit.say ?? []).filter((l) => !/\?\s*$/.test(l.trim()));
+    return { ...exit, goodbye: true, say: own.length ? own : [GOODBYE_LINE] };
+  }
+  const facts = withoutQuestions(close.agentSay?.[0] ?? "");
+  return { ...exit, goodbye: true, say: [facts ? `${facts} ${GOODBYE_LINE}` : GOODBYE_LINE] };
 }
 
 function withoutName(text: string, name: string | null): string {
@@ -473,6 +524,35 @@ export async function runGraph(opts: {
     if (backing && closeExit && toolResults.some((t) => t.name === backing.tool && t.ok)) {
       closeNode = nextNode;
       exit = closeExit;
+    }
+  }
+
+  // The caller said goodbye: a wrap-up close ends the call now with a short goodbye,
+  // instead of asking "anything else?" (live: "bye" at the CS policy step got the wrap-up
+  // question and the call stayed open). Landing on it this turn, or already on it.
+  if (opts.state.goodbye) {
+    if (!exit && nextNode && nextNode.id !== node.id && isWrapUpClose(nextNode)) {
+      const closeExit = nextNode.exits!.find((e) => e.type === "resolve" && !e.key) ?? nextNode.exits!.find((e) => e.type === "resolve")!;
+      closeNode = nextNode;
+      exit = goodbyeExit(nextNode, closeExit, true);
+      // The close step's own disposition (PLAN, PTP) is recorded on the way out
+      if (exit.disposition && nextNode.toolsAllowed?.includes("logDisposition")) {
+        toolResults = toolResults.filter((t) => !(t.name === "logDisposition" && t.data.disposition === "completed"));
+        if (!toolResults.some((t) => t.name === "logDisposition")) {
+          const args = { ...slots, disposition: exit.disposition };
+          toolResults = [
+            ...toolResults,
+            mode.kind === "live" ? await runTool("logDisposition", args) : { name: "logDisposition", ok: true, data: { disposition: exit.disposition } },
+          ];
+        }
+      }
+    } else if (exit && exit.type === "resolve" && isWrapUpClose(node)) {
+      exit = goodbyeExit(node, exit, false);
+    } else if (!exit && opts.state.pureGoodbye && (!intent || SOFT_INTENTS.has(intent))) {
+      // A plain "bye" anywhere else: the caller is leaving. End politely on this step
+      // rather than pitching the next one (sales discover → offer, collections balance → plan).
+      exit = CALLER_GOODBYE;
+      nextNode = null;
     }
   }
 

@@ -30,5 +30,13 @@
     "total": 640,
     "passed": 640,
     "failed": 0
+  },
+  {
+    "label": "PR: live-path policy quote + goodbye ends the call (on main 2bcfb2c)",
+    "baseCommit": "2bcfb2c",
+    "date": "2026-10-23",
+    "total": 684,
+    "passed": 684,
+    "failed": 0
   }
 ]

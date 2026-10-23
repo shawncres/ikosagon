@@ -15,6 +15,7 @@ import {
   stripUnsupportedPromises,
   accountAlreadyConfirmed,
   dropRepeatAccountConfirm,
+  callerPolicyNote,
 } from "@/lib/ikoagent/engine";
 import { nameFromPhrase } from "@/lib/ikoagent/crm";
 import type {
@@ -38,7 +39,12 @@ import type {
  *        "account" (draft names an account number that isn't this caller's → scripted) |
  *        "repeat" | "disclosure" | "closing" | "clarify" | "unfilled" | "missing" | "skipped".
  */
-export type LlmStepStatus = { call?: string; reply?: string };
+/**
+ * call: how the model request went. reply: how its draft was used ("used", "trimmed",
+ * or why the scripted line was spoken instead). policy: "added" when the draft left out
+ * the step's policy line and it was appended.
+ */
+export type LlmStepStatus = { call?: string; reply?: string; policy?: string };
 
 function historyBlock(history: HistoryTurn[], limit = 6): string {
   return history
@@ -307,6 +313,12 @@ export function finalizeDraft(opts: {
   callerFacts: string[];
   status?: LlmStepStatus;
 }): string | null {
+  // The caller said goodbye: the call ends on the graph's short, fixed goodbye. The model
+  // drafted before the graph decided and tends to keep the call open ("anything else?").
+  if (opts.exit?.goodbye) {
+    if (opts.status) opts.status.reply = "goodbye";
+    return null;
+  }
   const mustSayExact = opts.speakNode.allowParaphrase === false && !opts.exit?.say?.length;
   const safeSlots = scrubWeakSlots(opts.slots);
   const scriptLines = replyScriptLines(opts.speakNode, safeSlots, opts.toolResults, opts.exit, {
@@ -376,6 +388,12 @@ export function finalizeDraft(opts: {
     if (opts.status) opts.status.reply = "closing";
     return null;
   }
+  // The call ends this turn: a draft that keeps it open ("Is there anything else I can help
+  // with?", "Let me walk you through…") is not a close → the scripted close line
+  if (opts.exit && KEEPS_CALL_OPEN.test(text)) {
+    if (opts.status) opts.status.reply = "open_close";
+    return null;
+  }
   // A new account / case / callback id from a real tool this turn must be spoken;
   // otherwise use the scripted line, which always includes it
   const newIds = newToolIds(opts.toolResults);
@@ -392,11 +410,44 @@ export function finalizeDraft(opts: {
       text = rest && rest !== mustLead ? `${mustLead} ${rest}` : mustLead;
     }
   }
+  // A policy step always quotes its policy: the model sometimes answers around it
+  // (live: "Let me walk you through the return process." and no policy). Append the
+  // caller-safe line, as the scripted path does, when the draft doesn't already carry it.
+  const policyLine = !opts.exit && opts.speakNode.rag?.required ? opts.callerFacts[0] : undefined;
+  if (policyLine && !quotesPolicy(text, policyLine)) {
+    const note = callerPolicyNote(policyLine);
+    if (note) {
+      text = `${text.trim()}\n\n${note}`;
+      if (opts.status) opts.status.policy = "added";
+    }
+  }
   if (opts.exit && !/call outcome/i.test(text)) {
     text = `${text}\n\nCall outcome: ${opts.exit.label}`;
   }
   if (opts.status) opts.status.reply = promised.removed.length ? "trimmed" : "used";
   return text.trim();
+}
+
+/** A reply that keeps the call going — never right on the turn the call ends */
+export const KEEPS_CALL_OPEN =
+  /\b(?:anything else|what else|something else (?:I|we) can|(?:can|may|could|shall) (?:I|we) help (?:you )?with|before we wrap up|let me walk you through|walk you through)\b|\?\s*$/i;
+
+function policyWords(text: string): string[] {
+  return text.toLowerCase().replace(/\*\*|`[^`]*`/g, "").match(/[a-z0-9]+/g) ?? [];
+}
+
+/**
+ * True when the reply already carries the policy line: it repeats any 5-word run of it
+ * (a paraphrase that keeps "the original payment method within 5 to 10" counts).
+ */
+export function quotesPolicy(reply: string, line: string): boolean {
+  const r = ` ${policyWords(reply).join(" ")} `;
+  const w = policyWords(line);
+  if (!w.length) return true;
+  for (let i = 0; i + 5 <= w.length; i++) {
+    if (r.includes(` ${w.slice(i, i + 5).join(" ")} `)) return true;
+  }
+  return w.length < 5 && r.includes(` ${w.join(" ")} `);
 }
 
 /** Close / refusal language that must not end a turn where the call continues */
