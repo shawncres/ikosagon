@@ -3,6 +3,29 @@ import { Hero } from "@/components/Hero";
 import { ProjectCard } from "@/components/ProjectCard";
 import { getFeaturedProjects } from "@/lib/projects";
 
+const HOW_WE_WORK = [
+  {
+    title: "Understand",
+    body: "We learn your business the way an expert in your field would: your customers, your team, and where the day gets stuck.",
+  },
+  {
+    title: "Connect",
+    body: "We find the right technology to tie your tools and data together, so information flows instead of being typed in twice.",
+  },
+  {
+    title: "Improve",
+    body: "We simplify the steps that slow people down, and shape the software around how your team actually works.",
+  },
+  {
+    title: "Deliver",
+    body: "You get results you can measure, like time saved, fewer manual steps and fewer mistakes to fix later.",
+  },
+  {
+    title: "Grow safely",
+    body: "We bring in new AI where it truly helps, and test it carefully, so the systems, data and processes that already work stay protected.",
+  },
+];
+
 export default async function Home() {
   const featured = await getFeaturedProjects();
 
@@ -64,55 +87,50 @@ export default async function Home() {
       <section className="section-block border-b border-border/80">
         <div className="container-shell">
           <article className="card-surface rounded-2xl p-6 md:p-8">
-            <h2 className="mb-4 text-3xl font-semibold">How a bot earns production</h2>
-            <ul className="max-w-3xl space-y-3 text-zinc-300">
-              <li>
-                <span className="font-semibold text-zinc-100">Source adherence.</span> The answer comes
-                from the Chroma chunks, or it fails.
-              </li>
-              <li>
-                <span className="font-semibold text-zinc-100">Refusal.</span> If the store has no support,
-                the agent does not invent one.
-              </li>
-              <li>
-                <span className="font-semibold text-zinc-100">Misuse.</span> Injection and off-policy
-                answers are cases, not surprises. A failed run becomes the next regression case.
-              </li>
-              <li>
-                <span className="font-semibold text-zinc-100">Token budget.</span> Local models, tight
-                context, tool calls only when retrieval is not enough. No auto-spend on generation APIs.
-              </li>
-            </ul>
+            <h2 className="mb-2 text-3xl font-semibold">How we work</h2>
+            <p className="mb-6 max-w-3xl text-zinc-300">
+              We at Ikosagon follow the same five steps on every project, big or small.
+            </p>
+            <ol className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+              {HOW_WE_WORK.map((step, i) => (
+                <li key={step.title} className="rounded-xl border border-border p-4">
+                  <p className="mb-1 font-mono text-sm text-accent">{String(i + 1).padStart(2, "0")}</p>
+                  <h3 className="mb-2 font-semibold text-zinc-100">{step.title}</h3>
+                  <p className="text-sm text-zinc-300">{step.body}</p>
+                </li>
+              ))}
+            </ol>
           </article>
         </div>
       </section>
       <section className="section-block">
         <div className="container-shell grid gap-6 md:grid-cols-2">
           <article className="card-surface rounded-2xl p-6">
-            <h3 className="mb-3 text-2xl font-semibold">Services</h3>
+            <h3 className="mb-3 text-2xl font-semibold">What we do</h3>
             <p className="mb-2 text-zinc-300">
-              We at Ikosagon do product engineering, RAG and agentic systems, CRM integrations with
-              regression-minded QA, and edge/IoT as a service (Orin-class, ARM, ESP32) — plus
-              contact-center–style natural-language flows where they earn their keep.
+              We at Ikosagon build and improve software for small businesses through to larger teams:
+              web apps, links between the tools you already use (like the system that holds your
+              customer records), and AI assistants that answer from your own documents.
             </p>
             <p className="text-zinc-300">
-              Lean builds for on-prem or cloud: grounded retrieval, reliable tool calling on small
-              models, and continuous improvement so bots harden in production.
+              We also write software for connected devices, such as sensors and small on-site
+              computers, and we test everything carefully before your customers see it. It can run on
+              your own servers or in the cloud.
             </p>
           </article>
           <article className="card-surface rounded-2xl p-6">
-            <h3 className="mb-3 text-2xl font-semibold">Open for work</h3>
+            <h3 className="mb-3 text-2xl font-semibold">Work with us</h3>
             <p className="mb-4 text-zinc-300">
-              Available for freelance, contract, and selected full-time roles — remote /
-              work-from-anywhere — spanning AI systems, applied QA on agentic stacks, embedded/edge
-              software, and production process upgrades for SMB through enterprise.
+              Have a process that takes too long, or tools that don&apos;t talk to each other? Tell us
+              about it. We&apos;re also open to freelance, contract and selected full-time roles, working
+              remotely from anywhere.
             </p>
             <div className="flex flex-wrap gap-3">
               <Link href="/contact#build" className="rounded-xl bg-accent px-4 py-2 font-semibold text-black">
-                Build with us
+                Start a project
               </Link>
               <Link href="/contact#hiring" className="rounded-xl border border-border px-4 py-2 transition hover:border-accent">
-                Hiring door
+                Hiring? Get in touch
               </Link>
             </div>
           </article>

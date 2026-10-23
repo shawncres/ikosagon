@@ -22,7 +22,7 @@ export function Nav() {
             IKOSAGON
           </Link>
           <p className="truncate font-mono text-xs leading-tight text-zinc-200 sm:text-sm">
-            Applied AI Engineer &amp; QA
+            Software &amp; AI studio
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-3 text-sm sm:gap-5">

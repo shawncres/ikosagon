@@ -8,9 +8,9 @@ import { RingGlow } from "@/components/RingGlow";
 /** Rotating headlines. `hl` is a phrase within `text` shown in the accent colour. */
 const H1_LINES: readonly { text: string; hl?: string }[] = [
   { text: "Curated software, carefully built for your users.", hl: "carefully built" },
-  { text: "Upgrade your existing processes for a post-AGI future." },
-  { text: "Hireable AI systems, edge software, and production process upgrades." },
-  { text: "Grounded RAG, reliable agents, and edge/IoT that hold up in production." },
+  { text: "We learn your business before we write the code.", hl: "learn your business" },
+  { text: "Your tools and data, finally working together.", hl: "working together" },
+  { text: "New AI where it helps, with what works kept safe.", hl: "kept safe" },
 ];
 
 function Headline({ line }: { line: { text: string; hl?: string } }) {
@@ -50,7 +50,7 @@ export function Hero() {
       <div className="container-shell grid items-center gap-10 md:grid-cols-[1.2fr_1fr]">
         <div className="space-y-6">
           <p className="font-mono text-sm text-accent">
-            Applied AI Engineer &amp; QA
+            Software &amp; AI, built around your business
           </p>
           <div className="relative min-h-[7.5rem] md:min-h-[8.5rem]" aria-live="polite" aria-atomic="true">
             <AnimatePresence mode="wait" initial={false}>
@@ -102,13 +102,12 @@ export function Hero() {
             </div>
           ) : null}
           <p className="max-w-xl text-zinc-300">
-            We at Ikosagon ship grounded RAG, reliable tool-calling agents, CRM-grade integrations, and
-            edge/IoT software — on-prem or cloud — so teams upgrade processes without inventing
-            vanity metrics.
+            We at Ikosagon take the time to understand how your business really runs. Then we connect
+            the right tools, improve the way work gets done, and bring in AI where it truly helps,
+            without putting what already works at risk.
           </p>
           <p className="max-w-xl font-mono text-sm text-zinc-300">
-            The model is a black box. Retrieved chunks are the spec. A wrong or unsourced answer is a
-            defect.
+            The result: new efficiencies you can see, like time saved and fewer manual steps.
           </p>
           <div className="flex flex-wrap gap-3">
             <Link href="/projects" className="rounded-xl bg-accent px-5 py-2 font-semibold text-black transition hover:opacity-90">

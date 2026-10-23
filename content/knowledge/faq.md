@@ -7,7 +7,7 @@ slug: faq
 
 ## Can I talk to a model on this site?
 
-Yes. The site assistant retrieves passages from markdown in content/knowledge and content/projects, then asks a cloud model (Groq, xAI, or Gemini if a key is set) to answer only from those passages. If no API key is configured, it returns the retrieved passages without generating new prose. The model is a black box; retrieved chunks are the spec; a wrong or unsourced answer is a defect.
+Yes. The site assistant retrieves passages from markdown in content/knowledge and content/projects, then asks a cloud model (Groq, xAI, or Gemini if a key is set) to answer only from those passages. If no API key is configured, it returns the retrieved passages without generating new prose. In plain words: the assistant should only say what the notes support, and a wrong or unsourced answer counts as a bug.
 
 ## Do you host a model on Vercel?
 
@@ -15,11 +15,15 @@ No. Vercel Hobby has no GPU and a 250 MB function bundle. Weights do not fit. In
 
 ## What businesses do you help?
 
-Remote / work-from-anywhere SMBs through enterprise-shaped scopes that leak time on intake, quotes, policy questions, CRM handoffs, and follow-up. Education product work lives under Ikosagon Learn. Edge, IoT, and agentic systems work is available when the process upgrade needs hardware or reliable tool calling.
+We at Ikosagon work from anywhere with small and growing businesses through larger teams that lose time on intake, quotes, policy questions, handoffs between tools (like a customer-record system, or CRM), and follow-up. Our education app is IkoLearn. Work on connected devices (IoT) and AI assistants that use your tools is available when the job needs it.
+
+## How do you work with a business?
+
+Five steps: understand your business the way an expert in your field would; connect your tools and data with the right technology; improve how work gets done; deliver results you can measure, like time saved and fewer manual steps; and bring in new AI carefully, protecting the systems, data and processes that already work. The homepage headline is "Curated software, carefully built for your users."
 
 ## What are Shawn's core competencies?
 
-Applied AI Engineer & QA. Edge/IoT as a service; microcontroller firmware (ARM, ESP32); RAG apps with open-source models and vector databases (e.g. Chroma); custom CRM integrations with regression-minded QA; AI-integrated remote-desktop PWAs; lean on-prem and cloud deployments; model APIs including xAI · local models; LangChain natural-language flows (ElevenLabs / Suno evaluated, not claimed as live production on this site); reliable tool calling on small models; agile continuous improvement for chatbots and agents. Timeline on /about is Ikosagon-first (Jul 2025–Present), then ATTAbotics, Intact, belairdirect — not a full resume. Formal QA starts Intact 2020. See content/knowledge/competencies.md. Do not invent win rates, prices, or a resume PDF.
+Software, AI and quality testing (formerly described as Applied AI Engineer & QA). Edge/IoT as a service; microcontroller firmware (ARM, ESP32); RAG apps with open-source models and vector databases (e.g. Chroma); custom CRM integrations with regression-minded QA; AI-integrated remote-desktop PWAs; lean on-prem and cloud deployments; model APIs including xAI · local models; LangChain natural-language flows (ElevenLabs / Suno evaluated, not claimed as live production on this site); reliable tool calling on small models; agile continuous improvement for chatbots and agents. Timeline on /about is Ikosagon-first (Jul 2025–Present), then ATTAbotics, Intact, belairdirect — not a full resume. Formal QA starts Intact 2020. See content/knowledge/competencies.md. Do not invent win rates, prices, or a resume PDF.
 
 ## How much does a project cost?
 
@@ -35,7 +39,7 @@ IkoLearn is the featured app: a thoughtful learning harness for anyone curious, 
 
 ## How do I start?
 
-Open /contact — two doors: Build (studio) and Hiring (role, contract or selected full-time, Toronto hybrid or remote). Or email shawn@ikosagon.com. No public resume.
+Open /contact. There are two ways in: Start a project, and Hiring (a role, contract or selected full-time, Toronto hybrid or remote). Or email shawn@ikosagon.com. No public resume.
 
 ## What is Hexcast?
 
