@@ -12,6 +12,8 @@ export type FlowExit = {
   say?: string[];
   /** logDisposition code recorded when the call ends here (node must allow the tool) */
   disposition?: string;
+  /** Set by the graph when the caller said goodbye: the call ends on a short, fixed goodbye (the model's draft is not used) */
+  goodbye?: boolean;
   /**
    * Distinguishes several exits of the same type on one node (cease vs attorney vs
    * third party are all "refuse"). Transitions target them as `exit:<type>:<key>`.

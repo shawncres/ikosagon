@@ -1,29 +1,29 @@
 {
-  "generatedAt": "2026-10-23T19:28:18.960Z",
+  "generatedAt": "2026-10-23T21:10:57.257Z",
   "suite": "scripts/ikoagent-lang-check.mjs",
   "mode": "offline: mocked model outputs, in-memory CRM, deterministic flow graph",
-  "baseCommit": "b33e7c6",
+  "baseCommit": "2bcfb2c",
   "completed": true,
-  "durationMs": 2472,
-  "total": 640,
-  "passed": 640,
+  "durationMs": 2599,
+  "total": 684,
+  "passed": 684,
   "failed": 0,
   "byFlow": {
     "customer_service": {
-      "total": 286,
-      "passed": 286
+      "total": 301,
+      "passed": 301
     },
     "shared": {
-      "total": 120,
-      "passed": 120
-    },
-    "collections": {
       "total": 140,
       "passed": 140
     },
+    "collections": {
+      "total": 146,
+      "passed": 146
+    },
     "sales": {
-      "total": 94,
-      "passed": 94
+      "total": 97,
+      "passed": 97
     }
   },
   "byCategory": {
@@ -56,8 +56,8 @@
       "passed": 22
     },
     "close-routing": {
-      "total": 46,
-      "passed": 46
+      "total": 84,
+      "passed": 84
     },
     "compliance": {
       "total": 55,
@@ -112,8 +112,8 @@
       "passed": 35
     },
     "rag": {
-      "total": 10,
-      "passed": 10
+      "total": 16,
+      "passed": 16
     }
   },
   "results": [
@@ -2351,7 +2351,7 @@
     },
     {
       "id": "c280",
-      "name": "V1 model draft speaks case CASE-1001-698086 once",
+      "name": "V1 model draft speaks case CASE-1001-856254 once",
       "flow": "customer_service",
       "category": "close-routing",
       "tagged": true,
@@ -2655,7 +2655,7 @@
     },
     {
       "id": "c318",
-      "name": "SC2 settlement figures in a draft are stripped: Which works?",
+      "name": "SC2 settlement figures in a draft are stripped",
       "flow": "collections",
       "category": "compliance",
       "tagged": true,
@@ -5233,6 +5233,358 @@
       "id": "c640",
       "name": "AF6 collections plan call says goodbye exactly once, at the end",
       "flow": "shared",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c641",
+      "name": "AG goodbye: 'bye' is a goodbye",
+      "flow": "shared",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c642",
+      "name": "AG goodbye: 'Bye!' is a goodbye",
+      "flow": "shared",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c643",
+      "name": "AG goodbye: 'ok thanks, bye' is a goodbye",
+      "flow": "shared",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c644",
+      "name": "AG goodbye: 'goodbye' is a goodbye",
+      "flow": "shared",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c645",
+      "name": "AG goodbye: 'thanks bye' is a goodbye",
+      "flow": "shared",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c646",
+      "name": "AG goodbye: 'that's all, bye' is a goodbye",
+      "flow": "shared",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c647",
+      "name": "AG goodbye: 'bye-bye' is a goodbye",
+      "flow": "shared",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c648",
+      "name": "AG goodbye: 'ok I have to go now' is a goodbye",
+      "flow": "shared",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c649",
+      "name": "AG goodbye: 'take care' is a goodbye",
+      "flow": "shared",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c650",
+      "name": "AG goodbye: 'have a good day' is a goodbye",
+      "flow": "shared",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c651",
+      "name": "AG goodbye: 'see you' is a goodbye",
+      "flow": "shared",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c652",
+      "name": "AG goodbye: 'by the way my order is late' is not a goodbye",
+      "flow": "shared",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c653",
+      "name": "AG goodbye: 'don't hang up yet, bye in a sec' is not a goodbye",
+      "flow": "shared",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c654",
+      "name": "AG goodbye: 'should I say bye?' is not a goodbye",
+      "flow": "shared",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c655",
+      "name": "AG goodbye: 'can you take care of the refund' is not a goodbye",
+      "flow": "shared",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c656",
+      "name": "AG goodbye: 'I have to go to the post office to send it back' is not a goodbye",
+      "flow": "shared",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c657",
+      "name": "AG goodbye: 'wait, before you go, one more thing' is not a goodbye",
+      "flow": "shared",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c658",
+      "name": "AG a plain goodbye vs a goodbye with an issue or answer in it",
+      "flow": "shared",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c659",
+      "name": "AG every flow's wrap-up close is found (collections/disposition,collections/ptp_close,customer_service/reso…",
+      "flow": "shared",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c660",
+      "name": "AG a reply that talks around the policy does not count as quoting it",
+      "flow": "customer_service",
+      "category": "rag",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c661",
+      "name": "AG a paraphrase that keeps the policy's words counts",
+      "flow": "customer_service",
+      "category": "rag",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c662",
+      "name": "AG closing drafts that keep the call open are spotted",
+      "flow": "shared",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c663",
+      "name": "AG1 policy turn used the model's draft",
+      "flow": "customer_service",
+      "category": "rag",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c664",
+      "name": "AG1 the returns policy is quoted even though the model left it out",
+      "flow": "customer_service",
+      "category": "rag",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c665",
+      "name": "AG1 the model's words stay, the quoted line is the desk's policy line",
+      "flow": "customer_service",
+      "category": "rag",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c666",
+      "name": "AG2 'bye' at policy ends the call",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c667",
+      "name": "AG2 the wrap-up facts, then goodbye (model draft not used)",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c668",
+      "name": "AG2 disposition logged once, resolved outcome",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c669",
+      "name": "AG2 still exactly one model request per turn, no retry or second call: 5 for 5 turns",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c670",
+      "name": "AG3 a draft that already quotes the policy is not given it twice",
+      "flow": "customer_service",
+      "category": "rag",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c671",
+      "name": "AG3 model said describe_issue on 'bye' → the call still ends",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c672",
+      "name": "AG4 a plain 'that answers it' still gets the wrap-up question (call continues)",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c673",
+      "name": "AG4 the closing turn drops the model's 'anything else?'",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c674",
+      "name": "AG5 'I want a refund, bye' carries on",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c675",
+      "name": "AG6 plan wrap-up + 'bye' ends the call",
+      "flow": "collections",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c676",
+      "name": "AG6 goodbye said once, at the end",
+      "flow": "collections",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c677",
+      "name": "AG6 'works, thanks bye' lands on the plan close and ends there",
+      "flow": "collections",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c678",
+      "name": "AG6 the PLAN disposition is recorded on the way out",
+      "flow": "collections",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c679",
+      "name": "AG6 promise-to-pay wrap-up + 'bye' ends on its own close line",
+      "flow": "collections",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c680",
+      "name": "AG6 a plain 'bye' mid-call ends politely, no plan pitch",
+      "flow": "collections",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c681",
+      "name": "AG7 sales close + 'bye' ends the call",
+      "flow": "sales",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c682",
+      "name": "AG7 'let's do pro. bye' closes and ends in one turn",
+      "flow": "sales",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c683",
+      "name": "AG7 a plain 'bye' during discovery ends politely, no pitch",
+      "flow": "sales",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c684",
+      "name": "AG8 scripted path",
+      "flow": "customer_service",
       "category": "close-routing",
       "tagged": true,
       "pass": true

@@ -1416,4 +1416,122 @@ tag("collections", "repeat-guard");
   assert(PLAN[3].nodeId === "disposition" && /\?/.test(PLAN[3].agentText) && PLAN[4].exit?.type === "resolve" && byes.length === 1, `AF6 collections plan call says goodbye exactly once, at the end (got ${byes.length})`);
 }
 
+// AG. Live (model) path fixes from the Oct 23 post-deploy check (/workspace/ikolearn-ui/live-ship-ikoagent-*):
+// the policy step's model reply left out the policy, and "bye" there got "anything else?" and the
+// call stayed open. Mocked model replies (no network), so this runs offline.
+{
+  const { looksLikeGoodbye, isPureGoodbye } = await import("../lib/ikoagent/engine.ts");
+  const { quotesPolicy, KEEPS_CALL_OPEN } = await import("../lib/ikoagent/llmTurn.ts");
+  const { isWrapUpClose } = await import("../lib/ikoagent/graphTurn.ts");
+  const flows = Object.fromEntries(["customer_service", "collections", "sales"].map((f) => [f, JSON.parse(readFileSync(`./content/ikoagent/flows/${f}.json`, "utf8"))]));
+  const POLICY = /Here's what our policy says: .*5 to 10 business days/;
+  const ENDED = (t) => Boolean(t.exit) && /goodbye/i.test(t.agentText) && !/anything else|walk you through/i.test(t.agentText) && !/\?\s*(?:\n|$)/.test(t.agentText.replace(/\n\nCall outcome:[^\n]*$/, ""));
+  const count = (text, re) => (text.match(re) ?? []).length;
+
+  tag("shared", "close-routing");
+  for (const t of ["bye", "Bye!", "ok thanks, bye", "goodbye", "thanks bye", "that's all, bye", "bye-bye", "ok I have to go now", "take care", "have a good day", "see you"]) {
+    assert(looksLikeGoodbye(t), `AG goodbye: '${t}' is a goodbye`);
+  }
+  for (const t of ["by the way my order is late", "don't hang up yet, bye in a sec", "should I say bye?", "can you take care of the refund", "I have to go to the post office to send it back", "wait, before you go, one more thing"]) {
+    assert(!looksLikeGoodbye(t), `AG goodbye: '${t}' is not a goodbye`);
+  }
+  assert(isPureGoodbye("ok thanks, bye") && isPureGoodbye("that's all, goodbye") && !isPureGoodbye("I want a refund, bye") && !isPureGoodbye("3 months works, thanks bye"), "AG a plain goodbye vs a goodbye with an issue or answer in it");
+  const wrapUps = Object.entries(flows).flatMap(([fid, f]) => Object.values(f.nodes).filter(isWrapUpClose).map((n) => `${fid}/${n.id}`)).sort();
+  assert(wrapUps.join() === "collections/disposition,collections/ptp_close,customer_service/resolve_close,sales/close", `AG every flow's wrap-up close is found (${wrapUps.join()})`);
+  tag("customer_service", "rag");
+  const fact = "Once the warehouse receives a return, the refund goes back to the original payment method within 5 to 10 business days.";
+  assert(!quotesPolicy("Sure thing, Priya. Let me walk you through the return process.", fact), "AG a reply that talks around the policy does not count as quoting it");
+  assert(quotesPolicy("Good news: the refund goes back to the original payment method in 5 to 10 business days.", fact), "AG a paraphrase that keeps the policy's words counts");
+  tag("shared", "close-routing");
+  assert(KEEPS_CALL_OPEN.test("Is there anything else I can help with before we wrap up?") && KEEPS_CALL_OPEN.test("Sure thing. Let me walk you through the return process.") && !KEEPS_CALL_OPEN.test("Thanks for calling — goodbye."), "AG closing drafts that keep the call open are spotted");
+
+  // Model path (mocked Groq, keyed by the caller line)
+  const realFetch2 = globalThis.fetch;
+  let reqs = 0;
+  const mock = new Map();
+  globalThis.fetch = async (url, init) => {
+    if (!String(url).includes("api.groq.com")) return realFetch2(url, init);
+    reqs++;
+    const caller = (JSON.parse(init.body).messages.at(-1).content.match(/CALLER: ([^\n]*)$/) || [])[1] ?? "";
+    return Response.json({ choices: [{ message: { content: mock.get(caller) ?? plan({ reply: "Got it — thanks." }) } }] });
+  };
+  process.env.GROQ_API_KEY = "test-not-a-real-key";
+  resetLlmCooldown();
+  try {
+    const RET = ["hi, I don't have an account", "Priya Shah", "I want to return a jacket", "thanks", "bye"];
+    const WRAP = "I'm glad we could sort this. I've logged the disposition on account {{accountId}}. Is there anything else I can help with before we wrap up?";
+
+    tag("customer_service", "rag");
+    // AG1. The live transcript, replayed: the model's policy reply has no policy line
+    mock.set("thanks", plan({ intent: "describe_issue", reply: "Sure thing, Priya. Let me walk you through the return process." }));
+    mock.set("bye", plan({ intent: "resolve", reply: WRAP }));
+    const before = reqs;
+    const G = await quiet(() => call("customer_service", RET, withOpener));
+    assert(G[3].nodeId === "policy" && G[3].mode === "llm" && G[3].debug?.llm?.reply === "used", `AG1 policy turn used the model's draft (got ${G[3].nodeId} ${JSON.stringify(G[3].debug?.llm)})`);
+    assert(POLICY.test(G[3].agentText) && G[3].debug?.llm?.policy === "added", `AG1 the returns policy is quoted even though the model left it out: ${G[3].agentText}`);
+    assert(G[3].agentText.startsWith("Sure thing, Priya.") && G[3].desk?.policyLine && G[3].agentText.includes(G[3].desk.policyLine.slice(1, 40)), "AG1 the model's words stay, the quoted line is the desk's policy line");
+    tag("customer_service", "close-routing");
+    // AG2. "bye" at the policy step: the close ends the call with a short goodbye; the model's "anything else?" is overridden
+    const acct = G[1].slots.accountId;
+    assert(G[4].exit?.type === "resolve" && G[4].nodeId === "resolve_close" && ENDED(G[4]), `AG2 'bye' at policy ends the call (got ${G[4].nodeId} ${JSON.stringify(G[4].exit)}): ${G[4].agentText}`);
+    assert(G[4].debug?.llm?.reply === "goodbye" && /^I'm glad we could sort this\. I've logged the disposition on account \d+\. Thanks for calling — goodbye\./.test(G[4].agentText) && G[4].agentText.includes(acct), `AG2 the wrap-up facts, then goodbye (model draft not used): ${G[4].agentText}`);
+    assert(G[4].toolResults.filter((t) => t.name === "logDisposition" && t.ok).length === 1 && /Call outcome: Call resolved/.test(G[4].agentText), "AG2 disposition logged once, resolved outcome");
+    assert(reqs - before === 5, `AG2 still exactly one model request per turn, no retry or second call: ${reqs - before} for 5 turns`);
+    // AG3. The model reads "bye" as something else: the graph still ends the call
+    mock.set("thanks", plan({ intent: "describe_issue", reply: "Thanks, Priya. Once the warehouse receives a return, the refund goes back to the original payment method within 5 to 10 business days." }));
+    mock.set("bye", plan({ intent: "describe_issue", reply: "Sure — what else is going on with the return?" }));
+    const G3 = await quiet(() => call("customer_service", RET, withOpener));
+    tag("customer_service", "rag");
+    assert(count(G3[3].agentText, /5 to 10 business days/g) === 1 && !G3[3].debug?.llm?.policy, `AG3 a draft that already quotes the policy is not given it twice: ${G3[3].agentText}`);
+    tag("customer_service", "close-routing");
+    assert(ENDED(G3[4]) && G3[4].exit?.type === "resolve", `AG3 model said describe_issue on 'bye' → the call still ends (got ${G3[4].nodeId} ${JSON.stringify(G3[4].exit)}): ${G3[4].agentText}`);
+    // AG4. On the wrap-up step, "no that's all" ends the call; a draft asking "anything else?" there is not used
+    mock.set("ok that answers it, thanks", plan({ intent: "resolve", reply: WRAP }));
+    mock.set("no that's all", plan({ intent: "resolve", reply: "Great! Is there anything else I can help you with today?" }));
+    const G4 = await quiet(() => call("customer_service", ["account 1001", "my parcel is late", "it still hasn't shown up", "ok that answers it, thanks", "no that's all"], withOpener));
+    assert(G4[3].nodeId === "resolve_close" && !G4[3].exit && /anything else/i.test(G4[3].agentText), "AG4 a plain 'that answers it' still gets the wrap-up question (call continues)");
+    assert(G4[4].exit?.type === "resolve" && G4[4].debug?.llm?.reply === "open_close" && !/anything else/i.test(G4[4].agentText), `AG4 the closing turn drops the model's 'anything else?' (got ${JSON.stringify(G4[4].debug?.llm)}): ${G4[4].agentText}`);
+    // AG5. A goodbye with an issue in it is not the end of the call
+    mock.set("I want a refund, bye", plan({ intent: "describe_issue", reply: "I can help with the refund — what's happened so far?" }));
+    const G5 = await quiet(() => call("customer_service", ["account 1001", "I want a refund, bye"], withOpener));
+    assert(!G5[1].exit && G5[1].nodeId === "diagnose", `AG5 'I want a refund, bye' carries on (got ${G5[1].nodeId} ${JSON.stringify(G5[1].exit)})`);
+    mock.clear();
+
+    tag("collections", "close-routing");
+    // AG6. Collections: the same goodbye handling on its wrap-up steps (plan, promise-to-pay)
+    mock.set("bye", plan({ intent: "resolve", reply: "Thanks! Is there anything else I can help you with today?" }));
+    const C1 = await quiet(() => call("collections", ["account 2044", "yes", "can I do a payment plan", "3 months works", "bye"]));
+    assert(C1[3].nodeId === "disposition" && !C1[3].exit && C1[4].exit?.type === "resolve" && ENDED(C1[4]) && C1[4].debug?.llm?.reply === "goodbye", `AG6 plan wrap-up + 'bye' ends the call (got ${C1[4].nodeId} ${JSON.stringify(C1[4].debug?.llm)}): ${C1[4].agentText}`);
+    assert(count(C1.map((t) => t.agentText).join("\n"), /\bgoodbye\b/gi) === 1, "AG6 goodbye said once, at the end");
+    mock.set("3 months works, thanks bye", plan({ intent: "accept_plan", reply: "Great — I've noted the plan. Is there anything else I can help you with today?" }));
+    const C2 = await quiet(() => call("collections", ["account 2044", "yes", "can I do a payment plan", "3 months works, thanks bye"]));
+    assert(C2[3].nodeId === "disposition" && ENDED(C2[3]) && /noted the arrangement for account 2044/.test(C2[3].agentText), `AG6 'works, thanks bye' lands on the plan close and ends there: ${C2[3].agentText}`);
+    assert(C2[3].toolResults.some((t) => t.name === "logDisposition" && t.ok && t.data.disposition === "PLAN") && /Payment arrangement logged/.test(C2[3].agentText), "AG6 the PLAN disposition is recorded on the way out");
+    const C3 = await quiet(() => call("collections", ["account 1001", "yes", "I can pay on Friday", "bye"]));
+    assert(C3[2].nodeId === "ptp_close" && ENDED(C3[3]) && /promise-to-pay is on the account/.test(C3[3].agentText), `AG6 promise-to-pay wrap-up + 'bye' ends on its own close line: ${C3[3].agentText}`);
+    const C4 = await quiet(() => call("collections", ["account 2044", "yes", "bye"]));
+    assert(C4[2].nodeId === "balance" && ENDED(C4[2]) && /Caller said goodbye/.test(C4[2].agentText), `AG6 a plain 'bye' mid-call ends politely, no plan pitch (got ${C4[2].nodeId}): ${C4[2].agentText}`);
+
+    tag("sales", "close-routing");
+    // AG7. Sales: the same on the win close and mid-call
+    const S1 = await quiet(() => call("sales", ["we need a help desk for 5 people", "what's the pro plan", "ok let's do pro", "bye"]));
+    assert(S1[2].nodeId === "close" && ENDED(S1[3]) && /Closed — demo win path/.test(S1[3].agentText), `AG7 sales close + 'bye' ends the call: ${S1[3].agentText}`);
+    mock.set("great, let's do pro. bye", plan({ intent: "close_won", reply: "Wonderful! Anything else I can help with before we wrap up?" }));
+    const S2 = await quiet(() => call("sales", ["we need a help desk for 5 people", "what's the pro plan", "great, let's do pro. bye"]));
+    assert(S2[2].nodeId === "close" && ENDED(S2[2]) && /marking this demo as a close path/.test(S2[2].agentText), `AG7 'let's do pro. bye' closes and ends in one turn: ${S2[2].agentText}`);
+    const S3 = await quiet(() => call("sales", ["we need a help desk for 5 people", "bye"]));
+    assert(S3[1].nodeId === "discover" && ENDED(S3[1]) && !/Pro looks like/.test(S3[1].agentText), `AG7 a plain 'bye' during discovery ends politely, no pitch (got ${S3[1].nodeId})`);
+    mock.clear();
+  } finally {
+    globalThis.fetch = realFetch2;
+    delete process.env.GROQ_API_KEY;
+    resetLlmCooldown();
+  }
+
+  // AG8. Offline (no model): the return call ends on "bye" too
+  tag("customer_service", "close-routing");
+  const OFF = await quiet(() => call("customer_service", ["hi, I don't have an account", "Priya Shah", "I want to return a jacket", "thanks", "bye"], withOpener));
+  assert(OFF[3].mode === "scripted" && POLICY.test(OFF[3].agentText) && ENDED(OFF[4]), `AG8 scripted path: policy quoted, 'bye' ends the call: ${OFF[4].agentText}`);
+}
+
 console.log("\nALL CHECKS PASSED");
