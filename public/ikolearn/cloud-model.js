@@ -212,7 +212,8 @@
     curious: { w: 0.5, m: 0 }
   };
 
-  /* Where a topic goes: the named subject or topic, else a new subject (under the cap), else "Curiosities". */
+  /* Where a topic goes: the named subject or topic, else a new subject (under the cap), else (the cloud is full)
+     the oldest subject. No fixed catch-all subject: every parent comes from the learner's own topics. */
   function resolveParent(cloud, label, t, res) {
     var p = findAny(cloud, label);
     if (p) return p;
@@ -222,7 +223,7 @@
       res.parentsCreated.push(p.id);
       return p;
     }
-    return findSubject(cloud, "Curiosities") || (subjects(cloud).length < LIMITS.subjects ? addNode(cloud, { label: "Curiosities", parent: null, weight: 1, born: t }) : subjects(cloud)[0]);
+    return subjects(cloud)[0];
   }
 
   /*
@@ -327,7 +328,15 @@
         /* a short chain: deepen it from a topic on the learner's map that they named (no call) */
         if (links.length <= 1 && said) links = deepenChain(cloud, links.length ? links : [tp.parent], label, said) || links;
         links = links.filter(function (l) { return norm(l) !== norm(label); });
-        parent = (links.length > 1 && placeChain(cloud, links, t, res)) || resolveParent(cloud, tp.parent, t, res);
+        /* nothing names a subject above it: the topic is a subject of its own, under the learner's name (never a
+           fixed catch-all, never the last branch) */
+        if (!links.length && !cleanLabel(tp.parent) && subjects(cloud).length < LIMITS.subjects) {
+          var own = addNode(cloud, { label: label, parent: null, weight: 1, born: t });
+          own.weight += sig.w * 0.5; own.touched = t; warm(own, HEAT.chat * sig.w, t);
+          res.parentsCreated.push(own.id);
+          return;
+        }
+        parent = (links.length > 1 && placeChain(cloud, links, t, res)) || resolveParent(cloud, links.length ? links[0] : tp.parent, t, res);
         if (!makeRoom(cloud, parent.id, false)) { parent.weight += 0.5; parent.touched = t; res.strengthened.push(parent.id); return; }
         n = addNode(cloud, { label: label, parent: parent.id, weight: 0, born: t });
         res.created.push(n.id);

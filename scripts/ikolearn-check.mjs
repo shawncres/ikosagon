@@ -14,7 +14,7 @@ import { DEFAULT_MODEL, FALLBACK_MODEL, GEMINI_BASE, chatBody, jsonBody, readSse
 import { MODEL_LIMITS, streamText, generateJson, llmConfig, llmReady } from "../lib/ikolearn/llm.ts";
 import { toMessages } from "../lib/ikolearn/openai-compatible.ts";
 import { budgetSpend } from "../lib/ikolearn/service.ts";
-import { clarifySystem, CLARIFY_STYLES } from "../lib/ikolearn/prompts.ts";
+import { clarifySystem, CLARIFY_STYLES, parseTricky } from "../lib/ikolearn/prompts.ts";
 import { LEARN_GUARDS, createLearnState, prepare, chatEvents, eventStream, cardFor, adjacentFor, lessonEvents, pathFor, testFor, createFor, examplesFor, EXAMPLES_CACHE, EXAMPLES_NO_STORE, EXAMPLES_STALE, EXAMPLES_RETRY, retryable } from "../lib/ikolearn/service.ts";
 import { setLlmLogSink, redact, LOG_DETAIL_CHARS } from "../lib/ikolearn/llm.ts";
 /* provider failures log one JSON line each; the checks keep them (quiet output) and assert on them */
@@ -405,6 +405,15 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   eq(parseLessonBlock('{"steps":["A","B"],"next":"B","choices":[{"name":"C"},{"name":"D","kind":"side"}]}', "", "X", true), { steps: ["A", "B"], next: "B", choices: [{ name: "C", kind: "deeper", why: "" }, { name: "D", kind: "side", why: "" }], questions: [] }, "parseLessonBlock: steps + choices");
   eq(parseLessonBlock('{"steps":[],"choices":[],"end":true}', "", "X", false), { steps: [], next: "", choices: [], questions: [], end: true }, "parseLessonBlock: end alone is kept");
   ok(parseLessonBlock("junk") === null, "parseLessonBlock: junk -> null");
+  // flow2: "Still tricky" is prepared in the lesson's own call (0 extra calls), kept as plain text
+  {
+    const tb = parseLessonBlock('{"steps":[],"choices":[],"questions":[{"q":"Which comes first?","options":["a","b","c"],"answer":0}],"tricky":"Think of **a recipe**: the steps go in order. <b>Which step comes first?</b>"}', "", "X", false);
+    ok(tb && /^Think of a recipe: the steps go in order\./.test(tb.tricky) && !/[<>*]/.test(tb.tricky) && /Which step comes first\?/.test(tb.tricky), "parseLessonBlock: the prepared tricky clarification, plain text only", tb && tb.tricky);
+    ok(parseTricky("too short") === "" && parseTricky(42) === "" && parseTricky("x ".repeat(500)).length <= 604, "parseTricky: too short or not text -> dropped; long -> cut at a word");
+    ok(!("tricky" in parseLessonBlock('{"steps":[],"choices":[],"questions":[{"q":"Which comes first?","options":["a","b","c"],"answer":0}]}', "", "X", false)), "parseLessonBlock: no tricky given -> none (the device writes one on demand, one call)");
+    const ls = lessonSystem({ ...LI, focus: "Fractions" });
+    ok(/"tricky":"\.\.\."/.test(ls) && /tricky: kept ready in case the learner says "Fractions" is still tricky \(shown only then\)/.test(ls) && /then one short question that checks that key point/.test(ls), "lesson prompt: asks for the prepared Still tricky clarification (simpler + one targeted question), in the same call");
+  }
   ok(ps.includes("Role: path") && ps.includes("Pairs To 10") && /easiest and most foundational first/.test(ps) && /"end": true/.test(ps), "path prompt: ordered subtopics, reuses known, can end a branch");
   ok(!/montessori|waldorf|bloom|common core|khan|duolingo|reggio|curriculum framework|ib programme/i.test(ls + ps), "lesson/path prompts never name external frameworks");
   eq(lessonContents(LI)[0].parts[0].text, 'Please teach me "Number Bonds".', "lesson contents: one user turn");
@@ -2639,8 +2648,9 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const inSubject = (cl, x, sid) => C.subjectOf(cl, x).id === C.subjectOf(cl, sid).id;
   // Shawn's case (Oct 22): a Data Management lesson whose path is Tables > Queries > Filtering. The model's fork
   // offered Python Basics (an unrelated topic in the learner's top 10, "Review your strong coding skills") and Tables.
-  // The continuation of this lesson (Tables, Your Path's "next") must be the pre-selected pick; the unrelated top-10
-  // topic is offered as a different path, with an honest reason.
+  // The continuation of this lesson (Tables, Your Path's "next") must be the pre-selected pick. Since flow2, Where Next
+  // holds only this lesson's own subject (continue, then related or deeper steps); the unrelated top-10 topic, and any
+  // other branch, is offered in "Also in progress" (the place for switching context).
   const dm = C.create("Shawn", T0);
   const dkids = (names) => names.map((nm, i) => ({ name: nm, order: i + 1, score: 0.5 - i * 0.05, why: "", role: "core" }));
   C.applyCreate(dm, { items: [
@@ -2663,16 +2673,17 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   let dw = P.whereNext(dm, dmId, tables);
   const kinds = dw.choices.map((c) => DL(dm.nodes[c.id].label).label + ":" + c.kind);
   ok(dw.next === tables && dw.choices[0].id === tables && dw.choices[0].kind === "path", "Where Next (Shawn's case): Tables, the continuation, is first and pre-selected, not the top-10 topic", JSON.stringify(kinds));
-  ok(dw.choices.length === 3 && dw.choices[1].kind === "branch" && inSubject(dm, dw.choices[1].id, dmId) && dw.choices[2].kind === "other", "Where Next: three clear choices: continue, a related branch, a different path", JSON.stringify(kinds));
-  ok(dw.choices[2].why === "" && P.treeDist(dm, dmId, dw.choices[2].id) >= 3 && dw.choices.findIndex((c) => c.id === py) !== 0 && dw.choices.filter((c) => c.kind !== "other").every((c) => c.id !== py), "Where Next: the unrelated top-10 topic never beats the continuation, nor counts as a branch; the different path carries no claim about the learner", JSON.stringify(dw.choices));
+  eq(kinds, ["Tables:path", "Queries:branch", "Filtering:branch"], "Where Next: continue this path, then related or deeper steps in the same subject (no different-path slot)");
+  ok(dw.choices.every((c) => inSubject(dm, c.id, dmId) && P.treeDist(dm, dmId, c.id) <= P.PLAN.nearDist) && !dw.choices.some((c) => c.kind === "other"), "Where Next: every choice belongs to this lesson's own parent (within 2 steps)", JSON.stringify(dw.choices));
+  ok(!dw.choices.some((c) => c.id === py) && dw.others.includes(py), "Where Next: the unrelated top-10 topic is never in Where Next; it waits in Also in progress", JSON.stringify(dw.others.map((x) => dm.nodes[x].label)));
   ok(dw.others.every((x) => !dw.choices.some((c) => c.id === x)) && dw.others.includes(DL("Owls").id) === !dw.choices.some((c) => c.id === DL("Owls").id), "Where Next: in-progress topics deduped against the choices");
   // the learner's own pick stays pre-selected; the continuation is still offered first
   C.pickChoice(dm, dmId, py);
   dw = P.whereNext(dm, dmId, py);
-  ok(dw.next === py && dw.choices[0].id === tables && dw.choices.find((c) => c.id === py).kind === "other", "Where Next: the learner's own pick stays pre-selected; continue this path still comes first");
+  ok(dw.next === py && dw.choices[0].id === tables && !dw.choices.some((c) => c.id === py) && dw.others[0] === py, "Where Next: the learner's own pick on another path stays pre-selected, leading Also in progress; continue this path still comes first");
   ok(P.pathNext(dm, dmId) === tables, "Your Path's next doesn't jump to a pick on another path");
   dm.nodes[dmId].fork.picked = null;
-  // no fork at all: the third option still comes from the learner's own cloud, another subject
+  // no fork at all: Where Next still fills from this subject only; other subjects never appear there
   const nf = C.create("Nia", T0);
   C.applyCreate(nf, { items: [
     { node: { name: "Data Management", chain: ["Computing"] }, card: {}, children: dkids(["Tables", "Queries", "Filtering"]) },
@@ -2681,9 +2692,11 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const NL = (l) => Object.values(nf.nodes).find((x) => x.label === l);
   C.engage(nf, NL("Data Management").id, "open", T0 + 50);
   const nw = P.whereNext(nf, NL("Data Management").id, null);
-  ok(nw.choices[0].id === NL("Tables").id && nw.choices[1] && nw.choices[1].kind === "branch" && nw.choices[2] && nw.choices[2].kind === "other" && ["Birds", "Songbirds", "Owls"].includes(nf.nodes[nw.choices[2].id].label) && !P.finished(nf, nw.choices[2].id), "Where Next without a fork: a different path from the learner's own cloud (procedural, 0 calls)", JSON.stringify(nw.choices.map((c) => nf.nodes[c.id].label)));
+  eq(nw.choices.map((c) => nf.nodes[c.id].label + ":" + c.kind), ["Tables:path", "Queries:branch", "Filtering:branch"], "Where Next without a fork: continue + related steps, from this subject only (procedural, 0 calls)");
+  ok(nw.others.length === 0, "Where Next without a fork: nothing started elsewhere, so Also in progress is empty (never padded with unstarted topics)", JSON.stringify(nw.others));
   C.engage(nf, NL("Owls").id, "open", T0 + 60);
-  ok(P.whereNext(nf, NL("Data Management").id, null).choices[2].id === NL("Owls").id, "Where Next: the different path prefers something already in progress elsewhere");
+  const nw2 = P.whereNext(nf, NL("Data Management").id, null);
+  ok(!nw2.choices.some((c) => c.id === NL("Owls").id) && nw2.others[0] === NL("Owls").id, "Where Next: a topic in progress in another subject shows in Also in progress, not in Where Next");
   // a finished fork choice drops out
   C.engage(dm, tables, "got", T0 + 2000); dm.nodes[tables].mastery = 1;
   ok(C.isDone(dm, tables) ? !P.whereNext(dm, dmId, null).choices.some((c) => c.id === tables) : true, "Where Next: a finished choice drops out");
@@ -2723,30 +2736,42 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     ok(how === "title" ? pyIds.length === 1 && c.nodes[pyIds[0]].ghost && fk2.ids.includes(pyIds[0]) : P.finished(c, pyIds[0]), `fixture (${how}): Python Basics is finished${how === "title" ? " (a card only; the model's choice is a new ghost by the same name)" : ""}`);
     const sw = P.whereNext(c, dmN.id, P.pathNext(c, dmN.id));
     const shown = sw.choices.map((x) => x.id).concat(sw.others);
-    ok(!shown.some((x) => pyIds.includes(x)), `Where Next (${how}): Python Basics appears nowhere (3 slots and Also in progress)`, JSON.stringify(shown.map((x) => c.nodes[x].label)));
+    ok(!shown.some((x) => pyIds.includes(x)), `Where Next (${how}): Python Basics appears nowhere (Where Next and Also in progress)`, JSON.stringify(shown.map((x) => c.nodes[x].label)));
     ok(sw.choices[0].id === L("Tables").id && P.pathNext(c, dmN.id) === L("Tables").id, `Where Next (${how}): continue = Tables = Your Path's next`);
-    const third = sw.choices[2];
-    ok(third && third.kind === "other" && !P.finished(c, third.id) && P.treeDist(c, dmN.id, third.id) >= 3, `Where Next (${how}): the third option is something unfinished on another path`, JSON.stringify(third && c.nodes[third.id].label));
+    ok(sw.choices.every((x) => x.kind !== "other" && P.treeDist(c, dmN.id, x.id) <= P.PLAN.nearDist), `Where Next (${how}): only this subject's own steps`, JSON.stringify(sw.choices.map((x) => c.nodes[x.id].label)));
+    ok(sw.others.includes(L("Owls").id) && !sw.choices.some((x) => x.id === L("Owls").id), `Where Next (${how}): Owls, in progress on another path, is in Also in progress`);
     ok(shown.every((x) => !P.finished(c, x)), `Where Next (${how}): nothing finished anywhere`);
   }
   {
-    // the different path: unfinished in progress elsewhere first (Owls), else an unstarted topic in another branch
+    // other paths: in progress elsewhere goes to Also in progress (Owls); unstarted topics elsewhere are not pushed at all
     const a1 = shawnDone("completed", true), w1 = P.whereNext(a1.c, a1.dmN.id, null);
-    ok(a1.c.nodes[w1.choices[2].id].label === "Owls", "Where Next: the different path prefers an unfinished topic in progress elsewhere", a1.c.nodes[w1.choices[2].id].label);
-    const a2 = shawnDone("completed", false), w2 = P.whereNext(a2.c, a2.dmN.id, null), t2 = a2.c.nodes[w2.choices[2].id];
-    ok(t2 && !t2.opened && !(t2.engaged > 0) && !P.finished(a2.c, t2.id) && t2.label !== "Python Basics" && (t2.made || a2.c.nodes[t2.parent].made), "Where Next: ... else an unstarted topic in another branch (never a bare category)", t2 && t2.label);
+    ok(w1.others.map((x) => a1.c.nodes[x].label).includes("Owls") && w1.choices.every((x) => a1.c.nodes[x.id].label !== "Owls"), "Where Next: a topic in progress elsewhere is offered in Also in progress", JSON.stringify(w1.others.map((x) => a1.c.nodes[x].label)));
+    const a2 = shawnDone("completed", false), w2 = P.whereNext(a2.c, a2.dmN.id, null);
+    ok(w2.choices.every((x) => P.treeDist(a2.c, a2.dmN.id, x.id) <= P.PLAN.nearDist) && w2.others.every((x) => { const m = a2.c.nodes[x]; return m.opened || m.engaged > 0 || m.correct > 0; }), "Where Next: nothing started elsewhere: no unstarted topic from another branch is pushed into either list");
     // a slot with nothing unfinished to offer is left out, never padded with finished topics
     const a3 = shawnDone("completed", false);
     Object.values(a3.c.nodes).forEach((x) => { if (x.parent && !["Data Management", "Tables", "Queries", "Filtering", "Joins"].includes(x.label)) { x.ghost = false; x.doneAt = T0; } });
     const w3 = P.whereNext(a3.c, a3.dmN.id, null);
-    ok(w3.choices.every((x) => x.kind !== "other") && w3.choices.every((x) => !P.finished(a3.c, x.id)), "Where Next: no unfinished different path left: the slot is left out (never padded)", JSON.stringify(w3.choices));
+    ok(w3.choices.every((x) => x.kind !== "other") && w3.choices.every((x) => !P.finished(a3.c, x.id)) && w3.others.every((x) => !P.finished(a3.c, x)), "Where Next: everything elsewhere finished: nothing padded in, nothing finished shown", JSON.stringify(w3.choices));
     // the learner's old pick on a card that has since been finished is no longer pre-selected
     const a4 = shawnDone("completed");
     const pid4 = Object.values(a4.c.nodes).find((x) => x.label === "Python Basics").id;
     a4.c.nodes[a4.dmN.id].fork.picked = pid4;
     ok(P.whereNext(a4.c, a4.dmN.id, null).next === a4.L("Tables").id, "Where Next: a pick that's finished since is not pre-selected (the continuation is)");
   }
-  ok(P.treeDist(dm, tables, DL("Queries").id) === 2 && P.treeDist(dm, dmId, py) === 3 && P.treeDist(dm, tables, DL("Owls").id) === Infinity, "tree distance: siblings 2, a cousin topic 3 (a different path), another subject far");
+  ok(P.treeDist(dm, tables, DL("Queries").id) === 2 && P.treeDist(dm, dmId, py) === 3 && P.treeDist(dm, tables, DL("Owls").id) === Infinity, "tree distance: siblings 2, a cousin topic 3 (another path: Also in progress), another subject far");
+
+  // flow2: a topic that names nothing above it becomes its own parent under the learner's name (no fixed catch-all subject)
+  {
+    const cp = C.create("Robin", T0);
+    C.applyCreate(cp, { items: [{ node: { name: "Ocean Life", chain: [] }, card: {}, children: [{ name: "Coral Reefs", order: 1, score: 0.5, why: "", role: "core" }] }] }, { t: T0 });
+    const r = C.applyTopics(cp, [{ name: "Astronomy", signal: "explored" }], T0 + 10);
+    const astro = Object.values(cp.nodes).find((x) => x.label === "Astronomy");
+    ok(astro && !astro.parent && r.parentsCreated.includes(astro.id) && C.subjects(cp).length === 2, "no subject named: the topic is a new parent under the learner's name", JSON.stringify(r));
+    ok(!Object.values(cp.nodes).some((x) => x.label === "Curiosities") && !/Curiosities/.test(fs.readFileSync("public/ikolearn/cloud-model.js", "utf8")), "no fixed catch-all subject left (procedural parents only)");
+    C.applyTopics(cp, [{ name: "Tide Pools", parent: "Ocean Life", signal: "explored" }], T0 + 20);
+    ok(cp.nodes[Object.values(cp.nodes).find((x) => x.label === "Tide Pools").parent].label === "Ocean Life", "a named subject still takes its topic as a child");
+  }
 
   // ---------- chat placement: a new subject is its own parent, a subtopic goes under its parent, unclear asks (0 calls) ----------
   {
@@ -2857,13 +2882,25 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const app = fs.readFileSync("public/ikolearn/app.js", "utf8"), html = fs.readFileSync("public/ikolearn/index.html", "utf8"), css = fs.readFileSync("public/ikolearn/styles.css", "utf8");
   const fin = app.slice(app.indexOf("  function finishLesson(kind) {"), app.indexOf("  /* ---------- \"Still tricky\""));
   ok(fin.length > 200 && !/postJson\(|stream\(|openLesson\(|createNext\(|linkBtn\("Try again"/.test(fin) && /That's it\. /.test(fin), "I've got it: confirmed on the device: no call, no auto-advance, no Try again; a short \"That's it.\"");
-  ok(/renderClarify\(id, true\)/.test(fin) && /What would help\?/.test(fin), "Still tricky: stays in the lesson and offers the clarifications");
+  ok(/prepareClarify\(id\)/.test(fin) && /Here's another way to see it\./.test(fin) && !/openLesson\(|showLesson\(false\)/.test(fin), "Still tricky: stays in the lesson, with a clarification already there");
+  {
+    const prep = app.slice(app.indexOf("  function prepareClarify(id) {"), app.indexOf("  function focusClar(style) {"));
+    ok(/les\.tk && !\(les\.cl && les\.cl\.simpler\)\) \{ les\.cl = les\.cl \|\| \{\}; les\.cl\.simpler = les\.tk; save\(\); \}/.test(prep) && /else clarify\(id, "simpler"\);/.test(prep) && /focusClar\("simpler"\)/.test(prep) && !/stream\(|postJson\(/.test(prep), "Still tricky: the lesson's prepared simpler explanation is shown at once (0 calls); an older lesson without one writes it (1 call)");
+    ok(/if \(tricky\) state\.lessons\[id\]\.tk = tricky;/.test(app) && /tricky = typeof ev\.tricky === "string"/.test(app) && /if \(state\.lessons\[id\] && state\.lessons\[id\]\.cl\) renderClarify/.test(app), "Still tricky: prepared in the lesson's own call and kept with the lesson (tk), never shown until asked");
+    ok(/linkBtn\("Talk it through in chat", function \(\) \{ askInChat\(id, "I'm still finding "/.test(app) && /function askInChat\(id, ask\)/.test(app), "Still tricky: chat is one tap away, with the topic in focus and the question started");
+  }
   const cl = app.slice(app.indexOf("  function clarify(id, style) {"), app.indexOf("  /* ---------- Where Next"));
   ok((cl.match(/stream\("\/chat"/g) || []).length === 1 && /mode: "clarify", clarify: style/.test(cl) && /state\.lessons\[id\]\.cl\[style\] = text\.trim\(\)/.test(cl) && /if \(les && les\.cl && les\.cl\[style\]\)/.test(cl), "clarify: one streamed chat call per option, kept with the lesson (asking again: 0 calls)");
   ok(/linkBtn\("Try again", function \(\) \{ clarify\(id, style\); \}\)/.test(cl) && /r\.reason === "aborted"/.test(cl), "clarify: Try again only on a real failure, never after a cancel");
   ok(/\["simpler", "Explain it more simply"\], \["example", "Show me a worked example"\], \["question", "Ask me a question"\]/.test(app), "clarify: the three options");
-  const wnx = app.slice(app.indexOf("  function renderWhereNext() {"), app.indexOf("  function askInChat(id)"));
-  ok(/P\.whereNext\(state\.cloud, id, nextStep\(id\)\)/.test(wnx) && /var sel = items\.indexOf\(state\.pick\) >= 0 \? state\.pick : w\.next \|\| items\[0\];/.test(wnx) && /state\.pick = x; renderWhereNext\(\);/.test(wnx) && /aria-checked/.test(wnx) && /D\.cardSpec\(state\.cloud, sel\)/.test(wnx) && !/postJson\(|stream\(/.test(wnx), "Where Next: next step pre-selected, the learner picks and opens; its card drawn on the device (0 calls)");
+  const wnx = app.slice(app.indexOf("  function renderWhereNext() {"), app.indexOf("  function askInChat(id, ask)"));
+  ok(/P\.whereNext\(state\.cloud, id, nextStep\(id\)\)/.test(wnx) && /var sel = items\.indexOf\(state\.pick\) >= 0 \? state\.pick : w\.next \|\| items\[0\];/.test(wnx) && /state\.pick = x; renderWhereNext\(\);/.test(wnx) && /aria-checked/.test(wnx) && !/postJson\(|stream\(/.test(wnx), "Where Next: next step pre-selected, the learner picks and opens (0 calls)");
+  ok(/mk\("button", "btn sm wn-act", cont \? "Continue" : "Open"\)/.test(wnx) && /b\.appendChild\(act\);/.test(wnx) && /if \(!on\) \{ act\.tabIndex = -1; act\.setAttribute\("aria-hidden", "true"\); \}/.test(wnx) && !/wn-go/.test(wnx), "Where Next: the action (Continue / Open) sits inside each box, live only in the selected one");
+  ok(/group\("Also in progress", "wn-alt"\)/.test(wnx) && /mk\("p", "wn-sub", "Also in progress"\)/.test(wnx), "Where Next: other branches in their own group, Also in progress");
+  {
+    const css = fs.readFileSync("public/ikolearn/styles.css", "utf8");
+    ok(/\.wn-opt \{ box-sizing: border-box; height: 84px;/.test(css) && /\.wn-label \{ display: -webkit-box; -webkit-line-clamp: 2;/.test(css) && /\.wn-opt \.why \{[^}]*text-overflow: ellipsis;/.test(css) && /\.wn-act \{ visibility: hidden; \}/.test(css) && /\.wn-opt\.on \.wn-act \{ visibility: visible; \}/.test(css) && !/\.wn-opt\.path \.wn-label \{ font-weight/.test(css), "Where Next: every box the same height and weight; long titles clamp evenly; the action's room kept in each box");
+  }
   ok(/renderWhereNext\(\);/.test(app.slice(app.indexOf("  function renderLessonPath() {"), app.indexOf("  function renderLessonPath() {") + 200)) && /<div id="l-next" class="where-next"><\/div>/.test(html) && /<div id="l-clar" class="l-clar"/.test(html) && /\.wn-opt\.on \{/.test(css) && /\.clar-opts \{/.test(css), "Where Next and the clarifications are part of every lesson");
   const lr2 = app.slice(app.indexOf("  function lessonReady(id, wasNew) {"), app.indexOf("  /* ---------- \"Still tricky\""));
   ok(lr2.length > 500 && !/Next up|nextLine\(/.test(lr2), "lessons: no \"Next up\" link that jumps ahead: Where Next has it, pre-selected");
@@ -2876,10 +2913,10 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const rf = app.slice(app.indexOf("  function renderFork(id) {"), app.indexOf("  /* Opens a node as a lesson: from the cache"));
   ok(rf.length > 100 && !/Pick one|orderChoices|fork-opt/.test(rf) && !/Where next\? Pick one/.test(app) && (app.match(/mk\("p", "l-head", "Where next"\)/g) || []).length === 1, "one Where Next: the fork's choices are in it, no separate fork block");
   ok(/if \(forkIds\.indexOf\(to\) >= 0\) \{ C\.pickChoice\(state\.cloud, id, to\);/.test(wnx) && /w\.choices\.map\(function \(c\) \{ return c\.id; \}\)\.concat\(w\.others\)/.test(wnx), "Where Next: the three choices, then in progress; opening a fork choice records it as the learner's pick");
-  ok(/"Next on this path"/.test(wnx) && /"Try a different path"/.test(wnx) && /"Goes deeper into "/.test(wnx) && !/In your top 10|topRanks\(/.test(wnx), "Where Next: honest reasons from the cloud (no top-10 boast, no claims about the learner)");
+  ok(/"Next on this path"/.test(wnx) && !/"Try a different path"/.test(wnx) && /"Goes deeper into "/.test(wnx) && /"In progress · "/.test(wnx) && !/In your top 10|topRanks\(/.test(wnx), "Where Next: honest reasons from the cloud (no top-10 boast, no claims about the learner, no different-path slot)");
   ok(/var rec = P\.pathNext\(state\.cloud, id\);/.test(app), "Your Path marks the same next step Where Next continues with");
   ok(/if \(!quizSaidIt\(\)\) el\.lStatus\.appendChild\(mk\("strong", "yes", "That's it\. "\)\)/.test(fin) && /function quizSaidIt\(\)/.test(app) && /if \(quizSaidIt\(\)\) \{ var dup = el\.lStatus\.querySelector\("strong\.yes"\)/.test(app), "\"That's it.\" is said once (the quiz or the status line, never both)");
-  ok(/var co = el\.lClar\.querySelector\("\.clar-opts"\);\s*if \(co\) co\.parentNode\.removeChild\(co\);/.test(fin) && /renderClarify\(id, !\(n\.mastery >= C\.MASTERED\)\)/.test(app), "I've got it hides the clarify options (answers already shown stay)");
+  ok(/\[".clar-opts", ".clar-chat"\]\.forEach\(function \(q\) \{ var co = el\.lClar\.querySelector\(q\); if \(co\) co\.parentNode\.removeChild\(co\); \}\);/.test(fin) && /renderClarify\(id, !\(n\.mastery >= C\.MASTERED\)\)/.test(app), "I've got it hides the clarify options and the chat link (answers already shown stay)");
   const nt = app.slice(app.indexOf("  function notice(id) {"), app.indexOf("  el.pLesson.addEventListener"));
   ok(nt.length > 300 && !/lock\(/.test(nt), "the note never holds the app busy (navigation and lessons stay available while it's written)");
   ok(/\} else if \(r\.reason === "aborted"\) \{/.test(app) && /reason: signal && signal\.aborted \? "aborted" : "offline"/.test(app), "a cancelled call is never shown as a failure");
@@ -2919,7 +2956,8 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   album.forEach((pg) => { const sj = m.subjects.find((x) => x.label === pg.subject); ok(sj && sj.covered === pg.covered, `family: ${pg.subject} agrees with the album's covered count`); });
   const anchor = c.active, wn = P.whereNext(c, anchor, P.nextStep(c, anchor));
   eq(m.next.choices.map((x) => x.id), wn.choices.map((x) => x.id), "family: Where Next = whereNext(nextStep) from the active topic (the lesson's rule)");
-  eq(m.next.choices.map((x) => x.kind), ["path", "other"], "family: Where Next kinds come straight from the rule");
+  eq(m.next.choices.map((x) => x.kind), wn.choices.map((x) => x.kind), "family: Where Next kinds come straight from the rule");
+  ok(m.next.choices.every((x) => x.kind !== "other"), "family: Where Next has no different-path slot (the same rule as the lesson)");
   ok(m.next.from === "Constellations" && m.next.choices[0].label === "Star Maps", "family: continues the path first (Star Maps after Constellations)");
   ok(m.next.choices.every((x) => !P.finished(c, x.id)), "family: Where Next never offers something finished");
   // nextStep moved to the orchestrator: same answers as the app's old local rule

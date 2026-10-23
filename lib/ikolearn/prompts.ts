@@ -32,6 +32,8 @@ export const LEARN_LIMITS = {
   replyChars: 4_000,
   /** clarify: how much of the lesson the device sends back as context */
   lessonExcerptChars: 1_500,
+  /** the lesson's prepared "Still tricky" clarification (written in the same call, shown only if asked) */
+  trickyChars: 600,
   lessonChars: 6_000,
   trailChars: 200,
   known: 16,
@@ -137,7 +139,7 @@ export type Question = { q: string; options: string[]; answer: number };
 /** The hidden block at the end of a lesson: path steps (only when asked), fork choices, check questions, the card line, and whether the branch ends here. */
 /** Further reading and viewing: only a title and a search phrase (never a link); the app builds allowlisted search links. */
 export type Reading = { title: string; q: string; kind: "read" | "watch" };
-export type LessonBlock = { steps: string[]; next: string; choices: Choice[]; questions: Question[]; blurb?: string; end?: boolean; reading?: Reading[] };
+export type LessonBlock = { steps: string[]; next: string; choices: Choice[]; questions: Question[]; blurb?: string; end?: boolean; reading?: Reading[]; tricky?: string };
 
 /* ---------- input cleaning (everything from the browser is untrusted) ---------- */
 
@@ -341,7 +343,7 @@ export function lessonSystem(i: LearnInput): string {
 /** One hidden block after every lesson (no extra call): check questions, the fork of 2 or 3 choices, the card line, and the path when asked. */
 const lessonBlockRules = (i: LearnInput) =>
   `After the lesson, on a new line, write ${PATH_OPEN} then one JSON object then ${PATH_CLOSE}, and nothing after it. The learner never sees this block as text. ` +
-  'The JSON is {"questions":[{"q":"...","options":["...","...","..."],"answer":0}],"blurb":"...","steps":["..."],"next":"...","choices":[{"name":"...","kind":"next|deeper|side","why":"..."}],"reading":[{"title":"...","q":"...","kind":"read|watch"}],"end":false}. ' +
+  'The JSON is {"questions":[{"q":"...","options":["...","...","..."],"answer":0}],"blurb":"...","steps":["..."],"next":"...","choices":[{"name":"...","kind":"next|deeper|side","why":"..."}],"reading":[{"title":"...","q":"...","kind":"read|watch"}],"tricky":"...","end":false}. ' +
   `questions: 2 or 3 multiple-choice questions that check understanding of what this lesson explained (not new facts, not trick questions), each with 3 short options (one clearly right, the others believable), and answer = the position of the right option counting from 0. Short and kind, at the learner's level. ` +
   `blurb: one line under 12 words that says what "${i.focus}" is, for its card, without the learner's name. ` +
   (i.wantPath ? `steps and next: the child topics of "${i.focus}". ${pathRules(i)} ` : 'steps: [] and next: "" (no child topics wanted this time). ') +
@@ -350,7 +352,8 @@ const lessonBlockRules = (i: LearnInput) =>
   `one with kind "deeper" that goes further into "${i.focus}" itself, and if it fits one with kind "side" for a nearby topic in the same subject. ` +
   "Each name is 1 to 3 words, Title Case, never the learner's name; why is a short friendly reason, under 10 words. " +
   `If "${i.focus}" is a natural end with nothing deeper worth learning, set "end": true and leave out the "deeper" choice. ` +
-  "reading: 2 or 3 good ways to read or watch more about it: title (what to look for, under 8 words) and q (a plain search phrase, 2 to 6 words), kind read or watch. Never a link, web address, website or channel name.";
+  "reading: 2 or 3 good ways to read or watch more about it: title (what to look for, under 8 words) and q (a plain search phrase, 2 to 6 words), kind read or watch. Never a link, web address, website or channel name. " +
+  `tricky: kept ready in case the learner says "${i.focus}" is still tricky (shown only then): 2 or 3 short sentences that explain the key idea more simply, with one everyday comparison, then one short question that checks that key point. Plain text, under 70 words, no greeting, no "great question".`;
 
 export function lessonContents(i: LearnInput) {
   return [{ role: "user" as const, parts: [{ text: `Please teach me "${i.focus}".` }] }];
@@ -936,13 +939,23 @@ export function parseLessonBlock(raw: unknown, learnerName = "", focus = "", wan
   const blurb = parseBlurb(obj.blurb, learnerName);
   const end = obj.end === true;
   const reading = parseReading(obj.reading);
+  const tricky = parseTricky(obj.tricky);
   const steps = p ? p.steps : [];
   if (!steps.length && !choices.length && !questions.length && !end) return null;
   const out: LessonBlock = { steps, next: p ? p.next : "", choices, questions };
   if (blurb) out.blurb = blurb;
   if (end) out.end = true;
   if (reading.length) out.reading = reading;
+  if (tricky) out.tricky = tricky;
   return out;
+}
+
+/** The prepared "Still tricky" clarification: plain text, a few sentences, never markup. Too short to help: dropped. */
+export function parseTricky(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  let t = plainReply(raw).replace(/[<>{}[\]`*_#|\\]/g, " ").replace(/[ \t]+/g, " ").trim();
+  if (t.length > LEARN_LIMITS.trickyChars) t = t.slice(0, LEARN_LIMITS.trickyChars).replace(/\s+\S*$/, "") + "...";
+  return t.length >= 30 ? t : "";
 }
 
 export function parseCard(raw: unknown): Card | null {
