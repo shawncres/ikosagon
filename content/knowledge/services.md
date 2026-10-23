@@ -5,27 +5,37 @@ slug: services
 
 # Services
 
-We at Ikosagon design and ship software that upgrades existing processes for production use — lean, cost-aware, and built to survive real volume on-prem or in the cloud.
+We at Ikosagon take the time to understand how your business really runs. Then we connect the right tools, improve the way work gets done, and bring in AI where it truly helps, without putting what already works at risk. The result is new efficiencies you can see, like time saved and fewer manual steps. We build lean and cost-aware, on your own servers or in the cloud.
+
+## How we work
+
+We at Ikosagon follow five steps on every project:
+
+1. Understand. We learn your business the way an expert in your field would: your customers, your team, and where the day gets stuck.
+2. Connect. We find the right technology to tie your tools and data together, so information flows instead of being typed in twice.
+3. Improve. We simplify the steps that slow people down, and shape the software around how your team actually works.
+4. Deliver. You get results you can measure, like time saved, fewer manual steps and fewer mistakes to fix later. (No invented numbers: results depend on the project.)
+5. Grow safely. We bring in new AI where it truly helps, and test it carefully, so the systems, data and processes that already work stay protected.
 
 ## Offers
 
 - Product engineering and MVP builds
 - Frontend systems and UI that stay readable on a phone
-- RAG and grounded chat over your policies and docs, using open-source or cloud models and vector databases (e.g. Chroma)
-- Agentic chatbots with reliable tool calling — including on small or low-parameter models — and continuous improvement loops so bots harden reactively over time
-- Custom CRM integrations with regression-minded QA and test discipline
+- AI assistants that answer from your own policies and documents (retrieval-augmented generation, or RAG), using open-source or cloud models and vector databases (e.g. Chroma)
+- AI assistants that can safely take actions in your other tools (sometimes called agentic chatbots), reliable even on small models, and improved after launch so they get better over time
+- Custom connections to your customer-record system (CRM), tested carefully so nothing breaks along the way
 - AI-integrated remote-desktop PWAs and internal operator tools
 - Natural-language contact-center–style flows (LangChain; ElevenLabs / Suno evaluated where voice or media may fit — not auto-spend on this site)
-- Edge and embedded as a service: Orin-class devices when the job needs them; ARM and ESP32 microcontroller firmware for IoT
+- Software for connected devices (IoT, sometimes called edge): Orin-class devices when the job needs them; ARM and ESP32 microcontroller firmware
 - Automation around quotes, FAQs, booking, and messy documents
 - Model APIs, including xAI · local models — guidance for SMB through enterprise-shaped scopes
 
-## How a bot earns production
+## How we keep AI trustworthy
 
-- Source adherence. The answer comes from the Chroma chunks, or it fails.
-- Refusal. If the store has no support, the agent does not invent one.
-- Misuse. Injection and off-policy answers are cases, not surprises. A failed run becomes the next regression case.
-- Token budget. Local models, tight context, tool calls only when retrieval is not enough. No auto-spend on generation APIs.
+- It answers from your sources. An answer comes from your own documents (technically: retrieved passages from a vector database such as Chroma), or it isn't given.
+- It says when it doesn't know. No made-up answers when the information isn't there.
+- It's tested against misuse. We try to trick it on purpose (prompt injection, off-topic requests), and every failure becomes a new test.
+- It keeps costs in check. Smaller, efficient models where they're enough, tight context, and no surprise spending on paid AI generation.
 
 ## Engagement shape
 
@@ -42,4 +52,4 @@ Short paid discovery when the problem is fuzzy. Fixed-scope prototypes when the 
 
 ## Contact
 
-Two doors at /contact (Build and Hiring) or email shawn@ikosagon.com.
+Two ways in at /contact: Start a project, or Hiring. Or email shawn@ikosagon.com.

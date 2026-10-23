@@ -16,8 +16,8 @@ type Message = {
 
 const STARTERS = [
   "What does Ikosagon build for small businesses?",
-  "Do you host a model on Vercel?",
-  "What is Ikosagon Learn?",
+  "How do you work with a new business?",
+  "What is IkoLearn?",
   "How do I start a project?",
 ];
 
@@ -30,7 +30,7 @@ export function ChatWidget() {
     {
       role: "assistant",
       content:
-        "Ask about Ikosagon services, projects, or how a small AI tool would fit a GTA business. I only answer from the site notes.",
+        "Ask how we at Ikosagon could help your business, or about our projects. I only answer from the site notes.",
     },
   ]);
   const listRef = useRef<HTMLDivElement>(null);
@@ -99,7 +99,7 @@ export function ChatWidget() {
         <section className="pointer-events-auto flex h-[min(32rem,78vh)] w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-border bg-background/95 shadow-[0_0_40px_rgba(43,255,232,0.12)] backdrop-blur-md">
           <header className="flex items-center justify-between border-b border-border px-4 py-3">
             <div>
-              <p className="font-mono text-xs text-accent">Grounded notes</p>
+              <p className="font-mono text-xs text-accent">Answers from our site notes</p>
               <h2 className="text-sm font-semibold">Ask Ikosagon</h2>
             </div>
             <button

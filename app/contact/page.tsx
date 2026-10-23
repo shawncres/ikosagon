@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Contact",
   description:
-    "Two doors: build with Ikosagon, or hiring (contract or selected full-time, Toronto hybrid or remote).",
+    "Start a project with Ikosagon, or get in touch about a role (contract or selected full-time, Toronto hybrid or remote).",
 };
 
 type ContactPageProps = {
@@ -18,8 +18,8 @@ export default async function ContactPage({ searchParams }: ContactPageProps) {
     <div className="container-shell section-block">
       <h1 className="mb-4 font-[var(--font-space-grotesk)] text-4xl font-bold">Contact</h1>
       <p className="mb-2 max-w-3xl text-zinc-300">
-        Two doors. Build with us at Ikosagon on a product or process upgrade — or reach Shawn for a
-        role (contract or selected full-time, Toronto hybrid or remote).
+        Two ways to reach us. Start a project with us at Ikosagon, or get in touch about a role
+        (contract or selected full-time, Toronto hybrid or remote).
       </p>
       <p className="mb-8 text-zinc-400">
         Email:{" "}
@@ -30,16 +30,16 @@ export default async function ContactPage({ searchParams }: ContactPageProps) {
 
       {showSuccess && (
         <p className="mb-6 rounded-xl border border-accent/40 bg-accent/10 px-4 py-3 text-accent" role="status">
-          Thanks. Your message was sent. I will get back to you soon.
+          Thanks. Your message was sent. We&apos;ll get back to you soon.
         </p>
       )}
 
       <div className="grid gap-8 lg:grid-cols-2">
         <section id="build" className="scroll-mt-24">
-          <h2 className="mb-2 text-2xl font-semibold">Build</h2>
+          <h2 className="mb-2 text-2xl font-semibold">Start a project</h2>
           <p className="mb-4 text-sm text-zinc-400">
-            Studio ops: tell us what process you want to upgrade, where you are stuck, and what success
-            looks like.
+            Tell us how things work today, where they get stuck, and what a good result would look
+            like. We&apos;ll take it from there.
           </p>
           <form action="/api/contact" method="POST" className="card-surface space-y-4 rounded-2xl p-6">
             <input type="hidden" name="door" value="build" />
@@ -53,18 +53,18 @@ export default async function ContactPage({ searchParams }: ContactPageProps) {
             />
             <input
               name="projectType"
-              placeholder="Project type (MVP, redesign, AI workflow, full-stack app...)"
+              placeholder="Project type (new app, linking tools, AI helper...)"
               className="w-full rounded-xl border border-border bg-black/40 px-4 py-2"
             />
             <textarea
               name="message"
               required
               rows={6}
-              placeholder="What should we upgrade or build?"
+              placeholder="What would you like to improve or build?"
               className="w-full rounded-xl border border-border bg-black/40 px-4 py-2"
             />
             <button type="submit" className="rounded-xl bg-accent px-5 py-2 font-semibold text-black">
-              Send build inquiry
+              Send project details
             </button>
           </form>
         </section>
@@ -72,8 +72,8 @@ export default async function ContactPage({ searchParams }: ContactPageProps) {
         <section id="hiring" className="scroll-mt-24">
           <h2 className="mb-2 text-2xl font-semibold">Hiring</h2>
           <p className="mb-4 text-sm text-zinc-400">
-            Role, contract or selected full-time, Toronto hybrid or remote. No public resume PDF —
-            email or use the form.
+            Have a role in mind? Contract or selected full-time, Toronto hybrid or remote. There&apos;s no
+            public resume, so email us or use the form.
           </p>
           <form action="/api/contact" method="POST" className="card-surface space-y-4 rounded-2xl p-6">
             <input type="hidden" name="door" value="hiring" />
@@ -94,7 +94,7 @@ export default async function ContactPage({ searchParams }: ContactPageProps) {
               name="message"
               required
               rows={6}
-              placeholder="Team, stack, why Shawn, timeline..."
+              placeholder="The team, the tools you use, and your timeline..."
               className="w-full rounded-xl border border-border bg-black/40 px-4 py-2"
             />
             <button type="submit" className="rounded-xl bg-accent px-5 py-2 font-semibold text-black">
@@ -111,7 +111,7 @@ export default async function ContactPage({ searchParams }: ContactPageProps) {
       </div>
 
       <p className="mt-6 text-sm text-zinc-500">
-        Prefer a call? Mention your timezone in the message and I will suggest times.
+        Prefer a call? Mention your timezone in the message and we&apos;ll suggest times.
       </p>
     </div>
   );

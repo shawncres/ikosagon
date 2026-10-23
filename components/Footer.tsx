@@ -3,9 +3,9 @@ export function Footer() {
     <footer className="border-t border-border/80 py-8">
       <div className="container-shell flex flex-col justify-between gap-3 text-sm text-zinc-400 md:flex-row">
         <div>
-          <p>© {new Date().getFullYear()} Ikosagon. Built to upgrade the systems you already run.</p>
+          <p>© {new Date().getFullYear()} Ikosagon. We improve the systems you already run.</p>
           <p className="mt-1 font-mono text-xs text-zinc-500">
-            Applied AI Engineer &amp; QA · work-from-anywhere
+            Software &amp; AI studio · working from anywhere
           </p>
         </div>
         <p className="font-mono">
