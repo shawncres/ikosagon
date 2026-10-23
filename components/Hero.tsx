@@ -5,12 +5,25 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { RingGlow } from "@/components/RingGlow";
 
-const H1_LINES = [
-  "Bringing curated, carefully crafted software experiences to your users.",
-  "Upgrade your existing processes for a post-AGI future.",
-  "Hireable AI systems, edge software, and production process upgrades.",
-  "Grounded RAG, reliable agents, and edge/IoT that hold up in production.",
-] as const;
+/** Rotating headlines. `hl` is a phrase within `text` shown in the accent colour. */
+const H1_LINES: readonly { text: string; hl?: string }[] = [
+  { text: "Curated software, carefully built for your users.", hl: "carefully built" },
+  { text: "Upgrade your existing processes for a post-AGI future." },
+  { text: "Hireable AI systems, edge software, and production process upgrades." },
+  { text: "Grounded RAG, reliable agents, and edge/IoT that hold up in production." },
+];
+
+function Headline({ line }: { line: { text: string; hl?: string } }) {
+  const at = line.hl ? line.text.indexOf(line.hl) : -1;
+  if (!line.hl || at < 0) return <>{line.text}</>;
+  return (
+    <>
+      {line.text.slice(0, at)}
+      <span className="text-accent">{line.hl}</span>
+      {line.text.slice(at + line.hl.length)}
+    </>
+  );
+}
 
 const ROTATE_MS = 6500;
 
@@ -47,9 +60,9 @@ export function Hero() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={prefersReducedMotion ? undefined : { opacity: 0, y: -10 }}
                 transition={{ duration: prefersReducedMotion ? 0 : 0.35 }}
-                className="font-[var(--font-space-grotesk)] text-5xl leading-tight font-bold md:text-6xl"
+                className="font-[var(--font-space-grotesk)] text-4xl leading-tight font-bold md:text-[2.5rem]"
               >
-                {activeLine}
+                <Headline line={activeLine} />
               </motion.h1>
             </AnimatePresence>
           </div>
@@ -65,7 +78,7 @@ export function Hero() {
               <div className="flex gap-1.5" role="tablist" aria-label="Headline slides">
                 {H1_LINES.map((line, i) => (
                   <button
-                    key={line}
+                    key={line.text}
                     type="button"
                     role="tab"
                     aria-selected={i === index}
