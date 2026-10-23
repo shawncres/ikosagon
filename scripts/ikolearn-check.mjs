@@ -1067,7 +1067,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
    * Page weight, measured on what is served: the build minifies every .js and .css (scripts/ikolearn-minify.mjs, the
    * same function here), index.html and the icon go as they are. Budget 330 KB raw / 100 KB gzip.
    */
-  const files = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js", "rank.js", "orchestrator.js", "camera.js", "icon.svg"];
+  const files = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js", "rank.js", "orchestrator.js", "camera.js", "profiles.js", "icon.svg"];
   const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
   const bytes = files.reduce((n, f) => n + served(f).length, 0);
   const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
@@ -2138,7 +2138,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(pkg.scripts.prebuild === "node scripts/ikolearn-minify.mjs" && /^\^?0\.\d+/.test(pkg.devDependencies.esbuild || ""), "minify: runs before next build (prebuild), esbuild is a dev dependency");
   const mjs = fs.readFileSync("scripts/ikolearn-minify.mjs", "utf8");
   ok(/process\.env\.VERCEL === "1" \|\| process\.env\.IKOLEARN_MINIFY === "1"/.test(mjs) && !/mangleProps|keepNames: false|bundle: true/.test(mjs) && /sourcesContent: true/.test(mjs), "minify: in place only on Vercel's build (or when asked), no property mangling, no bundling, readable source in the maps");
-  eq(minTargets(), ["app.js", "camera.js", "cloud-model.js", "cloud-view.js", "deck.js", "family.css", "family.js", "lesson.js", "orchestrator.js", "rank.js", "styles.css"], "minify: every app script and stylesheet (the parents & teachers view too)");
+  eq(minTargets(), ["app.js", "camera.js", "cloud-model.js", "cloud-view.js", "deck.js", "family.css", "family.js", "learners.js", "lesson.js", "orchestrator.js", "profiles.js", "rank.js", "styles.css"], "minify: every app script and stylesheet (the parents & teachers view and learners too)");
   const min = {}, src = {};
   minTargets().forEach((f) => { src[f] = fs.readFileSync("public/ikolearn/" + f, "utf8"); min[f] = minifyFile(f, src[f]); });
   ok(Object.keys(min).every((f) => min[f].code.length < src[f].length * 0.85 && min[f].code.endsWith(`sourceMappingURL=${f}.map${f.endsWith(".css") ? " */" : ""}\n`)), "minify: every file is smaller and links its source map");
@@ -2966,6 +2966,99 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/^IkoLearn summary for Sam, /.test(txt) && /Kept on this device\. Nothing here was sent anywhere\.$/.test(txt), "family: plain-text summary (copy or print)");
   ok(!/\b(grade|grades|percentile|behind|ahead of|years old|age|curriculum|standards?|common core|national|key stage|IB|AP)\b/i.test(txt + fam.replace(/\/\*[\s\S]*?\*\//g, "")), "family: universal wording (no grades, ages, comparisons or named frameworks)");
   ok(/For parents & teachers/.test(fam) && !/\b(kids?|child|children|student)\b/i.test(fam.replace(/\/\*[\s\S]*?\*\//g, "").replace(/childrenOf|children:/g, "")), "family: speaks to any age (no kid or student framing in the copy)");
+}
+
+/* ================= learners: yourself or guiding others (IkoProfiles, additive storage) ================= */
+{
+  const PR = require("../public/ikolearn/profiles.js");
+  const F = require("../public/ikolearn/family.js");
+  const mem = (init = {}) => { const m = new Map(Object.entries(init)); return { m, getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), snap: () => JSON.stringify([...m.entries()].sort()) }; };
+  const NOW = Date.UTC(2026, 9, 23, 18);
+  const seeded = C.serialize(seedFamily(C, P, NOW));
+  const v9 = { "ikolearn.v1.name": "Sam", "ikolearn.v1.cloud": seeded, "ikolearn.v1.thread": '[{"id":"m1","role":"model","text":"hi"}]', "ikolearn.v1.lessons": '{"x":{"at":1}}', "ikolearn.v1.seen": '{"c":{},"ev":0}' };
+
+  // an existing v9 save: untouched, read as one learner learning for themselves
+  const a = mem(v9), a0 = a.snap();
+  const imp = PR.current(a);
+  ok(imp && imp.implicit && imp.mode === "self" && imp.list.length === 1 && imp.list[0].name === "Sam" && imp.active === "p1", "learners: a v9 save is one learner (yourself), implicitly");
+  ok(!PR.reconcile(a) && PR.mode(a) === "self" && a.snap() === a0, "learners: loading a v9 save writes nothing (no migration)");
+  ok(PR.read(a, "p1", "cloud") === seeded, "learners: the v9 learner is read from the usual keys");
+  ok(PR.current(mem()) === null && PR.mode(mem()) === null, "learners: nothing saved -> no learners (the welcome asks)");
+
+  // self -> guide: the v9 learner is kept byte-for-byte, the new one starts fresh, nobody shares a cloud
+  const r1 = PR.add(a, "Robin");
+  ok(r1.ok && PR.mode(a) === "guide", "learners: adding a learner turns on guiding");
+  ok(a.getItem("ikolearn.v1.name") === "Robin" && a.getItem("ikolearn.v1.cloud") === null && a.getItem("ikolearn.v1.thread") === null && a.getItem("ikolearn.v1.lessons") === null, "learners: the new learner starts with no cloud, chat or lessons of their own");
+  ok(a.getItem(PR.slot("p1", "cloud")) === seeded && a.getItem(PR.slot("p1", "thread")) === v9["ikolearn.v1.thread"] && a.getItem(PR.slot("p1", "lessons")) === v9["ikolearn.v1.lessons"], "learners: the first learner is parked byte-for-byte");
+  // Robin learns something of her own
+  const rc = C.create("Robin", NOW); C.applyCreate(rc, { items: [{ node: { name: "Tides", chain: ["Ocean Life"] }, card: {}, children: [{ name: "Moon Pull", order: 1, score: 0.8 }, { name: "High Tide", order: 2, score: 0.7 }] }] }, { t: NOW });
+  a.setItem("ikolearn.v1.cloud", C.serialize(rc));
+  const r2 = PR.add(a, "Kai");
+  ok(r2.ok && PR.learners(a).map((p) => p.name).join() === "Sam,Robin,Kai" && PR.learners(a).find((p) => p.active).name === "Kai", "learners: a third learner, learning now");
+  eq([PR.add(a, "kai").why, PR.add(a, "  ").why, PR.add(a, "<>").why], ["taken", "name", "name"], "learners: first names only, no duplicates");
+  // switching brings each learner's own data back, exactly
+  PR.switchTo(a, "p1");
+  ok(a.getItem("ikolearn.v1.name") === "Sam" && a.getItem("ikolearn.v1.cloud") === seeded && a.getItem("ikolearn.v1.thread") === v9["ikolearn.v1.thread"] && a.getItem(PR.slot("p1", "cloud")) === null, "learners: switching back restores Sam exactly (and unparks)");
+  PR.switchTo(a, "p2");
+  const robin = C.deserialize(a.getItem("ikolearn.v1.cloud"));
+  ok(a.getItem("ikolearn.v1.name") === "Robin" && robin.name === "Robin" && C.subjects(robin).map((x) => x.label).join() === "Ocean Life" && !Object.values(robin.nodes).some((n) => n.label === "Coral Reefs"), "learners: Robin's cloud is her own (none of Sam's topics)");
+  ok(PR.read(a, "p1", "cloud") === seeded && PR.read(a, "p3", "cloud") === null && PR.read(a, "p2", "name") === "Robin", "learners: read() finds each learner wherever they live");
+  ok(PR.switchTo(a, "nope") === null && PR.switchTo(a, "p2").active === "p2", "learners: unknown ids are refused; switching to who is learning now is a no-op");
+  // a rollback (older code reads only the usual keys) sees a complete learner
+  ok(C.deserialize(a.getItem("ikolearn.v1.cloud")).v === 9 && a.getItem("ikolearn.v1.name") === "Robin", "learners: the usual keys always hold one complete v9 learner (rollback-safe)");
+  ok([...a.m.keys()].every((k) => /^ikolearn\.v1\.(name|cloud|thread|notes|lessons|tests|view|seen|profiles|p\.p\d+\.(name|cloud|thread|notes|lessons|tests|view|seen))$/.test(k)), "learners: only the usual keys, the index, and parked copies under ikolearn.v1.p.<id>.*");
+
+  // an interrupted switch is finished (or undone) on the next load
+  const b = mem({ ...a.m.size ? Object.fromEntries(a.m) : {} });
+  // simulate: parked Sam written, index says Sam, live keys half-written with Kai's
+  PR.switchTo(b, "p1");
+  b.setItem(PR.slot("p1", "name"), "Sam"); b.setItem(PR.slot("p1", "cloud"), seeded); b.setItem("ikolearn.v1.name", "Kai"); b.removeItem("ikolearn.v1.cloud");
+  ok(PR.reconcile(b) && b.getItem("ikolearn.v1.name") === "Sam" && b.getItem("ikolearn.v1.cloud") === seeded && b.getItem(PR.slot("p1", "cloud")) === null, "learners: reconcile repairs a half-finished switch from the parked copy");
+  ok(!PR.reconcile(b), "learners: reconcile is idempotent");
+
+  // guide -> self keeps everyone; Start over drops only that learner
+  PR.setMode(a, "self");
+  ok(PR.mode(a) === "self" && PR.learners(a).length === 3 && a.getItem("ikolearn.v1.name") === "Robin", "learners: learning for yourself keeps the others parked (nothing lost)");
+  PR.setMode(a, "guide");
+  ["name", "cloud", "thread", "notes", "lessons", "tests", "view", "seen"].forEach((k) => a.removeItem("ikolearn.v1." + k)); /* Start over for Robin */
+  const after = PR.dropActive(a);
+  ok(after && after.active === "p1" && a.getItem("ikolearn.v1.name") === "Sam" && a.getItem("ikolearn.v1.cloud") === seeded && PR.learners(a).map((p) => p.name).join() === "Sam,Kai", "learners: Start over for a guide's learner removes only them; the next learner carries on");
+  const solo = mem(v9); ["name", "cloud", "thread", "lessons", "seen"].forEach((k) => solo.removeItem("ikolearn.v1." + k));
+  ok(PR.dropActive(solo) === null && solo.snap() === "[]", "learners: Start over for one learner (no index) clears as before");
+
+  // the welcome's answer
+  const w = mem(); w.setItem("ikolearn.v1.name", "Ari"); const ix = PR.begin(w, "guide", "Ari");
+  ok(ix.mode === "guide" && ix.active === "p1" && PR.learners(w)[0].name === "Ari", "learners: the welcome's \"Guiding other learners\" starts the first learner");
+  const ws = mem(); ws.setItem("ikolearn.v1.name", "Ari"); PR.begin(ws, "self", "Ari");
+  ok(PR.mode(ws) === "self" && PR.learners(ws).length === 1, "learners: \"Learning for yourself\" is one learner, as before");
+  ok(PR.begin(mem(), "guide", "") === null && PR.index(mem({ "ikolearn.v1.profiles": "{oops" })) === null && PR.index(mem({ "ikolearn.v1.profiles": '{"list":[{"id":"x"},{"id":"p2","name":"Bo"}],"active":"p9"}' })).list.length === 1, "learners: a bad index is ignored or cleaned");
+
+  // the dashboard overview: every learner, each from their own data, read-only
+  const g = mem(v9); PR.add(g, "Robin"); g.setItem("ikolearn.v1.cloud", C.serialize(rc)); PR.add(g, "Kai");
+  const before = g.snap();
+  const rows = PR.learners(g).map((p) => ({ id: p.id, name: p.name, active: p.active, cloud: PR.read(g, p.id, "cloud") ? C.deserialize(PR.read(g, p.id, "cloud")) : null, lessons: {} }));
+  const ov = F.overview(rows, { now: NOW });
+  ok(g.snap() === before, "dashboard overview: reading every learner changes nothing");
+  eq(ov.learners.map((r) => [r.name, r.active]), [["Sam", false], ["Robin", false], ["Kai", true]], "dashboard overview: all learners, who's learning now marked");
+  ok(/^Sam has explored 10 topics/.test(ov.learners[0].model.lede) && /3 subjects · 10 cards · 1 test passed · last lesson/.test(ov.learners[0].line), "dashboard overview: Sam's line from Sam's own data", ov.learners[0].line);
+  ok(ov.learners[1].model.subjects.length === 1 && ov.learners[1].model.subjects[0].label === "Ocean Life" && ov.learners[1].model.cards.total === 0, "dashboard overview: Robin's line from Robin's own data (isolated)");
+  ok(ov.learners[2].model.empty && ov.learners[2].model.lede === "Hasn't started yet." && ov.learners[2].line === "", "dashboard overview: a learner who hasn't started");
+  const ot = F.overviewText(ov);
+  ok(/^IkoLearn summary for 3 learners, /.test(ot) && /== Sam ==\nSam has explored/.test(ot) && /== Kai ==\nHasn't started yet\./.test(ot), "dashboard overview: one plain-text summary for everyone");
+
+  // wiring: the app and the pages
+  const app = fs.readFileSync("public/ikolearn/app.js", "utf8"), html = fs.readFileSync("public/ikolearn/index.html", "utf8"), lj = fs.readFileSync("public/ikolearn/learners.js", "utf8"), lh = fs.readFileSync("public/ikolearn/learners.html", "utf8"), fj = fs.readFileSync("public/ikolearn/family.js", "utf8");
+  ok(/data-who="self">Learning for yourself</.test(html) && /data-who="guide">Guiding other learners</.test(html) && /<form id="name-form" autocomplete="off" hidden>/.test(html), "welcome: \"Who's learning?\" is a quick tap before the name");
+  ok(!/\b(parent|teacher|tutor|mentor|child|kid|student|adult|age)\b/i.test(html.slice(html.indexOf('id="who"'), html.indexOf('id="name-form"'))), "welcome: universal wording (no roles or ages assumed)");
+  ok(/"Your first learner's first name" : "What's your first name\?"/.test(app) && /PR\.begin\(localStorage, who, n\)/.test(app), "welcome: yourself keeps the name question; a guide names their first learner");
+  ok(/PR\.reconcile\(localStorage\)/.test(app) && /if \(PR\) PR\.dropActive\(localStorage\);/.test(app), "app: repairs an interrupted switch on load; Start over is per learner");
+  ok(/id="who-now" class="who-now" href="\/ikolearn\/learners" hidden/.test(html) && /el\.whoNow\.textContent = state\.name \+ " · switch"/.test(app), "app: a quiet switcher by the brand, only when guiding");
+  ok(/<a href="\/ikolearn\/learners" id="learners-link">Learners<\/a>/.test(html), "app: a quiet Learners link in the footer line (switch modes later)");
+  ok(html.indexOf("profiles.js") > html.indexOf("lesson.js") && html.indexOf("profiles.js") < html.indexOf("app.js") && lh.indexOf("profiles.js") < lh.indexOf("learners.js"), "pages: profiles.js loads before the app and the Learners page");
+  ok(!/fetch\(|XMLHttpRequest|innerHTML|\/api\//.test(lj + fs.readFileSync("public/ikolearn/profiles.js", "utf8").replace(/\/\*[\s\S]*?\*\//g, "")) && /<meta name="robots" content="noindex/.test(lh), "learners: 0 calls, text nodes only, noindex");
+  ok(/\{ source: "\/ikolearn\/learners", destination: "\/ikolearn\/learners\.html" \}/.test(fs.readFileSync("next.config.ts", "utf8")), "next.config: /ikolearn/learners");
+  ok((fj.match(/readOf\(id, "([a-z]+)"\)/g) || []).every((x) => /"(name|cloud|lessons)"/.test(x)) && !/setItem|removeItem|switchTo|PR\.add|setMode|dropActive|reconcile/.test(fj.replace(/\/\*[\s\S]*?\*\//g, "")), "dashboard: reads each learner's name, cloud and lessons; never writes or switches");
+  ok(C.VERSION === 9, "learners: the cloud stays v9 (no version bump)");
 }
 
 if (fails.length) {

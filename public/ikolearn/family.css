@@ -9,7 +9,7 @@
 .fam-list { list-style: none; margin: 0; padding: 0; }
 .fam-list > li { padding: 8px 0; border-bottom: 1px dotted var(--rule); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 16px; }
 .fam-list > li:last-child { border-bottom: 0; }
-.fam-list > li.fam-subject { display: block; padding: 12px 0; }
+.fam-list > li.fam-subject, .fam-list > li.fam-learner { display: block; padding: 12px 0; }
 .fam-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 16px; margin: 0 0 6px; }
 .fam-name { overflow-wrap: anywhere; }
 .fam-count, .fam-why { color: var(--soft); font-size: 15px; font-style: italic; }
@@ -33,3 +33,9 @@
   .fam-deck { grid-template-columns: repeat(3, 120px); }
   .gcard * { animation: none !important; }
 }
+.lrn-list .lrn-pick { font-size: 17px; text-align: left; }
+.lrn-list .lrn-pick[aria-current] { text-decoration: none; cursor: default; }
+.lrn-add label { display: block; margin-bottom: 10px; }
+.lrn-add input { font: inherit; color: var(--ink); background: var(--sheet); border: 1px solid var(--rule); border-radius: 12px; padding: 10px 14px; width: 100%; }
+.lrn-add input:focus { border-color: var(--ink); outline: none; }
+.fam-learner .fam-sub { margin-top: 2px; }

@@ -259,22 +259,90 @@
     }
   }
 
-  var api = { LIMIT: LIMIT, KIND: KIND, summary: summary, text: text, render: render, when: when, duration: duration, lede: lede };
+  /* ---------- guiding several learners: one line each, every one opening to its own view ---------- */
+  /* learners: [{ id, name, active, cloud, lessons }] -> { learners: [{ id, name, active, model, line }], text } */
+  function overview(learners, opts) {
+    opts = opts || {};
+    var now = opts.now || Date.now();
+    var rows = (learners || []).map(function (l) {
+      var m = summary(l.cloud, { now: now, lessons: l.lessons || {} });
+      if (!m.name) m.name = l.name;
+      if (m.empty) m.lede = "Hasn't started yet.";
+      else m.lede = lede(m);
+      var bits = [];
+      if (!m.empty) {
+        if (m.subjects.length) bits.push(plural(m.subjects.length, "subject"));
+        if (m.cards.total) bits.push(plural(m.cards.total, "card"));
+        if (m.tests.passed) bits.push(plural(m.tests.passed, "test") + " passed");
+        if (m.activity.last) bits.push("last lesson " + m.activity.last);
+      }
+      return { id: l.id, name: l.name, active: Boolean(l.active), model: m, line: bits.join(" · ") };
+    });
+    return { asOf: now, learners: rows };
+  }
+  function overviewText(o) {
+    var L = ["IkoLearn summary for " + plural(o.learners.length, "learner") + (o.asOf ? ", " + dateText(o.asOf) : "")];
+    o.learners.forEach(function (r) { L.push(""); L.push("== " + r.name + " =="); L.push(r.model.empty ? r.model.lede : text(r.model).split("\n").slice(2, -2).join("\n")); });
+    L.push(""); L.push("Kept on this device. Nothing here was sent anywhere.");
+    return L.join("\n");
+  }
+  function renderOverview(doc, o, rootEl, hrefOf) {
+    while (rootEl.firstChild) rootEl.removeChild(rootEl.firstChild);
+    var head = el(doc, "header", "fam-head");
+    head.appendChild(el(doc, "p", "fam-kicker", "For parents & teachers"));
+    head.appendChild(el(doc, "h1", "", "Your learners"));
+    head.appendChild(el(doc, "p", "fam-lede", plural(o.learners.length, "learner") + " on this device, each with their own cloud, Deck and progress."));
+    if (o.asOf) head.appendChild(el(doc, "p", "fine", "As of " + dateText(o.asOf) + ". Read from this device only; nothing is sent anywhere."));
+    rootEl.appendChild(head);
+    var s = section(doc, "Learners", "fam-learners");
+    s.appendChild(list(doc, o.learners, function (li, r) {
+      li.className = "fam-learner";
+      var row = el(doc, "p", "fam-row"), a = el(doc, "a", "fam-name", r.name); a.href = hrefOf(r.id);
+      row.appendChild(a); row.appendChild(el(doc, "span", "fam-why", r.active ? "learning now" : ""));
+      li.appendChild(row);
+      li.appendChild(el(doc, "p", "fam-sub", r.model.lede));
+      if (r.line) li.appendChild(el(doc, "p", "fam-sub", r.line));
+    }));
+    rootEl.appendChild(s);
+  }
+
+  var api = { LIMIT: LIMIT, KIND: KIND, summary: summary, text: text, render: render, when: when, duration: duration, lede: lede, overview: overview, overviewText: overviewText, renderOverview: renderOverview };
   if (node_) { module.exports = api; return; }
   root.IkoFamily = api;
 
-  /* the page: read the saved learner (never written back), draw the view, and offer Copy and Print */
+  /* the page: read the saved learner(s) (never written back), draw the view, and offer Copy and Print */
   var doc = root.document, host = doc && doc.getElementById("fam");
   if (!host) return;
-  function read(k) { try { return root.localStorage.getItem(k); } catch { return null; } }
-  var cloud = null, lessons = {};
-  try { cloud = read("ikolearn.v1.name") ? C.deserialize(read("ikolearn.v1.cloud")) : null; } catch { cloud = null; }
-  try { lessons = JSON.parse(read("ikolearn.v1.lessons") || "{}") || {}; } catch { lessons = {}; }
-  var m = summary(cloud, { lessons: lessons });
-  render(doc, m, host, cloud);
+  var PR = root.IkoProfiles, S = root.localStorage;
+  function read(k) { try { return S.getItem(k); } catch { return null; } }
+  var ix = null;
+  try { ix = PR ? PR.current(S) : null; } catch { ix = null; }
+  /* one learner's stored value: the live keys for the learner learning now, their parked copy otherwise (IkoProfiles) */
+  function readOf(id, k) { if (PR && ix) { try { return PR.read(S, id, k); } catch { return null; } } return read("ikolearn.v1." + k); }
+  function load(id) {
+    var cloud = null, lessons = {};
+    try { cloud = readOf(id, "name") ? C.deserialize(readOf(id, "cloud")) : null; } catch { cloud = null; }
+    try { lessons = JSON.parse(readOf(id, "lessons") || "{}") || {}; } catch { lessons = {}; }
+    return { cloud: cloud, lessons: lessons };
+  }
+  var want = null;
+  try { want = new root.URLSearchParams(root.location.search).get("learner"); } catch { want = null; }
+  var guiding = Boolean(ix && ix.mode === "guide"), known = ix ? ix.list.map(function (p) { return p.id; }) : [];
+  var hrefOf = function (id) { return "/ikolearn/family?learner=" + encodeURIComponent(id); };
+  var summaryText = "", m;
+  if (guiding && !(want && known.indexOf(want) >= 0)) {
+    var o = overview(PR.learners(S).map(function (p) { var d = load(p.id); return { id: p.id, name: p.name, active: p.active, cloud: d.cloud, lessons: d.lessons }; }));
+    renderOverview(doc, o, host, hrefOf);
+    summaryText = overviewText(o);
+  } else {
+    var id = want && known.indexOf(want) >= 0 ? want : ix ? ix.active : null, d = load(id);
+    m = summary(d.cloud, { lessons: d.lessons });
+    render(doc, m, host, d.cloud);
+    if (guiding) { var up = el(doc, "p", "fam-back"), al = el(doc, "a", "", "All learners"); al.href = "/ikolearn/family"; al.id = "fam-all"; up.appendChild(al); host.insertBefore(up, host.firstChild); }
+    summaryText = m.empty ? "" : text(m);
+  }
   var tools = doc.getElementById("fam-tools"), status = doc.getElementById("fam-status");
-  if (m.empty) { if (tools) tools.hidden = true; return; }
-  var summaryText = text(m);
+  if (!summaryText) { if (tools) tools.hidden = true; return; }
   doc.getElementById("fam-copy").addEventListener("click", function () {
     var done = function (ok) { status.textContent = ok ? "Summary copied." : "Couldn't copy here. Use Print instead."; };
     if (root.navigator && root.navigator.clipboard && root.navigator.clipboard.writeText) root.navigator.clipboard.writeText(summaryText).then(function () { done(true); }, function () { done(false); });

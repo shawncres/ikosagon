@@ -14,16 +14,25 @@
     <section id="welcome" class="col" hidden>
       <h1 class="brand-lg">IkoLearn</h1>
       <p class="lede">A quiet place to learn, with a map that grows as you do. We at Ikosagon keep it simple: you talk, it helps, and your learning cloud fills in around your name.</p>
-      <form id="name-form" autocomplete="off">
-        <label for="name-in">What's your first name?</label>
+      <div id="who" class="who" role="group" aria-labelledby="who-q">
+        <p id="who-q" class="who-q">Who's learning?</p>
+        <div class="who-opts">
+          <button type="button" class="btn who-opt" data-who="self">Learning for yourself</button>
+          <button type="button" class="btn who-opt" data-who="guide">Guiding other learners</button>
+        </div>
+        <p class="fine">Guiding is for anyone helping one or more people learn. Each learner gets their own cloud and cards. You can change this later.</p>
+      </div>
+      <form id="name-form" autocomplete="off" hidden>
+        <label for="name-in" id="name-label">What's your first name?</label>
         <div class="row"><input id="name-in" name="name" maxlength="30" autocomplete="given-name" required><button type="submit" class="btn">Start</button></div>
+        <p id="name-hint" class="fine" hidden>First name only. You can add more learners later.</p>
       </form>
       <p class="fine">Your name, chats and cloud stay on this device. <a href="/ikolearn/privacy">Privacy</a></p>
     </section>
 
     <section id="chat" hidden>
       <header class="bar col">
-        <span class="brand">IkoLearn</span>
+        <span class="brand">IkoLearn<a id="who-now" class="who-now" href="/ikolearn/learners" hidden></a></span>
         <span class="bar-r">
           <button type="button" id="deck-btn" class="link deck-link" hidden>Your deck</button>
           <button type="button" id="thumb" class="thumb" aria-label="Open your learning cloud"><canvas id="thumb-canvas" width="72" height="72"></canvas></button>
@@ -95,7 +104,7 @@
             <textarea id="input" rows="1" maxlength="1500" placeholder="Ask anything" aria-label="Message"></textarea>
             <button type="submit" id="send" class="btn">Send</button>
           </form>
-          <p class="fine">Replies come from Gemini and can be wrong. Kept on this device. <a href="/ikolearn/privacy">Privacy</a> · <a href="/ikolearn/family" id="family-link">For parents &amp; teachers</a> · <button type="button" id="reset" class="link">Start over</button></p>
+          <p class="fine">Replies come from Gemini and can be wrong. Kept on this device. <a href="/ikolearn/privacy">Privacy</a> · <a href="/ikolearn/family" id="family-link">For parents &amp; teachers</a> · <a href="/ikolearn/learners" id="learners-link">Learners</a> · <button type="button" id="reset" class="link">Start over</button></p>
         </div>
       </div>
     </section>
@@ -133,6 +142,7 @@
   <script src="/ikolearn/camera.js"></script>
   <script src="/ikolearn/cloud-view.js"></script>
   <script src="/ikolearn/lesson.js"></script>
+  <script src="/ikolearn/profiles.js"></script>
   <script src="/ikolearn/app.js"></script>
 </body>
 </html>
