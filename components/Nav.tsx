@@ -16,16 +16,17 @@ export function Nav() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-border/80 bg-background/75 backdrop-blur-md">
-      <nav className="container-shell flex h-16 items-center justify-between gap-4">
-        <div className="min-w-0">
-          <Link href="/" className="font-[var(--font-space-grotesk)] text-2xl font-bold">
+      {/* Phones: two compact rows (logo + subtitle, then links). sm and up: the original single row. */}
+      <nav className="container-shell flex flex-col gap-1.5 py-2.5 sm:h-16 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:py-0">
+        <div className="flex min-w-0 items-baseline gap-2.5 sm:block">
+          <Link href="/" className="font-[var(--font-space-grotesk)] text-xl font-bold sm:text-2xl">
             IKOSAGON
           </Link>
-          <p className="truncate font-mono text-xs leading-tight text-zinc-200 sm:text-sm">
+          <p className="whitespace-nowrap font-mono text-[11px] leading-tight text-zinc-200 sm:text-sm">
             Software &amp; AI studio
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-3 text-sm sm:gap-5">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm sm:shrink-0">
           {navItems.map((item) => (
             <Link
               key={item.href}
