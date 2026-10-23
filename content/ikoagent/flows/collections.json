@@ -1338,7 +1338,7 @@
       "id": "disposition",
       "label": "Disposition",
       "agentSay": [
-        "I've noted the arrangement for account {{accountId}} and logged the disposition. Thank you for your time on this demonstration call — take care."
+        "I've noted the arrangement for account {{accountId}} and logged the disposition. Is there anything else I can help you with today?"
       ],
       "allowParaphrase": false,
       "listenFor": [

@@ -33,6 +33,7 @@ import {
   agentOnlyTexts,
   callerPolicyLines,
   formatIkoAgentContext,
+  ragQueryFor,
   retrieveIkoAgent,
 } from "@/lib/ikoagent/rag";
 import { getProviderName } from "@/lib/llm";
@@ -299,8 +300,8 @@ export async function POST(request: Request) {
 
   const ragFor = async (speakAt: FlowNode, s: SlotMap, intent: string | null) => {
     if (!speakAt.rag && !node.rag) return [];
-    const query = [speakAt.rag?.queryHint, userText, s.reason, s.need, intent].filter(Boolean).join(" ");
-    return retrieveIkoAgent(flow.ragCorpus, query || userText, 3, {
+    const query = ragQueryFor(speakAt.rag, userText, s, intent);
+    return retrieveIkoAgent(flow.ragCorpus, query, 3, {
       accountVerified: Boolean(sanitizeAccountId(s.accountId || "")) || s.accountId === PENDING.accountId,
     });
   };

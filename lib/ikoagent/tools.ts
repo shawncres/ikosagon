@@ -277,8 +277,12 @@ export function applyToolSlots(slots: SlotMap, tools: ToolResult[]): SlotMap {
     if (tr.name === "lookupAccount" || tr.name === "createCustomer") {
       const id = sanitizeAccountId(tr.data.accountId);
       if (id) next.accountId = id;
+      // The name the caller gave wins. Demo accounts are shared (everyone can use 1001), and
+      // reading the record's holder name back to a caller who said a different name both
+      // mislabels them and discloses who owns the account. The record's name only fills in
+      // when the caller hasn't said one.
       const nm = sanitizeCustomerName(tr.data.name);
-      if (nm) next.customerName = nm;
+      if (nm && !sanitizeCustomerName(next.customerName || "")) next.customerName = nm;
       if (tr.name === "createCustomer" && tr.data.created === true) {
         next.accountCreated = "true";
       }
