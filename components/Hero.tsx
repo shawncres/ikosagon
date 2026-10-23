@@ -1,9 +1,10 @@
 "use client";
 
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { RingGlow } from "@/components/RingGlow";
+import { usePrefersReducedMotion } from "@/lib/usePrefersReducedMotion";
 
 /** Rotating headlines. `hl` is a phrase within `text` shown in the accent colour. */
 const H1_LINES: readonly { text: string; hl?: string }[] = [
@@ -28,7 +29,8 @@ function Headline({ line }: { line: { text: string; hl?: string } }) {
 const ROTATE_MS = 6500;
 
 export function Hero() {
-  const prefersReducedMotion = useReducedMotion();
+  // Not framer-motion's useReducedMotion: that one breaks hydration (React #418) for reduced-motion visitors.
+  const prefersReducedMotion = usePrefersReducedMotion();
   const [index, setIndex] = useState(0);
 
   const go = useCallback((delta: number) => {

@@ -3,6 +3,7 @@ import { ProjectGrid } from "@/components/ProjectGrid";
 import { getProjects } from "@/lib/projects";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/projects" },
   title: "Projects",
   description: "Project archive of shipped software and in-progress builds.",
 };

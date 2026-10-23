@@ -4,6 +4,7 @@ import latest from "@/content/ikoagent/evals/latest.json";
 import history from "@/content/ikoagent/evals/history.json";
 
 export const metadata: Metadata = {
+  alternates: { canonical: "/projects/ikoagent/evals" },
   title: "IkoAgent evals",
   description:
     "How we at Ikosagon test IkoAgent: an offline regression suite over routing, slot extraction, identity, safety guards, verbatim compliance, and close routing, run before every merge.",
