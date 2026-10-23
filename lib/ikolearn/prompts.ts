@@ -87,6 +87,8 @@ export type LearnInput = {
   name: string;
   /** Node the learner is looking at ("" = whole cloud). */
   focus: string;
+  /** Its id on the device ("" = none), so the chat block can name it as a placement target (validated on the device). */
+  focusId: string;
   focusParent: string;
   messages: ChatMessage[];
   /** Compact text summary of the cloud, written by the browser (cloud-model.js summarize()). */
@@ -114,7 +116,14 @@ export type LearnInput = {
   favorites: string[];
 };
 /** chain: broader topics from the subject down to the parent (only for a new topic that sits deeper), e.g. ["Computer Science","Programming","Python"]. */
-export type Topic = { name: string; parent: string; signal: Signal; chain?: string[] };
+/**
+ * placement (chat, a topic the learner asked to start or add): "parent" = a new branch right under the learner's name,
+ * "child" = under target (the focus id or an existing topic's name), "ambiguous" = could be either (the device asks).
+ * Advice only: the device checks it against the cloud (orchestrator.js placeTopic) and falls back procedurally.
+ */
+export const PLACEMENTS = ["child", "parent", "ambiguous"] as const;
+export type Placement = (typeof PLACEMENTS)[number];
+export type Topic = { name: string; parent: string; signal: Signal; chain?: string[]; placement?: Placement; target?: string };
 export type Ghost = { name: string; parent: string };
 export type CloudBlock = { topics: Topic[]; ghosts: Ghost[] };
 export type Card = { title: string; body: string; topic: string; parent: string; path?: string[]; next?: string; chain?: string[] };
@@ -178,6 +187,7 @@ export function parseLearnInput(raw: unknown): LearnInput | { error: string } {
     ...(mode === "clarify" ? { clarify, lesson: cleanText(b.lesson, LEARN_LIMITS.lessonExcerptChars) } : {}),
     name,
     focus: cleanLabel(b.focus).slice(0, LEARN_LIMITS.focusChars),
+    focusId: typeof b.focusId === "string" && /^n\d{1,7}$/.test(b.focusId) ? b.focusId : "",
     focusParent: cleanLabel(b.focusParent),
     messages,
     cloud: cleanText(b.cloud, LEARN_LIMITS.summaryChars).replace(/\n{3,}/g, "\n\n"),
@@ -217,18 +227,22 @@ export const SYSTEM_BASE =
 
 const blockRules = (parents: string[]) =>
   `After your reply, on a new line, write ${CLOUD_OPEN} then one JSON object then ${CLOUD_CLOSE}, and nothing after it. ` +
-  'The JSON is {"topics":[{"name":"...","parent":"...","signal":"explored|strength|struggle|curious","chain":["..."]}],"ghosts":[{"name":"...","parent":"..."}]}. ' +
+  'The JSON is {"topics":[{"name":"...","parent":"...","signal":"explored|strength|struggle|curious","chain":["..."],"placement":"child|parent|ambiguous","target":"..."}],"ghosts":[{"name":"...","parent":"..."}]}. ' +
   `topics: 0 to ${LEARN_LIMITS.topicsPerTurn} learning topics that this exchange actually touched (1 to 3 words each, Title Case, specific like "Fractions" or "Volcanoes", never the learner's name). ` +
   "signal: strength if the learner showed they understand it, struggle if they found it hard or had a mix-up, curious if they only asked or showed interest, explored otherwise. " +
   `parent: where it belongs: the most specific existing topic from the profile that it sits under (for example "Fractions" for "Halves"), else one of these existing subjects: ${parents.length ? parents.join(", ") : "(none yet)"}. Only name a new broad subject when none fit. ` +
   `chain: always, for every topic: the full logical chain of broader topics from its subject down to its parent, broadest first, up to ${LEARN_LIMITS.chain}, even when some links are not in the profile yet ` +
   '(for "Sets" in Python: ["Computer Science","Programming","Python"]; for "Halves": ["Math","Fractions"]; for a topic right under a subject, just ["Math"]). ' +
   "When the learner names where a topic lives ('sets in Python'), that topic is the last link of the chain and the parent. " +
+  "placement and target: only for a topic the learner asks to start, learn or add right now (leave both out for topics only talked about). Decide first where it belongs; do not put it under the current focus just because that is in focus. " +
+  'placement "parent": a broad subject of its own that does not clearly belong under the current focus (for example asking for a whole new subject while looking at an unrelated one); it becomes a new branch right under the learner\'s name: parent "", chain [], target "". ' +
+  'placement "child": only when it is clearly a smaller part of an existing topic; target is that topic: the focus id when it belongs under the focus, else the exact name of the existing topic it belongs under. ' +
+  'placement "ambiguous": it could reasonably be either; target is the focus id. The device checks the placement and may ask the learner. ' +
   `ghosts: leave this empty, unless the learner asked what else they could learn; then 1 or 2 related topics not in the profile, each with its parent. New branches are offered when a branch ends, not before. Use empty arrays for small talk. The learner never sees this block.`;
 
 const profile = (i: LearnInput) =>
   `Learner's first name: ${i.name}\n` +
-  (i.focus ? `Current focus: ${i.focus}${i.trail ? ` (${i.trail})` : i.focusParent ? ` (in ${i.focusParent})` : ""}\n` : "") +
+  (i.focus ? `Current focus: ${i.focus}${i.trail ? ` (${i.trail})` : i.focusParent ? ` (in ${i.focusParent})` : ""}${i.focusId ? `, id ${i.focusId}` : ""}\n` : "") +
   `Learning profile (subjects, topics, weights, strengths; ghost = not explored yet):\n${i.cloud || "(new learner, nothing yet)"}`;
 
 export function companionSystem(i: LearnInput): string {
@@ -764,6 +778,13 @@ export function parseCloudBlock(raw: unknown, learnerName = ""): CloudBlock {
     // the chain is the model's (the device deepens a short one from the learner's own map, cloud-model.js)
     const chain = parseChain((t as Topic).chain, learnerName, name);
     if (chain.length) topic.chain = chain;
+    const placement = String((t as Topic).placement || "").toLowerCase();
+    if ((PLACEMENTS as readonly string[]).includes(placement)) {
+      topic.placement = placement as Placement;
+      const target = String((t as Topic).target ?? "").trim();
+      const tgt = /^n\d{1,7}$/.test(target) ? target : cleanLabel(target);
+      if (tgt && !(learnerName && sameLabel(tgt, learnerName))) topic.target = tgt;
+    }
     out.topics.push(topic);
     if (out.topics.length >= LEARN_LIMITS.topicsPerTurn) break;
   }

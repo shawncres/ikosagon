@@ -302,10 +302,25 @@
       var sig = SIGNAL[tp.signal] || SIGNAL.explored;
       var subj = subjects(cloud).filter(function (s) { return s.key === norm(label); })[0];
       if (subj) { subj.weight += sig.w * 0.5; subj.touched = t; res.strengthened.push(subj.id); return; }
-      var hint = findAny(cloud, tp.parent);
+      /* placed by the orchestrator (chat placement, checked on the device): a new branch under the learner's name ... */
+      if (tp.asSubject && !findTopic(cloud, label)) {
+        if (subjects(cloud).length >= LIMITS.subjects) return;
+        var sn = addNode(cloud, { label: label, parent: null, weight: 1, born: t });
+        sn.weight += sig.w * 0.5; sn.touched = t; warm(sn, HEAT.chat * sig.w, t);
+        res.parentsCreated.push(sn.id);
+        return;
+      }
+      /* ... or right under a given node (by id: never a same-named node elsewhere) */
+      var under = tp.under ? node(cloud, tp.under) : null;
+      var hint = under || findAny(cloud, tp.parent);
       var n = findTopic(cloud, label, hint ? hint.id : null);
       var parent;
-      if (!n) {
+      if (!n && under) {
+        if (!makeRoom(cloud, under.id, false)) { under.weight += 0.5; under.touched = t; res.strengthened.push(under.id); return; }
+        if (under.ghost) { under.ghost = false; under.born = t; res.promoted.push(under.id); }
+        n = addNode(cloud, { label: label, parent: under.id, weight: 0, born: t });
+        res.created.push(n.id);
+      } else if (!n) {
         /* an explicit chain (from chat or a card) builds the missing links between the subject and this topic */
         var links = (Array.isArray(tp.chain) ? tp.chain.slice(0, LIMITS.chain) : []);
         if (links.length && tp.parent && norm(links[links.length - 1]) !== norm(tp.parent)) links.push(tp.parent);
@@ -565,16 +580,24 @@
    * Deterministic 3D layout: subjects on a sphere; every child sits on a small cone pointing away from its parent,
    * one level smaller each step. Path steps fan out in their learning order.
    */
+  /*
+   * A subject's fixed slot round the root, by its place among the subjects (creation order). The first 6 are the
+   * original golden spiral; subjects 7-12 take their own in-between spiral, so adding a subject never moves the others.
+   */
+  function subjectSlot(i, golden) {
+    var k = i < 6 ? i : i - 6, M = 6;
+    var y = i < 6 ? 1 - (k + 0.5) / M * 2 : 0.9 - (k + 1) / (M + 1) * 1.8;
+    var r = Math.sqrt(Math.max(0, 1 - y * y)), th = golden * k + (i < 6 ? 0 : golden / 2 + Math.PI / 6);
+    return { x: Math.cos(th) * r, y: y * 0.8, z: Math.sin(th) * r, d: 1 };
+  }
   function layout(cloud) {
     var pos = { root: { x: 0, y: 0, z: 0, d: 0 } };
     var ix = index(cloud);
     var ss = ix[""] || [];
-    var N = Math.max(ss.length, 6);
     var golden = Math.PI * (3 - Math.sqrt(5));
     var stack = [];
     ss.forEach(function (id, i) {
-      var y = 1 - (i + 0.5) / N * 2, r = Math.sqrt(1 - y * y), th = golden * i;
-      var p = { x: Math.cos(th) * r, y: y * 0.8, z: Math.sin(th) * r, d: 1 };
+      var p = subjectSlot(i, golden);
       pos[id] = p;
       stack.push({ id: id, dir: unit(p) });
     });

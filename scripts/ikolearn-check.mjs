@@ -2741,6 +2741,111 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   }
   ok(P.treeDist(dm, tables, DL("Queries").id) === 2 && P.treeDist(dm, dmId, py) === 3 && P.treeDist(dm, tables, DL("Owls").id) === Infinity, "tree distance: siblings 2, a cousin topic 3 (a different path), another subject far");
 
+  // ---------- chat placement: a new subject is its own parent, a subtopic goes under its parent, unclear asks (0 calls) ----------
+  {
+    // the chat block carries placement + target (validated); the request carries the focus id
+    const pb = parseCloudBlock({ topics: [
+      { name: "Math", parent: "", signal: "curious", chain: [], placement: "parent", target: "" },
+      { name: "Puzzle Strategies", parent: "Games", signal: "curious", chain: ["Games"], placement: "CHILD", target: "n3" },
+      { name: "Chess", parent: "Games", signal: "curious", placement: "sideways", target: "n3" },
+    ], ghosts: [] }, "Sam");
+    pb.topics.push(parseCloudBlock({ topics: [{ name: "Kites", parent: "", signal: "curious", placement: "ambiguous", target: "Sam" }], ghosts: [] }, "Sam").topics[0]);
+    ok(pb.topics[0].placement === "parent" && !pb.topics[0].target && pb.topics[1].placement === "child" && pb.topics[1].target === "n3", "chat block: placement and target are parsed (case-insensitive, target an id or a name)");
+    ok(!pb.topics[2].placement && !("target" in pb.topics[2]) && pb.topics[3].placement === "ambiguous" && !pb.topics[3].target, "chat block: an unknown placement is dropped; the learner's name is never a target");
+    const pin = parseLearnInput({ name: "Sam", mode: "chat", focus: "Games", focusId: "n3", messages: [{ role: "user", text: "I want to learn math" }] });
+    const bad = parseLearnInput({ name: "Sam", mode: "chat", focus: "Games", focusId: "n3; DROP", messages: [{ role: "user", text: "hi" }] });
+    ok(pin.focusId === "n3" && bad.focusId === "", "chat input: the focus id is kept only in its own shape (n123)");
+    const sys = companionSystem(pin);
+    ok(/Current focus: Games.*id n3/.test(sys) && /placement "parent"/.test(sys) && /placement "child"/.test(sys) && /placement "ambiguous"/.test(sys) && /do not put it under the current focus just because that is in focus/.test(sys), "chat prompt: placement is decided in the same call (no extra round trip), never by focus alone");
+
+    // Shawn's cloud: Johnny > Games (Video Games, Puzzle Games), Aviation, Physical Activity, Social Skills
+    const jc = C.create("Johnny", T0);
+    C.applyTopics(jc, [{ name: "Video Games", parent: "Games", signal: "explored", chain: ["Games"] }, { name: "Puzzle Games", parent: "Games", signal: "explored", chain: ["Games"] }, { name: "Airplanes", parent: "Aviation", signal: "explored", chain: ["Aviation"] }], T0);
+    C.applyTopics(jc, [{ name: "Running", parent: "Physical Activity", signal: "explored", chain: ["Physical Activity"] }, { name: "Listening", parent: "Social Skills", signal: "explored", chain: ["Social Skills"] }], T0 + 1);
+    const JS = (l) => C.subjects(jc).find((x) => x.label === l), JT = (l) => Object.values(jc.nodes).find((x) => x.label === l);
+    const games = JS("Games");
+    eq(C.subjects(jc).map((x) => x.label), ["Games", "Aviation", "Physical Activity", "Social Skills"], "fixture: Johnny's four parents");
+    const before = C.layout(jc), subjIds = C.subjects(jc).map((x) => x.id);
+    // "I want to learn math" while Games is in focus: a new parent beside Games
+    const math = { name: "Math", parent: "", signal: "curious", chain: [], placement: "parent", target: "" };
+    let pl = P.placeTopic(jc, math, games.id);
+    ok(pl.how === "parent", "placement: a broad subject the model calls a parent becomes a new parent (not under the focus)", JSON.stringify(pl));
+    let r = C.applyTopics(jc, [P.placedTopic(math, pl)], T0 + 10);
+    const mathN = JS("Math");
+    ok(mathN && !mathN.parent && r.parentsCreated.includes(mathN.id) && C.depthOf(jc, mathN.id) === C.depthOf(jc, games.id), "Math sits directly under the learner's name, at the same level as Games");
+    ok(Number.isFinite(mathN.hue) && C.subjects(jc).filter((x) => x.id !== mathN.id).every((x) => x.hue !== mathN.hue), "the new parent has its own hue");
+    const after = C.layout(jc);
+    ok(subjIds.every((id) => ["x", "y", "z"].every((k) => Math.abs(before[id][k] - after[id][k]) < 1e-9)) && after[mathN.id] && after[mathN.id].d === 1, "the existing parents keep their place on the cloud; Math gets its own slot");
+    // the model's chain under the focus is ignored once placement says parent (Shawn's bug: Games > Video Games > Math)
+    const math2 = { name: "Algebra Club", parent: "Video Games", signal: "curious", chain: ["Games", "Video Games"], placement: "parent", target: "" };
+    const pl2 = P.placeTopic(jc, math2, games.id);
+    C.applyTopics(jc, [P.placedTopic(math2, pl2)], T0 + 11);
+    ok(pl2.how === "parent" && !JS("Algebra Club").parent, "placement parent wins over a chain that points into the focus");
+    // "add puzzle strategies": clearly a subtopic of Games (target = the focus id)
+    const ps = { name: "Puzzle Strategies", parent: "Games", signal: "curious", chain: ["Games"], placement: "child", target: games.id };
+    pl = P.placeTopic(jc, ps, games.id);
+    r = C.applyTopics(jc, [P.placedTopic(ps, pl)], T0 + 12);
+    ok(pl.how === "child" && pl.target === games.id && JT("Puzzle Strategies").parent === games.id && r.created.includes(JT("Puzzle Strategies").id), "placement: a clear subtopic goes right under its target (Games)");
+    // a target by name: under that node
+    const vg = { name: "Speedrunning", parent: "Video Games", signal: "curious", chain: ["Games", "Video Games"], placement: "child", target: "Video Games" };
+    pl = P.placeTopic(jc, vg, games.id);
+    C.applyTopics(jc, [P.placedTopic(vg, pl)], T0 + 13);
+    ok(pl.how === "child" && JT("Speedrunning").parent === JT("Video Games").id, "placement: a target named by title resolves to that node");
+    // invalid targets: a new parent when broad, otherwise ask
+    ok(P.placeTopic(jc, { name: "Cooking", chain: [], placement: "child", target: "n9999" }, games.id).how === "parent", "fallback: an invalid target on a broad request means a new parent");
+    const amb = P.placeTopic(jc, { name: "Card Tricks", parent: "Games", chain: ["Games"], placement: "child", target: "Nowhere" }, games.id);
+    ok(amb.how === "ambiguous" && amb.target === games.id, "fallback: an invalid target otherwise means ask (Start it as a new branch / Add it under Games)", JSON.stringify(amb));
+    // a broad request the model aimed at the focus is not forced under it: ask
+    ok(P.placeTopic(jc, { name: "Music", chain: [], placement: "child", target: games.id }, games.id).how === "ambiguous", "a broad subject aimed at the focus is not forced under it (the learner is asked)");
+    ok(P.placeTopic(jc, { name: "Chess", parent: "Games", chain: ["Games"], placement: "ambiguous", target: games.id }, games.id).how === "ambiguous", "ambiguous stays ambiguous while there is a focus");
+    ok(P.placeTopic(jc, { name: "Drawing", chain: [], placement: "ambiguous" }, null).how === "parent" && P.placeTopic(jc, { name: "Drawing", parent: "Games", chain: ["Games"], placement: "ambiguous" }, null).how === "legacy", "no focus to ask about: a broad request becomes a parent, otherwise the usual placement");
+    ok(P.placeTopic(jc, { name: "Board Games", parent: "Games", chain: ["Games"] }, games.id).how === "legacy", "no placement (a topic only talked about): the usual chain placement, unchanged");
+    // duplicate guard (cheap, local): an existing parent or the same topic elsewhere is reused, never duplicated
+    const n0 = jc.order.length;
+    const g1 = P.placeTopic(jc, { name: "games", placement: "parent" }, games.id), g2 = P.placeTopic(jc, { name: "Video Game", placement: "parent" }, games.id), g3 = P.placeTopic(jc, { name: "Airplanes", placement: "child", target: games.id }, games.id);
+    ok(g1.how === "reuse" && g1.id === games.id && g2.how === "reuse" && g2.id === JT("Video Games").id && g3.how === "reuse" && g3.id === JT("Airplanes").id, "duplicate guard: a parent's title or a normalised title match elsewhere is reused (whatever the placement)", JSON.stringify([g1, g2, g3]));
+    C.applyTopics(jc, [P.placedTopic({ name: "Airplanes", signal: "curious", placement: "child", target: games.id }, g3)], T0 + 14);
+    ok(jc.order.length === n0 && JT("Airplanes").parent === JS("Aviation").id, "duplicate guard: nothing new is created and the topic stays where it was");
+    ok(P.placeTopic(jc, { name: "Johnny", placement: "parent" }, games.id) === null, "never the learner's own name");
+    // placedTopic: placement and target are not stored; the plan becomes asSubject / under
+    const pt = P.placedTopic(ps, { how: "child", target: games.id }), pp = P.placedTopic(math, { how: "parent" });
+    ok(!("placement" in pt) && !("target" in pt) && pt.under === games.id && pp.asSubject === true && pp.parent === "" && pp.chain.length === 0, "placed topics carry only what applyTopics needs");
+    // a full cloud (12 parents): a new parent can't be made, so it goes under the focus
+    const full = C.create("Ann", T0);
+    const AREAS = ["Astronomy", "Biology", "Cooking", "Drawing", "Economics", "Fishing", "Geology", "History", "Italian", "Juggling", "Knitting", "Literature", "Music", "Nursing"];
+    const LEAVES = ["Comets", "Cells", "Baking", "Shading", "Markets", "Lures", "Rocks", "Empires", "Verbs", "Clubs", "Purls", "Poems", "Chords", "Triage"];
+    for (let i = 0; i < C.LIMITS.subjects; i++) C.applyTopics(full, [{ name: LEAVES[i], parent: AREAS[i], signal: "explored", chain: [AREAS[i]] }], T0 + i);
+    const fs0 = C.subjects(full)[0];
+    ok(C.subjects(full).length === C.LIMITS.subjects && P.placeTopic(full, { name: "Robotics", chain: [], placement: "parent" }, fs0.id).how === "child", "no room for another parent: it goes under the focus instead of failing");
+    // stable slots: adding parents never moves the ones already there (also past six)
+    const sl = C.create("Lee", T0), pos = [];
+    for (let i = 0; i < 9; i++) {
+      C.applyTopics(sl, [{ name: LEAVES[i], parent: AREAS[i], signal: "explored", chain: [AREAS[i]] }], T0 + i);
+      pos.push(C.layout(sl));
+    }
+    const ids9 = C.subjects(sl).map((x) => x.id);
+    eq(ids9.length, 9, "fixture: nine parents");
+    ok(pos.every((lay, i) => ids9.slice(0, i + 1).every((id) => ["x", "y", "z"].every((k) => Math.abs(lay[id][k] - pos[8][id][k]) < 1e-9))), "subject slots are fixed: adding a 2nd to 9th parent never moves the others");
+    const p9 = pos[8], dists = [];
+    ids9.forEach((a, i) => ids9.slice(i + 1).forEach((b) => dists.push(Math.hypot(p9[a].x - p9[b].x, p9[a].y - p9[b].y, p9[a].z - p9[b].z))));
+    ok(Math.min(...dists) > 0.3, "subject slots stay apart from each other", String(Math.min(...dists)));
+    // the app: placement before growth, the ambiguous choice applies the cached plan on the device (0 calls)
+    const appP = fs.readFileSync("public/ikolearn/app.js", "utf8");
+    const gr = appP.slice(appP.indexOf("  function grow(block, fallbackId) {"), appP.indexOf("  /* Test nodes on the cloud"));
+    ok(/P\.placeTopic\(state\.cloud, tp, state\.focus\)/.test(gr) && /P\.placedTopic\(tp, plan\)/.test(gr) && /role: "place", plan:/.test(gr) && /if \(placed\[C\.norm\(tp\.name\)\]\) return;/.test(gr), "chat growth: placed first (reuse / parent / child / ask); a placed topic gets no bridge call");
+    const pl3 = gr.slice(gr.indexOf("  function renderPlace(m) {"));
+    ok(pl3.length > 500 && !/postJson\(|stream\(|fetch\(|Try again/.test(pl3), "the ambiguous choice: no call and no Try again (the cached plan applies on the device)");
+    ok(/"Start " \+ p\.name \+ " as a new branch"/.test(pl3) && /"Add it under " \+ f\.label/.test(pl3), "the ambiguous choice: Start X as a new branch / Add it under Focus");
+    ok(/focusId: n \? n\.id : ""/.test(appP) && /state\.glide/.test(appP) && /function glideTo\(id\)/.test(appP), "chat sends the focus id; the camera glides to a new parent (when the cloud is on screen or next opened)");
+    // the cached plan applied the way a tap does: 0 calls, the same node a direct placement would make
+    const ac = C.deserialize(C.serialize(jc));
+    const planned = { name: "Chess", signal: "curious", target: games.id };
+    const viaParent = P.placedTopic({ name: planned.name, signal: planned.signal }, { how: "parent" }), viaChild = P.placedTopic({ name: "Checkers", signal: "curious" }, { how: "child", target: games.id });
+    C.applyTopics(ac, [viaParent], T0 + 20); C.applyTopics(ac, [viaChild], T0 + 21);
+    const chessN = Object.values(ac.nodes).find((x) => x.label === "Chess"), checkN = Object.values(ac.nodes).find((x) => x.label === "Checkers");
+    ok(chessN && !chessN.parent && checkN && checkN.parent === games.id, "the choice applies on the device: a new branch, or under the focus");
+  }
+
   // the app: wiring (static), the behaviour is covered end to end by scripts/ikolearn-flow-e2e.mjs
   const app = fs.readFileSync("public/ikolearn/app.js", "utf8"), html = fs.readFileSync("public/ikolearn/index.html", "utf8"), css = fs.readFileSync("public/ikolearn/styles.css", "utf8");
   const fin = app.slice(app.indexOf("  function finishLesson(kind) {"), app.indexOf("  /* ---------- \"Still tricky\""));

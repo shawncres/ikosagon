@@ -40,7 +40,7 @@
   };
   var reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
 
-  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], queued: null, pick: null, view: null, seen: { c: {}, ev: 0 }, ex: { list: [], growth: [], at: 0, gat: 0, status: "idle" } };
+  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], queued: null, pick: null, glide: null, view: null, seen: { c: {}, ev: 0 }, ex: { list: [], growth: [], at: 0, gat: 0, status: "idle" } };
   var mini = null, big = null;
 
   /* ---------- storage ---------- */
@@ -306,6 +306,7 @@
   function renderMsg(m) {
     var d;
     if (m.role === "ask") d = renderAsk(m);
+    else if (m.role === "place") d = renderPlace(m);
     else if (m.role === "card") {
       d = cardNode(m.card, m.card.node && nodeOf(m.card.node) ? "On " + trailOf(m.card.node) : "");
     } else if (m.role === "grow") {
@@ -368,7 +369,19 @@
 
   /* ---------- growth ---------- */
   function grow(block, fallbackId) {
-    var topics = (block && block.topics) || [], ghosts = (block && block.ghosts) || [];
+    var raw = (block && block.topics) || [], ghosts = (block && block.ghosts) || [];
+    /* placement first (orchestrator, 0 calls): reuse a node that's already there, start a new parent, go under a node,
+       or ask the learner when it could be either (the plan is kept with the question; a tap applies it) */
+    var topics = [], asks = [], placed = {}, reused = [];
+    raw.forEach(function (tp) {
+      var plan = P.placeTopic(state.cloud, tp, state.focus);
+      if (!plan) return;
+      if (plan.how === "ambiguous") { asks.push({ tp: tp, plan: plan }); return; }
+      if (plan.how === "reuse") reused.push(plan.id);
+      var o = P.placedTopic(tp, plan);
+      if (plan.how === "parent" || plan.how === "child") placed[C.norm(o.name)] = 1;
+      topics.push(o);
+    });
     var r = C.applyTopics(state.cloud, topics);
     var g = C.addGhosts(state.cloud, ghosts, Date.now(), fallbackId || state.focus || null);
     var parts = [];
@@ -377,6 +390,7 @@
     r.created.filter(function (id) { return !r.created.some(function (o) { return o !== id && C.ancestry(state.cloud, o).indexOf(id) >= 0; }); })
       .forEach(function (id) { parts.push(C.trail(state.cloud, id, " → ") + " (new)"); });
     r.promoted.forEach(function (id) { parts.push(trailOf(id) + " (explored)"); });
+    reused.forEach(function (id) { var n = nodeOf(id); if (n && !n.parent) parts.push(n.label + " (already a branch)"); });
     r.strengthened.forEach(function (id) { var n = nodeOf(id); if (n && n.parent) parts.push(n.label + " (stronger)"); });
     if (g.added.length) parts.push(g.added.length === 1 ? "1 idea to explore" : g.added.length + " ideas to explore");
     var ids = r.created.concat(r.promoted, r.strengthened, r.parentsCreated, g.added);
@@ -384,13 +398,68 @@
     /* offer the topic itself (not a link created on its chain) when it is new or newly explored */
     var grown = r.created.concat(r.promoted), main = topics[0] && C.findTopic(state.cloud, topics[0].name);
     var fresh = main && grown.indexOf(main.id) >= 0 ? main.id : grown.filter(function (id) { return nodeOf(id) && nodeOf(id).parent; })[0];
+    /* a new or existing parent, or a topic that was already there: offer that one */
+    if (!fresh && main && reused.indexOf(main.id) >= 0) fresh = main.id;
+    if (!fresh && topics[0]) { var sb = C.subjects(state.cloud).filter(function (x) { return x.key === C.norm(topics[0].name); })[0]; if (sb && (r.parentsCreated.indexOf(sb.id) >= 0 || reused.indexOf(sb.id) >= 0)) fresh = sb.id; }
     if (parts.length) push({ role: "grow", text: "Your cloud grew: " + parts.join(" · "), open: fresh || null });
+    /* a new parent (or a topic placed where the learner asked): the camera glides to it */
+    var landed = r.parentsCreated.concat(r.created).filter(function (id) { return placed[C.norm(nodeOf(id) ? nodeOf(id).label : "")]; })[0];
+    if (landed) glideTo(landed);
+    asks.forEach(function (a) {
+      push({ role: "place", plan: { name: C.cleanLabel(a.tp.name), signal: a.tp.signal || "curious", target: a.plan.target } });
+    });
     /* a topic that landed right under its subject on a shallow chain gets its in-between steps after this reply (one call, once) */
     topics.forEach(function (tp) {
+      if (placed[C.norm(tp.name)]) return; /* placed on purpose (a new parent, or right where it was asked for): no bridge call */
       var hit = C.findTopic(state.cloud, tp.name);
       if (hit && grown.indexOf(hit.id) >= 0 && P.needsBridge(state.cloud, hit.id, (tp.chain || []).length) && state.bridgeQueue.indexOf(hit.id) < 0) state.bridgeQueue.push(hit.id);
     });
-    return { topic: topics[0] || null };
+    return { topic: topics[0] || (asks[0] && asks[0].tp) || null };
+  }
+  /* The camera glides to a node (a new parent, a placed topic), unless a lesson is open. */
+  function glideTo(id) {
+    if (!nodeOf(id)) return;
+    state.glide = id; /* the cloud isn't on screen: it glides there when it opens */
+    if (!big || el.cloud.hidden || state.lessonNode) return;
+    state.glide = null;
+    focusInView(id, false);
+  }
+  /*
+   * "Start X as a new branch, or add it under Focus?": the planned topic is kept with the message, so a tap applies it
+   * on the device (0 calls). Checked again on tap: if it's on the cloud by now it is reused; a target that's gone means
+   * a new branch.
+   */
+  function renderPlace(m) {
+    var d = mk("div", "place"), p = m.plan || {}, f = nodeOf(p.target);
+    if (m.done) {
+      d.appendChild(mk("p", "grow", m.done));
+      var on = nodeOf(m.open);
+      if (on) { d.lastChild.appendChild(document.createTextNode(" · ")); d.lastChild.appendChild(linkBtn("Open a lesson on " + on.label, function () { openLesson(on.id); })); }
+      return d;
+    }
+    d.appendChild(mk("p", "place-q", "Where should " + p.name + " go?"));
+    var row = mk("div", "place-opts");
+    row.appendChild(linkBtn("Start " + p.name + " as a new branch", function () { applyPlace(m, "parent"); }, "btn sm place-opt"));
+    if (f) row.appendChild(linkBtn("Add it under " + f.label, function () { applyPlace(m, "child"); }, "btn sm place-opt"));
+    d.appendChild(row);
+    return d;
+  }
+  function applyPlace(m, how) {
+    if (m.done || !m.plan) return;
+    var p = m.plan, f = nodeOf(p.target), tp = { name: p.name, signal: p.signal || "curious" };
+    var plan = P.placeTopic(state.cloud, tp, null);
+    if (!plan) return;
+    if (plan.how !== "reuse") plan = how === "child" && f ? { how: "child", target: f.id } : C.subjects(state.cloud).length < C.LIMITS.subjects ? { how: "parent" } : f ? { how: "child", target: f.id } : { how: "legacy" };
+    var r = C.applyTopics(state.cloud, [P.placedTopic(tp, plan)]);
+    var id = r.parentsCreated[0] || r.created[0] || (plan.how === "reuse" ? plan.id : r.strengthened[0]) || null;
+    save();
+    refreshViews([id].filter(Boolean));
+    var n = nodeOf(id);
+    m.done = !n ? "Your cloud is full of branches, so " + p.name + " wasn't added." : plan.how === "reuse" ? n.label + " is already on your cloud." : !n.parent ? n.label + " is a new branch on your cloud." : n.label + " is now under " + nodeOf(n.parent).label + ".";
+    m.open = n ? n.id : null;
+    upsert(m);
+    save();
+    if (n) glideTo(n.id);
   }
 
   /* Test nodes on the cloud: offered (ready) or taken, from the orchestrator */
@@ -429,7 +498,7 @@
     var n = nodeOf(focusId);
     var p = n && n.parent ? nodeOf(n.parent) : null; /* no age, no region: nothing about who or where the learner is goes along */
     return {
-      name: state.name, focus: n ? n.label : "", focusParent: p ? p.label : "", trail: n ? C.trail(state.cloud, n.id) : "",
+      name: state.name, focus: n ? n.label : "", focusId: n ? n.id : "", focusParent: p ? p.label : "", trail: n ? C.trail(state.cloud, n.id) : "",
       known: n ? C.knownUnder(state.cloud, n.id) : [], cloud: C.summarize(state.cloud), parents: C.subjectLabels(state.cloud)
     };
   }
@@ -1527,6 +1596,7 @@
     renderCloudHint();
     big.spin(true); /* a slow idle turn (not with reduced motion; paused by any interaction, a panel, or a hidden tab) */
     if (state.lessonNode) setTimeout(function () { openPanel(state.lessonNode); }, 0); /* a lesson or a test: its topic */
+    else if (state.glide && nodeOf(state.glide)) { var gl = state.glide; state.glide = null; setTimeout(function () { focusInView(gl, false); }, 0); } /* a new parent: the camera glides to it */
     renderCloudFlow();
     el.cloudClose.focus();
   }
