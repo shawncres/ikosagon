@@ -24,8 +24,8 @@
     var yaw = HOME.yaw, pitch = HOME.pitch, zoom = HOME.zoom, panX = HOME.panX, panY = HOME.panY, pivot = CAM.ORIGIN;
     var pointers = {}, gesture = null, idleSpin = mini && !reduce, tween = null, glideV = null;
     var focusId = null, focusSet = {};
-    /* the big cloud's idle spin (camera.js spinState): on only while the overlay is open (spinOn) and no panel holds it */
-    var spinOn = false, spinHeld = false, lastInput = 0, lastFrame = 0, spinning = false, resumeTimer = 0;
+    /* the big cloud's idle spin (camera.js spinState): on only while the overlay is open (spinOn) and nothing covers it (spinHeld) */
+    var spinOn = false, spinHeld = false, lastInput = 0, lastFrame = 0, spinning = false, spinFrom = 0, resumeTimer = 0;
     var doc = root.document;
     function touch() { lastInput = performance.now(); }
     var projected = [];
@@ -262,7 +262,8 @@
       if (!mini) {
         if (gesture || tween || glideV) lastInput = now; /* a drag, a pinch or a focus glide pauses the spin until it has been idle a while */
         sp = CAM.spinState({ reduce: reduce, hidden: Boolean(doc && doc.hidden), active: spinOn, paused: spinHeld, busy: Boolean(gesture || tween || glideV), now: now, lastInput: lastInput });
-        if (sp.on) yaw += CAM.spinStep(spinning ? now - lastFrame : 16);
+        if (sp.on && !spinning) spinFrom = now; /* eases in from here */
+        if (sp.on) yaw += CAM.spinStep(spinning ? now - lastFrame : 16, now - spinFrom);
       }
       spinning = sp.on; lastFrame = now;
       if (pulsing || idleSpin || sp.on || gesture || tween || glideV) request();
@@ -409,9 +410,9 @@
     return {
       setCloud: setCloud,
       setTests: function (map) { tests = map || {}; request(); },
-      /* the idle spin: on while the big cloud is open; hold(true) while a panel is open */
+      /* the idle spin: on while the big cloud is open; hold(true) while something covers most of it (no change: no restart) */
       spin: function (on) { spinOn = Boolean(on) && !mini; touch(); request(); },
-      hold: function (on) { spinHeld = Boolean(on); touch(); request(); },
+      hold: function (on) { if (spinHeld === Boolean(on)) return; spinHeld = Boolean(on); touch(); request(); },
       flash: flash,
       resize: resize,
       /* the zoom buttons: a short eased zoom about the centre */
@@ -419,7 +420,7 @@
       reset: function () { apply(Object.assign({ pivot: CAM.ORIGIN }, HOME)); tween = null; glideV = null; setFocus(null); request(); changed(); },
       /* Recentre: ease back to the whole cloud, the pivot back to the origin, and let go of the focus */
       recentre: function () { setFocus(null); animateTo(Object.assign({ pivot: CAM.ORIGIN }, HOME), CAM.CAM.focusMs); },
-      state: function () { return { yaw: yaw, pitch: pitch, zoom: zoom, panX: panX, panY: panY, pivot: { x: pivot.x, y: pivot.y, z: pivot.z }, focus: focusId, drawn: projected.length, moving: Boolean(tween || glideV), spinning: spinning }; },
+      state: function () { return { yaw: yaw, pitch: pitch, zoom: zoom, panX: panX, panY: panY, pivot: { x: pivot.x, y: pivot.y, z: pivot.z }, focus: focusId, drawn: projected.length, moving: Boolean(tween || glideV), spinning: spinning, held: spinHeld }; },
       setView: function (v) { if (v.zoom) setZoom(v.zoom); if (v.yaw != null) yaw = v.yaw; if (v.pitch != null) pitch = v.pitch; if (v.panX != null) panX = v.panX; if (v.panY != null) panY = v.panY; if (v.pivot && isFinite(v.pivot.x) && isFinite(v.pivot.y) && isFinite(v.pivot.z)) pivot = { x: v.pivot.x, y: v.pivot.y, z: v.pivot.z }; if (v.focus !== undefined) setFocus(v.focus); request(); },
       project: function (id) { return pos[id] ? project(pos[id]) : null; },
       focusNode: focusNode,

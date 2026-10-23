@@ -1627,7 +1627,7 @@
     if (fresh && state.view && !state.lessonNode) big.setView({ yaw: state.view.y, pitch: state.view.p, zoom: state.view.z, panX: state.view.x, panY: state.view.q, pivot: Array.isArray(state.view.o) ? { x: state.view.o[0], y: state.view.o[1], z: state.view.o[2] } : null, focus: state.view.f && nodeOf(state.view.f) ? state.view.f : null });
     big.setTests(testMap());
     renderCloudHint();
-    big.spin(true); /* a slow idle turn (not with reduced motion; paused by any interaction, a panel, or a hidden tab) */
+    big.spin(true); /* a slow idle turn after a few idle seconds, on every view of the cloud, also beside the node panel (not with reduced motion; stopped by any input; paused while hidden or covered) */
     if (state.lessonNode) setTimeout(function () { openPanel(state.lessonNode); }, 0); /* a lesson or a test: its topic */
     else if (state.glide && nodeOf(state.glide)) { var gl = state.glide; state.glide = null; setTimeout(function () { focusInView(gl, false); }, 0); } /* a new parent: the camera glides to it */
     renderCloudFlow();
@@ -1672,7 +1672,7 @@
     var n = isRoot ? null : nodeOf(id);
     if (!isRoot && !n) return;
     el.panel.hidden = false;
-    if (big) big.hold(true);
+    syncCover();
     if (cloudFlow) cloudFlow.hidden = true;
     el.pKicker.textContent = isRoot ? "Your learning cloud" : n.parent ? (n.ghost ? "Not explored yet · " : "") : "Subject";
     /* the trail above this topic: each step is a quiet link back up the branch */
@@ -1736,19 +1736,26 @@
     sheetH = el.panel.hidden ? 0 : el.panel.offsetHeight;
     big.focusNode(id, Object.assign({ keepYaw: keepYaw }, CAM.focusFrame(cw, ch, { wide: wide, sheet: wide ? 0 : sheetH, top: top })));
   }
+  /* The panel sits beside the cloud (left on wide screens, a sheet on phones), so the spin goes on; only a sheet that
+     covers most of the cloud holds it. */
+  function panelCovers() { return !el.panel.hidden && window.innerWidth < 900 && el.panel.offsetHeight > el.cloudCanvas.clientHeight * 0.7; }
+  function syncCover() { if (big) big.hold(panelCovers()); }
+  window.addEventListener("resize", syncCover);
   if (window.ResizeObserver) new ResizeObserver(function () {
+    syncCover();
     if (el.panel.hidden || window.innerWidth >= 900 || !big || !state.panelNode || state.panelNode === "root") return;
     if (Math.abs(el.panel.offsetHeight - sheetH) < 24 || Date.now() - focusAt > 6000) return; /* not after the learner has moved on */
     clearTimeout(sheetTimer);
     sheetTimer = setTimeout(function () { if (!el.panel.hidden && nodeOf(state.panelNode)) focusInView(state.panelNode, true); }, 220);
   }).observe(el.panel);
 
-  /* On phones the panel covers the lower part of the screen: move the cloud up while it is open (whole-cloud view). */
+  /* The panel covers part of the cloud: on phones the lower part (move the cloud up), on wide screens the left side
+     (move it right) while it is open (whole-cloud view). */
   function liftCloud(on) {
-    if (!big || window.innerWidth >= 900) return;
-    var v = big.state();
-    if (on && !state.lifted) { state.lifted = el.panel.offsetHeight / 2; big.setView({ panY: v.panY - state.lifted }); }
-    else if (!on && state.lifted) { big.setView({ panY: v.panY + state.lifted }); state.lifted = 0; }
+    if (!big) return;
+    var v = big.state(), wide = window.innerWidth >= 900;
+    if (on && !state.lifted) { state.liftX = wide; state.lifted = wide ? (el.panel.offsetWidth + 16) / 2 : el.panel.offsetHeight / 2; big.setView(wide ? { panX: v.panX + state.lifted } : { panY: v.panY - state.lifted }); }
+    else if (!on && state.lifted) { big.setView(state.liftX ? { panX: v.panX - state.lifted } : { panY: v.panY + state.lifted }); state.lifted = 0; }
   }
 
   /* Tap on the name or a node: a short personable note, streamed into the panel (cached until the cloud changes). */

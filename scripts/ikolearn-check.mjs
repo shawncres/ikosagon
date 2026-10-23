@@ -2115,7 +2115,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(ph.cx === 195 && ph.cy === 60 + (760 - 420 - 60) / 2 && ph.cy + ph.ah / 2 <= 760 - 420 && ph.cy - ph.ah / 2 >= 60, "phone focus: the node sits in the middle of the strip above the sheet", JSON.stringify(ph));
   ok(CAM.focusFrame(390, 760, { sheet: 900, top: 60 }).cy > 60, "phone focus: a tall sheet still leaves the node below the top controls");
   const wd = CAM.focusFrame(1280, 720, { wide: true });
-  ok(wd.cx === 440 && wd.cy === 360, "wide focus: left of the side panel", JSON.stringify(wd));
+  ok(wd.cx === 840 && wd.cy === 360 && wd.aw === 860, "wide focus: centred right of the side panel (it sits on the left)", JSON.stringify(wd));
   // the projection: a pivot node lands exactly at centre + pan, whatever the turn (so turning orbits it)
   const proj = (p, v, w = 400, h = 400) => { const piv = v.pivot || { x: 0, y: 0, z: 0 }; const px = p.x - piv.x, py = p.y - piv.y, pz = p.z - piv.z, cy = Math.cos(v.yaw), sy = Math.sin(v.yaw), cp = Math.cos(v.pitch), sp = Math.sin(v.pitch); let x = px * cy - pz * sy, z = px * sy + pz * cy; const y = py * cp - z * sp; z = py * sp + z * cp; const f = 3.2 / (3.2 + z), s = Math.min(w, h) * 0.34 * v.zoom; return { x: w / 2 + v.panX + x * f * s, y: h / 2 + v.panY - y * f * s }; };
   const node = { x: 0.8, y: 0.3, z: -0.5 };
@@ -2375,13 +2375,21 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
 
   // the big cloud's idle spin (camera.js: pure)
   const S = CAM.spinState, R0 = CAM.SPIN.resumeMs;
-  ok(R0 >= 2000 && R0 <= 8000 && CAM.SPIN.rate > 0 && CAM.SPIN.rate * 1000 * 60 < Math.PI * 2, "idle spin: slow (under a turn a minute), resumes after a few idle seconds");
+  const turnSec = (2 * Math.PI) / CAM.SPIN.rate / 1000;
+  ok(R0 >= 3000 && R0 <= 4000 && turnSec >= 60 && turnSec <= 90, "idle spin: slow but noticeable (one turn in 60-90 s), starts after 3-4 idle seconds", `${turnSec.toFixed(1)} s/turn, ${R0} ms`);
+  ok(CAM.spinEase(0) === 0 && CAM.spinEase(CAM.SPIN.easeMs) === 1 && CAM.spinEase(CAM.SPIN.easeMs / 2) === 0.5 && CAM.spinEase(CAM.SPIN.easeMs / 4) < 0.25 && CAM.SPIN.easeMs >= 800 && CAM.SPIN.easeMs <= 2500, "idle spin: eases in (smoothstep from rest to full speed in about 1.5 s)");
+  ok(CAM.spinStep(16, 0) === 0 && CAM.spinStep(16, CAM.SPIN.easeMs) === CAM.SPIN.rate * 16 && CAM.spinStep(16, CAM.SPIN.easeMs / 2) === CAM.SPIN.rate * 8, "idle spin: the first frame is still, full speed once eased in");
   ok(S({ reduce: true, active: true, now: 1e6, lastInput: 0 }).on === false && S({ reduce: true, active: true, now: 1e6, lastInput: 0 }).wait === Infinity, "idle spin: off with reduced motion");
-  ok(!S({ hidden: true, active: true, now: 1e6 }).on && !S({ active: false, now: 1e6 }).on && !S({ active: true, paused: true, now: 1e6 }).on, "idle spin: never while the tab is hidden, the cloud is closed or a panel is open");
+  ok(!S({ hidden: true, active: true, now: 1e6 }).on && !S({ active: false, now: 1e6 }).on && !S({ active: true, paused: true, now: 1e6 }).on, "idle spin: never while the tab is hidden, the cloud is closed or something covers it");
   ok(!S({ active: true, busy: true, now: 1e6, lastInput: 0 }).on && S({ active: true, now: 1000, lastInput: 0 }).wait === R0 - 1000 && S({ active: true, now: R0, lastInput: 0 }).on, "idle spin: paused by interaction (and a focus glide), resumes once idle");
   ok(CAM.spinStep(1000) === CAM.SPIN.rate * CAM.SPIN.maxDt && CAM.spinStep(-5) === 0, "idle spin: a long frame gap never jumps");
+  ok(/if \(sp\.on && !spinning\) spinFrom = now;/.test(view) && /CAM\.spinStep\(spinning \? now - lastFrame : 16, now - spinFrom\)/.test(view), "cloud view: each start of the spin eases in again");
+  ok(/hold: function \(on\) \{ if \(spinHeld === Boolean\(on\)\) return;/.test(view), "cloud view: re-asserting the same hold does not restart the idle wait (the panel's sheet resizes as its note streams)");
   ok(/\["pointerdown", "pointermove", "wheel"\]\.forEach\(function \(t\) \{ canvas\.addEventListener\(t, touch/.test(view) && /root\.addEventListener\("keydown", touch\)/.test(view) && /visibilitychange/.test(view) && /if \(gesture \|\| tween \|\| glideV\) lastInput = now;/.test(view), "cloud view: pointer, wheel, keys and focus glides pause it; a hidden tab stops it");
-  ok(/big\.spin\(true\)/.test(app) && /big\.spin\(false\)/.test(app) && /big\.hold\(true\)/.test(app) && /big\.hold\(false\)/.test(app), "the app spins it only while the cloud is open, and holds it while a panel is open");
+  ok(/big\.spin\(true\)/.test(app) && /big\.spin\(false\)/.test(app) && /big\.hold\(false\)/.test(app) && !/big\.hold\(true\)/.test(app), "the app spins it while the cloud is open, on every view of it (also beside the node panel)");
+  ok(/function panelCovers\(\) \{ return !el\.panel\.hidden && window\.innerWidth < 900 && el\.panel\.offsetHeight > el\.cloudCanvas\.clientHeight \* 0\.7; \}/.test(app) && /el\.panel\.hidden = false;\n    syncCover\(\);/.test(app) && /new ResizeObserver\(function \(\) \{\n    syncCover\(\);/.test(app), "the app holds the spin only while the phone sheet covers most of the cloud");
+  ok(/#panel \{ left: 16px; right: auto; top: 64px; bottom: 16px; width: 380px;/.test(css) && /translateX\(-22px\)/.test(css) && !/translateX\(22px\)/.test(css) && /#cloud:has\(#panel:not\(\[hidden\]\)\) :is\(\.cloud-hint, \.cloud-caption\) \{ left: 412px;/.test(css), "wide screens: the node panel sits on the left (slides in from the left; the hint and caption move right of it)");
+  ok(/state\.lifted = wide \? \(el\.panel\.offsetWidth \+ 16\) \/ 2 : el\.panel\.offsetHeight \/ 2;/.test(app), "the whole-cloud panel moves the cloud clear of it (right on wide screens, up on phones)");
 
   // the mini-Deck
   ok(/el\.miniDeck\.addEventListener\("click", function \(\) \{ showDeck\(true\); \}\)/.test(app), "mini-Deck: tapping it opens the album");

@@ -4,9 +4,11 @@
  *   Focus        tap a point: the camera eases (cubic in-out, zoom interpolated in log space, turn by the shortest
  *                arc) so the node comes to the front and its branch is framed in the view
  *   Inertia      a released pan glides on and slows exponentially: v(t) = v0·e^(-t/τ), distance v0·τ·(1 - e^(-t/τ))
- *   Idle spin    the big cloud turns slowly on its own (about one turn in two minutes) only while nothing else is
- *                happening: any pointer, wheel, key or focus glide pauses it, and it resumes after a few seconds idle.
- *                Never with reduced motion, while the tab is hidden, or while the cloud is closed or a panel is open.
+ *   Idle spin    the big cloud turns slowly on its own (one turn in about 75 s) once nothing has happened for 3.5 s,
+ *                easing in over 1.5 s: any pointer, wheel or key stops it at once, a focus glide or a released pan is
+ *                waited out, and it comes back after the same idle delay. It keeps turning beside the node panel (about
+ *                the focused node, which stays put). Never with reduced motion, while the tab is hidden, while the cloud
+ *                is closed (a lesson, card or the Deck covers it) or while the panel covers most of it.
  *   Pivot        the camera turns about a pivot point P (the origin, or the focused node). A point p is drawn at
  *                centre + pan + zoom·s·persp(R(p − P)), so P itself always sits at centre + pan: turning about P
  *                leaves the focused node where it is, and focusing a node is just "pivot = node, pan = target − centre"
@@ -17,7 +19,7 @@
   var TAU = Math.PI * 2;
   var CAM = { zmin: 0.6, zmax: 60, glideTau: 260, glideStop: 0.02, glideMin: 0.12, focusMs: 650, zoomMs: 220, wheel: 0.0015, wheelStep: [0.82, 1.22], margin: 0.62 };
 
-  var SPIN = { rate: 0.00005, resumeMs: 4000, maxDt: 50 };
+  var SPIN = { rate: TAU / 75000, resumeMs: 3500, easeMs: 1500, maxDt: 50 };
   /* -> { on, wait }: spinning now, or how many ms until it may resume (Infinity while it cannot spin at all). */
   function spinState(o) {
     o = o || {};
@@ -26,8 +28,10 @@
     var left = SPIN.resumeMs - Math.max(0, (o.now || 0) - (o.lastInput || 0));
     return left > 0 ? { on: false, wait: left } : { on: true, wait: 0 };
   }
-  /* The turn for one frame (a long gap, e.g. after a dropped frame, never jumps). */
-  function spinStep(dt) { return SPIN.rate * Math.max(0, Math.min(SPIN.maxDt, dt || 0)); }
+  /* The ease-in: 0 -> 1 over SPIN.easeMs from the moment the spin starts (smoothstep, so it never lurches). */
+  function spinEase(since) { var k = since == null ? 1 : Math.max(0, Math.min(1, since / SPIN.easeMs)); return k * k * (3 - 2 * k); }
+  /* The turn for one frame, `since` ms after the spin started (a long gap, e.g. after a dropped frame, never jumps). */
+  function spinStep(dt, since) { return SPIN.rate * spinEase(since) * Math.max(0, Math.min(SPIN.maxDt, dt || 0)); }
   /* Which gesture a pointer starts: two pointers pinch (zoom, twist, two-finger pan); right, Shift or Alt turns; else pan. */
   function gestureFor(o) {
     o = o || {};
@@ -67,13 +71,13 @@
     return fitZoom({ x0: -hx, x1: hx, y0: -hy, y1: hy }, w, h, lo, hi, margin);
   }
   /*
-   * Where a focused node goes on screen, and the free area to frame its branch in. Wide screens: left of the 400px
-   * side panel. Phones: the bottom sheet (sheet px tall) covers the lower part, so the node sits in the middle of the
+   * Where a focused node goes on screen, and the free area to frame its branch in. Wide screens: right of the 400px
+   * side panel (it sits on the left), centred in the free area. Phones: the bottom sheet (sheet px tall) covers the lower part, so the node sits in the middle of the
    * strip above it (never above the top controls) and the branch is fitted to that strip.
    */
   function focusFrame(w, h, o) {
     o = o || {};
-    if (o.wide) return { cx: (w - (o.side || 400)) / 2, cy: h / 2, aw: w - (o.side || 400) - 20, ah: h - 80 };
+    if (o.wide) { var side = o.side || 400; return { cx: side + (w - side) / 2, cy: h / 2, aw: w - side - 20, ah: h - 80 }; }
     var top = o.top || 64, free = Math.max(120, h - (o.sheet || 0) - top);
     return { cx: w / 2, cy: top + free / 2, aw: w - 24, ah: Math.max(100, free - 24) };
   }
@@ -108,7 +112,7 @@
   /* One wheel notch, kept deliberate: a capped factor per event (a trackpad pinch sends ctrlKey and a small delta). */
   function wheelFactor(deltaY, ctrl) { return clamp(Math.exp(-deltaY * CAM.wheel * (ctrl ? 4 : 1)), CAM.wheelStep[0], CAM.wheelStep[1]); }
 
-  var api = { CAM: CAM, SPIN: SPIN, spinState: spinState, spinStep: spinStep, gestureFor: gestureFor, hint: hint, easeInOutCubic: easeInOutCubic, wrap: wrap, lerpView: lerpView, lerpPoint: lerpPoint, ORIGIN: ORIGIN, fitAround: fitAround, focusFrame: focusFrame, forwardYaw: forwardYaw, fitZoom: fitZoom, glide: glide, velocity: velocity, twist: twist, zoomAbout: zoomAbout, wheelFactor: wheelFactor };
+  var api = { CAM: CAM, SPIN: SPIN, spinState: spinState, spinStep: spinStep, spinEase: spinEase, gestureFor: gestureFor, hint: hint, easeInOutCubic: easeInOutCubic, wrap: wrap, lerpView: lerpView, lerpPoint: lerpPoint, ORIGIN: ORIGIN, fitAround: fitAround, focusFrame: focusFrame, forwardYaw: forwardYaw, fitZoom: fitZoom, glide: glide, velocity: velocity, twist: twist, zoomAbout: zoomAbout, wheelFactor: wheelFactor };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.IkoCamera = api;
 })(typeof window !== "undefined" ? window : this);
