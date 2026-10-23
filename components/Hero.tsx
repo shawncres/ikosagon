@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { RingGlow } from "@/components/RingGlow";
 
 const H1_LINES = [
-  "Builds the product. Then black-box tests it.",
+  "Bringing curated, carefully crafted software experiences to your users.",
   "Upgrade your existing processes for a post-AGI future.",
   "Hireable AI systems, edge software, and production process upgrades.",
   "Grounded RAG, reliable agents, and edge/IoT that hold up in production.",
