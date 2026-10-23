@@ -1136,7 +1136,7 @@
     lock(true);
     calls.lessonFor = id;
     /* the orchestrator builds the context: child topics only when wanted, and the planned next step for the fork */
-    var ctx = P.lessonContext(state.cloud, id), text = "", wantPath = ctx.wantPath, reading = [];
+    var ctx = P.lessonContext(state.cloud, id), text = "", wantPath = ctx.wantPath, reading = [], tricky = "";
     el.lBody.textContent = "";
     renderLessonBody("", true);
     renderQuiz(true);
@@ -1147,6 +1147,7 @@
         var flash = [];
         if (ev.blurb) C.setBlurb(state.cloud, id, ev.blurb);
         reading = L.cleanReading(ev.reading); /* titles and search phrases only; links are built on the device (allowlist) */
+        tricky = typeof ev.tricky === "string" ? ev.tricky.trim().slice(0, 600) : ""; /* "Still tricky", prepared in this same call: shown only if asked */
         if (state.quiz && state.quiz.id === id) state.quiz.qs = validQs(ev.questions);
         if (ev.end) C.markEnd(state.cloud, id);
         if (wantPath && ev.steps && ev.steps.length) {
@@ -1164,6 +1165,7 @@
       if (r.ok && L.usable(parsed)) {
         state.lessons[id] = { text: text.trim(), at: Date.now(), qs: state.quiz && state.quiz.id === id ? state.quiz.qs : [], ans: [] };
         if (reading.length) state.lessons[id].rd = reading;
+        if (tricky) state.lessons[id].tk = tricky;
         if (state.lessonNode === id) { renderLessonBody(text, false); lessonReady(id, true); showReading(reading); }
       } else if (r.reason === "aborted") {
         /* cancelled because the learner moved on: not a failure; it is written next time it's opened */
@@ -1203,7 +1205,9 @@
   /*
    * "I've got it": confirmed on the device (0 calls). Progress is marked, a short note says so, and the learner stays
    * here; Where Next (below) has the next step pre-selected, nothing opens by itself.
-   * "Still tricky": stays on the topic and offers three prepared clarifications (each one chat call, streamed inline).
+   * "Still tricky": stays on the topic with a clarification already there: the simpler explanation the lesson call
+   * prepared (0 calls), or, for a lesson saved before that, one call that writes it. The worked example and a targeted
+   * question stay one tap away (one call each, kept), and chat is one tap away with the topic in focus.
    */
   function finishLesson(kind) {
     var id = state.lessonNode, n = nodeOf(id);
@@ -1219,13 +1223,12 @@
     el.lStatus.textContent = "";
     if (kind === "got") {
       /* understood: the clarify options go; an answer already shown stays */
-      var co = el.lClar.querySelector(".clar-opts");
-      if (co) co.parentNode.removeChild(co);
+      [".clar-opts", ".clar-chat"].forEach(function (q) { var co = el.lClar.querySelector(q); if (co) co.parentNode.removeChild(co); });
       if (!quizSaidIt()) el.lStatus.appendChild(mk("strong", "yes", "That's it. ")); /* said once: the quiz may already have */
       el.lStatus.appendChild(document.createTextNode((note || n.label + " is growing stronger on your cloud.") + (kids.length ? " " + kidsLine(id, kids) : "")));
     } else {
-      el.lStatus.appendChild(document.createTextNode((note ? note + " " : "") + "That's okay, it takes a few tries. What would help?"));
-      renderClarify(id, true);
+      el.lStatus.appendChild(document.createTextNode((note ? note + " " : "") + "That's okay, it takes a few tries. Here's another way to see it."));
+      prepareClarify(id);
     }
     renderLessonPath();
     renderLessonCard(Boolean(note));
@@ -1234,6 +1237,21 @@
   }
 
   /* ---------- "Still tricky": prepared clarifications, inline ---------- */
+  /* The simpler explanation, straight away: prepared with the lesson (0 calls), already written (0 calls), or written now (1 call) */
+  function prepareClarify(id) {
+    var les = state.lessons[id];
+    if (les && les.tk && !(les.cl && les.cl.simpler)) { les.cl = les.cl || {}; les.cl.simpler = les.tk; save(); }
+    renderClarify(id, true);
+    if (les && les.cl && les.cl.simpler) focusClar("simpler");
+    else clarify(id, "simpler");
+  }
+  function focusClar(style) {
+    var b = el.lClar.querySelector('.clar[data-style="' + style + '"]');
+    if (!b) return;
+    b.tabIndex = -1;
+    b.scrollIntoView({ block: "nearest" });
+    try { b.focus({ preventScroll: true }); } catch { b.focus(); }
+  }
   var CLARIFY = [["simpler", "Explain it more simply"], ["example", "Show me a worked example"], ["question", "Ask me a question"]];
   function clarifyLabel(style) { return (CLARIFY.filter(function (c) { return c[0] === style; })[0] || ["", ""])[1]; }
   /* the three options, plus any answers already written for this lesson (kept with it: asking again is 0 calls) */
@@ -1253,6 +1271,12 @@
       el.lClar.appendChild(row);
     }
     CLARIFY.forEach(function (c) { if (done[c[0]]) clarBox(c[0], done[c[0]]); });
+    if (offer) {
+      /* still stuck: chat, with this topic in focus and the question started */
+      var talk = mk("p", "fine clar-chat");
+      talk.appendChild(linkBtn("Talk it through in chat", function () { askInChat(id, "I'm still finding " + nodeOf(id).label + " tricky. Can you help me with it?"); }));
+      el.lClar.appendChild(talk);
+    }
   }
   function clarBox(style, text) {
     var old = el.lClar.querySelector('.clar[data-style="' + style + '"]');
@@ -1263,7 +1287,7 @@
     var body = mk("div", "clar-body");
     box.appendChild(body);
     if (text) paragraphs(body, text);
-    el.lClar.appendChild(box);
+    el.lClar.insertBefore(box, el.lClar.querySelector(".clar-chat"));
     return { box: box, body: body };
   }
   function clarify(id, style) {
@@ -1274,7 +1298,7 @@
     lock(true);
     var ui = clarBox(style, ""), text = "";
     ui.body.className = "clar-body streaming";
-    ui.box.scrollIntoView({ block: "nearest" });
+    focusClar(style);
     var body = Object.assign(basePayload(id), { mode: "clarify", clarify: style, lesson: les ? String(les.text).slice(0, 1500) : "", messages: [] });
     stream("/chat", body, {
       delta: function (t) { text += t; paragraphs(ui.body, text); }
@@ -1296,8 +1320,10 @@
 
   /* ---------- Where Next (in every lesson, 0 calls) ---------- */
   /*
-   * The logical next step first, highlighted and pre-selected, then up to 3 other topics in progress. Tapping an option
-   * selects it; "Open" goes there. The selected topic's card is drawn on the device (deck.js), no call.
+   * Two quiet groups of equal boxes. Where next: only this lesson's own parent (continue this path, then related or
+   * deeper steps). Also in progress: other branches, the place for switching context. One box is selected (the next
+   * step, or the learner's own tap); its action ("Continue" for the path, "Open" otherwise) sits inside that box, so
+   * the choice and the action stay together. Every box keeps the same size: the action's room is kept in each one.
    */
   function renderWhereNext() {
     var id = state.lessonNode, n = nodeOf(id);
@@ -1308,60 +1334,72 @@
     var items = w.choices.map(function (c) { return c.id; }).concat(w.others);
     var grow = !w.path && !n.end && !C.isTerminal(state.cloud, id) && (!n.path || P.needsNext(state.cloud, id));
     if (!items.length && !grow) return;
-    el.lNext.appendChild(mk("p", "l-head", "Where next"));
-    if (items.length) {
-      /* the learner's own tap wins; otherwise the computed pick (it can change, e.g. when the fork arrives) */
-      var sel = items.indexOf(state.pick) >= 0 ? state.pick : w.next || items[0];
-      var onPath = P.pathNext(state.cloud, id);
-      var list = mk("div", "wn-opts");
-      list.setAttribute("role", "radiogroup");
-      list.setAttribute("aria-label", "Where next");
-      var row = function (x, kind, why) {
-        var m = nodeOf(x), on = x === sel;
-        var b = mk("button", "wn-opt " + kind + (on ? " on" : ""));
-        b.type = "button";
-        b.setAttribute("role", "radio");
-        b.setAttribute("aria-checked", on ? "true" : "false");
-        b.setAttribute("data-id", x);
-        b.setAttribute("data-kind", kind);
-        b.appendChild(mk("span", "wn-label", m.label + (n.fork && n.fork.picked === x ? " · your pick" : "")));
-        b.appendChild(mk("span", "why", why));
-        b.addEventListener("click", function () { state.pick = x; renderWhereNext(); });
-        list.appendChild(b);
-      };
-      /* honest reasons, from the cloud itself; the model's own reason only for choices in this subject */
-      var join = function (a, c) { return c ? a + " · " + c : a; };
+    /* the learner's own tap wins; otherwise the computed pick (it can change, e.g. when the fork arrives) */
+    var sel = items.indexOf(state.pick) >= 0 ? state.pick : w.next || items[0];
+    var onPath = P.pathNext(state.cloud, id);
+    var go = function (to) {
+      if (!nodeOf(to)) return;
+      /* a fork choice: remember it as the learner's pick (it becomes the planned next step) */
+      if (forkIds.indexOf(to) >= 0) { C.pickChoice(state.cloud, id, to); save(); refreshViews([to]); }
+      openLesson(to);
+    };
+    var group = function (label, cls) {
+      var g = mk("div", "wn-opts" + (cls ? " " + cls : ""));
+      g.setAttribute("role", "radiogroup");
+      g.setAttribute("aria-label", label);
+      return g;
+    };
+    var box = function (list, x, kind, why) {
+      var m = nodeOf(x), on = x === sel, cont = kind === "path";
+      var b = mk("div", "wn-opt " + kind + (on ? " on" : ""));
+      b.setAttribute("data-id", x);
+      b.setAttribute("data-kind", kind);
+      var pick = mk("button", "wn-pick");
+      pick.type = "button";
+      pick.setAttribute("role", "radio");
+      pick.setAttribute("aria-checked", on ? "true" : "false");
+      pick.appendChild(mk("span", "wn-label", m.label + (n.fork && n.fork.picked === x ? " · your pick" : "")));
+      pick.appendChild(mk("span", "why", why));
+      pick.addEventListener("click", function () { state.pick = x; renderWhereNext(); var f = el.lNext.querySelector('.wn-opt[data-id="' + x + '"] .wn-act'); if (f) f.focus(); });
+      b.appendChild(pick);
+      /* the action lives in the box; unselected boxes keep its room (hidden, not focusable) so every box is the same size */
+      var act = mk("button", "btn sm wn-act", cont ? "Continue" : "Open");
+      act.type = "button";
+      act.setAttribute("aria-label", (cont ? "Continue with " : "Open ") + m.label);
+      if (!on) { act.tabIndex = -1; act.setAttribute("aria-hidden", "true"); }
+      act.addEventListener("click", function () { if (x === sel) go(x); });
+      b.appendChild(act);
+      list.appendChild(b);
+    };
+    /* honest reasons, from the cloud itself; the model's own reason only for choices in this subject */
+    var join = function (a, c) { return c ? a + " · " + c : a; };
+    if (w.choices.length || grow) el.lNext.appendChild(mk("p", "l-head", "Where next"));
+    if (w.choices.length) {
+      var main = group("Where next");
       w.choices.forEach(function (c) {
         var m = nodeOf(c.id), par = nodeOf(m.parent), why;
         if (c.kind === "path") why = join(join(c.id === onPath ? "Next on this path" : "Closest to this lesson", afterOf(c.id)), c.why);
-        else if (c.kind === "branch") why = join(m.parent === id ? "Goes deeper into " + n.label : par ? "Related · in " + par.label : "Related", c.why);
-        else why = join("Try a different path", m.parent ? trailOf(m.parent) : "");
-        row(c.id, c.kind, why);
+        else why = join(m.parent === id ? "Goes deeper into " + n.label : par ? "Related · in " + par.label : "Related", c.why);
+        box(main, c.id, c.kind, why);
       });
-      if (w.others.length && w.choices.length) list.appendChild(mk("p", "wn-sub", "Also in progress"));
-      w.others.forEach(function (x) { row(x, "progress", "In progress · " + trailOf(nodeOf(x).parent || x)); });
-      el.lNext.appendChild(list);
-      var pick = nodeOf(sel), go = mk("div", "wn-go"), sp = D.cardSpec(state.cloud, sel);
-      if (sp) { var c = D.render(document, sp, { size: "mini" }); c.setAttribute("aria-hidden", "true"); go.appendChild(c); }
-      var open = mk("button", "btn sm", "Open " + pick.label);
-      open.type = "button";
-      open.addEventListener("click", function () {
-        var to = sel;
-        if (!nodeOf(to)) return;
-        /* a fork choice: remember it as the learner's pick (it becomes the planned next step) */
-        if (forkIds.indexOf(to) >= 0) { C.pickChoice(state.cloud, id, to); save(); refreshViews([to]); }
-        openLesson(to);
-      });
-      go.appendChild(open);
-      el.lNext.appendChild(go);
+      el.lNext.appendChild(main);
     }
     if (grow) el.lNext.appendChild(mk("p", "fine")).appendChild(linkBtn("What comes next in " + n.label + "?", function () { createNext(id); }));
+    if (w.others.length) {
+      el.lNext.appendChild(mk("p", "wn-sub", "Also in progress"));
+      var alt = group("Also in progress", "wn-alt");
+      w.others.forEach(function (x) {
+        var m = nodeOf(x), pick = n.fork && n.fork.picked === x;
+        box(alt, x, "progress", (pick && !(m.opened || m.engaged > 0 || m.correct > 0) ? "Your pick · " : "In progress · ") + trailOf(m.parent || x));
+      });
+      el.lNext.appendChild(alt);
+    }
   }
-  function askInChat(id) {
+  function askInChat(id, ask) {
     var n = nodeOf(id);
     setFocus(id);
     showLesson(false);
-    if (n) el.input.value = "Can you help me with " + n.label + "?";
+    if (n) el.input.value = ask || "Can you help me with " + n.label + "?";
     autosize();
     el.input.focus();
     scrollDown();
@@ -1589,7 +1627,7 @@
     if (fresh && state.view && !state.lessonNode) big.setView({ yaw: state.view.y, pitch: state.view.p, zoom: state.view.z, panX: state.view.x, panY: state.view.q, pivot: Array.isArray(state.view.o) ? { x: state.view.o[0], y: state.view.o[1], z: state.view.o[2] } : null, focus: state.view.f && nodeOf(state.view.f) ? state.view.f : null });
     big.setTests(testMap());
     renderCloudHint();
-    big.spin(true); /* a slow idle turn (not with reduced motion; paused by any interaction, a panel, or a hidden tab) */
+    big.spin(true); /* a slow idle turn after a few idle seconds, on every view of the cloud, also beside the node panel (not with reduced motion; stopped by any input; paused while hidden or covered) */
     if (state.lessonNode) setTimeout(function () { openPanel(state.lessonNode); }, 0); /* a lesson or a test: its topic */
     else if (state.glide && nodeOf(state.glide)) { var gl = state.glide; state.glide = null; setTimeout(function () { focusInView(gl, false); }, 0); } /* a new parent: the camera glides to it */
     renderCloudFlow();
@@ -1634,7 +1672,7 @@
     var n = isRoot ? null : nodeOf(id);
     if (!isRoot && !n) return;
     el.panel.hidden = false;
-    if (big) big.hold(true);
+    syncCover();
     if (cloudFlow) cloudFlow.hidden = true;
     el.pKicker.textContent = isRoot ? "Your learning cloud" : n.parent ? (n.ghost ? "Not explored yet · " : "") : "Subject";
     /* the trail above this topic: each step is a quiet link back up the branch */
@@ -1698,19 +1736,26 @@
     sheetH = el.panel.hidden ? 0 : el.panel.offsetHeight;
     big.focusNode(id, Object.assign({ keepYaw: keepYaw }, CAM.focusFrame(cw, ch, { wide: wide, sheet: wide ? 0 : sheetH, top: top })));
   }
+  /* The panel sits beside the cloud (left on wide screens, a sheet on phones), so the spin goes on; only a sheet that
+     covers most of the cloud holds it. */
+  function panelCovers() { return !el.panel.hidden && window.innerWidth < 900 && el.panel.offsetHeight > el.cloudCanvas.clientHeight * 0.7; }
+  function syncCover() { if (big) big.hold(panelCovers()); }
+  window.addEventListener("resize", syncCover);
   if (window.ResizeObserver) new ResizeObserver(function () {
+    syncCover();
     if (el.panel.hidden || window.innerWidth >= 900 || !big || !state.panelNode || state.panelNode === "root") return;
     if (Math.abs(el.panel.offsetHeight - sheetH) < 24 || Date.now() - focusAt > 6000) return; /* not after the learner has moved on */
     clearTimeout(sheetTimer);
     sheetTimer = setTimeout(function () { if (!el.panel.hidden && nodeOf(state.panelNode)) focusInView(state.panelNode, true); }, 220);
   }).observe(el.panel);
 
-  /* On phones the panel covers the lower part of the screen: move the cloud up while it is open (whole-cloud view). */
+  /* The panel covers part of the cloud: on phones the lower part (move the cloud up), on wide screens the left side
+     (move it right) while it is open (whole-cloud view). */
   function liftCloud(on) {
-    if (!big || window.innerWidth >= 900) return;
-    var v = big.state();
-    if (on && !state.lifted) { state.lifted = el.panel.offsetHeight / 2; big.setView({ panY: v.panY - state.lifted }); }
-    else if (!on && state.lifted) { big.setView({ panY: v.panY + state.lifted }); state.lifted = 0; }
+    if (!big) return;
+    var v = big.state(), wide = window.innerWidth >= 900;
+    if (on && !state.lifted) { state.liftX = wide; state.lifted = wide ? (el.panel.offsetWidth + 16) / 2 : el.panel.offsetHeight / 2; big.setView(wide ? { panX: v.panX + state.lifted } : { panY: v.panY - state.lifted }); }
+    else if (!on && state.lifted) { big.setView(state.liftX ? { panX: v.panX - state.lifted } : { panY: v.panY + state.lifted }); state.lifted = 0; }
   }
 
   /* Tap on the name or a node: a short personable note, streamed into the panel (cached until the cloud changes). */

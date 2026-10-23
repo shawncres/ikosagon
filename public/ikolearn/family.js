@@ -19,7 +19,7 @@
   /* eslint-enable @typescript-eslint/no-require-imports */
   var DAY = 86400000;
   var LIMIT = { recent: 5, progress: 6, cards: 3, branches: 4 };
-  var KIND = { path: "Next on this path", branch: "A related branch", other: "A different path" };
+  var KIND = { path: "Next on this path", branch: "A related branch" };
 
   function live(cloud, id) { var n = cloud.nodes[id]; return n && !n.ghost ? n : null; }
   function lastAt(n, lessons) { var l = lessons && lessons[n.id]; return Math.max(n.touched || 0, n.doneAt || 0, n.achievedAt || 0, (l && l.at) || 0); }

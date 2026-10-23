@@ -24,7 +24,8 @@
     suggest: 3,
     /* Where Next in a lesson: the next step plus up to this many other topics in progress */
     whereNext: 3,
-    nearDist: 2, /* Where Next: within 2 steps in the tree (a child, a sibling) is a related branch; further is a different path */
+    nearDist: 2, /* Where Next: within 2 steps in the tree (a child, a sibling) is a related branch; anything further is for Also in progress */
+    related: 2, /* Where Next: up to 2 related or deeper steps after "continue this path" (3 boxes at most) */
     /* a topic counts as engaged (its waiting child topics grow) after a right answer, "I've got it", a second visit or 2 minutes reading */
     engaged: { correct: 1, visits: 2, seconds: 120 },
     /* a test node appears for a parent once its core children are sufficiently complete: at least half of them and
@@ -520,6 +521,12 @@
     }
     return null;
   }
+  /*
+   * Where Next (0 calls): only steps that belong to this lesson's own parent. (a) continue this path, then (b) up to two
+   * related or deeper steps in the same subject (the fork's choices here first, then children, then siblings, nearest
+   * first). Nothing from another branch: other topics in progress go to `others` ("Also in progress"), the place for
+   * switching context, with the learner's own pick first when it lies on another path. Finished topics never appear.
+   */
   function whereNext(cloud, id, nextId, max) {
     max = max == null ? PLAN.whereNext : max;
     var n = nodeOf(cloud, id), empty = { next: null, path: null, choices: [], others: [] };
@@ -527,6 +534,7 @@
     var done = finishedNames(cloud);
     var open = function (x) { var m = nodeOf(cloud, x); return Boolean(x && x !== id && m && !finished(cloud, x) && !done[C.norm(m.label)]); };
     var inSubj = function (x) { return treeDist(cloud, id, x) <= PLAN.nearDist; }; /* near enough to be a branch of this lesson */
+    var sameParent = function (x) { return treeDist(cloud, id, x) < Infinity; }; /* same subject (the same top parent) */
     var fork = n.fork && n.fork.ids ? n.fork : { ids: [], why: [] };
     var whyOf = function (x) { var i = fork.ids.indexOf(x); return i >= 0 ? fork.why[i] || "" : ""; };
     var picked = open(fork.picked) ? fork.picked : null;
@@ -539,38 +547,26 @@
     var free = function (x) { return open(x) && !used[x]; };
     /* (a) continue this path */
     var cont = pathNext(cloud, id);
-    if (!open(cont) && open(nextId) && nextId !== picked && inSubj(nextId)) cont = nextId;
-    if (!open(cont)) cont = near(fork.ids.filter(function (x) { return open(x) && inSubj(x); }))[0] || null;
+    if (!open(cont) || !sameParent(cont)) cont = null;
+    if (!cont && open(nextId) && nextId !== picked && inSubj(nextId)) cont = nextId;
+    if (!cont) cont = near(fork.ids.filter(function (x) { return open(x) && inSubj(x); }))[0] || null;
     take(cont);
-    /* (b) a related branch: fork choices in this subject first, then children and siblings, nearest first */
-    var rel = near(fork.ids.filter(function (x) { return free(x) && inSubj(x); }));
-    if (!rel.length) {
-      var kids = C.childrenOf(cloud, id).map(function (c) { return c.id; });
-      var sibs = n.parent ? C.childrenOf(cloud, n.parent).map(function (c) { return c.id; }) : [];
-      rel = kids.concat(sibs).filter(free);
-    }
-    var branch = picked && inSubj(picked) && !used[picked] ? picked : rel[0];
-    take(branch);
-    /* (c) a different topic path, from the learner's own cloud */
-    var touched = function (a, b) { return (nodeOf(cloud, b).touched || 0) - (nodeOf(cloud, a).touched || 0); };
-    var away = cloud.order.filter(function (x) { var m = nodeOf(cloud, x); return free(x) && !inSubj(x) && (m.opened || m.engaged > 0 || m.correct > 0); }).sort(touched);
-    if (!away.length) {
-      /* an unstarted topic in another branch: a far fork choice first, then by the learner's ranking; never a bare category */
-      var sc = scores(cloud), topic = function (x) { var m = nodeOf(cloud, x), par = nodeOf(cloud, m.parent); return m.made || Boolean(par && par.made); };
-      var unstarted = function (x) { var m = nodeOf(cloud, x); return free(x) && !inSubj(x) && topic(x) && !(m.opened || m.engaged > 0 || m.correct > 0); };
-      away = fork.ids.filter(unstarted).concat(cloud.order.filter(function (x) { return unstarted(x) && fork.ids.indexOf(x) < 0; })
-        .sort(function (a, b) { return (sc[b] || 0) - (sc[a] || 0); }));
-    }
-    var other = picked && !inSubj(picked) && !used[picked] ? picked : away[0];
-    take(other);
+    /* (b) related or deeper steps in this subject: the learner's pick here, the fork's choices, then children and siblings */
+    var kids = C.childrenOf(cloud, id).map(function (c) { return c.id; });
+    var sibs = n.parent ? C.childrenOf(cloud, n.parent).map(function (c) { return c.id; }) : [];
+    var rel = (picked && inSubj(picked) ? [picked] : []).concat(near(fork.ids.filter(inSubj)), kids, sibs).filter(function (x, i, a) { return a.indexOf(x) === i && free(x) && inSubj(x); });
+    var branches = rel.slice(0, PLAN.related);
+    branches.forEach(take);
     var choices = [];
     if (cont) choices.push({ id: cont, kind: "path", why: whyOf(cont) });
-    if (branch) choices.push({ id: branch, kind: "branch", why: whyOf(branch) });
-    if (other) choices.push({ id: other, kind: "other", why: "" }); /* the model's reason is about this lesson, not another path */
+    branches.forEach(function (x) { choices.push({ id: x, kind: "branch", why: whyOf(x) }); });
+    /* Also in progress: other topics started and unfinished, most recent first; the learner's own pick on another path leads */
+    var touched = function (a, b) { return (nodeOf(cloud, b).touched || 0) - (nodeOf(cloud, a).touched || 0); };
     var others = cloud.order.filter(function (x) {
       var m = nodeOf(cloud, x);
       return m && !used[x] && m.parent && open(x) && (m.opened || m.engaged > 0 || m.correct > 0);
     }).sort(touched);
+    if (picked && !used[picked]) others = [picked].concat(others.filter(function (x) { return x !== picked; }));
     return { next: picked || cont || (choices[0] && choices[0].id) || null, path: cont, choices: choices, others: others.slice(0, max) };
   }
 
