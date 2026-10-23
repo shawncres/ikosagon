@@ -30,6 +30,7 @@ const P = require("../public/ikolearn/orchestrator.js");
 const CAM = require("../public/ikolearn/camera.js");
 import { minifyFile, targets as minTargets } from "./ikolearn-minify.mjs";
 import vm from "node:vm";
+import { seedFamily } from "./fixtures/ikolearn-family-seed.mjs";
 const DAYMS = 86400000;
 
 let pass = 0;
@@ -1035,7 +1036,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     ok(!/Maya|Minecraft|Redstone/.test(mdx), "project page copy names no sample learner or niche topic");
     const imgs = [...mdx.matchAll(/!\[([^\]]*)\]\((\/projects\/ikolearn\/[^)]+)\)/g)];
     ok(imgs.length >= 4 && imgs.every(([, alt, src]) => alt.length > 30 && fs.existsSync("public" + src)), "gallery images exist with descriptive alt text");
-    ok(/Parent & instructor dashboard\*\* \(coming\)/.test(mdx), "roadmap names the parent & instructor dashboard as coming");
+    ok(/Parent & instructor dashboard\*\* \(first version in place\)/.test(mdx) && /\*\*For parents & teachers:\*\* a calm, read-only page/.test(mdx), "roadmap: the parent & instructor dashboard has a first, read-only version; planning tools come next");
     ok(!/kickstarter\.com|https?:\/\/[^\s)]*kick|<form|<input/i.test(mdx), "Kickstarter is a plain mention: no link, no form");
     ok(!/shawn|cooper|resume|résumé/i.test(mdx), "no personal name or resume on the project page");
     const oldFm = (fs.readFileSync("content/projects/ikosagon-learn.mdx", "utf8").split("---")[1]) || "";
@@ -2137,7 +2138,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(pkg.scripts.prebuild === "node scripts/ikolearn-minify.mjs" && /^\^?0\.\d+/.test(pkg.devDependencies.esbuild || ""), "minify: runs before next build (prebuild), esbuild is a dev dependency");
   const mjs = fs.readFileSync("scripts/ikolearn-minify.mjs", "utf8");
   ok(/process\.env\.VERCEL === "1" \|\| process\.env\.IKOLEARN_MINIFY === "1"/.test(mjs) && !/mangleProps|keepNames: false|bundle: true/.test(mjs) && /sourcesContent: true/.test(mjs), "minify: in place only on Vercel's build (or when asked), no property mangling, no bundling, readable source in the maps");
-  eq(minTargets(), ["app.js", "camera.js", "cloud-model.js", "cloud-view.js", "deck.js", "lesson.js", "orchestrator.js", "rank.js", "styles.css"], "minify: every app script and the stylesheet");
+  eq(minTargets(), ["app.js", "camera.js", "cloud-model.js", "cloud-view.js", "deck.js", "family.css", "family.js", "lesson.js", "orchestrator.js", "rank.js", "styles.css"], "minify: every app script and stylesheet (the parents & teachers view too)");
   const min = {}, src = {};
   minTargets().forEach((f) => { src[f] = fs.readFileSync("public/ikolearn/" + f, "utf8"); min[f] = minifyFile(f, src[f]); });
   ok(Object.keys(min).every((f) => min[f].code.length < src[f].length * 0.85 && min[f].code.endsWith(`sourceMappingURL=${f}.map${f.endsWith(".css") ? " */" : ""}\n`)), "minify: every file is smaller and links its source map");
@@ -2882,6 +2883,89 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const nt = app.slice(app.indexOf("  function notice(id) {"), app.indexOf("  el.pLesson.addEventListener"));
   ok(nt.length > 300 && !/lock\(/.test(nt), "the note never holds the app busy (navigation and lessons stay available while it's written)");
   ok(/\} else if \(r\.reason === "aborted"\) \{/.test(app) && /reason: signal && signal\.aborted \? "aborted" : "offline"/.test(app), "a cancelled call is never shown as a failure");
+}
+
+/* ================= parents & teachers view (IkoFamily): read-only, 0 calls, same rules as the app ================= */
+{
+  const F = require("../public/ikolearn/family.js");
+  const NOW = Date.UTC(2026, 9, 23, 18), DAYMS_ = 86400000;
+  const fresh = () => C.deserialize(C.serialize(seedFamily(C, P, NOW)));
+  const c = fresh(), saved = C.serialize(c);
+  const m = F.summary(c, { now: NOW });
+  ok(C.serialize(c) === saved, "family: summary is pure (the cloud is byte-for-byte the same after building the view)");
+  ok(c.v === 9 && C.VERSION === 9, "family: storage stays v9 (no migration, nothing new stored)");
+  const fam = fs.readFileSync("public/ikolearn/family.js", "utf8"), famHtml = fs.readFileSync("public/ikolearn/family.html", "utf8"), famCss = fs.readFileSync("public/ikolearn/family.css", "utf8");
+  ok(!/fetch\(|XMLHttpRequest|sendBeacon|EventSource|WebSocket|\/api\//.test(fam), "family.js: no network of any kind (0 model calls)");
+  ok(!/setItem|removeItem|\.clear\(\)|save\(/.test(fam) && /getItem\(k\)/.test(fam), "family.js: reads storage, never writes it");
+  ok(!/innerHTML|outerHTML|insertAdjacentHTML/.test(fam.replace(/\/\*[\s\S]*?\*\//g, "")), "family.js: text nodes only");
+  ok((fam.match(/ikolearn\.v1\.[a-z]+/g) || []).every((k) => ["ikolearn.v1.name", "ikolearn.v1.cloud", "ikolearn.v1.lessons"].includes(k)), "family.js: reads only the name, the cloud and the lesson cache (existing keys)");
+  ok(/<meta name="robots" content="noindex/.test(famHtml) && !/<script[^>]+src="https?:/i.test(famHtml) && !/<link[^>]+href="https?:/i.test(famHtml) && !/@import|url\(https?:/i.test(famCss), "family page: noindex, no external scripts, styles or fonts");
+  ok(famHtml.indexOf("cloud-model.js") < famHtml.indexOf("rank.js") && famHtml.indexOf("rank.js") < famHtml.indexOf("deck.js") && famHtml.indexOf("deck.js") < famHtml.indexOf("orchestrator.js") && famHtml.indexOf("orchestrator.js") < famHtml.indexOf("family.js"), "family page: the model scripts load in the app's order, the view last");
+  ok(/\{ source: "\/ikolearn\/family", destination: "\/ikolearn\/family\.html" \}/.test(fs.readFileSync("next.config.ts", "utf8")), "next.config: /ikolearn/family serves the view (noindex via /ikolearn/:path*)");
+  const idx = fs.readFileSync("public/ikolearn/index.html", "utf8");
+  ok(/<a href="\/ikolearn\/family" id="family-link">For parents &amp; teachers<\/a>/.test(idx) && (idx.match(/ikolearn\/family/g) || []).length === 1, "app: one quiet text link, \"For parents & teachers\", in the footer line");
+  ok(/@media print/.test(famCss) && /\.fam-tools[^}]*display: none|\.fam-back, \.fam-tools/.test(famCss), "family page: prints without its buttons");
+  const servedFam = ["family.html", "family.css", "family.js"].reduce((n, f) => n + (/\.(js|css)$/.test(f) ? Buffer.byteLength(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.statSync("public/ikolearn/" + f).size), 0);
+  ok(servedFam < 20_000, "family page: its own files stay small (under 20 KB served)", String(servedFam));
+
+  // the same counts as the album and coverage; the same Where Next as the lesson
+  const ix = C.index(c);
+  m.subjects.forEach((sj) => {
+    const ids = D.subtree(c, sj.id, ix).slice(1).filter((x) => !c.nodes[x].ghost);
+    ok(sj.known === ids.length && sj.covered === ids.filter((x) => D.coverage(c, x).state === "covered").length, `family: ${sj.label} covered of known matches coverage()`);
+  });
+  eq(m.subjects.map((x) => x.label).sort(), ["Astronomy", "Music", "Ocean Life"], "family: the learner's own subjects, nothing else");
+  const album = D.albumModel(c);
+  album.forEach((pg) => { const sj = m.subjects.find((x) => x.label === pg.subject); ok(sj && sj.covered === pg.covered, `family: ${pg.subject} agrees with the album's covered count`); });
+  const anchor = c.active, wn = P.whereNext(c, anchor, P.nextStep(c, anchor));
+  eq(m.next.choices.map((x) => x.id), wn.choices.map((x) => x.id), "family: Where Next = whereNext(nextStep) from the active topic (the lesson's rule)");
+  eq(m.next.choices.map((x) => x.kind), ["path", "other"], "family: Where Next kinds come straight from the rule");
+  ok(m.next.from === "Constellations" && m.next.choices[0].label === "Star Maps", "family: continues the path first (Star Maps after Constellations)");
+  ok(m.next.choices.every((x) => !P.finished(c, x.id)), "family: Where Next never offers something finished");
+  // nextStep moved to the orchestrator: same answers as the app's old local rule
+  const oldNext = (cl, id) => { const n = cl.nodes[id]; if (!n) return null; const pick = n.fork && n.fork.picked; if (!(pick && cl.nodes[pick] && !C.isDone(cl, pick))) { const k = P.nextChild(cl, id); if (k) return k; } return C.nextFor(cl, id); };
+  ok(c.order.every((id) => P.nextStep(c, id) === oldNext(c, id)) && P.nextStep(c, "nope") === null, "orchestrator.nextStep = the app's old rule, for every topic");
+  const appJs = fs.readFileSync("public/ikolearn/app.js", "utf8");
+  ok(/function nextStep\(id\) \{ return P\.nextStep\(state\.cloud, id\); \}/.test(appJs), "app: nextStep delegates to the one shared rule");
+
+  // what it shows, all counted from stored data
+  ok(m.recent.every((r, i) => i === 0 || m.recent[i - 1].at >= r.at) && m.recent.length === 5 && m.recent[0].label === "Tempo", "family: recent lessons, newest first (5)");
+  eq(m.recent.map((r) => r.when), ["yesterday", "2 days ago", "3 days ago", "4 days ago", "5 days ago"], "family: gentle relative days");
+  const spent = c.order.reduce((t, x) => t + (c.nodes[x].ghost ? 0 : c.nodes[x].spent || 0), 0);
+  ok(m.activity.seconds === spent && m.activity.time === "about 1 hour 5 minutes", "family: time = the stored seconds with lessons open, rounded gently", m.activity.time);
+  eq([F.duration(0), F.duration(29), F.duration(60), F.duration(14 * 60), F.duration(3600), F.duration(3600 + 58 * 60), F.duration(7200 + 7 * 60)], ["", "", "about 1 minute", "about 14 minutes", "about 1 hour", "about 2 hours", "about 2 hours 5 minutes"], "family: duration wording");
+  eq([F.when(NOW, NOW), F.when(NOW - DAYMS_, NOW), F.when(NOW - 3 * DAYMS_, NOW), F.when(NOW - 21 * DAYMS_, NOW), F.when(NOW - 90 * DAYMS_, NOW), F.when(0, NOW)], ["today", "yesterday", "3 days ago", "3 weeks ago", "3 months ago", ""], "family: when wording");
+  ok(m.cards.total === c.deck.length && m.cards.tiers.reduce((t, x) => t + x.n, 0) === m.cards.total, "family: cards = the Deck, every card counted once by tier");
+  ok(m.cards.best.length === 3 && m.cards.best.every((id, i) => i === 0 || D.evolveKey(D.cardSpec(c, m.cards.best[i - 1])) >= D.evolveKey(D.cardSpec(c, id))), "family: the three strongest cards (the mini-Deck's order)");
+  ok(m.progress.every((x) => D.coverage(c, x.id).state === "progress" && c.nodes[x.id].parent), "family: in progress = started and not covered (no subjects)");
+  eq(m.tests.taken.map((t) => [t.label, t.passed, t.best]), [["Coral Reefs", true, 80]], "family: tests taken, passed, best %");
+  eq(m.tests.ready.map((t) => t.label), ["The Solar System"], "family: a ready test uses the orchestrator's testState");
+  ok(m.tests.passed === 1 && m.lede === "Sam has explored 10 topics across 3 subjects, earned 10 cards and passed 1 test.", "family: one encouraging line from the counts", m.lede);
+
+  // a topic waiting on another shows a quiet "after X"
+  const lc = fresh(), byL = (l) => lc.order.find((x) => lc.nodes[x].label === l);
+  C.addPrereqs(lc, byL("Moons"), [byL("Star Maps")]);
+  const lm = F.summary(lc, { now: NOW });
+  ok((lm.progress.find((x) => x.label === "Moons") || {}).after.join() === "Star Maps" && /Moons \(Astronomy\) \(after Star Maps\)/.test(F.text(lm)), "family: a locked topic says \"after X\" (v9 prerequisites)");
+
+  // empty, new, nameless and older saves
+  ok(F.summary(null).empty && /^Nothing here yet/.test(F.summary(null).lede) && F.summary(C.create("Kai", NOW), { now: NOW }).empty, "family: nothing saved, or a cloud with no topics: a calm empty state");
+  const started = C.create("Me", NOW);
+  C.applyCreate(started, { items: [{ node: { name: "Tides", chain: ["Ocean Life"] }, card: {}, children: [{ name: "Moon Pull", order: 1, score: 0.8 }, { name: "High Tide", order: 2, score: 0.7 }] }] }, { t: NOW });
+  const sm = F.summary(started, { now: NOW });
+  ok(!sm.empty && sm.name === "" && /^This learner has /.test(sm.lede) && !/\bMe\b/.test(F.text(sm)), "family: no name -> \"This learner\" (never \"Me\")", sm.lede);
+  for (const v of [1, 2, 3, 4]) {
+    const old = C.deserialize(fs.readFileSync(`scripts/fixtures/ikolearn-cloud-v${v}.json`, "utf8")), before = C.serialize(old);
+    let threw = "";
+    try { F.summary(old, { now: NOW }); F.text(F.summary(old, { now: NOW })); } catch (e) { threw = String(e.message || e); }
+    ok(!threw && C.serialize(old) === before, `family: a v${v} save reads without error and without change`, threw);
+  }
+
+  // wording: universal, gentle, no frameworks or ages; the summary repeats only what the page shows
+  const txt = F.text(m);
+  ok(/^IkoLearn summary for Sam, /.test(txt) && /Kept on this device\. Nothing here was sent anywhere\.$/.test(txt), "family: plain-text summary (copy or print)");
+  ok(!/\b(grade|grades|percentile|behind|ahead of|years old|age|curriculum|standards?|common core|national|key stage|IB|AP)\b/i.test(txt + fam.replace(/\/\*[\s\S]*?\*\//g, "")), "family: universal wording (no grades, ages, comparisons or named frameworks)");
+  ok(/For parents & teachers/.test(fam) && !/\b(kids?|child|children|student)\b/i.test(fam.replace(/\/\*[\s\S]*?\*\//g, "").replace(/childrenOf|children:/g, "")), "family: speaks to any age (no kid or student framing in the copy)");
 }
 
 if (fails.length) {

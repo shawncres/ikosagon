@@ -1,0 +1,35 @@
+/* IkoLearn for parents & teachers: the same warm paper, even quieter. Mobile first, no icons, prints on one or two pages. */
+.fam { padding-top: 28px; padding-bottom: 56px; }
+.fam-back { margin: 0 0 28px; font-size: 15px; }
+.fam-head h1 { font-weight: normal; font-size: 30px; line-height: 1.25; margin: 0 0 12px; }
+.fam-kicker { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--soft); margin: 0 0 8px; }
+.fam-lede { font-size: 18px; margin: 0 0 6px; max-width: 32em; }
+.fam-sec { border-top: 1px solid var(--rule); margin-top: 30px; padding-top: 18px; }
+.fam-sec h2 { font-weight: normal; font-size: 20px; margin: 0 0 12px; }
+.fam-list { list-style: none; margin: 0; padding: 0; }
+.fam-list > li { padding: 8px 0; border-bottom: 1px dotted var(--rule); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 16px; }
+.fam-list > li:last-child { border-bottom: 0; }
+.fam-list > li.fam-subject { display: block; padding: 12px 0; }
+.fam-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 16px; margin: 0 0 6px; }
+.fam-name { overflow-wrap: anywhere; }
+.fam-count, .fam-why { color: var(--soft); font-size: 15px; font-style: italic; }
+.fam-sub { color: var(--soft); font-size: 15px; margin: 6px 0 0; overflow-wrap: anywhere; }
+.fam-meter { display: block; height: 3px; background: var(--fold); border-radius: 2px; overflow: hidden; }
+.fam-fill { display: block; height: 100%; background: var(--soft); }
+.fam-deck { display: grid; grid-template-columns: repeat(3, minmax(0, 150px)); gap: 12px; margin-top: 14px; }
+.fam-deck .gcard { width: 100%; }
+.fam-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 36px; padding-top: 18px; border-top: 1px solid var(--rule); }
+.fam-tools .fine { margin: 0; flex-basis: 100%; min-height: 1.4em; }
+.fam-foot { margin-top: 18px; }
+@media (min-width: 720px) {
+  .fam { padding-top: 48px; }
+  .fam-head h1 { font-size: 34px; }
+}
+@media print {
+  html, body { background: #fff; }
+  .fam-back, .fam-tools, .fam-foot a { display: none; }
+  .fam { padding: 0; max-width: none; }
+  .fam-sec { break-inside: avoid; margin-top: 18px; }
+  .fam-deck { grid-template-columns: repeat(3, 120px); }
+  .gcard * { animation: none !important; }
+}

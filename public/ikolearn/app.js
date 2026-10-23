@@ -141,13 +141,7 @@
    * The recommended next step from a topic, the same everywhere it is shown: the learner's own fork pick first, then
    * the best-ranked unfinished child (logical order + use + the model's importance), else the usual walk up the tree.
    */
-  function nextStep(id) {
-    var n = nodeOf(id);
-    if (!n) return null;
-    var pick = n.fork && n.fork.picked;
-    if (!(pick && nodeOf(pick) && !C.isDone(state.cloud, pick))) { var k = P.nextChild(state.cloud, id); if (k) return k; }
-    return C.nextFor(state.cloud, id);
-  }
+  function nextStep(id) { return P.nextStep(state.cloud, id); } /* one shared rule (orchestrator), also used by the parents & teachers view */
   /* v9 prerequisites still to finish, as quiet text: "after Eruptions" ("" when unlocked) */
   function afterOf(id) {
     var l = C.lockedBy(state.cloud, id).map(function (x) { return nodeOf(x) ? nodeOf(x).label : ""; }).filter(Boolean);
