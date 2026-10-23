@@ -562,11 +562,74 @@
     return { next: picked || cont || (choices[0] && choices[0].id) || null, path: cont, choices: choices, others: others.slice(0, max) };
   }
 
+  /*
+   * Chat placement (0 calls): where a topic the learner asked for goes. The chat block's placement and target are the
+   * model's advice; this checks them against the cloud and falls back procedurally:
+   *   reuse:     the title is already a parent, or the same topic (normalised) exists anywhere: that node, no duplicate.
+   *   parent:    a new branch right under the learner's name, beside the other parents.
+   *   child:     right under target (an id, or an existing topic's name). Only when it clearly belongs there: a broad
+   *              request aimed at the focus is not forced under it.
+   *   ambiguous: the learner chooses (Start X as a new branch / Add it under Focus); the plan is kept with the message.
+   *   legacy:    no placement given (a topic only talked about): the usual chain placement (applyTopics).
+   * Fallback for an invalid target: a new parent when the request is broad, otherwise ambiguous (with a focus).
+   */
+  function placeTarget(cloud, target) {
+    if (!target) return null;
+    if (/^n\d+$/.test(target)) return nodeOf(cloud, target);
+    return C.findAny(cloud, target) || null;
+  }
+  /* broad: a subject of its own. Procedural: the model's chain names nothing above it (or only itself, or a subject
+     that isn't on the cloud), and it shares no word with the focus's trail. */
+  function isBroad(cloud, tp, focusId) {
+    var label = C.cleanLabel(tp && tp.name), k = C.norm(label);
+    var chain = (tp && Array.isArray(tp.chain) ? tp.chain : []).map(C.norm).filter(function (x) { return x && x !== k; });
+    var parentK = C.norm(tp && tp.parent);
+    var above = chain.length ? chain : parentK && parentK !== k ? [parentK] : [];
+    var rootKnown = above.length && C.subjects(cloud).some(function (s) { return s.key === above[0]; });
+    var words = function (v) { return C.norm(v).split(" ").filter(function (w) { return w.length > 2; }); };
+    var trailWords = focusId && nodeOf(cloud, focusId) ? C.ancestry(cloud, focusId).reduce(function (a, x) { return a.concat(words(cloud.nodes[x].label)); }, []) : [];
+    var overlap = words(label).some(function (w) { return trailWords.indexOf(w) >= 0; }) || above.some(function (a) { return trailWords.indexOf(a) >= 0 || words(a).some(function (w) { return trailWords.indexOf(w) >= 0; }); });
+    return (!above.length || !rootKnown) && !overlap;
+  }
+  function placeTopic(cloud, tp, focusId) {
+    var label = C.cleanLabel(tp && tp.name), k = C.norm(label);
+    if (!label || k === C.norm(cloud.name)) return null;
+    var subj = C.subjects(cloud).filter(function (s) { return s.key === k; })[0];
+    if (subj) return { how: "reuse", id: subj.id, label: label };
+    var hit = C.findTopic(cloud, label, focusId && nodeOf(cloud, focusId) ? focusId : null);
+    if (hit) return { how: "reuse", id: hit.id, label: label };
+    var focus = focusId && nodeOf(cloud, focusId) ? nodeOf(cloud, focusId) : null;
+    var room = C.subjects(cloud).length < C.LIMITS.subjects;
+    var broad = isBroad(cloud, tp, focusId);
+    var pl = tp && tp.placement;
+    var asParent = function () { return room ? { how: "parent", label: label } : focus ? { how: "child", target: focus.id, label: label } : { how: "legacy", label: label }; };
+    var ask = function () { return focus && room ? { how: "ambiguous", target: focus.id, label: label } : broad ? asParent() : { how: "legacy", label: label }; };
+    if (pl === "parent") return asParent();
+    if (pl === "child") {
+      var t = placeTarget(cloud, tp.target);
+      if (!t) return broad ? asParent() : ask();
+      /* a broad subject aimed at the focus (or the focus's own subject) is not clearly a subtopic: ask */
+      if (broad && focus && C.ancestry(cloud, focus.id).indexOf(t.id) >= 0) return ask();
+      return { how: "child", target: t.id, label: label };
+    }
+    if (pl === "ambiguous") return ask();
+    return { how: "legacy", label: label };
+  }
+  /* The topic for C.applyTopics once placed: a new parent, right under its target, or as it came (reuse, legacy). */
+  function placedTopic(tp, plan) {
+    var o = {};
+    Object.keys(tp || {}).forEach(function (key) { if (key !== "placement" && key !== "target") o[key] = tp[key]; });
+    if (!plan) return o;
+    if (plan.how === "parent") { o.asSubject = true; o.parent = ""; o.chain = []; }
+    if (plan.how === "child") { o.under = plan.target; delete o.chain; }
+    return o;
+  }
+
   var api = {
     PLAN: PLAN, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, needsRepair: needsRepair, repairRequest: repairRequest,
     MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
-    suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished,
+    suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, placeTopic: placeTopic, placedTopic: placedTopic, isBroad: isBroad,
     onboarding: onboarding, openQuestion: openQuestion, examples: examples, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics,
     needsNext: needsNext, readyNext: readyNext, createRequest: createRequest, OPENING: OPENING
   };

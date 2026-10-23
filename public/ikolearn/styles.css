@@ -55,6 +55,10 @@ a { color: var(--ink); }
 .msg .acts { margin-top: 6px; font-size: 14px; color: var(--soft); }
 .msg .acts .link { color: var(--soft); }
 .grow { font-size: 13px; color: var(--soft); margin: -12px 0 22px; }
+.place { margin: -8px 0 22px; }
+.place .grow { margin: 0; }
+.place-q { font-size: 14px; color: var(--ink); margin: 0 0 8px; }
+.place-opts { display: flex; flex-wrap: wrap; gap: 8px; }
 
 /* learning card: light paper outline with a small shaded corner fold */
 .card { position: relative; background: var(--sheet); border: 1px solid var(--rule); border-radius: 4px; padding: 16px 40px 14px 18px; margin: 0 0 22px; }
