@@ -11,21 +11,37 @@ export default async function Home() {
       <Hero />
       <section className="section-block border-y border-border/80 py-10 md:py-12">
         <div className="container-shell">
-          <article className="card-surface neon-border rounded-2xl p-6 md:p-8">
-            <p className="mb-2 font-mono text-sm text-accent">Lead product</p>
-            <h2 className="mb-3 text-3xl font-semibold">IkoAgent</h2>
-            <p className="mb-4 max-w-3xl text-zinc-300">
-              Author-controlled call flows for CS, collections, and sales. The graph owns the journey;
-              NLP fills intents and slots inside each node — with a growing policy corpus, a secure demo
-              CRM, and a live agent desk with flow map.
-            </p>
-            <p className="mb-4 max-w-3xl text-sm text-zinc-400">
-              Pick a scenario on the project page, then talk (browser speech-to-text) or type as the
-              caller and hear free browser voice replies. Verify with a demo account and copy a
-              transcript when you want language polish.
-            </p>
-            <Link href="/projects/ikoagent" className="rounded-xl bg-accent px-4 py-2 font-semibold text-black">
-              Open IkoAgent
+          <article className="card-surface neon-border grid items-center gap-6 rounded-2xl p-6 md:grid-cols-[1fr_1.1fr] md:p-8">
+            <div>
+              <p className="mb-2 font-mono text-sm text-accent">Featured app</p>
+              <h2 className="mb-3 text-3xl font-semibold">IkoLearn</h2>
+              <p className="mb-4 max-w-3xl text-zinc-300">
+                A thoughtful learning harness for anyone curious, at any age. We at Ikosagon built it so
+                curiosity turns into real foundations: say what you enjoy, and IkoLearn grows a learning
+                cloud of subjects and topics in a sensible order, with short lessons that teach, then check.
+              </p>
+              <p className="mb-5 max-w-3xl text-sm text-zinc-400">
+                Cards fill in as the learning sticks, and parents can also use it to plan and guide
+                homeschool learning. No account needed; your learning stays on your device.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <Link href="/ikolearn" className="rounded-xl bg-accent px-4 py-2 font-semibold text-black">
+                  Open IkoLearn
+                </Link>
+                <Link href="/projects/ikolearn" className="rounded-xl border border-border px-4 py-2 transition hover:border-accent">
+                  About the project
+                </Link>
+              </div>
+            </div>
+            <Link href="/ikolearn" aria-label="Open IkoLearn" className="block overflow-hidden rounded-xl border border-border transition hover:border-accent">
+              {/* eslint-disable-next-line @next/next/no-img-element -- static public asset, same as project cards */}
+              <img
+                src="/projects/ikolearn/cover.png"
+                alt="IkoLearn: a short lesson with its card, a few cards to pick up next, and a learning cloud with subjects like Ocean Life, Astronomy, Music, Cooking and History."
+                width={1600}
+                height={840}
+                className="h-auto w-full"
+              />
             </Link>
           </article>
         </div>

@@ -43,7 +43,7 @@ Professional capabilities Shawn Cooper brings through Ikosagon. Lead skills incl
 
 - Next.js, TypeScript, React, Node.js, Python, PostgreSQL
 - Product engineering and MVP builds with production-level communication and delivery
-- Public portfolio products include IkoArtist (primary featured; intake/leans/finish on page, generation in pipeline not live spend), Signalboard (shipped proof), Hexcast (honest R&D: no invented win rates), Ikosagon Learn, and NeonOps (paused) as documented under /projects
+- Public portfolio products include IkoLearn (the featured app: a thoughtful learning harness for anyone curious, at any age), IkoAgent (call-flow demo), IkoArtist (intake/leans/finish on page, generation in pipeline not live spend), Signalboard (shipped proof), Hexcast (honest R&D: no invented win rates), and NeonOps (paused) as documented under /projects
 
 ## Guardrails for the site assistant
 
