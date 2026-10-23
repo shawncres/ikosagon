@@ -1027,6 +1027,12 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     ok(/IkoLearn is for anyone curious, at any age\. Parents can also use it to plan and guide homeschool learning\./.test(privacy), "privacy: the neutral who-it's-for line");
     ok(/ogImage:\s*"\/projects\/ikolearn\/og\.png"/.test(fm) && /cover:\s*"\/projects\/ikolearn\/cover\.png"/.test(fm), "raster cover + OG image");
     for (const f of ["cover.png", "og.png", "album.webp", "card-hub.webp", "lesson.webp", "cloud-phone.webp"]) ok(fs.existsSync("public/projects/ikolearn/" + f), "asset " + f);
+    // the featured app on the homepage (Oct 22): IkoLearn leads, IkoAgent stays a normal featured project
+    const home = fs.readFileSync("app/page.tsx", "utf8"), projTs = fs.readFileSync("lib/projects.ts", "utf8");
+    ok(/FEATURED_LEAD_SLUG = "ikolearn"/.test(projTs) && /featured:\s*true/.test(fs.readFileSync("content/projects/ikoagent.mdx", "utf8")), "homepage: IkoLearn is the featured lead; IkoAgent stays featured in the grid");
+    ok(/Featured app/.test(home) && /<h2[^>]*>IkoLearn<\/h2>/.test(home) && /href="\/ikolearn"/.test(home) && /href="\/projects\/ikolearn"/.test(home) && /src="\/projects\/ikolearn\/cover\.png"/.test(home), "homepage: the featured section links to /ikolearn and the project page, with the cover");
+    ok(/A thoughtful learning harness for anyone curious, at any age\. We at Ikosagon/.test(home) && !/Lead product/.test(home) && !/\b(kids?|children|age \d)/i.test(home.slice(home.indexOf("Featured app"), home.indexOf("Featured Projects"))), "homepage: the universal wording, in the we-at-Ikosagon voice");
+    ok(!/Maya|Minecraft|Redstone/.test(mdx), "project page copy names no sample learner or niche topic");
     const imgs = [...mdx.matchAll(/!\[([^\]]*)\]\((\/projects\/ikolearn\/[^)]+)\)/g)];
     ok(imgs.length >= 4 && imgs.every(([, alt, src]) => alt.length > 30 && fs.existsSync("public" + src)), "gallery images exist with descriptive alt text");
     ok(/Parent & instructor dashboard\*\* \(coming\)/.test(mdx), "roadmap names the parent & instructor dashboard as coming");
