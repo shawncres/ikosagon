@@ -1,29 +1,29 @@
 {
-  "generatedAt": "2026-10-14T17:41:16.816Z",
+  "generatedAt": "2026-10-23T19:28:18.960Z",
   "suite": "scripts/ikoagent-lang-check.mjs",
   "mode": "offline: mocked model outputs, in-memory CRM, deterministic flow graph",
-  "baseCommit": "bb0b18c",
+  "baseCommit": "b33e7c6",
   "completed": true,
-  "durationMs": 72700,
-  "total": 575,
-  "passed": 575,
+  "durationMs": 2472,
+  "total": 640,
+  "passed": 640,
   "failed": 0,
   "byFlow": {
     "customer_service": {
-      "total": 252,
-      "passed": 252
+      "total": 286,
+      "passed": 286
     },
     "shared": {
-      "total": 118,
-      "passed": 118
+      "total": 120,
+      "passed": 120
     },
     "collections": {
-      "total": 117,
-      "passed": 117
+      "total": 140,
+      "passed": 140
     },
     "sales": {
-      "total": 88,
-      "passed": 88
+      "total": 94,
+      "passed": 94
     }
   },
   "byCategory": {
@@ -40,8 +40,8 @@
       "passed": 69
     },
     "identity": {
-      "total": 149,
-      "passed": 149
+      "total": 186,
+      "passed": 186
     },
     "safety": {
       "total": 74,
@@ -56,8 +56,8 @@
       "passed": 22
     },
     "close-routing": {
-      "total": 28,
-      "passed": 28
+      "total": 46,
+      "passed": 46
     },
     "compliance": {
       "total": 55,
@@ -110,6 +110,10 @@
     "ui-data": {
       "total": 35,
       "passed": 35
+    },
+    "rag": {
+      "total": 10,
+      "passed": 10
     }
   },
   "results": [
@@ -2347,7 +2351,7 @@
     },
     {
       "id": "c280",
-      "name": "V1 model draft speaks case CASE-1001-674935 once",
+      "name": "V1 model draft speaks case CASE-1001-698086 once",
       "flow": "customer_service",
       "category": "close-routing",
       "tagged": true,
@@ -2683,7 +2687,7 @@
     },
     {
       "id": "c322",
-      "name": "SB2 email + timeline promise stripped at match_offer",
+      "name": "SB2 email + timeline promise stripped at match_offer: Sure! Anything else you need?",
       "flow": "sales",
       "category": "safety",
       "tagged": true,
@@ -4710,6 +4714,526 @@
       "name": "Z9 desk shows unconfirmed identity + wrong-party disposition",
       "flow": "shared",
       "category": "repeat-guard",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c576",
+      "name": "AF1 CS diagnose + policy retrieve topic-first",
+      "flow": "customer_service",
+      "category": "rag",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c577",
+      "name": "AF1 topic-first query drops the catch-all hint once the topic is known",
+      "flow": "customer_service",
+      "category": "rag",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c578",
+      "name": "AF1 no topic yet → hint still steers retrieval",
+      "flow": "customer_service",
+      "category": "rag",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c579",
+      "name": "AF1 non-topic-first nodes build the same query as before",
+      "flow": "customer_service",
+      "category": "rag",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c580",
+      "name": "AF1 collections + sales keep their narrow per-step hints",
+      "flow": "customer_service",
+      "category": "rag",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c581",
+      "name": "AF1 'return or exchange' cites its own policy, not lost package",
+      "flow": "customer_service",
+      "category": "rag",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c582",
+      "name": "AF1 'billing' cites its own policy, not lost package",
+      "flow": "customer_service",
+      "category": "rag",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c583",
+      "name": "AF1 'login access' cites its own policy, not lost package",
+      "flow": "customer_service",
+      "category": "rag",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c584",
+      "name": "AF1 a real lost package still cites the lost-package policy",
+      "flow": "customer_service",
+      "category": "rag",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c585",
+      "name": "AF1 return call",
+      "flow": "customer_service",
+      "category": "rag",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c586",
+      "name": "AF2 caller's own name kept on lookup",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c587",
+      "name": "AF2 record name still fills in when the caller gave none",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c588",
+      "name": "AF2 'Jordan Lee' + 1001 is not called Alex Rivera",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c589",
+      "name": "AF2 name leading an account number: 'Dana Cole, account 1001' → Dana Cole",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c590",
+      "name": "AF2 name leading an account number: 'Morgan 2044' → Morgan",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c591",
+      "name": "AF2 name leading an account number",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c592",
+      "name": "AF2 name leading an account number: 'yes, 1001' → null",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c593",
+      "name": "AF2 name leading an account number: 'Yes, 1001' → null",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c594",
+      "name": "AF2 name leading an account number: 'oh sorry, 2044' → null",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c595",
+      "name": "AF2 name leading an account number: 'Oh sorry, 2044' → null",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c596",
+      "name": "AF2 name leading an account number: 'account 1001' → null",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c597",
+      "name": "AF2 name leading an account number: 'my account is 1001' → null",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c598",
+      "name": "AF2 name leading an account number: 'Thanks 2044' → null",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c599",
+      "name": "AF2 'Dana Cole, account 1001' is not called Alex Rivera",
+      "flow": "customer_service",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c600",
+      "name": "AF3 identity 'yes this is Morgan' is not ask_purpose/deny/unsure/no_account",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c601",
+      "name": "AF3 identity 'this is Morgan' is not ask_purpose/deny",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c602",
+      "name": "AF3 identity 'yeah that's me, Morgan Lee' is not deny/unsure/no_account",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c603",
+      "name": "AF3 identity 'I'm Herman Lee' is not third_party/deny",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c604",
+      "name": "AF3 identity 'this is his wife' still → third_party",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c605",
+      "name": "AF3 identity 'I'm her husband' still → third_party",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c606",
+      "name": "AF3 identity 'that's not me' still → deny",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c607",
+      "name": "AF3 identity 'no, that's not me' still → deny",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c608",
+      "name": "AF3 identity 'who is this' still → ask_purpose",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c609",
+      "name": "AF3 identity 'I don't have an account' still → no_account",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c610",
+      "name": "AF3 identity 'speaking' still → verify_identity",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c611",
+      "name": "AF3 identity 'account 2044' still → provide_account",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c612",
+      "name": "AF3 'his wife' / 'me' are not names",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c613",
+      "name": "AF3 real introduced names still extracted",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c614",
+      "name": "AF3 affirmation detector: confirmations yes, denials and third parties no",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c615",
+      "name": "AF3 model 'deny' on 'yeah that's me, Morgan Lee' → graph verify_identity",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c616",
+      "name": "AF3 model 'unsure' on 'yes this is Morgan' → graph verify_identity",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c617",
+      "name": "AF3 model 'deny' on 'that's not me' → graph deny",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c618",
+      "name": "AF3 model 'unsure' on 'this is his wife' → graph unsure",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c619",
+      "name": "AF3 model 'no_account' on 'I don't have an account' → graph no_account",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c620",
+      "name": "AF3 'yes this is Morgan' → asked for the account, no wrong-party talk",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c621",
+      "name": "AF3 then 2044 → verbatim disclosure",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c622",
+      "name": "AF3 model said deny on \"that's me\" → still a confirmation (no clarify, no exit)",
+      "flow": "collections",
+      "category": "identity",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c623",
+      "name": "AF4 supervisor at verify → escalation",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c624",
+      "name": "AF4 supervisor at diagnose → escalation",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c625",
+      "name": "AF4 callback ask at verify → callback",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c626",
+      "name": "AF4 callback ask at diagnose → callback",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c627",
+      "name": "AF4 'I want to return an item for a refund' at verify is not an escalation/callback",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c628",
+      "name": "AF4 'I sent the return back already' at diagnose is not an escalation/callback",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c629",
+      "name": "AF4 'my package came back damaged' at verify is not an escalation/callback",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c630",
+      "name": "AF4 'bye' after the policy → resolve close",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c631",
+      "name": "AF4 'no that's all' after the policy → resolve close",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c632",
+      "name": "AF4 no step lists one example under two intents",
+      "flow": "customer_service",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c633",
+      "name": "AF5 objection",
+      "flow": "sales",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c634",
+      "name": "AF5 'still too pricey' is not a sale",
+      "flow": "sales",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c635",
+      "name": "AF5 'what about basic' at objection → offer, not a logged win",
+      "flow": "sales",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c636",
+      "name": "AF5 timing objection at discover → callback",
+      "flow": "sales",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c637",
+      "name": "AF5 'call me later' at the offer → callback, not another objection",
+      "flow": "sales",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c638",
+      "name": "AF5 a real yes still closes",
+      "flow": "sales",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c639",
+      "name": "AF6 no step says goodbye while the call stays open",
+      "flow": "shared",
+      "category": "close-routing",
+      "tagged": true,
+      "pass": true
+    },
+    {
+      "id": "c640",
+      "name": "AF6 collections plan call says goodbye exactly once, at the end",
+      "flow": "shared",
+      "category": "close-routing",
       "tagged": true,
       "pass": true
     }

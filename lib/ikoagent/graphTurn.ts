@@ -13,6 +13,7 @@ import {
   extractAccountId,
   getCurrentNode,
   isGreetingOrAck,
+  looksLikeIdentityAffirmation,
   runToolsForTurn,
   scrubWeakSlots,
   slotsFilled,
@@ -135,6 +136,18 @@ export function deriveTurnState(opts: {
     intentForGraph = "provide_account";
   } else if (extractedName && listenIds.has("provide_name") && !slots.accountId) {
     intentForGraph = "provide_name";
+  }
+
+  // A plain "yes, that's me" at an identity check is a confirmation. A model or keyword read of
+  // deny / no_account / unsure there would send an account holder down the wrong-party path.
+  if (
+    intentForGraph &&
+    ["deny", "no_account", "unsure"].includes(intentForGraph) &&
+    listenIds.has("verify_identity") &&
+    !noAccount &&
+    looksLikeIdentityAffirmation(userText)
+  ) {
+    intentForGraph = "verify_identity";
   }
 
   // ---- Vertical-specific deterministic slots (never taken from the model) ----

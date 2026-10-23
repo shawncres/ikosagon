@@ -47,7 +47,13 @@ export type FlowNode = {
   allowParaphrase?: boolean;
   listenFor: ListenIntent[];
   requireSlots?: string[];
-  rag?: { queryHint?: string; required?: boolean };
+  /**
+   * queryHint: words that steer retrieval for this node.
+   * topicFirst: the hint is a catch-all list (every CS topic), so once the caller's topic is
+   * known (reason slot) retrieval searches by that topic instead of the hint — otherwise the
+   * hint's own words decide which policy wins (it always picked "lost package").
+   */
+  rag?: { queryHint?: string; required?: boolean; topicFirst?: boolean };
   transitions: FlowTransition[];
   exits?: FlowExit[];
   toolsAllowed?: string[];

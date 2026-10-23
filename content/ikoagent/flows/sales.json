@@ -113,9 +113,23 @@
             "too expensive",
             "out of budget"
           ]
+        },
+        {
+          "intent": "objection_timing",
+          "examples": [
+            "not right now",
+            "maybe next quarter",
+            "later this year",
+            "next month",
+            "not yet"
+          ]
         }
       ],
       "transitions": [
+        {
+          "on": "objection_timing",
+          "to": "callback"
+        },
         {
           "on": "book_demo",
           "to": "demo_book"
@@ -178,7 +192,6 @@
           "examples": [
             "not now",
             "maybe next quarter",
-            "call me later",
             "busy this month"
           ]
         },
@@ -383,6 +396,10 @@
           "to": "close"
         },
         {
+          "on": "ask_offer",
+          "to": "match_offer"
+        },
+        {
           "on": "request_callback",
           "to": "callback"
         },
@@ -392,11 +409,11 @@
         },
         {
           "on": "objection_price",
-          "to": "close"
+          "to": "callback"
         },
         {
           "on": "*",
-          "to": "close"
+          "to": "match_offer"
         }
       ],
       "agentSayWhen": [
@@ -434,7 +451,7 @@
       "id": "close",
       "label": "Close",
       "agentSay": [
-        "Wonderful — I’m marking this demo as a close path. In production this would hand off to checkout or a human AE. Thanks for walking the flow with me."
+        "Wonderful — I’m marking this demo as a close path. In production this would hand off to checkout or a human AE. Is there anything else I can help with before we wrap up?"
       ],
       "allowParaphrase": true,
       "listenFor": [
@@ -472,7 +489,7 @@
         {
           "slot": "upsellNote",
           "lines": [
-            "Wonderful — I'm marking this demo as a close path. One honest note, no pressure: {{upsellNote}} In production this would hand off to checkout or a human AE. Thanks for walking the flow with me."
+            "Wonderful — I'm marking this demo as a close path. One honest note, no pressure: {{upsellNote}} In production this would hand off to checkout or a human AE. Is there anything else I can help with before we wrap up?"
           ]
         }
       ]

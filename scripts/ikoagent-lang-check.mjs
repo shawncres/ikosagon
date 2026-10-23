@@ -25,7 +25,7 @@ import {
   dropRepeatAccountConfirm,
   accountAlreadyConfirmed,
 } from "../lib/ikoagent/engine.ts";
-import { retrieveIkoAgent, callerPolicyLines, formatIkoAgentContext } from "../lib/ikoagent/rag.ts";
+import { retrieveIkoAgent, callerPolicyLines, formatIkoAgentContext, ragQueryFor } from "../lib/ikoagent/rag.ts";
 import { resetLlmCooldown } from "../lib/llm.ts";
 import {
   extractCustomerName,
@@ -1281,6 +1281,139 @@ tag("collections", "repeat-guard");
   assert(dropRepeatedLines(miranda, [{ role: "agent", content: miranda }], { keep: [miranda] }) === miranda, "Z8 repeat net keeps the verbatim mini-Miranda");
   const { deskSlots, toolEvent } = await import("../lib/ikoagent/desk.ts");
   assert(deskSlots({ clarified: "1" }).some((r) => r.label === "Identity" && /not confirmed/.test(r.value)) && toolEvent({ name: "logDisposition", ok: true, data: { disposition: "wrong_party" } }) === "Disposition logged · wrong party", "Z9 desk shows unconfirmed identity + wrong-party disposition");
+}
+
+// AF. Small fixes from the Oct 23 audit (live transcripts in /workspace/ikolearn-ui/ikoagent-fix-*)
+{
+  const { looksLikeIdentityAffirmation } = await import("../lib/ikoagent/engine.ts");
+  const { deriveTurnState } = await import("../lib/ikoagent/graphTurn.ts");
+  const flows = Object.fromEntries(["customer_service", "collections", "sales"].map((f) => [f, JSON.parse(readFileSync(`./content/ikoagent/flows/${f}.json`, "utf8"))]));
+  const LOST_PKG = /no tracking updates for 7 days/i;
+
+  tag("customer_service", "rag");
+  // AF1. The policy step cited the lost-package policy for every topic: its catch-all hint
+  // ("…shipping delay lost package…") outweighed the caller's topic in retrieval.
+  const pol = flows.customer_service.nodes.policy;
+  assert(pol.rag.topicFirst && flows.customer_service.nodes.diagnose.rag.topicFirst, "AF1 CS diagnose + policy retrieve topic-first");
+  assert(!ragQueryFor(pol.rag, "thanks", { reason: "billing" }, null).includes("lost package"), "AF1 topic-first query drops the catch-all hint once the topic is known");
+  assert(ragQueryFor(pol.rag, "thanks", {}, null).includes("lost package"), "AF1 no topic yet → hint still steers retrieval");
+  assert(ragQueryFor({ queryHint: "payment plan rules" }, "ok", { reason: "billing" }, "affirm") === "payment plan rules ok billing affirm", "AF1 non-topic-first nodes build the same query as before");
+  assert(["collections", "sales"].every((f) => Object.values(flows[f].nodes).every((n) => !n.rag?.topicFirst)), "AF1 collections + sales keep their narrow per-step hints");
+  for (const [reason, want] of [["return or exchange", /return|refund/i], ["billing", /duplicate|charge/i], ["login access", /password/i]]) {
+    const hits = await retrieveIkoAgent("cs", ragQueryFor(pol.rag, "thanks", { reason }, null), 3, { accountVerified: true });
+    const line = callerPolicyLines(hits)[0] ?? "";
+    assert(want.test(line) && !LOST_PKG.test(line), `AF1 '${reason}' cites its own policy, not lost package: ${line.slice(0, 70)}`);
+  }
+  const lost = callerPolicyLines(await retrieveIkoAgent("cs", ragQueryFor(pol.rag, "it's been 10 days with no tracking update", { reason: "lost package" }, null), 3, { accountVerified: true }))[0] ?? "";
+  assert(LOST_PKG.test(lost), "AF1 a real lost package still cites the lost-package policy");
+  const RET = await quiet(() => call("customer_service", ["account 1001", "I want to return a jacket", "thanks"], withOpener));
+  assert(RET[2].nodeId === "policy" && !LOST_PKG.test(RET[2].agentText) && /return|refund/i.test(RET[2].agentText), `AF1 return call: policy step quotes the return policy: ${RET[2].agentText.slice(-120)}`);
+
+  tag("customer_service", "identity");
+  // AF2. The CRM holder name overwrote the caller's own ("Thanks, Alex Rivera" to Jordan Lee)
+  const own = applyToolSlots({ customerName: "Jordan Lee" }, [{ name: "lookupAccount", ok: true, data: { accountId: "1001", name: "Alex Rivera" } }]);
+  assert(own.customerName === "Jordan Lee" && own.accountId === "1001", `AF2 caller's own name kept on lookup (got ${own.customerName})`);
+  const none = applyToolSlots({}, [{ name: "lookupAccount", ok: true, data: { accountId: "1001", name: "Alex Rivera" } }]);
+  assert(none.customerName === "Alex Rivera", "AF2 record name still fills in when the caller gave none");
+  const NM = await quiet(() => call("customer_service", ["Hi, this is Jordan Lee", "account 1001"], withOpener));
+  assert(NM[1].slots.accountId === "1001" && NM[1].slots.customerName === "Jordan Lee" && !/Alex|Rivera/.test(NM[1].agentText), `AF2 'Jordan Lee' + 1001 is not called Alex Rivera: ${NM[1].agentText}`);
+  for (const [t, want] of [["Dana Cole, account 1001", "Dana Cole"], ["Morgan 2044", "Morgan"], ["Morgan Lee, my account number is 2044", "Morgan Lee"], ["yes, 1001", null], ["Yes, 1001", null], ["oh sorry, 2044", null], ["Oh sorry, 2044", null], ["account 1001", null], ["my account is 1001", null], ["Thanks 2044", null]]) {
+    assert(extractCustomerName(t, { allowBare: false }) === want, `AF2 name leading an account number: '${t}' → ${want}`);
+  }
+  const NM2 = await quiet(() => call("customer_service", ["Dana Cole, account 1001"], withOpener));
+  assert(!/Alex|Rivera/.test(NM2[0].agentText), `AF2 'Dana Cole, account 1001' is not called Alex Rivera: ${NM2[0].agentText}`);
+
+  tag("collections", "identity");
+  // AF3. Identity check: confirmations read as "what is this about" / denial / third party
+  const idn = flows.collections.nodes.identity;
+  for (const [t, bad] of [["yes this is Morgan", ["ask_purpose", "deny", "unsure", "no_account"]], ["this is Morgan", ["ask_purpose", "deny"]], ["yeah that's me, Morgan Lee", ["deny", "unsure", "no_account"]], ["I'm Herman Lee", ["third_party", "deny"]]]) {
+    const got = matchIntent(idn, t).intent;
+    assert(!bad.includes(got), `AF3 identity '${t}' is not ${bad.join("/")} (got ${got})`);
+  }
+  for (const [t, want] of [["this is his wife", "third_party"], ["I'm her husband", "third_party"], ["that's not me", "deny"], ["no, that's not me", "deny"], ["who is this", "ask_purpose"], ["I don't have an account", "no_account"], ["speaking", "verify_identity"], ["account 2044", "provide_account"]]) {
+    const got = matchIntent(idn, t).intent;
+    assert(got === want, `AF3 identity '${t}' still → ${want} (got ${got})`);
+  }
+  assert(extractCustomerName("this is his wife", { allowBare: false }) === null && extractCustomerName("this is me", { allowBare: false }) === null, "AF3 'his wife' / 'me' are not names");
+  assert(extractCustomerName("Hi, this is Jordan Lee", { allowBare: false }) === "Jordan Lee", "AF3 real introduced names still extracted");
+  assert(looksLikeIdentityAffirmation("yeah that's me, Morgan Lee") && looksLikeIdentityAffirmation("yes this is Morgan") && !looksLikeIdentityAffirmation("that's not me") && !looksLikeIdentityAffirmation("this is his wife") && !looksLikeIdentityAffirmation("I'm calling for my mother"), "AF3 affirmation detector: confirmations yes, denials and third parties no");
+  for (const [t, modelSaid, want] of [["yeah that's me, Morgan Lee", "deny", "verify_identity"], ["yes this is Morgan", "unsure", "verify_identity"], ["that's not me", "deny", "deny"], ["this is his wife", "unsure", "unsure"], ["I don't have an account", "no_account", "no_account"]]) {
+    const got = deriveTurnState({ flow: flows.collections, node: idn, userText: t, slots: {}, matchedIntent: modelSaid }).intentForGraph;
+    assert(got === want, `AF3 model '${modelSaid}' on '${t}' → graph ${want} (got ${got})`);
+  }
+  const CLARIFY = /let me explain|reached you in error/i;
+  const YES = await quiet(() => call("collections", ["yes this is Morgan", "account 2044"]));
+  assert(YES[0].nodeId === "identity" && !YES[0].exit && !CLARIFY.test(YES[0].agentText) && /account/i.test(YES[0].agentText), `AF3 'yes this is Morgan' → asked for the account, no wrong-party talk: ${YES[0].agentText}`);
+  assert(YES[1].nodeId === "disclosure" && YES[1].agentText.startsWith(miranda), "AF3 then 2044 → verbatim disclosure");
+  process.env.GROQ_API_KEY = "test-not-a-real-key";
+  resetLlmCooldown();
+  mockReplies.set("yeah that's me, Morgan Lee", plan({ intent: "deny", reply: "No problem — let me explain. Are you the account holder?" }));
+  const ME = await quiet(() => call("collections", ["yeah that's me, Morgan Lee"]));
+  assert(!ME[0].exit && ME[0].nodeId === "identity" && !CLARIFY.test(ME[0].agentText) && !ME[0].slots.clarified, `AF3 model said deny on "that's me" → still a confirmation (no clarify, no exit): ${ME[0].agentText}`);
+  mockReplies.clear();
+  delete process.env.GROQ_API_KEY;
+  resetLlmCooldown();
+
+  tag("customer_service", "close-routing");
+  // AF4. "I want a supervisor" right after verification went to diagnose and was lost;
+  // callbacks had no route before the policy step; "bye" at policy read as "stay on script"
+  const SUP = await quiet(() => call("customer_service", ["Dana Cole, account 1001", "I want a supervisor"], withOpener));
+  assert(SUP[1].exit?.type === "escalate" || SUP[1].nodeId === "escalate_handoff", `AF4 supervisor at verify → escalation (got ${SUP[1].nodeId} ${SUP[1].exit?.type})`);
+  const SUP2 = await quiet(() => call("customer_service", ["account 1001", "my package is late", "this is ridiculous, I want a supervisor now"], withOpener));
+  assert(SUP2[2].exit?.type === "escalate" || SUP2[2].nodeId === "escalate_handoff", `AF4 supervisor at diagnose → escalation (got ${SUP2[2].nodeId})`);
+  const CB = await quiet(() => call("customer_service", ["Alex, account 1001", "can you call me back tomorrow afternoon"], withOpener));
+  assert(CB[1].nodeId === "callback_close" || CB[1].exit?.type === "callback", `AF4 callback ask at verify → callback (got ${CB[1].nodeId})`);
+  const CB2 = await quiet(() => call("customer_service", ["account 1001", "my package is late", "please call me back"], withOpener));
+  assert(CB2[2].nodeId === "callback_close" || CB2[2].exit?.type === "callback", `AF4 callback ask at diagnose → callback (got ${CB2[2].nodeId})`);
+  const dg = flows.customer_service.nodes.diagnose, vf = flows.customer_service.nodes.verify;
+  for (const [n, t] of [[vf, "I want to return an item for a refund"], [dg, "I sent the return back already"], [vf, "my package came back damaged"]]) {
+    assert(!["escalate", "request_callback"].includes(matchIntent(n, t).intent), `AF4 '${t}' at ${n.id} is not an escalation/callback (got ${matchIntent(n, t).intent})`);
+  }
+  for (const bye of ["bye", "no that's all"]) {
+    const R = await quiet(() => call("customer_service", ["account 1001", "I was charged twice", "it happened yesterday", bye], withOpener));
+    assert(R[3].nodeId === "resolve_close" || R[3].exit?.type === "resolve", `AF4 '${bye}' after the policy → resolve close (got ${R[3].nodeId}): ${R[3].agentText.slice(0, 60)}`);
+  }
+  // Structural: one example can't belong to two intents on the same step (diagnose had
+  // "I want a supervisor" under both describe_issue and escalate; first listed won)
+  const dupes = [];
+  for (const [fid, f] of Object.entries(flows)) for (const n of Object.values(f.nodes)) {
+    const seen = new Map();
+    for (const l of n.listenFor) for (const ex of l.examples ?? []) {
+      const k = ex.toLowerCase();
+      if (seen.has(k) && seen.get(k) !== l.intent) dupes.push(`${fid}/${n.id} '${ex}' (${seen.get(k)} + ${l.intent})`);
+      seen.set(k, l.intent);
+    }
+  }
+  assert(!dupes.length, `AF4 no step lists one example under two intents ${dupes.join("; ")}`);
+
+  tag("sales", "close-routing");
+  // AF5. Sales logged a "win" for a second price objection or any unmatched reply at objection;
+  // a timing objection during discovery got an offer pitch instead of a callback
+  const ob = flows.sales.nodes.objection;
+  assert(!ob.transitions.some((t) => t.to === "close" && ["objection_price", "*", "ask_offer"].includes(t.on)), "AF5 objection: price / unmatched / ask_offer never route to the win close");
+  const PR = await quiet(() => call("sales", ["we need a help desk for 5 people", "that's too expensive", "still too pricey"]));
+  assert(PR[1].nodeId === "objection" && PR[2].nodeId !== "close" && !/marking this demo as a close/i.test(PR[2].agentText), `AF5 'still too pricey' is not a sale (got ${PR[2].nodeId})`);
+  const BA = await quiet(() => call("sales", ["Jamie, small agency, 3 people", "need a shared inbox", "that's too expensive", "ok what about basic"]));
+  assert(BA[3].nodeId === "match_offer", `AF5 'what about basic' at objection → offer, not a logged win (got ${BA[3].nodeId})`);
+  const TM = await quiet(() => call("sales", ["Chris here", "we're looking for a help desk tool", "not right now, maybe next quarter"]));
+  assert(TM[2].nodeId === "callback" || TM[2].exit?.type === "callback", `AF5 timing objection at discover → callback (got ${TM[2].nodeId})`);
+  const LATER = await quiet(() => call("sales", ["we need a help desk for 5 people", "what's the pro plan", "call me later"]));
+  assert(LATER[2].nodeId === "callback" || LATER[2].exit?.type === "callback", `AF5 'call me later' at the offer → callback, not another objection (got ${LATER[2].nodeId})`);
+  const WIN = await quiet(() => call("sales", ["we need a help desk for 5 people", "that's too expensive", "ok let's do pro"]));
+  assert(WIN[2].nodeId === "close", `AF5 a real yes still closes (got ${WIN[2].nodeId})`);
+
+  tag("shared", "close-routing");
+  // AF6. Steps that keep the call open said goodbye, then the real close said it again
+  const FAREWELL = /\bgoodbye\b|\btake care\b|walking the flow with me/i;
+  const earlyByes = [];
+  for (const [fid, f] of Object.entries(flows)) for (const n of Object.values(f.nodes)) {
+    const lines = [...n.agentSay, ...(n.agentSayWhen ?? []).flatMap((w) => w.lines), ...Object.values(n.agentSayVariants ?? {}).flat()];
+    for (const l of lines) if (FAREWELL.test(l)) earlyByes.push(`${fid}/${n.id}: ${l.slice(0, 60)}`);
+  }
+  assert(!earlyByes.length, `AF6 no step says goodbye while the call stays open ${earlyByes.join("; ")}`);
+  const PLAN = await quiet(() => call("collections", ["account 2044", "yes", "can I do a payment plan", "3 months works", "no, that's all"]));
+  const byes = PLAN.map((t) => t.agentText).join("\n").match(/\bgoodbye\b|\btake care\b/gi) ?? [];
+  assert(PLAN[3].nodeId === "disposition" && /\?/.test(PLAN[3].agentText) && PLAN[4].exit?.type === "resolve" && byes.length === 1, `AF6 collections plan call says goodbye exactly once, at the end (got ${byes.length})`);
 }
 
 console.log("\nALL CHECKS PASSED");

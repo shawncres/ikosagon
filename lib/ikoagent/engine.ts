@@ -20,6 +20,29 @@ export function getCurrentNode(flow: Flow, nodeId: string): FlowNode | null {
   return flow.nodes[nodeId] ?? null;
 }
 
+/**
+ * Function words carry no intent. Without this, "yes this is Morgan" overlapped "who is this" /
+ * "what is this about" on "is" + "this" and scored as ask_purpose.
+ */
+const OVERLAP_STOPWORDS = new Set([
+  "is", "this", "that", "that's", "it", "it's", "me", "my", "the", "a", "an", "to", "of", "on", "in",
+  "for", "and", "or", "you", "your", "i", "i'm", "im", "am", "are", "be", "was", "do", "can", "with", "at",
+]);
+const NEGATION = /\b(?:no|not|nope|never|nobody|none|wrong|don'?t|doesn'?t|didn'?t|isn'?t|wasn'?t|ain'?t|can'?t|won'?t)\b|n't\b/;
+
+/**
+ * "Yes, that's me", "speaking", "yes this is Morgan": the caller is confirming they are the
+ * person asked for. Never a denial, a "no account" or "not sure", whatever the model or the
+ * keyword overlap says, as long as nothing in it is negated.
+ */
+export function looksLikeIdentityAffirmation(text: string): boolean {
+  const t = text.toLowerCase().replace(/[’`]/g, "'").trim();
+  if (!t || NEGATION.test(t)) return false;
+  // "This is his wife", "I'm calling for my mother": a third party, never the holder
+  if (/\b(?:his|her|their)\b(?! account)|\b(?:wife|husband|mother|father|mom|dad|son|daughter|partner|roommate|brother|sister|calling for|on behalf)\b/.test(t)) return false;
+  return /^(?:yes|yeah|yep|yup|correct|right)\b|\b(?:that'?s|it'?s|this is) (?:me|him|her)\b|^(?:this is|it'?s) [a-z]|^speaking\b|\bi am the account holder\b|\bi'?m the account holder\b/.test(t);
+}
+
 /** Keyword / example overlap scoring for intents declared on the node */
 export function matchIntent(
   node: FlowNode,
@@ -28,6 +51,10 @@ export function matchIntent(
   // Keywords inside an introduced name ("Avery Shipcheck") are not intent signals
   const text = withoutCallerName(userText).toLowerCase().trim();
   const userTokens = new Set(tokenize(text));
+  const userNegates = NEGATION.test(text);
+  // Once an introduced name is removed, "I'm Herman Lee" leaves just "i'm". Every example
+  // containing "i'm" ("I'm her husband") would then "contain" the caller's whole sentence.
+  const meaningful = [...userTokens].some((t) => !OVERLAP_STOPWORDS.has(t));
   if (!text || !node.listenFor.length) return { intent: null, score: 0 };
 
   let best: { intent: string; score: number } | null = null;
@@ -40,11 +67,14 @@ export function matchIntent(
     }
     for (const example of entry.examples ?? []) {
       const ex = example.toLowerCase();
-      if (text.includes(ex) || ex.includes(text)) {
+      if (text.includes(ex) || (meaningful && ex.includes(text))) {
         score += 3;
         continue;
       }
-      const overlap = tokenize(ex).filter((t) => userTokens.has(t)).length;
+      // A negative example ("that's not me") earns nothing from a caller who negated nothing
+      // ("yeah that's me"): the shared words are exactly the ones that flip the meaning.
+      if (!userNegates && NEGATION.test(ex)) continue;
+      const overlap = tokenize(ex).filter((t) => userTokens.has(t) && !OVERLAP_STOPWORDS.has(t)).length;
       score += overlap * 0.9;
     }
     // Common synonyms for demo verticals

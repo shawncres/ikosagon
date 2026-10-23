@@ -67,6 +67,8 @@ const NOT_A_NAME = new Set([
   "ridiculous", "unacceptable", "insane", "crazy", "terrible", "awful", "urgent", "annoying",
   "unhappy", "disappointed", "furious", "worried", "concerned", "stuck", "unable", "missing",
   "behind", "overdue", "late", "past", "short", "broke", "struggling", "unemployed",
+  // pronouns: "this is his wife" / "this is me" introduce a relation or a confirmation, not a name
+  "his", "her", "their", "our", "your", "me", "him", "them", "he", "she", "they", "we", "you",
   // sales talk ("we need SSO", "I'm shopping around", "I'm comparing plans")
   "we", "our", "shopping", "comparing", "considering", "evaluating", "exploring", "browsing",
   "checking", "thinking", "from", "with", "currently", "using",
@@ -112,6 +114,13 @@ export function extractCustomerName(
   if (intro?.[1]) {
     const n = nameFromPhrase(intro[1]);
     if (n) return n;
+  }
+  // "Dana Cole, account 1001" / "Morgan 2044": a capitalised name leading an account number
+  // (capitals keep "oh sorry, 2044" out). The not-a-name list still rejects "Yes, 1001".
+  const lead = t.match(/^([A-Z][A-Za-z'\-]*(?:\s+[A-Z][A-Za-z'\-]*){0,2})\s*,?\s*(?:(?:my\s+)?(?:[Aa]ccount|[Aa]cct)(?:\s+(?:number|no\.?|#))?\s*(?:is\s*)?)?#?\d{3,8}\b/);
+  if (lead?.[1]) {
+    const n = nameFromPhrase(lead[1]);
+    if (n && n.split(" ").length === lead[1].trim().split(/\s+/).length) return n;
   }
   // Bare reply like "Maya Chen" — only when we just asked for a name (caller decides)
   if (opts.allowBare !== false && /^[A-Za-z][A-Za-z .'\-]{1,40}$/.test(t) && t.split(/\s+/).length <= 3) {
