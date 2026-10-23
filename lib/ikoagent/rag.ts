@@ -153,6 +153,22 @@ export function formatIkoAgentContext(hits: IkoAgentHit[]): string {
     .join("\n\n");
 }
 
+/**
+ * Retrieval query for a node. Normally the node's hint plus what the caller said, their topic
+ * and the intent. On `topicFirst` nodes with a known topic the catch-all hint is left out, so
+ * a return gets the return policy rather than whichever topic the hint mentions most.
+ */
+export function ragQueryFor(
+  rag: { queryHint?: string; topicFirst?: boolean } | undefined,
+  userText: string,
+  slots: { reason?: string; need?: string },
+  intent: string | null,
+): string {
+  const topic = slots.reason || slots.need;
+  const hint = rag?.topicFirst && topic ? undefined : rag?.queryHint;
+  return [hint, userText, slots.reason, slots.need, intent].filter(Boolean).join(" ") || userText;
+}
+
 /** Caller-safe policy lines only (scripted fallback). Agent-only chunks are dropped. */
 export function callerPolicyLines(hits: IkoAgentHit[]): string[] {
   return hits.map((h) => h.callerLine).filter((l): l is string => Boolean(l));

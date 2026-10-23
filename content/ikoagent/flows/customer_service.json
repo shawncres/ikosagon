@@ -153,6 +153,22 @@
             "yes I'm the account holder",
             "sure go ahead"
           ]
+        },
+        {
+          "intent": "escalate",
+          "examples": [
+            "supervisor please",
+            "get me a manager",
+            "transfer me to someone else",
+            "escalate this"
+          ]
+        },
+        {
+          "intent": "request_callback",
+          "examples": [
+            "callback please",
+            "call me later"
+          ]
         }
       ],
       "requireSlots": [
@@ -163,6 +179,20 @@
         "createCustomer"
       ],
       "transitions": [
+        {
+          "on": "escalate",
+          "to": "escalate_handoff",
+          "whenSlotsFilled": [
+            "accountId"
+          ]
+        },
+        {
+          "on": "request_callback",
+          "to": "callback_close",
+          "whenSlotsFilled": [
+            "accountId"
+          ]
+        },
         {
           "on": "provide_account",
           "to": "retention",
@@ -281,8 +311,7 @@
             "can't reset password",
             "cracked on arrival",
             "tracking hasn't moved",
-            "wrong color",
-            "I want a supervisor"
+            "wrong color"
           ]
         },
         {
@@ -316,11 +345,19 @@
             "I moved",
             "update my shipping address"
           ]
+        },
+        {
+          "intent": "request_callback",
+          "examples": [
+            "callback please",
+            "call me later"
+          ]
         }
       ],
       "rag": {
         "queryHint": "customer service returns shipping warranty billing login escalation",
-        "required": false
+        "required": false,
+        "topicFirst": true
       },
       "transitions": [
         {
@@ -356,6 +393,10 @@
         {
           "on": "escalate",
           "to": "escalate_handoff"
+        },
+        {
+          "on": "request_callback",
+          "to": "callback_close"
         },
         {
           "on": "*",
@@ -401,7 +442,12 @@
             "that answers it",
             "thanks that works",
             "we're good",
-            "that helps"
+            "that helps",
+            "no that's all",
+            "that's all",
+            "nothing else",
+            "bye",
+            "I'm good"
           ]
         },
         {
@@ -431,7 +477,8 @@
       ],
       "rag": {
         "queryHint": "refund return exchange warranty shipping delay lost package login billing duplicate charge escalation privacy",
-        "required": true
+        "required": true,
+        "topicFirst": true
       },
       "toolsAllowed": [
         "createCase",

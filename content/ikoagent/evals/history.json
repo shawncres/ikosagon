@@ -22,5 +22,13 @@
     "total": 575,
     "passed": 575,
     "failed": 0
+  },
+  {
+    "label": "PR: small fixes from the Oct 23 audit (on main b33e7c6)",
+    "baseCommit": "b33e7c6",
+    "date": "2026-10-23",
+    "total": 640,
+    "passed": 640,
+    "failed": 0
   }
 ]
