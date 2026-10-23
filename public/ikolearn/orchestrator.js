@@ -90,6 +90,18 @@
       .sort(function (a, b) { return b.s - a.s || a.i - b.i; }).map(function (x) { return { id: x.id, off: x.off }; });
   }
   /* The next unfinished child of a parent in that order (null when all are done). */
+  /*
+   * The recommended next step from a topic, the same everywhere it is shown (the lesson's Where Next, Your Path, the
+   * parents & teachers view): the learner's own fork pick first, then the best-ranked unfinished child (logical order +
+   * use + the model's importance), else the usual walk up the tree. Pure, 0 calls.
+   */
+  function nextStep(cloud, id) {
+    var n = nodeOf(cloud, id);
+    if (!n) return null;
+    var pick = n.fork && n.fork.picked;
+    if (!(pick && nodeOf(cloud, pick) && !C.isDone(cloud, pick))) { var k = nextChild(cloud, id); if (k) return k; }
+    return C.nextFor(cloud, id);
+  }
   function nextChild(cloud, pid, sc) {
     var ids = orderedChildren(cloud, pid, sc);
     for (var i = 0; i < ids.length; i++) if (!C.isDone(cloud, ids[i])) return ids[i];
@@ -627,7 +639,7 @@
 
   var api = {
     PLAN: PLAN, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, needsRepair: needsRepair, repairRequest: repairRequest,
-    MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild,
+    MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild, nextStep: nextStep,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
     suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, placeTopic: placeTopic, placedTopic: placedTopic, isBroad: isBroad,
     onboarding: onboarding, openQuestion: openQuestion, examples: examples, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics,

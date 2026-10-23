@@ -25,6 +25,7 @@ Unlisted and noindexed while we test with one learner.
 | Deck | `public/ikolearn/deck.js` | Procedural landscapes (deterministic from the topic id, more ink with detail), the card renderer (tile, full, mini), and the balanced session draw. Pure apart from `render`, which takes a `document`. |
 | Lesson | `public/ikolearn/lesson.js` | Parses the tagged lesson text (also while it streams) and renders it with text nodes only. |
 | App | `public/ikolearn/app.js`, `index.html`, `styles.css` | Chat, cards, the card holder and lesson, questions, the top 10, panel, persistence (localStorage), fallbacks. |
+| Parents & teachers | `public/ikolearn/family.{html,css,js}` | `/ikolearn/family`: a calm, read-only summary of one learner on this device (`IkoFamily.summary`, pure; `text` for copy and print). See "For parents & teachers". |
 | Tests | `scripts/ikolearn-check.mjs` | `npm run check:ikolearn`: mocked, no network, no key. `scripts/fixtures/ikolearn-cloud-v1.json` to `-v4.json` are saved clouds for the migration tests; `ikolearn-starters.json` is the old starter map, kept only so tests can build a rich cloud. |
 
 ## The tree
@@ -374,3 +375,18 @@ optional `mo` map, so storage stays v9.
   fallback). Each hedge logs one `ikolearn.llm_hedge` line (route, models, `afterMs`, `winner`; no key, no prompt).
 
 Browser checks for all of this, with every call mocked: `IKOLEARN_PW=<playwright-core folder> node scripts/ikolearn-flow-e2e.mjs`.
+
+## For parents & teachers (`/ikolearn/family`)
+
+A calm, read-only page for whoever guides the learning, reached from a small "For parents & teachers" link in the app's footer line (no accounts, no separate parent login). It reads the saved learner from this browser (`ikolearn.v1.name`, `.cloud`, `.lessons`), never writes, and makes 0 calls. Storage stays v9.
+
+- **Subjects**: each of the learner's own subjects, "covered of known" exactly as the album counts it (`IkoDeck.coverage`), a hairline in the subject's hue, its branches ("Coral Reefs 3 of 4") and how many topics are in progress.
+- **Where next**: from the topic the learner was last on (`cloud.active`, else the most recent), the same choices the lesson shows: `IkoPlan.whereNext(cloud, id, IkoPlan.nextStep(cloud, id))`. `nextStep` moved from app.js into the orchestrator so both use one rule.
+- **In progress**: started, not covered yet, newest first, with a quiet "after X" for a topic waiting on a prerequisite.
+- **Recent lessons**: newest first with gentle days ("yesterday", "3 days ago"); the time with lessons open (the stored `spent` seconds, rounded: "about 1 hour 5 minutes") and how many topics were worked on in the last 7 days. Nothing else is measured, so nothing else is shown.
+- **Cards in the Deck**: the count by tier and the three strongest cards, drawn with the same renderer.
+- **Tests**: taken (passed, best %) and ready to take (`IkoPlan.testState`).
+- **Copy summary / Print**: the same facts as plain text (`IkoFamily.text`); print hides the buttons.
+- Wording is for any age, encouraging and plain: one line from the counts ("Sam has explored 10 topics across 3 subjects, earned 10 cards and passed 1 test."), no grades or comparisons, no named frameworks.
+
+Checks: the "parents & teachers view" block in `check:ikolearn`, and `IKOLEARN_PW=<playwright-core folder> node scripts/ikolearn-family-e2e.mjs [--shots DIR] [--root DIR]` (a neutral seeded learner from `scripts/fixtures/ikolearn-family-seed.mjs`; every /api call is refused and counted).
