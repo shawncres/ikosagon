@@ -26,6 +26,7 @@ Unlisted and noindexed while we test with one learner.
 | Lesson | `public/ikolearn/lesson.js` | Parses the tagged lesson text (also while it streams) and renders it with text nodes only. |
 | App | `public/ikolearn/app.js`, `index.html`, `styles.css` | Chat, cards, the card holder and lesson, questions, the top 10, panel, persistence (localStorage), fallbacks. |
 | Parents & teachers | `public/ikolearn/family.{html,css,js}` | `/ikolearn/family`: a calm, read-only summary of one learner on this device (`IkoFamily.summary`, pure; `text` for copy and print). See "For parents & teachers". |
+| Learners | `public/ikolearn/profiles.js`, `learners.{html,js}` | Learning for yourself or guiding other learners (`IkoProfiles`): the learners index and the parked copies, switching, `/ikolearn/learners`. See "Learners". |
 | Tests | `scripts/ikolearn-check.mjs` | `npm run check:ikolearn`: mocked, no network, no key. `scripts/fixtures/ikolearn-cloud-v1.json` to `-v4.json` are saved clouds for the migration tests; `ikolearn-starters.json` is the old starter map, kept only so tests can build a rich cloud. |
 
 ## The tree
@@ -390,3 +391,19 @@ A calm, read-only page for whoever guides the learning, reached from a small "Fo
 - Wording is for any age, encouraging and plain: one line from the counts ("Sam has explored 10 topics across 3 subjects, earned 10 cards and passed 1 test."), no grades or comparisons, no named frameworks.
 
 Checks: the "parents & teachers view" block in `check:ikolearn`, and `IKOLEARN_PW=<playwright-core folder> node scripts/ikolearn-family-e2e.mjs [--shots DIR] [--root DIR]` (a neutral seeded learner from `scripts/fixtures/ikolearn-family-seed.mjs`; every /api call is refused and counted).
+
+## Learners: yourself, or guiding others
+
+- **The first question** (welcome, before the name): "Who's learning?", with two taps: *Learning for yourself* (the name question and everything after it, exactly as before) or *Guiding other learners* (the first learner's first name; "You can add more learners later"). The wording assumes no age or role. 0 calls.
+- **Guiding**: learners are first names only (no accounts), at most 12 per device. Each has their own cloud, Deck, chat, lessons, tests, view and seen-cards. A quiet "Name · switch" link sits by the brand, and a "Learners" link sits in the footer line. Both open `/ikolearn/learners`: tap a name to switch, add a learner (they start with their own first questions), see everyone's progress, or switch to learning for yourself. Start over clears only the learner learning now; a guide carries on with the next one.
+- **Storage (additive, v9 untouched)**:
+  - `ikolearn.v1.name`, `.cloud`, `.thread`, `.notes`, `.lessons`, `.tests`, `.view` and `.seen` always hold the learner who is learning now. So app.js, the cloud format and an older version after a rollback read them exactly as before.
+  - Other learners are parked byte-for-byte under `ikolearn.v1.p.<id>.<key>`.
+  - `ikolearn.v1.profiles` holds `{ v: 1, mode, active, seq, list: [{ id, name, at }] }`.
+  - A save with no index is one learner learning for themselves. Nothing is written on load.
+  - A switch writes the parked copy, then the index, then the live keys. On the next load, `reconcile` finishes or undoes an interrupted switch from the parked copy.
+  - Switching to *learning for yourself* keeps the others parked; switching back brings them back. No version bump: the cloud is still v9.
+- **The dashboard**: when guiding, `/ikolearn/family` opens on *Your learners*, one line each from their own data (`IkoFamily.overview`). Each name opens their own view (`?learner=<id>`), with "All learners" to go back. It is still read-only.
+- **Tone**: the answer is not sent anywhere and changes no prompt (0 extra calls).
+
+Checks: the "learners" block in `check:ikolearn`, and `IKOLEARN_PW=<playwright-core folder> node scripts/ikolearn-guide-e2e.mjs [--shots DIR] [--root DIR]`.

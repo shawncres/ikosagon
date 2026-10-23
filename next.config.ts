@@ -12,6 +12,7 @@ const nextConfig: NextConfig = {
       { source: "/ikolearn/", destination: "/ikolearn/index.html" },
       { source: "/ikolearn/privacy", destination: "/ikolearn/privacy.html" },
       { source: "/ikolearn/family", destination: "/ikolearn/family.html" },
+      { source: "/ikolearn/learners", destination: "/ikolearn/learners.html" },
     ];
   },
   async headers() {

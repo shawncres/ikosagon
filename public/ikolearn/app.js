@@ -12,6 +12,7 @@
  */
 (function () {
   "use strict";
+  var PR = window.IkoProfiles; /* learners: yourself, or guiding others (additive storage; the v1 keys stay the learner learning now) */
   var C = window.IkoCloud, V = window.IkoCloudView, L = window.IkoLesson, D = window.IkoDeck, R = window.IkoRank, P = window.IkoPlan, CAM = window.IkoCamera;
   var API = "/api/ikolearn";
   var LS = { name: "ikolearn.v1.name", cloud: "ikolearn.v1.cloud", thread: "ikolearn.v1.thread", notes: "ikolearn.v1.notes", lessons: "ikolearn.v1.lessons", tests: "ikolearn.v1.tests", view: "ikolearn.v1.view", seen: "ikolearn.v1.seen" };
@@ -21,7 +22,7 @@
 
   var $ = function (id) { return document.getElementById(id); };
   var el = {
-    welcome: $("welcome"), nameForm: $("name-form"), nameIn: $("name-in"),
+    welcome: $("welcome"), nameForm: $("name-form"), nameIn: $("name-in"), who: $("who"), nameLabel: $("name-label"), nameHint: $("name-hint"), whoNow: $("who-now"),
     chat: $("chat"), thread: $("thread"), dock: $("dock"), composer: $("composer"), input: $("input"), send: $("send"),
     thumb: $("thumb"), thumbCanvas: $("thumb-canvas"), reset: $("reset"),
     focusChip: $("focus-chip"), focusText: $("focus-text"), focusClear: $("focus-clear"),
@@ -2149,9 +2150,11 @@
   el.focusClear.addEventListener("click", function () { setFocus(null); });
   el.thumb.addEventListener("click", openCloud);
   el.reset.addEventListener("click", function () {
-    if (!window.confirm("Start over? This clears your name, chat, cloud and lessons from this device.")) return;
+    var guiding = PR && PR.mode(localStorage) === "guide";
+    if (!window.confirm(guiding ? "Start over for " + state.name + "? This clears " + state.name + "'s chat, cloud and lessons from this device. Other learners are kept." : "Start over? This clears your name, chat, cloud and lessons from this device.")) return;
     Object.keys(LS).forEach(function (k) { try { localStorage.removeItem(LS[k]); } catch { /* ignore */ } });
     try { sessionStorage.removeItem(SESSION); sessionStorage.removeItem(VISIT); } catch { /* ignore */ }
+    if (PR) PR.dropActive(localStorage); /* this learner leaves the list; a guide carries on with the next one */
     location.reload();
   });
 
@@ -2185,20 +2188,48 @@
     save();
   }
 
+  /* The first question: learning for yourself (the name question as always) or guiding other learners (their first
+     learner's name). A tap, no form; 0 calls. The answer is kept in the learners index only. */
+  var who = "self";
+  Array.prototype.forEach.call(document.querySelectorAll(".who-opt"), function (b) {
+    b.addEventListener("click", function () {
+      who = b.getAttribute("data-who") === "guide" ? "guide" : "self";
+      Array.prototype.forEach.call(document.querySelectorAll(".who-opt"), function (x) { x.setAttribute("aria-pressed", String(x === b)); x.classList.toggle("on", x === b); });
+      el.nameLabel.textContent = who === "guide" ? "Your first learner's first name" : "What's your first name?";
+      el.nameHint.hidden = who !== "guide";
+      el.nameForm.hidden = false;
+      el.nameIn.focus();
+    });
+  });
+  function showWelcome() {
+    el.welcome.hidden = false;
+    if (!el.who || !PR) { el.nameForm.hidden = false; el.nameIn.focus(); }
+  }
+  function showWho() {
+    var ix = PR && PR.current(localStorage);
+    if (!el.whoNow || !ix || ix.mode !== "guide") return;
+    el.whoNow.textContent = state.name + " · switch";
+    el.whoNow.setAttribute("aria-label", state.name + " is learning now. Switch learner");
+    el.whoNow.hidden = false;
+  }
   el.nameForm.addEventListener("submit", function (e) {
     e.preventDefault();
     var n = C.cleanLabel(el.nameIn.value).replace(/[^\p{L}\p{M}' -]/gu, "").trim();
     if (!n) { el.nameIn.focus(); return; }
     state.name = n;
     store(LS.name, n);
+    if (PR) { try { PR.begin(localStorage, who, n); } catch { /* storage full: carries on as one learner */ } }
+    showWho();
     state.cloud = C.create(n);
     state.thread = [];
     startChat();
   });
 
   (function boot() {
+    if (PR) { try { PR.reconcile(localStorage); } catch { /* keep going with what is there */ } }
     state.name = (load(LS.name) || "").trim();
-    if (!state.name) { el.welcome.hidden = false; el.nameIn.focus(); return; }
+    if (!state.name) { showWelcome(); return; }
+    showWho();
     state.cloud = C.deserialize(load(LS.cloud)) || C.create(state.name);
     try { state.thread = C.trimThread(JSON.parse(load(LS.thread) || "[]")); } catch { state.thread = []; }
     try { state.notes = JSON.parse(load(LS.notes) || "{}") || {}; } catch { state.notes = {}; }
