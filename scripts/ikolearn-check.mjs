@@ -14,7 +14,8 @@ import { DEFAULT_MODEL, FALLBACK_MODEL, GEMINI_BASE, chatBody, jsonBody, readSse
 import { MODEL_LIMITS, streamText, generateJson, llmConfig, llmReady } from "../lib/ikolearn/llm.ts";
 import { toMessages } from "../lib/ikolearn/openai-compatible.ts";
 import { budgetSpend } from "../lib/ikolearn/service.ts";
-import { clarifySystem, CLARIFY_STYLES, parseTricky } from "../lib/ikolearn/prompts.ts";
+import { clarifySystem, CLARIFY_STYLES, parseTricky, DESC_RULE, describeSystem, DESCRIBE_SCHEMA, parseDescribe, ADJACENT_SCHEMA } from "../lib/ikolearn/prompts.ts";
+import { describeFor } from "../lib/ikolearn/service.ts";
 import { LEARN_GUARDS, createLearnState, prepare, chatEvents, eventStream, cardFor, adjacentFor, lessonEvents, pathFor, testFor, createFor, examplesFor, EXAMPLES_CACHE, EXAMPLES_NO_STORE, EXAMPLES_STALE, EXAMPLES_RETRY, retryable } from "../lib/ikolearn/service.ts";
 import { setLlmLogSink, redact, LOG_DETAIL_CHARS } from "../lib/ikolearn/llm.ts";
 /* provider failures log one JSON line each; the checks keep them (quiet output) and assert on them */
@@ -2940,7 +2941,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const lr2 = app.slice(app.indexOf("  function lessonReady(id, wasNew) {"), app.indexOf("  /* ---------- \"Still tricky\""));
   ok(lr2.length > 500 && !/Next up|nextLine\(/.test(lr2), "lessons: no \"Next up\" link that jumps ahead: Where Next has it, pre-selected");
   const op = app.slice(app.indexOf("  function openPanel(id, keepNote, keepView) {"), app.indexOf("  function openPanel(id, keepNote, keepView) {") + 6000);
-  ok(/if \(!state\.notes\[noteKey\(id\)\]\) \{[\s\S]*?What do you notice here\?[\s\S]*?\} else notice\(id\);/.test(op) && !/quiet/.test(op.slice(0, 200)), "node tap: no note call; \"What do you notice here?\" asks for it (a written note shows, 0 calls)");
+  ok(/if \(!state\.notes\[noteKey\(id\)\]\) noteLine\(id\);\s*else notice\(id\);\s*\}\s*renderDesc\(id\);/.test(op) && /What do you notice here\?", function \(\) \{ notice\(id\); \}/.test(app) && !/quiet/.test(op.slice(0, 200)), "node tap: no note call; the description shows, and \"What do you notice here?\" (the whole cloud, or no description) asks for the note (a written note shows, 0 calls)");
   ok(/function noteKey\(id\)/.test(app) && !/state\.cloud\.rev\]/.test(app) && !/":" \+ state\.cloud\.rev/.test(app), "the note cache doesn't reset on every cloud change (keyed by the topic's own stage)");
   ok(/function callSignal\(name\)/.test(app) && /function cancelNav\(\) \{ cancelCall\("notice"\); cancelCall\("bridge"\); \}/.test(app) && /sig = callSignal\("notice"\)/.test(app) && /callSignal\("bridge"\)/.test(app) && /callSignal\("lesson"\)/.test(app) && /callSignal\("clarify"\)/.test(app), "background calls carry a signal; navigation cancels them");
   ok(/function showLesson\(on\) \{\s*if \(!on\) \{ stopClock\(\); cancelNav\(\); \}/.test(app) && /cancelNav\(\);\s*var rect = src/.test(app) && /if \(state\.panelNode !== id\) cancelCall\("notice"\);/.test(app), "leaving a view (Back, a card's hub, another topic) cancels its background calls");
@@ -3132,6 +3133,86 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/\{ source: "\/ikolearn\/learners", destination: "\/ikolearn\/learners\.html" \}/.test(fs.readFileSync("next.config.ts", "utf8")), "next.config: /ikolearn/learners");
   ok((fj.match(/readOf\(id, "([a-z]+)"\)/g) || []).every((x) => /"(name|cloud|lessons)"/.test(x)) && !/setItem|removeItem|switchTo|PR\.add|setMode|dropActive|reconcile/.test(fj.replace(/\/\*[\s\S]*?\*\//g, "")), "dashboard: reads each learner's name, cloud and lessons; never writes or switches");
   ok(C.VERSION === 9, "learners: the cloud stays v9 (no version bump)");
+}
+
+/* ================= node descriptions (the card line under the title) ================= */
+{
+  const D1 = "Hot melted rock from deep underground that pushes up and pours out of volcanoes.";
+  // 1. piggyback: every call that makes nodes asks for a description in the same answer (0 extra calls)
+  ok(/one plain sentence of 10 to 18 words/.test(DESC_RULE) && !/\b(age|aged|years? old|kids?|child|children|student|grade)\b/i.test(DESC_RULE), "describe: one plain sentence, universal wording (no ages or roles)", DESC_RULE);
+  const LIN = parseLearnInput({ mode: "notice", name: "Sam", focus: "Volcanoes", focusParent: "Earth Science", trail: "Earth Science > Volcanoes", parents: ["Earth Science"], messages: [] });
+  ok(createSystem({ ...LIN, kind: "start" }).includes("Each child also has a " + DESC_RULE), "describe: the creation call asks each child for its description");
+  ok(lessonSystem(LIN).includes("Each choice has a " + DESC_RULE) && /"why":"\.\.\.","blurb":"\.\.\."/.test(lessonSystem(LIN)), "describe: the lesson's fork choices carry one");
+  ok(companionSystem(LIN).includes("Each topic and ghost has a " + DESC_RULE) && /"target":"\.\.\.","blurb":"\.\.\."/.test(companionSystem(LIN)), "describe: the chat's topics and ghosts carry one");
+  ok(adjacentSystem(LIN).includes(DESC_RULE), "describe: related topics carry one");
+  const kid = CREATE_SCHEMA.properties.items.items.properties.children.items;
+  ok(kid.properties.blurb && kid.properties.blurb.type === "string" && !kid.required.includes("blurb") && ADJACENT_SCHEMA.properties.ghosts.items.properties.blurb && !ADJACENT_SCHEMA.properties.ghosts.items.required.includes("blurb"), "schema: children and ghosts have an optional blurb (an answer without one still passes)");
+  ok(DESCRIBE_SCHEMA.required.includes("items") && DESCRIBE_SCHEMA.properties.items.items.required.join() === "name,blurb", "schema: the describe answer is { items: [{ name, blurb }] }");
+  // parsing
+  const pc = parseCreate({ items: [{ node: { name: "Volcanoes", chain: ["Earth Science"] }, card: { title: "Volcanoes", blurb: "Mountains that let out melted rock.", goal: "Explain an eruption." },
+    children: [{ name: "Magma", order: 1, score: 0.8, role: "core", blurb: D1 }, { name: "Eruptions", order: 2, score: 0.7, role: "core", blurb: "Sam will love how volcanoes blow their tops in big eruptions." }, { name: "Lava", order: 3, score: 0.5, role: "core", blurb: "<b>x</b>" }] }] }, "more", "Sam");
+  const kids = pc && pc.items[0].children;
+  ok(kids && kids[0].blurb === D1 && !("blurb" in kids[1]) && !("blurb" in kids[2]), "parseCreate: a child's description is kept; one naming the learner or too short is dropped (the child stays)", JSON.stringify(kids));
+  const ch = parseChoices([{ name: "Magma", kind: "deeper", why: "Go further", blurb: D1 }, { name: "Plates", kind: "side", why: "Nearby" }], "Sam", "Volcanoes");
+  ok(ch[0].blurb === D1 && !("blurb" in ch[1]), "parseChoices: a choice's description is kept when given");
+  const cb = parseCloudBlock({ topics: [{ name: "Magma", parent: "Volcanoes", signal: "curious", blurb: D1 }], ghosts: [{ name: "Geysers", parent: "Volcanoes", blurb: "Springs that shoot hot water and steam high into the air now and then." }, { name: "Ash", parent: "Volcanoes" }] }, "Sam");
+  ok(cb.topics[0].blurb === D1 && cb.ghosts[0].blurb && !("blurb" in cb.ghosts[1]), "parseCloudBlock: topics and ghosts keep their descriptions");
+  ok(parseAdjacent('{"ghosts":[{"name":"Geysers","parent":"Volcanoes","blurb":"Springs that shoot hot water and steam into the air."}]}', "Sam")[0].blurb === "Springs that shoot hot water and steam into the air.", "parseAdjacent: keeps a description");
+  const pd = parseDescribe({ items: [{ name: "magma", blurb: D1 }, { name: "Volcanoes", blurb: "Not asked about, so it is left out of the answer." }, { name: "Lava", blurb: "" }, { name: "Magma", blurb: "A second answer for the same topic is ignored here." }] }, ["Magma", "Lava"], "Sam");
+  ok(pd.length === 1 && pd[0].name === "Magma" && pd[0].blurb === D1, "parseDescribe: only the asked topics (matched loosely, named as asked), one each, clean", JSON.stringify(pd));
+  ok(describeSystem({ ...LIN, material: [{ label: "Magma", line: "Earth Science > Volcanoes" }] }).includes("- Magma (in Earth Science > Volcanoes)"), "describeSystem: lists each topic with where it sits");
+  // the describe call: one structured call per batch; nothing to describe = no call; a failure is an honest error
+  const gjd = (obj) => () => res(200, { candidates: [{ content: { parts: [{ text: JSON.stringify(obj) }] } }] });
+  const DIN = parseLearnInput({ mode: "notice", name: "Sam", focus: "Volcanoes", material: [{ label: "Magma", line: "Earth Science > Volcanoes" }, { label: "Lava", line: "Earth Science > Volcanoes" }], messages: [] });
+  let fd = fakeFetch([gjd({ items: [{ name: "Magma", blurb: D1 }, { name: "Lava", blurb: "Melted rock once it has come out of the ground and starts to cool." }] })]);
+  let od = await describeFor(DIN, ENV, fd);
+  ok(od.status === 200 && od.body.items.length === 2 && fd.calls.length === 1 && JSON.parse(fd.calls[0].init.body).generationConfig.responseSchema.required.includes("items"), "describeFor: one structured call for the whole batch", JSON.stringify(od.body));
+  fd = fakeFetch([gjd({ items: [] })]);
+  ok(fd.calls.length === 0 && (await describeFor({ ...DIN, material: [] }, ENV, fd)).status === 422 && fd.calls.length === 0, "describeFor: nothing to describe -> 422, no call");
+  fd = fakeFetch([() => res(429, null)]);
+  od = await describeFor(DIN, ENV, fd);
+  ok(od.status === 429 && od.body.ok === false, "describeFor: a busy model is an honest failure (the card falls back quietly)");
+  fd = fakeFetch([gjd({ items: [{ name: "Something Else", blurb: D1 }] })]);
+  ok((await describeFor(DIN, ENV, fd)).status === 502, "describeFor: an answer for none of the asked topics -> error");
+  // storage on the device: the existing blurb field (v9, no new key), written from every node-making result
+  const dc = C.create("Sam", T0);
+  C.applyCreate(dc, { items: [{ node: { name: "Volcanoes", chain: ["Earth Science"] }, card: { title: "Volcanoes", blurb: "Mountains that let out melted rock.", goal: "Explain an eruption." },
+    children: [{ name: "Magma", order: 1, score: 0.8, role: "core", blurb: D1 }, { name: "Eruptions", order: 2, score: 0.7, role: "core" }, { name: "Lava", order: 3, score: 0.5, role: "core" }] }] }, { t: T0 + 1 });
+  const DV = C.findTopic(dc, "Volcanoes"), DM = C.findTopic(dc, "Magma"), DE = C.findTopic(dc, "Eruptions"), DL = C.findTopic(dc, "Lava");
+  ok(DM.blurb === D1 && DE.blurb === "" && DV.blurb === "Mountains that let out melted rock.", "storage: a created child gets its description from the same answer (0 extra calls)");
+  C.applyCreate(dc, { items: [{ node: { name: "Volcanoes", chain: [] }, card: {}, children: [{ name: "Magma", order: 1, score: 0.8, role: "core", blurb: "A different line that must not replace the first one." }, { name: "Vents", order: 2, score: 0.4, role: "core" }] }] }, { t: T0 + 2, focusId: DV.id });
+  ok(DM.blurb === D1, "storage: a later answer never replaces an existing description");
+  C.applyChoices(dc, DM.id, [{ name: "Magma Chambers", kind: "deeper", why: "Go further", blurb: "Big underground pockets where melted rock gathers before it erupts." }, { name: "Hot Springs", kind: "side", why: "Nearby" }], T0 + 3);
+  ok(C.findTopic(dc, "Magma Chambers").blurb.startsWith("Big underground pockets") && C.findTopic(dc, "Hot Springs").blurb === "", "storage: fork choices keep theirs");
+  C.addGhosts(dc, [{ name: "Geysers", parent: "Volcanoes", blurb: "Springs that shoot hot water and steam high into the air now and then." }], T0 + 4);
+  C.applyTopics(dc, [{ name: "Ash Clouds", parent: "Volcanoes", signal: "curious", blurb: "Clouds of tiny rock bits that a volcano throws high into the sky." }], T0 + 5);
+  ok(C.findTopic(dc, "Geysers").blurb.startsWith("Springs") && C.findTopic(dc, "Ash Clouds").blurb.startsWith("Clouds of tiny rock"), "storage: chat topics and ghosts keep theirs");
+  const ser = C.serialize(dc), back = C.deserialize(ser);
+  ok(back && JSON.parse(ser).v === 9 && C.findTopic(back, "Magma").blurb === D1 && C.findTopic(back, "Geysers").blurb.startsWith("Springs") && C.findTopic(back, "Eruptions").blurb === "", "storage: descriptions round-trip in the v9 save (no version bump, no new key)");
+  /* a save from before descriptions: the same v9 rows with every blurb empty; it loads as it is and its nodes are simply undescribed */
+  const pre = C.deserialize(ser); Object.values(pre.nodes).forEach((n) => { n.blurb = ""; });
+  const old = C.deserialize(C.serialize(pre));
+  ok(old && JSON.parse(C.serialize(pre)).v === 9 && C.findTopic(old, "Magma").blurb === "" && P.describeBatch(old, C.findTopic(old, "Magma").id).length >= 2, "storage: a save from before descriptions loads unchanged; its nodes are backfilled lazily");
+  // backfill batching (orchestrator.js describeBatch): the opened node, its siblings and children without one; at most 8
+  const b1 = P.describeBatch(dc, DE.id);
+  ok(b1[0] === DE.id && b1.includes(DL.id) && b1.includes(C.findTopic(dc, "Vents").id) && !b1.includes(DM.id) && !b1.includes(DV.id) && b1.length <= P.DESCRIBE.batch, "backfill: one batch = the node first, then its undescribed siblings (described ones left out)", JSON.stringify(b1.map((x) => dc.nodes[x].label)));
+  const wait = {}; b1.forEach((x) => { wait[x] = 1; });
+  ok(P.describeBatch(dc, DL.id, (x) => wait[x]).length === 0, "backfill: dedupe: a sibling's card while that batch is in flight asks nothing more");
+  b1.forEach((x) => C.setBlurb(dc, x, "A short line that describes this topic for its card."));
+  ok(P.describeBatch(dc, DE.id).length === 0 && P.describeBatch(dc, DL.id).length === 0, "backfill: cache hit: once written (and saved) a node is never asked again (0 calls on reopen)");
+  const big = C.create("Sam", T0);
+  C.applyCreate(big, { items: [{ node: { name: "Space", chain: [] }, card: {}, children: Array.from({ length: 12 }, (_, i) => ({ name: "Moon " + (i + 1), order: i + 1, score: 0.5, role: i < 4 ? "core" : "optional" })) }] }, { t: T0 });
+  const anyMoon = Object.values(big.nodes).find((n) => /^Moon/.test(n.label));
+  ok(anyMoon && P.describeBatch(big, anyMoon.id).length === Math.min(P.DESCRIBE.batch, Object.values(big.nodes).filter((n) => n.parent === anyMoon.parent).length), "backfill: a big family is capped at one batch of 8");
+  ok(P.describeBatch(dc, "nope").length === 0, "backfill: an unknown node asks nothing");
+  // the app: card wiring, placeholder, fallback
+  const app = fs.readFileSync("public/ikolearn/app.js", "utf8"), css = fs.readFileSync("public/ikolearn/styles.css", "utf8"), html = fs.readFileSync("public/ikolearn/index.html", "utf8");
+  ok(/<h2 id="p-title"><\/h2>\s*<p id="p-desc" class="desc" hidden><\/p>/.test(html), "card: the description sits right under the title");
+  ok(/if \(n\.blurb\) \{ d\.className = "desc"; d\.textContent = n\.blurb; return; \}/.test(app) && /d\.className = "desc loading";/.test(app) && /describe\(id\);/.test(app), "card: shows the description at once; a faint placeholder while one is written");
+  ok(/P\.describeBatch\(state\.cloud, id, function \(x\) \{ return descWait\[x\] \|\| descFail\[x\]; \}\)/.test(app) && /postJson\("\/describe", body\)/.test(app) && /if \(got\) save\(\);/.test(app), "backfill: one call per batch, deduped against in-flight and failed nodes, saved with the cloud");
+  ok(/else if \(m && !m\.blurb\) descFail\[x\] = 1;/.test(app) && /if \(id === "root" \|\| !n \|\| \(!n\.blurb && descFail\[id\]\)\) el\.pNote\.appendChild\(linkBtn\("What do you notice here\?"/.test(app) && !/describe[\s\S]{0,400}Try again/.test(app.slice(app.indexOf("  function describe(id) {"), app.indexOf("  function describe(id) {") + 1500)), "fallback: a failed description hides quietly and the old line comes back (no Try again)");
+  ok(/if \(state\.cloud !== cloud\) \{/.test(app), "backfill: an answer for another learner (guide mode switched meanwhile) is dropped");
+  ok(/\.desc \{[^}]*-webkit-line-clamp: 3;/.test(css) && /\.desc\.loading \{[^}]*animation: gen-shimmer/.test(css) && /@media \(prefers-reduced-motion: reduce\) \{ \.desc\.loading \{ animation: none; \} \}/.test(css), "card: the description is quiet, at most 3 lines; the placeholder is still with reduced motion");
 }
 
 if (fails.length) {

@@ -623,6 +623,23 @@
     if (pl === "ambiguous") return ask();
     return { how: "legacy", label: label };
   }
+  /*
+   * The description backfill batch for a node whose card opens: that node first, then its siblings and its children
+   * that have no description yet, skipping any already asked (in flight) or failed this session; at most 8 (one call).
+   * Empty = nothing to ask (every one is described already: 0 calls).
+   */
+  var DESCRIBE = { batch: 8 };
+  function describeBatch(cloud, id, skip) {
+    var out = [], n = cloud && cloud.nodes[id];
+    if (!n) return out;
+    var ix = C.index(cloud);
+    [id].concat(n.parent ? ix[n.parent] || [] : [], ix[id] || []).forEach(function (x) {
+      var m = cloud.nodes[x];
+      if (m && !m.blurb && !(skip && skip(x)) && out.indexOf(x) < 0 && out.length < DESCRIBE.batch) out.push(x);
+    });
+    return out;
+  }
+
   /* The topic for C.applyTopics once placed: a new parent, right under its target, or as it came (reuse, legacy). */
   function placedTopic(tp, plan) {
     var o = {};
@@ -637,7 +654,7 @@
     PLAN: PLAN, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, needsRepair: needsRepair, repairRequest: repairRequest,
     MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild, nextStep: nextStep,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
-    suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, placeTopic: placeTopic, placedTopic: placedTopic, isBroad: isBroad,
+    suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, placeTopic: placeTopic, placedTopic: placedTopic, DESCRIBE: DESCRIBE, describeBatch: describeBatch, isBroad: isBroad,
     onboarding: onboarding, openQuestion: openQuestion, examples: examples, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics,
     needsNext: needsNext, readyNext: readyNext, createRequest: createRequest, OPENING: OPENING
   };

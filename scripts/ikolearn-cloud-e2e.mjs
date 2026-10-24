@@ -33,9 +33,9 @@ const browser = await chromium.launch({ executablePath: process.env.IKOLEARN_CHR
 const HOOK = () => { let real; Object.defineProperty(window, "IkoCloudView", { configurable: true, get: () => real, set: (v) => { real = Object.assign({}, v, { create: (c, o) => { const view = v.create(c, o); (window.__views = window.__views || []).push({ id: c.id, view }); return view; } }); } }); };
 const SEED = (o) => {
   const C = window.IkoCloud, T = Date.now() - 3 * 864e5, c = C.create("Maya", T);
-  const kids = (n, m) => n.map((x, i) => ({ name: x, order: i + 1, score: 0.9 - i * 0.1, why: "", role: "core", motif: m[i] }));
+  const kids = (n, m, b) => n.map((x, i) => ({ name: x, order: i + 1, score: 0.9 - i * 0.1, why: "", role: "core", motif: m[i], ...(b ? { blurb: b[i] } : {}) }));
   const items = [
-    { node: { name: "Volcanoes", chain: ["Earth Science"], motif: "mountain" }, card: { title: "Volcanoes", blurb: "Mountains that let out melted rock.", goal: "" }, children: kids(["Magma", "Eruptions", "Lava Types"], ["flame", "mountain", "drop"]) },
+    { node: { name: "Volcanoes", chain: ["Earth Science"], motif: "mountain" }, card: { title: "Volcanoes", blurb: "Mountains that let out melted rock.", goal: "" }, children: kids(["Magma", "Eruptions", "Lava Types"], ["flame", "mountain", "drop"], ["Hot melted rock deep underground that rises up and feeds a volcano.", "The moments when a volcano pushes out lava, ash and gas, gently or with a bang.", "The different kinds of lava, from runny rivers of fire to thick slow lumps."]) }, /* descriptions from the same create answer (piggybacked) */
     { node: { name: "Sourdough Bread", chain: ["Baking"], motif: "bowl" }, card: { title: "Sourdough Bread", blurb: "Bread raised by a living starter.", goal: "" }, children: kids(["Starter Basics", "Kneading", "Proofing"], ["seed", "hand", "clock"]) },
     { node: { name: "Stargazing", chain: ["Astronomy"], motif: "star" }, card: { title: "Stargazing", blurb: "The night sky.", goal: "" }, children: kids(["Constellations", "Planets"], ["star", "planet"]) },
   ];
@@ -54,14 +54,23 @@ async function open(width, o = {}) {
   p.on("pageerror", (e) => errs.push("pageerror " + e.message));
   p.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource/.test(m.text())) errs.push(m.text()); });
   await p.addInitScript(HOOK);
-  await p.route("**/api/ikolearn/**", (r) => { const at = new URL(r.request().url()).pathname; if (!/examples$/.test(at)) calls.push(at); return r.fulfill({ status: 503, contentType: "application/json", body: '{"ok":false,"reason":"off"}' }); });
+  const bodies = [];
+  await p.route("**/api/ikolearn/**", async (r) => {
+    const at = new URL(r.request().url()).pathname; if (!/examples$/.test(at)) calls.push(at);
+    /* the description backfill: o.describe "ok" answers each asked topic (after a short wait, so the placeholder shows) */
+    if (/describe$/.test(at)) {
+      const b = JSON.parse(r.request().postData() || "{}"); bodies.push(b);
+      if (o.describe === "ok") { await new Promise((ok) => setTimeout(ok, 900)); return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, items: (b.material || []).map((m) => ({ name: m.label, blurb: `${m.label}: a short plain line about what this topic is and why it matters.` })) }) }); }
+    }
+    return r.fulfill({ status: 503, contentType: "application/json", body: '{"ok":false,"reason":"off"}' });
+  });
   await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
   await p.evaluate(SEED, o);
   await p.reload({ waitUntil: "networkidle" });
   await p.waitForTimeout(250);
   await p.click("#thumb");
   await p.mouse.move(1, 1);
-  return { ctx, p, errs, calls };
+  return { ctx, p, errs, calls, bodies };
 }
 const st = (p) => p.evaluate(() => { const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view; return v.state(); });
 const at = (p, label) => p.evaluate((l) => { const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view, C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")); const id = c.order.find((x) => c.nodes[x].label === l); const q = v.project(id), r = document.querySelector("#cloud-canvas").getBoundingClientRect(); return { x: r.left + q.x, y: r.top + q.y }; }, label);
@@ -145,12 +154,13 @@ for (const width of (process.env.WIDTHS || "390,1280").split(",").map(Number)) {
       const inside = (pt, b) => b && pt.x >= b.l - 4 && pt.x <= b.r + 4 && pt.y >= b.t - 4 && pt.y <= b.b + 4;
       const gap = (pt, b) => Math.max(b.l - pt.x, pt.x - b.r, b.t - pt.y, pt.y - b.b, 0);
       const card = await rect("#panel"), node = await at(p, "Volcanoes");
-      const view = await p.evaluate(() => ({ iw: innerWidth, ih: innerHeight, sw: document.documentElement.scrollWidth, side: document.querySelector("#panel").getAttribute("data-side"), radius: getComputedStyle(document.querySelector("#panel")).borderTopLeftRadius, title: document.querySelector("#p-title").textContent, note: document.querySelector("#p-note").innerText, acts: [...document.querySelectorAll("#panel .actions .btn:not([hidden])")].map((b) => b.textContent), path: document.querySelectorAll("#p-path li").length }));
+      const view = await p.evaluate(() => ({ iw: innerWidth, ih: innerHeight, sw: document.documentElement.scrollWidth, side: document.querySelector("#panel").getAttribute("data-side"), radius: getComputedStyle(document.querySelector("#panel")).borderTopLeftRadius, title: document.querySelector("#p-title").textContent, note: document.querySelector("#p-note").innerText, acts: [...document.querySelectorAll("#panel .actions .btn:not([hidden])")].map((b) => b.textContent), desc: document.querySelector("#p-desc").hidden ? null : document.querySelector("#p-desc").textContent, path: document.querySelectorAll("#p-path li").length }));
       ok(card && !inside(node, card), `${tag}: the card does not cover the selected node`, JSON.stringify({ node, card }));
       ok(card && gap(node, card) <= 70, `${tag}: the card sits next to the node (${Math.round(card ? gap(node, card) : -1)} px away)`, JSON.stringify({ node, card }));
       ok(card && card.l >= 0 && card.r <= view.iw && card.t >= 0 && card.b <= view.ih && view.sw <= view.iw, `${tag}: the card is inside the viewport (no overflow)`, JSON.stringify({ card, view }));
       ok(view.side === (width >= 900 ? "right" : "below") && parseFloat(view.radius) >= 10, `${tag}: a rounded card ${width >= 900 ? "to the right of" : "under"} the node`, JSON.stringify(view));
-      ok(view.title === "Volcanoes" && /What do you notice here\?/.test(view.note) && JSON.stringify(view.acts.slice(0, 3)) === JSON.stringify(["Start a lesson", "Open its card", "Talk in chat"]) && view.path >= 3, `${tag}: the card: title, "What do you notice here?", the three actions and the path`, JSON.stringify(view));
+      ok(view.title === "Volcanoes" && view.desc === "Mountains that let out melted rock." && !/What do you notice here\?/.test(view.note) && JSON.stringify(view.acts.slice(0, 3)) === JSON.stringify(["Start a lesson", "Open its card", "Talk in chat"]) && view.path >= 3, `${tag}: the card: title, its description (instead of "What do you notice here?"), the three actions and the path`, JSON.stringify(view));
+      ok(calls.length === 0, `${tag}: a described node's card: the description shows at once, 0 calls`, calls.join());
       await shot(p, `nodes-card-${TAG}-${width}-card.png`);
       /* while the card is open the spin comes back after the short delay; it turns about the selected node, so the node and its card stay put */
       const c0 = await rect("#panel"), n0 = await at(p, "Volcanoes");
@@ -177,6 +187,9 @@ for (const width of (process.env.WIDTHS || "390,1280").split(",").map(Number)) {
       const pe = await at(p, "Eruptions"); await p.mouse.click(pe.x, pe.y); await p.mouse.move(1, 1); await settle(p);
       const eTitle = await p.textContent("#p-title"), eNode = await at(p, "Eruptions"), eCard = await rect("#panel");
       ok(eTitle === "Eruptions" && !inside(eNode, eCard), `${tag}: another node: its own card, clear of it`, JSON.stringify({ eTitle, eNode, eCard }));
+      const eDesc = await p.evaluate(() => ({ d: document.querySelector("#p-desc").textContent, h: document.querySelector("#p-desc").hidden, l: document.querySelector("#p-desc").getBoundingClientRect().height, lh: parseFloat(getComputedStyle(document.querySelector("#p-desc")).lineHeight) }));
+      ok(!eDesc.h && /^The moments when a volcano/.test(eDesc.d) && eDesc.l <= eDesc.lh * 3 + 1 && calls.length === 0, `${tag}: a child made with a description (piggybacked): shown at once, at most 3 lines, 0 calls`, JSON.stringify(eDesc));
+      await shot(p, `nodes-desc-${TAG}-${width}-piggyback.png`);
       await p.keyboard.press("Escape"); await p.waitForTimeout(200);
       ok(await p.locator("#panel").isHidden() && !(await p.locator("#cloud").isHidden()), `${tag}: Escape closes the card first (the cloud stays)`);
       /* 3. the whole-cloud card (tap the name) sits next to the name */
@@ -212,6 +225,84 @@ for (const width of (process.env.WIDTHS || "390,1280").split(",").map(Number)) {
       ok(les.cloud && les.lesson && les.title === "Magma" && calls.length === 1 && calls[0] === "/api/ikolearn/lesson", `${tag}: "Start a lesson" opens that lesson (one lesson request, mocked)`, JSON.stringify({ les, calls }));
       ok(errs.length === 0, `${tag}: no console errors`, errs.join(" | "));
     } catch (e) { fails.push(`${tag}: main threw -> ${String(e.message || e).split("\n").slice(0, 6).join(" / ")}`); }
+    await ctx.close();
+  }
+  /* 6. the description backfill: an older save's node (Baking's children have none): one call for its batch, then never again */
+  /* a node that is on screen, below the top controls and clear of the name and every other node (a tap hits it, not a neighbour) */
+  const onScreen = async (p, labels) => {
+    const all = await p.evaluate(() => { const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view, C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), r = document.querySelector("#cloud-canvas").getBoundingClientRect(); return ["root"].concat(c.order).map((id) => { const q = v.project(id); return { l: id === "root" ? "" : c.nodes[id].label, x: q ? r.left + q.x : -1e4, y: q ? r.top + q.y : -1e4 }; }); });
+    const top = await p.evaluate(() => document.querySelector(".cloud-top").getBoundingClientRect().bottom + 16), H = width < 500 ? 844 : 860;
+    for (const l of labels) {
+      const q = all.find((n) => n.l === l);
+      if (!q || q.x < 24 || q.x > width - 24 || q.y < top || q.y > H - 24) continue;
+      if (all.every((n) => n === q || Math.hypot(n.x - q.x, n.y - q.y) >= (n.l ? 16 : 36))) return { l, q };
+    }
+    return null;
+  };
+  /* opens one of these nodes' cards by tapping it: zoom in over its branch and turn the cloud a little until one is clear */
+  const openNode = async (p, labels) => {
+    await p.click("#zreset"); await p.mouse.move(1, 1); await settle(p);
+    let hit = await onScreen(p, labels);
+    for (let i = 0; !hit && i < 14; i++) {
+      const fam = (await p.evaluate((ls) => { const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view, C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), r = document.querySelector("#cloud-canvas").getBoundingClientRect(); const id = c.order.find((x) => c.nodes[x].label === ls[0]); const q = v.project(id); return q ? { x: r.left + q.x, y: r.top + q.y } : null; }, labels));
+      if (i < 4 && fam) { await p.mouse.move(fam.x, fam.y); await p.mouse.wheel(0, -160); }
+      else { const sp = await emptySpot(p); await p.mouse.move(sp.x, sp.y); await p.mouse.down(); await p.mouse.move(sp.x + 40, sp.y, { steps: 5 }); await p.mouse.up(); }
+      await p.mouse.move(1, 1); await p.waitForTimeout(700);
+      hit = await onScreen(p, labels);
+    }
+    if (!hit) throw new Error("none of " + labels.join(", ") + " clear on screen");
+    await p.mouse.click(hit.q.x, hit.q.y); await p.mouse.move(1, 1);
+    return hit.l;
+  };
+  const desc = (p) => p.evaluate(() => { const d = document.querySelector("#p-desc"), n = document.querySelector("#p-note"); return { hidden: d.hidden, loading: d.classList.contains("loading"), text: d.textContent, note: n.innerText, title: document.querySelector("#p-title").textContent, panel: !document.querySelector("#panel").hidden }; });
+  const BAKE = ["Kneading", "Proofing", "Starter Basics"];
+  {
+    const { ctx, p, errs, calls, bodies } = await open(width, { describe: "ok" });
+    try {
+      const l1 = await openNode(p, BAKE);
+      await p.waitForTimeout(250);
+      const ld = await desc(p);
+      ok(ld.panel && ld.title === l1 && !ld.hidden && ld.loading && ld.text === "" && !/What do you notice here\?/.test(ld.note), `${tag}: backfill: a node without a description shows a faint placeholder while it is written`, JSON.stringify(ld));
+      await shot(p, `nodes-desc-${TAG}-${width}-loading.png`);
+      await p.waitForTimeout(1100);
+      const d1 = await desc(p);
+      const asked = (bodies[0] && bodies[0].material || []).map((m) => m.label);
+      ok(!d1.loading && d1.text.startsWith(l1 + ": a short plain line"), `${tag}: backfill: its description arrives in the card`, JSON.stringify(d1));
+      ok(calls.length === 1 && calls[0] === "/api/ikolearn/describe" && asked[0] === l1 && BAKE.every((x) => asked.includes(x)) && asked.length <= 8, `${tag}: backfill: exactly one call, for the node with its siblings (a batch of ${asked.length})`, JSON.stringify({ calls, asked }));
+      await shot(p, `nodes-desc-${TAG}-${width}-backfilled.png`);
+      /* a sibling from that batch, and the same node again: instant, 0 calls */
+      await p.keyboard.press("Escape"); await p.waitForTimeout(150);
+      const l2 = await openNode(p, BAKE.filter((x) => x !== l1).concat(l1));
+      await p.waitForTimeout(250);
+      const d2 = await desc(p);
+      ok(d2.title === l2 && !d2.loading && d2.text.startsWith(l2 + ": a short plain line") && calls.length === 1, `${tag}: backfill: a sibling from the batch shows its description at once (0 more calls)`, JSON.stringify({ d2, calls }));
+      await p.keyboard.press("Escape"); await p.waitForTimeout(150);
+      await openNode(p, [l1]); await p.waitForTimeout(250);
+      ok(!(await desc(p)).loading && calls.length === 1, `${tag}: backfill: reopening the same card: 0 calls`, calls.join());
+      /* reload: the descriptions were saved with the cloud */
+      await p.reload({ waitUntil: "networkidle" }); await p.waitForTimeout(250);
+      await p.click("#thumb"); await p.mouse.move(1, 1);
+      await openNode(p, [l1]); await p.waitForTimeout(250);
+      const d3 = await desc(p);
+      ok(!d3.loading && d3.text.startsWith(l1 + ": a short plain line") && calls.length === 1, `${tag}: backfill: after a reload: shown at once, 0 calls (cached in the saved cloud)`, JSON.stringify({ d3, calls }));
+      ok(errs.length === 0, `${tag}: backfill: no console errors`, errs.join(" | "));
+    } catch (e) { fails.push(`${tag}: backfill threw -> ${String(e.message || e).split("\n").slice(0, 4).join(" / ")}`); }
+    await ctx.close();
+  }
+  {
+    /* a failure: quiet, the old line comes back, no Try again, and it is not asked again this session */
+    const { ctx, p, errs, calls } = await open(width, { describe: "fail" });
+    try {
+      const l1 = await openNode(p, BAKE);
+      await p.waitForTimeout(500);
+      const f1 = await desc(p);
+      const again = await p.evaluate(() => [...document.querySelectorAll("#panel button")].some((b) => /try again/i.test(b.textContent)));
+      ok(f1.hidden && /What do you notice here\?/.test(f1.note) && !again && calls.filter((c) => /describe$/.test(c)).length === 1, `${tag}: backfill failure: the description hides, "What do you notice here?" comes back, no Try again (one call)`, JSON.stringify({ f1, calls }));
+      await p.keyboard.press("Escape"); await p.waitForTimeout(150);
+      await openNode(p, [l1]); await p.waitForTimeout(400);
+      ok(calls.filter((c) => /describe$/.test(c)).length === 1, `${tag}: backfill failure: not asked again this session`, calls.join());
+      ok(errs.length === 0, `${tag}: backfill failure: no console errors`, errs.join(" | "));
+    } catch (e) { fails.push(`${tag}: backfill failure threw -> ${String(e.message || e).split("\n").slice(0, 4).join(" / ")}`); }
     await ctx.close();
   }
   /* 5. other cloud screens: a guide's learner, a new learner's first cloud; reduced motion keeps it off */

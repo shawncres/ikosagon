@@ -330,6 +330,10 @@ button.gcard:hover { border-color: var(--soft); }
 #panel #p-title { font-size: 20px; margin: 2px 36px 6px 0; }
 #panel .kicker { padding-right: 36px; }
 #panel .note { margin-bottom: 10px; }
+#panel .note:empty { display: none; }
+/* the node's description: quiet, at most 3 lines; a faint placeholder while it is written */
+.desc { margin: 0 0 12px; font-size: 15px; line-height: 1.45; color: var(--soft); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+.desc.loading { height: 2.9em; border-radius: 4px; background: linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--rule) 55%, transparent) 50%, transparent 100%) 0 0 / 200% 100%, color-mix(in srgb, var(--rule) 30%, transparent); animation: gen-shimmer 1.6s linear infinite; }
 #panel .actions { margin-bottom: 10px; }
 #panel .path { margin-top: 4px; }
 .kicker { font-size: 13px; color: var(--soft); margin: 0; }
@@ -541,6 +545,7 @@ button.gcard:active, button.gslot:active { transform: translateY(-1px) scale(.97
 @media (prefers-reduced-motion: reduce) {
   .md-fan, .minideck.pulse .md-fan, .minideck.pulse::after { animation: none; }
 }
+@media (prefers-reduced-motion: reduce) { .desc.loading { animation: none; } }
 
 /* a build in progress: the parents that have arrived, then quiet placeholders (a slow shimmer) for the rest */
 .gen { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }

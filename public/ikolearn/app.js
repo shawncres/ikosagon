@@ -29,7 +29,7 @@
     lesson: $("lesson"), lBack: $("l-back"), lTrail: $("l-trail"), lTitle: $("l-title"), lBody: $("l-body"), lDone: $("l-done"),
     lGot: $("l-got"), lTricky: $("l-tricky"), lStatus: $("l-status"), lPath: $("l-path"), lClar: $("l-clar"), lNext: $("l-next"), lChat: $("l-chat"), lRedo: $("l-redo"),
     cloud: $("cloud"), cloudCanvas: $("cloud-canvas"), cloudClose: $("cloud-close"), zin: $("zin"), zout: $("zout"), zreset: $("zreset"),
-    panel: $("panel"), cloudTop: document.querySelector(".cloud-top"), pKicker: $("p-kicker"), pTitle: $("p-title"), pNote: $("p-note"), pLesson: $("p-lesson"), pCard: $("p-card"), pAdj: $("p-adj"),
+    panel: $("panel"), cloudTop: document.querySelector(".cloud-top"), pKicker: $("p-kicker"), pTitle: $("p-title"), pDesc: $("p-desc"), pNote: $("p-note"), pLesson: $("p-lesson"), pCard: $("p-card"), pAdj: $("p-adj"),
     pChat: $("p-chat"), pPath: $("p-path"), pCards: $("p-cards"), pClose: $("p-close"),
     draw: $("draw"), deckBtn: $("deck-btn"), deck: $("deck"), dBack: $("d-back"), dLede: $("d-lede"), dAlbum: $("d-album"),
     hub: $("hub"), hubBack: $("hub-back"), hubCrumb: $("hub-crumb"), hubCard: $("hub-card"), hubTitle: $("hub-title"), hubState: $("hub-state"),
@@ -1711,13 +1711,13 @@
     }
     el.pCards.textContent = "";
     if (!isRoot) C.cardsFor(state.cloud, id).slice().reverse().forEach(function (c) { el.pCards.appendChild(cardNode(c, new Date(c.at).toLocaleDateString())); });
-    /* the note is never written by a tap: shown when already written for this stage, else offered as a link (0 calls) */
+    /* the note is never written by a tap: shown when already written for this stage; offered as a link only where there
+       is no description (the whole cloud, or a description that could not be written) */
     if (!keepNote) {
-      if (!state.notes[noteKey(id)]) {
-        el.pNote.className = "note"; el.pNote.textContent = "";
-        el.pNote.appendChild(linkBtn("What do you notice here?", function () { notice(id); }));
-      } else notice(id);
+      if (!state.notes[noteKey(id)]) noteLine(id);
+      else notice(id);
     }
+    renderDesc(id);
     placeCard();
     if (keepView) return;
     if (isRoot) big.clearFocus();
@@ -1758,6 +1758,50 @@
   }
   if (window.ResizeObserver) new ResizeObserver(function () { cardSig = ""; placeCard(); }).observe(el.panel);
   window.addEventListener("resize", function () { cardSig = ""; placeCard(); });
+
+  /*
+   * The node's description under the card's title: its blurb, written in the same call that made the node (0 extra
+   * calls). A node without one (an older save, a topic from before descriptions) gets it lazily: opening its card asks
+   * once for it together with its siblings and children that lack one (one call for up to 8, never twice in flight,
+   * never again once written; the answer is saved with the cloud). While it is written a faint placeholder shows; if
+   * it can't be, the old "What do you notice here?" link takes its place for this session, no "Try again".
+   */
+  var descWait = {}, descFail = {};
+  function noteLine(id) {
+    el.pNote.className = "note"; el.pNote.textContent = "";
+    var n = nodeOf(id);
+    if (id === "root" || !n || (!n.blurb && descFail[id])) el.pNote.appendChild(linkBtn("What do you notice here?", function () { notice(id); }));
+  }
+  function renderDesc(id) {
+    var n = id === "root" ? null : nodeOf(id), d = el.pDesc;
+    if (!d) return;
+    d.removeAttribute("aria-busy");
+    if (!n || (!n.blurb && descFail[id])) { d.hidden = true; d.textContent = ""; return; }
+    d.hidden = false;
+    if (n.blurb) { d.className = "desc"; d.textContent = n.blurb; return; }
+    d.className = "desc loading"; d.textContent = ""; d.setAttribute("aria-busy", "true");
+    describe(id);
+  }
+  function describe(id) {
+    var ids = P.describeBatch(state.cloud, id, function (x) { return descWait[x] || descFail[x]; }); /* this node, its siblings and children without one */
+    if (!ids.length) return;
+    ids.forEach(function (x) { descWait[x] = 1; });
+    var body = basePayload(id), cloud = state.cloud;
+    body.material = ids.map(function (x) { var m = nodeOf(x); return { label: m.label, line: m.parent ? C.trail(state.cloud, m.parent) : "" }; });
+    postJson("/describe", body).then(function (j) {
+      var got = 0;
+      if (state.cloud !== cloud) { ids.forEach(function (x) { delete descWait[x]; }); return; } /* another learner now (guide mode): not theirs */
+      ids.forEach(function (x) {
+        var m = nodeOf(x), hit = m && j && j.ok && Array.isArray(j.items) ? j.items.filter(function (it) { return it && String(it.name || "").toLowerCase() === m.label.toLowerCase(); })[0] : null;
+        delete descWait[x];
+        if (hit && C.setBlurb(state.cloud, x, hit.blurb)) got += 1;
+        else if (m && !m.blurb) descFail[x] = 1;
+      });
+      if (got) save();
+      var open = state.panelNode;
+      if (open && ids.indexOf(open) >= 0 && !el.panel.hidden) { renderDesc(open); if (!state.notes[noteKey(open)]) noteLine(open); }
+    });
+  }
 
   /* Tap on the name or a node: a short personable note, streamed into the panel (cached until the cloud changes). */
   /*
