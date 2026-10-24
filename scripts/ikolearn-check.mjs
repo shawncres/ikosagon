@@ -14,6 +14,7 @@ import { DEFAULT_MODEL, FALLBACK_MODEL, GEMINI_BASE, chatBody, jsonBody, readSse
 import { MODEL_LIMITS, streamText, generateJson, llmConfig, llmReady } from "../lib/ikolearn/llm.ts";
 import { toMessages } from "../lib/ikolearn/openai-compatible.ts";
 import { budgetSpend } from "../lib/ikolearn/service.ts";
+import { cleanScreen, screenLine, SCREEN_VIEWS, SCREEN_STEPS } from "../lib/ikolearn/prompts.ts";
 import { clarifySystem, CLARIFY_STYLES, parseTricky, DESC_RULE, describeSystem, DESCRIBE_SCHEMA, parseDescribe, ADJACENT_SCHEMA } from "../lib/ikolearn/prompts.ts";
 import { describeFor } from "../lib/ikolearn/service.ts";
 import { LEARN_GUARDS, createLearnState, prepare, chatEvents, eventStream, cardFor, adjacentFor, lessonEvents, pathFor, testFor, createFor, examplesFor, EXAMPLES_CACHE, EXAMPLES_NO_STORE, EXAMPLES_STALE, EXAMPLES_RETRY, retryable } from "../lib/ikolearn/service.ts";
@@ -1300,7 +1301,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(!/\b(age|old|years?|grade|where (do )?you live|region)\b/i.test(JSON.stringify(ob2.concat([P.openQuestion(fresh, "grow"), P.openQuestion(fresh, "reask")]))), "onboarding never asks for age, grade or place");
   ok(ob[0].open && ob[0].input && !ob[0].multi && !("chips" in ob[0]) && ob[0].ex === true && /curious|enjoy/.test(ob[0].q), "onboarding: interests are one open question in the learner's own words: a free-text field; its only chips are the API's examples (ex), none in the question");
   const oq2 = P.openQuestion(fresh, "grow");
-  ok(oq2.open && !("chips" in oq2) && oq2.ex === "growth" && oq2.go === "Build my path" && ob[0].go === "Next" && /grow in yourself/.test(oq2.q) && /^Optional\./.test(oq2.hint), "onboarding: an optional, soft personal-development second question (free text, with the API's growth examples), then Build my path");
+  ok(oq2.open && !("chips" in oq2) && oq2.ex === "growth" && oq2.go === "Add it" && ob[0].go === "Begin" && /^When you like: is there something you'd like to grow in yourself\?$/.test(oq2.q) && /^Optional\./.test(oq2.hint) && ob.length === 1, "onboarding: one question at a time (only the first is asked); the optional personal-development question is softer and comes later (Add it)");
   ok(P.openQuestion(fresh, "reask").ex === true, "the re-ask shows the examples too");
   { const kid = C.create("Kai", T0); C.setProfile(kid, { age: "4-6" }, T0); ok(P.openQuestion(kid, "curious").q === P.openQuestion(fresh, "curious").q && !("age" in C.profileOf(kid)), "open questions: one wording for everyone; an age in a profile patch is ignored"); }
   ok(!P.interestChips && !P.INTERESTS, "no interest chip list is exported any more");
@@ -1669,7 +1670,11 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     // no seeded topics anywhere in discovery: a failed creation call offers Try again instead
     const bc = app.slice(app.indexOf("function buildCloud("), app.indexOf("function createNext("));
     ok(!/fallbackParents|C\.plant\(|PALETTE/.test(app) && /m\.retry = \{ kind: kind, about: about \|\| "", grow: grow \|\| "" \}/.test(bc) && /Try again/.test(app) && /type something you'd like to learn about below/.test(bc), "offline / failed build: the reason, Try again and the chat box; nothing seeded on the device");
-    ok(/textarea/.test(app) && /function openField\(/.test(app) && /q\.open && v/.test(app) && /P\.openQuestion\(state\.cloud, "grow"\)/.test(app) && /if \(q\.id === "grow"\) grow = v; else \{ about = v;/.test(app) && /buildCloud\("start", \[\], about, grow\)/.test(app), "onboarding: open answers (a textarea), the optional personal-development follow-up, then ONE start call with both");
+    ok(/textarea/.test(app) && /function openField\(/.test(app) && /if \(q\.open && v\) about = v;/.test(app) && !/qs\.push\(P\.openQuestion/.test(app) && /buildCloud\("start", \[\], about, grow\)/.test(app), "onboarding: an open answer (a textarea), then ONE start call at once (no second question first)");
+    {
+      const og = app.slice(app.indexOf("function offerGrow()"), app.indexOf("/* \"What comes next\" for a parent"));
+      ok(/if \(hintSeen\("grow"\)\) return;\s*dismissHint\("grow"\);/.test(og) && /P\.openQuestion\(state\.cloud, "grow"\)/.test(og) && /if \(v\) buildCloud\("more", \[\], cleanAbout\("Something I'd like to grow in myself: " \+ v\)\)/.test(og) && /ikoLine\(/.test(og) && /if \(kind === "start"\) state\.offerGrow = true;/.test(app), "the grow question: offered once by Iko after the first path begins; one \"more\" call only if answered, none for Skip");
+    }
     ok(/onboarded: true, askedAt: true/.test(app), "the 'curious lately' re-ask is held back right after onboarding (askedAt is stamped then)");
     const ob3 = C.create("Ivy", T0); C.setProfile(ob3, { onboarded: true, askedAt: true }, T0);
     ok(P.reask(ob3, T0 + 60e3) === null && P.reask(ob3, T0 + 2 * DAYMS) === null, "re-ask: nothing right after onboarding, even with a thin cloud");
@@ -2040,8 +2045,8 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(P.reask(opened, T0 + 1) !== null && P.reask(fresh, T0 + 1) === null, "a started learner who never answered the questions can get the light re-ask instead; a brand-new one gets onboarding");
   const done = C.create("Barry", T0); C.setProfile(done, { onboarded: true });
   ok(!P.needsOnboarding(done), "onboarded: never again");
-  ok(/function onboardingOpen\(\) \{ return state\.thread\.some\(function \(m\) \{ return m\.role === "ask" && !m\.done; \}\); \}/.test(app) && /el\.draw\.hidden = !el\.lesson\.hidden \|\| !el\.deck\.hidden \|\| !el\.hub\.hidden \|\| onboardingOpen\(\) \|\| skipWaiting\(\);/.test(app), "while an onboarding question is open, suggestions, Draw, Continue and Your cloud stay hidden");
-  ok((app.match(/[^\w.]ask\(\w+, function/g) || []).length === 1, "only onboarding asks questions in the thread (so hiding on an open ask hides nothing else)");
+  ok(/function onboardingOpen\(\) \{ return state\.thread\.some\(function \(m\) \{ return m\.role === "ask" && !m\.done && m\.kind !== "grow"; \}\); \}/.test(app) && /el\.draw\.hidden = !el\.lesson\.hidden \|\| !el\.deck\.hidden \|\| !el\.hub\.hidden \|\| onboardingOpen\(\) \|\| skipWaiting\(\);/.test(app), "while an onboarding question is open, suggestions, Draw, Continue and Your cloud stay hidden");
+  ok((app.match(/[^\w.]ask\(\w+, function/g) || []).length === 2 && /m\.kind !== "grow"; \}\); \}/.test(app), "only onboarding (and Iko's later grow question, which hides nothing) asks questions in the thread");
 }
 
 /* ================= album, card hub, orbit pivot, motion, "Make a card" ================= */
@@ -2411,7 +2416,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/big\.spin\(true\)/.test(app) && /big\.spin\(false\)/.test(app) && /big\.hold\(false\)/.test(app) && !/big\.hold\(true\)/.test(app), "the app spins it while the cloud is open, on every view of it (also beside the node panel)");
   ok(/el\.cloud\.addEventListener\("click", function \(e\) \{ if \(big && e\.target\.closest && e\.target\.closest\("button, a"\)\) big\.pause\(\); \}\)/.test(app), "the app: a click on any control over the cloud (zoom, Recentre, the card) pauses the spin");
   ok(/#panel \{ position: absolute;[^}]*border-radius: 12px;/.test(css) && !/#panel \{ left: 16px; right: auto;/.test(css) && !/sheet-up/.test(css) && /\.card-x \{/.test(css), "the node detail is a rounded card (no fixed side pane or bottom sheet), with a close control");
-  ok(/el\.pClose\.addEventListener\("click", closeCard\)/.test(app) && /if \(!el\.cloud\.hidden && !el\.panel\.hidden\) closeCard\(\);/.test(app) && !/liftCloud/.test(app), "the card closes with its control, a tap on empty sky or Escape (the card first, then the cloud)");
+  ok(/el\.pClose\.addEventListener\("click", closeCard\)/.test(app) && /if \(!el\.cloud\.hidden\) \{ if \(!el\.panel\.hidden\) closeCard\(\); return; \}/.test(app) && !/liftCloud/.test(app), "the card closes with its control, a tap on empty sky or Escape (Escape never leaves the cloud: it is home)");
   ok(/id="p-close" class="card-x" aria-label="Close"/.test(fs.readFileSync("public/ikolearn/index.html", "utf8")), "the card's close control is a labelled button at its top");
   // node states
   ok(/var sel = !mini && n\.id === focusId, sk = sel \? selEase\(now\) : 0;/.test(view) && /if \(sel\) \{ r \*= 1 \+ 0\.28 \* sk;/.test(view) && /createRadialGradient/.test(view) && /function selEase\(now\) \{ if \(reduce\) return 1;/.test(view), "nodes: the selected one is a little larger, with a soft glow and a fine ring that ease in (still with reduced motion)");
@@ -2918,12 +2923,12 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const app = fs.readFileSync("public/ikolearn/app.js", "utf8"), html = fs.readFileSync("public/ikolearn/index.html", "utf8"), css = fs.readFileSync("public/ikolearn/styles.css", "utf8");
   const fin = app.slice(app.indexOf("  function finishLesson(kind) {"), app.indexOf("  /* ---------- \"Still tricky\""));
   ok(fin.length > 200 && !/postJson\(|stream\(|openLesson\(|createNext\(|linkBtn\("Try again"/.test(fin) && /That's it\. /.test(fin), "I've got it: confirmed on the device: no call, no auto-advance, no Try again; a short \"That's it.\"");
-  ok(/prepareClarify\(id\)/.test(fin) && /Here's another way to see it\./.test(fin) && !/openLesson\(|showLesson\(false\)/.test(fin), "Still tricky: stays in the lesson, with a clarification already there");
+  ok(/openIko\(\{ tricky: true \}\);[^\n]*\n\s*prepareClarify\(id\)/.test(fin) && /Iko has another way to see it\./.test(fin) && !/openLesson\(|showLesson\(false\)/.test(fin), "Still tricky: stays in the lesson and opens Iko, with the clarification already there");
   {
     const prep = app.slice(app.indexOf("  function prepareClarify(id) {"), app.indexOf("  function focusClar(style) {"));
     ok(/les\.tk && !\(les\.cl && les\.cl\.simpler\)\) \{ les\.cl = les\.cl \|\| \{\}; les\.cl\.simpler = les\.tk; save\(\); \}/.test(prep) && /else clarify\(id, "simpler"\);/.test(prep) && /focusClar\("simpler"\)/.test(prep) && !/stream\(|postJson\(/.test(prep), "Still tricky: the lesson's prepared simpler explanation is shown at once (0 calls); an older lesson without one writes it (1 call)");
     ok(/if \(tricky\) state\.lessons\[id\]\.tk = tricky;/.test(app) && /tricky = typeof ev\.tricky === "string"/.test(app) && /if \(state\.lessons\[id\] && state\.lessons\[id\]\.cl\) renderClarify/.test(app), "Still tricky: prepared in the lesson's own call and kept with the lesson (tk), never shown until asked");
-    ok(/linkBtn\("Talk it through in chat", function \(\) \{ askInChat\(id, "I'm still finding "/.test(app) && /function askInChat\(id, ask\)/.test(app), "Still tricky: chat is one tap away, with the topic in focus and the question started");
+    ok(/linkBtn\("Talk it through with Iko", function \(\) \{\s*var t = "I'm still finding "/.test(app) && /if \(iko\.open\) \{ el\.ikoIn\.value = t;/.test(app) && /function askInChat\(id, ask\)/.test(app), "Still tricky: talking it through is one tap away, in Iko's sheet, the question started");
   }
   const cl = app.slice(app.indexOf("  function clarify(id, style) {"), app.indexOf("  /* ---------- Where Next"));
   ok((cl.match(/stream\("\/chat"/g) || []).length === 1 && /mode: "clarify", clarify: style/.test(cl) && /state\.lessons\[id\]\.cl\[style\] = text\.trim\(\)/.test(cl) && /if \(les && les\.cl && les\.cl\[style\]\)/.test(cl), "clarify: one streamed chat call per option, kept with the lesson (asking again: 0 calls)");
@@ -2976,7 +2981,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(famHtml.indexOf("cloud-model.js") < famHtml.indexOf("rank.js") && famHtml.indexOf("rank.js") < famHtml.indexOf("deck.js") && famHtml.indexOf("deck.js") < famHtml.indexOf("orchestrator.js") && famHtml.indexOf("orchestrator.js") < famHtml.indexOf("family.js"), "family page: the model scripts load in the app's order, the view last");
   ok(/\{ source: "\/ikolearn\/family", destination: "\/ikolearn\/family\.html" \}/.test(fs.readFileSync("next.config.ts", "utf8")), "next.config: /ikolearn/family serves the view (noindex via /ikolearn/:path*)");
   const idx = fs.readFileSync("public/ikolearn/index.html", "utf8");
-  ok(/<a href="\/ikolearn\/family" id="family-link">For parents &amp; teachers<\/a>/.test(idx) && (idx.match(/ikolearn\/family/g) || []).length === 1, "app: one quiet text link, \"For parents & teachers\", in the footer line");
+  ok(/<a href="\/ikolearn\/family" id="family-link">For parents &amp; teachers<\/a>/.test(idx) && (idx.match(/ikolearn\/family/g) || []).length === 2 && /<p class="cloud-foot fine">[^\n]*<a href="\/ikolearn\/family">For parents &amp; teachers<\/a>/.test(idx), "app: one quiet text link, \"For parents & teachers\", in the chat's footer line and in the cloud's fine print");
   ok(/@media print/.test(famCss) && /\.fam-tools[^}]*display: none|\.fam-back, \.fam-tools/.test(famCss), "family page: prints without its buttons");
   const servedFam = ["family.html", "family.css", "family.js"].reduce((n, f) => n + (/\.(js|css)$/.test(f) ? Buffer.byteLength(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.statSync("public/ikolearn/" + f).size), 0);
   ok(servedFam < 20_000, "family page: its own files stay small (under 20 KB served)", String(servedFam));
@@ -3213,6 +3218,55 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/else if \(m && !m\.blurb\) descFail\[x\] = 1;/.test(app) && /if \(id === "root" \|\| !n \|\| \(!n\.blurb && descFail\[id\]\)\) el\.pNote\.appendChild\(linkBtn\("What do you notice here\?"/.test(app) && !/describe[\s\S]{0,400}Try again/.test(app.slice(app.indexOf("  function describe(id) {"), app.indexOf("  function describe(id) {") + 1500)), "fallback: a failed description hides quietly and the old line comes back (no Try again)");
   ok(/if \(state\.cloud !== cloud\) \{/.test(app), "backfill: an answer for another learner (guide mode switched meanwhile) is dropped");
   ok(/\.desc \{[^}]*-webkit-line-clamp: 3;/.test(css) && /\.desc\.loading \{[^}]*animation: gen-shimmer/.test(css) && /@media \(prefers-reduced-motion: reduce\) \{ \.desc\.loading \{ animation: none; \} \}/.test(css), "card: the description is quiet, at most 3 lines; the placeholder is still with reduced motion");
+}
+
+/* ================= the cloud as home ================= */
+{
+  const app = fs.readFileSync("public/ikolearn/app.js", "utf8"), css = fs.readFileSync("public/ikolearn/styles.css", "utf8"), html = fs.readFileSync("public/ikolearn/index.html", "utf8");
+  const sc = app.slice(app.indexOf("  function startChat() {"), app.indexOf("  function countVisit() {"));
+  ok(/openCloud\(true\); \/\* home: the cloud/.test(sc) && !/el\.input\.focus\(\)/.test(sc), "home: every start (a first name, a guide's learner, a returning visit) lands on the cloud, with no focus jump");
+  ok(/if \(landing !== true && !el\.ikoWrap\.hidden\) el\.iko\.focus\(\);/.test(app), "home: landing moves no focus (no keyboard on phones); coming back focuses Iko");
+  ok(/function home\(id\) \{\s*if \(state\.lessonNode\) showLesson\(false\);[\s\S]{0,200}openCloud\(\);\s*if \(id && nodeOf\(id\)\) openPanel\(id\);/.test(app), "home(): closes the lesson, deck or card view and returns to the cloud, on the topic when there is one");
+  ok(/if \(back && nodeOf\(back\)\) \{ showLesson\(false\); openHub\(back, null, "deck"\); return; \}\s*home\(id\);/.test(app) && /"Back to its card" : "Back to your cloud"/.test(app), "lesson: Back returns to the card it came from, else to the cloud on its topic");
+  ok(/el\.dBack\.addEventListener\("click", function \(\) \{ home\(\); \}\)/.test(app) && /id="d-back" class="link back">Back to your cloud</.test(html), "deck: Back returns to the cloud");
+  ok(/el\.toCloud\.addEventListener\("click", function \(\) \{ home\(\); \}\)/.test(app) && /id="to-cloud"[^>]*>Your cloud</.test(html) && /class="chat-name" aria-hidden="true">Iko</.test(html), "Iko (the chat): a quiet way back to the cloud in its header");
+  ok(!/id="cloud-close"/.test(html) && /id="iko" class="iko" aria-label="Talk to Iko"/.test(html) && /id="p-chat" class="btn sm">Talk to Iko</.test(html) && /id="l-chat" class="link">Ask Iko about this</.test(html) && /placeholder="Ask Iko anything"/.test(html) && !/>Talk in chat<|>Back to chat<|in chat</.test(html), "wording: Talk to Iko, Ask Iko about this, Ask Iko anything (no \"chat\" left in the visible labels)");
+  ok(/You are Iko, the warm, calm learning companion in IkoLearn/.test(SYSTEM_BASE), "Iko: the companion knows its name (prompt wording only, no extra call)");
+  ok(/<nav class="home-nav" aria-label="IkoLearn">/.test(html) && /id="cloud-deck" class="link" hidden>/.test(html) && /id="cloud-who" class="who-now" href="\/ikolearn\/learners" hidden>/.test(html) && /el\.cloudWho\.hidden = !\(ix && ix\.mode === "guide"\);/.test(app), "home nav: Talk to Iko, the deck (once there are cards) and the learner switch for guides, in one labelled nav");
+  ok(/\.home-nav > :is\(button, a\) \{ opacity: \.62;/.test(css) && /\.cloud-foot \{[^}]*opacity: \.5;/.test(css) && /@media \(max-width: 699px\) \{ \.home-brand \{ display: none; \}/.test(css), "home nav: quiet (dimmed until hovered or focused), the brand dropped on phones");
+  // the empty-cloud start
+  ok(/var empty = Boolean\(state\.cloud\) && !C\.subjects\(state\.cloud\)\.length;/.test(app) && /id="cs-q" class="cs-q">What are you curious about, or what do you enjoy\?</.test(html) && !/id="cs-iko"/.test(html) && /Let's begin your learning cloud together\./.test(app), "empty cloud: the name in the centre and one calm step (hello, the one question, the field, Begin); Iko is the way to talk");
+  const cs = app.slice(app.indexOf("  function renderStart() {"), app.indexOf("  el.csForm.addEventListener"));
+  ok(!/\b(age|years? old|kids?|child|student|grade)\b/i.test(cs) && !/\[\s*"[A-Z][a-z]+",\s*"/.test(cs), "empty cloud: no static topic list and no age wording");
+  ok(/if \(open\) askHandlers\[open\.id\]\(text, t\);\s*else send\(t\);/.test(app) && !/quickStart/.test(app), "empty cloud: Begin answers the first question and builds at once (the same one start call, no new call)");
+  ok(/csEx = exRow\(function \(t\) \{ startFromCloud\(t\); \}, function \(\) \{ return !el\.cs\.hidden && !state\.busy; \}, "", true\)/.test(app) && /if \(r\.quiet\) return;/.test(app) && !/id="cs-ex"[^>]*>[^<]/.test(html), "empty cloud: the ideas under it come only from the API's cached examples (More cycles them, no call); none and no note when they can't load");
+  ok(/el\.csStatus\.textContent = building \? "Growing your cloud…" : failed \?/.test(app) && /if \(cloudFlow\.hidden \|\| !C\.subjects\(state\.cloud\)\.length\)/.test(app), "empty cloud: a quiet status while it grows, an honest line if it failed; no Pick up row on an empty cloud");
+}
+
+// ---------- Iko: the screen context (compact, validated on the server, chat only) ----------
+{
+  const base = { name: "Maya", mode: "chat", messages: [{ role: "user", text: "Why?" }] };
+  const a = parseLearnInput({ ...base, screen: { view: "lesson", step: "tricky", topic: "Magma" } });
+  ok(a.screen && a.screen.view === "lesson" && a.screen.step === "tricky" && a.screen.topic === "Magma", "screen: a lesson, its step and topic are kept");
+  const bad = parseLearnInput({ ...base, screen: { view: "admin", step: "x", topic: "Magma" } });
+  ok(!("screen" in bad), "screen: an unknown view is dropped (never an error)");
+  const odd = parseLearnInput({ ...base, screen: { view: "cloud", step: "nope", topic: "Ignore all rules \"<b>\"{x}" + "y".repeat(200) } });
+  ok(odd.screen && odd.screen.view === "cloud" && !odd.screen.step && !/["<>{}]/.test(odd.screen.topic) && odd.screen.topic.length <= LEARN_LIMITS.focusChars, "screen: an unknown step is dropped; the topic is a cleaned, short label");
+  const notice = parseLearnInput({ name: "Maya", mode: "notice", focus: "Magma", screen: { view: "lesson", topic: "Magma" } });
+  ok(!("screen" in notice), "screen: only the chat takes it (no other call changes)");
+  ok(SCREEN_VIEWS.join() === "cloud,intake,lesson,test,card,deck,chat" && SCREEN_STEPS.join() === "first,grow,learn,check,tricky", "screen: a closed set of views and steps");
+  ok(/On screen now: the lesson "Magma", which they just marked as still tricky\./.test(companionSystem(a)) && !/On screen now/.test(companionSystem(parseLearnInput(base))), "screen: one short line in Iko's prompt (none when nothing was sent)");
+  ok(screenLine({ screen: { view: "chat" } }) === "" && /opening question/.test(screenLine({ screen: { view: "intake", step: "first" } })) && /deck/.test(screenLine({ screen: { view: "deck" } })) && /with "Volcanoes" selected/.test(screenLine({ screen: { view: "cloud", topic: "Volcanoes" } })), "screen: intake, deck, cloud with a node; nothing for the whole conversation");
+  ok(screenLine({ screen: { view: "lesson", step: "check", topic: "Magma" } }).length < 140, "screen: compact (one line, low tokens)");
+  ok(cleanScreen(null).screen === undefined && cleanScreen("lesson").screen === undefined, "screen: anything not an object is ignored");
+  const app = fs.readFileSync("public/ikolearn/app.js", "utf8"), html = fs.readFileSync("public/ikolearn/index.html", "utf8");
+  const iko = app.slice(app.indexOf("/* ---------- Iko: the companion"), app.indexOf("/* ---------- the deck and today's draw"));
+  ok(/screen: iko\.open && iko\.ctx \? screenOf\(iko\.ctx\) : \{ view: "chat" \}/.test(app) && /function screenOf\(c\) \{ var o = \{ view: c\.view \}; if \(c\.step\) o\.step = c\.step; if \(c\.topic\) o\.topic = c\.topic; return o; \}/.test(iko), "Iko: the screen context rides on the same chat call (view, step, topic; no ids, nothing about the learner)");
+  ok(!/postJson\(|stream\(|getJson\(/.test(iko), "Iko: the pebble and its sheet make no calls of their own");
+  ok(/<svg class="iko-pebble"/.test(html) && /class="iko-face"/.test(html) && !/<img[^>]*iko/i.test(html) && /aria-label="Talk to Iko"/.test(html), "Iko: an inline SVG pebble with a face group (for a later light animation), no image; a labelled button");
+  ok(/Hi, I'm Iko\. I'm here whenever you need me\./.test(iko) && /!hintSeen\("iko"\) && \(pr\.visits \|\| 0\) <= 2/.test(iko), "Iko: the hello only on the first visits, until Iko is opened");
+  ok(/@media \(prefers-reduced-motion: reduce\) \{ \.iko \.iko-pebble, \.iko-line \{ animation: none; \}/.test(fs.readFileSync("public/ikolearn/styles.css", "utf8")), "Iko: still with reduced motion");
+  ok(/el\.pChat\.addEventListener\("click", function \(\) \{ openIko\(\); \}\);/.test(app) && /el\.lChat\.addEventListener\("click", function \(\) \{ openIko\(\); \}\);/.test(app), "Iko: the card's Talk to Iko and the lesson's Ask Iko open Iko on that screen");
 }
 
 if (fails.length) {

@@ -167,17 +167,17 @@
   /*
    * An open question in the learner's own words (a free-text field). "curious": the first one, with easy-click examples
    * (ex: they come only from the API, see examples() below; there is no topic list on the device); "grow": the optional,
-   * soft personal-development follow-up after a first answer, folded into the same start call (no extra call);
+   * soft personal-development question, offered once by Iko after the first path has begun (one "more" call, only if answered);
    * "reask": later, when the cloud is thin or they seem stuck. One wording for everyone (no age-based variants).
    */
   function openQuestion(cloud, kind) {
     var Q = {
       curious: ["What are you curious about, or what do you enjoy?", "Anything goes: a hobby, something you've wondered about, a thing you'd like to be better at."],
-      grow: ["And is there something you'd like to grow in yourself?", "Optional. A habit, a strength, a way of being. Or go ahead and build your path."],
+      grow: ["When you like: is there something you'd like to grow in yourself?", "Optional. A habit, a strength, a way of being."],
       reask: ["What's caught your interest lately?", ""]
     }[kind];
     /* ex: the API's easy-click answers under it ("growth": the second set from the same cached call) */
-    return { id: kind, q: Q[0], hint: Q[1], open: true, input: true, ex: kind === "grow" ? "growth" : true, go: kind === "curious" ? "Next" : "Build my path", ph: "In your own words" };
+    return { id: kind, q: Q[0], hint: Q[1], open: true, input: true, ex: kind === "grow" ? "growth" : true, go: kind === "curious" ? "Begin" : kind === "grow" ? "Add it" : "Build my path", ph: "In your own words" };
   }
   /*
    * A learner who has already started is not new: a card in the deck, a lesson in progress, or a topic they opened,

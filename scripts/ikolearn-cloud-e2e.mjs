@@ -67,8 +67,8 @@ async function open(width, o = {}) {
   await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
   await p.evaluate(SEED, o);
   await p.reload({ waitUntil: "networkidle" });
+  await p.waitForSelector("#cloud:not([hidden])"); /* home: the app opens on the cloud */
   await p.waitForTimeout(250);
-  await p.click("#thumb");
   await p.mouse.move(1, 1);
   return { ctx, p, errs, calls, bodies };
 }
@@ -98,7 +98,7 @@ for (const width of (process.env.WIDTHS || "390,1280").split(",").map(Number)) {
     try {
       const early = await turn(p, 1500);
       ok(Math.abs(early.d) < 1e-6 && !early.on, `${tag}: main cloud: still for the first seconds (idle delay)`, JSON.stringify(early.d));
-      await p.waitForTimeout(2600); /* ~4.1 s since opening */
+      await p.waitForFunction(() => window.__views.filter((x) => x.id === "cloud-canvas").pop().view.state().spinning, null, { timeout: 6000 }); /* the spin has just begun (the cloud now opens at boot) */
       const ease = await turn(p, 300);
       await p.waitForTimeout(1500);
       const full = await turn(p, 2000);
@@ -159,7 +159,7 @@ for (const width of (process.env.WIDTHS || "390,1280").split(",").map(Number)) {
       ok(card && gap(node, card) <= 70, `${tag}: the card sits next to the node (${Math.round(card ? gap(node, card) : -1)} px away)`, JSON.stringify({ node, card }));
       ok(card && card.l >= 0 && card.r <= view.iw && card.t >= 0 && card.b <= view.ih && view.sw <= view.iw, `${tag}: the card is inside the viewport (no overflow)`, JSON.stringify({ card, view }));
       ok(view.side === (width >= 900 ? "right" : "below") && parseFloat(view.radius) >= 10, `${tag}: a rounded card ${width >= 900 ? "to the right of" : "under"} the node`, JSON.stringify(view));
-      ok(view.title === "Volcanoes" && view.desc === "Mountains that let out melted rock." && !/What do you notice here\?/.test(view.note) && JSON.stringify(view.acts.slice(0, 3)) === JSON.stringify(["Start a lesson", "Open its card", "Talk in chat"]) && view.path >= 3, `${tag}: the card: title, its description (instead of "What do you notice here?"), the three actions and the path`, JSON.stringify(view));
+      ok(view.title === "Volcanoes" && view.desc === "Mountains that let out melted rock." && !/What do you notice here\?/.test(view.note) && JSON.stringify(view.acts.slice(0, 3)) === JSON.stringify(["Start a lesson", "Open its card", "Talk to Iko"]) && view.path >= 3, `${tag}: the card: title, its description (instead of "What do you notice here?"), the three actions and the path`, JSON.stringify(view));
       ok(calls.length === 0, `${tag}: a described node's card: the description shows at once, 0 calls`, calls.join());
       await shot(p, `nodes-card-${TAG}-${width}-card.png`);
       /* while the card is open the spin comes back after the short delay; it turns about the selected node, so the node and its card stay put */
@@ -209,15 +209,17 @@ for (const width of (process.env.WIDTHS || "390,1280").split(",").map(Number)) {
       const hub = await p.evaluate(() => ({ cloud: document.querySelector("#cloud").hidden, hub: !document.querySelector("#hub").hidden, title: (document.querySelector("#hub-title") || {}).textContent }));
       ok(hub.cloud && hub.hub && /Magma/.test(hub.title || "") && !hubCard.on && Math.abs(hubCard.d) < 1e-6, `${tag}: "Open its card" opens the card view; the cloud closes and the spin stops`, JSON.stringify(hub));
       ok(calls.length === 0, `${tag}: 0 model calls`, calls.join());
-      /* Talk in chat: back to the chat on that topic (0 calls) */
+      /* Talk to Iko: Iko's sheet on that topic (0 calls) */
       await p.click("#thumb"); await p.mouse.move(1, 1); await p.waitForTimeout(300);
       await p.click("#zreset"); await settle(p);
       const pk = await at(p, "Volcanoes"); await p.mouse.click(pk.x, pk.y); await settle(p);
       await p.click("#p-chat"); await p.waitForTimeout(300);
-      const chat = await p.evaluate(() => ({ cloud: document.querySelector("#cloud").hidden, focus: (document.querySelector(".focus") || {}).innerText || "" }));
-      ok(chat.cloud && calls.length === 0, `${tag}: "Talk in chat" goes back to the chat (0 calls)`, JSON.stringify(chat));
+      const chat = await p.evaluate(() => ({ cloud: !document.querySelector("#cloud").hidden, sheet: !document.querySelector("#iko-sheet").hidden, about: document.querySelector("#iko-about").textContent }));
+      ok(chat.cloud && chat.sheet && chat.about === "On your cloud · Volcanoes" && calls.length === 0, `${tag}: "Talk to Iko" opens Iko on that topic, over the cloud (0 calls)`, JSON.stringify(chat));
+      await p.keyboard.press("Escape"); await p.waitForTimeout(150);
+      if (!(await p.locator("#panel").isHidden())) { await p.click("#p-close"); await p.waitForTimeout(200); } /* the card stays open under Iko now: close it before picking another point */
       /* Start a lesson: the lesson opens (its one call is answered by the mock) */
-      await p.click("#thumb"); await p.mouse.move(1, 1); await p.waitForTimeout(300);
+      if (await p.locator("#cloud").isHidden()) await p.click("#thumb"); await p.mouse.move(1, 1); await p.waitForTimeout(300);
       await p.click("#zreset"); await settle(p);
       const pl = await at(p, "Magma"); await p.mouse.click(pl.x, pl.y); await settle(p);
       await p.click("#p-lesson"); await p.waitForTimeout(500);
@@ -281,7 +283,7 @@ for (const width of (process.env.WIDTHS || "390,1280").split(",").map(Number)) {
       ok(!(await desc(p)).loading && calls.length === 1, `${tag}: backfill: reopening the same card: 0 calls`, calls.join());
       /* reload: the descriptions were saved with the cloud */
       await p.reload({ waitUntil: "networkidle" }); await p.waitForTimeout(250);
-      await p.click("#thumb"); await p.mouse.move(1, 1);
+      if (await p.locator("#cloud").isHidden()) await p.click("#thumb"); await p.mouse.move(1, 1); /* a reload lands on the cloud */
       await openNode(p, [l1]); await p.waitForTimeout(250);
       const d3 = await desc(p);
       ok(!d3.loading && d3.text.startsWith(l1 + ": a short plain line") && calls.length === 1, `${tag}: backfill: after a reload: shown at once, 0 calls (cached in the saved cloud)`, JSON.stringify({ d3, calls }));

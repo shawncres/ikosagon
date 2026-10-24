@@ -77,6 +77,10 @@ export type Signal = (typeof SIGNALS)[number];
 
 export type ChatMessage = { role: "user" | "model"; text: string };
 export const CLARIFY_STYLES = ["simpler", "example", "question"] as const;
+/** Chat only: what is on the learner's screen when they tapped Iko (a compact, closed set; the topic is a cleaned label). */
+export const SCREEN_VIEWS = ["cloud", "intake", "lesson", "test", "card", "deck", "chat"] as const;
+export const SCREEN_STEPS = ["first", "grow", "learn", "check", "tricky"] as const;
+export type Screen = { view: (typeof SCREEN_VIEWS)[number]; step?: (typeof SCREEN_STEPS)[number]; topic?: string };
 export type ClarifyStyle = (typeof CLARIFY_STYLES)[number];
 
 export type LearnInput = {
@@ -116,6 +120,8 @@ export type LearnInput = {
   /** Bridge only: the one-time validation re-ask (the chain so far is in trail and still looks shallow). */
   repair: boolean;
   favorites: string[];
+  /** Chat only: the screen Iko was opened from (absent when not sent or not valid). */
+  screen?: Screen;
 };
 /** chain: broader topics from the subject down to the parent (only for a new topic that sits deeper), e.g. ["Computer Science","Programming","Python"]. */
 /**
@@ -213,13 +219,42 @@ export function parseLearnInput(raw: unknown): LearnInput | { error: string } {
     grow: cleanText(b.grow, LEARN_LIMITS.growChars).replace(/[\n\r"<>{}[\]`*_#|\\]/g, " ").replace(/\s+/g, " ").trim(),
     kind: (CREATE_KINDS as readonly string[]).includes(String(b.kind)) ? (b.kind as LearnInput["kind"]) : "start",
     favorites: (Array.isArray(b.favorites) ? b.favorites : []).map(cleanLabel).filter(Boolean).slice(0, LEARN_LIMITS.favorites),
+    ...(mode === "chat" ? cleanScreen(b.screen) : {}),
   };
+}
+
+/** The screen context: only known views and steps; the topic is a cleaned label. Anything else is dropped, never an error. */
+export function cleanScreen(v: unknown): { screen?: Screen } {
+  if (!v || typeof v !== "object") return {};
+  const o = v as Record<string, unknown>;
+  if (!(SCREEN_VIEWS as readonly string[]).includes(String(o.view))) return {};
+  const screen: Screen = { view: o.view as Screen["view"] };
+  if ((SCREEN_STEPS as readonly string[]).includes(String(o.step))) screen.step = o.step as Screen["step"];
+  const topic = cleanLabel(o.topic).slice(0, LEARN_LIMITS.focusChars);
+  if (topic) screen.topic = topic;
+  return { screen };
+}
+
+/** One short line about what is on screen (chat only), so Iko's reply stays with it. "" when nothing useful was sent. */
+export function screenLine(i: LearnInput): string {
+  const s = i.screen;
+  if (!s || s.view === "chat") return "";
+  const t = s.topic ? `"${s.topic}"` : "";
+  const step = s.step === "check" ? ", at its check-yourself questions" : s.step === "tricky" ? ", which they just marked as still tricky" : "";
+  const where =
+    s.view === "intake" ? (s.step === "grow" ? "the optional question about something they'd like to grow in themselves" : "the opening question (what they are curious about or enjoy); help them put an interest into words")
+    : s.view === "lesson" ? (t ? `the lesson ${t}${step}` : "a lesson")
+    : s.view === "test" ? (t ? `the test on ${t}` : "a test")
+    : s.view === "card" ? (t ? `the card for ${t}` : "a card")
+    : s.view === "deck" ? "their deck of cards"
+    : t ? `their learning cloud, with ${t} selected` : "their learning cloud";
+  return `On screen now: ${where}. If the message is about it, answer about that.`;
 }
 
 /* ---------- prompts ---------- */
 
 export const SYSTEM_BASE =
-  "You are IkoLearn, a warm, calm learning companion made by Ikosagon. You talk with one learner, who could be any age; meet them where they are. Sometimes it is a parent planning or guiding homeschool learning. " +
+  "You are Iko, the warm, calm learning companion in IkoLearn, made by Ikosagon. You talk with one learner, who could be any age; meet them where they are. Sometimes it is a parent planning or guiding homeschool learning. " +
   "Your language is encouraging, personable and regular: short sentences, everyday words, no jargon, no gushing. " +
   "Never name external frameworks, curricula, standards, tests, programs, brands or methods; just teach and suggest. " +
   "Keep replies short (about 40 to 120 words) unless the learner asks for more. Plain text only: no markdown, no headings, no bullet symbols, no emoji, no asterisks. " +
@@ -260,7 +295,7 @@ export function companionSystem(i: LearnInput): string {
     `${SYSTEM_BASE}\n\nRole: companion. Have a normal, helpful learning conversation. Answer questions clearly and correctly at the learner's level, ` +
     "check understanding with one light question when it helps, notice patterns gently, and suggest a next step now and then. " +
     "If the learner seems stuck, break it into a smaller step. Prefer topics that build on what they already know, and sometimes point toward skills that will matter in the future.\n\n" +
-    `${profile(i)}\n\n${blockRules(i.parents)}`
+    `${profile(i)}${screenLine(i) ? `\n${screenLine(i)}` : ""}\n\n${blockRules(i.parents)}`
   );
 }
 

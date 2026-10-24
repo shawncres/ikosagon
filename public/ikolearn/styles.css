@@ -345,8 +345,35 @@ button.gcard:hover { border-color: var(--soft); }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
 #p-cards .card { margin-bottom: 12px; }
 /* the cloud's controls stay visible but quiet */
-.cloud-top .zoom, #cloud-close { opacity: .62; transition: opacity .2s; }
-.cloud-top .zoom:hover, .cloud-top .zoom:focus-within, #cloud-close:hover, #cloud-close:focus-visible { opacity: 1; }
+.cloud-top .zoom, .home-nav > :is(button, a) { opacity: .62; transition: opacity .2s; }
+.cloud-top .zoom:hover, .cloud-top .zoom:focus-within, .home-nav > :is(button, a):hover, .home-nav > :is(button, a):focus-visible { opacity: 1; }
+/* home: the cloud's own quiet navigation (Talk to Iko, the deck, the learner switch) and its fine print */
+.home-nav { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; min-width: 0; }
+.home-brand { font-size: 14px; letter-spacing: .04em; color: var(--soft); opacity: .7; }
+.home-nav > :is(button, a) { font-size: 14px; color: var(--ink); }
+.home-nav .who-now { margin-left: 0; color: var(--soft); }
+@media (max-width: 699px) { .home-brand { display: none; } .home-nav { gap: 2px 14px; } }
+.cloud-foot { position: absolute; left: 0; right: 0; bottom: 8px; margin: 0; text-align: center; font-size: 12px; opacity: .5; transition: opacity .2s; z-index: 1; }
+.cloud-foot:hover, .cloud-foot:focus-within { opacity: 1; }
+.cloud-foot a { color: inherit; }
+/* a brand-new cloud: the name in the centre and one calm step just under it (the optical centre): hello, the question, the field, a few light ideas */
+.cloud-start { position: absolute; left: 50%; top: calc(50% + 70px); transform: translateX(-50%); z-index: 2; box-sizing: border-box; width: min(420px, calc(100% - 40px)); padding: 0; text-align: center; }
+.cs-hi { margin: 0 0 4px; font-size: 14.5px; color: var(--soft); }
+.cs-q { margin: 0 0 14px; font-size: 19px; line-height: 1.35; }
+.cs-hi:empty, .cs-status:empty { display: none; }
+.cs-row { display: flex; gap: 8px; }
+.cs-row[hidden] { display: none; }
+.cs-row input { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 9px 16px; border: 1px solid var(--rule); border-radius: 999px; background: var(--sheet); color: var(--ink); }
+.cs-ex .ex-row { justify-content: center; margin: 12px 0 0; gap: 6px; }
+.cs-ex .ex-chip { font-size: 13.5px; min-height: 32px; padding: 3px 11px; border-color: var(--rule); color: var(--soft); }
+.cs-ex .ex-more { font-size: 13px; color: var(--soft); }
+.cloud-start.busy .cs-ex { display: none; }
+.cs-status { margin: 8px 0 0; font-size: 14px; font-style: italic; color: var(--soft); }
+@media (max-height: 560px) { .cloud-start { top: auto; bottom: 40px; } }
+/* the chat with Iko: a quiet way back to the cloud, and its name */
+.to-cloud { font-size: 14px; letter-spacing: 0; color: var(--soft); margin-right: 14px; }
+.to-cloud::before { content: "\2039\00a0"; }
+.chat-name { letter-spacing: .04em; }
 
 @media (min-width: 900px) {
   body { font-size: 18px; }
@@ -565,3 +592,42 @@ button.gcard:active, button.gslot:active { transform: translateY(-1px) scale(.97
 .who-opt.on { background: var(--ink); color: var(--paper); }
 .who + form { margin-top: 0; }
 .who-now { margin-left: 10px; font-size: 14px; letter-spacing: 0; color: var(--soft); text-underline-offset: 3px; }
+
+/* ---------- Iko: a soft pebble (inline SVG), its short line, and its sheet ---------- */
+.iko-wrap { position: fixed; right: 12px; bottom: 12px; z-index: 20; display: flex; align-items: center; gap: 8px; pointer-events: none; transition: bottom .25s ease; }
+@media (min-width: 500px) { .iko-wrap { right: 16px; } }
+.iko-wrap.aside { visibility: hidden; }
+.iko { pointer-events: auto; width: 56px; height: 56px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; display: grid; place-items: center; }
+.iko-pebble { display: block; overflow: visible; }
+.iko-body { fill: #e8dabd; stroke: #8f7754; stroke-width: 1.6; }
+.iko-shine { fill: none; stroke: #fbf6ea; stroke-width: 2.2; stroke-linecap: round; opacity: .8; }
+.iko-eye { fill: #3b2e22; }
+.iko-mouth { fill: none; stroke: #3b2e22; stroke-width: 1.7; stroke-linecap: round; }
+.iko .iko-pebble { filter: drop-shadow(0 1px 1.5px rgba(60, 40, 20, .18)); transform-origin: 50% 90%; animation: iko-breathe 7s ease-in-out infinite; }
+.iko:hover .iko-body, .iko:focus-visible .iko-body { fill: #efe3c9; }
+.iko:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+@keyframes iko-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.025, .985); } }
+.iko-line { pointer-events: auto; order: -1; margin: 0; max-width: min(250px, calc(100vw - 96px)); font-size: 14px; line-height: 1.4; color: var(--soft); background: var(--sheet); border: 1px solid var(--rule); border-radius: 12px; padding: 7px 11px; animation: iko-line-in .4s ease; }
+@keyframes iko-line-in { from { opacity: 0; } to { opacity: 1; } }
+.iko-sheet { position: fixed; z-index: 30; left: 8px; right: 8px; bottom: 8px; max-height: min(64vh, 560px); display: flex; flex-direction: column; background: var(--sheet); border: 1px solid var(--rule); border-radius: 14px; box-shadow: 0 6px 24px rgba(60, 40, 20, .14); padding: 10px 14px 8px; }
+@media (min-width: 700px) { .iko-sheet { left: auto; right: 16px; bottom: 16px; width: 390px; } }
+.iko-head { display: flex; align-items: center; gap: 8px; padding-right: 30px; position: relative; }
+.iko-head .card-x { position: absolute; right: -6px; top: -4px; }
+.iko-name { margin: 0; font-size: 16px; font-weight: normal; }
+.iko-about { margin: 0; font-size: 13px; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.iko-about::before { content: "· "; }
+.iko-about:empty { display: none; }
+.iko-body-scroll { overflow-y: auto; min-height: 0; flex: 1 1 auto; margin: 6px -4px 0; padding: 0 4px; }
+.iko-say { margin: 4px 0 8px; font-size: 15px; line-height: 1.45; }
+.iko-slot:empty { display: none; }
+#iko-slot .l-clar { margin: 0 0 8px; }
+.iko-msg { font-size: 15px; line-height: 1.45; margin: 0 0 8px; }
+.iko-msg p { margin: 0 0 6px; }
+.iko-msg.user { margin-left: auto; max-width: 85%; width: fit-content; background: var(--paper); border: 1px solid var(--rule); border-radius: 14px; padding: 5px 12px; }
+.iko-msg.streaming { color: var(--soft); }
+.iko-form { display: flex; gap: 8px; align-items: flex-end; margin-top: 6px; }
+.iko-form textarea { flex: 1; min-width: 0; font: inherit; font-size: 16px; line-height: 1.4; padding: 8px 12px; border: 1px solid var(--rule); border-radius: 12px; background: var(--paper); color: var(--ink); resize: none; }
+.iko-foot { margin: 6px 0 0; text-align: center; font-size: 12.5px; }
+/* pages that scroll keep room for the pebble at their end */
+body.iko-on #lesson .l-main, body.iko-on #deck, body.iko-on #hub { padding-bottom: 84px; }
+@media (prefers-reduced-motion: reduce) { .iko .iko-pebble, .iko-line { animation: none; } .iko-wrap { transition: none; } }

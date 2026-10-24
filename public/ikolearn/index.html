@@ -32,7 +32,7 @@
 
     <section id="chat" hidden>
       <header class="bar col">
-        <span class="brand">IkoLearn<a id="who-now" class="who-now" href="/ikolearn/learners" hidden></a></span>
+        <span class="brand"><button type="button" id="to-cloud" class="link to-cloud" aria-label="Back to your cloud">Your cloud</button><span class="chat-name" aria-hidden="true">Iko</span><a id="who-now" class="who-now" href="/ikolearn/learners" hidden></a></span>
         <span class="bar-r">
           <button type="button" id="deck-btn" class="link deck-link" hidden>Your deck</button>
           <button type="button" id="thumb" class="thumb" aria-label="Open your learning cloud"><canvas id="thumb-canvas" width="72" height="72"></canvas></button>
@@ -41,7 +41,7 @@
       <section id="draw" class="col flow" hidden aria-label="Pick up a card"></section>
       <div id="thread" class="col" role="log" aria-live="polite"></div>
       <article id="deck" class="col" hidden>
-        <button type="button" id="d-back" class="link back">Back to chat</button>
+        <button type="button" id="d-back" class="link back">Back to your cloud</button>
         <div id="d-suggest" class="flow"></div>
         <h2 id="d-title">Your deck</h2>
         <p id="d-lede" class="d-lede"></p>
@@ -79,7 +79,7 @@
           <div id="h-kids" class="h-kids"></div>
         </aside>
         <div class="l-main" aria-live="polite">
-          <button type="button" id="l-back" class="link back">Back to chat</button>
+          <button type="button" id="l-back" class="link back">Back to your cloud</button>
           <p class="kicker" id="l-trail"></p>
           <h2 id="l-title"></h2>
           <ol id="l-phase" class="phase" aria-label="Lesson steps"><li id="ph-learn" class="on">Learn</li><li id="ph-check">Check yourself</li></ol>
@@ -94,14 +94,14 @@
           <div id="l-fork"></div>
           <div id="l-next" class="where-next"></div>
           <div id="l-path"></div>
-          <p class="fine"><button type="button" id="l-chat" class="link">Ask about this in chat</button> · <button type="button" id="l-redo" class="link">Write a fresh version</button></p>
+          <p class="fine"><button type="button" id="l-chat" class="link">Ask Iko about this</button> · <button type="button" id="l-redo" class="link">Write a fresh version</button></p>
         </div>
       </article>
       <div class="dock" id="dock">
         <div class="col">
           <p id="focus-chip" class="focus" hidden><span id="focus-text"></span> <button type="button" id="focus-clear" class="link" aria-label="Clear focus">clear</button></p>
           <form id="composer">
-            <textarea id="input" rows="1" maxlength="1500" placeholder="Ask anything" aria-label="Message"></textarea>
+            <textarea id="input" rows="1" maxlength="1500" placeholder="Ask Iko anything" aria-label="Message to Iko"></textarea>
             <button type="submit" id="send" class="btn">Send</button>
           </form>
           <p class="fine">Replies come from Gemini and can be wrong. Kept on this device. <a href="/ikolearn/privacy">Privacy</a> · <a href="/ikolearn/family" id="family-link">For parents &amp; teachers</a> · <a href="/ikolearn/learners" id="learners-link">Learners</a> · <button type="button" id="reset" class="link">Start over</button></p>
@@ -112,10 +112,22 @@
     <section id="cloud" hidden>
       <canvas id="cloud-canvas" aria-label="Your learning cloud. Drag to move, pinch or scroll to zoom, right-drag or twist to turn, tap a point to bring it close."></canvas>
       <div class="cloud-top">
-        <button type="button" id="cloud-close" class="link">Back to chat</button>
+        <nav class="home-nav" aria-label="IkoLearn">
+          <span class="home-brand" aria-hidden="true">IkoLearn</span>
+          <button type="button" id="cloud-deck" class="link" hidden>Your deck</button>
+          <a id="cloud-who" class="who-now" href="/ikolearn/learners" hidden></a>
+        </nav>
         <span class="zoom"><button type="button" id="zin" class="btn sm" aria-label="Zoom in">+</button><button type="button" id="zout" class="btn sm" aria-label="Zoom out">&minus;</button><button type="button" id="zreset" class="btn sm" title="Ease back to the whole cloud">Recentre</button></span>
       </div>
       <p class="cloud-hint">Drag to move · Scroll to zoom · Right-drag or Shift-drag to turn · Click a point to bring it close</p>
+      <div id="cloud-start" class="cloud-start" hidden>
+        <p id="cs-hi" class="cs-hi"></p>
+        <p id="cs-q" class="cs-q">What are you curious about, or what do you enjoy?</p>
+        <form id="cs-form" class="cs-row" autocomplete="off"><input id="cs-in" maxlength="300" placeholder="In your own words" aria-labelledby="cs-q"><button type="submit" class="btn sm">Begin</button></form>
+        <div id="cs-ex" class="cs-ex" aria-label="A few ideas"></div>
+        <p id="cs-status" class="cs-status" aria-live="polite"></p>
+      </div>
+      <p class="cloud-foot fine"><a href="/ikolearn/learners">Learners</a> · <a href="/ikolearn/family">For parents &amp; teachers</a> · <a href="/ikolearn/privacy">Privacy</a></p>
       <aside id="panel" class="node-card" hidden aria-labelledby="p-title">
         <div class="panel-in">
           <button type="button" id="p-close" class="card-x" aria-label="Close">&times;</button>
@@ -128,7 +140,7 @@
             <button type="button" id="p-card" class="btn sm" title="Its card, its branches and what you've covered">Open its card</button>
             <button type="button" id="p-test" class="btn sm" hidden>Take the test</button>
             <button type="button" id="p-adj" class="btn sm">Related topics</button>
-            <button type="button" id="p-chat" class="btn sm">Talk in chat</button>
+            <button type="button" id="p-chat" class="btn sm">Talk to Iko</button>
           </div>
           <div id="p-path"></div>
           <div id="p-cards"></div>
@@ -136,6 +148,35 @@
       </aside>
     </section>
   </main>
+
+  <div id="iko-wrap" class="iko-wrap" hidden>
+    <p id="iko-line" class="iko-line" role="status" hidden></p>
+    <button type="button" id="iko" class="iko" aria-label="Talk to Iko" aria-haspopup="dialog" aria-expanded="false" aria-controls="iko-sheet">
+      <svg class="iko-pebble" viewBox="0 0 64 56" width="52" height="46" aria-hidden="true" focusable="false">
+        <path class="iko-body" d="M32 4C49 4 60 14 60 29C60 44 48 52 31 52C15 52 4 44 4 30C4 15 16 4 32 4Z"/>
+        <path class="iko-shine" d="M17 15C21 11 26 10 30 10"/>
+        <g class="iko-face"><circle class="iko-eye" cx="24" cy="28" r="2.4"/><circle class="iko-eye" cx="40" cy="28" r="2.4"/><path class="iko-mouth" d="M28 36Q32 39 36 36"/></g>
+      </svg>
+    </button>
+  </div>
+  <section id="iko-sheet" class="iko-sheet" role="dialog" aria-modal="false" aria-labelledby="iko-name" hidden>
+    <header class="iko-head">
+      <svg class="iko-pebble sm" viewBox="0 0 64 56" width="30" height="26" aria-hidden="true" focusable="false"><path class="iko-body" d="M32 4C49 4 60 14 60 29C60 44 48 52 31 52C15 52 4 44 4 30C4 15 16 4 32 4Z"/><g class="iko-face"><circle class="iko-eye" cx="24" cy="28" r="2.6"/><circle class="iko-eye" cx="40" cy="28" r="2.6"/><path class="iko-mouth" d="M28 36Q32 39 36 36"/></g></svg>
+      <h2 id="iko-name" class="iko-name">Iko</h2>
+      <p id="iko-about" class="iko-about"></p>
+      <button type="button" id="iko-x" class="card-x" aria-label="Close Iko">&times;</button>
+    </header>
+    <div id="iko-body" class="iko-body-scroll">
+      <p id="iko-say" class="iko-say"></p>
+      <div id="iko-slot"></div>
+      <div id="iko-log" class="iko-log" aria-live="polite"></div>
+    </div>
+    <form id="iko-form" class="iko-form" autocomplete="off">
+      <textarea id="iko-in" rows="1" maxlength="1500" placeholder="Ask Iko anything" aria-label="Message to Iko"></textarea>
+      <button type="submit" id="iko-send" class="btn sm">Send</button>
+    </form>
+    <p class="iko-foot fine"><button type="button" id="iko-all" class="link">See our whole conversation</button></p>
+  </section>
   <script src="/ikolearn/cloud-model.js"></script>
   <script src="/ikolearn/rank.js"></script>
   <script src="/ikolearn/deck.js"></script>
