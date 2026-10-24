@@ -116,8 +116,9 @@
         <span class="zoom"><button type="button" id="zin" class="btn sm" aria-label="Zoom in">+</button><button type="button" id="zout" class="btn sm" aria-label="Zoom out">&minus;</button><button type="button" id="zreset" class="btn sm" title="Ease back to the whole cloud">Recentre</button></span>
       </div>
       <p class="cloud-hint">Drag to move · Scroll to zoom · Right-drag or Shift-drag to turn · Click a point to bring it close</p>
-      <aside id="panel" hidden>
+      <aside id="panel" class="node-card" hidden aria-labelledby="p-title">
         <div class="panel-in">
+          <button type="button" id="p-close" class="card-x" aria-label="Close">&times;</button>
           <p class="kicker" id="p-kicker"></p>
           <h2 id="p-title"></h2>
           <div id="p-note" class="note"></div>
@@ -130,7 +131,6 @@
           </div>
           <div id="p-path"></div>
           <div id="p-cards"></div>
-          <button type="button" id="p-close" class="link">Close</button>
         </div>
       </aside>
     </section>

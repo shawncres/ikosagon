@@ -20,10 +20,10 @@
     opts = opts || {};
     var mini = Boolean(opts.mini);
     var ctx = canvas.getContext("2d");
-    var cloud = null, pos = {}, depth = {}, pathRank = {}, highlight = {}, raf = 0, w = 0, h = 0, dpr = 1;
+    var cloud = null, pos = {}, depth = {}, pathRank = {}, highlight = {}, kids = {}, raf = 0, w = 0, h = 0, dpr = 1;
     var yaw = HOME.yaw, pitch = HOME.pitch, zoom = HOME.zoom, panX = HOME.panX, panY = HOME.panY, pivot = CAM.ORIGIN;
     var pointers = {}, gesture = null, idleSpin = mini && !reduce, tween = null, glideV = null;
-    var focusId = null, focusSet = {};
+    var focusId = null, focusSet = {}, selectAt = 0; /* selectAt: when the focused node was picked (its ring eases in) */
     /* the big cloud's idle spin (camera.js spinState): on only while the overlay is open (spinOn) and nothing covers it (spinHeld) */
     var spinOn = false, spinHeld = false, lastInput = 0, lastFrame = 0, spinning = false, spinFrom = 0, resumeTimer = 0;
     var doc = root.document;
@@ -44,8 +44,9 @@
     function setCloud(c) {
       cloud = c;
       pos = c ? C.layout(c) : {};
-      depth = {}; pathRank = {};
+      depth = {}; pathRank = {}; kids = {};
       if (c) {
+        c.order.forEach(function (id) { var n = c.nodes[id]; if (n && n.parent) kids[n.parent] = 1; });
         Object.keys(pos).forEach(function (id) { depth[id] = pos[id].d; });
         c.order.forEach(function (id) {
           var n = c.nodes[id];
@@ -63,7 +64,9 @@
 
     /* the focused node, its ancestors, and two levels of its subtree are always drawn */
     function setFocus(id) {
+      var was = focusId;
       focusId = id && cloud && cloud.nodes[id] ? id : null;
+      if (focusId && focusId !== was) selectAt = performance.now();
       focusSet = {};
       if (!focusId) return;
       C.ancestry(cloud, focusId).forEach(function (x) { focusSet[x] = 1; });
@@ -85,6 +88,9 @@
       var s = Math.min(w, h) * (mini ? 0.3 : 0.34) * zoom;
       return { x: w / 2 + panX + x * f * s, y: h / 2 + panY - y * f * s, f: f, z: z };
     }
+
+    /* The selected node's ring and size ease in over 420 ms (smoothstep); instantly with reduced motion. */
+    function selEase(now) { if (reduce) return 1; var k = Math.max(0, Math.min(1, (now - selectAt) / 420)); return k * k * (3 - 2 * k); }
 
     /* How big a node's level reads on screen right now (1 = a subject at zoom 1). */
     function reads(id) { return zoom * C.levelScale(depth[id] || 1); }
@@ -112,6 +118,7 @@
       var a = v < 0.7 ? 0 : Math.min(1, (v - 0.7) / 0.5);
       if (v > 1.9) a = Math.max(0.18, 1 - (v - 1.9) / 1.4);
       if (!n.parent && zoom < 1.7) a = 1;
+      else if (kids[id] && v >= 0.42 && v <= 1.9) a = Math.max(a, 0.72); /* a branch's parent stays readable zoomed out */
       if (n.ghost) a *= 0.65;
       return a;
     }
@@ -141,7 +148,7 @@
         var n = it.n, side = n.role === "optional" && n.off && at[n.off], from = side ? at[n.off] : n.parent ? at[n.parent] : rootP;
         if (!from) return;
         ctx.save();
-        var fade = Math.min(1, 0.5 + reads(n.id));
+        var fade = Math.min(1, 0.5 + reads(n.id)) * (!mini && focusId && !focusSet[n.id] ? 0.55 : 1);
         /* a side path: a faint dotted twig off its core step */
         if (n.absorbedInto && n.absorbedInto === n.parent) { ctx.globalAlpha = 0.55 * it.p.f * fade; ctx.lineWidth = 0.8; ctx.strokeStyle = C.colorOf(cloud, n); from = at[n.parent] || from; }
         else if (side) { ctx.setLineDash([1, 3]); ctx.globalAlpha = 0.22 * it.p.f * fade; ctx.strokeStyle = C.colorOf(cloud, n); }
@@ -161,10 +168,23 @@
         base *= (1 + 0.16 * ml) * (absorbed ? 0.72 : 1); /* merged: a stronger node; absorbed: a small star of its constellation */
         var r = mini ? base * 0.6 : base * Math.max(0.55, Math.min(1.6, reads(n.id) * 0.9 + (d > 1 ? 0.25 : 0))) * p.f;
         var col = C.colorOf(cloud, n);
+        var sel = !mini && n.id === focusId, sk = sel ? selEase(now) : 0;
+        if (sel) { r *= 1 + 0.28 * sk; if (sk < 1) pulsing = true; }
+        /* quiet: with a node selected, everything off its branch steps back */
+        var quiet = !mini && focusId && !focusSet[n.id] ? 0.55 : 1;
         ctx.save();
-        ctx.globalAlpha = Math.min(1, 0.45 + 0.55 * p.f) * (absorbed ? 0.85 : 1);
+        if (sel) {
+          /* the selected node: a soft glow of its own colour and a fine ink ring that fade in (no motion with reduced motion) */
+          var gl = ctx.createRadialGradient(p.x, p.y, r * 0.6, p.x, p.y, r + 16);
+          gl.addColorStop(0, col); gl.addColorStop(1, "rgba(0,0,0,0)");
+          ctx.globalAlpha = 0.2 * sk; ctx.fillStyle = gl;
+          ctx.beginPath(); ctx.arc(p.x, p.y, r + 16, 0, Math.PI * 2); ctx.fill();
+          ctx.globalAlpha = 0.6 * sk; ctx.strokeStyle = INK; ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.arc(p.x, p.y, r + 4 + 3 * (1 - sk), 0, Math.PI * 2); ctx.stroke();
+        }
+        ctx.globalAlpha = Math.min(1, 0.45 + 0.55 * p.f) * (absorbed ? 0.85 : 1) * (n.ghost ? 0.7 : 1) * quiet;
         ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-        if (n.ghost) { ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.stroke(); }
+        if (n.ghost) { ctx.setLineDash([1.5, 2]); ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.stroke(); ctx.setLineDash([]); }
         else { ctx.fillStyle = col; ctx.fill(); }
         /* a merged parent: one quiet ring per level (I, II, III) */
         for (var mr = 0; mr < ml; mr++) {
@@ -193,12 +213,13 @@
         var la = labelAlpha(n.id, n);
         if (absorbed && !focusSet[n.id]) la *= 0.55; /* the constellation reads as one: its labels stay quiet until focused */
         if (age < 6000 || n.id === cloud.next || n.id === focusId) la = Math.max(la, 0.92);
+        if (focusId && !focusSet[n.id]) la *= 0.6;
         la *= Math.min(1, 0.35 + 0.65 * p.f);
         if (la < 0.03) return;
         var size = !n.parent ? 14 + Math.min(3, n.weight * 0.2) : 12.5;
         var text = (pathRank[n.id] && reads(n.id) >= 0.8 ? pathRank[n.id] + ". " : "") + n.label + (ml ? " " + C.roman(n.ml) : "");
         labels.push({ n: n, text: text, x: p.x, y: p.y - r - 5, a: la, fresh: age < 6000,
-          font: (n.ghost ? "italic " : "") + (n.parent ? "" : "600 ") + Math.round(size * Math.max(0.85, Math.min(1.2, p.f))) + "px " + FONT });
+          font: (n.ghost ? "italic " : "") + (n.parent && n.id !== focusId ? "" : "600 ") + Math.round(size * Math.max(0.85, Math.min(1.2, p.f))) + "px " + FONT });
       });
 
       /* test nodes: a dotted diamond while offered, inked once taken, on a short dotted link from their parent */
@@ -231,7 +252,7 @@
       labels.forEach(function (l) {
         ctx.font = l.font;
         var tw = ctx.measureText(l.text).width, fs = +(/(\d+)px/.exec(l.font) || [0, 12])[1];
-        var box = { x0: l.x - tw / 2 - 2, x1: l.x + tw / 2 + 2, y0: l.y - fs, y1: l.y + 3 };
+        var box = { x0: l.x - tw / 2 - 5, x1: l.x + tw / 2 + 5, y0: l.y - fs - 1, y1: l.y + 4 };
         if (box.x1 < 0 || box.x0 > w || box.y1 < 0 || box.y0 > h) return;
         for (var i = 0; i < placed.length; i++) {
           var q = placed[i];
@@ -260,12 +281,13 @@
       if (idleSpin) yaw += 0.0025;
       var sp = { on: false, wait: Infinity };
       if (!mini) {
-        if (gesture || tween || glideV) lastInput = now; /* a drag, a pinch or a focus glide pauses the spin until it has been idle a while */
-        sp = CAM.spinState({ reduce: reduce, hidden: Boolean(doc && doc.hidden), active: spinOn, paused: spinHeld, busy: Boolean(gesture || tween || glideV), now: now, lastInput: lastInput });
+        if (tween) lastInput = now; /* a focus glide (it follows a click) is waited out; a drag, pan, pinch or glide keeps the spin going */
+        sp = CAM.spinState({ reduce: reduce, hidden: Boolean(doc && doc.hidden), active: spinOn, paused: spinHeld, busy: Boolean(tween), now: now, lastInput: lastInput });
         if (sp.on && !spinning) spinFrom = now; /* eases in from here */
         if (sp.on) yaw += CAM.spinStep(spinning ? now - lastFrame : 16, now - spinFrom);
       }
       spinning = sp.on; lastFrame = now;
+      if (opts.onDraw) opts.onDraw(); /* the app keeps the selection card attached to its node */
       if (pulsing || idleSpin || sp.on || gesture || tween || glideV) request();
       else if (sp.wait !== Infinity && !resumeTimer) resumeTimer = setTimeout(function () { resumeTimer = 0; request(); }, sp.wait + 30);
     }
@@ -385,7 +407,8 @@
           canvas.classList.remove("turning");
           if (g && g.type !== "pinch" && g.moved < 6 && opts.onPick) {
             var hit = pick(g.start.x, g.start.y);
-            if (hit) opts.onPick(hit);
+            if (hit) { touch(); opts.onPick(hit); } /* a click on a node pauses the spin */
+            else if (opts.onEmpty) opts.onEmpty(); /* a tap on empty sky: dismiss the card */
           } else if (g && g.type === "pan" && !reduce && performance.now() - g.t < 90 && Math.hypot(g.vx, g.vy) > CAM.CAM.glideMin) {
             glideV = { x: g.vx, y: g.vy, t: performance.now() };
           } else changed();
@@ -398,9 +421,8 @@
     }
 
     if (!mini) {
-      /* any interaction pauses the idle spin: pointer (even hovering), wheel, keys; it resumes after a few idle seconds */
-      ["pointerdown", "pointermove", "wheel"].forEach(function (t) { canvas.addEventListener(t, touch, { passive: true }); });
-      root.addEventListener("keydown", touch);
+      /* the idle spin goes on through drags, pans, pinches and the wheel; only a click (a node here, a control via pause())
+         stops it, and it comes back after a few idle seconds */
       /* battery: nothing turns while the tab is hidden; coming back counts as a fresh start (idle a while first) */
       if (doc) doc.addEventListener("visibilitychange", function () { if (!doc.hidden) { touch(); request(); } });
     }
@@ -412,6 +434,8 @@
       setTests: function (map) { tests = map || {}; request(); },
       /* the idle spin: on while the big cloud is open; hold(true) while something covers most of it (no change: no restart) */
       spin: function (on) { spinOn = Boolean(on) && !mini; touch(); request(); },
+      /* a click on a control: pause the spin (it comes back after the idle delay) */
+      pause: function () { touch(); request(); },
       hold: function (on) { if (spinHeld === Boolean(on)) return; spinHeld = Boolean(on); touch(); request(); },
       flash: flash,
       resize: resize,

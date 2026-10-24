@@ -2111,11 +2111,31 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   eq(CAM.lerpView(a, b, 0.5).pivot, { x: 0.5, y: 1, z: -1.5 }, "pivot: tweened in a straight line with the camera");
   eq(CAM.lerpView(b, a, 1).pivot, { x: 0, y: 0, z: 0 }, "pivot: Recentre's tween ends at the origin");
   ok(CAM.fitAround({ x0: -10, x1: 100, y0: -5, y1: 5 }, 400, 400, 0.1, 50) === CAM.fitZoom({ x0: -100, x1: 100, y0: -5, y1: 5 }, 400, 400, 0.1, 50), "fitAround: the node stays put, so the far side of its branch sets the zoom");
-  const ph = CAM.focusFrame(390, 760, { sheet: 420, top: 60 });
-  ok(ph.cx === 195 && ph.cy === 60 + (760 - 420 - 60) / 2 && ph.cy + ph.ah / 2 <= 760 - 420 && ph.cy - ph.ah / 2 >= 60, "phone focus: the node sits in the middle of the strip above the sheet", JSON.stringify(ph));
-  ok(CAM.focusFrame(390, 760, { sheet: 900, top: 60 }).cy > 60, "phone focus: a tall sheet still leaves the node below the top controls");
-  const wd = CAM.focusFrame(1280, 720, { wide: true });
-  ok(wd.cx === 840 && wd.cy === 360 && wd.aw === 860, "wide focus: centred right of the side panel (it sits on the left)", JSON.stringify(wd));
+  const ph = CAM.focusFrame(390, 760, { top: 60 });
+  ok(ph.cx === 195 && ph.cy === Math.round(60 + 700 * CAM.CARD.phoneAt) && ph.cy - ph.ah / 2 >= 60 - 8, "phone focus: the node sits in the upper part of the view (room for its card below), below the top controls", JSON.stringify(ph));
+  const wd = CAM.focusFrame(1280, 720, { wide: true, top: 60 });
+  ok(wd.cx === Math.round(1280 * CAM.CARD.wideAt) && wd.cy === 390 && wd.cx + CAM.CARD.gapX + 320 <= 1280 - CAM.CARD.margin, "wide focus: the node sits left of centre, so its card fits to its right", JSON.stringify(wd));
+  // the selection card (camera.js cardPlace): next to the node, inside the view, never over the node
+  {
+    const P = CAM.cardPlace;
+    const r1 = P(486, 430, 320, 300, 1280, 860, 60);
+    ok(r1.side === "right" && r1.x === 486 + CAM.CARD.gapX && r1.y >= 72 && r1.y + 300 <= 860 - 12, "card: wide, to the right of the node", JSON.stringify(r1));
+    ok(P(1100, 430, 320, 300, 1280, 860, 60).side === "left", "card: wide, near the right edge -> to its left");
+    const r3 = P(195, 270, 320, 420, 390, 844, 60);
+    ok(r3.side === "below" && r3.y === 270 + CAM.CARD.gap && r3.x === 35 && r3.maxH === 844 - 12 - 288, "card: phone, under the node, centred on it", JSON.stringify(r3));
+    const r4 = P(195, 700, 366, 300, 390, 844, 60);
+    ok(r4.side === "above" && r4.y + Math.min(300, r4.maxH) <= 700 - CAM.CARD.gap, "card: phone, a node low down -> above it", JSON.stringify(r4));
+    ok(P(195, 200, 366, 900, 390, 330, 60).side === "sheet", "card: no room above or below (a short landscape phone) -> docked at the bottom");
+    let bad = 0, n = 0;
+    for (const [w, h] of [[390, 844], [360, 640], [768, 1024], [1280, 860], [1920, 1080]]) for (let nx = 20; nx < w - 20; nx += 37) for (let ny = 90; ny < h - 20; ny += 41) for (const ch of [180, 320, 600]) {
+      const cw = Math.min(320, w - 24), r = P(nx, ny, cw, ch, w, h, 60), hh = Math.min(ch, r.maxH); n++;
+      if (r.side === "sheet") continue;
+      const inside = r.x >= 12 && r.x + cw <= w - 12 + 0.5 && r.y >= 72 - 0.5 && r.y + hh <= h - 12 + 0.5;
+      const covers = nx >= r.x - 6 && nx <= r.x + cw + 6 && ny >= r.y - 6 && ny <= r.y + hh + 6;
+      if (!inside || covers) bad++;
+    }
+    ok(bad === 0 && n > 2000, `card: ${n} placements across phone, tablet and desktop sizes: always inside the view, never over the node`, String(bad));
+  }
   // the projection: a pivot node lands exactly at centre + pan, whatever the turn (so turning orbits it)
   const proj = (p, v, w = 400, h = 400) => { const piv = v.pivot || { x: 0, y: 0, z: 0 }; const px = p.x - piv.x, py = p.y - piv.y, pz = p.z - piv.z, cy = Math.cos(v.yaw), sy = Math.sin(v.yaw), cp = Math.cos(v.pitch), sp = Math.sin(v.pitch); let x = px * cy - pz * sy, z = px * sy + pz * cy; const y = py * cp - z * sp; z = py * sp + z * cp; const f = 3.2 / (3.2 + z), s = Math.min(w, h) * 0.34 * v.zoom; return { x: w / 2 + v.panX + x * f * s, y: h / 2 + v.panY - y * f * s }; };
   const node = { x: 0.8, y: 0.3, z: -0.5 };
@@ -2124,7 +2144,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(new Set([0, 0.7, 2.1].map((yaw) => proj(node, { yaw, pitch: 0.4, zoom: 3, panX: -20, panY: 35 }).x.toFixed(3))).size === 3, "orbit: about the origin (before), the same turn swings the node across the screen");
   ok(/var px = p\.x - pivot\.x, py = p\.y - pivot\.y, pz = p\.z - pivot\.z;/.test(view) && /pivot = pointOf\(id\)/.test(view) && /panX: cx - w \/ 2, panY: cy - h \/ 2/.test(view) && /recentre: function \(\) \{ setFocus\(null\); animateTo\(Object\.assign\(\{ pivot: CAM\.ORIGIN \}, HOME\)/.test(view), "the view: focus moves the pivot to the node, Recentre puts it back at the origin");
   ok(/state\.view\.o = \[v\.pivot\.x, v\.pivot\.y, v\.pivot\.z\]/.test(app) && /pivot: Array\.isArray\(state\.view\.o\)/.test(app), "the pivot is kept with the saved view and restored");
-  ok(/CAM\.focusFrame\(cw, ch, \{ wide: wide, sheet: wide \? 0 : sheetH, top: top \}\)/.test(app) && /new ResizeObserver\(/.test(app), "phone: focus frames the node above the open sheet, and re-frames as the sheet grows");
+  ok(/CAM\.focusFrame\(cw, ch, \{ wide: wide, top: cloudTop\(\) \}\)/.test(app) && /onDraw: placeCard, onEmpty: closeCard/.test(app) && /CAM\.cardPlace\(q\.x, q\.y, pw, ph, cw, ch, cloudTop\(\)\)/.test(app) && /new ResizeObserver\(function \(\) \{ cardSig = ""; placeCard\(\); \}\)/.test(app), "the card: placed next to its node on every frame the cloud draws (follows it), again when it resizes; a tap on empty sky closes it");
   // 6) the hub and album wiring, with no model calls
   ok(/id="hub"/.test(html) && /id="hub-kids"/.test(html) && /id="hub-lesson"/.test(html) && /id="hub-test"/.test(html) && /id="d-album"/.test(html), "hub and album markup present");
   const noCalls = ["openHub", "renderHub", "renderHubKids", "renderAlbum", "hubBack", "liftCard", "viewIn", "focusInView"].every((f) => { const b = fnBody(app, f); return b && !/postJson\(|stream\(|fetch\(|notice\(|makeCard\(/.test(b); });
@@ -2137,7 +2157,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/el\.pCard\.addEventListener\("click", function \(\) \{\s*var id = state\.panelNode; if \(!nodeOf\(id\)\) return;\s*openHub\(id, null, "cloud"\);/.test(app), "Open its card opens the hub (no model call)");
   ok(/linkBtn\("Save a note on " \+ m\.topic, function \(\) \{ makeCard\(/.test(app), "the chat's one-call note card is labelled for what it is: Save a note");
   // 8) motion: press feedback, view transitions, card lift, all off under reduced motion
-  ok(/button\.gcard:active/.test(css) && /\.btn:active/.test(css) && /@keyframes page-in/.test(css) && /@keyframes slot-in/.test(css) && /@keyframes view-in/.test(css) && /@keyframes sheet-up/.test(css), "motion: press feedback, album pages, slots, views and the sheet");
+  ok(/button\.gcard:active/.test(css) && /\.btn:active/.test(css) && /@keyframes page-in/.test(css) && /@keyframes slot-in/.test(css) && /@keyframes view-in/.test(css) && /@keyframes card-in/.test(css), "motion: press feedback, album pages, slots, views and the selection card");
   ok(/prefers-reduced-motion: reduce\)[^@]*\.view-in, \.album\.opening \.album-page/.test(css) && /function liftCard[\s\S]{0,200}motionOK\(\)/.test(app), "motion: all of it stays still under prefers-reduced-motion");
 }
 
@@ -2385,11 +2405,18 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(CAM.spinStep(1000) === CAM.SPIN.rate * CAM.SPIN.maxDt && CAM.spinStep(-5) === 0, "idle spin: a long frame gap never jumps");
   ok(/if \(sp\.on && !spinning\) spinFrom = now;/.test(view) && /CAM\.spinStep\(spinning \? now - lastFrame : 16, now - spinFrom\)/.test(view), "cloud view: each start of the spin eases in again");
   ok(/hold: function \(on\) \{ if \(spinHeld === Boolean\(on\)\) return;/.test(view), "cloud view: re-asserting the same hold does not restart the idle wait (the panel's sheet resizes as its note streams)");
-  ok(/\["pointerdown", "pointermove", "wheel"\]\.forEach\(function \(t\) \{ canvas\.addEventListener\(t, touch/.test(view) && /root\.addEventListener\("keydown", touch\)/.test(view) && /visibilitychange/.test(view) && /if \(gesture \|\| tween \|\| glideV\) lastInput = now;/.test(view), "cloud view: pointer, wheel, keys and focus glides pause it; a hidden tab stops it");
+  ok(!/canvas\.addEventListener\(t, touch/.test(view) && !/addEventListener\("keydown", touch\)/.test(view) && /visibilitychange/.test(view) && /if \(tween\) lastInput = now;/.test(view) && /busy: Boolean\(tween\)/.test(view), "cloud view: drags, pans, pinches and the wheel no longer pause the spin; a focus glide is waited out; a hidden tab stops it");
+  ok(/if \(hit\) \{ touch\(\); opts\.onPick\(hit\); \}/.test(view) && /pause: function \(\) \{ touch\(\); request\(\); \}/.test(view), "cloud view: a click on a node pauses the spin; pause() for a click on a control");
   ok(/big\.spin\(true\)/.test(app) && /big\.spin\(false\)/.test(app) && /big\.hold\(false\)/.test(app) && !/big\.hold\(true\)/.test(app), "the app spins it while the cloud is open, on every view of it (also beside the node panel)");
-  ok(/function panelCovers\(\) \{ return !el\.panel\.hidden && window\.innerWidth < 900 && el\.panel\.offsetHeight > el\.cloudCanvas\.clientHeight \* 0\.7; \}/.test(app) && /el\.panel\.hidden = false;\n    syncCover\(\);/.test(app) && /new ResizeObserver\(function \(\) \{\n    syncCover\(\);/.test(app), "the app holds the spin only while the phone sheet covers most of the cloud");
-  ok(/#panel \{ left: 16px; right: auto; top: 64px; bottom: 16px; width: 380px;/.test(css) && /translateX\(-22px\)/.test(css) && !/translateX\(22px\)/.test(css) && /#cloud:has\(#panel:not\(\[hidden\]\)\) :is\(\.cloud-hint, \.cloud-caption\) \{ left: 412px;/.test(css), "wide screens: the node panel sits on the left (slides in from the left; the hint and caption move right of it)");
-  ok(/state\.lifted = wide \? \(el\.panel\.offsetWidth \+ 16\) \/ 2 : el\.panel\.offsetHeight \/ 2;/.test(app), "the whole-cloud panel moves the cloud clear of it (right on wide screens, up on phones)");
+  ok(/el\.cloud\.addEventListener\("click", function \(e\) \{ if \(big && e\.target\.closest && e\.target\.closest\("button, a"\)\) big\.pause\(\); \}\)/.test(app), "the app: a click on any control over the cloud (zoom, Recentre, the card) pauses the spin");
+  ok(/#panel \{ position: absolute;[^}]*border-radius: 12px;/.test(css) && !/#panel \{ left: 16px; right: auto;/.test(css) && !/sheet-up/.test(css) && /\.card-x \{/.test(css), "the node detail is a rounded card (no fixed side pane or bottom sheet), with a close control");
+  ok(/el\.pClose\.addEventListener\("click", closeCard\)/.test(app) && /if \(!el\.cloud\.hidden && !el\.panel\.hidden\) closeCard\(\);/.test(app) && !/liftCloud/.test(app), "the card closes with its control, a tap on empty sky or Escape (the card first, then the cloud)");
+  ok(/id="p-close" class="card-x" aria-label="Close"/.test(fs.readFileSync("public/ikolearn/index.html", "utf8")), "the card's close control is a labelled button at its top");
+  // node states
+  ok(/var sel = !mini && n\.id === focusId, sk = sel \? selEase\(now\) : 0;/.test(view) && /if \(sel\) \{ r \*= 1 \+ 0\.28 \* sk;/.test(view) && /createRadialGradient/.test(view) && /function selEase\(now\) \{ if \(reduce\) return 1;/.test(view), "nodes: the selected one is a little larger, with a soft glow and a fine ring that ease in (still with reduced motion)");
+  ok(/var quiet = !mini && focusId && !focusSet\[n\.id\] \? 0\.55 : 1;/.test(view) && /if \(focusId && !focusSet\[n\.id\]\) la \*= 0\.6;/.test(view), "nodes: with one selected, everything off its branch steps back (quieter nodes, edges and labels)");
+  ok(/if \(n\.ghost\) \{ ctx\.setLineDash\(\[1\.5, 2\]\);/.test(view) && /else if \(n\.ghost\) \{ ctx\.setLineDash\(\[2, 4\]\);/.test(view), "nodes: unexplored (ghost) topics are dotted rings on dotted branches");
+  ok(/else if \(kids\[id\] && v >= 0\.42 && v <= 1\.9\) a = Math\.max\(a, 0\.72\);/.test(view), "labels: a branch's parent stays readable zoomed out; its children's labels come in as you zoom in");
 
   // the mini-Deck
   ok(/el\.miniDeck\.addEventListener\("click", function \(\) \{ showDeck\(true\); \}\)/.test(app), "mini-Deck: tapping it opens the album");

@@ -1,8 +1,8 @@
 // End-to-end checks for the big cloud in a real browser, every /api/ikolearn call mocked (no model calls):
-// the idle spin (starts after the idle delay, eases in, stops at once on a drag / wheel / key and comes back after the
-// same delay, waits out a focus glide, keeps turning beside the node panel about the focused node, pauses while the tab
-// is hidden or something covers the cloud, off with reduced motion) on each cloud screen, and the node panel (on the
-// left on wide screens, the focused node centred right of it and never under it; a bottom sheet on phones; no overflow).
+// the idle spin (starts after the idle delay, eases in, waits out a focus glide, turns about the selected node, pauses while the tab
+// is hidden or the cloud is closed, off with reduced motion) on each cloud screen. The spin goes on through drags, pans
+// and the wheel; only a click (a node or a control) pauses it. A selected node gets a rounded card next to it (inside the
+// view, never over the node, following it as the cloud moves), dismissed by its close control, a tap outside or Escape.
 // Run: IKOLEARN_PW=<path to node_modules/playwright-core> node scripts/ikolearn-cloud-e2e.mjs [--shots DIR] [--tag after] [--root public]
 import http from "node:http";
 import fs from "node:fs";
@@ -81,7 +81,7 @@ const settle = (p) => p.waitForFunction(() => !window.__views.filter((x) => x.id
 async function turn(p, ms) { const a = await st(p); await p.waitForTimeout(ms); const b = await st(p); return { d: b.yaw - a.yaw, on: b.spinning, a, b }; }
 const shot = async (p, name) => { if (SHOTS) { await p.waitForTimeout(150); await p.screenshot({ path: path.join(SHOTS, name) }); } };
 
-for (const width of [390, 1280]) {
+for (const width of (process.env.WIDTHS || "390,1280").split(",").map(Number)) {
   const tag = `${width}`;
   /* 1. the main cloud: still at first, then a gentle turn; a drag, the wheel and a key stop it at once; it comes back */
   {
@@ -98,30 +98,30 @@ for (const width of [390, 1280]) {
       ok(secPerTurn >= 60 && secPerTurn <= 95, `${tag}: main cloud: slow but noticeable (about ${Math.round(secPerTurn)} s per turn)`, String(secPerTurn));
       ok(ease.d / 0.3 < (full.d / 2) * 0.95, `${tag}: main cloud: eases in (slower at the start than at full speed)`, JSON.stringify({ start: ease.d / 0.3, full: full.d / 2 }));
       await shot(p, `spin-${TAG}-${width}-main.png`);
-      /* a drag stops it at once */
+      /* a drag, a pan and the wheel do NOT stop it: the spin goes on through movement */
       const spot = await emptySpot(p), cx = spot.x, cy = spot.y;
       await p.mouse.move(cx, cy); await p.mouse.down();
       const down = await turn(p, 400);
-      ok(!down.on && Math.abs(down.d) < 1e-6, `${tag}: a drag stops the spin at once`, JSON.stringify({ d: down.d, on: down.on }));
-      await p.mouse.move(cx + 50, cy - 10, { steps: 6 }); await p.mouse.up(); await p.mouse.move(1, 1);
-      await settle(p).catch(() => {});
-      const after = await turn(p, 2000);
-      ok(!after.on && Math.abs(after.d) < 1e-6, `${tag}: ... and stays still for the idle delay after it`, JSON.stringify(after.d));
-      await p.waitForTimeout(2600);
-      const back = await turn(p, 1000);
-      ok(back.on && back.d > 0, `${tag}: ... then comes back by itself`);
-      /* the wheel and a key stop it too */
+      await p.mouse.move(cx + 50, cy - 10, { steps: 8 });
+      const mid = await turn(p, 400);
+      await p.mouse.up(); await p.mouse.move(1, 1);
+      const after = await turn(p, 1200);
+      ok(down.on && down.d > 0 && mid.on && mid.d > 0 && after.on && after.d > 0, `${tag}: the spin keeps going through a drag (pressed, moving, released)`, JSON.stringify({ down: down.d, mid: mid.d, after: after.d }));
       const sp2 = await emptySpot(p);
       await p.mouse.move(sp2.x, sp2.y); await p.mouse.wheel(0, -40); await p.mouse.move(1, 1);
-      const wh = await turn(p, 300);
-      ok(!wh.on, `${tag}: the wheel stops it`);
-      await p.waitForTimeout(4200);
-      ok((await st(p)).spinning, `${tag}: ... back after the delay`);
+      const wh = await turn(p, 500);
+      ok(wh.on && wh.d > 0, `${tag}: ... and through the wheel`);
       await p.keyboard.press("Shift");
-      const key = await turn(p, 300);
-      ok(!key.on && Math.abs(key.d) < 1e-6, `${tag}: a key stops it`);
+      const key = await turn(p, 400);
+      ok(key.on && key.d > 0, `${tag}: ... and a key press that is not a click`);
+      /* a click on a control (zoom) pauses it; it comes back after the delay */
+      await p.click("#zin"); await p.mouse.move(1, 1);
+      const zc = await turn(p, 600);
+      ok(!zc.on, `${tag}: a click on a control (zoom) pauses the spin`, JSON.stringify(zc.d));
+      await p.waitForTimeout(3600);
+      const zb = await turn(p, 800);
+      ok(zb.on && zb.d > 0, `${tag}: ... and it comes back after the short delay`);
       /* hidden tab */
-      await p.waitForTimeout(4200);
       await p.evaluate(() => { Object.defineProperty(document, "hidden", { configurable: true, get: () => true }); document.dispatchEvent(new Event("visibilitychange")); });
       const hid = await turn(p, 1500);
       ok(!hid.on && Math.abs(hid.d) < 1e-6, `${tag}: paused while the tab is hidden`, JSON.stringify(hid.d));
@@ -131,71 +131,87 @@ for (const width of [390, 1280]) {
       const vis2 = await turn(p, 800);
       ok(!vis.on && Math.abs(vis.d) < 1e-6 && vis2.on && vis2.d > 0, `${tag}: visible again: waits the idle delay, then spins`, JSON.stringify({ vis: vis.d, vis2: vis2.d }));
 
-      /* 2. a focused parent: the glide is waited out, the node lands clear of the panel, the spin turns about it */
-      ok(await p.evaluate(() => !document.querySelector("#cloud").hidden), `${tag}: still on the cloud after the drag, wheel and key`);
+      /* 2. a node click: the spin pauses, the camera glides, a rounded card opens next to the node */
+      ok(await p.evaluate(() => !document.querySelector("#cloud").hidden), `${tag}: still on the cloud after the drag, wheel, key and zoom`);
       await p.click("#zreset"); await p.mouse.move(1, 1); await settle(p);
+      await p.waitForTimeout(3700);
+      ok((await st(p)).spinning, `${tag}: spinning before the node click`);
       const pt = await at(p, "Volcanoes");
       await p.mouse.click(pt.x, pt.y); await p.mouse.move(1, 1);
       const glide = await st(p);
-      ok(glide.moving && !glide.spinning, `${tag}: tapping a node glides to it (no spin during the glide)`);
+      ok(glide.moving && !glide.spinning, `${tag}: clicking a node pauses the spin and glides to it`);
       await settle(p);
-      const geo = await p.evaluate(() => {
-        const r = (q) => { const e = document.querySelector(q); if (!e || e.hidden) return null; const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom, w: b.width }; };
-        return { panel: r("#panel"), close: r("#cloud-close"), zoom: r(".cloud-top .zoom"), hint: r(".cloud-hint"), cv: r("#cloud-canvas"), sw: document.documentElement.scrollWidth, iw: window.innerWidth, pScroll: document.querySelector("#panel").scrollWidth - document.querySelector("#panel").clientWidth };
-      });
-      const node = await at(p, "Volcanoes");
-      const inside = (pt, b) => b && pt.x >= b.l && pt.x <= b.r && pt.y >= b.t && pt.y <= b.b;
-      const hit = (a, b) => a && b && a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
-      ok(geo.panel && !inside(node, geo.panel) && node.x > 0 && node.x < geo.iw && node.y > 50 && node.y < (width < 900 ? geo.panel.t : geo.cv.b), `${tag}: the focused node is not covered by the panel`, JSON.stringify({ node, panel: geo.panel }));
-      if (width >= 900) {
-        ok(geo.panel.l >= 0 && geo.panel.l <= 24 && geo.panel.r <= 420 && Math.abs(geo.panel.w - 380) < 4, `${tag}: the node panel opens on the left (same width)`, JSON.stringify(geo.panel));
-        ok(Math.abs(node.x - (400 + (width - 400) / 2)) < 30 && Math.abs(node.y - geo.cv.b / 2) < 40, `${tag}: the focused node is centred in the free area right of the panel`, JSON.stringify(node));
-        ok(!hit(geo.close, geo.panel) && !hit(geo.zoom, geo.panel) && !hit(geo.hint, geo.panel), `${tag}: nothing on the cloud's top row collides with the panel (back link, zoom, hint)`, JSON.stringify(geo));
-      } else {
-        ok(geo.panel.l === 0 && Math.round(geo.panel.r) === width && geo.panel.b <= 845 && geo.panel.t > 200, `${tag}: phones keep the bottom sheet`, JSON.stringify(geo.panel));
-      }
-      ok(geo.sw <= geo.iw && geo.pScroll <= 0, `${tag}: no sideways overflow with the panel open`, JSON.stringify({ sw: geo.sw, iw: geo.iw, p: geo.pScroll }));
-      await shot(p, `panel-left-${TAG}-${width}-focused.png`);
-      const n0 = await at(p, "Volcanoes");
-      await p.waitForTimeout(3900);
+      const rect = (q) => p.evaluate((q) => { const e = document.querySelector(q); if (!e || e.hidden) return null; const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom, w: b.width, h: b.height }; }, q);
+      const inside = (pt, b) => b && pt.x >= b.l - 4 && pt.x <= b.r + 4 && pt.y >= b.t - 4 && pt.y <= b.b + 4;
+      const gap = (pt, b) => Math.max(b.l - pt.x, pt.x - b.r, b.t - pt.y, pt.y - b.b, 0);
+      const card = await rect("#panel"), node = await at(p, "Volcanoes");
+      const view = await p.evaluate(() => ({ iw: innerWidth, ih: innerHeight, sw: document.documentElement.scrollWidth, side: document.querySelector("#panel").getAttribute("data-side"), radius: getComputedStyle(document.querySelector("#panel")).borderTopLeftRadius, title: document.querySelector("#p-title").textContent, note: document.querySelector("#p-note").innerText, acts: [...document.querySelectorAll("#panel .actions .btn:not([hidden])")].map((b) => b.textContent), path: document.querySelectorAll("#p-path li").length }));
+      ok(card && !inside(node, card), `${tag}: the card does not cover the selected node`, JSON.stringify({ node, card }));
+      ok(card && gap(node, card) <= 70, `${tag}: the card sits next to the node (${Math.round(card ? gap(node, card) : -1)} px away)`, JSON.stringify({ node, card }));
+      ok(card && card.l >= 0 && card.r <= view.iw && card.t >= 0 && card.b <= view.ih && view.sw <= view.iw, `${tag}: the card is inside the viewport (no overflow)`, JSON.stringify({ card, view }));
+      ok(view.side === (width >= 900 ? "right" : "below") && parseFloat(view.radius) >= 10, `${tag}: a rounded card ${width >= 900 ? "to the right of" : "under"} the node`, JSON.stringify(view));
+      ok(view.title === "Volcanoes" && /What do you notice here\?/.test(view.note) && JSON.stringify(view.acts.slice(0, 3)) === JSON.stringify(["Start a lesson", "Open its card", "Talk in chat"]) && view.path >= 3, `${tag}: the card: title, "What do you notice here?", the three actions and the path`, JSON.stringify(view));
+      await shot(p, `nodes-card-${TAG}-${width}-card.png`);
+      /* while the card is open the spin comes back after the short delay; it turns about the selected node, so the node and its card stay put */
+      const c0 = await rect("#panel"), n0 = await at(p, "Volcanoes");
+      await p.waitForTimeout(3700);
       const foc = await turn(p, 1500);
-      const n1 = await at(p, "Volcanoes");
-      ok(foc.on && foc.d > 0, `${tag}: a focused parent (panel open) spins after the idle delay`, JSON.stringify({ d: foc.d, held: foc.b.held }));
-      ok(Math.hypot(n1.x - n0.x, n1.y - n0.y) < 1.5, `${tag}: ... about the focused node, which stays put (still clear of the panel)`, JSON.stringify({ n0, n1 }));
-      await shot(p, `spin-${TAG}-${width}-focused.png`);
-      /* a sheet that covers most of the cloud holds it (phones) */
-      if (width < 900) {
-        await p.addStyleTag({ content: "#panel { max-height: none !important; height: 92vh !important; }" });
-        await p.waitForTimeout(400);
-        const cov = await turn(p, 1200);
-        ok(!cov.on && Math.abs(cov.d) < 1e-6 && cov.b.held, `${tag}: paused while the panel covers most of the cloud`, JSON.stringify({ d: cov.d, held: cov.b.held }));
-        await p.evaluate(() => document.querySelectorAll("style").forEach((s) => { if (/92vh/.test(s.textContent)) s.remove(); }));
-        await p.waitForTimeout(400);
-        ok(!(await st(p)).held, `${tag}: ... and lets go once it no longer does`);
-      }
-      /* 3. the whole-cloud panel (tap the name): the cloud moves clear of it */
-      await p.click("#p-close"); await p.mouse.move(1, 1); await p.waitForTimeout(200);
-      const rootPt = await p.evaluate(() => { const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view, s = v.state(), r = document.querySelector("#cloud-canvas").getBoundingClientRect(); return { x: r.left + r.width / 2 + s.panX, y: r.top + r.height / 2 + s.panY }; });
-      await p.waitForTimeout(100);
-      const root0 = await p.evaluate(() => window.__views.filter((x) => x.id === "cloud-canvas").pop().view.state());
-      await p.evaluate(() => { const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view; v.recentre(); });
-      await settle(p);
+      const c1 = await rect("#panel"), n1 = await at(p, "Volcanoes");
+      ok(foc.on && foc.d > 0, `${tag}: with the card open, the spin resumes after the delay`, JSON.stringify({ d: foc.d }));
+      ok(Math.hypot(n1.x - n0.x, n1.y - n0.y) < 1.5 && Math.abs(c1.l - c0.l) < 1.5 && Math.abs(c1.t - c0.t) < 1.5, `${tag}: ... about the selected node: node and card stay put`, JSON.stringify({ n0, n1, c0: [c0.l, c0.t], c1: [c1.l, c1.t] }));
+      /* the card follows its node when the cloud moves (a pan drag; the spin keeps going) */
+      const sp3 = await emptySpot(p);
+      await p.mouse.move(sp3.x, sp3.y); await p.mouse.down(); await p.mouse.move(sp3.x - 24, sp3.y + 30, { steps: 6 }); await p.mouse.up(); await p.mouse.move(1, 1);
+      await p.waitForTimeout(500);
+      const c2 = await rect("#panel"), n2 = await at(p, "Volcanoes");
+      ok(!(await p.locator("#panel").isHidden()) && Math.abs((c2.t - c1.t) - (n2.y - n1.y)) < 3 && Math.abs(n2.y - n1.y) > 10 && !inside(n2, c2), `${tag}: the card follows its node as the cloud moves (still clear of it)`, JSON.stringify({ dn: [n2.x - n1.x, n2.y - n1.y], dc: [c2.l - c1.l, c2.t - c1.t] }));
+      ok((await st(p)).spinning, `${tag}: ... and the spin went on through that drag`);
+      /* dismiss: a tap on empty sky */
+      const sky = await emptySpot(p);
+      await p.mouse.click(sky.x, sky.y); await p.mouse.move(1, 1); await p.waitForTimeout(250);
+      ok(await p.locator("#panel").isHidden() && !(await p.locator("#cloud").isHidden()) && !(await st(p)).focus, `${tag}: a tap outside dismisses the card (the cloud stays)`);
+      /* dismiss: the close control, and Escape (the card first, the cloud stays) */
+      const pv = await at(p, "Volcanoes"); await p.mouse.click(pv.x, pv.y); await p.mouse.move(1, 1); await settle(p);
+      await p.click("#p-close"); await p.waitForTimeout(200);
+      ok(await p.locator("#panel").isHidden() && !(await p.locator("#cloud").isHidden()), `${tag}: the close control dismisses the card`);
+      const pe = await at(p, "Eruptions"); await p.mouse.click(pe.x, pe.y); await p.mouse.move(1, 1); await settle(p);
+      const eTitle = await p.textContent("#p-title"), eNode = await at(p, "Eruptions"), eCard = await rect("#panel");
+      ok(eTitle === "Eruptions" && !inside(eNode, eCard), `${tag}: another node: its own card, clear of it`, JSON.stringify({ eTitle, eNode, eCard }));
+      await p.keyboard.press("Escape"); await p.waitForTimeout(200);
+      ok(await p.locator("#panel").isHidden() && !(await p.locator("#cloud").isHidden()), `${tag}: Escape closes the card first (the cloud stays)`);
+      /* 3. the whole-cloud card (tap the name) sits next to the name */
+      await p.click("#zreset"); await p.mouse.move(1, 1); await settle(p);
       const home = await p.evaluate(() => window.__views.filter((x) => x.id === "cloud-canvas").pop().view.state());
       const rp = await p.evaluate((h) => { const r = document.querySelector("#cloud-canvas").getBoundingClientRect(); return { x: r.left + r.width / 2 + h.panX, y: r.top + r.height / 2 + h.panY }; }, home);
-      await p.mouse.click(rp.x, rp.y); await p.mouse.move(1, 1); await p.waitForTimeout(400);
-      const rootGeo = await p.evaluate(() => { const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view.state(), b = document.querySelector("#panel").getBoundingClientRect(); return { panX: v.panX, panY: v.panY, open: !document.querySelector("#panel").hidden, title: document.querySelector("#p-title").textContent, pr: b.right, pt: b.top }; });
-      ok(rootGeo.open && rootGeo.title === "Maya" && (width >= 900 ? rootGeo.panX - home.panX > 150 : home.panY - rootGeo.panY > 100), `${tag}: the whole-cloud panel moves the cloud clear of it (${width >= 900 ? "right" : "up"})`, JSON.stringify({ rootGeo, home: { x: home.panX, y: home.panY }, root0: root0.panX, rootPt }));
-      await shot(p, `panel-left-${TAG}-${width}-root.png`);
-      /* 4. covered: opening the card closes the cloud; the spin stops */
+      const rpp = await p.evaluate(() => { const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view, q = v.project("root"), r = document.querySelector("#cloud-canvas").getBoundingClientRect(); return { x: r.left + q.x, y: r.top + q.y }; });
+      await p.mouse.click(rpp.x, rpp.y); await p.mouse.move(1, 1); await p.waitForTimeout(400);
+      const rCard = await rect("#panel"), rNode = await p.evaluate(() => { const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view, q = v.project("root"), r = document.querySelector("#cloud-canvas").getBoundingClientRect(); return { x: r.left + q.x, y: r.top + q.y }; });
+      ok(rCard && (await p.textContent("#p-title")) === "Maya" && !inside(rNode, rCard) && gap(rNode, rCard) <= 70 && rCard.r <= width && rCard.l >= 0, `${tag}: the whole-cloud card sits next to the name, inside the view`, JSON.stringify({ rNode, rCard, rp }));
+      await shot(p, `nodes-card-${TAG}-${width}-root.png`);
       await p.click("#p-close"); await p.waitForTimeout(200);
+      /* 4. the card's actions: Open its card (the hub; the cloud closes and the spin stops) */
       const pm = await at(p, "Magma"); await p.mouse.click(pm.x, pm.y); await settle(p);
       await p.click("#p-card"); await p.waitForTimeout(300);
-      const card = await turn(p, 1500);
-      const hidden = await p.evaluate(() => document.querySelector("#cloud").hidden);
-      ok(hidden && !card.on && Math.abs(card.d) < 1e-6, `${tag}: paused while the card (or a lesson) covers the cloud`, JSON.stringify({ hidden, d: card.d }));
+      const hubCard = await turn(p, 1500);
+      const hub = await p.evaluate(() => ({ cloud: document.querySelector("#cloud").hidden, hub: !document.querySelector("#hub").hidden, title: (document.querySelector("#hub-title") || {}).textContent }));
+      ok(hub.cloud && hub.hub && /Magma/.test(hub.title || "") && !hubCard.on && Math.abs(hubCard.d) < 1e-6, `${tag}: "Open its card" opens the card view; the cloud closes and the spin stops`, JSON.stringify(hub));
       ok(calls.length === 0, `${tag}: 0 model calls`, calls.join());
+      /* Talk in chat: back to the chat on that topic (0 calls) */
+      await p.click("#thumb"); await p.mouse.move(1, 1); await p.waitForTimeout(300);
+      await p.click("#zreset"); await settle(p);
+      const pk = await at(p, "Volcanoes"); await p.mouse.click(pk.x, pk.y); await settle(p);
+      await p.click("#p-chat"); await p.waitForTimeout(300);
+      const chat = await p.evaluate(() => ({ cloud: document.querySelector("#cloud").hidden, focus: (document.querySelector(".focus") || {}).innerText || "" }));
+      ok(chat.cloud && calls.length === 0, `${tag}: "Talk in chat" goes back to the chat (0 calls)`, JSON.stringify(chat));
+      /* Start a lesson: the lesson opens (its one call is answered by the mock) */
+      await p.click("#thumb"); await p.mouse.move(1, 1); await p.waitForTimeout(300);
+      await p.click("#zreset"); await settle(p);
+      const pl = await at(p, "Magma"); await p.mouse.click(pl.x, pl.y); await settle(p);
+      await p.click("#p-lesson"); await p.waitForTimeout(500);
+      const les = await p.evaluate(() => ({ cloud: document.querySelector("#cloud").hidden, lesson: !document.querySelector("#lesson").hidden, title: document.querySelector("#l-title").textContent }));
+      ok(les.cloud && les.lesson && les.title === "Magma" && calls.length === 1 && calls[0] === "/api/ikolearn/lesson", `${tag}: "Start a lesson" opens that lesson (one lesson request, mocked)`, JSON.stringify({ les, calls }));
       ok(errs.length === 0, `${tag}: no console errors`, errs.join(" | "));
-    } catch (e) { fails.push(`${tag}: main threw -> ${String(e.message || e).split("\n")[0]}`); }
+    } catch (e) { fails.push(`${tag}: main threw -> ${String(e.message || e).split("\n").slice(0, 6).join(" / ")}`); }
     await ctx.close();
   }
   /* 5. other cloud screens: a guide's learner, a new learner's first cloud; reduced motion keeps it off */

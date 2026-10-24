@@ -321,9 +321,17 @@ button.gcard:hover { border-color: var(--soft); }
 .zoom { display: flex; gap: 6px; }
 .zoom .btn { background: var(--paper); min-width: 34px; }
 .zoom #zin, .zoom #zout { font-size: 18px; line-height: 1; }
-.cloud-hint { position: absolute; left: 0; right: 0; top: 58px; width: fit-content; max-width: calc(100% - 32px); margin: 0 auto; box-sizing: border-box; padding: 3px 12px; border-radius: 999px; background: color-mix(in srgb, var(--paper) 90%, transparent); z-index: 2; text-align: center; font-size: 12px; line-height: 1.4; color: var(--soft); opacity: .8; pointer-events: none; } /* the input map, one faint line under the controls */
-#panel { position: absolute; left: 0; right: 0; bottom: 0; max-height: 62vh; overflow: auto; background: var(--paper); border-top: 1px solid var(--rule); }
-.panel-in { max-width: var(--col); margin: 0 auto; padding: 16px 20px 22px; }
+.cloud-hint { position: absolute; left: 0; right: 0; top: 58px; width: fit-content; max-width: calc(100% - 32px); margin: 0 auto; box-sizing: border-box; padding: 3px 12px; border-radius: 999px; background: color-mix(in srgb, var(--paper) 90%, transparent); z-index: 2; text-align: center; font-size: 12px; line-height: 1.4; color: var(--soft); opacity: .6; pointer-events: none; } /* the input map, one faint line under the controls */
+/* the selection card: a quiet rounded card next to its node (placed by app.js placeCard / camera.js cardPlace) */
+#panel { position: absolute; left: 12px; top: 72px; z-index: 3; box-sizing: border-box; width: min(320px, calc(100vw - 24px)); max-height: calc(100% - 84px); overflow: auto; overscroll-behavior: contain; background: var(--paper); border: 1px solid var(--rule); border-radius: 12px; box-shadow: 0 8px 28px rgba(60, 40, 20, .12), 0 1px 3px rgba(60, 40, 20, .06); }
+.panel-in { position: relative; padding: 14px 16px 12px; }
+.card-x { position: absolute; top: 6px; right: 6px; width: 32px; height: 32px; border: 0; border-radius: 50%; background: transparent; color: var(--soft); font: inherit; font-size: 20px; line-height: 1; cursor: pointer; }
+.card-x:hover, .card-x:focus-visible { background: var(--sheet); color: var(--ink); }
+#panel #p-title { font-size: 20px; margin: 2px 36px 6px 0; }
+#panel .kicker { padding-right: 36px; }
+#panel .note { margin-bottom: 10px; }
+#panel .actions { margin-bottom: 10px; }
+#panel .path { margin-top: 4px; }
 .kicker { font-size: 13px; color: var(--soft); margin: 0; }
 .kicker .link.up { font-size: 13px; color: var(--soft); padding: 0; }
 #p-title { font-weight: normal; font-size: 22px; margin: 2px 0 8px; }
@@ -332,7 +340,9 @@ button.gcard:hover { border-color: var(--soft); }
 .note.streaming p:last-child::after { content: ""; display: inline-block; width: .5em; height: 1em; margin-left: 2px; vertical-align: -2px; background: var(--ink); opacity: .55; animation: blink 1s steps(1) infinite; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
 #p-cards .card { margin-bottom: 12px; }
-#p-close { font-size: 14px; color: var(--soft); }
+/* the cloud's controls stay visible but quiet */
+.cloud-top .zoom, #cloud-close { opacity: .62; transition: opacity .2s; }
+.cloud-top .zoom:hover, .cloud-top .zoom:focus-within, #cloud-close:hover, #cloud-close:focus-visible { opacity: 1; }
 
 @media (min-width: 900px) {
   body { font-size: 18px; }
@@ -353,9 +363,6 @@ button.gcard:hover { border-color: var(--soft); }
   .l-main { padding-top: 0; }
   .l-main #l-trail { display: block; }
   .wn-opts { grid-template-columns: repeat(2, 1fr); }
-  /* the node panel sits on the left; the cloud's free area (and the focused node) is to its right */
-  #panel { left: 16px; right: auto; top: 64px; bottom: 16px; width: 380px; max-height: none; border: 1px solid var(--rule); border-radius: 6px; }
-  #cloud:has(#panel:not([hidden])) :is(.cloud-hint, .cloud-caption) { left: 412px; max-width: calc(100% - 444px); }
 }
 @media (prefers-reduced-motion: reduce) {
   .msg.model.streaming p:last-child::after, .note.streaming p:last-child::after, .lesson .caret::after, .gcard.grew { animation: none; }
@@ -494,9 +501,8 @@ button.gcard:active, button.gslot:active { transform: translateY(-1px) scale(.97
 @keyframes page-in { from { opacity: 0; transform: rotateY(-14deg) translateX(18px); } to { opacity: 1; transform: none; } }
 @keyframes slot-in { from { opacity: 0; transform: translateY(10px) scale(.95); } to { opacity: 1; transform: none; } }
 .hub-kids.opening .hk-cell { animation: slot-in .4s cubic-bezier(.2, .7, .2, 1) both; animation-delay: calc(160ms + var(--j, 0) * 35ms); }
-#panel:not([hidden]) { animation: sheet-up .3s cubic-bezier(.2, .7, .2, 1) both; }
-@keyframes sheet-up { from { opacity: .4; transform: translateY(26px); } to { opacity: 1; transform: none; } }
-@media (min-width: 900px) { @keyframes sheet-up { from { opacity: .4; transform: translateX(-22px); } to { opacity: 1; transform: none; } } }
+#panel:not([hidden]) { animation: card-in .26s cubic-bezier(.2, .7, .2, 1) both; }
+@keyframes card-in { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
   .btn, .chip, .wn-opt, .gcard, .gslot, .link, .ap-bar::after { transition: none; }
   .btn:active, .chip:active, .wn-opt:active, .link:active, button.gcard:active, button.gslot:active, button.gcard:hover, button.gslot:hover { transform: none; }
