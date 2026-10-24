@@ -71,15 +71,35 @@
     return fitZoom({ x0: -hx, x1: hx, y0: -hy, y1: hy }, w, h, lo, hi, margin);
   }
   /*
-   * Where a focused node goes on screen, and the free area to frame its branch in. Wide screens: right of the 400px
-   * side panel (it sits on the left), centred in the free area. Phones: the bottom sheet (sheet px tall) covers the lower part, so the node sits in the middle of the
-   * strip above it (never above the top controls) and the branch is fitted to that strip.
+   * Where a focused node goes on screen, and the free area to frame its branch in, leaving room for the selection card
+   * (card.js-free maths, see cardPlace). Wide screens: the node sits left of centre (38%) so the card fits to its right.
+   * Phones: the node sits in the upper part of the view, below the top controls, so the card fits under it.
    */
+  var CARD = { gap: 18, gapX: 44, margin: 12, wideAt: 0.38, phoneAt: 0.3, minH: 150 };
   function focusFrame(w, h, o) {
     o = o || {};
-    if (o.wide) { var side = o.side || 400; return { cx: side + (w - side) / 2, cy: h / 2, aw: w - side - 20, ah: h - 80 }; }
-    var top = o.top || 64, free = Math.max(120, h - (o.sheet || 0) - top);
-    return { cx: w / 2, cy: top + free / 2, aw: w - 24, ah: Math.max(100, free - 24) };
+    var top = o.top || 64;
+    if (o.wide) { var cx = Math.round(w * CARD.wideAt); return { cx: cx, cy: Math.round(top + (h - top) / 2), aw: 2 * (cx - 24), ah: h - top - 60 }; }
+    var free = Math.max(120, h - top), cy = Math.round(top + free * CARD.phoneAt);
+    return { cx: w / 2, cy: cy, aw: w - 24, ah: Math.max(100, 2 * (cy - top) - 16) };
+  }
+  /*
+   * Where the selection card goes, next to the node at (nx, ny) on screen: to its right, else its left, else below, else
+   * above, always inside the view (w x h, below `top`) and never over the node. A card taller than the room is given a
+   * max height (it scrolls inside). -> { side, x, y, maxH } (side "sheet": no room anywhere, dock it at the bottom).
+   */
+  function cardPlace(nx, ny, cw, ch, w, h, top) {
+    var m = CARD.margin, g = CARD.gap, gx = CARD.gapX, t = (top || 0) + m, clampY = function (hh) { return Math.max(t, Math.min(h - m - hh, ny - Math.min(hh, 220) / 2)); };
+    var roomH = h - m - t;
+    if (cw + 2 * m <= w) {
+      if (nx + gx + cw <= w - m) { var hr = Math.min(ch, roomH); return { side: "right", x: Math.round(nx + gx), y: Math.round(clampY(hr)), maxH: Math.round(roomH) }; }
+      if (nx - gx - cw >= m) { var hl = Math.min(ch, roomH); return { side: "left", x: Math.round(nx - gx - cw), y: Math.round(clampY(hl)), maxH: Math.round(roomH) }; }
+    }
+    var x = Math.round(Math.max(m, Math.min(w - m - cw, nx - cw / 2)));
+    var below = h - m - (ny + g), above = ny - g - t;
+    if (below >= Math.min(ch, CARD.minH)) return { side: "below", x: x, y: Math.round(ny + g), maxH: Math.round(below) };
+    if (above >= Math.min(ch, CARD.minH)) { var ha = Math.min(ch, above); return { side: "above", x: x, y: Math.round(ny - g - ha), maxH: Math.round(above) }; }
+    return { side: "sheet", x: m, y: Math.round(h - m - Math.min(ch, roomH)), maxH: Math.round(roomH) };
   }
   /* The yaw that brings a point to the front (on the near side, centred left-right): x' = 0, z' = -hypot(x, z). */
   function forwardYaw(p) { return Math.hypot(p.x, p.z) < 1e-9 ? null : Math.atan2(-p.x, -p.z); }
@@ -112,7 +132,7 @@
   /* One wheel notch, kept deliberate: a capped factor per event (a trackpad pinch sends ctrlKey and a small delta). */
   function wheelFactor(deltaY, ctrl) { return clamp(Math.exp(-deltaY * CAM.wheel * (ctrl ? 4 : 1)), CAM.wheelStep[0], CAM.wheelStep[1]); }
 
-  var api = { CAM: CAM, SPIN: SPIN, spinState: spinState, spinStep: spinStep, spinEase: spinEase, gestureFor: gestureFor, hint: hint, easeInOutCubic: easeInOutCubic, wrap: wrap, lerpView: lerpView, lerpPoint: lerpPoint, ORIGIN: ORIGIN, fitAround: fitAround, focusFrame: focusFrame, forwardYaw: forwardYaw, fitZoom: fitZoom, glide: glide, velocity: velocity, twist: twist, zoomAbout: zoomAbout, wheelFactor: wheelFactor };
+  var api = { CAM: CAM, SPIN: SPIN, spinState: spinState, spinStep: spinStep, spinEase: spinEase, gestureFor: gestureFor, hint: hint, easeInOutCubic: easeInOutCubic, wrap: wrap, lerpView: lerpView, lerpPoint: lerpPoint, ORIGIN: ORIGIN, fitAround: fitAround, focusFrame: focusFrame, cardPlace: cardPlace, CARD: CARD, forwardYaw: forwardYaw, fitZoom: fitZoom, glide: glide, velocity: velocity, twist: twist, zoomAbout: zoomAbout, wheelFactor: wheelFactor };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.IkoCamera = api;
 })(typeof window !== "undefined" ? window : this);

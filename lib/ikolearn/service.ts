@@ -27,6 +27,9 @@ import {
   type CreateItem,
   type CreateResult,
   adjacentSystem,
+  describeSystem,
+  DESCRIBE_SCHEMA,
+  parseDescribe,
   parseTest,
   testSystem,
   type TestQuestion,
@@ -307,6 +310,22 @@ export async function adjacentFor(input: LearnInput, env: Env, fetchImpl: typeof
   }, env, fetchImpl, { route: "adjacent" });
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
   return json(200, { ok: true, ghosts: r.value });
+}
+
+/**
+ * Describe (the backfill): one call for up to 8 topics that have no description yet (input.material: label + trail).
+ * Nothing to describe is 422 with no call. -> { ok, items: [{ name, blurb }] } (only the asked names).
+ */
+export async function describeFor(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): Promise<Out> {
+  const asked = input.material.map((m) => m.label);
+  if (!asked.length) return json(422, { ok: false, reason: "nothing_to_describe" });
+  const user = `Describe these ${asked.length} topics: ${asked.join("; ")}`;
+  const r = await generateJson<{ name: string; blurb: string }[]>(describeSystem(input), user, DESCRIBE_SCHEMA, (t) => {
+    const d = parseDescribe(t, asked, input.name);
+    return d.length ? d : null;
+  }, env, fetchImpl, { route: "describe" });
+  if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
+  return json(200, { ok: true, items: r.value });
 }
 
 export async function pathFor(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): Promise<Out> {

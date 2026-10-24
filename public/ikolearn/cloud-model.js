@@ -308,6 +308,7 @@
         if (subjects(cloud).length >= LIMITS.subjects) return;
         var sn = addNode(cloud, { label: label, parent: null, weight: 1, born: t });
         sn.weight += sig.w * 0.5; sn.touched = t; warm(sn, HEAT.chat * sig.w, t);
+        if (tp.blurb) setBlurb(cloud, sn.id, tp.blurb);
         res.parentsCreated.push(sn.id);
         return;
       }
@@ -333,6 +334,7 @@
         if (!links.length && !cleanLabel(tp.parent) && subjects(cloud).length < LIMITS.subjects) {
           var own = addNode(cloud, { label: label, parent: null, weight: 1, born: t });
           own.weight += sig.w * 0.5; own.touched = t; warm(own, HEAT.chat * sig.w, t);
+          if (tp.blurb) setBlurb(cloud, own.id, tp.blurb);
           res.parentsCreated.push(own.id);
           return;
         }
@@ -348,6 +350,7 @@
       n.weight += sig.w;
       n.mastery = clamp01(n.mastery + sig.m);
       if (tp.signal === "struggle") n.lastStruggle = t;
+      if (tp.blurb && !n.blurb) setBlurb(cloud, n.id, tp.blurb); /* its description, written in the same call (an existing one is kept) */
       n.touched = t;
       warm(n, HEAT.chat * sig.w, t);
       bumpAncestors(cloud, n.id, 0.25, t);
@@ -373,7 +376,9 @@
       if (findTopic(cloud, label) || subjects(cloud).some(function (s) { return s.key === norm(label); })) { out.dupes += 1; return; }
       var parent = findAny(cloud, g.parent) || fallback;
       if (!parent || !makeRoom(cloud, parent.id, true)) { out.unplaced += 1; return; }
-      out.added.push(addNode(cloud, { label: label, parent: parent.id, ghost: true, born: t }).id);
+      var gn = addNode(cloud, { label: label, parent: parent.id, ghost: true, born: t });
+      if (g.blurb) setBlurb(cloud, gn.id, g.blurb);
+      out.added.push(gn.id);
     });
     prune(cloud);
     if (out.added.length) cloud.rev += 1;
@@ -779,6 +784,7 @@
         if (Number.isFinite(sc)) { hit.imp = clamp01(sc > 1 ? sc / 100 : sc); hit.impAt = t; }
         if (Array.isArray(c.needs) && c.needs.length) needs.push([hit.id, c.needs]);
         if (!hit.motif) hit.motif = cleanMotif(c.motif);
+        if (c.blurb && !hit.blurb) setBlurb(cloud, hit.id, c.blurb); /* the child's description, from the same creation call */
         if (before.indexOf(hit.id) < 0 && out.children.indexOf(hit.id) < 0) out.children.push(hit.id);
       });
       r.added.forEach(function (x) { if (out.order.indexOf(x) < 0) out.order.push(x); });
@@ -1028,6 +1034,7 @@
         hit = addNode(cloud, { label: label, parent: pid, ghost: true, born: t });
         out.added.push(hit.id);
       }
+      if (c.blurb && !hit.blurb) setBlurb(cloud, hit.id, c.blurb);
       out.ids.push(hit.id);
       out.why.push(cleanWhy(c.why));
     });

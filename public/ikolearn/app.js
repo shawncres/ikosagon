@@ -29,7 +29,7 @@
     lesson: $("lesson"), lBack: $("l-back"), lTrail: $("l-trail"), lTitle: $("l-title"), lBody: $("l-body"), lDone: $("l-done"),
     lGot: $("l-got"), lTricky: $("l-tricky"), lStatus: $("l-status"), lPath: $("l-path"), lClar: $("l-clar"), lNext: $("l-next"), lChat: $("l-chat"), lRedo: $("l-redo"),
     cloud: $("cloud"), cloudCanvas: $("cloud-canvas"), cloudClose: $("cloud-close"), zin: $("zin"), zout: $("zout"), zreset: $("zreset"),
-    panel: $("panel"), cloudTop: document.querySelector(".cloud-top"), pKicker: $("p-kicker"), pTitle: $("p-title"), pNote: $("p-note"), pLesson: $("p-lesson"), pCard: $("p-card"), pAdj: $("p-adj"),
+    panel: $("panel"), cloudTop: document.querySelector(".cloud-top"), pKicker: $("p-kicker"), pTitle: $("p-title"), pDesc: $("p-desc"), pNote: $("p-note"), pLesson: $("p-lesson"), pCard: $("p-card"), pAdj: $("p-adj"),
     pChat: $("p-chat"), pPath: $("p-path"), pCards: $("p-cards"), pClose: $("p-close"),
     draw: $("draw"), deckBtn: $("deck-btn"), deck: $("deck"), dBack: $("d-back"), dLede: $("d-lede"), dAlbum: $("d-album"),
     hub: $("hub"), hubBack: $("hub-back"), hubCrumb: $("hub-crumb"), hubCard: $("hub-card"), hubTitle: $("hub-title"), hubState: $("hub-state"),
@@ -1620,14 +1620,14 @@
   function openCloud() {
     el.cloud.hidden = false;
     var fresh = !big;
-    if (!big) big = V.create(el.cloudCanvas, { onPick: pick, onView: saveView });
+    if (!big) big = V.create(el.cloudCanvas, { onPick: pick, onView: saveView, onDraw: placeCard, onEmpty: closeCard });
     big.resize();
     big.setCloud(state.cloud);
     /* the camera and focus come back as they were left (unless a lesson's topic is about to be focused) */
     if (fresh && state.view && !state.lessonNode) big.setView({ yaw: state.view.y, pitch: state.view.p, zoom: state.view.z, panX: state.view.x, panY: state.view.q, pivot: Array.isArray(state.view.o) ? { x: state.view.o[0], y: state.view.o[1], z: state.view.o[2] } : null, focus: state.view.f && nodeOf(state.view.f) ? state.view.f : null });
     big.setTests(testMap());
     renderCloudHint();
-    big.spin(true); /* a slow idle turn after a few idle seconds, on every view of the cloud, also beside the node panel (not with reduced motion; stopped by any input; paused while hidden or covered) */
+    big.spin(true); /* a slow idle turn on every view of the cloud; it goes on through drags and pans, a click pauses it a few seconds (not with reduced motion; paused while the tab is hidden or the cloud is closed) */
     if (state.lessonNode) setTimeout(function () { openPanel(state.lessonNode); }, 0); /* a lesson or a test: its topic */
     else if (state.glide && nodeOf(state.glide)) { var gl = state.glide; state.glide = null; setTimeout(function () { focusInView(gl, false); }, 0); } /* a new parent: the camera glides to it */
     renderCloudFlow();
@@ -1651,8 +1651,7 @@
     cloudFlow.appendChild(d);
   }
   function closeCloud(keepView) {
-    liftCloud(false);
-    el.cloud.hidden = true; el.panel.hidden = true; state.panelNode = null;
+    el.cloud.hidden = true; el.panel.hidden = true; state.panelNode = null; cardSig = "";
     if (big) { big.spin(false); big.hold(false); }
     if (!keepView && !state.lessonNode) { renderDraw(); el.input.focus(); }
   }
@@ -1671,8 +1670,7 @@
     var isRoot = id === "root";
     var n = isRoot ? null : nodeOf(id);
     if (!isRoot && !n) return;
-    el.panel.hidden = false;
-    syncCover();
+    el.panel.hidden = false; cardSig = "";
     if (cloudFlow) cloudFlow.hidden = true;
     el.pKicker.textContent = isRoot ? "Your learning cloud" : n.parent ? (n.ghost ? "Not explored yet · " : "") : "Subject";
     /* the trail above this topic: each step is a quiet link back up the branch */
@@ -1713,49 +1711,96 @@
     }
     el.pCards.textContent = "";
     if (!isRoot) C.cardsFor(state.cloud, id).slice().reverse().forEach(function (c) { el.pCards.appendChild(cardNode(c, new Date(c.at).toLocaleDateString())); });
-    /* the note is never written by a tap: shown when already written for this stage, else offered as a link (0 calls) */
+    /* the note is never written by a tap: shown when already written for this stage; offered as a link only where there
+       is no description (the whole cloud, or a description that could not be written) */
     if (!keepNote) {
-      if (!state.notes[noteKey(id)]) {
-        el.pNote.className = "note"; el.pNote.textContent = "";
-        el.pNote.appendChild(linkBtn("What do you notice here?", function () { notice(id); }));
-      } else notice(id);
+      if (!state.notes[noteKey(id)]) noteLine(id);
+      else notice(id);
     }
+    renderDesc(id);
+    placeCard();
     if (keepView) return;
-    if (isRoot) { big.clearFocus(); liftCloud(true); }
-    else {
-      liftCloud(false);
-      focusInView(id, false);
-    }
+    if (isRoot) big.clearFocus();
+    else focusInView(id, false);
   }
-  /* Focus a node where it is visible (CAM.focusFrame); a phone sheet that grows as its note streams re-frames it. */
-  var sheetH = 0, sheetTimer = 0, focusAt = 0;
+  /* Focus a node where it is visible (CAM.focusFrame), leaving room for its card (right of it wide, under it on phones). */
+  function cloudTop() { return el.cloudTop ? el.cloudTop.getBoundingClientRect().bottom - el.cloudCanvas.getBoundingClientRect().top + 8 : 64; }
   function focusInView(id, keepYaw) {
-    if (!keepYaw) focusAt = Date.now();
     var wide = window.innerWidth >= 900, ch = el.cloudCanvas.clientHeight, cw = el.cloudCanvas.clientWidth;
-    var top = el.cloudTop ? el.cloudTop.getBoundingClientRect().bottom - el.cloudCanvas.getBoundingClientRect().top + 8 : 64;
-    sheetH = el.panel.hidden ? 0 : el.panel.offsetHeight;
-    big.focusNode(id, Object.assign({ keepYaw: keepYaw }, CAM.focusFrame(cw, ch, { wide: wide, sheet: wide ? 0 : sheetH, top: top })));
+    big.focusNode(id, Object.assign({ keepYaw: keepYaw }, CAM.focusFrame(cw, ch, { wide: wide, top: cloudTop() })));
   }
-  /* The panel sits beside the cloud (left on wide screens, a sheet on phones), so the spin goes on; only a sheet that
-     covers most of the cloud holds it. */
-  function panelCovers() { return !el.panel.hidden && window.innerWidth < 900 && el.panel.offsetHeight > el.cloudCanvas.clientHeight * 0.7; }
-  function syncCover() { if (big) big.hold(panelCovers()); }
-  window.addEventListener("resize", syncCover);
-  if (window.ResizeObserver) new ResizeObserver(function () {
-    syncCover();
-    if (el.panel.hidden || window.innerWidth >= 900 || !big || !state.panelNode || state.panelNode === "root") return;
-    if (Math.abs(el.panel.offsetHeight - sheetH) < 24 || Date.now() - focusAt > 6000) return; /* not after the learner has moved on */
-    clearTimeout(sheetTimer);
-    sheetTimer = setTimeout(function () { if (!el.panel.hidden && nodeOf(state.panelNode)) focusInView(state.panelNode, true); }, 220);
-  }).observe(el.panel);
+  /*
+   * The selection card: a quiet rounded card next to its node (CAM.cardPlace: right of it, else left, below or above,
+   * inside the view, never over the node). It is placed again on every frame the cloud draws, so it stays attached as
+   * the cloud turns, pans or zooms. Dismissed by its close control, a tap on empty sky, or Escape.
+   */
+  var cardSig = "";
+  function placeCard() {
+    if (!big || el.panel.hidden || !state.panelNode) return;
+    var q = big.project(state.panelNode === "root" ? "root" : state.panelNode);
+    if (!q) return;
+    var cw = el.cloudCanvas.clientWidth, ch = el.cloudCanvas.clientHeight, box = el.panel.firstElementChild;
+    var pw = el.panel.offsetWidth, ph = (box ? box.offsetHeight : el.panel.scrollHeight) + 2;
+    var at = CAM.cardPlace(q.x, q.y, pw, ph, cw, ch, cloudTop());
+    var x = Math.max(CAM.CARD.margin, Math.min(cw - CAM.CARD.margin - pw, at.x)), y = Math.max(CAM.CARD.margin, at.y);
+    var sig = x + "," + y + "," + at.maxH + "," + at.side;
+    if (sig === cardSig) return;
+    cardSig = sig;
+    el.panel.style.left = x + "px"; el.panel.style.top = y + "px"; el.panel.style.maxHeight = at.maxH + "px";
+    el.panel.setAttribute("data-side", at.side);
+  }
+  function closeCard() {
+    if (el.panel.hidden) return;
+    cancelCall("notice");
+    el.panel.hidden = true; state.panelNode = null; cardSig = "";
+    if (big) big.clearFocus();
+    renderCloudFlow();
+  }
+  if (window.ResizeObserver) new ResizeObserver(function () { cardSig = ""; placeCard(); }).observe(el.panel);
+  window.addEventListener("resize", function () { cardSig = ""; placeCard(); });
 
-  /* The panel covers part of the cloud: on phones the lower part (move the cloud up), on wide screens the left side
-     (move it right) while it is open (whole-cloud view). */
-  function liftCloud(on) {
-    if (!big) return;
-    var v = big.state(), wide = window.innerWidth >= 900;
-    if (on && !state.lifted) { state.liftX = wide; state.lifted = wide ? (el.panel.offsetWidth + 16) / 2 : el.panel.offsetHeight / 2; big.setView(wide ? { panX: v.panX + state.lifted } : { panY: v.panY - state.lifted }); }
-    else if (!on && state.lifted) { big.setView(state.liftX ? { panX: v.panX - state.lifted } : { panY: v.panY + state.lifted }); state.lifted = 0; }
+  /*
+   * The node's description under the card's title: its blurb, written in the same call that made the node (0 extra
+   * calls). A node without one (an older save, a topic from before descriptions) gets it lazily: opening its card asks
+   * once for it together with its siblings and children that lack one (one call for up to 8, never twice in flight,
+   * never again once written; the answer is saved with the cloud). While it is written a faint placeholder shows; if
+   * it can't be, the old "What do you notice here?" link takes its place for this session, no "Try again".
+   */
+  var descWait = {}, descFail = {};
+  function noteLine(id) {
+    el.pNote.className = "note"; el.pNote.textContent = "";
+    var n = nodeOf(id);
+    if (id === "root" || !n || (!n.blurb && descFail[id])) el.pNote.appendChild(linkBtn("What do you notice here?", function () { notice(id); }));
+  }
+  function renderDesc(id) {
+    var n = id === "root" ? null : nodeOf(id), d = el.pDesc;
+    if (!d) return;
+    d.removeAttribute("aria-busy");
+    if (!n || (!n.blurb && descFail[id])) { d.hidden = true; d.textContent = ""; return; }
+    d.hidden = false;
+    if (n.blurb) { d.className = "desc"; d.textContent = n.blurb; return; }
+    d.className = "desc loading"; d.textContent = ""; d.setAttribute("aria-busy", "true");
+    describe(id);
+  }
+  function describe(id) {
+    var ids = P.describeBatch(state.cloud, id, function (x) { return descWait[x] || descFail[x]; }); /* this node, its siblings and children without one */
+    if (!ids.length) return;
+    ids.forEach(function (x) { descWait[x] = 1; });
+    var body = basePayload(id), cloud = state.cloud;
+    body.material = ids.map(function (x) { var m = nodeOf(x); return { label: m.label, line: m.parent ? C.trail(state.cloud, m.parent) : "" }; });
+    postJson("/describe", body).then(function (j) {
+      var got = 0;
+      if (state.cloud !== cloud) { ids.forEach(function (x) { delete descWait[x]; }); return; } /* another learner now (guide mode): not theirs */
+      ids.forEach(function (x) {
+        var m = nodeOf(x), hit = m && j && j.ok && Array.isArray(j.items) ? j.items.filter(function (it) { return it && String(it.name || "").toLowerCase() === m.label.toLowerCase(); })[0] : null;
+        delete descWait[x];
+        if (hit && C.setBlurb(state.cloud, x, hit.blurb)) got += 1;
+        else if (m && !m.blurb) descFail[x] = 1;
+      });
+      if (got) save();
+      var open = state.panelNode;
+      if (open && ids.indexOf(open) >= 0 && !el.panel.hidden) { renderDesc(open); if (!state.notes[noteKey(open)]) noteLine(open); }
+    });
   }
 
   /* Tap on the name or a node: a short personable note, streamed into the panel (cached until the cloud changes). */
@@ -1827,16 +1872,19 @@
     closeCloud();
   });
   el.pTest.addEventListener("click", function () { if (nodeOf(state.panelNode)) openTest(state.panelNode); });
-  el.pClose.addEventListener("click", function () { cancelCall("notice"); liftCloud(false); el.panel.hidden = true; state.panelNode = null; big.clearFocus(); big.hold(false); renderCloudFlow(); });
+  el.pClose.addEventListener("click", closeCard);
+  /* a click on any control over the cloud (zoom, Recentre, the card's actions, the suggestions) pauses the spin a moment */
+  el.cloud.addEventListener("click", function (e) { if (big && e.target.closest && e.target.closest("button, a")) big.pause(); });
   el.cloudClose.addEventListener("click", function () { closeCloud(); });
   el.zin.addEventListener("click", function () { big.zoomBy(1.35); });
   el.zout.addEventListener("click", function () { big.zoomBy(1 / 1.35); });
-  el.zreset.addEventListener("click", function () { big.recentre(); state.lifted = 0; if (!el.panel.hidden && state.panelNode === "root") liftCloud(true); });
+  el.zreset.addEventListener("click", function () { big.recentre(); });
   /* one faint line documents the input map, for touch or for a mouse */
   renderCloudHint();
   document.addEventListener("keydown", function (e) {
     if (e.key !== "Escape") return;
-    if (!el.cloud.hidden) closeCloud();
+    if (!el.cloud.hidden && !el.panel.hidden) closeCard(); /* the card first, then the cloud */
+    else if (!el.cloud.hidden) closeCloud();
     else if (state.lessonNode) showLesson(false);
     else if (!el.hub.hidden) hubBack();
     else if (!el.deck.hidden) showDeck(false);

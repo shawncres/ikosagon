@@ -271,8 +271,10 @@ async function run(width) {
     await js("#hub-cloud");
     await p.waitForSelector("#panel:not([hidden])", { timeout: 4000 });
     await p.waitForTimeout(500);
-    const panel = await p.evaluate(() => ({ shown: !document.querySelector("#panel").hidden, link: /What do you notice here\?/.test(document.querySelector("#p-note").innerText) }));
-    ok(panel.shown && panel.link && calls.length === c0, `${width}: a node's panel (what a tap opens) makes no call; the note is offered as a link`, JSON.stringify(panel) + " " + calls.slice(c0).join());
+    const panel = await p.evaluate(() => ({ shown: !document.querySelector("#panel").hidden, link: /What do you notice here\?/.test(document.querySelector("#p-note").innerText), desc: !document.querySelector("#p-desc").hidden }));
+    /* this node has no description yet: its card asks once for it (with its siblings); this mock fails it, so the old line stays. No note call. */
+    const made = calls.slice(c0);
+    ok(panel.shown && panel.link && !panel.desc && made.length === 1 && /describe$/.test(made[0]), `${width}: a node's panel (what a tap opens) makes no note call (only the one description backfill, failed here: the note is offered as a link)`, JSON.stringify(panel) + " " + made.join());
     await shot("node-tap");
     mock.noticeMs = 2500;
     await p.getByRole("button", { name: "What do you notice here?" }).click();
