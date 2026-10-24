@@ -149,8 +149,10 @@ for (const w of [390, 1280]) {
   await step(tag, "link", async () => {
     const { ctx, p, errs, calls } = await page(w, true);
     await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
-    const link = p.locator("#family-link");
-    ok(await link.isVisible() && (await link.textContent()) === "For parents & teachers", `${tag}: a small "For parents & teachers" link in the app's footer line`);
+    /* the app opens on the cloud (home): the link is in its fine print (and in the chat's footer line) */
+    await p.waitForSelector("#cloud:not([hidden])");
+    const link = p.locator('.cloud-foot a[href="/ikolearn/family"]');
+    ok(await link.isVisible() && (await link.textContent()) === "For parents & teachers" && (await p.textContent("#family-link")) === "For parents & teachers", `${tag}: a small "For parents & teachers" link in the cloud's fine print (and the chat's footer line)`);
     if (SHOTS && w === 390) { await link.scrollIntoViewIfNeeded(); await shot(p, "390-link"); }
     const n0 = calls.length; /* the app itself may fetch its shared examples; the view must add nothing */
     await link.click();
@@ -159,7 +161,7 @@ for (const w of [390, 1280]) {
     ok(calls.length === n0, `${tag}: the view opened from the app makes 0 calls`, calls.slice(n0).join());
     ok((await p.textContent("h1")) === "Sam's learning", `${tag}: the link opens the view for this learner`);
     await p.click("text=Back to IkoLearn");
-    await p.waitForSelector("#chat:not([hidden])");
+    await p.waitForSelector("#cloud:not([hidden])"); /* back home: the cloud */
     ok(errs.length === 0, `${tag}: app + view: no console errors`, errs.join(" | "));
     await ctx.close();
   });

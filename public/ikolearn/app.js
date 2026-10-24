@@ -28,7 +28,8 @@
     focusChip: $("focus-chip"), focusText: $("focus-text"), focusClear: $("focus-clear"),
     lesson: $("lesson"), lBack: $("l-back"), lTrail: $("l-trail"), lTitle: $("l-title"), lBody: $("l-body"), lDone: $("l-done"),
     lGot: $("l-got"), lTricky: $("l-tricky"), lStatus: $("l-status"), lPath: $("l-path"), lClar: $("l-clar"), lNext: $("l-next"), lChat: $("l-chat"), lRedo: $("l-redo"),
-    cloud: $("cloud"), cloudCanvas: $("cloud-canvas"), cloudClose: $("cloud-close"), zin: $("zin"), zout: $("zout"), zreset: $("zreset"),
+    cloud: $("cloud"), cloudCanvas: $("cloud-canvas"), cloudClose: $("cloud-close"), cloudDeck: $("cloud-deck"), cloudWho: $("cloud-who"), toCloud: $("to-cloud"),
+    cs: $("cloud-start"), csLede: $("cs-lede"), csForm: $("cs-form"), csIn: $("cs-in"), csStatus: $("cs-status"), csIko: $("cs-iko"), zin: $("zin"), zout: $("zout"), zreset: $("zreset"),
     panel: $("panel"), cloudTop: document.querySelector(".cloud-top"), pKicker: $("p-kicker"), pTitle: $("p-title"), pDesc: $("p-desc"), pNote: $("p-note"), pLesson: $("p-lesson"), pCard: $("p-card"), pAdj: $("p-adj"),
     pChat: $("p-chat"), pPath: $("p-path"), pCards: $("p-cards"), pClose: $("p-close"),
     draw: $("draw"), deckBtn: $("deck-btn"), deck: $("deck"), dBack: $("d-back"), dLede: $("d-lede"), dAlbum: $("d-album"),
@@ -587,6 +588,7 @@
     [el.send, el.pCard, el.pAdj, el.pLesson, el.pTest, el.lGot, el.lTricky].forEach(function (b) { b.disabled = on; });
     Array.prototype.forEach.call(document.querySelectorAll(".draw-btn, .clar-opt"), function (b) { b.disabled = on; });
     if (!on && state.queued) { var q = state.queued; state.queued = null; setTimeout(q, 0); }
+    renderStart();
   }
 
   /* ---------- chat ---------- */
@@ -796,6 +798,7 @@
         return;
       }
       var q = qs[i++];
+      if (q.id === "grow" && quickStart) { quickStart = false; return next(); } /* begun from the cloud: build right away */
       ask(q, function (v) {
         if (q.open && v) { if (q.id === "grow") grow = v; else { about = v; qs.push(P.openQuestion(state.cloud, "grow")); } }
         save(); next();
@@ -836,7 +839,7 @@
     el.thread.hidden = on;
     el.dock.hidden = on;
     if (!on) { state.lessonNode = null; state.mode = "lesson"; state.test = null; renderThread(); renderDraw(); }
-    else { el.draw.hidden = true; viewIn(el.lesson); }
+    else { el.draw.hidden = true; el.lBack.textContent = state.lessonFrom && nodeOf(state.lessonFrom) ? "Back to its card" : "Back to your cloud"; viewIn(el.lesson); }
   }
 
   /* "Further reading & viewing" under the lesson: collapsed, allowlisted search links only (lesson.js) */
@@ -871,7 +874,7 @@
     var sig = JSON.stringify(sp), old = el.lCard.firstElementChild;
     if (!old || el.lCard.getAttribute("data-sig") !== sig) {
       el.lCard.textContent = "";
-      var c = D.render(document, sp, { size: "full", onOpen: function (cid, src) { var back = state.lessonFrom; state.lessonFrom = null; showLesson(false); openHub(cid, src, back || "chat"); } });
+      var c = D.render(document, sp, { size: "full", onOpen: function (cid, src) { var back = state.lessonFrom; state.lessonFrom = null; showLesson(false); openHub(cid, src, back || "cloud"); } });
       if (!markEvolve(c, sp) && grew) c.classList.add("grew");
       el.lCard.appendChild(c);
       el.lCard.setAttribute("data-sig", sig);
@@ -1069,7 +1072,7 @@
       var others = C.otherBranches(state.cloud, id, 3, topIds()).map(nodeOf).filter(Boolean);
       var w = mk("div", "others");
       w.appendChild(mk("p", "l-head", "This branch is done"));
-      w.appendChild(mk("p", null, others.length ? "You've finished " + n.label + ". Here are other branches to try:" : "You've finished " + n.label + ". Ask in chat for something new whenever you like."));
+      w.appendChild(mk("p", null, others.length ? "You've finished " + n.label + ". Here are other branches to try:" : "You've finished " + n.label + ". Ask Iko for something new whenever you like."));
       if (others.length) {
         var ul = mk("ul");
         others.forEach(function (o) {
@@ -1274,7 +1277,7 @@
     if (offer) {
       /* still stuck: chat, with this topic in focus and the question started */
       var talk = mk("p", "fine clar-chat");
-      talk.appendChild(linkBtn("Talk it through in chat", function () { askInChat(id, "I'm still finding " + nodeOf(id).label + " tricky. Can you help me with it?"); }));
+      talk.appendChild(linkBtn("Talk it through with Iko", function () { askInChat(id, "I'm still finding " + nodeOf(id).label + " tricky. Can you help me with it?"); }));
       el.lClar.appendChild(talk);
     }
   }
@@ -1404,11 +1407,12 @@
     el.input.focus();
     scrollDown();
   }
+  /* Back from a lesson: to the card it was opened from, else home to the cloud, on that topic */
   el.lBack.addEventListener("click", function () {
-    var back = state.lessonFrom;
+    var back = state.lessonFrom, id = state.lessonNode;
     state.lessonFrom = null;
-    showLesson(false);
-    if (back && nodeOf(back)) openHub(back, null, "deck");
+    if (back && nodeOf(back)) { showLesson(false); openHub(back, null, "deck"); return; }
+    home(id);
   });
   el.lGot.addEventListener("click", function () { finishLesson("got"); });
   el.lTricky.addEventListener("click", function () { finishLesson("tricky"); });
@@ -1525,7 +1529,7 @@
     }
     el.lStatus.appendChild(linkBtn("Draw a card", function () { drawCard(null); }));
     el.lStatus.appendChild(document.createTextNode(" · "));
-    el.lStatus.appendChild(linkBtn("Back to your cards", function () { showLesson(false); }));
+    el.lStatus.appendChild(linkBtn("Back to your cloud", function () { home(t.pid); }));
     renderLessonCard(true);
     refreshViews([t.pid].concat(res ? res.touched : []));
   }
@@ -1617,7 +1621,18 @@
   }
 
   /* ---------- cloud overlay + panel ---------- */
-  function openCloud() {
+  /*
+   * Home: the cloud is the main view. Lessons, the deck, a card's hub and the chat with Iko open from it, and their
+   * Back / close returns here (to the topic they were about, when there is one: its card opens beside it).
+   */
+  function home(id) {
+    if (state.lessonNode) showLesson(false);
+    el.deck.hidden = true; el.hub.hidden = true; state.hubNode = null; el.thread.hidden = false; el.dock.hidden = false;
+    openCloud();
+    if (id && nodeOf(id)) openPanel(id);
+  }
+  /* landing: the first view after the name, or a returning visit (no focus moves, so no keyboard pops up on phones) */
+  function openCloud(landing) {
     el.cloud.hidden = false;
     var fresh = !big;
     if (!big) big = V.create(el.cloudCanvas, { onPick: pick, onView: saveView, onDraw: placeCard, onEmpty: closeCard });
@@ -1631,15 +1646,56 @@
     if (state.lessonNode) setTimeout(function () { openPanel(state.lessonNode); }, 0); /* a lesson or a test: its topic */
     else if (state.glide && nodeOf(state.glide)) { var gl = state.glide; state.glide = null; setTimeout(function () { focusInView(gl, false); }, 0); } /* a new parent: the camera glides to it */
     renderCloudFlow();
-    el.cloudClose.focus();
+    renderHomeNav();
+    if (landing !== true) el.cloudClose.focus();
   }
+  /* the cloud's own quiet links: Talk to Iko, the deck (once there is a card), and the learner switch when guiding */
+  function renderHomeNav() {
+    var n = (state.cloud && state.cloud.deck || []).length;
+    el.cloudDeck.hidden = !n; el.cloudDeck.textContent = "Your deck · " + n;
+    var ix = PR && PR.current(localStorage);
+    el.cloudWho.hidden = !(ix && ix.mode === "guide");
+    if (!el.cloudWho.hidden) { el.cloudWho.textContent = state.name + " · switch"; el.cloudWho.setAttribute("aria-label", state.name + " is learning now. Switch learner"); }
+  }
+  /*
+   * A brand-new cloud (no subjects yet): the name in the centre and, under it, one quiet way to begin: a line in the
+   * learner's own words (the same open question as the chat's first one; no topic list, no age), or a talk with Iko.
+   * Begin answers that question (skipping the optional follow-up) and the cloud grows here, as the start call streams.
+   */
+  var quickStart = false;
+  function renderStart() {
+    if (!el.cs) return;
+    var empty = Boolean(state.cloud) && !C.subjects(state.cloud).length;
+    el.cs.hidden = !empty || el.cloud.hidden;
+    if (el.cloudHint) el.cloudHint.hidden = empty; /* nothing to drag yet: no input tips over the start */
+    if (el.cs.hidden) return;
+    var building = state.busy, last = state.thread.filter(function (m) { return m.role === "model"; }).pop(), failed = !building && last && last.retry && last.retry.kind === "start";
+    el.csLede.textContent = building ? "" : "Hi " + state.name + ". This is your learning cloud. It grows around your name as you explore. What are you curious about, or what do you enjoy?";
+    el.csForm.hidden = building;
+    el.csStatus.textContent = building ? "Growing your cloud…" : failed ? "That didn't work just now. Try again in a moment, or talk it over with Iko." : "";
+    el.cs.classList.toggle("busy", building);
+  }
+  function startFromCloud(t) {
+    var text = cleanAbout(t);
+    if (!text || state.busy) return;
+    var open = state.thread.filter(function (m) { return m.role === "ask" && !m.done && m.open && askHandlers[m.id]; })[0];
+    el.csIn.value = "";
+    if (open) { quickStart = true; askHandlers[open.id](text, t); }
+    else send(t);
+    renderStart();
+  }
+  el.csForm.addEventListener("submit", function (e) { e.preventDefault(); startFromCloud(el.csIn.value); });
+  el.csIko.addEventListener("click", function () { closeCloud(); });
+  el.toCloud.addEventListener("click", function () { home(); });
+  el.cloudDeck.addEventListener("click", function () { closeCloud(true); showDeck(true); });
   /* Back on the cloud: a slim row of the suggested cards and Draw along the bottom (hidden while a panel is open). */
   var cloudFlow = null;
   function renderCloudFlow() {
     if (!cloudFlow) { cloudFlow = mk("div", "cloud-flow"); el.cloud.appendChild(cloudFlow); }
     cloudFlow.textContent = "";
     cloudFlow.hidden = !el.panel.hidden || Boolean(cloudCaption && !cloudCaption.hidden);
-    if (cloudFlow.hidden) return;
+    renderStart();
+    if (cloudFlow.hidden || !C.subjects(state.cloud).length) { cloudFlow.hidden = true; return; } /* an empty cloud: its start invite instead */
     var items = refreshSuggest().filter(function (it) { return nodeOf(it.id); });
     cloudFlow.appendChild(mk("span", "kicker", "Pick up"));
     items.forEach(function (it) {
@@ -1883,11 +1939,11 @@
   renderCloudHint();
   document.addEventListener("keydown", function (e) {
     if (e.key !== "Escape") return;
-    if (!el.cloud.hidden && !el.panel.hidden) closeCard(); /* the card first, then the cloud */
-    else if (!el.cloud.hidden) closeCloud();
-    else if (state.lessonNode) showLesson(false);
+    if (!el.cloud.hidden) { if (!el.panel.hidden) closeCard(); return; } /* the cloud is home: Escape only closes its card */
+    if (state.lessonNode) el.lBack.click();
     else if (!el.hub.hidden) hubBack();
-    else if (!el.deck.hidden) showDeck(false);
+    else if (!el.deck.hidden) el.dBack.click();
+    else home(); /* the chat with Iko: back to the cloud */
   });
 
   /* ---------- the deck and today's draw ---------- */
@@ -1912,6 +1968,7 @@
     var n = (state.cloud.deck || []).length;
     el.deckBtn.hidden = !n;
     el.deckBtn.textContent = "Your deck · " + n;
+    if (el.cloudDeck) renderHomeNav();
     renderMiniDeck();
   }
   /*
@@ -2045,7 +2102,7 @@
   function renderHub(opening) {
     var id = state.hubNode, n = nodeOf(id), sp = D.cardSpec(state.cloud, id);
     if (!sp) return;
-    el.hubBack.textContent = state.hubFrom === "cloud" ? "Back to your cloud" : state.hubFrom === "chat" ? "Back to chat" : state.hubFrom && state.hubFrom !== "deck" && nodeOf(state.hubFrom) ? "Back to " + nodeOf(state.hubFrom).label : "Back to your deck";
+    el.hubBack.textContent = state.hubFrom === "cloud" ? "Back to your cloud" : state.hubFrom === "chat" ? "Back to Iko" : state.hubFrom && state.hubFrom !== "deck" && nodeOf(state.hubFrom) ? "Back to " + nodeOf(state.hubFrom).label : "Back to your deck";
     el.hubCrumb.textContent = "";
     var anc = n ? C.ancestry(state.cloud, id).slice(0, -1) : [];
     el.hubCrumb.appendChild(linkBtn("Deck", function () { el.hub.hidden = true; state.hubNode = null; showDeck(true); }));
@@ -2230,7 +2287,7 @@
     el.draw.appendChild(flowBlock("chat"));
   }
   el.deckBtn.addEventListener("click", function () { showDeck(true); });
-  el.dBack.addEventListener("click", function () { showDeck(false); });
+  el.dBack.addEventListener("click", function () { home(); });
 
   /* ---------- composer ---------- */
   function autosize() { el.input.style.height = "auto"; el.input.style.height = Math.min(el.input.scrollHeight, 180) + "px"; }
@@ -2263,7 +2320,7 @@
     if (P.needsOnboarding(state.cloud)) { if (!state.thread.some(function (m) { return m.role === "user"; })) state.thread = []; renderThread(); runOnboarding(); }
     else if (!state.thread.length) greet();
     startSession();
-    setTimeout(function () { el.input.focus(); }, 0);
+    openCloud(true); /* home: the cloud, with the name in the centre (a first visit, a guide's learner, a return) */
   }
   /* Once per browser session: for "seems stuck" (visits without a lesson). */
   function countVisit() {

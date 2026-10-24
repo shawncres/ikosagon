@@ -2411,7 +2411,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/big\.spin\(true\)/.test(app) && /big\.spin\(false\)/.test(app) && /big\.hold\(false\)/.test(app) && !/big\.hold\(true\)/.test(app), "the app spins it while the cloud is open, on every view of it (also beside the node panel)");
   ok(/el\.cloud\.addEventListener\("click", function \(e\) \{ if \(big && e\.target\.closest && e\.target\.closest\("button, a"\)\) big\.pause\(\); \}\)/.test(app), "the app: a click on any control over the cloud (zoom, Recentre, the card) pauses the spin");
   ok(/#panel \{ position: absolute;[^}]*border-radius: 12px;/.test(css) && !/#panel \{ left: 16px; right: auto;/.test(css) && !/sheet-up/.test(css) && /\.card-x \{/.test(css), "the node detail is a rounded card (no fixed side pane or bottom sheet), with a close control");
-  ok(/el\.pClose\.addEventListener\("click", closeCard\)/.test(app) && /if \(!el\.cloud\.hidden && !el\.panel\.hidden\) closeCard\(\);/.test(app) && !/liftCloud/.test(app), "the card closes with its control, a tap on empty sky or Escape (the card first, then the cloud)");
+  ok(/el\.pClose\.addEventListener\("click", closeCard\)/.test(app) && /if \(!el\.cloud\.hidden\) \{ if \(!el\.panel\.hidden\) closeCard\(\); return; \}/.test(app) && !/liftCloud/.test(app), "the card closes with its control, a tap on empty sky or Escape (Escape never leaves the cloud: it is home)");
   ok(/id="p-close" class="card-x" aria-label="Close"/.test(fs.readFileSync("public/ikolearn/index.html", "utf8")), "the card's close control is a labelled button at its top");
   // node states
   ok(/var sel = !mini && n\.id === focusId, sk = sel \? selEase\(now\) : 0;/.test(view) && /if \(sel\) \{ r \*= 1 \+ 0\.28 \* sk;/.test(view) && /createRadialGradient/.test(view) && /function selEase\(now\) \{ if \(reduce\) return 1;/.test(view), "nodes: the selected one is a little larger, with a soft glow and a fine ring that ease in (still with reduced motion)");
@@ -2923,7 +2923,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     const prep = app.slice(app.indexOf("  function prepareClarify(id) {"), app.indexOf("  function focusClar(style) {"));
     ok(/les\.tk && !\(les\.cl && les\.cl\.simpler\)\) \{ les\.cl = les\.cl \|\| \{\}; les\.cl\.simpler = les\.tk; save\(\); \}/.test(prep) && /else clarify\(id, "simpler"\);/.test(prep) && /focusClar\("simpler"\)/.test(prep) && !/stream\(|postJson\(/.test(prep), "Still tricky: the lesson's prepared simpler explanation is shown at once (0 calls); an older lesson without one writes it (1 call)");
     ok(/if \(tricky\) state\.lessons\[id\]\.tk = tricky;/.test(app) && /tricky = typeof ev\.tricky === "string"/.test(app) && /if \(state\.lessons\[id\] && state\.lessons\[id\]\.cl\) renderClarify/.test(app), "Still tricky: prepared in the lesson's own call and kept with the lesson (tk), never shown until asked");
-    ok(/linkBtn\("Talk it through in chat", function \(\) \{ askInChat\(id, "I'm still finding "/.test(app) && /function askInChat\(id, ask\)/.test(app), "Still tricky: chat is one tap away, with the topic in focus and the question started");
+    ok(/linkBtn\("Talk it through with Iko", function \(\) \{ askInChat\(id, "I'm still finding "/.test(app) && /function askInChat\(id, ask\)/.test(app), "Still tricky: chat is one tap away, with the topic in focus and the question started");
   }
   const cl = app.slice(app.indexOf("  function clarify(id, style) {"), app.indexOf("  /* ---------- Where Next"));
   ok((cl.match(/stream\("\/chat"/g) || []).length === 1 && /mode: "clarify", clarify: style/.test(cl) && /state\.lessons\[id\]\.cl\[style\] = text\.trim\(\)/.test(cl) && /if \(les && les\.cl && les\.cl\[style\]\)/.test(cl), "clarify: one streamed chat call per option, kept with the lesson (asking again: 0 calls)");
@@ -2976,7 +2976,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(famHtml.indexOf("cloud-model.js") < famHtml.indexOf("rank.js") && famHtml.indexOf("rank.js") < famHtml.indexOf("deck.js") && famHtml.indexOf("deck.js") < famHtml.indexOf("orchestrator.js") && famHtml.indexOf("orchestrator.js") < famHtml.indexOf("family.js"), "family page: the model scripts load in the app's order, the view last");
   ok(/\{ source: "\/ikolearn\/family", destination: "\/ikolearn\/family\.html" \}/.test(fs.readFileSync("next.config.ts", "utf8")), "next.config: /ikolearn/family serves the view (noindex via /ikolearn/:path*)");
   const idx = fs.readFileSync("public/ikolearn/index.html", "utf8");
-  ok(/<a href="\/ikolearn\/family" id="family-link">For parents &amp; teachers<\/a>/.test(idx) && (idx.match(/ikolearn\/family/g) || []).length === 1, "app: one quiet text link, \"For parents & teachers\", in the footer line");
+  ok(/<a href="\/ikolearn\/family" id="family-link">For parents &amp; teachers<\/a>/.test(idx) && (idx.match(/ikolearn\/family/g) || []).length === 2 && /<p class="cloud-foot fine">[^\n]*<a href="\/ikolearn\/family">For parents &amp; teachers<\/a>/.test(idx), "app: one quiet text link, \"For parents & teachers\", in the chat's footer line and in the cloud's fine print");
   ok(/@media print/.test(famCss) && /\.fam-tools[^}]*display: none|\.fam-back, \.fam-tools/.test(famCss), "family page: prints without its buttons");
   const servedFam = ["family.html", "family.css", "family.js"].reduce((n, f) => n + (/\.(js|css)$/.test(f) ? Buffer.byteLength(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.statSync("public/ikolearn/" + f).size), 0);
   ok(servedFam < 20_000, "family page: its own files stay small (under 20 KB served)", String(servedFam));
@@ -3213,6 +3213,28 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/else if \(m && !m\.blurb\) descFail\[x\] = 1;/.test(app) && /if \(id === "root" \|\| !n \|\| \(!n\.blurb && descFail\[id\]\)\) el\.pNote\.appendChild\(linkBtn\("What do you notice here\?"/.test(app) && !/describe[\s\S]{0,400}Try again/.test(app.slice(app.indexOf("  function describe(id) {"), app.indexOf("  function describe(id) {") + 1500)), "fallback: a failed description hides quietly and the old line comes back (no Try again)");
   ok(/if \(state\.cloud !== cloud\) \{/.test(app), "backfill: an answer for another learner (guide mode switched meanwhile) is dropped");
   ok(/\.desc \{[^}]*-webkit-line-clamp: 3;/.test(css) && /\.desc\.loading \{[^}]*animation: gen-shimmer/.test(css) && /@media \(prefers-reduced-motion: reduce\) \{ \.desc\.loading \{ animation: none; \} \}/.test(css), "card: the description is quiet, at most 3 lines; the placeholder is still with reduced motion");
+}
+
+/* ================= the cloud as home ================= */
+{
+  const app = fs.readFileSync("public/ikolearn/app.js", "utf8"), css = fs.readFileSync("public/ikolearn/styles.css", "utf8"), html = fs.readFileSync("public/ikolearn/index.html", "utf8");
+  const sc = app.slice(app.indexOf("  function startChat() {"), app.indexOf("  function countVisit() {"));
+  ok(/openCloud\(true\); \/\* home: the cloud/.test(sc) && !/el\.input\.focus\(\)/.test(sc), "home: every start (a first name, a guide's learner, a returning visit) lands on the cloud, with no focus jump");
+  ok(/if \(landing !== true\) el\.cloudClose\.focus\(\);/.test(app), "home: landing moves no focus (no keyboard on phones)");
+  ok(/function home\(id\) \{\s*if \(state\.lessonNode\) showLesson\(false\);[\s\S]{0,200}openCloud\(\);\s*if \(id && nodeOf\(id\)\) openPanel\(id\);/.test(app), "home(): closes the lesson, deck or card view and returns to the cloud, on the topic when there is one");
+  ok(/if \(back && nodeOf\(back\)\) \{ showLesson\(false\); openHub\(back, null, "deck"\); return; \}\s*home\(id\);/.test(app) && /"Back to its card" : "Back to your cloud"/.test(app), "lesson: Back returns to the card it came from, else to the cloud on its topic");
+  ok(/el\.dBack\.addEventListener\("click", function \(\) \{ home\(\); \}\)/.test(app) && /id="d-back" class="link back">Back to your cloud</.test(html), "deck: Back returns to the cloud");
+  ok(/el\.toCloud\.addEventListener\("click", function \(\) \{ home\(\); \}\)/.test(app) && /id="to-cloud"[^>]*>Your cloud</.test(html) && /class="chat-name" aria-hidden="true">Iko</.test(html), "Iko (the chat): a quiet way back to the cloud in its header");
+  ok(/id="cloud-close" class="link">Talk to Iko</.test(html) && /id="p-chat" class="btn sm">Talk to Iko</.test(html) && /id="l-chat" class="link">Ask Iko about this</.test(html) && /placeholder="Ask Iko anything"/.test(html) && !/>Talk in chat<|>Back to chat<|in chat</.test(html), "wording: Talk to Iko, Ask Iko about this, Ask Iko anything (no \"chat\" left in the visible labels)");
+  ok(/You are Iko, the warm, calm learning companion in IkoLearn/.test(SYSTEM_BASE), "Iko: the companion knows its name (prompt wording only, no extra call)");
+  ok(/<nav class="home-nav" aria-label="IkoLearn">/.test(html) && /id="cloud-deck" class="link" hidden>/.test(html) && /id="cloud-who" class="who-now" href="\/ikolearn\/learners" hidden>/.test(html) && /el\.cloudWho\.hidden = !\(ix && ix\.mode === "guide"\);/.test(app), "home nav: Talk to Iko, the deck (once there are cards) and the learner switch for guides, in one labelled nav");
+  ok(/\.home-nav > :is\(button, a\) \{ opacity: \.62;/.test(css) && /\.cloud-foot \{[^}]*opacity: \.5;/.test(css) && /@media \(max-width: 699px\) \{ \.home-brand \{ display: none; \}/.test(css), "home nav: quiet (dimmed until hovered or focused), the brand dropped on phones");
+  // the empty-cloud start
+  ok(/var empty = Boolean\(state\.cloud\) && !C\.subjects\(state\.cloud\)\.length;/.test(app) && /What are you curious about, or what do you enjoy\?/.test(app) && /id="cs-iko" class="link">or talk it over with Iko</.test(html), "empty cloud: the name in the centre, one open question in their own words, or a talk with Iko");
+  const cs = app.slice(app.indexOf("  function renderStart() {"), app.indexOf("  el.csForm.addEventListener"));
+  ok(!/\b(age|years? old|kids?|child|student|grade)\b/i.test(cs) && !/\[\s*"[A-Z][a-z]+",\s*"/.test(cs), "empty cloud: no static topic list and no age wording");
+  ok(/if \(open\) \{ quickStart = true; askHandlers\[open\.id\]\(text, t\); \}\s*else send\(t\);/.test(app) && /if \(q\.id === "grow" && quickStart\) \{ quickStart = false; return next\(\); \}/.test(app), "empty cloud: Begin answers the first question and builds at once (the same one start call, no new call)");
+  ok(/el\.csStatus\.textContent = building \? "Growing your cloud…" : failed \?/.test(app) && /if \(cloudFlow\.hidden \|\| !C\.subjects\(state\.cloud\)\.length\)/.test(app), "empty cloud: a quiet status while it grows, an honest line if it failed; no Pick up row on an empty cloud");
 }
 
 if (fails.length) {

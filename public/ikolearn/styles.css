@@ -345,8 +345,31 @@ button.gcard:hover { border-color: var(--soft); }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
 #p-cards .card { margin-bottom: 12px; }
 /* the cloud's controls stay visible but quiet */
-.cloud-top .zoom, #cloud-close { opacity: .62; transition: opacity .2s; }
-.cloud-top .zoom:hover, .cloud-top .zoom:focus-within, #cloud-close:hover, #cloud-close:focus-visible { opacity: 1; }
+.cloud-top .zoom, .home-nav > :is(button, a) { opacity: .62; transition: opacity .2s; }
+.cloud-top .zoom:hover, .cloud-top .zoom:focus-within, .home-nav > :is(button, a):hover, .home-nav > :is(button, a):focus-visible { opacity: 1; }
+/* home: the cloud's own quiet navigation (Talk to Iko, the deck, the learner switch) and its fine print */
+.home-nav { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; min-width: 0; }
+.home-brand { font-size: 14px; letter-spacing: .04em; color: var(--soft); opacity: .7; }
+.home-nav > :is(button, a) { font-size: 14px; color: var(--ink); }
+.home-nav .who-now { margin-left: 0; color: var(--soft); }
+@media (max-width: 699px) { .home-brand { display: none; } .home-nav { gap: 2px 14px; } }
+.cloud-foot { position: absolute; left: 0; right: 0; bottom: 8px; margin: 0; text-align: center; font-size: 12px; opacity: .5; transition: opacity .2s; z-index: 1; }
+.cloud-foot:hover, .cloud-foot:focus-within { opacity: 1; }
+.cloud-foot a { color: inherit; }
+/* a brand-new cloud: the name in the centre and one quiet way to begin under it */
+.cloud-start { position: absolute; left: 50%; bottom: 44px; transform: translateX(-50%); z-index: 2; box-sizing: border-box; width: min(400px, calc(100% - 32px)); padding: 14px 16px 10px; text-align: center; background: color-mix(in srgb, var(--paper) 94%, transparent); border: 1px solid var(--rule); border-radius: 12px; }
+.cs-lede { margin: 0 0 10px; font-size: 15px; line-height: 1.45; }
+.cs-lede:empty, .cs-status:empty { display: none; }
+.cs-row { display: flex; gap: 8px; }
+.cs-row[hidden] { display: none; }
+.cs-row input { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 8px 14px; border: 1px solid var(--rule); border-radius: 999px; background: var(--sheet); color: var(--ink); }
+.cs-status { margin: 8px 0 0; font-size: 14px; font-style: italic; color: var(--soft); }
+.cs-or { margin: 8px 0 0; font-size: 13.5px; color: var(--soft); }
+.cloud-start.busy .cs-or { display: none; }
+/* the chat with Iko: a quiet way back to the cloud, and its name */
+.to-cloud { font-size: 14px; letter-spacing: 0; color: var(--soft); margin-right: 14px; }
+.to-cloud::before { content: "\2039\00a0"; }
+.chat-name { letter-spacing: .04em; }
 
 @media (min-width: 900px) {
   body { font-size: 18px; }

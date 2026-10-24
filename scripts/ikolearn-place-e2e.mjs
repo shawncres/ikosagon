@@ -71,7 +71,9 @@ async function run(width) {
     await p.waitForTimeout(300);
     await p.screenshot({ path: path.join(SHOTS, `place-${TAG}-${width}-${name}.png`) });
   };
-  const step = async (name, fn) => { try { await fn(); } catch (e) { fails.push(`${width}: ${name} threw -> ${String(e.message || e).split("\n")[0]}`); } };
+  /* the app opens on the cloud (home); these steps begin with Iko, as a learner who taps "Talk to Iko" */
+  const toIko = async () => { if (await p.evaluate(() => { const c = document.querySelector("#cloud"), l = document.querySelector("#lesson"); return Boolean(c && l && !c.hidden && l.hidden); })) { await p.click("#cloud-close"); await p.waitForTimeout(120); } };
+  const step = async (name, fn) => { try { await toIko(); await fn(); } catch (e) { fails.push(`${width}: ${name} threw -> ${String(e.message || e).split("\n")[0]}`); } };
   /* the saved cloud, read back the way the app saved it */
   const cloud = () => p.evaluate(() => {
     const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), lay = C.layout(c);
@@ -179,7 +181,7 @@ async function run(width) {
     await p.waitForTimeout(400);
     const re = await p.evaluate(() => ({ btns: document.querySelectorAll("#thread .place-opts button").length, text: document.querySelector("#thread").innerText }));
     ok(re.btns === 0 && /Chess/.test(re.text), `${width}: after a reload the choice stays settled`);
-    await p.click("#thumb");
+    if (await p.locator("#cloud").isHidden()) await p.click("#thumb"); /* a reload lands on the cloud (home) */
     await p.waitForTimeout(1600);
     await shot("cloud-done");
   });
