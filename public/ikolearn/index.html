@@ -114,7 +114,6 @@
       <div class="cloud-top">
         <nav class="home-nav" aria-label="IkoLearn">
           <span class="home-brand" aria-hidden="true">IkoLearn</span>
-          <button type="button" id="cloud-close" class="link">Talk to Iko</button>
           <button type="button" id="cloud-deck" class="link" hidden>Your deck</button>
           <a id="cloud-who" class="who-now" href="/ikolearn/learners" hidden></a>
         </nav>
@@ -122,10 +121,11 @@
       </div>
       <p class="cloud-hint">Drag to move · Scroll to zoom · Right-drag or Shift-drag to turn · Click a point to bring it close</p>
       <div id="cloud-start" class="cloud-start" hidden>
-        <p id="cs-lede" class="cs-lede"></p>
-        <form id="cs-form" class="cs-row" autocomplete="off"><input id="cs-in" maxlength="300" placeholder="In your own words" aria-label="What are you curious about, or what do you enjoy?"><button type="submit" class="btn sm">Begin</button></form>
+        <p id="cs-hi" class="cs-hi"></p>
+        <p id="cs-q" class="cs-q">What are you curious about, or what do you enjoy?</p>
+        <form id="cs-form" class="cs-row" autocomplete="off"><input id="cs-in" maxlength="300" placeholder="In your own words" aria-labelledby="cs-q"><button type="submit" class="btn sm">Begin</button></form>
+        <div id="cs-ex" class="cs-ex" aria-label="A few ideas"></div>
         <p id="cs-status" class="cs-status" aria-live="polite"></p>
-        <p class="cs-or"><button type="button" id="cs-iko" class="link">or talk it over with Iko</button></p>
       </div>
       <p class="cloud-foot fine"><a href="/ikolearn/learners">Learners</a> · <a href="/ikolearn/family">For parents &amp; teachers</a> · <a href="/ikolearn/privacy">Privacy</a></p>
       <aside id="panel" class="node-card" hidden aria-labelledby="p-title">
@@ -148,6 +148,35 @@
       </aside>
     </section>
   </main>
+
+  <div id="iko-wrap" class="iko-wrap" hidden>
+    <p id="iko-line" class="iko-line" role="status" hidden></p>
+    <button type="button" id="iko" class="iko" aria-label="Talk to Iko" aria-haspopup="dialog" aria-expanded="false" aria-controls="iko-sheet">
+      <svg class="iko-pebble" viewBox="0 0 64 56" width="52" height="46" aria-hidden="true" focusable="false">
+        <path class="iko-body" d="M32 4C49 4 60 14 60 29C60 44 48 52 31 52C15 52 4 44 4 30C4 15 16 4 32 4Z"/>
+        <path class="iko-shine" d="M17 15C21 11 26 10 30 10"/>
+        <g class="iko-face"><circle class="iko-eye" cx="24" cy="28" r="2.4"/><circle class="iko-eye" cx="40" cy="28" r="2.4"/><path class="iko-mouth" d="M28 36Q32 39 36 36"/></g>
+      </svg>
+    </button>
+  </div>
+  <section id="iko-sheet" class="iko-sheet" role="dialog" aria-modal="false" aria-labelledby="iko-name" hidden>
+    <header class="iko-head">
+      <svg class="iko-pebble sm" viewBox="0 0 64 56" width="30" height="26" aria-hidden="true" focusable="false"><path class="iko-body" d="M32 4C49 4 60 14 60 29C60 44 48 52 31 52C15 52 4 44 4 30C4 15 16 4 32 4Z"/><g class="iko-face"><circle class="iko-eye" cx="24" cy="28" r="2.6"/><circle class="iko-eye" cx="40" cy="28" r="2.6"/><path class="iko-mouth" d="M28 36Q32 39 36 36"/></g></svg>
+      <h2 id="iko-name" class="iko-name">Iko</h2>
+      <p id="iko-about" class="iko-about"></p>
+      <button type="button" id="iko-x" class="card-x" aria-label="Close Iko">&times;</button>
+    </header>
+    <div id="iko-body" class="iko-body-scroll">
+      <p id="iko-say" class="iko-say"></p>
+      <div id="iko-slot"></div>
+      <div id="iko-log" class="iko-log" aria-live="polite"></div>
+    </div>
+    <form id="iko-form" class="iko-form" autocomplete="off">
+      <textarea id="iko-in" rows="1" maxlength="1500" placeholder="Ask Iko anything" aria-label="Message to Iko"></textarea>
+      <button type="submit" id="iko-send" class="btn sm">Send</button>
+    </form>
+    <p class="iko-foot fine"><button type="button" id="iko-all" class="link">See our whole conversation</button></p>
+  </section>
   <script src="/ikolearn/cloud-model.js"></script>
   <script src="/ikolearn/rank.js"></script>
   <script src="/ikolearn/deck.js"></script>

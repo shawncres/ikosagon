@@ -91,10 +91,10 @@ for (const width of [390, 1280]) {
       await p.click('.who-opt[data-who="self"]'); await p.fill("#name-in", "Maya"); await p.press("#name-in", "Enter");
       await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(400);
       const s = await screen(p), r = await rootAt(p);
-      const lede = await p.textContent("#cs-lede");
+      const lede = (await p.textContent("#cs-hi")) + " " + (await p.textContent("#cs-q"));
       ok(s.cloud && !s.lesson && !s.deck && !s.hub && s.start && !s.flow, `${tag}: yourself: after the name, the app lands on the cloud with a quiet start (no Pick up row on an empty cloud)`, JSON.stringify(s));
       ok(Math.abs(r.x - r.w / 2) < 30 && Math.abs(r.y - r.h / 2) < 60, `${tag}: yourself: the name sits in the centre`, JSON.stringify(r));
-      ok(/^Hi Maya\. This is your learning cloud\. It grows around your name as you explore\. What are you curious about, or what do you enjoy\?$/.test(lede) && !/\b(age|kids?|child|student|grade)\b/i.test(lede), `${tag}: yourself: an inviting line in universal words (no topic list, no age)`, lede);
+      ok(/^Hi Maya\. Let's begin your learning cloud together\. What are you curious about, or what do you enjoy\?$/.test(lede) && !/\b(age|kids?|child|student|grade)\b/i.test(lede), `${tag}: yourself: an inviting line in universal words (no topic list, no age)`, lede);
       ok(await p.isHidden(".cloud-hint") && s.active === "BODY", `${tag}: yourself: no input tips on an empty cloud; no focus jump (no keyboard on phones)`, JSON.stringify(s));
       const box = await p.evaluate(() => { const b = document.querySelector("#cloud-start").getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom, sw: document.documentElement.scrollWidth, iw: innerWidth }; });
       ok(box.l >= 0 && box.r <= box.iw && box.t > r.y + 20 && box.sw <= box.iw, `${tag}: yourself: the start sits under the name, inside the view`, JSON.stringify(box));
@@ -124,7 +124,7 @@ for (const width of [390, 1280]) {
       await p.click('.who-opt[data-who="guide"]'); await p.fill("#name-in", "Robin"); await p.press("#name-in", "Enter");
       await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(400);
       const s = await screen(p);
-      const who = await p.evaluate(() => ({ t: document.querySelector("#cloud-who").textContent, h: document.querySelector("#cloud-who").hidden, lede: document.querySelector("#cs-lede").textContent }));
+      const who = await p.evaluate(() => ({ t: document.querySelector("#cloud-who").textContent, h: document.querySelector("#cloud-who").hidden, lede: document.querySelector("#cs-hi").textContent }));
       ok(s.cloud && s.start && !who.h && who.t === "Robin · switch" && /^Hi Robin\./.test(who.lede), `${tag}: guide: lands on the active learner's cloud, with the switcher on it`, JSON.stringify({ s, who }));
       const top = await p.evaluate(() => { const els = [...document.querySelectorAll(".cloud-top button:not([hidden]), .cloud-top a:not([hidden])")].map((e) => e.getBoundingClientRect()); return { over: els.some((a, i) => els.some((b, j) => j > i && a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom)), right: Math.max(...els.map((e) => e.right)), iw: innerWidth }; });
       ok(!top.over && top.right <= top.iw, `${tag}: guide: the quiet links and zoom fit the top without overlapping`, JSON.stringify(top));
@@ -141,7 +141,7 @@ for (const width of [390, 1280]) {
       await p.evaluate(SEED);
       await p.reload({ waitUntil: "networkidle" }); await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(500);
       const s = await screen(p);
-      const nav = await p.evaluate(() => ({ iko: document.querySelector("#cloud-close").textContent, deck: document.querySelector("#cloud-deck").hidden ? "" : document.querySelector("#cloud-deck").textContent, op: getComputedStyle(document.querySelector("#cloud-close")).opacity, foot: getComputedStyle(document.querySelector(".cloud-foot")).opacity }));
+      const nav = await p.evaluate(() => ({ iko: document.querySelector("#iko").getAttribute("aria-label"), deck: document.querySelector("#cloud-deck").hidden ? "" : document.querySelector("#cloud-deck").textContent, op: getComputedStyle(document.querySelector("#cloud-deck")).opacity, foot: getComputedStyle(document.querySelector(".cloud-foot")).opacity }));
       ok(s.cloud && !s.start && s.flow && s.active === "BODY", `${tag}: returning: opens on the cloud (Pick up row, no start, no focus jump)`, JSON.stringify(s));
       ok(nav.iko === "Talk to Iko" && /^Your deck · \d+$/.test(nav.deck) && parseFloat(nav.op) < 0.8 && parseFloat(nav.foot) <= 0.6, `${tag}: returning: quiet links (Talk to Iko, Your deck) and fine print`, JSON.stringify(nav));
       ok(calls.length === 0, `${tag}: returning: 0 calls`, calls.join());
@@ -165,11 +165,14 @@ for (const width of [390, 1280]) {
       ok(hb.cloud && !hb.hub && hb.card === l.t, `${tag}: card: Back returns to the cloud, on that topic`, JSON.stringify(hb));
       /* Iko from the card, and back (Your cloud, and Escape) */
       await p.click("#p-chat"); await p.waitForTimeout(300);
+      const sh = await p.evaluate(() => ({ sheet: !document.querySelector("#iko-sheet").hidden, cloud: !document.querySelector("#cloud").hidden, about: document.querySelector("#iko-about").textContent }));
+      ok(sh.sheet && sh.cloud && sh.about === "On your cloud · " + l.t, `${tag}: Iko: "Talk to Iko" opens Iko over the cloud, on that topic`, JSON.stringify(sh));
+      await p.click("#iko-all"); await p.waitForTimeout(300);
       const ch = await p.evaluate(() => ({ cloud: !document.querySelector("#cloud").hidden, name: document.querySelector(".chat-name").textContent, back: document.querySelector("#to-cloud").textContent, ph: document.querySelector("#input").placeholder, focus: (document.querySelector("#focus-text") || {}).textContent }));
-      ok(!ch.cloud && ch.name === "Iko" && ch.back === "Your cloud" && ch.ph === "Ask Iko anything" && new RegExp(l.t).test(ch.focus), `${tag}: Iko: "Talk to Iko" opens the chat with Iko on that topic`, JSON.stringify(ch));
+      ok(!ch.cloud && ch.name === "Iko" && ch.back === "Your cloud" && ch.ph === "Ask Iko anything" && new RegExp(l.t).test(ch.focus), `${tag}: Iko: "See our whole conversation" opens the chat with Iko on that topic`, JSON.stringify(ch));
       await p.click("#to-cloud"); await p.waitForTimeout(400);
       ok((await screen(p)).cloud, `${tag}: Iko: "Your cloud" returns home`);
-      await p.click("#cloud-close"); await p.waitForTimeout(250);
+      await p.click("#iko"); await p.click("#iko-all"); await p.waitForTimeout(250);
       await p.keyboard.press("Escape"); await p.waitForTimeout(400);
       ok((await screen(p)).cloud, `${tag}: Iko: Escape returns home too`);
       /* the deck from the cloud, and back; the camera kept */

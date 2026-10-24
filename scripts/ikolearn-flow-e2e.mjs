@@ -87,7 +87,7 @@ async function run(width) {
   const count = (re) => calls.filter((c) => re.test(c)).length;
   const js = (sel) => p.evaluate((q) => { const e = document.querySelector(q); if (e) e.click(); return Boolean(e); }, sel);
   /* the app opens on the cloud (home); these steps begin with Iko, as a learner who taps "Talk to Iko" */
-  const toIko = async () => { if (await p.evaluate(() => { const c = document.querySelector("#cloud"), l = document.querySelector("#lesson"); return Boolean(c && l && !c.hidden && l.hidden); })) { await p.click("#cloud-close"); await p.waitForTimeout(120); } };
+  const toIko = async () => { if (await p.evaluate(() => { const c = document.querySelector("#cloud"), l = document.querySelector("#lesson"); return Boolean(c && l && !c.hidden && l.hidden); })) { await p.click("#iko"); await p.click("#iko-all"); await p.waitForTimeout(120); } };
   const step = async (name, fn) => { try { await toIko(); await fn(); } catch (e) { fails.push(`${width}: ${name} threw -> ${String(e.message || e).split("\n")[0]}`); } };
   const text = (sel) => p.evaluate((q) => (document.querySelector(q) || {}).innerText || "", sel);
 
@@ -261,8 +261,9 @@ async function run(width) {
     const cc = calls.length;
     await p.locator("#l-clar .clar-chat").getByRole("button", { name: "Talk it through with Iko" }).click();
     await p.waitForTimeout(250);
-    const chat = await p.evaluate(() => ({ lesson: !document.querySelector("#lesson").hidden, input: document.querySelector("#input").value, focus: document.activeElement && document.activeElement.id }));
-    ok(!chat.lesson && /still finding .+ tricky/.test(chat.input) && chat.input.includes(pickLabel) && chat.focus === "input" && calls.length === cc, `${width}: "Talk it through with Iko" opens the chat with the question ready (0 calls)`, JSON.stringify(chat));
+    const chat = await p.evaluate(() => ({ lesson: !document.querySelector("#lesson").hidden, sheet: !document.querySelector("#iko-sheet").hidden, input: document.querySelector("#iko-in").value, focus: document.activeElement && document.activeElement.id }));
+    ok(chat.lesson && chat.sheet && /still finding .+ tricky/.test(chat.input) && chat.input.includes(pickLabel) && chat.focus === "iko-in" && calls.length === cc, `${width}: "Talk it through with Iko" (in Iko's sheet, the lesson stays) has the question ready (0 calls)`, JSON.stringify(chat));
+    await p.keyboard.press("Escape"); await p.waitForTimeout(100);
   });
 
   await step("node tap + cancel on navigation", async () => {
@@ -356,7 +357,7 @@ async function runShawn(width) {
       localStorage.setItem("ikolearn.v1.thread", JSON.stringify([{ id: "m1", at: T, role: "model", local: true, text: "Welcome back, Shawn." }]));
     });
     await p.reload({ waitUntil: "networkidle" }); await p.waitForTimeout(300);
-    await p.click("#cloud-close"); await p.waitForTimeout(120); /* from home (the cloud) to Iko, where this case begins */
+    await p.click("#iko"); await p.click("#iko-all"); await p.waitForTimeout(120); /* from home (the cloud) to Iko, where this case begins */
     const top = await p.evaluate(() => { const C = window.IkoCloud, R = window.IkoRank, P = window.IkoPlan, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")); const py = c.order.find((x) => c.nodes[x].label === "Python Basics"), tb = c.order.find((x) => c.nodes[x].label === "Tables"); const sc = R.scores(c); return { inTop: R.top(c).some((r) => r.id === py), beats: (sc[py] || 0) > (sc[tb] || 0), done: Boolean(P.finished && P.finished(c, py)) || C.isDone(c, py) }; });
     if (!SOFT) ok(top.inTop && top.beats && top.done, `${tag}: fixture: Python Basics is completed, in the top 10 and outscores Tables`, JSON.stringify(top));
     await p.getByRole("button", { name: /Continue Data Management/ }).first().click();

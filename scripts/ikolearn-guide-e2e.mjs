@@ -97,8 +97,8 @@ for (const w of [390, 1280]) {
     await p.waitForSelector("#chat:not([hidden])");
     ok((await p.textContent("#who-now")) === "Robin · switch" && await p.isVisible("#who-now"), `${tag}: guide: a quiet switcher by the brand`);
     /* home: the guide lands on the active learner's cloud, with the learner's name in the centre and the switcher on it */
-    const home = await p.evaluate(() => ({ cloud: !document.querySelector("#cloud").hidden, who: document.querySelector("#cloud-who").hidden ? "" : document.querySelector("#cloud-who").textContent, start: !document.querySelector("#cloud-start").hidden, lede: document.querySelector("#cs-lede").textContent }));
-    ok(home.cloud && home.who === "Robin · switch" && home.start && /^Hi Robin\. This is your learning cloud/.test(home.lede), `${tag}: guide: lands on Robin's cloud (her name in the centre, a quiet start, the switcher)`, JSON.stringify(home));
+    const home = await p.evaluate(() => ({ cloud: !document.querySelector("#cloud").hidden, who: document.querySelector("#cloud-who").hidden ? "" : document.querySelector("#cloud-who").textContent, start: !document.querySelector("#cloud-start").hidden, lede: document.querySelector("#cs-hi").textContent }));
+    ok(home.cloud && home.who === "Robin · switch" && home.start && /^Hi Robin\. Let's begin your learning cloud together\.$/.test(home.lede), `${tag}: guide: lands on Robin's cloud (her name in the centre, a quiet start, the switcher)`, JSON.stringify(home));
     await shot(p, `${w}-guide-home`);
     // Robin learns (the seeded learning, as the app would have saved it)
     await p.evaluate((c) => localStorage.setItem("ikolearn.v1.cloud", c), robinCloud);
@@ -162,7 +162,7 @@ for (const w of [390, 1280]) {
     // Start over for Noor only
     await p.click(".lrn-pick[data-id=p3]");
     await p.waitForSelector("#chat:not([hidden])");
-    await p.click("#cloud-close"); /* Start over lives with Iko's fine print */
+    await p.click("#iko"); await p.click("#iko-all"); /* Start over lives with Iko's fine print */
     await p.click("#reset");
     await p.waitForSelector("#chat:not([hidden])");
     const i2 = await ix(p), r2 = await liveCloud(p);

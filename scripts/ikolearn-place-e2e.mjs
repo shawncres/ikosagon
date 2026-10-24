@@ -72,7 +72,7 @@ async function run(width) {
     await p.screenshot({ path: path.join(SHOTS, `place-${TAG}-${width}-${name}.png`) });
   };
   /* the app opens on the cloud (home); these steps begin with Iko, as a learner who taps "Talk to Iko" */
-  const toIko = async () => { if (await p.evaluate(() => { const c = document.querySelector("#cloud"), l = document.querySelector("#lesson"); return Boolean(c && l && !c.hidden && l.hidden); })) { await p.click("#cloud-close"); await p.waitForTimeout(120); } };
+  const toIko = async () => { if (await p.evaluate(() => { const c = document.querySelector("#cloud"), l = document.querySelector("#lesson"); return Boolean(c && l && !c.hidden && l.hidden); })) { await p.click("#iko"); await p.click("#iko-all"); await p.waitForTimeout(120); } };
   const step = async (name, fn) => { try { await toIko(); await fn(); } catch (e) { fails.push(`${width}: ${name} threw -> ${String(e.message || e).split("\n")[0]}`); } };
   /* the saved cloud, read back the way the app saved it */
   const cloud = () => p.evaluate(() => {
@@ -117,6 +117,10 @@ async function run(width) {
     await p.getByRole("button", { name: /Continue Games/ }).first().click();
     await p.waitForSelector("#l-done:not([hidden])");
     await p.click("#l-chat");
+    await p.waitForTimeout(200);
+    const sh = await p.evaluate(() => ({ sheet: !document.querySelector("#iko-sheet").hidden, about: document.querySelector("#iko-about").textContent, lesson: !document.querySelector("#lesson").hidden }));
+    ok(sh.sheet && sh.lesson && /^On Games/.test(sh.about), `${width}: "Ask Iko about this" opens Iko on the lesson`, JSON.stringify(sh));
+    await p.click("#iko-all"); /* the whole conversation, with Games in focus */
     await p.waitForTimeout(300);
     const chip = await p.evaluate(() => ({ shown: !document.querySelector("#focus-chip").hidden, text: document.querySelector("#focus-text").textContent }));
     ok(chip.shown && /Games/.test(chip.text), `${width}: Games is in focus in chat`, JSON.stringify(chip));
@@ -145,7 +149,7 @@ async function run(width) {
       const v = await p.evaluate(() => JSON.parse(localStorage.getItem("ikolearn.v1.view") || "null"));
       ok(v && m && v.f === m.id, `${width}: the camera glides to Math when the cloud opens`, JSON.stringify(v));
     }
-    await p.click("#cloud-close");
+    await p.click("#iko"); await p.click("#iko-all");
     await p.waitForTimeout(300);
   });
 
