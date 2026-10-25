@@ -169,13 +169,15 @@ const seeded = (name, t) => {
   // caps and pruning
   const big = seeded("Ann", T0);
   for (let i = 0; i < 20; i++) C.applyTopics(big, [{ name: "Subject Topic " + i, parent: "New Subject " + i }], T0 + i);
-  ok(C.subjects(big).length === C.LIMITS.subjects, "subject cap holds");
+  ok(C.subjects(big).length === 7 + 20 && !("subjects" in C.LIMITS) && !("nodes" in C.LIMITS) && !("children" in C.LIMITS), "no subject cap: 20 new subjects are all on the cloud");
   let at = "Counting";
   for (let i = 0; i < 900; i++) { C.applyTopics(big, [{ name: "Thing " + i, parent: i % 7 ? at : "Math" }], T0 + 100 + i); if (i % 9 === 0) at = "Thing " + i; }
-  ok(big.order.length <= C.LIMITS.nodes, "node cap holds", String(big.order.length));
-  ok(C.subjects(big).every((p) => C.childrenOf(big, p.id).length <= C.LIMITS.children), "children per node capped");
+  ok(big.order.length > 900, "no node cap: every new topic stays (the ceiling is real bytes, STORE.softChars)", String(big.order.length));
+  ok(C.subjects(big).some((p) => C.childrenOf(big, p.id).length > 16), "no cap on children per node");
   ok(big.order.every((id) => !big.nodes[id].parent || big.nodes[big.nodes[id].parent]), "pruning never orphans a node");
-  ok(C.depthOf(big, C.findTopic(big, at)?.id || big.order.at(-1)) > 5, "deep chains survive pruning");
+  const own = big.order.filter((id) => !big.nodes[id].ghost).length;
+  C.prune(big, 1); /* a ceiling it can never reach: only placeholders may go */
+  ok(big.order.filter((id) => !big.nodes[id].ghost).length === own && big.order.every((id) => !big.nodes[id].parent || big.nodes[big.nodes[id].parent]) && C.depthOf(big, C.findTopic(big, at)?.id) >= 3, "pruning to bytes keeps every explored topic and its chain, and never orphans a node");
 
   // persistence (compact v2)
   const s = C.serialize(c);
@@ -185,7 +187,7 @@ const seeded = (name, t) => {
   ok(back.nodes[fr.id].path.ids.join() === fr.path.ids.join() && back.next === c.next, "round trip keeps paths and the recommended next");
   ok(back.cards.length === c.cards.length && back.nodes[fr.id].cards.length === 1 && back.nodes[halves.id].opened, "round trip keeps cards and lesson state");
   ok(s.length < JSON.stringify(c).length * 0.6, "storage is compact", `${s.length} vs ${JSON.stringify(c).length}`);
-  ok(C.serialize(big).length < 60_000, "a full 600-node cloud stays under 60 KB", String(C.serialize(big).length));
+  ok(C.serialize(big).length / big.order.length < 100, "storage stays compact per node (under 100 chars a node here)", String(C.serialize(big).length / big.order.length));
   ok(C.deserialize("{bad json") === null && C.deserialize(JSON.stringify({ v: 99, name: "x" })) === null && C.deserialize(null) === null, "deserialize rejects junk");
   const tampered = JSON.parse(s);
   tampered.n.push(["zzz", "Orphan", "nope", 0, 10, 0, 0, 0, -1, 0], ["c1", "Loop A", "c2", 0, 10, 0, 0, 0, -1, 0], ["c2", "Loop B", "c1", 0, 10, 0, 0, 0, -1, 0]);
@@ -2148,7 +2150,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const spots = [0, 0.7, 2.1, -1.4].map((yaw) => proj(node, { yaw, pitch: 0.4, zoom: 3, panX: -20, panY: 35, pivot: node }));
   ok(spots.every((q) => Math.abs(q.x - 180) < 1e-9 && Math.abs(q.y - 235) < 1e-9), "orbit: with the pivot on the node, turning leaves the node fixed on screen");
   ok(new Set([0, 0.7, 2.1].map((yaw) => proj(node, { yaw, pitch: 0.4, zoom: 3, panX: -20, panY: 35 }).x.toFixed(3))).size === 3, "orbit: about the origin (before), the same turn swings the node across the screen");
-  ok(/var px = p\.x - pivot\.x, py = p\.y - pivot\.y, pz = p\.z - pivot\.z;/.test(view) && /pivot = pointOf\(id\)/.test(view) && /panX: cx - w \/ 2, panY: cy - h \/ 2/.test(view) && /recentre: function \(\) \{ setFocus\(null\); animateTo\(Object\.assign\(\{ pivot: CAM\.ORIGIN \}, HOME\)/.test(view), "the view: focus moves the pivot to the node, Recentre puts it back at the origin");
+  ok(/var px = p\.x - pivot\.x, py = p\.y - pivot\.y, pz = p\.z - pivot\.z;/.test(view) && /pivot = pointOf\(id\)/.test(view) && /panX: cx - w \/ 2, panY: cy - h \/ 2/.test(view) && /recentre: function \(\) \{ setFocus\(null\); animateTo\(Object\.assign\(\{ pivot: CAM\.ORIGIN \}, home\)/.test(view), "the view: focus moves the pivot to the node, Recentre puts it back at the origin");
   ok(/state\.view\.o = \[v\.pivot\.x, v\.pivot\.y, v\.pivot\.z\]/.test(app) && /pivot: Array\.isArray\(state\.view\.o\)/.test(app), "the pivot is kept with the saved view and restored");
   ok(/CAM\.focusFrame\(cw, ch, \{ wide: wide, top: cloudTop\(\) \}\)/.test(app) && /onDraw: placeCard, onEmpty: closeCard/.test(app) && /CAM\.cardPlace\(q\.x, q\.y, pw, ph, cw, ch, cloudTop\(\)\)/.test(app) && /new ResizeObserver\(function \(\) \{ cardSig = ""; placeCard\(\); \}\)/.test(app), "the card: placed next to its node on every frame the cloud draws (follows it), again when it resizes; a tap on empty sky closes it");
   // 6) the hub and album wiring, with no model calls
@@ -2908,13 +2910,13 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     // placedTopic: placement and target are not stored; the plan becomes asSubject / under
     const pt = P.placedTopic(ps, { how: "child", target: games.id }), pp = P.placedTopic(math, { how: "parent" });
     ok(!("placement" in pt) && !("target" in pt) && pt.under === games.id && pp.asSubject === true && pp.parent === "" && pp.chain.length === 0, "placed topics carry only what applyTopics needs");
-    // a full cloud (12 parents): a new parent can't be made, so it goes under the focus
+    // 12 parents and more: a new parent is still a new parent (no cap, never squeezed under the focus)
     const full = C.create("Ann", T0);
     const AREAS = ["Astronomy", "Biology", "Cooking", "Drawing", "Economics", "Fishing", "Geology", "History", "Italian", "Juggling", "Knitting", "Literature", "Music", "Nursing"];
     const LEAVES = ["Comets", "Cells", "Baking", "Shading", "Markets", "Lures", "Rocks", "Empires", "Verbs", "Clubs", "Purls", "Poems", "Chords", "Triage"];
-    for (let i = 0; i < C.LIMITS.subjects; i++) C.applyTopics(full, [{ name: LEAVES[i], parent: AREAS[i], signal: "explored", chain: [AREAS[i]] }], T0 + i);
+    for (let i = 0; i < 12; i++) C.applyTopics(full, [{ name: LEAVES[i], parent: AREAS[i], signal: "explored", chain: [AREAS[i]] }], T0 + i);
     const fs0 = C.subjects(full)[0];
-    ok(C.subjects(full).length === C.LIMITS.subjects && P.placeTopic(full, { name: "Robotics", chain: [], placement: "parent" }, fs0.id).how === "child", "no room for another parent: it goes under the focus instead of failing");
+    ok(C.subjects(full).length === 12 && P.placeTopic(full, { name: "Robotics", chain: [], placement: "parent" }, fs0.id).how === "parent", "a 13th parent is a new parent, not a child of the focus");
     // stable slots: adding parents never moves the ones already there (also past six)
     const sl = C.create("Lee", T0), pos = [];
     for (let i = 0; i < 9; i++) {
@@ -2937,7 +2939,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     ok(/focusId: n \? n\.id : ""/.test(appP) && /state\.glide/.test(appP) && /function revealNode\(id\)/.test(appP), "chat sends the focus id; the camera glides to a new node and its card opens (when the cloud is on screen or next opened)");
     // the root cause of forced nesting: the focus was sticky (an earlier screen's node stayed the chat's focus, sent to the model and used to place)
     const sendSrc = appP.slice(appP.indexOf("  function send(text) {"), appP.indexOf("  function runBridge() {"));
-    ok(/var fid = iko\.open && iko\.ctx \? \(nodeOf\(iko\.ctx\.id\) \? iko\.ctx\.id : null\) : state\.focus;/.test(sendSrc) && /basePayload\(fid\)/.test(sendSrc) && /grow\(ev, fid\)/.test(sendSrc), "chat: the focus sent and used for placement is the screen's (Iko: the node it was opened on, none on a bare cloud)");
+    ok(/var fid = iko\.open && iko\.ctx \? \(nodeOf\(iko\.ctx\.id\) \? iko\.ctx\.id : null\) : state\.focus;/.test(sendSrc) && /basePayload\(fid, text\)/.test(sendSrc) && /grow\(ev, fid\)/.test(sendSrc), "chat: the focus sent and used for placement is the screen's (Iko: the node it was opened on, none on a bare cloud)");
     ok(/setFocus\(c\.id \|\| null\);/.test(appP) && !/else if \(c\.view !== "cloud"\) setFocus\(null\)/.test(appP), "Iko on the cloud with nothing selected has no focus (an earlier node never stays the focus)");
     ok(!/state\.focus/.test(gr.slice(0, gr.indexOf("  function revealNode"))), "growth never falls back to a remembered focus (placement or ghosts)");
     const logSrc = appP.slice(appP.indexOf("  function renderIkoLog() {"), appP.indexOf("  function ikoSize()"));
@@ -3301,6 +3303,102 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/Hi, I'm Iko\. I'm here whenever you need me\./.test(iko) && /!hintSeen\("iko"\) && \(pr\.visits \|\| 0\) <= 2/.test(iko), "Iko: the hello only on the first visits, until Iko is opened");
   ok(/@media \(prefers-reduced-motion: reduce\) \{ \.iko \.iko-pebble, \.iko-line \{ animation: none; \}/.test(fs.readFileSync("public/ikolearn/styles.css", "utf8")), "Iko: still with reduced motion");
   ok(/el\.pChat\.addEventListener\("click", function \(\) \{ openIko\(\); \}\);/.test(app) && /el\.lChat\.addEventListener\("click", function \(\) \{ openIko\(\); \}\);/.test(app), "Iko: the card's Talk to Iko and the lesson's Ask Iko open Iko on that screen");
+}
+
+// ---------- an unbounded cloud: layout, prompt subset, dedupe, storage ----------
+{
+  const golden = Math.PI * (3 - Math.sqrt(5));
+  const N = 120, slots = [];
+  for (let i = 0; i < N; i++) slots.push(C.subjectSlot(i, golden));
+  // stability: subject N's slot depends only on N, and the first 12 are exactly the old spirals
+  const old = (i) => { const k = i < 6 ? i : i - 6, M = 6, y = i < 6 ? 1 - (k + 0.5) / M * 2 : 0.9 - (k + 1) / (M + 1) * 1.8, r = Math.sqrt(Math.max(0, 1 - y * y)), th = golden * k + (i < 6 ? 0 : golden / 2 + Math.PI / 6); return { x: Math.cos(th) * r, y: y * 0.8, z: Math.sin(th) * r }; };
+  ok(slots.slice(0, 12).every((p, i) => ["x", "y", "z"].every((k) => Math.abs(p[k] - old(i)[k]) < 1e-12)), "unbounded: subjects 1-12 keep exactly their old slots (old saves look the same)");
+  const dmin = (ps) => { let m = Infinity; for (let i = 0; i < ps.length; i++) for (let j = 0; j < i; j++) m = Math.min(m, Math.hypot(ps[i].x - ps[j].x, ps[i].y - ps[j].y, ps[i].z - ps[j].z)); return m; };
+  ok(dmin(slots) >= 0.48, "unbounded: 120 subject slots, none closer than the original 12 are to each other", String(dmin(slots)));
+  const shellR = slots.slice(12).map((p) => Math.hypot(p.x / 1, p.y / 0.8, p.z));
+  ok(shellR.every((r, i) => i === 0 || r >= shellR[i - 1] - 1e-9), "unbounded: later subjects sit on the same or a further shell (never inside an earlier one)");
+  // a real cloud: adding subject N never moves 1..N-1 (or their topics)
+  const uc = C.create("Una", T0), lays = [];
+  for (let i = 0; i < 45; i++) {
+    C.applyTopics(uc, [{ name: "Field " + i, signal: "explored", placement: "parent", asSubject: true }], T0 + i * 10);
+    C.applyTopics(uc, [{ name: "Part " + i, signal: "explored", under: C.subjects(uc)[i].id }], T0 + i * 10 + 1);
+    lays.push(C.layout(uc));
+  }
+  const us = C.subjects(uc);
+  ok(us.length === 45, "unbounded: 45 subjects on one cloud", String(us.length));
+  const last = lays[44];
+  ok(lays.every((lay) => Object.keys(lay).every((id) => !last[id] || ["x", "y", "z"].every((k) => Math.abs(lay[id][k] - last[id][k]) < 1e-9))), "unbounded: adding subject N never moves subjects 1..N-1 or anything under them");
+  const hues = us.map((x) => x.hue);
+  ok(new Set(hues).size === 45 && hues.every(Number.isFinite), "unbounded: past the 12-colour palette every new subject still gets its own hue", String(new Set(hues).size));
+  const hd = (a, b) => { const x = Math.abs(a - b) % 360; return Math.min(x, 360 - x); };
+  ok(hues.slice(12).every((h, i) => hues.slice(0, 12 + i).every((u) => hd(h, u) >= 4)), "unbounded: an extra hue keeps away from the ones already used");
+  // many children under one parent: further rings, no two on the same spot, earlier ones never move
+  const kc = C.create("Kai", T0), K = 60, klays = [];
+  C.applyTopics(kc, [{ name: "Music", signal: "explored", asSubject: true }], T0);
+  const mus = C.subjects(kc)[0];
+  for (let i = 0; i < K; i++) { C.applyTopics(kc, [{ name: "Piece " + i, signal: "explored", under: mus.id }], T0 + 1 + i); if (i === 15 || i === K - 1) klays.push(C.layout(kc)); }
+  const kids = C.childrenOf(kc, mus.id), kl = klays[1];
+  ok(kids.length === K, "unbounded: 60 children under one parent", String(kids.length));
+  const outer = kids.slice(16);
+  ok(dmin(outer.map((k) => kl[k.id])) > 0.05 && outer.every((o) => kids.slice(0, 16).every((k) => Math.hypot(kl[o.id].x - kl[k.id].x, kl[o.id].y - kl[k.id].y, kl[o.id].z - kl[k.id].z) > 0.05)), "unbounded: children past 16 spread on their rings (golden angle by rank), apart from each other and the first 16", String(dmin(outer.map((k) => kl[k.id]))));
+  const r0 = Math.hypot(kl[kids[3].id].x - kl[mus.id].x, kl[kids[3].id].y - kl[mus.id].y, kl[kids[3].id].z - kl[mus.id].z), r3 = Math.hypot(kl[kids[50].id].x - kl[mus.id].x, kl[kids[50].id].y - kl[mus.id].y, kl[kids[50].id].z - kl[mus.id].z);
+  ok(r3 > r0 * 1.5, "unbounded: the 17th child on and later ones sit on further rings", `${r0} ${r3}`);
+  ok(Object.keys(klays[0]).every((id) => ["x", "y", "z"].every((k) => Math.abs(klays[0][id][k] - kl[id][k]) < 1e-9)), "unbounded: adding children 17-60 never moves the first 16");
+  // prompt subset: bounded, relevant, flat
+  const pv0 = C.promptView(uc, null, "");
+  ok(pv0.parents.length === C.LIMITS.promptParents && pv0.total === 45 && /\+33 more subjects/.test(pv0.cloud) && pv0.cloud.length <= 2000, "prompt subset: at most 12 subjects and a bounded summary for a 45-subject cloud", `${pv0.parents.length} ${pv0.cloud.length}`);
+  const deep = us[40], part40 = C.childrenOf(uc, deep.id)[0];
+  ok(C.promptView(uc, part40.id, "").parents[0] === "Field 40", "prompt subset: the focused node's subject comes first, however old");
+  ok(C.promptView(uc, null, "tell me more about field 33 please").parents.includes("Field 33"), "prompt subset: a subject named in the message is included");
+  ok(C.promptView(uc, null, "what about part 37?").parents.includes("Field 37"), "prompt subset: a topic named in the message brings its subject");
+  uc.nodes[us[2].id].touched = T0 + 1e7;
+  ok(C.promptView(uc, null, "").parents.includes("Field 2"), "prompt subset: the most recently active subjects are included");
+  const bc = C.deserialize(C.serialize(uc));
+  for (let i = 45; i < 200; i++) C.applyTopics(bc, [{ name: "Extra " + i, signal: "curious", asSubject: true }], T0 + 1000 + i);
+  ok(C.promptView(bc, null, "hi").cloud.length <= 2000 && C.promptView(bc, null, "hi").parents.length === 12, "prompt subset: tokens stay flat at 200 subjects");
+  ok(C.subjects(C.deserialize(C.serialize(uc))).length === 45, "storage: a 45-subject cloud round-trips (v9, additive)");
+  // dedupe against the whole cloud, also subjects the prompt never saw
+  const hidden = us.find((x) => !pv0.parents.includes(x.label));
+  const pl = P.placeTopic(uc, { name: hidden.label, placement: "parent" }, null);
+  ok(pl && pl.how === "reuse" && pl.id === hidden.id, "dedupe: a subject outside the prompt's subset is found on the device and focused, not duplicated", JSON.stringify(pl));
+  const ck = checkPlacement({ name: hidden.label, parent: hidden.label, signal: "curious", placement: "child", target: hidden.label, chain: [] }, { focusId: "", cloud: pv0.cloud, parents: pv0.parents });
+  ok(ck.placement === "parent", "server: a target outside the subset falls back to parent (and the device then reuses the existing subject)", JSON.stringify(ck));
+  const n0 = uc.order.length;
+  C.applyTopics(uc, [P.placedTopic({ name: hidden.label, signal: "curious" }, pl)], T0 + 9e6);
+  ok(uc.order.length === n0, "dedupe: applying it creates nothing new");
+  ok(P.placeTopic(uc, { name: "Volcanology", placement: "parent" }, part40.id).how === "parent", "subject #46 with a focus: still a new parent (no fallback under the focus)");
+  // storage: bytes, the byte ceiling, never the learner's own topics
+  const sc = C.create("Sam", T0);
+  for (let i = 0; i < 40; i++) {
+    C.applyTopics(sc, [{ name: "Area " + i, signal: "explored", asSubject: true }], T0 + i);
+    const a = C.subjects(sc)[i];
+    for (let k = 0; k < 6; k++) C.applyTopics(sc, [{ name: "Area " + i + " step " + k, signal: "explored", under: a.id }], T0 + i * 100 + k);
+    C.plant(sc, { label: "Area " + i, children: [{ label: "Idea " + i + "a", ghost: true }, { label: "Idea " + i + "b", ghost: true }, { label: "Idea " + i + "c", ghost: true }] }, null, T0 + i, true);
+  }
+  const before = C.serialize(sc).length, ghosts0 = Object.values(sc.nodes).filter((n) => n.ghost).length, own0 = Object.values(sc.nodes).filter((n) => !n.ghost).length;
+  ok(ghosts0 >= 100 && own0 === 40 * 7, "fixture: a 40-subject cloud with placeholders", `${ghosts0} ${own0}`);
+  ok(C.prune(sc) === 0 && C.serialize(sc).length === before, "storage: under the byte ceiling nothing is let go");
+  const dropped = C.prune(sc, Math.floor(before * 0.8));
+  ok(dropped > 0 && C.serialize(sc).length <= before * 0.8 && Object.values(sc.nodes).filter((n) => !n.ghost).length === own0, "storage: past the byte ceiling only unexplored placeholders go, never the learner's topics", `${dropped} ${C.serialize(sc).length}`);
+  ok(C.prune(sc, 10) >= 0 && Object.values(sc.nodes).filter((n) => !n.ghost).length === own0 && C.deserialize(C.serialize(sc)) !== null, "storage: a ceiling it cannot reach keeps every topic and a valid save");
+  ok(C.STORE.softChars >= 1_000_000 && C.STORE.softChars <= 2_000_000 && C.STORE.warnChars < C.STORE.quotaChars, "storage: a generous byte ceiling (1-2 M chars a learner) and an early warning below the ~5 M quota");
+  // the app's save: quota handling
+  const appS = fs.readFileSync("public/ikolearn/app.js", "utf8");
+  const sv = appS.slice(appS.indexOf("  function store(k, v)"), appS.indexOf("  /* The camera and focus of the big cloud"));
+  ok(/try \{ localStorage\.setItem\(k, v\); return true; \} catch \{ return false; \}/.test(sv), "quota: a full store never throws into the app (store returns false)");
+  ok(/if \(!storeCloud\(text\)\) \{ storeSay\(true\); return; \}/.test(sv) && /state\.lessons = keepNewest\(state\.lessons, Math\.min\(5/.test(sv) && /return store\(LS\.cloud, text\);/.test(sv), "quota: the cloud write makes room (old lessons and notes) and tries once more; if it still fails nothing else is written over the last good save");
+  ok(/storeUse\(\) > C\.STORE\.warnChars\) storeSay\(false\)/.test(sv) && /storeNote\.warned = true/.test(sv) && /if \(iko\.open\) storeInSheet\(\); else ikoLine\(storeNote\.text, 12000\);/.test(sv) && /if \(note\) storeInSheet\(\);/.test(appS), "quota: a quiet note from Iko, once a visit (nearly full / full): by the pebble, or in the sheet when it is open");
+  // a simulated full browser store: the old save survives untouched
+  const mem = { data: { "ikolearn.v1.cloud": "OLD" }, setItem(k, v) { if (String(v).length > 50) { const e = new Error("full"); e.name = "QuotaExceededError"; throw e; } this.data[k] = v; } };
+  let threw = false; try { mem.setItem("ikolearn.v1.cloud", "x".repeat(100)); } catch { threw = true; }
+  ok(threw && mem.data["ikolearn.v1.cloud"] === "OLD", "quota: a failed setItem leaves the previous save as it was");
+  // the orchestrator and app use the subset; no cap fallbacks remain
+  const orc = fs.readFileSync("public/ikolearn/orchestrator.js", "utf8");
+  ok(!/slice\(0, 12\)/.test(orc) && /req\.parents = promptParents\(/.test(orc) && /parents: promptParents\(cloud, id\)/.test(orc) && !/LIMITS\.subjects/.test(orc + appS), "prompts: creation and bridge calls send the bounded subset; no subject cap left");
+  ok(/var n = nodeOf\(focusId\), pv = C\.promptView\(state\.cloud, n \? n\.id : null, text \|\| ""\);/.test(appS) && /cloud: pv\.cloud, parents: pv\.parents/.test(appS), "prompts: every call's base payload carries the subset (chat adds the message)");
+  const view = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8");
+  ok(/camD = Math\.max\(3\.2, ext \* 1\.7\);/.test(view) && /zoom: Math\.min\(1, 1\.15 \/ ext\)/.test(view) && /var f = camD \/ \(camD \+ Math\.max\(z, -camD \* 0\.8\)\);/.test(view), "view: a big cloud moves the camera back and Recentre frames it all (a cloud of up to 12 subjects is unchanged)");
+  ok(/function colorOf\(n\) \{ var c = colors\[n\.id\];/.test(view) && !/C\.colorOf\(cloud, (n|it\.n)\)\b(?!; return c)/.test(view.replace("C.colorOf(cloud, n); return c;", "")), "view: node colours are worked out once per cloud, not every frame");
 }
 
 if (fails.length) {

@@ -231,9 +231,11 @@
     var par = nodeOf(cloud, n.parent);
     return Boolean(par && !par.parent) && (chainLen == null || chainLen < 2);
   }
+  /* a bounded, relevant set of the learner's subjects for a prompt (C.promptSubjects): flat however big the cloud grows */
+  function promptParents(cloud, id, text) { return C.promptSubjects(cloud, id, text).map(function (s) { return s.label; }); }
   function bridgeRequest(cloud, id) {
     var n = nodeOf(cloud, id), subj = n ? C.ancestry(cloud, id).map(function (x) { return cloud.nodes[x]; })[0] : null;
-    return n ? { kind: "bridge", focus: n.label, focusParent: subj ? subj.label : "", trail: C.trail(cloud, id), parents: C.subjectLabels(cloud).slice(0, 12) } : null;
+    return n ? { kind: "bridge", focus: n.label, focusParent: subj ? subj.label : "", trail: C.trail(cloud, id), parents: promptParents(cloud, id) } : null;
   }
   /*
    * The one-time repair after a bridge: when the bridged chain is still shallow (fewer than 2 links between the subject
@@ -311,8 +313,8 @@
     /* start only: the optional personal-development answer, in the same call */
     if (kind === "start" && extra && extra.grow) req.grow = String(extra.grow).slice(0, 200);
     /* subjects to file new parents under: only the learner's own (no subject names are built in) */
-    req.parents = C.subjectLabels(cloud).slice(0, 12);
-    if (kind === "next" && n) { req.focus = n.label; req.trail = C.trail(cloud, id); req.known = C.childrenOf(cloud, id).map(function (c) { return c.label; }).slice(0, 16); }
+    req.parents = promptParents(cloud, n ? id : null, req.about || "");
+    if (kind === "next" && n) { req.focus = n.label; req.trail = C.trail(cloud, id); req.known = C.knownUnder(cloud, id); }
     return req;
   }
 
@@ -609,11 +611,11 @@
     var hit = C.findTopic(cloud, label, focusId && nodeOf(cloud, focusId) ? focusId : null);
     if (hit) return { how: "reuse", id: hit.id, label: label };
     var focus = focusId && nodeOf(cloud, focusId) ? nodeOf(cloud, focusId) : null;
-    var room = C.subjects(cloud).length < C.LIMITS.subjects;
     var broad = isBroad(cloud, tp, focusId);
     var pl = tp && tp.placement;
-    var asParent = function () { return room ? { how: "parent", label: label } : focus ? { how: "child", target: focus.id, label: label } : { how: "legacy", label: label }; };
-    var ask = function () { return focus && room ? { how: "ambiguous", target: focus.id, label: label } : broad ? asParent() : { how: "legacy", label: label }; };
+    /* there is no cap on subjects: a new subject is always a new parent (never squeezed under the focus) */
+    var asParent = function () { return { how: "parent", label: label }; };
+    var ask = function () { return focus ? { how: "ambiguous", target: focus.id, label: label } : broad ? asParent() : { how: "legacy", label: label }; };
     if (pl === "parent") return asParent();
     if (pl === "child") {
       var t = placeTarget(cloud, tp.target);
