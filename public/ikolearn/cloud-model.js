@@ -13,7 +13,13 @@
 
   var VERSION = 9;
   /* nodes: stored cap (localStorage stays small). children / ghosts: per node. There is no depth limit. */
-  var LIMITS = { nodes: 600, subjects: 12, children: 16, ghostsPerNode: 6, pathSteps: 6, cards: 60, labelChars: 32, choices: 3, draws: 3000, whyChars: 80, chain: 4, blurbChars: 140 };
+  /*
+   * No fixed count of subjects, children or nodes: the cloud keeps growing. The only ceiling is real bytes (STORE): a
+   * cloud whose save passes STORE.softChars first lets go of old unexplored placeholders (never the learner's own
+   * topics). `known` / `promptParents` bound what goes into a prompt, not what the cloud holds.
+   */
+  var STORE = { softChars: 1500000, checkNodes: 3000, warnChars: 4000000, quotaChars: 5000000 };
+  var LIMITS = { known: 16, promptParents: 12, ghostsPerNode: 6, pathSteps: 6, cards: 60, labelChars: 32, choices: 3, draws: 3000, whyChars: 80, chain: 4, blurbChars: 140 };
   var MASTERED = 0.6;
   /* Soft spectrum: colour data only. A new subject takes a stable hue from its name (subjectHue), never from a list of subject names. */
   var HUES = [4, 28, 48, 96, 150, 188, 214, 252, 286, 322, 70, 170];
@@ -122,7 +128,15 @@
   function subjectHue(cloud, label) {
     var start = Math.floor(hash(norm(label) || "subject") * HUES.length) % HUES.length;
     for (var i = 0; i < HUES.length; i++) { var h = HUES[(start + i) % HUES.length]; if (!hueUsed(cloud, h)) return h; }
-    return HUES[start];
+    /* the palette is used up (more than 12 subjects): the free whole hue furthest from every subject's, ties broken
+       from the name's slot, so each new subject still reads as its own colour */
+    var used = subjects(cloud).map(function (s) { return s.hue; }).filter(Number.isFinite), best = HUES[start], bd = -1;
+    for (var k = 0; k < 360; k++) {
+      var hh = (HUES[start] + k) % 360, d = 360;
+      used.forEach(function (u) { var x = Math.abs(u - hh) % 360; d = Math.min(d, x, 360 - x); });
+      if (d > bd) { bd = d; best = hh; }
+    }
+    return best;
   }
 
   function removeNode(cloud, id) {
@@ -179,30 +193,38 @@
   }
 
   /* ---------- growth ---------- */
-  /* Children of a full node make room by dropping their oldest ghost leaf that is not on a learning path. */
+  /* A node's placeholders make room for a new one by dropping their oldest ghost leaf that is not on a learning path. */
   function makeRoom(cloud, pid, ghostsOnly, protect) {
     var kids = childrenOf(cloud, pid);
     var ghosts = kids.filter(function (k) { return k.ghost; });
-    var needGhostRoom = ghostsOnly && ghosts.length >= LIMITS.ghostsPerNode;
-    if (kids.length < LIMITS.children && !needGhostRoom) return true;
+    /* no cap on children: only dotted placeholders are limited per node (they make room for each other) */
+    if (!ghostsOnly || ghosts.length < LIMITS.ghostsPerNode) return true;
     var drop = ghosts.filter(function (g) { return !hasChildren(cloud, g.id) && !onSomePath(cloud, g.id) && !g.cards.length && !(protect && protect.indexOf(g.id) >= 0); })[0];
     if (!drop) return false;
     removeNode(cloud, drop.id);
     return true;
   }
 
-  /* Keeps the stored tree under the node cap: oldest free ghost leaves first, then the lightest old leaves. Never a node with children. */
-  function prune(cloud) {
-    var guard = 0;
-    while (cloud.order.length > LIMITS.nodes && guard++ < 1000) {
-      var leaves = all(cloud).filter(function (n) { return n.parent && !hasChildren(cloud, n.id) && !n.cards.length && n.id !== cloud.next && !inDeck(cloud, n.id); });
-      var ghosts = leaves.filter(function (n) { return n.ghost && !onSomePath(cloud, n.id); });
-      if (!ghosts.length) ghosts = leaves.filter(function (n) { return n.ghost; });
-      if (ghosts.length) { removeNode(cloud, ghosts[0].id); continue; }
-      leaves.sort(function (a, b) { return a.weight - b.weight || a.touched - b.touched; });
-      if (!leaves.length) break;
-      removeNode(cloud, leaves[0].id);
+  /*
+   * Keeps the save under STORE.softChars of real bytes (no node count): past it, unexplored placeholder leaves go first,
+   * oldest first, those on a learning path last. The learner's own topics (explored, carded, in the deck, with children)
+   * are never dropped here; a cloud of only those simply stays, and a full browser store is handled by the app.
+   * Cheap below STORE.checkNodes nodes (nothing is measured).
+   */
+  function freeGhost(cloud, n) { return n.parent && n.ghost && !hasChildren(cloud, n.id) && !n.cards.length && n.id !== cloud.next && !inDeck(cloud, n.id); }
+  function prune(cloud, soft) {
+    soft = soft || STORE.softChars;
+    if (cloud.order.length < STORE.checkNodes && !(soft < STORE.softChars)) return 0;
+    var len = serialize(cloud).length, dropped = 0, guard = 0;
+    while (len > soft && guard++ < 40) {
+      var ghosts = all(cloud).filter(function (n) { return freeGhost(cloud, n); });
+      if (!ghosts.length) break;
+      ghosts.sort(function (a, b) { return (onSomePath(cloud, a.id) - onSomePath(cloud, b.id)) || (a.born - b.born); });
+      var per = Math.max(1, len / cloud.order.length), want = Math.max(1, Math.ceil((len - soft) / per));
+      ghosts.slice(0, want).forEach(function (g) { removeNode(cloud, g.id); dropped++; });
+      len = serialize(cloud).length;
     }
+    return dropped;
   }
 
   var SIGNAL = {
@@ -212,13 +234,12 @@
     curious: { w: 0.5, m: 0 }
   };
 
-  /* Where a topic goes: the named subject or topic, else a new subject (under the cap), else (the cloud is full)
-     the oldest subject. No fixed catch-all subject: every parent comes from the learner's own topics. */
+  /* Where a topic goes: the named subject or topic, else a new subject (there is no cap on subjects). No fixed catch-all subject: every parent comes from the learner's own topics. */
   function resolveParent(cloud, label, t, res) {
     var p = findAny(cloud, label);
     if (p) return p;
     var plabel = cleanLabel(label);
-    if (plabel && norm(plabel) !== norm(cloud.name) && subjects(cloud).length < LIMITS.subjects) {
+    if (plabel && norm(plabel) !== norm(cloud.name)) {
       p = addNode(cloud, { label: plabel, parent: null, weight: 1, born: t });
       res.parentsCreated.push(p.id);
       return p;
@@ -305,7 +326,6 @@
       if (subj) { subj.weight += sig.w * 0.5; subj.touched = t; res.strengthened.push(subj.id); return; }
       /* placed by the orchestrator (chat placement, checked on the device): a new branch under the learner's name ... */
       if (tp.asSubject && !findTopic(cloud, label)) {
-        if (subjects(cloud).length >= LIMITS.subjects) return;
         var sn = addNode(cloud, { label: label, parent: null, weight: 1, born: t });
         sn.weight += sig.w * 0.5; sn.touched = t; warm(sn, HEAT.chat * sig.w, t);
         if (tp.blurb) setBlurb(cloud, sn.id, tp.blurb);
@@ -331,7 +351,7 @@
         links = links.filter(function (l) { return norm(l) !== norm(label); });
         /* nothing names a subject above it: the topic is a subject of its own, under the learner's name (never a
            fixed catch-all, never the last branch) */
-        if (!links.length && !cleanLabel(tp.parent) && subjects(cloud).length < LIMITS.subjects) {
+        if (!links.length && !cleanLabel(tp.parent)) {
           var own = addNode(cloud, { label: label, parent: null, weight: 1, born: t });
           own.weight += sig.w * 0.5; own.touched = t; warm(own, HEAT.chat * sig.w, t);
           if (tp.blurb) setBlurb(cloud, own.id, tp.blurb);
@@ -502,7 +522,7 @@
     return n.label + " (" + Math.round(n.weight * 10) / 10 + t + ")";
   }
   /* Compact text: strongest subjects first, a few topics each, nested two levels deeper in braces. */
-  function summarize(cloud, maxChars) {
+  function summarize(cloud, maxChars, only) {
     maxChars = maxChars || 1800;
     var ix = index(cloud);
     var kids = function (id, max) {
@@ -512,7 +532,7 @@
       var ks = depth < 3 ? kids(n.id, depth === 1 ? 8 : 5) : [];
       return tag(n) + (ks.length ? " {" + ks.map(function (k) { return branch(k, depth + 1); }).join(", ") + "}" : "");
     };
-    var lines = subjects(cloud).slice().sort(function (a, b) { return b.weight - a.weight; }).map(function (s) {
+    var lines = subjects(cloud).filter(function (s) { return !only || only.indexOf(s.id) >= 0; }).sort(function (a, b) { return only ? only.indexOf(a.id) - only.indexOf(b.id) : b.weight - a.weight; }).map(function (s) {
       return s.label + " [" + Math.round(s.weight * 10) / 10 + "]: " + kids(s.id, 8).map(function (k) { return branch(k, 2); }).join(", ");
     });
     var out = lines.join("\n");
@@ -520,8 +540,36 @@
   }
 
   /* What the learner already has under one node (for lessons and paths). */
-  function knownUnder(cloud, id) { return childrenOf(cloud, id).slice(0, LIMITS.children).map(function (n) { return n.label; }); }
+  function knownUnder(cloud, id) { return childrenOf(cloud, id).slice(0, LIMITS.known).map(function (n) { return n.label; }); }
   function subjectLabels(cloud) { return subjects(cloud).map(function (p) { return p.label; }); }
+  /*
+   * What a prompt sees of a cloud of any size: a bounded, relevant set of subjects (at most LIMITS.promptParents), so
+   * tokens stay flat as the cloud grows. In order: the focused node's subject, subjects named in the learner's message
+   * (or holding a topic it names), the most recently active, then the strongest. The summary covers the same subjects.
+   * Everything else stays on the device: placement and dedupe are checked there against the whole cloud.
+   */
+  function promptSubjects(cloud, focusId, text, max) {
+    max = max || LIMITS.promptParents;
+    var ss = subjects(cloud), out = [], add = function (s) { if (s && out.indexOf(s) < 0 && out.length < max) out.push(s); };
+    if (focusId && cloud.nodes[focusId]) add(cloud.nodes[ancestry(cloud, focusId)[0]]);
+    var said = " " + norm(text || "") + " ";
+    if (said.trim()) {
+      var hit = function (n) { return n.key.length > 2 && said.indexOf(" " + n.key + " ") >= 0; };
+      ss.filter(hit).forEach(add);
+      if (out.length < max) all(cloud).forEach(function (n) { if (n.parent && !n.ghost && hit(n)) add(cloud.nodes[ancestry(cloud, n.id)[0]]); });
+    }
+    var heat = {};
+    all(cloud).forEach(function (n) { var s0 = ancestry(cloud, n.id)[0]; heat[s0] = Math.max(heat[s0] || 0, n.touched || 0, n.heatAt || 0); });
+    ss.slice().sort(function (a, b) { return (heat[b.id] || 0) - (heat[a.id] || 0) || b.weight - a.weight; }).slice(0, Math.ceil(max / 2)).forEach(add);
+    ss.slice().sort(function (a, b) { return b.weight - a.weight; }).forEach(add);
+    return out;
+  }
+  function promptView(cloud, focusId, text) {
+    var ss = promptSubjects(cloud, focusId, text), total = subjects(cloud).length;
+    var sum = summarize(cloud, 1800, ss.map(function (s) { return s.id; }));
+    if (total > ss.length) sum = (sum + "\n(+" + (total - ss.length) + " more subjects on the cloud, not listed)").slice(0, 1990);
+    return { parents: ss.map(function (s) { return s.label; }), cloud: sum, total: total };
+  }
 
   /* ---------- look ---------- */
   /* Colours: the subject's hue; each level down and each sibling a slightly different shade of it; ghosts pale. */
@@ -596,14 +644,35 @@
    */
   /*
    * A subject's fixed slot round the root, by its place among the subjects (creation order). The first 6 are the
-   * original golden spiral; subjects 7-12 take their own in-between spiral, so adding a subject never moves the others.
+   * original golden spiral; subjects 7-12 take their own in-between spiral. Past 12 there is no cap: subjects fill
+   * shells further out (shell s at radius 1 + SHELL.gap * s, room for 12 * (s + 1)), each a fixed golden (Fibonacci)
+   * sphere whose slots are taken in a coprime stride, so a half-full shell is already spread round the whole sphere.
+   * A slot depends only on its index, so adding a subject never moves the others.
    */
+  var SHELL = { gap: 0.85, first: 12 };
+  function shellOf(i) {
+    var j = i - SHELL.first, s = 1, cap = 24;
+    while (j >= cap) { j -= cap; s++; cap = 12 * (s + 1); }
+    return { s: s, j: j, cap: cap };
+  }
+  function strideFor(cap) {
+    var gcd = function (a, b) { return b ? gcd(b, a % b) : a; };
+    for (var st = Math.round(cap * 0.382); st < cap; st++) if (gcd(st, cap) === 1) return st;
+    return 1;
+  }
   function subjectSlot(i, golden) {
+    golden = golden || Math.PI * (3 - Math.sqrt(5));
+    if (i >= SHELL.first) {
+      var sh = shellOf(i), m = (sh.j * strideFor(sh.cap)) % sh.cap, R = 1 + SHELL.gap * sh.s;
+      var yy = (1 - (m + 0.5) / sh.cap * 2) * 0.92, rr = Math.sqrt(Math.max(0, 1 - yy * yy)), tt = golden * m + sh.s * 0.9;
+      return { x: Math.cos(tt) * rr * R, y: yy * 0.8 * R, z: Math.sin(tt) * rr * R, d: 1 };
+    }
     var k = i < 6 ? i : i - 6, M = 6;
     var y = i < 6 ? 1 - (k + 0.5) / M * 2 : 0.9 - (k + 1) / (M + 1) * 1.8;
     var r = Math.sqrt(Math.max(0, 1 - y * y)), th = golden * k + (i < 6 ? 0 : golden / 2 + Math.PI / 6);
     return { x: Math.cos(th) * r, y: y * 0.8, z: Math.sin(th) * r, d: 1 };
   }
+  var RING = 16;
   function layout(cloud) {
     var pos = { root: { x: 0, y: 0, z: 0, d: 0 } };
     var ix = index(cloud);
@@ -624,6 +693,8 @@
       var basis = perp(cur.dir);
       var step = 0.42 * levelScale(P.d + 1) / 0.6;
       var a0 = hash(n.key + "fan") * Math.PI * 2;
+      var rank = {};
+      kidsIds.forEach(function (x, ri) { rank[x] = ri; }); /* creation order among siblings: append-only, so rings never reshuffle */
       kidsIds = kidsIds.filter(function (x) { return cloud.nodes[x].role !== "optional"; }).concat(kidsIds.filter(function (x) { return cloud.nodes[x].role === "optional"; }));
       kidsIds.forEach(function (cid) {
         var c = cloud.nodes[cid];
@@ -637,10 +708,13 @@
           return;
         }
         var oi = order.indexOf(cid);
-        var a = oi >= 0 ? a0 + oi * (Math.PI * 2 / Math.max(order.length + 1, 5)) : hash(c.key + "a") * Math.PI * 2;
-        var theta = 0.7 + (c.ghost ? 0.2 : 0) + hash(c.key + "t") * 0.25;
+        /* no cap on children: every RING more (by creation rank) sits on a wider, further ring of the cone, spread by the
+           golden angle of its rank (the first ring keeps its old placement, so old saves look the same) */
+        var ring = Math.floor(rank[cid] / RING);
+        var a = oi >= 0 ? a0 + oi * (Math.PI * 2 / Math.max(order.length + 1, 5)) : ring ? a0 + rank[cid] * 2.39996323 : hash(c.key + "a") * Math.PI * 2;
+        var theta = 0.7 + (c.ghost ? 0.2 : 0) + hash(c.key + "t") * 0.25 + Math.min(0.35, ring * 0.12);
         /* absorbed into this (merged) parent: a tighter constellation round it */
-        var s = step * (c.ghost ? 1.12 : 1) * (c.absorbedInto === cur.id ? 0.45 : 1);
+        var s = step * (c.ghost ? 1.12 : 1) * (c.absorbedInto === cur.id ? 0.45 : 1) * (1 + 0.55 * ring);
         var off = {
           x: cur.dir.x * Math.cos(theta) + (basis[0].x * Math.cos(a) + basis[1].x * Math.sin(a)) * Math.sin(theta),
           y: cur.dir.y * Math.cos(theta) + (basis[0].y * Math.cos(a) + basis[1].y * Math.sin(a)) * Math.sin(theta),
@@ -674,7 +748,6 @@
     if (!n && onlyMissing && parentId) n = findTopic(cloud, label, parentId);
     if (!n) {
       if (parentId && !makeRoom(cloud, parentId, true)) return null;
-      if (!parentId && subjects(cloud).length >= LIMITS.subjects) return null;
       n = addNode(cloud, { label: label, parent: parentId, ghost: Boolean(parentId) && (ghost || onlyMissing), weight: 1, born: onlyMissing ? t : 0, hue: typeof spec === "object" ? spec.hue : undefined });
     }
     var kids = (typeof spec === "object" && spec.children) || [];
@@ -744,7 +817,7 @@
           if (!n && makeRoom(cloud, parent.id, false)) { n = addNode(cloud, { label: label, parent: parent.id, weight: 0.5, born: t }); out.order.push(n.id); }
         } else {
           n = subjects(cloud).filter(function (x) { return x.key === k; })[0] || findTopic(cloud, label) || findSubject(cloud, label);
-          if (!n && subjects(cloud).length < LIMITS.subjects) { n = addNode(cloud, { label: label, parent: null, weight: 1, born: t }); out.order.push(n.id); }
+          if (!n) { n = addNode(cloud, { label: label, parent: null, weight: 1, born: t }); out.order.push(n.id); }
         }
       }
       if (!n) return;
@@ -1387,7 +1460,7 @@
     var keys = CS_TOPICS.map(norm), moved = [], created = false;
     var movable = making ? childrenOf(cloud, making.id).filter(function (c) { return keys.indexOf(c.key) >= 0; }) : [];
     if (!cs) {
-      if (!movable.length || subjects(cloud).length >= LIMITS.subjects) return { moved: moved, created: false };
+      if (!movable.length) return { moved: moved, created: false };
       cs = addNode(cloud, { label: label, parent: null, weight: 1, born: t });
       created = true;
     }
@@ -1649,7 +1722,7 @@
   }
 
   var api = {
-    VERSION: VERSION, LIMITS: LIMITS, MASTERED: MASTERED, OLD_SEEDS: OLD_SEEDS, HUES: HUES, subjectHue: subjectHue, plant: plant,
+    VERSION: VERSION, LIMITS: LIMITS, STORE: STORE, subjectSlot: subjectSlot, promptSubjects: promptSubjects, promptView: promptView, prune: prune, MASTERED: MASTERED, OLD_SEEDS: OLD_SEEDS, HUES: HUES, subjectHue: subjectHue, plant: plant,
     newProfile: newProfile, profileOf: profileOf, setProfile: setProfile, topicCount: topicCount,
     TIERS: TIERS, TIER_NAMES: TIER_NAMES, TIER_STAGE: TIER_STAGE, ACHIEVE_RIGHT: ACHIEVE_RIGHT, roman: roman, tierOf: tierOf, mergeLevel: mergeLevel, mergeInto: mergeInto, corpusOf: corpusOf, absorbedInto: absorbedInto,
     GATE: GATE, needOf: needOf, gateCore: gateCore, coreProgress: coreProgress, prereqs: prereqs, lockedBy: lockedBy, completable: completable, addPrereqs: addPrereqs, PRE_MAX: PRE_MAX,

@@ -48,7 +48,34 @@
 
   /* ---------- storage ---------- */
   function load(k) { try { return localStorage.getItem(k); } catch { return null; } }
-  function store(k, v) { try { localStorage.setItem(k, v); } catch { /* full or blocked: keep working in memory */ } }
+  /* true when written. A full store (QuotaExceeded) or a blocked one throws, and setItem leaves the old value as it was,
+     so a failed write never corrupts a save: the app keeps working in memory. */
+  function store(k, v) { try { localStorage.setItem(k, v); return true; } catch { return false; } }
+  /* Rough use of this origin's storage (chars of keys + values, every learner in guide mode included). */
+  function storeUse() { var t = 0; try { for (var i = 0; i < localStorage.length; i++) { var k = localStorage.key(i); t += k.length + (localStorage.getItem(k) || "").length; } } catch { return 0; } return t; }
+  /* One quiet line from Iko, at most once a visit: the browser's storage is nearly full, or full. */
+  var storeNote = { warned: false, full: false, saves: 0, text: "" };
+  function storeSay(full) {
+    if (full ? storeNote.full : storeNote.warned) return;
+    storeNote.warned = true; if (full) storeNote.full = true;
+    storeNote.text = full ? "This browser's storage is full, so your latest changes are kept for this visit only." : "This browser's storage is nearly full. Your cloud is fine; older lessons may be let go to make room.";
+    if (iko.open) storeInSheet(); else ikoLine(storeNote.text, 12000);
+  }
+  /* with Iko's sheet open (or opening while the line shows), the note goes in the sheet instead of the line */
+  function storeInSheet() { var t = storeNote.text; storeNote.text = ""; if (t) push({ role: "model", local: true, text: t }); }
+  /* The cloud comes first: when its write doesn't fit, the cached lessons and notes make room (they can be written
+     again), then the cloud tries once more. If it still doesn't fit, the last good save stays as it was, nothing else
+     is written over it (so the saved pieces stay in step), and Iko says so once. */
+  function storeCloud(text) {
+    if (store(LS.cloud, text)) return true;
+    var ids = Object.keys(state.lessons);
+    state.lessons = keepNewest(state.lessons, Math.min(5, Math.floor(ids.length / 2)));
+    store(LS.lessons, JSON.stringify(state.lessons));
+    var nk = Object.keys(state.notes).slice(-5), notes = {};
+    nk.forEach(function (k) { notes[k] = state.notes[k]; });
+    state.notes = notes; store(LS.notes, JSON.stringify(notes));
+    return store(LS.cloud, text);
+  }
   function keepNewest(obj, max) {
     var keys = Object.keys(obj).sort(function (a, b) { return (obj[a].at || 0) - (obj[b].at || 0); }).slice(-max), out = {};
     keys.forEach(function (k) { out[k] = obj[k]; });
@@ -56,7 +83,10 @@
   }
   function save() {
     C.joinDeck(state.cloud); /* any topic past the threshold joins the deck for good */
-    store(LS.cloud, C.serialize(state.cloud));
+    var text = C.serialize(state.cloud);
+    if (text.length > C.STORE.softChars && C.prune(state.cloud)) text = C.serialize(state.cloud); /* past the byte ceiling: old placeholders go */
+    if (!storeCloud(text)) { storeSay(true); return; }
+    if (storeNote.saves++ % 25 === 0 && storeUse() > C.STORE.warnChars) storeSay(false);
     store(LS.thread, JSON.stringify(C.trimThread(state.thread.map(function (m) {
       var c = Object.assign({}, m); delete c.streaming; return c;
     }))));
@@ -462,13 +492,13 @@
     if (p.blurb) tp.blurb = p.blurb; /* its description came with the reply (0 calls) */
     var plan = P.placeTopic(state.cloud, tp, null);
     if (!plan) return;
-    if (plan.how !== "reuse") plan = how === "child" && f ? { how: "child", target: f.id } : C.subjects(state.cloud).length < C.LIMITS.subjects ? { how: "parent" } : f ? { how: "child", target: f.id } : { how: "legacy" };
+    if (plan.how !== "reuse") plan = how === "child" && f ? { how: "child", target: f.id } : { how: "parent" }; /* no cap on subjects */
     var r = C.applyTopics(state.cloud, [P.placedTopic(tp, plan)]);
     var id = r.parentsCreated[0] || r.created[0] || (plan.how === "reuse" ? plan.id : r.strengthened[0]) || null;
     save();
     refreshViews([id].filter(Boolean));
     var n = nodeOf(id);
-    m.done = !n ? "Your cloud is full of branches, so " + p.name + " wasn't added." : plan.how === "reuse" ? n.label + " is already on your cloud." : !n.parent ? n.label + " is a new branch on your cloud." : n.label + " is now under " + nodeOf(n.parent).label + ".";
+    m.done = !n ? p.name + " wasn't added." : plan.how === "reuse" ? n.label + " is already on your cloud." : !n.parent ? n.label + " is a new branch on your cloud." : n.label + " is now under " + nodeOf(n.parent).label + ".";
     m.open = n ? n.id : null;
     upsert(m);
     save();
@@ -507,12 +537,13 @@
     return state.thread.filter(function (m) { return (m.role === "user" || m.role === "model") && !m.fallback && !m.local && m.text; })
       .slice(-HISTORY).map(function (m) { return { role: m.role, text: m.text.slice(0, 1500) }; });
   }
-  function basePayload(focusId) {
-    var n = nodeOf(focusId);
+  /* text: the learner's message, so subjects it names are among those the prompt sees (C.promptView: a bounded set) */
+  function basePayload(focusId, text) {
+    var n = nodeOf(focusId), pv = C.promptView(state.cloud, n ? n.id : null, text || "");
     var p = n && n.parent ? nodeOf(n.parent) : null; /* no age, no region: nothing about who or where the learner is goes along */
     return {
       name: state.name, focus: n ? n.label : "", focusId: n ? n.id : "", focusParent: p ? p.label : "", trail: n ? C.trail(state.cloud, n.id) : "",
-      known: n ? C.knownUnder(state.cloud, n.id) : [], cloud: C.summarize(state.cloud), parents: C.subjectLabels(state.cloud)
+      known: n ? C.knownUnder(state.cloud, n.id) : [], cloud: pv.cloud, parents: pv.parents
     };
   }
 
@@ -619,7 +650,7 @@
     /* the focus is what is on screen: in Iko's sheet, the node of the screen it was opened on (none on the cloud with
        nothing selected); in the whole conversation, the focus shown above the composer. Never an earlier screen's node. */
     var fid = iko.open && iko.ctx ? (nodeOf(iko.ctx.id) ? iko.ctx.id : null) : state.focus;
-    var body = Object.assign(basePayload(fid), { mode: "chat", messages: history(), screen: iko.open && iko.ctx ? screenOf(iko.ctx) : { view: "chat" } });
+    var body = Object.assign(basePayload(fid, text), { mode: "chat", messages: history(), screen: iko.open && iko.ctx ? screenOf(iko.ctx) : { view: "chat" } });
     stream("/chat", body, {
       delta: function (t) { m.text += t; upsert(m); scrollDown(); },
       cloud: function (ev) { var r = grow(ev, fid); if (r.topic) { m.topic = r.topic.name; m.parent = r.topic.parent; } }
@@ -2063,7 +2094,9 @@
     if (o.tricky && c.view === "lesson") c.step = "tricky"; /* the clarification is about to show */
     iko.ctx = c; iko.from = state.thread.length; iko.open = true;
     dismissHint("iko");
+    var note = storeNote.text && !el.ikoLine.hidden && el.ikoLine.textContent === storeNote.text; /* a storage note still showing */
     ikoLine("");
+    if (note) storeInSheet();
     setFocus(c.id || null); /* the screen's node, or none: a node from an earlier screen never stays the focus */
     el.ikoAbout.textContent = ikoAbout(c);
     el.ikoSay.textContent = ikoGreeting(c, o);

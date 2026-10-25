@@ -31,6 +31,9 @@
     var projected = [];
     /* Test nodes: { parentId: "ready" | "taken" } (from orchestrator.js), drawn as a small diamond hanging off the parent */
     var tests = {}, testMarks = [];
+    /* a cloud of any size: the camera stands further back (camD) and Recentre frames the whole cloud (home) once
+       subjects reach the outer shells; a cloud of up to 12 subjects is exactly as before (camD 3.2, zoom 1) */
+    var camD = 3.2, home = HOME, zfloor = ZMIN, colors = {};
 
     function resize() {
       var r = canvas.getBoundingClientRect();
@@ -42,9 +45,16 @@
     }
 
     function setCloud(c) {
+      var first = !cloud;
       cloud = c;
       pos = c ? C.layout(c) : {};
-      depth = {}; pathRank = {}; kids = {};
+      depth = {}; pathRank = {}; kids = {}; colors = {};
+      var ext = 1;
+      if (c) C.subjects(c).forEach(function (s) { var p = pos[s.id]; if (p) ext = Math.max(ext, Math.hypot(p.x, p.y, p.z)); });
+      camD = Math.max(3.2, ext * 1.7);
+      home = Object.assign({}, HOME, { zoom: Math.min(1, 1.15 / ext) });
+      zfloor = Math.min(ZMIN, home.zoom * 0.7);
+      if (first && c) zoom = home.zoom; /* a restored view (setView) still wins */
       if (c) {
         c.order.forEach(function (id) { var n = c.nodes[id]; if (n && n.parent) kids[n.parent] = 1; });
         Object.keys(pos).forEach(function (id) { depth[id] = pos[id].d; });
@@ -84,7 +94,7 @@
       var px = p.x - pivot.x, py = p.y - pivot.y, pz = p.z - pivot.z;
       var x = px * cy - pz * sy, z = px * sy + pz * cy;
       var y = py * cp - z * sp; z = py * sp + z * cp;
-      var f = 3.2 / (3.2 + z);
+      var f = camD / (camD + Math.max(z, -camD * 0.8));
       var s = Math.min(w, h) * (mini ? 0.3 : 0.34) * zoom;
       return { x: w / 2 + panX + x * f * s, y: h / 2 + panY - y * f * s, f: f, z: z };
     }
@@ -129,9 +139,11 @@
       return (l.fresh ? 20 : 0) + (n.id === cloud.next ? 8 : 0) + (focusSet[n.id] ? 4 : 0) + legible + (n.ghost ? 0 : 0.5) + Math.min(0.9, (n.weight || 0) / 20) + l.a * 0.05;
     }
 
+    var drawMs = 0; /* how long the last frame took to draw (state().drawMs: the perf checks read it) */
     function draw(now) {
       raf = 0;
       if (!cloud) return;
+      var t0 = performance.now();
       if (tween) stepTween(now);
       if (glideV) stepGlide(now);
       ctx.clearRect(0, 0, w, h);
@@ -150,10 +162,10 @@
         ctx.save();
         var fade = Math.min(1, 0.5 + reads(n.id)) * (!mini && focusId && !focusSet[n.id] ? 0.55 : 1);
         /* a side path: a faint dotted twig off its core step */
-        if (n.absorbedInto && n.absorbedInto === n.parent) { ctx.globalAlpha = 0.55 * it.p.f * fade; ctx.lineWidth = 0.8; ctx.strokeStyle = C.colorOf(cloud, n); from = at[n.parent] || from; }
-        else if (side) { ctx.setLineDash([1, 3]); ctx.globalAlpha = 0.22 * it.p.f * fade; ctx.strokeStyle = C.colorOf(cloud, n); }
-        else if (n.ghost) { ctx.setLineDash([2, 4]); ctx.globalAlpha = 0.3 * it.p.f * fade; ctx.strokeStyle = C.colorOf(cloud, n); }
-        else if (n.parent) { ctx.globalAlpha = 0.42 * it.p.f * fade; ctx.strokeStyle = C.colorOf(cloud, n); }
+        if (n.absorbedInto && n.absorbedInto === n.parent) { ctx.globalAlpha = 0.55 * it.p.f * fade; ctx.lineWidth = 0.8; ctx.strokeStyle = colorOf(n); from = at[n.parent] || from; }
+        else if (side) { ctx.setLineDash([1, 3]); ctx.globalAlpha = 0.22 * it.p.f * fade; ctx.strokeStyle = colorOf(n); }
+        else if (n.ghost) { ctx.setLineDash([2, 4]); ctx.globalAlpha = 0.3 * it.p.f * fade; ctx.strokeStyle = colorOf(n); }
+        else if (n.parent) { ctx.globalAlpha = 0.42 * it.p.f * fade; ctx.strokeStyle = colorOf(n); }
         else { ctx.globalAlpha = 0.22; ctx.strokeStyle = INK; }
         ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(it.p.x, it.p.y); ctx.stroke();
         ctx.restore();
@@ -167,7 +179,7 @@
         var ml = Math.min(3, n.ml || 0), absorbed = Boolean(n.absorbedInto);
         base *= (1 + 0.16 * ml) * (absorbed ? 0.72 : 1); /* merged: a stronger node; absorbed: a small star of its constellation */
         var r = mini ? base * 0.6 : base * Math.max(0.55, Math.min(1.6, reads(n.id) * 0.9 + (d > 1 ? 0.25 : 0))) * p.f;
-        var col = C.colorOf(cloud, n);
+        var col = colorOf(n);
         var sel = !mini && n.id === focusId, sk = sel ? selEase(now) : 0;
         if (sel) { r *= 1 + 0.28 * sk; if (sk < 1) pulsing = true; }
         /* quiet: with a node selected, everything off its branch steps back */
@@ -228,7 +240,7 @@
         var st = tests[it.n.id];
         if (!st) return;
         var p = it.p, off = mini ? 5 : 20 * Math.max(0.75, p.f), x = p.x + off, y = p.y + off * 0.8, sz = mini ? 2.4 : 5.5 * Math.max(0.8, p.f);
-        var col = C.colorOf(cloud, it.n);
+        var col = colorOf(it.n);
         ctx.save();
         ctx.globalAlpha = 0.55; ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.setLineDash([1.5, 2.5]);
         ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(x, y); ctx.stroke();
@@ -287,6 +299,7 @@
         if (sp.on) yaw += CAM.spinStep(spinning ? now - lastFrame : 16, now - spinFrom);
       }
       spinning = sp.on; lastFrame = now;
+      drawMs = performance.now() - t0;
       if (opts.onDraw) opts.onDraw(); /* the app keeps the selection card attached to its node */
       if (pulsing || idleSpin || sp.on || gesture || tween || glideV) request();
       else if (sp.wait !== Infinity && !resumeTimer) resumeTimer = setTimeout(function () { resumeTimer = 0; request(); }, sp.wait + 30);
@@ -306,9 +319,11 @@
       return best ? { node: best } : null;
     }
 
-    function setZoom(z) { zoom = Math.max(ZMIN, Math.min(ZMAX, z)); request(); }
+    function setZoom(z) { zoom = Math.max(zfloor, Math.min(ZMAX, z)); request(); }
+    /* colours only change with the cloud (setCloud): worked out once per node, not three times a frame */
+    function colorOf(n) { var c = colors[n.id]; if (!c) c = colors[n.id] = C.colorOf(cloud, n); return c; }
 
-    function view() { return { zoom: zoom, panX: panX, panY: panY, yaw: yaw, pitch: pitch, pivot: pivot }; }
+    function view() { return { zoom: zoom, panX: panX, panY: panY, yaw: yaw, pitch: pitch, pivot: pivot, zmin: zfloor }; }
     function apply(v) { zoom = v.zoom; panX = v.panX; panY = v.panY; yaw = v.yaw; pitch = v.pitch; pivot = v.pivot || CAM.ORIGIN; }
     function pointOf(id) { var p = pos[id]; return { x: p.x, y: p.y, z: p.z }; }
     function animateTo(to, ms) {
@@ -441,10 +456,10 @@
       resize: resize,
       /* the zoom buttons: a short eased zoom about the centre */
       zoomBy: function (k) { var v = view(), z = CAM.zoomAbout(v, k, null, w, h); animateTo({ zoom: z.zoom, panX: v.panX * (z.zoom / v.zoom), panY: v.panY * (z.zoom / v.zoom), yaw: v.yaw, pitch: v.pitch }, CAM.CAM.zoomMs); },
-      reset: function () { apply(Object.assign({ pivot: CAM.ORIGIN }, HOME)); tween = null; glideV = null; setFocus(null); request(); changed(); },
+      reset: function () { apply(Object.assign({ pivot: CAM.ORIGIN }, home)); tween = null; glideV = null; setFocus(null); request(); changed(); },
       /* Recentre: ease back to the whole cloud, the pivot back to the origin, and let go of the focus */
-      recentre: function () { setFocus(null); animateTo(Object.assign({ pivot: CAM.ORIGIN }, HOME), CAM.CAM.focusMs); },
-      state: function () { return { yaw: yaw, pitch: pitch, zoom: zoom, panX: panX, panY: panY, pivot: { x: pivot.x, y: pivot.y, z: pivot.z }, focus: focusId, drawn: projected.length, moving: Boolean(tween || glideV), spinning: spinning, held: spinHeld }; },
+      recentre: function () { setFocus(null); animateTo(Object.assign({ pivot: CAM.ORIGIN }, home), CAM.CAM.focusMs); },
+      state: function () { return { yaw: yaw, pitch: pitch, zoom: zoom, panX: panX, panY: panY, pivot: { x: pivot.x, y: pivot.y, z: pivot.z }, focus: focusId, drawn: projected.length, drawMs: drawMs, moving: Boolean(tween || glideV), spinning: spinning, held: spinHeld }; },
       setView: function (v) { if (v.zoom) setZoom(v.zoom); if (v.yaw != null) yaw = v.yaw; if (v.pitch != null) pitch = v.pitch; if (v.panX != null) panX = v.panX; if (v.panY != null) panY = v.panY; if (v.pivot && isFinite(v.pivot.x) && isFinite(v.pivot.y) && isFinite(v.pivot.z)) pivot = { x: v.pivot.x, y: v.pivot.y, z: v.pivot.z }; if (v.focus !== undefined) setFocus(v.focus); request(); },
       project: function (id) { return pos[id] ? project(pos[id]) : null; },
       focusNode: focusNode,

@@ -124,7 +124,7 @@
   function twist(a0, b0, a1, b1) { return wrap(Math.atan2(b1.y - a1.y, b1.x - a1.x) - Math.atan2(b0.y - a0.y, b0.x - a0.x)); }
   /* Zoom by k about a screen point: the point under the cursor stays put. */
   function zoomAbout(view, k, at, w, h) {
-    var z = clamp(view.zoom * k, CAM.zmin, CAM.zmax), real = z / view.zoom;
+    var z = clamp(view.zoom * k, Math.min(CAM.zmin, view.zmin || CAM.zmin), CAM.zmax), real = z / view.zoom; /* a big cloud lowers the floor (view.zmin) */
     var out = { zoom: z, panX: view.panX, panY: view.panY };
     if (at) { out.panX = at.x - w / 2 - (at.x - w / 2 - view.panX) * real; out.panY = at.y - h / 2 - (at.y - h / 2 - view.panY) * real; }
     return out;
