@@ -1411,11 +1411,16 @@
    */
   function renderWhereNext() {
     var id = state.lessonNode, n = nodeOf(id);
+    var oldList = el.lNext.querySelector("#wn-alt.wn-all"), keepTop = oldList ? oldList.scrollTop : 0; /* a pick in the long list keeps its place */
     el.lNext.textContent = "";
     if (!n || state.mode !== "lesson") return;
     var w = P.whereNext(state.cloud, id, nextStep(id));
     var forkIds = n.fork && n.fork.ids ? n.fork.ids : [];
-    var items = w.choices.map(function (c) { return c.id; }).concat(w.others);
+    /* Also in progress: the 3 most recent by default; "more · N" shows the rest inline (in its own scrolling area), "fewer"
+       folds it again. Open per lesson (state.aipMore holds the lesson's id); nothing is fetched (0 calls). */
+    var more = w.allOthers.length > w.others.length, expanded = more && state.aipMore === id;
+    var others = expanded ? w.allOthers : w.others;
+    var items = w.choices.map(function (c) { return c.id; }).concat(others);
     var grow = !w.path && !n.end && !C.isTerminal(state.cloud, id) && (!n.path || P.needsNext(state.cloud, id));
     if (!items.length && !grow) return;
     /* the learner's own tap wins; otherwise the computed pick (it can change, e.g. when the fork arrives) */
@@ -1469,14 +1474,34 @@
       el.lNext.appendChild(main);
     }
     if (grow) el.lNext.appendChild(mk("p", "fine")).appendChild(linkBtn("What comes next in " + n.label + "?", function () { createNext(id); }));
-    if (w.others.length) {
+    if (others.length) {
       el.lNext.appendChild(mk("p", "wn-sub", "Also in progress"));
-      var alt = group("Also in progress", "wn-alt");
-      w.others.forEach(function (x) {
+      var alt = group("Also in progress", "wn-alt" + (expanded ? " wn-all" : ""));
+      alt.id = "wn-alt";
+      others.forEach(function (x) {
         var m = nodeOf(x), pick = n.fork && n.fork.picked === x;
         box(alt, x, "progress", (pick && !(m.opened || m.engaged > 0 || m.correct > 0) ? "Your pick · " : "In progress · ") + trailOf(m.parent || x));
       });
       el.lNext.appendChild(alt);
+      if (expanded) {
+        var sb = alt.offsetWidth - alt.clientWidth; /* a scrollbar that takes room: given back on the right, so the boxes stay as wide as Where Next's */
+        if (sb > 0) { alt.style.marginRight = -sb + "px"; alt.style.paddingRight = "0"; }
+        if (keepTop) alt.scrollTop = keepTop;
+      }
+      if (more) {
+        /* a quiet link: how many more there are, or fold them away again; focus stays on it */
+        var tg = linkBtn(expanded ? "fewer" : "more · " + (w.allOthers.length - w.others.length), function () {
+          state.aipMore = expanded ? null : id;
+          renderWhereNext();
+          var again = el.lNext.querySelector(".wn-more");
+          if (again) again.focus();
+          if (!expanded) { var list = el.lNext.querySelector("#wn-alt"); if (list) list.scrollTop = 0; }
+        }, "link wn-more");
+        tg.setAttribute("aria-expanded", expanded ? "true" : "false");
+        tg.setAttribute("aria-controls", "wn-alt");
+        tg.setAttribute("aria-label", expanded ? "Show fewer topics in progress" : "Show all " + w.allOthers.length + " topics in progress");
+        el.lNext.appendChild(mk("p", "fine wn-more-row")).appendChild(tg);
+      }
     }
   }
   function askInChat(id, ask) {

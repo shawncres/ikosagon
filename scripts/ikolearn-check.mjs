@@ -2971,7 +2971,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const wnx = app.slice(app.indexOf("  function renderWhereNext() {"), app.indexOf("  function askInChat(id, ask)"));
   ok(/P\.whereNext\(state\.cloud, id, nextStep\(id\)\)/.test(wnx) && /var sel = items\.indexOf\(state\.pick\) >= 0 \? state\.pick : w\.next \|\| items\[0\];/.test(wnx) && /state\.pick = x; renderWhereNext\(\);/.test(wnx) && /aria-checked/.test(wnx) && !/postJson\(|stream\(/.test(wnx), "Where Next: next step pre-selected, the learner picks and opens (0 calls)");
   ok(/mk\("button", "btn sm wn-act", cont \? "Continue" : "Open"\)/.test(wnx) && /b\.appendChild\(act\);/.test(wnx) && /if \(!on\) \{ act\.tabIndex = -1; act\.setAttribute\("aria-hidden", "true"\); \}/.test(wnx) && !/wn-go/.test(wnx), "Where Next: the action (Continue / Open) sits inside each box, live only in the selected one");
-  ok(/group\("Also in progress", "wn-alt"\)/.test(wnx) && /mk\("p", "wn-sub", "Also in progress"\)/.test(wnx), "Where Next: other branches in their own group, Also in progress");
+  ok(/group\("Also in progress", "wn-alt" \+ \(expanded \? " wn-all" : ""\)\)/.test(wnx) && /mk\("p", "wn-sub", "Also in progress"\)/.test(wnx), "Where Next: other branches in their own group, Also in progress");
   {
     const css = fs.readFileSync("public/ikolearn/styles.css", "utf8");
     ok(/\.wn-opt \{ box-sizing: border-box; height: 84px;/.test(css) && /\.wn-label \{ display: -webkit-box; -webkit-line-clamp: 2;/.test(css) && /\.wn-opt \.why \{[^}]*text-overflow: ellipsis;/.test(css) && /\.wn-act \{ visibility: hidden; \}/.test(css) && /\.wn-opt\.on \.wn-act \{ visibility: visible; \}/.test(css) && !/\.wn-opt\.path \.wn-label \{ font-weight/.test(css), "Where Next: every box the same height and weight; long titles clamp evenly; the action's room kept in each box");
@@ -2987,7 +2987,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(!/Try again in a few seconds/.test(app) && /state\.queued = function \(\) \{ if \(state\.lessonNode === id && state\.mode === "lesson"/.test(app) && /if \(!on && state\.queued\) \{ var q = state\.queued; state\.queued = null; setTimeout\(q, 0\); \}/.test(app), "busy: a lesson (or test, note, clarification) waits its turn and starts by itself; no false Try again");
   const rf = app.slice(app.indexOf("  function renderFork(id) {"), app.indexOf("  /* Opens a node as a lesson: from the cache"));
   ok(rf.length > 100 && !/Pick one|orderChoices|fork-opt/.test(rf) && !/Where next\? Pick one/.test(app) && (app.match(/mk\("p", "l-head", "Where next"\)/g) || []).length === 1, "one Where Next: the fork's choices are in it, no separate fork block");
-  ok(/if \(forkIds\.indexOf\(to\) >= 0\) \{ C\.pickChoice\(state\.cloud, id, to\);/.test(wnx) && /w\.choices\.map\(function \(c\) \{ return c\.id; \}\)\.concat\(w\.others\)/.test(wnx), "Where Next: the three choices, then in progress; opening a fork choice records it as the learner's pick");
+  ok(/if \(forkIds\.indexOf\(to\) >= 0\) \{ C\.pickChoice\(state\.cloud, id, to\);/.test(wnx) && /w\.choices\.map\(function \(c\) \{ return c\.id; \}\)\.concat\(others\)/.test(wnx) && /var others = expanded \? w\.allOthers : w\.others;/.test(wnx), "Where Next: the three choices, then in progress; opening a fork choice records it as the learner's pick");
   ok(/"Next on this path"/.test(wnx) && !/"Try a different path"/.test(wnx) && /"Goes deeper into "/.test(wnx) && /"In progress · "/.test(wnx) && !/In your top 10|topRanks\(/.test(wnx), "Where Next: honest reasons from the cloud (no top-10 boast, no claims about the learner, no different-path slot)");
   ok(/var rec = P\.pathNext\(state\.cloud, id\);/.test(app), "Your Path marks the same next step Where Next continues with");
   ok(/if \(!quizSaidIt\(\)\) el\.lStatus\.appendChild\(mk\("strong", "yes", "That's it\. "\)\)/.test(fin) && /function quizSaidIt\(\)/.test(app) && /if \(quizSaidIt\(\)\) \{ var dup = el\.lStatus\.querySelector\("strong\.yes"\)/.test(app), "\"That's it.\" is said once (the quiz or the status line, never both)");
@@ -3399,6 +3399,41 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const view = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8");
   ok(/camD = Math\.max\(3\.2, ext \* 1\.7\);/.test(view) && /zoom: Math\.min\(1, 1\.15 \/ ext\)/.test(view) && /var f = camD \/ \(camD \+ Math\.max\(z, -camD \* 0\.8\)\);/.test(view), "view: a big cloud moves the camera back and Recentre frames it all (a cloud of up to 12 subjects is unchanged)");
   ok(/function colorOf\(n\) \{ var c = colors\[n\.id\];/.test(view) && !/C\.colorOf\(cloud, (n|it\.n)\)\b(?!; return c)/.test(view.replace("C.colorOf(cloud, n); return c;", "")), "view: node colours are worked out once per cloud, not every frame");
+}
+
+// ---------- Also in progress: the 3 most recent by default, "more · N" for the rest ----------
+{
+  const T1 = Date.UTC(2026, 9, 22, 12);
+  const ac = C.create("Ada", T1);
+  const names = Array.from({ length: 10 }, (_, i) => "Field " + i);
+  names.forEach((nm, i) => {
+    C.applyTopics(ac, [{ name: nm, signal: "explored", asSubject: true }], T1 + i);
+    const s0 = C.subjects(ac)[i];
+    C.applyCreate(ac, { items: [{ node: { name: nm + " Path", chain: [nm] }, card: { title: nm, blurb: "x", goal: "" }, children: ["A", "B", "C"].map((x, k) => ({ name: nm + " " + x, order: k + 1, score: 0.5, role: "core" })) }] }, { t: T1 + i });
+    void s0;
+  });
+  const L = (l) => ac.order.map((x) => ac.nodes[x]).find((n) => n.label === l);
+  const start = (l, at) => { const n = L(l); n.ghost = false; n.opened = true; n.engaged = 2; n.touched = at; };
+  names.forEach((nm, i) => start(nm + " A", T1 + 1000 + i * 10)); /* Field 9 A is the most recent */
+  start("Field 0 B", T1 + 5000); /* on the lesson's own path: never in Also in progress */
+  const cur = L("Field 0 A").id;
+  const aw = P.whereNext(ac, cur, null);
+  const lab = (ids) => ids.map((x) => ac.nodes[x].label);
+  ok(aw.others.length === 3 && aw.allOthers.length === 9, "Also in progress: 3 by default, the whole list behind more", `${aw.others.length} ${aw.allOthers.length}`);
+  eq(lab(aw.others), ["Field 9 A", "Field 8 A", "Field 7 A"], "Also in progress: most recent activity first");
+  ok(aw.allOthers.slice(0, 3).join() === aw.others.join() && aw.allOthers.every((x, i, a) => i === 0 || (ac.nodes[a[i - 1]].touched || 0) >= (ac.nodes[x].touched || 0)), "Also in progress: the default 3 are the head of the full, recency-ordered list");
+  ok(!aw.allOthers.includes(L("Field 0 B").id) && !aw.allOthers.includes(cur) && !aw.choices.some((c) => aw.allOthers.includes(c.id)), "Also in progress: never on the lesson's own line, never a Where Next choice");
+  const few = C.deserialize(C.serialize(ac));
+  names.slice(3).forEach((nm) => { const n = few.nodes[ac.order.find((x) => ac.nodes[x].label === nm + " A")]; n.opened = false; n.engaged = 0; });
+  const fw = P.whereNext(few, cur, null);
+  ok(fw.allOthers.length === fw.others.length && fw.others.length <= 3, "Also in progress: with 3 or fewer there is nothing more (no link)");
+  ok(JSON.stringify(P.whereNext(ac, cur, null).choices) === JSON.stringify(aw.choices), "Where Next: unchanged by the full list");
+  const appA = fs.readFileSync("public/ikolearn/app.js", "utf8");
+  const wnA = appA.slice(appA.indexOf("  function renderWhereNext() {"), appA.indexOf("  function askInChat("));
+  ok(/var more = w\.allOthers\.length > w\.others\.length, expanded = more && state\.aipMore === id;/.test(wnA) && /"more · " \+ \(w\.allOthers\.length - w\.others\.length\)/.test(wnA) && /expanded \? "fewer"/.test(wnA), "Also in progress: a quiet more · N link (only when there are more), fewer folds it again");
+  ok(/tg\.setAttribute\("aria-expanded", expanded \? "true" : "false"\)/.test(wnA) && /tg\.setAttribute\("aria-controls", "wn-alt"\)/.test(wnA) && /again\.focus\(\)/.test(wnA), "Also in progress: the link is a button with aria-expanded and aria-controls; focus stays on it");
+  ok(/keepTop = oldList \? oldList\.scrollTop : 0/.test(wnA) && /if \(keepTop\) alt\.scrollTop = keepTop;/.test(wnA) && /alt\.style\.marginRight = -sb \+ "px"/.test(wnA) && !/postJson\(|stream\(/.test(wnA), "Also in progress: picking in the long list keeps its scroll place; 0 calls");
+  ok(/\.wn-alt\.wn-all \{ max-height: min\(372px, 52vh\); overflow-y: auto;/.test(fs.readFileSync("public/ikolearn/styles.css", "utf8")), "Also in progress: the full list scrolls in its own area (Where Next stays on screen)");
 }
 
 if (fails.length) {

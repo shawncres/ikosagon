@@ -562,14 +562,20 @@
     var choices = [];
     if (cont) choices.push({ id: cont, kind: "path", why: whyOf(cont) });
     branches.forEach(function (x) { choices.push({ id: x, kind: "branch", why: whyOf(x) }); });
-    /* Also in progress: other topics started and unfinished, most recent first; the learner's own pick on another path leads */
+    /* Also in progress: other topics started and unfinished, most recent activity first, never on this lesson's own line
+       (its ancestors, what lies under it, or the steps of its parent's path: that is Where Next's job); the learner's own
+       pick on another path leads. `others` is the short default list (max, 3), `allOthers` the whole list ("more"). */
+    var lineIds = {}, par = n.parent ? nodeOf(cloud, n.parent) : null;
+    C.ancestry(cloud, id).forEach(function (x) { lineIds[x] = 1; });
+    if (par && par.path) par.path.ids.forEach(function (x) { lineIds[x] = 1; });
+    var onLine = function (x) { return lineIds[x] || C.ancestry(cloud, x).indexOf(id) >= 0; };
     var touched = function (a, b) { return (nodeOf(cloud, b).touched || 0) - (nodeOf(cloud, a).touched || 0); };
     var others = cloud.order.filter(function (x) {
       var m = nodeOf(cloud, x);
-      return m && !used[x] && m.parent && open(x) && (m.opened || m.engaged > 0 || m.correct > 0);
+      return m && !used[x] && m.parent && open(x) && !onLine(x) && (m.opened || m.engaged > 0 || m.correct > 0);
     }).sort(touched);
-    if (picked && !used[picked]) others = [picked].concat(others.filter(function (x) { return x !== picked; }));
-    return { next: picked || cont || (choices[0] && choices[0].id) || null, path: cont, choices: choices, others: others.slice(0, max) };
+    if (picked && !used[picked] && !onLine(picked)) others = [picked].concat(others.filter(function (x) { return x !== picked; }));
+    return { next: picked || cont || (choices[0] && choices[0].id) || null, path: cont, choices: choices, others: others.slice(0, max), allOthers: others };
   }
 
   /*

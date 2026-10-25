@@ -305,6 +305,11 @@ button.gcard:hover { border-color: var(--soft); }
 .wn-opt.on .wn-act { visibility: visible; }
 .wn-sub { grid-column: 1 / -1; margin: 12px 0 6px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--soft); }
 .wn-opt.on { background: var(--sheet); border-color: var(--ink); box-shadow: inset 3px 0 0 var(--ink); }
+/* Also in progress, opened in full ("more · N"): the same equal boxes in their own quiet scrolling area, so a long list
+   (40+ subjects) never pushes Where Next off screen */
+.wn-alt.wn-all { max-height: min(372px, 52vh); overflow-y: auto; overscroll-behavior: contain; padding: 2px 0; scrollbar-width: thin; } /* no side padding: its boxes keep Where Next's width (a real scrollbar is given back by app.js) */
+.wn-more-row { margin: 6px 0 0; }
+.wn-more { font-size: 13px; color: var(--soft); }
 .status .link { color: var(--ink); }
 
 .dock { position: sticky; bottom: 0; background: var(--paper); padding: 10px 0 calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--rule); }
