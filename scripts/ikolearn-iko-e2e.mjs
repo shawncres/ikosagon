@@ -225,12 +225,29 @@ for (const width of [390, 1280]) {
       ok(tr.sheet && tr.inSheet && tr.simpler.startsWith("Picture the ground as a thick warm quilt") && tr.focusIn && tr.lesson && tr.opts === 3 && tr.about === "On Magma · lesson", `${tag}: Still tricky: Iko opens with the prepared clarification (the lesson stays)`, JSON.stringify(tr));
       ok(calls.length === c0, `${tag}: Still tricky: 0 calls (prepared with the lesson)`, calls.slice(c0).join());
       await shot(p, width, "4-tricky");
+      /* the sheet covers the lesson's buttons on a phone, so it carries "I've got it": visible and on top, even after the page scrolls */
+      const gotOk = () => p.evaluate(() => { const b = document.querySelector("#iko-got"), r = b.getBoundingClientRect(), hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return Boolean(b.offsetParent) && hit === b && r.top >= 0 && r.bottom <= innerHeight; });
+      ok(await gotOk(), `${tag}: Still tricky: "I've got it" is in Iko's sheet, visible and tappable`);
+      await p.mouse.move(Math.round(width / 4), 140); await p.mouse.wheel(0, 300); await p.waitForTimeout(250);
+      await p.evaluate(() => window.scrollBy(0, -300)); await p.waitForTimeout(150);
+      ok(await gotOk(), `${tag}: Still tricky: it stays visible and tappable when the page scrolls`);
+      if (width >= 1100) {
+        const wn = await p.evaluate(() => { const s = document.querySelector("#iko-sheet").getBoundingClientRect(); return [...document.querySelectorAll("#l-next .wn-opt, #l-next button, #l-done button")].filter((e) => { const r = e.getBoundingClientRect(); return r.width && r.left < s.right && r.right > s.left && r.top < s.bottom && r.bottom > s.top; }).map((e) => e.textContent.trim().slice(0, 30)); });
+        ok(!wn.length, `${tag}: Still tricky: on a wide screen the sheet sits clear of Where Next and the lesson's buttons`, JSON.stringify(wn));
+      }
       await ikoSend(p, "Which part is the hardest?");
       const b3 = screenOf(bodies);
       ok(b3 && JSON.stringify(b3.screen) === JSON.stringify({ view: "lesson", step: "tricky", topic: "Magma" }) && b3.focus === "Magma", `${tag}: Still tricky: a question to Iko carries the lesson, its step and topic`, JSON.stringify(b3 && b3.screen));
       await p.keyboard.press("Escape"); await p.waitForTimeout(150);
       const back = await p.evaluate(() => ({ sheet: !document.querySelector("#iko-sheet").hidden, inLesson: Boolean(document.querySelector(".l-main #l-clar .clar")), lesson: !document.querySelector("#lesson").hidden }));
       ok(!back.sheet && back.inLesson && back.lesson, `${tag}: closing Iko puts the clarification back in the lesson`, JSON.stringify(back));
+      /* again, and done from the sheet: "I've got it" there finishes the lesson (0 calls) and closes the sheet */
+      await p.evaluate(() => document.querySelector("#l-done").scrollIntoView({ block: "center" }));
+      const c1 = calls.length;
+      await p.click("#l-tricky"); await p.waitForTimeout(300);
+      await p.click("#iko-got"); await p.waitForTimeout(300);
+      const fin = await p.evaluate(() => ({ sheet: !document.querySelector("#iko-sheet").hidden, opts: document.querySelectorAll("#l-clar .clar-opt").length, status: document.querySelector("#l-status").innerText, lesson: !document.querySelector("#lesson").hidden, acts: !document.querySelector("#iko-acts").hidden }));
+      ok(!fin.sheet && !fin.opts && fin.lesson && !fin.acts && /growing|stronger|That's it/.test(fin.status) && calls.length === c1, `${tag}: "I've got it" in the sheet finishes the lesson and closes it (0 calls)`, JSON.stringify(fin) + calls.slice(c1).join());
       await p.click("#l-back"); await p.waitForTimeout(900);
       if (!(await p.isHidden("#panel"))) { await p.click("#p-close"); await p.waitForTimeout(200); }
       /* the deck */

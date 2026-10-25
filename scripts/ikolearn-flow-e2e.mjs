@@ -80,7 +80,7 @@ async function run(width) {
   });
   const shot = async (name, sel) => {
     if (!SHOTS) return;
-    if (sel) await p.evaluate((q) => { const e = document.querySelector(q); if (e) e.scrollIntoView({ block: "start" }); }, sel);
+    if (sel) await p.evaluate((q) => { const e = document.querySelector(q); if (e && !e.closest("#iko-sheet")) e.scrollIntoView({ block: "start" }); }, sel); /* in Iko's sheet only the sheet scrolls */
     await p.waitForTimeout(250);
     await p.screenshot({ path: path.join(SHOTS, `flow-${TAG}-${width}-${name}.png`) });
   };
@@ -206,7 +206,11 @@ async function run(width) {
     ok(count(/:clarify:/) === c3, `${width}: asking for one already written is 0 calls`);
     // understood after all: the options and the chat link go, the answers already shown stay; still no auto-advance
     const t0 = await p.textContent("#l-title");
-    await p.click("#l-got"); await p.waitForTimeout(300);
+    // Iko's sheet covers the lesson's buttons on a phone, so it carries "I've got it": visible and tappable, at any scroll
+    const gotAt = await p.evaluate(() => { const b = document.querySelector("#iko-got"), r = b.getBoundingClientRect(), hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return { shown: Boolean(b.offsetParent), top: hit === b, inView: r.top >= 0 && r.bottom <= innerHeight }; });
+    ok(gotAt.shown && gotAt.top && gotAt.inView, `${width}: with Iko's sheet open, "I've got it" is in the sheet, visible and on top`, JSON.stringify(gotAt));
+    await p.click("#iko-got"); await p.waitForTimeout(300);
+    ok(await p.isHidden("#iko-sheet"), `${width}: "I've got it" in the sheet closes it`);
     const cl = await p.evaluate(() => ({ opts: document.querySelectorAll("#l-clar .clar-opt").length, chat: document.querySelectorAll("#l-clar .clar-chat").length, answers: document.querySelectorAll("#l-clar .clar").length, title: document.querySelector("#l-title").textContent }));
     ok(cl.opts === 0 && cl.chat === 0 && cl.answers === 3 && cl.title === t0 && count(/:clarify:/) === c3, `${width}: "I've got it" hides the options and chat link; the answers stay (0 calls, no auto-advance)`, JSON.stringify(cl));
     await shot("got-after-clarify", "#l-status");

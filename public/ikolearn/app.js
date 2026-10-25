@@ -30,7 +30,7 @@
     lGot: $("l-got"), lTricky: $("l-tricky"), lStatus: $("l-status"), lPath: $("l-path"), lClar: $("l-clar"), lNext: $("l-next"), lChat: $("l-chat"), lRedo: $("l-redo"),
     cloud: $("cloud"), cloudCanvas: $("cloud-canvas"), cloudDeck: $("cloud-deck"), cloudWho: $("cloud-who"), toCloud: $("to-cloud"),
     cs: $("cloud-start"), csHi: $("cs-hi"), csQ: $("cs-q"), csForm: $("cs-form"), csIn: $("cs-in"), csEx: $("cs-ex"), csStatus: $("cs-status"),
-    ikoWrap: $("iko-wrap"), iko: $("iko"), ikoLine: $("iko-line"), ikoSheet: $("iko-sheet"), ikoAbout: $("iko-about"), ikoX: $("iko-x"), ikoSay: $("iko-say"), ikoSlot: $("iko-slot"), ikoLog: $("iko-log"), ikoForm: $("iko-form"), ikoIn: $("iko-in"), ikoAll: $("iko-all"), zin: $("zin"), zout: $("zout"), zreset: $("zreset"),
+    ikoWrap: $("iko-wrap"), iko: $("iko"), ikoLine: $("iko-line"), ikoSheet: $("iko-sheet"), ikoAbout: $("iko-about"), ikoX: $("iko-x"), ikoSay: $("iko-say"), ikoActs: $("iko-acts"), ikoGot: $("iko-got"), ikoBody: $("iko-body"), ikoSlot: $("iko-slot"), ikoLog: $("iko-log"), ikoForm: $("iko-form"), ikoIn: $("iko-in"), ikoAll: $("iko-all"), zin: $("zin"), zout: $("zout"), zreset: $("zreset"),
     panel: $("panel"), cloudTop: document.querySelector(".cloud-top"), pKicker: $("p-kicker"), pTitle: $("p-title"), pDesc: $("p-desc"), pNote: $("p-note"), pLesson: $("p-lesson"), pCard: $("p-card"), pAdj: $("p-adj"),
     pChat: $("p-chat"), pPath: $("p-path"), pCards: $("p-cards"), pClose: $("p-close"),
     draw: $("draw"), deckBtn: $("deck-btn"), deck: $("deck"), dBack: $("d-back"), dLede: $("d-lede"), dAlbum: $("d-album"),
@@ -588,7 +588,7 @@
   /* One call at a time. A lesson, test or clarification asked for meanwhile waits in state.queued and starts here. */
   function lock(on) {
     state.busy = on;
-    [el.send, el.pCard, el.pAdj, el.pLesson, el.pTest, el.lGot, el.lTricky].forEach(function (b) { b.disabled = on; });
+    [el.send, el.pCard, el.pAdj, el.pLesson, el.pTest, el.lGot, el.lTricky, el.ikoGot].forEach(function (b) { b.disabled = on; });
     Array.prototype.forEach.call(document.querySelectorAll(".draw-btn, .clar-opt"), function (b) { b.disabled = on; });
     if (!on && state.queued) { var q = state.queued; state.queued = null; setTimeout(q, 0); }
     renderStart();
@@ -1255,6 +1255,7 @@
     renderLessonCard(Boolean(note));
     renderFork(id);
     offerTest(id);
+    ikoActs();
   }
 
   /* ---------- "Still tricky": prepared clarifications, inline ---------- */
@@ -1266,11 +1267,18 @@
     if (les && les.cl && les.cl.simpler) focusClar("simpler");
     else clarify(id, "simpler");
   }
+  /* in Iko's sheet only the sheet scrolls (scrolling the page would slide the lesson's buttons under the sheet or the header) */
+  function showNear(b) {
+    if (!el.ikoSheet.contains(b)) { b.scrollIntoView({ block: "nearest" }); return; }
+    var s = el.ikoBody, r = b.getBoundingClientRect(), sr = s.getBoundingClientRect();
+    if (r.bottom > sr.bottom) s.scrollTop += Math.min(r.bottom - sr.bottom, r.top - sr.top);
+    else if (r.top < sr.top) s.scrollTop -= sr.top - r.top;
+  }
   function focusClar(style) {
     var b = el.lClar.querySelector('.clar[data-style="' + style + '"]');
     if (!b) return;
     b.tabIndex = -1;
-    b.scrollIntoView({ block: "nearest" });
+    showNear(b);
     try { b.focus({ preventScroll: true }); } catch { b.focus(); }
   }
   var CLARIFY = [["simpler", "Explain it more simply"], ["example", "Show me a worked example"], ["question", "Ask me a question"]];
@@ -1317,7 +1325,7 @@
   function clarify(id, style) {
     var les = state.lessons[id];
     if (state.lessonNode !== id || !nodeOf(id)) return;
-    if (les && les.cl && les.cl[style]) { clarBox(style, les.cl[style]).box.scrollIntoView({ block: "nearest" }); return; }
+    if (les && les.cl && les.cl[style]) { showNear(clarBox(style, les.cl[style]).box); return; }
     if (state.busy) { state.queued = function () { clarify(id, style); }; return; }
     lock(true);
     var ui = clarBox(style, ""), text = "";
@@ -1437,6 +1445,12 @@
   });
   el.lGot.addEventListener("click", function () { finishLesson("got"); });
   el.lTricky.addEventListener("click", function () { finishLesson("tricky"); });
+  el.ikoGot.addEventListener("click", function () {
+    if (el.lGot.disabled) return;
+    closeIko();
+    finishLesson("got");
+    el.lStatus.scrollIntoView({ block: "nearest" }); /* the note, clear of the sticky header (scroll-margin) */
+  });
   el.lChat.addEventListener("click", function () { openIko(); });
   el.lRedo.addEventListener("click", function () { if (state.lessonNode) openLesson(state.lessonNode, true); });
 
@@ -2057,7 +2071,7 @@
       paragraphs(d, m.text || (m.streaming ? "…" : ""));
       el.ikoLog.appendChild(d);
     });
-    if (el.ikoLog.lastChild) el.ikoLog.lastChild.scrollIntoView({ block: "nearest" });
+    if (el.ikoLog.lastChild) showNear(el.ikoLog.lastChild);
   }
   function ikoSize() { el.ikoIn.style.height = "auto"; el.ikoIn.style.height = Math.min(el.ikoIn.scrollHeight, 120) + "px"; }
   el.ikoIn.addEventListener("input", ikoSize);
@@ -2103,8 +2117,12 @@
     if (iko.open && (!on || (screenCtx().id || "") !== (iko.ctx.id || "") || (screenCtx().view === "chat"))) closeIko(); /* the screen changed under it */
     el.ikoWrap.hidden = !on || iko.open;
     document.body.classList.toggle("iko-on", on && el.cloud.hidden);
+    document.body.classList.toggle("iko-lesson", iko.open && !el.lesson.hidden); /* wide screens: the sheet sits over the card, clear of Where Next */
+    ikoActs();
     placeIko();
   }
+  /* opened by Still tricky, the sheet covers the lesson's buttons on a phone, so it carries "I've got it" itself */
+  function ikoActs() { el.ikoActs.hidden = !(iko.open && el.ikoSheet.classList.contains("tricky") && !el.lesson.hidden && !el.lDone.hidden && Boolean(el.lClar.querySelector(".clar-opts"))); }
   /*
    * Bottom right, clear of what is on the cloud: it climbs above anything there (the Pick up chips, the start, the card,
    * a caption, the fine print), and when the card fills the lower half on a phone it steps aside (the card has its own

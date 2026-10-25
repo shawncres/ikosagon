@@ -627,6 +627,10 @@ button.gcard:active, button.gslot:active { transform: translateY(-1px) scale(.97
 .iko-msg.streaming { color: var(--soft); }
 .iko-form { display: flex; gap: 8px; align-items: flex-end; margin-top: 6px; }
 .iko-form textarea { flex: 1; min-width: 0; font: inherit; font-size: 16px; line-height: 1.4; padding: 8px 12px; border: 1px solid var(--rule); border-radius: 12px; background: var(--paper); color: var(--ink); resize: none; }
+.iko-acts { display: flex; justify-content: flex-end; margin: 6px 0 0; }
+.iko-acts[hidden] { display: none; }
+#l-done, #l-status { scroll-margin-top: 96px; scroll-margin-bottom: 16px; } /* clear of the sticky header */
+@media (min-width: 1100px) { body.iko-lesson .iko-sheet { left: 16px; right: auto; } }
 .iko-foot { margin: 6px 0 0; text-align: center; font-size: 12.5px; }
 /* pages that scroll keep room for the pebble at their end */
 body.iko-on #lesson .l-main, body.iko-on #deck, body.iko-on #hub { padding-bottom: 84px; }
