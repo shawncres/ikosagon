@@ -14,7 +14,7 @@ import { DEFAULT_MODEL, FALLBACK_MODEL, GEMINI_BASE, chatBody, jsonBody, readSse
 import { MODEL_LIMITS, streamText, generateJson, llmConfig, llmReady } from "../lib/ikolearn/llm.ts";
 import { toMessages } from "../lib/ikolearn/openai-compatible.ts";
 import { budgetSpend } from "../lib/ikolearn/service.ts";
-import { cleanScreen, screenLine, SCREEN_VIEWS, SCREEN_STEPS } from "../lib/ikolearn/prompts.ts";
+import { cleanScreen, screenLine, SCREEN_VIEWS, SCREEN_STEPS, checkPlacement } from "../lib/ikolearn/prompts.ts";
 import { clarifySystem, CLARIFY_STYLES, parseTricky, DESC_RULE, describeSystem, DESCRIBE_SCHEMA, parseDescribe, ADJACENT_SCHEMA } from "../lib/ikolearn/prompts.ts";
 import { describeFor } from "../lib/ikolearn/service.ts";
 import { LEARN_GUARDS, createLearnState, prepare, chatEvents, eventStream, cardFor, adjacentFor, lessonEvents, pathFor, testFor, createFor, examplesFor, EXAMPLES_CACHE, EXAMPLES_NO_STORE, EXAMPLES_STALE, EXAMPLES_RETRY, retryable } from "../lib/ikolearn/service.ts";
@@ -2825,6 +2825,31 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     pb.topics.push(parseCloudBlock({ topics: [{ name: "Kites", parent: "", signal: "curious", placement: "ambiguous", target: "Sam" }], ghosts: [] }, "Sam").topics[0]);
     ok(pb.topics[0].placement === "parent" && !pb.topics[0].target && pb.topics[1].placement === "child" && pb.topics[1].target === "n3", "chat block: placement and target are parsed (case-insensitive, target an id or a name)");
     ok(!pb.topics[2].placement && !("target" in pb.topics[2]) && pb.topics[3].placement === "ambiguous" && !pb.topics[3].target, "chat block: an unknown placement is dropped; the learner's name is never a target");
+    // server-side check (checkPlacement, deterministic): a target the device can't resolve is not trusted
+    const PCX = { focusId: "n3", cloud: "Games [2]: Video Games (1.5, strong) {Speedrunning (0.4)}, Puzzles (0.3)\nAviation [1]: Gliders (ghost)", parents: ["Games", "Aviation"] };
+    const one = (t, ctx = PCX) => parseCloudBlock({ topics: [{ signal: "curious", ...t }], ghosts: [] }, "Sam", ctx).topics[0];
+    let cp = one({ name: "Puzzle Strategies", parent: "Games", placement: "child", target: "n3", why: "  a part of\nGames <b> " });
+    ok(cp.placement === "child" && cp.target === "n3" && cp.why === "a part of Games b", "placement check: a child of the focus id stays (its reason is kept, cleaned)", JSON.stringify(cp));
+    cp = one({ name: "Speedrunning Tricks", parent: "Video Games", placement: "child", target: "Video Games" });
+    ok(cp.placement === "child" && cp.target === "Video Games", "placement check: a child of a topic on the learner's map (by name) stays", JSON.stringify(cp));
+    cp = one({ name: "Guitar", parent: "Music", placement: "child", target: "n77" });
+    ok(cp.placement === "ambiguous" && cp.target === "n3" && cp.why, "placement check: a child of an id that isn't the focus -> ask, under the focus", JSON.stringify(cp));
+    cp = one({ name: "Guitar", parent: "Music", placement: "child", target: "Music" });
+    ok(cp.placement === "ambiguous" && cp.target === "n3", "placement check: a child of a topic not on the map -> ask (with a focus)", JSON.stringify(cp));
+    cp = one({ name: "Guitar", parent: "Music", chain: ["Music"], placement: "child", target: "Music" }, { cloud: PCX.cloud, parents: PCX.parents });
+    ok(cp.placement === "parent" && !cp.target && cp.parent === "" && !cp.chain.length && cp.why, "placement check: no focus and no confident subtopic -> a new parent (root)", JSON.stringify(cp));
+    cp = one({ name: "Gliding", parent: "Aviation", placement: "ambiguous", target: "Nowhere" });
+    ok(cp.placement === "ambiguous" && cp.target === "n3", "placement check: ambiguous with a bad target -> under the focus", JSON.stringify(cp));
+    cp = one({ name: "Gliding", placement: "ambiguous", target: "Nowhere" }, {});
+    ok(cp.placement === "parent" && !cp.target, "placement check: ambiguous with nothing in focus -> a new parent", JSON.stringify(cp));
+    cp = one({ name: "Math", parent: "Video Games", chain: ["Games", "Video Games"], placement: "parent", target: "n3" });
+    ok(cp.placement === "parent" && !cp.target && cp.parent === "" && !cp.chain.length, "placement check: parent drops any target, parent and chain (Shawn's Games > Video Games > Math)", JSON.stringify(cp));
+    cp = one({ name: "Video", parent: "Games", placement: "child", target: "Video" });
+    ok(cp.placement === "ambiguous", "placement check: a target must be a whole label on the map, not part of one (Video is not Video Games)", JSON.stringify(cp));
+    cp = one({ name: "Board Games", parent: "Games", chain: ["Games"] });
+    ok(!cp.placement && !("target" in cp) && cp.parent === "Games", "placement check: no placement (only talked about) is left as it was");
+    ok(one({ name: "Puzzles 2", placement: "child", target: "n3" }, { focusId: "n3; x" }).placement === "parent", "placement check: a malformed focus id is no focus");
+    ok(checkPlacement({ name: "X", parent: "", signal: "curious" }).placement === undefined, "checkPlacement: a topic without placement is returned as is");
     const pin = parseLearnInput({ name: "Sam", mode: "chat", focus: "Games", focusId: "n3", messages: [{ role: "user", text: "I want to learn math" }] });
     const bad = parseLearnInput({ name: "Sam", mode: "chat", focus: "Games", focusId: "n3; DROP", messages: [{ role: "user", text: "hi" }] });
     ok(pin.focusId === "n3" && bad.focusId === "", "chat input: the focus id is kept only in its own shape (n123)");
@@ -2904,12 +2929,19 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     ok(Math.min(...dists) > 0.3, "subject slots stay apart from each other", String(Math.min(...dists)));
     // the app: placement before growth, the ambiguous choice applies the cached plan on the device (0 calls)
     const appP = fs.readFileSync("public/ikolearn/app.js", "utf8");
-    const gr = appP.slice(appP.indexOf("  function grow(block, fallbackId) {"), appP.indexOf("  /* Test nodes on the cloud"));
-    ok(/P\.placeTopic\(state\.cloud, tp, state\.focus\)/.test(gr) && /P\.placedTopic\(tp, plan\)/.test(gr) && /role: "place", plan:/.test(gr) && /if \(placed\[C\.norm\(tp\.name\)\]\) return;/.test(gr), "chat growth: placed first (reuse / parent / child / ask); a placed topic gets no bridge call");
+    const gr = appP.slice(appP.indexOf("  function grow(block, focusId) {"), appP.indexOf("  /* Test nodes on the cloud"));
+    ok(/P\.placeTopic\(state\.cloud, tp, focusId\)/.test(gr) && /P\.placedTopic\(tp, plan\)/.test(gr) && /role: "place", plan:/.test(gr) && /if \(placed\[C\.norm\(tp\.name\)\]\) return;/.test(gr), "chat growth: placed first (reuse / parent / child / ask); a placed topic gets no bridge call");
     const pl3 = gr.slice(gr.indexOf("  function renderPlace(m) {"));
     ok(pl3.length > 500 && !/postJson\(|stream\(|fetch\(|Try again/.test(pl3), "the ambiguous choice: no call and no Try again (the cached plan applies on the device)");
-    ok(/"Start " \+ p\.name \+ " as a new branch"/.test(pl3) && /"Add it under " \+ f\.label/.test(pl3), "the ambiguous choice: Start X as a new branch / Add it under Focus");
-    ok(/focusId: n \? n\.id : ""/.test(appP) && /state\.glide/.test(appP) && /function glideTo\(id\)/.test(appP), "chat sends the focus id; the camera glides to a new parent (when the cloud is on screen or next opened)");
+    ok(/linkBtn\("A new subject"/.test(pl3) && /"Part of " \+ f\.label/.test(pl3), "the ambiguous choice: two quiet buttons, A new subject / Part of Focus");
+    ok(/focusId: n \? n\.id : ""/.test(appP) && /state\.glide/.test(appP) && /function revealNode\(id\)/.test(appP), "chat sends the focus id; the camera glides to a new node and its card opens (when the cloud is on screen or next opened)");
+    // the root cause of forced nesting: the focus was sticky (an earlier screen's node stayed the chat's focus, sent to the model and used to place)
+    const sendSrc = appP.slice(appP.indexOf("  function send(text) {"), appP.indexOf("  function runBridge() {"));
+    ok(/var fid = iko\.open && iko\.ctx \? \(nodeOf\(iko\.ctx\.id\) \? iko\.ctx\.id : null\) : state\.focus;/.test(sendSrc) && /basePayload\(fid\)/.test(sendSrc) && /grow\(ev, fid\)/.test(sendSrc), "chat: the focus sent and used for placement is the screen's (Iko: the node it was opened on, none on a bare cloud)");
+    ok(/setFocus\(c\.id \|\| null\);/.test(appP) && !/else if \(c\.view !== "cloud"\) setFocus\(null\)/.test(appP), "Iko on the cloud with nothing selected has no focus (an earlier node never stays the focus)");
+    ok(!/state\.focus/.test(gr.slice(0, gr.indexOf("  function revealNode"))), "growth never falls back to a remembered focus (placement or ghosts)");
+    const logSrc = appP.slice(appP.indexOf("  function renderIkoLog() {"), appP.indexOf("  function ikoSize()"));
+    ok(/m\.role === "place"\) \{ var pl = renderPlace\(m\)/.test(logSrc) && /m\.role === "grow"/.test(logSrc), "Iko's sheet shows the placement choice and what grew (not only the whole conversation)");
     // the cached plan applied the way a tap does: 0 calls, the same node a direct placement would make
     const ac = C.deserialize(C.serialize(jc));
     const planned = { name: "Chess", signal: "curious", target: games.id };
@@ -3150,7 +3182,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const LIN = parseLearnInput({ mode: "notice", name: "Sam", focus: "Volcanoes", focusParent: "Earth Science", trail: "Earth Science > Volcanoes", parents: ["Earth Science"], messages: [] });
   ok(createSystem({ ...LIN, kind: "start" }).includes("Each child also has a " + DESC_RULE), "describe: the creation call asks each child for its description");
   ok(lessonSystem(LIN).includes("Each choice has a " + DESC_RULE) && /"why":"\.\.\.","blurb":"\.\.\."/.test(lessonSystem(LIN)), "describe: the lesson's fork choices carry one");
-  ok(companionSystem(LIN).includes("Each topic and ghost has a " + DESC_RULE) && /"target":"\.\.\.","blurb":"\.\.\."/.test(companionSystem(LIN)), "describe: the chat's topics and ghosts carry one");
+  ok(companionSystem(LIN).includes("Each topic and ghost has a " + DESC_RULE) && /"target":"\.\.\.","why":"\.\.\.","blurb":"\.\.\."/.test(companionSystem(LIN)), "describe: the chat's topics and ghosts carry one");
   ok(adjacentSystem(LIN).includes(DESC_RULE), "describe: related topics carry one");
   const kid = CREATE_SCHEMA.properties.items.items.properties.children.items;
   ok(kid.properties.blurb && kid.properties.blurb.type === "string" && !kid.required.includes("blurb") && ADJACENT_SCHEMA.properties.ghosts.items.properties.blurb && !ADJACENT_SCHEMA.properties.ghosts.items.required.includes("blurb"), "schema: children and ghosts have an optional blurb (an answer without one still passes)");

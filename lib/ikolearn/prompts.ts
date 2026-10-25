@@ -131,7 +131,42 @@ export type LearnInput = {
  */
 export const PLACEMENTS = ["child", "parent", "ambiguous"] as const;
 export type Placement = (typeof PLACEMENTS)[number];
-export type Topic = { name: string; parent: string; signal: Signal; chain?: string[]; placement?: Placement; target?: string; blurb?: string };
+export type Topic = { name: string; parent: string; signal: Signal; chain?: string[]; placement?: Placement; target?: string; why?: string; blurb?: string };
+/** What the server knows to check a placement against: the focus id the device sent, and the learner's map (labels). */
+export type PlaceCtx = { focusId?: string; cloud?: string; parents?: string[] };
+const PLACE_WHY_MAX = 100;
+
+/**
+ * Server-side check of a chat placement (deterministic, 0 calls). A target must be something the device can resolve:
+ * the focus id it sent, or the label of a topic on the learner's map. Otherwise the model's confidence isn't trusted:
+ *   child with a bad target  -> ambiguous under the focus (the learner chooses), or a new parent when nothing is in focus;
+ *   ambiguous with a bad one -> under the focus when there is one, else a new parent (nothing to be ambiguous about);
+ *   parent                   -> a new branch under the learner's name: no target, no parent, no chain.
+ * No confident subtopic signal never means "under the focus". The device checks again against the real cloud
+ * (orchestrator.js placeTopic).
+ */
+export function checkPlacement(t: Topic, ctx: PlaceCtx = {}): Topic {
+  if (!t.placement) return t;
+  const focusId = /^n\d{1,7}$/.test(String(ctx.focusId || "")) ? String(ctx.focusId) : "";
+  // the labels on the learner's map, from the summary ("Games [2]: Video Games (1.5, strong) {Speedrunning (0.4)}, ...")
+  const labels = new Set(
+    String(ctx.cloud || "")
+      .replace(/\([^)]*\)|\[[^\]]*\]/g, " ")
+      .split(/[,{}:\n]/)
+      .map((x) => x.replace(/\s+/g, " ").trim().toLowerCase())
+      .filter(Boolean)
+      .concat((ctx.parents || []).map((p) => p.toLowerCase())),
+  );
+  const known = (label: string) => labels.has(label.toLowerCase());
+  const valid = (tgt?: string) => Boolean(tgt && (/^n\d+$/.test(tgt) ? tgt === focusId : known(tgt)));
+  const out: Topic = { ...t };
+  if (out.placement === "parent") { delete out.target; out.parent = ""; out.chain = []; return out; }
+  if (valid(out.target)) return out;
+  if (out.placement === "child" && focusId) return { ...out, placement: "ambiguous", target: focusId, why: out.why || "Not sure where it belongs" };
+  if (out.placement === "ambiguous" && focusId) return { ...out, target: focusId };
+  delete out.target;
+  return { ...out, placement: "parent", parent: "", chain: [], why: out.why || "A subject of its own" };
+}
 export type Ghost = { name: string; parent: string; blurb?: string };
 export type CloudBlock = { topics: Topic[]; ghosts: Ghost[] };
 export type Card = { title: string; body: string; topic: string; parent: string; path?: string[]; next?: string; chain?: string[] };
@@ -271,7 +306,7 @@ export const DESC_RULE =
 
 const blockRules = (parents: string[]) =>
   `After your reply, on a new line, write ${CLOUD_OPEN} then one JSON object then ${CLOUD_CLOSE}, and nothing after it. ` +
-  'The JSON is {"topics":[{"name":"...","parent":"...","signal":"explored|strength|struggle|curious","chain":["..."],"placement":"child|parent|ambiguous","target":"...","blurb":"..."}],"ghosts":[{"name":"...","parent":"...","blurb":"..."}]}. ' +
+  'The JSON is {"topics":[{"name":"...","parent":"...","signal":"explored|strength|struggle|curious","chain":["..."],"placement":"child|parent|ambiguous","target":"...","why":"...","blurb":"..."}],"ghosts":[{"name":"...","parent":"...","blurb":"..."}]}. ' +
   `Each topic and ghost has a ${DESC_RULE}` +
   `topics: 0 to ${LEARN_LIMITS.topicsPerTurn} learning topics that this exchange actually touched (1 to 3 words each, Title Case, specific like "Fractions" or "Volcanoes", never the learner's name). ` +
   "signal: strength if the learner showed they understand it, struggle if they found it hard or had a mix-up, curious if they only asked or showed interest, explored otherwise. " +
@@ -283,6 +318,8 @@ const blockRules = (parents: string[]) =>
   'placement "parent": a broad subject of its own that does not clearly belong under the current focus (for example asking for a whole new subject while looking at an unrelated one); it becomes a new branch right under the learner\'s name: parent "", chain [], target "". ' +
   'placement "child": only when it is clearly a smaller part of an existing topic; target is that topic: the focus id when it belongs under the focus, else the exact name of the existing topic it belongs under. ' +
   'placement "ambiguous": it could reasonably be either; target is the focus id. The device checks the placement and may ask the learner. ' +
+  "why: with a placement, a few plain words on why it goes there (for example \"a whole subject of its own\" or \"a part of Fractions\"). " +
+  "With no current focus, a new subject is placement \"parent\"; it is never put under whatever was talked about last. " +
   `ghosts: leave this empty, unless the learner asked what else they could learn; then 1 or 2 related topics not in the profile, each with its parent. New branches are offered when a branch ends, not before. Use empty arrays for small talk. The learner never sees this block.`;
 
 const profile = (i: LearnInput) =>
@@ -841,7 +878,7 @@ function jsonObject(raw: unknown): Record<string, unknown> | null {
 const sameLabel = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 /** The trailing cloud block -> validated topics + ghosts. Bad or missing JSON gives empty arrays (the reply still shows). */
-export function parseCloudBlock(raw: unknown, learnerName = ""): CloudBlock {
+export function parseCloudBlock(raw: unknown, learnerName = "", ctx?: PlaceCtx): CloudBlock {
   const obj = jsonObject(raw);
   const out: CloudBlock = { topics: [], ghosts: [] };
   if (!obj) return out;
@@ -864,10 +901,12 @@ export function parseCloudBlock(raw: unknown, learnerName = ""): CloudBlock {
       const target = String((t as Topic).target ?? "").trim();
       const tgt = /^n\d{1,7}$/.test(target) ? target : cleanLabel(target);
       if (tgt && !(learnerName && sameLabel(tgt, learnerName))) topic.target = tgt;
+      const why = cleanText((t as Topic).why, PLACE_WHY_MAX).replace(/[\n\r<>{}[\]`]/g, " ").replace(/\s+/g, " ").trim();
+      if (why) topic.why = why;
     }
     const tb = parseBlurb((t as Topic).blurb, learnerName);
     if (tb) topic.blurb = tb;
-    out.topics.push(topic);
+    out.topics.push(ctx ? checkPlacement(topic, ctx) : topic);
     if (out.topics.length >= LEARN_LIMITS.topicsPerTurn) break;
   }
   for (const g of Array.isArray(obj.ghosts) ? obj.ghosts : []) {

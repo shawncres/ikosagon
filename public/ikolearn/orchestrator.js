@@ -588,13 +588,15 @@
   }
   /* broad: a subject of its own. Procedural: the model's chain names nothing above it (or only itself, or a subject
      that isn't on the cloud), and it shares no word with the focus's trail. */
+  var GENERIC = ["science", "sciences", "studies", "study", "history", "basics", "basic", "skills", "skill", "art", "arts", "and", "the", "for", "intro", "introduction", "advanced", "beginner", "beginners", "learning", "life"];
   function isBroad(cloud, tp, focusId) {
     var label = C.cleanLabel(tp && tp.name), k = C.norm(label);
     var chain = (tp && Array.isArray(tp.chain) ? tp.chain : []).map(C.norm).filter(function (x) { return x && x !== k; });
     var parentK = C.norm(tp && tp.parent);
     var above = chain.length ? chain : parentK && parentK !== k ? [parentK] : [];
     var rootKnown = above.length && C.subjects(cloud).some(function (s) { return s.key === above[0]; });
-    var words = function (v) { return C.norm(v).split(" ").filter(function (w) { return w.length > 2; }); };
+    /* generic words ("science", "history", "basics") say nothing about belonging: Computer Science is not part of Earth Science */
+    var words = function (v) { return C.norm(v).split(" ").filter(function (w) { return w.length > 2 && GENERIC.indexOf(w) < 0; }); };
     var trailWords = focusId && nodeOf(cloud, focusId) ? C.ancestry(cloud, focusId).reduce(function (a, x) { return a.concat(words(cloud.nodes[x].label)); }, []) : [];
     var overlap = words(label).some(function (w) { return trailWords.indexOf(w) >= 0; }) || above.some(function (a) { return trailWords.indexOf(a) >= 0 || words(a).some(function (w) { return trailWords.indexOf(w) >= 0; }); });
     return (!above.length || !rootKnown) && !overlap;

@@ -367,13 +367,15 @@
   }
 
   /* ---------- growth ---------- */
-  function grow(block, fallbackId) {
+  /* focusId: the focus the request was sent with (what was on screen), never a node from an earlier screen */
+  function grow(block, focusId) {
     var raw = (block && block.topics) || [], ghosts = (block && block.ghosts) || [];
+    focusId = nodeOf(focusId) ? focusId : null;
     /* placement first (orchestrator, 0 calls): reuse a node that's already there, start a new parent, go under a node,
        or ask the learner when it could be either (the plan is kept with the question; a tap applies it) */
     var topics = [], asks = [], placed = {}, reused = [];
     raw.forEach(function (tp) {
-      var plan = P.placeTopic(state.cloud, tp, state.focus);
+      var plan = P.placeTopic(state.cloud, tp, focusId);
       if (!plan) return;
       if (plan.how === "ambiguous") { asks.push({ tp: tp, plan: plan }); return; }
       if (plan.how === "reuse") reused.push(plan.id);
@@ -382,7 +384,7 @@
       topics.push(o);
     });
     var r = C.applyTopics(state.cloud, topics);
-    var g = C.addGhosts(state.cloud, ghosts, Date.now(), fallbackId || state.focus || null);
+    var g = C.addGhosts(state.cloud, ghosts, Date.now(), focusId);
     var parts = [];
     r.parentsCreated.forEach(function (id) { parts.push("new subject " + state.cloud.nodes[id].label); });
     /* a new chain is named once, at its deepest new link: "Making & Coding → Programming → Python → Sets (new)" */
@@ -403,9 +405,11 @@
     if (parts.length) push({ role: "grow", text: "Your cloud grew: " + parts.join(" · "), open: fresh || null });
     /* a new parent (or a topic placed where the learner asked): the camera glides to it */
     var landed = r.parentsCreated.concat(r.created).filter(function (id) { return placed[C.norm(nodeOf(id) ? nodeOf(id).label : "")]; })[0];
-    if (landed) glideTo(landed);
+    /* a subject that was asked for and is already there: that one is shown (no duplicate) */
+    if (!landed) landed = reused.filter(function (id) { return raw.some(function (tp) { return tp.placement && C.norm(C.cleanLabel(tp.name)) === C.norm(nodeOf(id) ? nodeOf(id).label : ""); }); })[0];
+    if (landed) revealNode(landed);
     asks.forEach(function (a) {
-      push({ role: "place", plan: { name: C.cleanLabel(a.tp.name), signal: a.tp.signal || "curious", target: a.plan.target } });
+      push({ role: "place", plan: { name: C.cleanLabel(a.tp.name), signal: a.tp.signal || "curious", target: a.plan.target, blurb: a.tp.blurb || "" } });
     });
     /* a topic that landed right under its subject on a shallow chain gets its in-between steps after this reply (one call, once) */
     topics.forEach(function (tp) {
@@ -415,13 +419,22 @@
     });
     return { topic: topics[0] || (asks[0] && asks[0].tp) || null };
   }
-  /* The camera glides to a node (a new parent, a placed topic), unless a lesson is open. */
-  function glideTo(id) {
+  /*
+   * A node just made (or found) from a request: the camera glides to it and its selection card opens, calmly. Not on
+   * the cloud right now: it happens when the cloud opens. On a phone, while Iko's sheet covers the lower half, the
+   * camera glides now and the card waits until the sheet closes; on wider screens the card opens beside the sheet and
+   * Iko stays open on that node. Its description came with the reply, so opening the card makes no call.
+   */
+  function revealNode(id) {
     if (!nodeOf(id)) return;
-    state.glide = id; /* the cloud isn't on screen: it glides there when it opens */
+    state.glide = id; /* the cloud isn't on screen: it glides there (and opens the card) when it opens */
     if (!big || el.cloud.hidden || state.lessonNode) return;
     state.glide = null;
-    focusInView(id, false);
+    /* no description yet: the camera glides only (opening its card would write one: a call the learner didn't ask for) */
+    if (!nodeOf(id).blurb || (iko.open && window.innerWidth < 700)) { state.reveal = nodeOf(id).blurb ? id : null; focusInView(id, false); return; }
+    state.reveal = null;
+    openPanel(id);
+    if (iko.open) { iko.ctx = screenCtx(); el.ikoAbout.textContent = ikoAbout(iko.ctx); setFocus(id); }
   }
   /*
    * "Start X as a new branch, or add it under Focus?": the planned topic is kept with the message, so a tap applies it
@@ -438,14 +451,15 @@
     }
     d.appendChild(mk("p", "place-q", "Where should " + p.name + " go?"));
     var row = mk("div", "place-opts");
-    row.appendChild(linkBtn("Start " + p.name + " as a new branch", function () { applyPlace(m, "parent"); }, "btn sm place-opt"));
-    if (f) row.appendChild(linkBtn("Add it under " + f.label, function () { applyPlace(m, "child"); }, "btn sm place-opt"));
+    row.appendChild(linkBtn("A new subject", function () { applyPlace(m, "parent"); }, "btn sm place-opt"));
+    if (f) row.appendChild(linkBtn("Part of " + f.label, function () { applyPlace(m, "child"); }, "btn sm place-opt"));
     d.appendChild(row);
     return d;
   }
   function applyPlace(m, how) {
     if (m.done || !m.plan) return;
     var p = m.plan, f = nodeOf(p.target), tp = { name: p.name, signal: p.signal || "curious" };
+    if (p.blurb) tp.blurb = p.blurb; /* its description came with the reply (0 calls) */
     var plan = P.placeTopic(state.cloud, tp, null);
     if (!plan) return;
     if (plan.how !== "reuse") plan = how === "child" && f ? { how: "child", target: f.id } : C.subjects(state.cloud).length < C.LIMITS.subjects ? { how: "parent" } : f ? { how: "child", target: f.id } : { how: "legacy" };
@@ -458,7 +472,7 @@
     m.open = n ? n.id : null;
     upsert(m);
     save();
-    if (n) glideTo(n.id);
+    if (n) revealNode(n.id);
   }
 
   /* Test nodes on the cloud: offered (ready) or taken, from the orchestrator */
@@ -602,10 +616,13 @@
     lock(true);
     push({ role: "user", text: text });
     var m = push({ role: "model", text: "", streaming: true });
-    var body = Object.assign(basePayload(state.focus), { mode: "chat", messages: history(), screen: iko.open && iko.ctx ? screenOf(iko.ctx) : { view: "chat" } });
+    /* the focus is what is on screen: in Iko's sheet, the node of the screen it was opened on (none on the cloud with
+       nothing selected); in the whole conversation, the focus shown above the composer. Never an earlier screen's node. */
+    var fid = iko.open && iko.ctx ? (nodeOf(iko.ctx.id) ? iko.ctx.id : null) : state.focus;
+    var body = Object.assign(basePayload(fid), { mode: "chat", messages: history(), screen: iko.open && iko.ctx ? screenOf(iko.ctx) : { view: "chat" } });
     stream("/chat", body, {
       delta: function (t) { m.text += t; upsert(m); scrollDown(); },
-      cloud: function (ev) { var r = grow(ev); if (r.topic) { m.topic = r.topic.name; m.parent = r.topic.parent; } }
+      cloud: function (ev) { var r = grow(ev, fid); if (r.topic) { m.topic = r.topic.name; m.parent = r.topic.parent; } }
     }).then(function (r) {
       m.streaming = false;
       if (!r.ok && !m.text) { m.text = fallbackText(r.reason); m.fallback = true; }
@@ -1683,7 +1700,7 @@
     renderCloudHint();
     big.spin(true); /* a slow idle turn on every view of the cloud; it goes on through drags and pans, a click pauses it a few seconds (not with reduced motion; paused while the tab is hidden or the cloud is closed) */
     if (state.lessonNode) setTimeout(function () { openPanel(state.lessonNode); }, 0); /* a lesson or a test: its topic */
-    else if (state.glide && nodeOf(state.glide)) { var gl = state.glide; state.glide = null; setTimeout(function () { focusInView(gl, false); }, 0); } /* a new parent: the camera glides to it */
+    else if (state.glide && nodeOf(state.glide)) { var gl = state.glide; state.glide = null; setTimeout(function () { revealNode(gl); }, 0); } /* a new parent: the camera glides to it, its card opens */
     renderCloudFlow();
     renderHomeNav();
     renderIko();
@@ -2013,7 +2030,7 @@
     if (!el.cloud.hidden) {
       var a = openAsk();
       if (a && (a.kind === "curious" || a.kind === "grow")) return { view: "intake", step: a.kind === "grow" ? "grow" : "first" };
-      if (!el.panel.hidden && (n = nodeOf(state.panelNode)) && n.parent) return { view: "cloud", topic: n.label, id: n.id };
+      if (!el.panel.hidden && (n = nodeOf(state.panelNode))) return { view: "cloud", topic: n.label, id: n.id }; /* a topic or a subject: the focused parent */
       return { view: "cloud" };
     }
     if (!el.lesson.hidden && (n = nodeOf(state.lessonNode))) {
@@ -2047,7 +2064,7 @@
     iko.ctx = c; iko.from = state.thread.length; iko.open = true;
     dismissHint("iko");
     ikoLine("");
-    if (c.id) setFocus(c.id); else if (c.view !== "cloud") setFocus(null);
+    setFocus(c.id || null); /* the screen's node, or none: a node from an earlier screen never stays the focus */
     el.ikoAbout.textContent = ikoAbout(c);
     el.ikoSay.textContent = ikoGreeting(c, o);
     el.ikoSheet.classList.toggle("tricky", Boolean(o.tricky));
@@ -2065,11 +2082,16 @@
     el.iko.setAttribute("aria-expanded", "false");
     if (el.lClar.parentNode === el.ikoSlot) el.lFork.parentNode.insertBefore(el.lClar, el.lFork); /* back into the lesson, answers kept */
     renderIko();
+    var rv = state.reveal; state.reveal = null;
+    if (rv && nodeOf(rv) && !el.cloud.hidden && !state.lessonNode) openPanel(rv); /* the new node's card, now there's room */
   }
   /* the replies since the sheet opened: plain text (the whole conversation, with its chips and cards, is one tap away) */
   function renderIkoLog() {
     el.ikoLog.textContent = "";
     state.thread.slice(iko.from).forEach(function (m) {
+      /* where a new topic should go (two quiet buttons) and what grew: here too, not only in the whole conversation */
+      if (m.role === "place") { var pl = renderPlace(m); pl.classList.add("iko-msg"); el.ikoLog.appendChild(pl); return; }
+      if (m.role === "grow") { el.ikoLog.appendChild(mk("p", "iko-msg grow", m.text)); return; }
       if (m.role !== "user" && m.role !== "model") return;
       var d = mk("div", "iko-msg " + m.role + (m.streaming ? " streaming" : ""));
       paragraphs(d, m.text || (m.streaming ? "…" : ""));
