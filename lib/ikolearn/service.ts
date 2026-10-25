@@ -239,7 +239,7 @@ export function chatEvents(input: LearnInput, env: Env, fetchImpl: typeof fetch 
       maxChars: LEARN_LIMITS.replyChars,
       tail: (block) => {
         if (input.mode === "clarify") return null; /* inline help only: nothing lands on the cloud */
-        const b = parseCloudBlock(block, input.name);
+        const b = parseCloudBlock(block, input.name, input.mode === "chat" ? { focusId: input.focusId, cloud: input.cloud, parents: input.parents } : undefined);
         return { t: "cloud", topics: b.topics, ghosts: b.ghosts };
       },
     },

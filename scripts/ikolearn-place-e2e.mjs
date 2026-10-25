@@ -1,7 +1,7 @@
 // End-to-end checks for where a topic asked for in chat lands, in a real browser, with every /api/ikolearn call mocked
 // (no model calls). Shawn's cloud: Johnny > Games, Aviation, Physical Activity, Social Skills, with Games in focus.
 // "I want to learn math" -> Math is a new parent beside Games (not Games > Video Games > Math); "add puzzle strategies"
-// -> under Games; an unclear one -> "Start X as a new branch" / "Add it under Games" (a tap makes 0 calls).
+// -> under Games; an unclear one -> "A new subject" / "Part of Games" (a tap makes 0 calls).
 // Run: IKOLEARN_PW=<path to node_modules/playwright-core> node scripts/ikolearn-place-e2e.mjs [--shots DIR] [--tag after] [--root public] [--soft]
 // (--soft: screenshots only, for an older build without placement.) Skips when IKOLEARN_PW is not set.
 import http from "node:http";
@@ -42,10 +42,12 @@ function reply(text, focusId) {
 }
 
 const browser = await chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" });
+const HOOK = () => { let real; Object.defineProperty(window, "IkoCloudView", { configurable: true, get: () => real, set: (v) => { real = Object.assign({}, v, { create: (c, o) => { const view = v.create(c, o); (window.__views = window.__views || []).push({ id: c.id, view }); return view; } }); } }); };
 
 async function run(width) {
   const ctx = await browser.newContext({ viewport: { width, height: width < 500 ? 844 : 860 }, timezoneId: "America/Toronto" });
   const p = await ctx.newPage();
+  await p.addInitScript(HOOK);
   p.setDefaultTimeout(6000);
   const errs = [], calls = [];
   p.on("pageerror", (e) => errs.push("pageerror " + e.message));
@@ -99,7 +101,7 @@ async function run(width) {
       C.applyTopics(c, [{ name: "Video Games", parent: "Games", signal: "explored", chain: ["Games"] }, { name: "Puzzle Games", parent: "Games", signal: "explored", chain: ["Games"] }, { name: "Airplanes", parent: "Aviation", signal: "explored", chain: ["Aviation"] }], T);
       C.applyTopics(c, [{ name: "Running", parent: "Physical Activity", signal: "explored", chain: ["Physical Activity"] }, { name: "Listening", parent: "Social Skills", signal: "explored", chain: ["Social Skills"] }], T + 1000);
       const id = (l) => c.order.find((x) => c.nodes[x].label === l);
-      c.active = id("Games");
+      c.active = id("Games"); c.nodes[id("Games")].blurb = "Playing and understanding games, from board games to video games and puzzles.";
       localStorage.setItem("ikolearn.v1.name", "Johnny"); localStorage.setItem("ikolearn.v1.cloud", C.serialize(c));
       localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { cloud: 1, card: 1, chat: 1, draw: 1 } }));
       localStorage.setItem("ikolearn.v1.thread", JSON.stringify([{ id: "m1", at: T, role: "model", local: true, text: "Welcome back, Johnny." }]));
@@ -149,8 +151,17 @@ async function run(width) {
       const v = await p.evaluate(() => JSON.parse(localStorage.getItem("ikolearn.v1.view") || "null"));
       ok(v && m && v.f === m.id, `${width}: the camera glides to Math when the cloud opens`, JSON.stringify(v));
     }
-    await p.click("#iko"); await p.click("#iko-all");
-    await p.waitForTimeout(300);
+    /* Games in focus again, on purpose (a lesson's "Ask Iko about this", then the whole conversation): the focus is
+       what the learner put on screen, never one remembered from an earlier screen */
+    /* Games in focus again, on purpose: its card on the cloud -> Talk to Iko -> the whole conversation */
+    const gpt = await p.evaluate(() => { const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view, C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), id = c.order.find((x) => c.nodes[x].label === "Games"), q = v.project(id), r = document.querySelector("#cloud-canvas").getBoundingClientRect(); return { x: r.left + q.x, y: r.top + q.y }; });
+    if (!(await p.isHidden("#panel"))) { await p.click("#p-close"); await p.waitForTimeout(200); }
+    await p.mouse.click(gpt.x, gpt.y); await p.waitForTimeout(900);
+    ok((await p.textContent("#p-title")) === "Games", `${width}: Games' card on the cloud`);
+    await p.click("#p-chat"); await p.waitForTimeout(200);
+    await p.click("#iko-all"); await p.waitForTimeout(300);
+    const chip2 = await p.evaluate(() => document.querySelector("#focus-chip").hidden ? "" : document.querySelector("#focus-text").textContent);
+    ok(/Games/.test(chip2), `${width}: Games is in focus in chat again (put there on purpose)`, chip2);
   });
 
   await step("add puzzle strategies", async () => {
@@ -166,12 +177,12 @@ async function run(width) {
     await shot("choice");
     if (SOFT) return;
     const opts = await p.evaluate(() => [...document.querySelectorAll("#thread .place-opts button")].map((b) => b.textContent));
-    ok(opts.join("|") === "Start Chess as a new branch|Add it under Games", `${width}: an unclear request shows the two choices`, opts.join("|"));
+    ok(opts.join("|") === "A new subject|Part of Games", `${width}: an unclear request shows the two choices`, opts.join("|"));
     const c3 = await cloud();
     ok(!c3.nodes.Chess, `${width}: nothing is added before the learner chooses`);
     const n0 = calls.length;
     const asParent = width < 500;
-    await p.getByRole("button", { name: asParent ? "Start Chess as a new branch" : "Add it under Games" }).click();
+    await p.getByRole("button", { name: asParent ? "A new subject" : "Part of Games" }).click();
     await p.waitForTimeout(500);
     ok(calls.length === n0, `${width}: the choice applies with 0 calls`, JSON.stringify(calls.slice(n0)));
     const c4 = await cloud();
