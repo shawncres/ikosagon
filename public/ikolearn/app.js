@@ -1139,7 +1139,9 @@
     animateIn(from);
     var cached = !fresh && state.lessons[id];
     if (cached) {
-      state.quiz = { id: id, qs: validQs(cached.qs), ans: Array.isArray(cached.ans) ? cached.ans.slice(0, 2) : [] };
+      /* every saved answer comes back (one per question: 2 or 3) */
+      var qs = validQs(cached.qs);
+      state.quiz = { id: id, qs: qs, ans: Array.isArray(cached.ans) ? cached.ans.slice(0, qs.length) : [] };
       renderLessonBody(cached.text, false);
       lessonReady(id, false);
       showReading(cached.rd);
@@ -1210,7 +1212,8 @@
     el.lDone.hidden = false;
     var note = growthNote(id, before);
     if (kids.length) note = (note ? note + " " : "") + kidsLine(id, kids);
-    if (n.mastery >= C.MASTERED) el.lStatus.textContent = "You've marked this one as done.";
+    var les = state.lessons[id], marked = n.mastery >= C.MASTERED || Boolean(les && les.got); /* "I've got it" is kept with the lesson */
+    if (marked) el.lStatus.textContent = "You've marked this one as done.";
     if (note) el.lStatus.textContent = (el.lStatus.textContent ? el.lStatus.textContent + " " : "") + note;
     save();
     settleMerges();
@@ -1219,7 +1222,7 @@
     renderLessonCard(Boolean(note));
     renderQuiz();
     renderFork(id);
-    if (state.lessons[id] && state.lessons[id].cl) renderClarify(id, !(n.mastery >= C.MASTERED)); /* clarifications already written: shown again, 0 calls (options only while not done) */
+    if (state.lessons[id] && state.lessons[id].cl) renderClarify(id, !marked); /* clarifications already written: shown again, 0 calls (options only while not done) */
     offerTest(id);
   }
   /*
@@ -1236,6 +1239,7 @@
     var r = C.engage(state.cloud, id, kind);
     var kids = kind === "got" ? growChildren(id) : [];
     var note = growthNote(id, before);
+    if (state.lessons[id]) { if (kind === "got") state.lessons[id].got = Date.now(); else delete state.lessons[id].got; } /* kept with the lesson: shown again on return */
     if (C.isDone(state.cloud, id) && state.cloud.active === id) state.cloud.active = null;
     save();
     settleMerges();
