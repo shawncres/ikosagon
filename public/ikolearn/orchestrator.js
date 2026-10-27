@@ -41,7 +41,23 @@
     thinTopics: 3,
     reask: { days: 3, open: 3, stuckVisits: 3 },
     /* a child's place in the parent's logical order (foundational first) is worth this much against its rank score */
-    orderWeight: 0.6
+    orderWeight: 0.6,
+    /*
+     * Directions (0 calls): the cloud as a map, not one course.
+     *   invite: "Want to add another direction?" while the cloud has fewer subjects than this, until it is dismissed
+     *     or used `invites` times (a second and a third direction), then quiet.
+     *   revisit: on a return visit, up to `max` subjects untouched for `days` days, beside "something new"; a
+     *     dismissal rests it for `quietDays`.
+     *   insight: one soft note, only after real saved progress: `lessons` finished lessons and `right` right answers,
+     *     across at least `subjects` subjects. Then a strength (steadyRight right answers and steadyDone finished in
+     *     one subject), a connection (a topic building on one from another subject, or two subjects finished side by
+     *     side within togetherDays) or growth (growMin finished in one subject within growDays).
+     */
+    directions: {
+      invite: 3, invites: 2,
+      revisit: { days: 5, max: 2, quietDays: 7 },
+      insight: { lessons: 4, right: 10, subjects: 2, steadyRight: 8, steadyDone: 3, togetherDays: 7, growDays: 14, growMin: 3 }
+    }
   };
   var DAY = 86400000;
 
@@ -308,6 +324,8 @@
   function createRequest(cloud, kind, id, extra) {
     var p = C.profileOf(cloud), n = nodeOf(cloud, id);
     var req = { kind: kind, interests: (extra && extra.interests) || (p.interests || []).slice(-5), favorites: (RK ? RK.top(cloud, { n: 5 }) : []).map(function (r) { return r.label; }) };
+    /* a new direction: it fans out from the learner's own words, so it doesn't lean on their most-used topics */
+    if (extra && extra.direction) req.favorites = [];
     /* the learner's own words (start / more): sent once, never stored; the model reads it, nothing on the device matches it */
     if (extra && extra.about) req.about = String(extra.about).slice(0, 300);
     /* start only: the optional personal-development answer, in the same call */
@@ -660,12 +678,85 @@
     return o;
   }
 
+  /*
+   * Directions (0 calls, all from the saved cloud): see PLAN.directions.
+   * -> { invite: bool, revisit: [subject ids], insight: { key, kind, text } | null, stats }
+   */
+  function subjectStats(cloud) {
+    var root = {}, by = {};
+    var rootOf = function (id) {
+      if (root[id]) return root[id];
+      var n = cloud.nodes[id], seen = 0, x = n;
+      while (x && x.parent && cloud.nodes[x.parent] && seen++ < 64) x = cloud.nodes[x.parent];
+      return (root[id] = x ? x.id : id);
+    };
+    C.subjects(cloud).forEach(function (sj) { by[sj.id] = { id: sj.id, label: sj.label, born: sj.born || 0, last: sj.touched || sj.born || 0, started: false, done: 0, right: 0, doneAts: [] }; });
+    cloud.order.forEach(function (id) {
+      var n = cloud.nodes[id];
+      if (!n || !n.parent) return;
+      var st = by[rootOf(id)];
+      if (!st) return;
+      st.last = Math.max(st.last, n.touched || 0);
+      if (n.opened || (n.engaged || 0) > 0 || (n.correct || 0) > 0 || n.doneAt) st.started = true;
+      st.right += n.correct || 0;
+      if (n.doneAt && !n.ghost) { st.done += 1; st.doneAts.push(n.doneAt); }
+    });
+    return { by: by, rootOf: rootOf };
+  }
+  function directions(cloud, now) {
+    now = now || Date.now();
+    var D = PLAN.directions, d = C.dirOf(cloud), p = C.profileOf(cloud);
+    var subs = C.subjects(cloud), S = subjectStats(cloud), list = subs.map(function (x) { return S.by[x.id]; });
+    var out = { invite: false, revisit: [], insight: null };
+    if (!subs.length) return out;
+    /* 1. the invite: early only, a second and a third direction, then quiet; a dismissal is for good */
+    out.invite = subs.length < D.invite && !d.off && (d.n || 0) < D.invites;
+    /* 2. a return visit: branches left alone for a while (the oldest-left started ones first, then ones never opened) */
+    if ((p.visits || 0) >= 2 && subs.length >= 2 && !(d.quiet && now - d.quiet < D.revisit.quietDays * DAY)) {
+      var stale = list.filter(function (x) { return now - x.last >= D.revisit.days * DAY; });
+      out.revisit = stale.filter(function (x) { return x.started; }).sort(function (a, b) { return a.last - b.last; })
+        .concat(stale.filter(function (x) { return !x.started; }).sort(function (a, b) { return a.born - b.born; }))
+        .slice(0, D.revisit.max).map(function (x) { return x.id; });
+    }
+    /* 3. one soft insight, only after real activity across branches */
+    var I = D.insight, active = list.filter(function (x) { return x.done > 0 || x.right > 0; });
+    var lessons = list.reduce(function (a, x) { return a + x.done; }, 0), right = list.reduce(function (a, x) { return a + x.right; }, 0);
+    out.stats = { lessons: lessons, right: right, subjects: active.length };
+    if (lessons < I.lessons || right < I.right || active.length < I.subjects) return out;
+    var hide = {}, c = [];
+    (d.hide || []).forEach(function (k) { hide[k] = 1; });
+    /* a connection: a topic that builds on one from another subject, which the learner has done */
+    cloud.order.some(function (id) {
+      var n = cloud.nodes[id];
+      return n && n.doneAt && (n.pre || []).some(function (q) {
+        var m = cloud.nodes[q];
+        if (!m || !m.doneAt || S.rootOf(q) === S.rootOf(id)) return false;
+        c.push({ key: "link:" + id + ":" + q, kind: "connection", text: n.label + " in " + S.by[S.rootOf(id)].label + " builds on " + m.label + " from " + S.by[S.rootOf(q)].label + "." });
+        return true;
+      });
+    });
+    /* two subjects learned side by side lately */
+    var lately = list.filter(function (x) { return x.doneAts.some(function (t) { return now - t <= I.togetherDays * DAY; }); })
+      .sort(function (a, b) { return Math.max.apply(null, b.doneAts) - Math.max.apply(null, a.doneAts); });
+    if (lately.length >= 2) c.push({ key: "pair:" + [lately[0].id, lately[1].id].sort().join(":"), kind: "connection", text: "You've been exploring " + lately[0].label + " and " + lately[1].label + " side by side this week." });
+    /* growth and a strength, the subject with the most first */
+    list.map(function (x) { return { x: x, recent: x.doneAts.filter(function (t) { return now - t <= I.growDays * DAY; }).length }; })
+      .filter(function (o) { return o.recent >= I.growMin; }).sort(function (a, b) { return b.recent - a.recent; }).slice(0, 1)
+      .forEach(function (o) { c.push({ key: "grow:" + o.x.id, kind: "growing", text: o.x.label + " has been growing: " + o.recent + " topics finished in the last two weeks." }); });
+    list.filter(function (x) { return x.right >= I.steadyRight && x.done >= I.steadyDone; }).sort(function (a, b) { return b.right - a.right; }).slice(0, 1)
+      .forEach(function (x) { c.push({ key: "steady:" + x.id, kind: "strength", text: "You've built a steady base in " + x.label + ": " + x.right + " right answers so far." }); });
+    c = c.filter(function (x) { return !hide[x.key]; });
+    /* the same note all day, a different one another day */
+    if (c.length) out.insight = c[Math.floor(now / DAY) % c.length];
+    return out;
+  }
+
   var api = {
     PLAN: PLAN, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, needsRepair: needsRepair, repairRequest: repairRequest,
     MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild, nextStep: nextStep,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
     suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, placeTopic: placeTopic, placedTopic: placedTopic, DESCRIBE: DESCRIBE, describeBatch: describeBatch, isBroad: isBroad,
-    onboarding: onboarding, openQuestion: openQuestion, examples: examples, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics,
+    onboarding: onboarding, openQuestion: openQuestion, examples: examples, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics, directions: directions,
     needsNext: needsNext, readyNext: readyNext, createRequest: createRequest, OPENING: OPENING
   };
   if (node_) module.exports = api;

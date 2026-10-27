@@ -43,7 +43,7 @@
   };
   var reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
 
-  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], queued: null, pick: null, glide: null, view: null, seen: { c: {}, ev: 0 }, ex: { list: [], growth: [], at: 0, gat: 0, status: "idle" } };
+  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], queued: null, pick: null, glide: null, view: null, dirForm: null, dirText: "", seen: { c: {}, ev: 0 }, ex: { list: [], growth: [], at: 0, gat: 0, status: "idle" } };
   var mini = null, big = null;
 
   /* ---------- storage ---------- */
@@ -781,13 +781,13 @@
    * built without them (Skip makes no call). Nothing is seeded on the device: when the call can't be made, the
    * message says why and offers Try again (and the chat box stays open for typing a topic).
    */
-  function buildCloud(kind, interests, about, grow) {
+  function buildCloud(kind, interests, about, grow, direction) {
     if (state.busy) return;
     interests = interests || [];
     if (kind === "start" && !about && !interests.length) return; /* nothing offered yet: never a call */
     lock(true);
     var m = push({ role: "model", local: true, streaming: true, pending: kind === "start" ? 3 : 1, got: [], text: kind === "start" ? "Thanks, " + state.name + ". I'm building your first topics now..." : "Let me build something new around " + (about || interests.join(", ") || "that") + "..." });
-    var req = P.createRequest(state.cloud, kind, null, { interests: interests, about: about || "", grow: grow || "" });
+    var req = P.createRequest(state.cloud, kind, null, { interests: interests, about: about || "", grow: grow || "", direction: Boolean(direction) });
     var build = cloudBuilder(), seen = 0;
     var take = function (it) { if (!it || !it.node) return; seen += 1; m.got.push(C.cleanLabel(it.node.name)); upsert(m); build.add(it); };
     /* streamed: each parent goes on the cloud as soon as it is written; a plain JSON answer arrives all at once */
@@ -1819,10 +1819,15 @@
   var cloudFlow = null;
   function renderCloudFlow() {
     if (!cloudFlow) { cloudFlow = mk("div", "cloud-flow"); el.cloud.appendChild(cloudFlow); }
+    var had = document.activeElement && cloudFlow.contains(document.activeElement) && document.activeElement.classList.contains("dir-in");
     cloudFlow.textContent = "";
     cloudFlow.hidden = !el.panel.hidden || Boolean(cloudCaption && !cloudCaption.hidden);
     renderStart();
     if (cloudFlow.hidden || !C.subjects(state.cloud).length) { cloudFlow.hidden = true; return; } /* an empty cloud: its start invite instead */
+    var note = dirNote();
+    if (note) cloudFlow.appendChild(note);
+    var din = note && note.querySelector(".dir-in");
+    if (din && (had || state.dirForm !== state.dirFocused)) { din.focus(); state.dirFocused = state.dirForm; }
     var items = refreshSuggest().filter(function (it) { return nodeOf(it.id); });
     cloudFlow.appendChild(mk("span", "kicker", "Pick up"));
     items.forEach(function (it) {
@@ -1833,6 +1838,72 @@
     d.addEventListener("click", function () { drawCard(d); });
     cloudFlow.appendChild(d);
     placeIkoSoon();
+  }
+  /*
+   * Directions (P.directions, 0 calls): one quiet line above Pick up, at most one at a time. Early on, "Want to add
+   * another direction?" (a second and a third subject, then quiet); on a return visit, one or two branches left alone
+   * for a while beside "something new"; after real progress, one soft note. Each can be closed, and that is kept in
+   * the profile (the invite for good, the return row for a while, a note for good). Adding a direction is one "more"
+   * creation call in the learner's own words; where it lands is the creation call's usual placement (new subjects
+   * are new parents under the name), never the branch they were last in.
+   */
+  function dirClose(label, fn) {
+    var b = linkBtn("\u00d7", function () { fn(); save(); renderCloudFlow(); var f = cloudFlow && cloudFlow.querySelector(".draw-btn"); if (f) f.focus(); }, "link cf-x");
+    b.setAttribute("aria-label", label);
+    return b;
+  }
+  function dirNote() {
+    var d = C.dirOf(state.cloud), now = Date.now(), dr = P.directions(state.cloud, now);
+    var box = mk("div", "cf-note");
+    if (state.dirForm) {
+      var f = mk("form", "dir-form"), inp = mk("input", "dir-in");
+      f.setAttribute("autocomplete", "off");
+      inp.maxLength = 300; inp.value = state.dirText || ""; inp.placeholder = "Something else you enjoy";
+      inp.addEventListener("input", function () { state.dirText = inp.value; }); inp.setAttribute("aria-label", "Another direction, in your own words");
+      var add = mk("button", "btn sm", "Add"); add.type = "submit";
+      f.appendChild(inp); f.appendChild(add);
+      f.appendChild(dirClose("Close", function () { state.dirForm = null; state.dirFocused = null; }));
+      f.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var t = cleanAbout(inp.value);
+        if (!t || state.busy) return;
+        if (state.dirForm === "invite") d.n = (d.n || 0) + 1;
+        state.dirForm = null; state.dirText = ""; state.dirFocused = null;
+        save();
+        buildCloud("more", [], t, "", true);
+      });
+      inp.addEventListener("keydown", function (e) { if (e.key === "Escape") { e.stopPropagation(); state.dirForm = null; state.dirFocused = null; renderCloudFlow(); var a = cloudFlow.querySelector(".dir-ask, .dir-new"); if (a) a.focus(); } });
+      box.appendChild(f);
+      return box;
+    }
+    var open = function (why) { return function () { state.dirForm = why; renderCloudFlow(); }; };
+    if (dr.invite) {
+      box.classList.add("dir-invite");
+      box.appendChild(linkBtn("Want to add another direction?", open("invite"), "link dir-ask"));
+      box.appendChild(dirClose("Not now", function () { d.off = now; }));
+      return box;
+    }
+    if (dr.revisit.length) {
+      box.classList.add("dir-back");
+      box.appendChild(mk("span", "kicker", "Waiting for you"));
+      dr.revisit.forEach(function (id) { var n = nodeOf(id); if (n) box.appendChild(linkBtn(n.label, function () { openPanel(id); }, "chip dir-chip")); });
+      var end = mk("span", "dir-end"); /* the link and its close stay together on a narrow screen */
+      end.appendChild(linkBtn("or something new", open("new"), "link dir-new"));
+      end.appendChild(dirClose("Not now", function () { d.quiet = now; }));
+      box.appendChild(end);
+      return box;
+    }
+    if (dr.insight) {
+      box.classList.add("dir-insight");
+      /* the close sits at the end of the sentence: the last word and the close never part on a narrow screen */
+      var key = dr.insight.key, words = dr.insight.text.split(" "), last = words.pop();
+      var tx = mk("span", "dir-text", words.join(" ") + " "), tail = mk("span", "dir-tail", last + "\u00a0");
+      tail.appendChild(dirClose("Hide this note", function () { d.hide = (d.hide || []).concat([key]).slice(-24); }));
+      tx.appendChild(tail);
+      box.appendChild(tx);
+      return box;
+    }
+    return null;
   }
   function closeCloud(keepView) {
     el.cloud.hidden = true; el.panel.hidden = true; state.panelNode = null; cardSig = "";
@@ -2622,7 +2693,7 @@
   /* Once per browser session: for "seems stuck" (visits without a lesson). */
   function countVisit() {
     var pr = C.profileOf(state.cloud);
-    try { if (!sessionStorage.getItem(VISIT)) { sessionStorage.setItem(VISIT, "1"); pr.visits = (pr.visits || 0) + 1; } } catch { /* ignore */ }
+    try { if (!sessionStorage.getItem(VISIT)) { sessionStorage.setItem(VISIT, "1"); pr.visits = (pr.visits || 0) + 1; var d = C.dirOf(state.cloud); d.prev = d.seen || 0; d.seen = Date.now(); } } catch { /* ignore */ }
     save();
   }
   function greet() {

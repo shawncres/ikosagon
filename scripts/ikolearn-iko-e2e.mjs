@@ -211,7 +211,7 @@ for (const width of [390, 1280]) {
       ok(!(await ikoState(p)).sheet && !(await p.isHidden("#panel")), `${tag}: Escape closes Iko first (the card stays)`);
       await p.click("#p-close"); await p.waitForTimeout(250);
       /* a lesson: Iko there too, clear of Where Next; "Still tricky" opens Iko with the prepared clarification (0 calls) */
-      await p.locator(".cloud-flow .chip").first().click(); await p.waitForSelector("#l-done:not([hidden])");
+      await p.locator(".cloud-flow > .chip").first().click(); await p.waitForSelector("#l-done:not([hidden])");
       await p.evaluate(() => document.querySelector("#l-next").scrollIntoView({ block: "center" })); await p.waitForTimeout(200);
       const ov2 = await overlap(p, [".wn-opt", "#l-next button", "#l-done button"]), k3 = await ikoState(p);
       ok(k3.shown && !ov2.hits.length, `${tag}: lesson: Iko is there, clear of Where Next`, JSON.stringify(ov2));

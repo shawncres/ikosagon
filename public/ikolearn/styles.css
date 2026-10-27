@@ -188,6 +188,19 @@ button.gcard:hover { border-color: var(--soft); }
 .gcard.test-tile .gc-desc { display: block; font-size: 12.5px; color: var(--soft); margin-top: 4px; }
 .cloud-flow { position: absolute; left: 0; right: 0; bottom: 40px; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; padding: 0 16px; }
 .cloud-flow .kicker { margin-right: 2px; }
+/* directions: one quiet line above Pick up (an invite, branches waiting on a return visit, or a soft note) */
+.cf-note { flex: 0 0 100%; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px 8px; margin: 0 0 2px; font-size: 14px; color: var(--soft); }
+.cf-note .link { font-size: 14px; color: var(--soft); }
+.cf-note .dir-ask { color: var(--ink); }
+.cf-note .chip.dir-chip { font-size: 14px; }
+.cf-note .dir-text { font-style: italic; max-width: 34em; text-align: center; text-wrap: balance; }
+.cf-note .dir-tail { white-space: nowrap; }
+.cf-note .dir-text .cf-x { min-height: 28px; vertical-align: middle; font-style: normal; }
+.cf-note .cf-x { min-width: 32px; min-height: 32px; padding: 0 6px; font-size: 17px; line-height: 1; text-decoration: none; opacity: 0.7; }
+.cf-note .cf-x:hover, .cf-note .cf-x:focus-visible { opacity: 1; }
+.cf-note .dir-end { display: inline-flex; align-items: center; white-space: nowrap; }
+.dir-form { display: flex; align-items: center; gap: 6px; }
+.dir-form .dir-in { width: min(250px, 58vw); font: inherit; font-size: 16px; padding: 7px 14px; border: 1px solid var(--rule); border-radius: 999px; background: var(--sheet); color: var(--ink); }
 .chip { font: inherit; font-size: 14px; color: var(--ink); background: var(--paper); border: 1px solid var(--rule); border-radius: 999px; padding: 3px 12px; min-height: 32px; cursor: pointer; }
 .corpus { margin: 8px 0 0; }
 .corpus-head { margin: 4px 0 6px !important; }

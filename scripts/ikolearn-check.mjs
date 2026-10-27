@@ -3436,6 +3436,86 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/\.wn-alt\.wn-all \{ max-height: min\(372px, 52vh\); overflow-y: auto;/.test(fs.readFileSync("public/ikolearn/styles.css", "utf8")), "Also in progress: the full list scrolls in its own area (Where Next stays on screen)");
 }
 
+{
+  // Directions: the cloud as a map (invite early, branches waiting on a return visit, soft insights after real activity), 0 calls
+  const mkSubj = (c, sub, top, kids, t) => C.applyCreate(c, { items: [{ node: { name: top, chain: [sub] }, card: { title: top, blurb: "A way in.", goal: "Try it." }, children: kids.map((k, i) => ({ name: k, order: i + 1, score: 0.6 })) }] }, { t });
+  const lab = (c, l) => c.order.find((x) => c.nodes[x].label === l);
+  const dc = C.create("Maya", T0);
+  ok(P.directions(dc, T0).invite === false, "directions: no invite on an empty cloud (the opening asks instead)");
+  mkSubj(dc, "Nature", "Ocean Life", ["Tides", "Coral Reefs", "Whales"], T0 + 1);
+  let dr = P.directions(dc, T0 + 10);
+  ok(dr.invite === true && dr.revisit.length === 0 && dr.insight === null, "directions: one subject -> the invite, nothing else");
+  mkSubj(dc, "Art", "Drawing", ["Shading", "Shapes", "Lines"], T0 + 2);
+  ok(P.directions(dc, T0 + 10).invite === true, "directions: two subjects -> still invites a third");
+  const d0 = C.dirOf(dc);
+  d0.n = 2;
+  ok(P.directions(dc, T0 + 10).invite === false, "directions: quiet after two directions added from it");
+  d0.n = 0; d0.off = T0 + 20;
+  ok(P.directions(dc, T0 + 30).invite === false, "directions: a dismissed invite stays dismissed");
+  d0.off = 0;
+  mkSubj(dc, "Music", "Rhythm", ["Beats", "Tempo", "Drums"], T0 + 3);
+  ok(P.directions(dc, T0 + 10).invite === false && C.subjects(dc).length === 3, "directions: quiet once there are 3 subjects");
+  // a new direction is placed by the creation call's chain: a new subject is a new parent beside the others, not under the last branch
+  const before = C.subjects(dc).map((x) => x.id);
+  mkSubj(dc, "Cooking", "Baking", ["Bread", "Cakes"], T0 + 4);
+  const cook = C.subjects(dc).find((x) => x.label === "Cooking");
+  ok(cook && !cook.parent && C.subjects(dc).length === before.length + 1 && dc.nodes[lab(dc, "Baking")].parent === cook.id, "directions: a new direction lands as its own parent under the name (not in the last branch)");
+  const rq = P.createRequest(dc, "more", null, { about: "baking bread", direction: true });
+  ok(rq.favorites.length === 0 && !rq.focus && rq.parents.length <= 12, "directions: its creation request has no focus and doesn't lean on the most-used topics");
+  ok(P.createRequest(dc, "more", null, { about: "x" }).favorites !== undefined, "directions: other creation requests unchanged");
+  // return visit: branches left alone for a while (started ones first, oldest first), never on a first visit
+  const DAY = DAYMS, now = T0 + 20 * DAY;
+  C.profileOf(dc).visits = 1;
+  ok(P.directions(dc, now).revisit.length === 0, "revisit: not on a first visit");
+  C.profileOf(dc).visits = 3;
+  const touch = (l, t, extra = {}) => Object.assign(dc.nodes[lab(dc, l)], { touched: t, opened: true, ghost: false }, extra);
+  touch("Tides", now - 12 * DAY); touch("Shading", now - 8 * DAY); touch("Beats", now - 1 * DAY); dc.nodes[lab(dc, "Bread")].touched = now - 2 * DAY;
+  dr = P.directions(dc, now);
+  ok(JSON.stringify(dr.revisit.map((x) => dc.nodes[x].label)) === JSON.stringify(["Nature", "Art"]), "revisit: the two branches left alone longest (started first), not the ones in use", JSON.stringify(dr.revisit.map((x) => dc.nodes[x].label)));
+  touch("Shading", now - 1 * DAY);
+  ok(JSON.stringify(P.directions(dc, now).revisit.map((x) => dc.nodes[x].label)) === JSON.stringify(["Nature"]), "revisit: a branch touched in the last few days is not surfaced");
+  C.dirOf(dc).quiet = now;
+  ok(P.directions(dc, now + DAY).revisit.length === 0 && P.directions(dc, now + 8 * DAY).revisit.length >= 1, "revisit: a dismissal rests it for a week");
+  C.dirOf(dc).quiet = 0;
+  // insights: none with little activity; soft and data-driven after real activity across branches
+  touch("Tides", now - 3 * DAY, { correct: 3, doneAt: now - 3 * DAY });
+  ok(P.directions(dc, now).insight === null, "insight: none with a little activity (1 lesson, 3 right answers)");
+  touch("Coral Reefs", now - 2 * DAY, { correct: 3, doneAt: now - 2 * DAY }); touch("Whales", now - 2 * DAY, { correct: 3, doneAt: now - 2 * DAY });
+  ok(P.directions(dc, now).insight === null, "insight: none while it's all in one branch (3 lessons, 9 right, 1 subject)");
+  touch("Shapes", now - 1 * DAY, { correct: 2, doneAt: now - 1 * DAY });
+  dr = P.directions(dc, now);
+  ok(dr.insight && dr.stats.lessons === 4 && dr.stats.right === 11 && dr.stats.subjects === 2, "insight: after 4 lessons and 10+ right answers across 2 subjects there is one note", JSON.stringify(dr.stats));
+  const texts = [];
+  const hideAll = C.dirOf(dc);
+  for (let k = 0; k < 6 && P.directions(dc, now).insight; k++) { const i = P.directions(dc, now).insight; texts.push(i.kind + ": " + i.text); hideAll.hide.push(i.key); }
+  ok(texts.length === 3 && texts.some((t) => /^connection: You've been exploring (Art and Nature|Nature and Art) side by side this week\.$/.test(t)) && texts.some((t) => t === "growing: Nature has been growing: 3 topics finished in the last two weeks.") && texts.some((t) => t === "strength: You've built a steady base in Nature: 9 right answers so far."), "insight: a connection, growth and a strength, all from the saved progress", JSON.stringify(texts));
+  ok(texts.every((t) => !/career|job|should|must|you are a|best at|talent|future/i.test(t)), "insight: soft wording, no career conclusions or fixed recommendations");
+  ok(P.directions(dc, now).insight === null, "insight: a closed note never comes back");
+  hideAll.hide = [];
+  ok(JSON.stringify(P.directions(dc, now).insight) === JSON.stringify(P.directions(dc, now + 1000).insight), "insight: deterministic (the same note all day)");
+  // a connection across branches through a prerequisite
+  dc.nodes[lab(dc, "Shapes")].pre = [lab(dc, "Tides")];
+  const all = [];
+  for (let k = 0; k < 6 && P.directions(dc, now).insight; k++) { const i = P.directions(dc, now).insight; all.push(i.text); hideAll.hide.push(i.key); }
+  ok(all.includes("Shapes in Art builds on Tides from Nature."), "insight: a topic that builds on one from another branch", JSON.stringify(all));
+  hideAll.hide = ["link:a:b"];
+  // storage: additive v9 profile slot, round trip, old rows read as zero
+  Object.assign(C.dirOf(dc), { off: T0 + 5000, n: 1, seen: now, prev: now - 3 * DAY, quiet: now - DAY });
+  const back = C.deserialize(C.serialize(dc));
+  const bd = C.dirOf(back);
+  ok(bd.off === T0 + 5000 && bd.n === 1 && bd.seen === now && bd.prev === now - 3 * DAY && bd.quiet === now - DAY && JSON.stringify(bd.hide) === '["link:a:b"]', "storage: the directions slot round-trips", JSON.stringify(bd));
+  const raw = JSON.parse(C.serialize(dc));
+  ok(raw.v === 9 && raw.pr.length === 10 && Array.isArray(raw.pr[9]) && raw.pr[6] === 3, "storage: still v9, one more slot at the end of the profile row (older readers ignore it)");
+  raw.pr = raw.pr.slice(0, 9);
+  const old = C.dirOf(C.deserialize(JSON.stringify(raw)));
+  ok(old.off === 0 && old.n === 0 && old.quiet === 0 && old.hide.length === 0, "storage: an older save reads with no directions state");
+  // the app: one quiet line, closable and remembered, 0 calls
+  const appD = fs.readFileSync("public/ikolearn/app.js", "utf8");
+  const dn = appD.slice(appD.indexOf("  function dirClose("), appD.indexOf("  function closeCloud("));
+  ok(/"Want to add another direction\?"/.test(dn) && /d\.off = now/.test(dn) && /d\.quiet = now/.test(dn) && /d\.hide = \(d\.hide \|\| \[\]\)\.concat\(\[key\]\)/.test(dn) && /setAttribute\("aria-label", label\)/.test(dn), "directions: the invite, the return row and the note can each be closed, and that is kept");
+  ok(!/postJson\(|stream\(/.test(dn) && (dn.match(/buildCloud\(/g) || []).length === 1 && /buildCloud\("more", \[\], t, "", true\)/.test(dn), "directions: 0 calls until the learner adds a direction (then one \"more\" creation call)");
+}
+
 if (fails.length) {
   console.error(`ikolearn checks: ${pass} passed, ${fails.length} FAILED`);
   for (const f of fails) console.error("  x " + f);
