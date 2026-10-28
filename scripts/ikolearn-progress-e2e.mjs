@@ -115,7 +115,7 @@ for (const width of [390, 1280]) {
   const { ctx, p, errs, calls } = await open(width);
   try {
     await p.goto(BASE + "/ikolearn"); await p.evaluate(SEED); await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" }); await p.waitForTimeout(600);
-    await p.locator(".cloud-flow .chip").first().click(); await p.waitForSelector("#l-quiz fieldset.q"); await p.waitForSelector("#l-done:not([hidden])");
+    await p.locator(".cloud-flow > .chip").first().click(); await p.waitForSelector("#l-quiz fieldset.q"); await p.waitForSelector("#l-done:not([hidden])");
     const lessonCalls = calls.filter((c) => c === "/lesson").length;
     ok(lessonCalls === 1 && (await p.locator("#l-quiz fieldset.q").count()) === 3, `${tag}: a lesson with 3 questions (1 lesson call)`);
     /* each answer is kept as it happens: two answered, out to the card and back, both still there and the third open */

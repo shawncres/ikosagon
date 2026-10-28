@@ -232,7 +232,7 @@ for (const width of [390, 1280]) {
   {
     const { ctx, p, errs, calls, bodies } = await boot(width, guide);
     try {
-      await p.locator(".cloud-flow .chip").first().click(); await p.waitForSelector("#l-done:not([hidden])");
+      await p.locator(".cloud-flow > .chip").first().click(); await p.waitForSelector("#l-done:not([hidden])");
       await p.click("#iko"); await p.waitForTimeout(250);
       ok((await sheet(p)).about === "On Magma · lesson", `${tag}: Iko on the Magma lesson`);
       await p.keyboard.press("Escape"); await p.waitForTimeout(200);
@@ -254,7 +254,7 @@ for (const width of [390, 1280]) {
   {
     const { ctx, p, errs } = await boot(width, guide);
     try {
-      await p.locator(".cloud-flow .chip").first().click(); await p.waitForSelector("#l-done:not([hidden])");
+      await p.locator(".cloud-flow > .chip").first().click(); await p.waitForSelector("#l-done:not([hidden])");
       await p.click("#l-got"); await p.waitForTimeout(400);
       let w = await whereNext(p);
       ok(wnOk(w), `${tag}: Where Next after I've got it: this subject only, equal boxes, the action in the selected box`, JSON.stringify(w));

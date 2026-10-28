@@ -148,7 +148,7 @@ for (const width of [390, 1280]) {
       await shot(p, width, "2-returning");
       /* a lesson from the cloud, and back: home, on its topic */
       const v0 = await view(p);
-      const chip = p.locator(".cloud-flow .chip").first(), chipText = (await chip.textContent()).trim();
+      const chip = p.locator(".cloud-flow > .chip").first(), chipText = (await chip.textContent()).trim();
       await chip.click(); await p.waitForSelector("#l-done:not([hidden])");
       const l = await p.evaluate(() => ({ t: document.querySelector("#l-title").textContent, back: document.querySelector("#l-back").textContent, chat: document.querySelector("#l-chat").textContent }));
       ok(!(await screen(p)).cloud && l.back === "Back to your cloud" && l.chat === "Ask Iko about this", `${tag}: lesson: opens from the cloud; "Back to your cloud", "Ask Iko about this"`, JSON.stringify(l));

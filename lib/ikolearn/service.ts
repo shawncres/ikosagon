@@ -375,10 +375,10 @@ export async function createFor(input: LearnInput, env: Env, fetchImpl: typeof f
   const user = createUser(input);
   const r = await generateJson<CreateResult>(createSystem(input), user, CREATE_SCHEMA, (t) => parseCreate(t, input.kind, input.name, input.focus, input.known), env, fetchImpl, { maxTokens: MODEL_LIMITS.createMaxTokens, route: "create" });
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
-  return json(200, { ok: true, kind: input.kind, items: r.value.items });
+  return json(200, { ok: true, kind: input.kind, items: r.value.items, ...(r.value.later ? { later: r.value.later } : {}) });
 }
 
-export type CreateEvent = { t: "item"; item: CreateItem } | { t: "done"; kind: LearnInput["kind"]; items: CreateItem[] } | { t: "error"; reason: FailCode | "cut" | "bad_output" };
+export type CreateEvent = { t: "item"; item: CreateItem } | { t: "done"; kind: LearnInput["kind"]; items: CreateItem[]; later?: string[] } | { t: "error"; reason: FailCode | "cut" | "bad_output" };
 
 /**
  * The creation call, streamed (start and more): the model's JSON arrives in pieces and each item is sent ("item") as
@@ -419,7 +419,10 @@ async function* createItemEvents(input: LearnInput, pieces: AsyncGenerator<strin
   const full = cut ? null : parseCreate(text, input.kind, input.name, input.focus, input.known);
   const items = full ? full.items : sent;
   for (let i = sent.length; i < items.length; i++) yield { t: "item", item: items[i] };
-  if (items.length && (full || sent.length)) yield { t: "done", kind: input.kind, items };
+  /* start: ideas beyond the intake's caps, by name (the app offers them as directions to add later) */
+  const later: string[] = [];
+  if (input.kind === "start") createItems(completeItems(text), input.kind, input.name, input.focus, input.known, later);
+  if (items.length && (full || sent.length)) yield { t: "done", kind: input.kind, items, ...(later.length ? { later } : {}) };
   else yield { t: "error", reason: cut ? "cut" : "bad_output" };
 }
 

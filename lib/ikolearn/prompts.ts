@@ -55,6 +55,10 @@ export const LEARN_LIMITS = {
   /** Create (start) only: the optional personal-development answer ("something you'd like to grow in yourself"), own words. */
   growChars: 200,
   createItems: 5,
+  /** Create (start) only: at most this many broad subjects (roots) from one intake; more ideas come back as `later`. */
+  startRoots: 4,
+  /** Create (start) only: at most this many ideas kept for later (the learner can add each as a direction). */
+  laterIdeas: 4,
   createChildren: 6,
   goalChars: 100,
   favorites: 5,
@@ -551,7 +555,8 @@ export const TEST_SCHEMA = {
 export type CreateChild = { name: string; order: number; score: number; why: string; role: (typeof CHILD_ROLES)[number]; after: string; needs?: string[]; motif?: string; blurb?: string };
 export type CreateLink = { name: string; blurb: string };
 export type CreateItem = { node: { name: string; chain: string[]; needs?: string[]; motif?: string }; card: { title: string; blurb: string; goal: string }; children: CreateChild[]; links?: CreateLink[] };
-export type CreateResult = { items: CreateItem[] };
+/** later (start only): ideas the model wrote beyond the intake's caps (LEARN_LIMITS.startRoots / createItems), by name. */
+export type CreateResult = { items: CreateItem[]; later?: string[] };
 
 export function createSystem(i: LearnInput): string {
   const fit =
@@ -605,6 +610,9 @@ export function createSystem(i: LearnInput): string {
         : "Role: create, start. This is a new learner. In the user message they say, in their own words, what they are curious about, enjoy or want to get better at. " +
           "Read it for the real interests behind it (a game, a hobby or a question points to the subjects inside it) and return 3 to 5 parent topics to start their learning path, " +
           "all from what they said (a foundational skill may be woven in where it truly serves one of their interests). " +
+          "They may name one thing or several. When they name several different interests, give each one its own broad subject (its own first chain link), so their map fans out " +
+          "from the start; put one under another only when it is clearly part of it (coral reefs under the ocean). Order the items as they named them, " +
+          `at most ${LEARN_LIMITS.startRoots} different broad subjects; when they named more, still add one item for each extra idea after those (up to 6 items in all): they are kept for later. ` +
           (i.grow
             ? "They also said, in the user message, something they would like to grow in themselves (a habit, a strength, a way of being). Add one more parent, besides the ones for their interests, that gently serves it, in friendly everyday words and tied to what they said; it is theirs to try, never a lesson about how they should be. "
             : "");
@@ -740,9 +748,10 @@ function labelList(v: unknown): string[] {
 export function parseCreate(raw: unknown, kind: LearnInput["kind"], learnerName = "", focus = "", known: string[] = []): CreateResult | null {
   const list = jsonObject(raw)?.items;
   if (!Array.isArray(list)) return null;
-  const items = createItems(list, kind, learnerName, focus, known);
+  const later: string[] = [];
+  const items = createItems(list, kind, learnerName, focus, known, later);
   const min = kind === "start" ? 2 : 1;
-  return items.length >= min ? { items } : null;
+  return items.length >= min ? { items, ...(later.length ? { later } : {}) } : null;
 }
 
 /**
@@ -750,14 +759,18 @@ export function parseCreate(raw: unknown, kind: LearnInput["kind"], learnerName 
  * prefix of the model's list are a prefix of the full result: the streamed creation call (createEvents) sends them as
  * they complete.
  */
-export function createItems(list: unknown[], kind: LearnInput["kind"], learnerName = "", focus = "", known: string[] = []): CreateItem[] {
+export function createItems(list: unknown[], kind: LearnInput["kind"], learnerName = "", focus = "", known: string[] = [], later?: string[]): CreateItem[] {
   const seen: string[] = [];
   const taken = (s: string) => seen.some((x) => sameLabel(x, s)) || (learnerName !== "" && sameLabel(s, learnerName));
   const max = kind === "start" ? LEARN_LIMITS.createItems : kind === "more" ? 2 : 1;
   const focused = kind === "next" || kind === "bridge";
   const items: CreateItem[] = [];
+  /* start: one intake may name several ideas; each broad subject (a chain's first link, or the item itself) is a root,
+     at most LEARN_LIMITS.startRoots of them. Items past the caps are not grown now: their names come back as `later`. */
+  const roots: string[] = [];
+  const keepLater = (n: string) => { if (later && kind === "start" && later.length < LEARN_LIMITS.laterIdeas && !later.some((x) => sameLabel(x, n)) && !taken(n)) later.push(n); };
   for (const it of list) {
-    if (items.length >= max) break;
+    if (items.length >= max && kind !== "start") break;
     if (!it || typeof it !== "object") continue;
     const o = it as Record<string, unknown>;
     const nd = (o.node && typeof o.node === "object" ? o.node : {}) as Record<string, unknown>;
@@ -766,6 +779,8 @@ export function createItems(list: unknown[], kind: LearnInput["kind"], learnerNa
     if (!name || (!focused && taken(name))) continue;
     if (focused && !sameLabel(cleanLabel(nd.name), focus)) continue;
     const chain = kind === "next" ? [] : parseChain(nd.chain, learnerName, name);
+    const root = chain[0] || name, newRoot = kind === "start" && !roots.some((x) => sameLabel(x, root));
+    if (kind === "start" && (items.length >= max || (newRoot && roots.length >= LEARN_LIMITS.startRoots))) { keepLater(name); continue; }
     const kids: (CreateChild & { i: number; raw: unknown })[] = [];
     (Array.isArray(o.children) ? o.children : []).forEach((c, i) => {
       if (!c || typeof c !== "object" || kids.length >= LEARN_LIMITS.createChildren) return;
@@ -794,6 +809,7 @@ export function createItems(list: unknown[], kind: LearnInput["kind"], learnerNa
       .map((l) => ({ name: cleanLabel((l as Record<string, unknown>).name), blurb: parseBlurb((l as Record<string, unknown>).blurb, learnerName) }))
       .filter((l) => l.name && chain.some((c) => sameLabel(c, l.name)));
     seen.push(name, ...kids.map((k) => k.name));
+    if (newRoot) roots.push(root);
     const motif = cleanMotif(nd.motif);
     items.push({
       node: { name, chain, ...(needs.length ? { needs } : {}), ...(motif ? { motif } : {}) },

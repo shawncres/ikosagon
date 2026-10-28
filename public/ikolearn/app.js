@@ -29,7 +29,7 @@
     lesson: $("lesson"), lBack: $("l-back"), lTrail: $("l-trail"), lTitle: $("l-title"), lBody: $("l-body"), lDone: $("l-done"),
     lGot: $("l-got"), lTricky: $("l-tricky"), lStatus: $("l-status"), lPath: $("l-path"), lClar: $("l-clar"), lNext: $("l-next"), lChat: $("l-chat"), lRedo: $("l-redo"),
     cloud: $("cloud"), cloudCanvas: $("cloud-canvas"), cloudDeck: $("cloud-deck"), cloudWho: $("cloud-who"), toCloud: $("to-cloud"),
-    cs: $("cloud-start"), csHi: $("cs-hi"), csQ: $("cs-q"), csForm: $("cs-form"), csIn: $("cs-in"), csEx: $("cs-ex"), csStatus: $("cs-status"),
+    cs: $("cloud-start"), csHi: $("cs-hi"), csQ: $("cs-q"), csFew: $("cs-few"), csForm: $("cs-form"), csIn: $("cs-in"), csEx: $("cs-ex"), csStatus: $("cs-status"),
     ikoWrap: $("iko-wrap"), iko: $("iko"), ikoLine: $("iko-line"), ikoSheet: $("iko-sheet"), ikoAbout: $("iko-about"), ikoX: $("iko-x"), ikoSay: $("iko-say"), ikoActs: $("iko-acts"), ikoGot: $("iko-got"), ikoBody: $("iko-body"), ikoSlot: $("iko-slot"), ikoLog: $("iko-log"), ikoForm: $("iko-form"), ikoIn: $("iko-in"), ikoAll: $("iko-all"), zin: $("zin"), zout: $("zout"), zreset: $("zreset"),
     panel: $("panel"), cloudTop: document.querySelector(".cloud-top"), pKicker: $("p-kicker"), pTitle: $("p-title"), pDesc: $("p-desc"), pNote: $("p-note"), pLesson: $("p-lesson"), pCard: $("p-card"), pAdj: $("p-adj"),
     pChat: $("p-chat"), pPath: $("p-path"), pCards: $("p-cards"), pClose: $("p-close"),
@@ -43,7 +43,7 @@
   };
   var reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
 
-  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], queued: null, pick: null, glide: null, view: null, seen: { c: {}, ev: 0 }, ex: { list: [], growth: [], at: 0, gat: 0, status: "idle" } };
+  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], queued: null, pick: null, glide: null, view: null, dirForm: null, dirText: "", csPicked: [], seen: { c: {}, ev: 0 }, ex: { list: [], growth: [], at: 0, gat: 0, status: "idle" } };
   var mini = null, big = null;
 
   /* ---------- storage ---------- */
@@ -265,8 +265,9 @@
    */
   var EX_SHOW = 3, exRows = [];
   /* set: "" (the first question's list, personalised once a cloud exists) or "growth" (the second question's, as it came) */
-  function exRow(pick, live, set, quiet) {
-    var r = { node: mk("div", "ex-row"), pick: pick, live: live || function () { return true; }, set: set || "", quiet: Boolean(quiet) };
+  /* multi: an array of picked ideas (the intake): a tap picks or unpicks one (aria-pressed); they go with the answer */
+  function exRow(pick, live, set, quiet, multi) {
+    var r = { node: mk("div", "ex-row"), pick: pick, live: live || function () { return true; }, set: set || "", quiet: Boolean(quiet), multi: multi || null };
     exRows.push(r);
     /* after this tick, once the row is on the page (refreshEx drops rows that aren't) */
     if (state.ex.status === "idle" && r.live()) { state.ex.status = "wait"; setTimeout(loadExamples, 0); }
@@ -287,7 +288,24 @@
     var list = state.ex.status !== "ok" ? [] : grow ? state.ex.growth : P.examples(state.cloud, state.ex.list, Date.now());
     if (!list.length) return;
     var at = state.ex[key] % list.length;
-    for (var k = 0; k < Math.min(EX_SHOW, list.length); k++) {
+    if (r.multi) {
+      /* the ideas in view, with any picked ones kept in view (first) while More moves on */
+      var shown = [];
+      for (var j = 0; j < Math.min(EX_SHOW, list.length); j++) shown.push(list[(at + j) % list.length]);
+      r.multi.filter(function (t) { return shown.indexOf(t) < 0; }).reverse().forEach(function (t) { shown.unshift(t); });
+      shown.forEach(function (t) {
+        var on = r.multi.indexOf(t) >= 0, b = linkBtn(t, function () {
+          if (state.busy || !r.live()) return;
+          var i = r.multi.indexOf(t);
+          if (i >= 0) r.multi.splice(i, 1); else r.multi.push(t);
+          fillEx(r);
+          var again = [].filter.call(r.node.querySelectorAll(".ex-chip"), function (x) { return x.textContent === t; })[0];
+          if (again) again.focus();
+        }, "btn ex-chip");
+        b.setAttribute("aria-pressed", on ? "true" : "false");
+        box.appendChild(b);
+      });
+    } else for (var k = 0; k < Math.min(EX_SHOW, list.length); k++) {
       (function (t) { box.appendChild(linkBtn(t, function () { if (!state.busy && r.live()) r.pick(t); }, "btn ex-chip")); })(list[(at + k) % list.length]);
     }
     if (list.length > EX_SHOW) box.appendChild(linkBtn("More", function () { state.ex[key] = (at + EX_SHOW) % list.length; refreshEx(); }, "link ex-more"));
@@ -596,10 +614,10 @@
         else if (ev.t === "cloud" && on.cloud) on.cloud(ev);
         else if (ev.t === "path" && on.path) on.path(ev);
         else if (ev.t === "item" && on.item && ev.item) { got = true; on.item(ev.item); }
-        else if (ev.t === "done") result = { ok: true, items: ev.items };
+        else if (ev.t === "done") result = { ok: true, items: ev.items, later: ev.later };
         else if (ev.t === "error") result = { ok: got, reason: ev.reason };
         /* a plain JSON answer (a server without streaming): the same as one "done" */
-        else if (ev.ok === true && Array.isArray(ev.items)) result = { ok: true, items: ev.items };
+        else if (ev.ok === true && Array.isArray(ev.items)) result = { ok: true, items: ev.items, later: ev.later };
         else if (ev.ok === false) result = { ok: false, reason: ev.reason || ev.error };
       }
       function pump() {
@@ -781,18 +799,20 @@
    * built without them (Skip makes no call). Nothing is seeded on the device: when the call can't be made, the
    * message says why and offers Try again (and the chat box stays open for typing a topic).
    */
-  function buildCloud(kind, interests, about, grow) {
+  function buildCloud(kind, interests, about, grow, direction) {
     if (state.busy) return;
     interests = interests || [];
     if (kind === "start" && !about && !interests.length) return; /* nothing offered yet: never a call */
     lock(true);
     var m = push({ role: "model", local: true, streaming: true, pending: kind === "start" ? 3 : 1, got: [], text: kind === "start" ? "Thanks, " + state.name + ". I'm building your first topics now..." : "Let me build something new around " + (about || interests.join(", ") || "that") + "..." });
-    var req = P.createRequest(state.cloud, kind, null, { interests: interests, about: about || "", grow: grow || "" });
+    var req = P.createRequest(state.cloud, kind, null, { interests: interests, about: about || "", grow: grow || "", direction: Boolean(direction) });
     var build = cloudBuilder(), seen = 0;
     var take = function (it) { if (!it || !it.node) return; seen += 1; m.got.push(C.cleanLabel(it.node.name)); upsert(m); build.add(it); };
     /* streamed: each parent goes on the cloud as soon as it is written; a plain JSON answer arrives all at once */
+    var laterOf = null;
     stream("/create", Object.assign(basePayload(null), { mode: "notice", stream: true }, req), { delta: function () {}, item: take }).then(function (r) {
       if (r.ok && Array.isArray(r.items)) r.items.slice(seen).forEach(take);
+      if (r.ok && Array.isArray(r.later)) laterOf = r.later;
       return r.ok && seen ? { ok: true } : { ok: false, reason: r.reason };
     }).then(function (j) {
       m.pending = 0;
@@ -801,6 +821,8 @@
           var names = ids.map(function (x) { return nodeOf(x) && nodeOf(x).label; }).filter(Boolean);
           /* what they enjoy, as the model read it: the new parents become the profile's interests (later asks build on them) */
           C.setProfile(state.cloud, { interests: names.slice(0, 5) });
+          /* start: ideas past the intake's caps wait as "Also on your mind" (each one a direction to add, one call each) */
+          if (kind === "start" && laterOf) C.setLater(state.cloud, laterOf);
           m.streaming = false;
           m.text = (kind === "start" ? "Here's where your path begins: " : "New on your cloud: ") + names.join(", ") + ". Each one has a few smaller topics waiting, best first. Pick a card, or draw one. We can add more as we go along.";
           m.opens = ids.slice(0, 5);
@@ -813,7 +835,7 @@
       m.text = reasonLead(j && (j.reason || j.error)) + (kind === "start" ? " So I couldn't build your first topics yet. Try again in a moment, or type something you'd like to learn about below." : " Let's try that again a little later.");
       m.retry = { kind: kind, about: about || "", grow: grow || "" };
       upsert(m);
-    }).then(function () { save(); lock(false); refreshEx(); renderDraw(); if (state.offerGrow) { state.offerGrow = false; offerGrow(); } });
+    }).then(function () { save(); lock(false); refreshEx(); renderDraw(); if (!el.cloud.hidden && !el.cloud.querySelector(".cloud-caption:not([hidden])")) renderCloudFlow(); if (state.offerGrow) { state.offerGrow = false; offerGrow(); } });
   }
   /*
    * The second, optional question ("something you'd like to grow in yourself"): no longer part of the opening. Once the
@@ -825,9 +847,20 @@
     if (hintSeen("grow")) return;
     dismissHint("grow");
     var q = P.openQuestion(state.cloud, "grow");
-    ask(q, function (v) { if (v) buildCloud("more", [], cleanAbout("Something I'd like to grow in myself: " + v)); });
+    ask(q, function (v) { dismissHint("growSaid"); if (v) buildCloud("more", [], cleanAbout("Something I'd like to grow in myself: " + v)); });
     save();
+    /* never beside the "another direction" invite: while one is on the cloud, Iko's line waits until it is gone
+       (used, closed, or the cloud has its 3 subjects), this visit or a later one. The question is in the conversation already. */
+    if (dirInviting()) dismissHint("growWait");
+    else sayGrow();
+  }
+  function sayGrow() {
+    dismissHint("growSaid");
     ikoLine("Your path has begun. When you like, tell me something you'd like to grow in yourself too.", 12000);
+  }
+  function dirInviting() { return Boolean(state.cloud && (P.directions(state.cloud).invite || (C.dirOf(state.cloud).later || []).length)); }
+  function maybeGrowLine() {
+    if (hintSeen("growWait") && !hintSeen("growSaid") && !el.cloud.hidden && !dirInviting()) sayGrow();
   }
   /* "What comes next" for a parent: one creation call (the orchestrator only offers it when needed, and it is cached). */
   function createNext(id) {
@@ -1785,8 +1818,10 @@
     /* one calm step: a short hello, the one question, the field and Begin; a few light ideas (from the API, cycling with More) */
     el.csHi.textContent = building ? "" : "Hi " + state.name + ". Let's begin your learning cloud together.";
     el.csQ.hidden = building;
+    el.csFew.hidden = building;
     el.csForm.hidden = building;
-    if (!csEx) { csEx = exRow(function (t) { startFromCloud(t); }, function () { return !el.cs.hidden && !state.busy; }, "", true); el.csEx.appendChild(csEx); }
+    /* the ideas can be picked together; Begin sends them with whatever was typed, as one answer (the same one start call) */
+    if (!csEx) { csEx = exRow(null, function () { return !el.cs.hidden && !state.busy; }, "", true, state.csPicked); el.csEx.appendChild(csEx); }
     else refreshEx();
     el.csStatus.textContent = building ? "Growing your cloud…" : failed ? "That didn't work just now. Try again in a moment, or talk it over with Iko." : "";
     el.cs.classList.toggle("busy", building);
@@ -1812,17 +1847,30 @@
     else send(t);
     renderStart();
   }
-  el.csForm.addEventListener("submit", function (e) { e.preventDefault(); startFromCloud(el.csIn.value); });
+  /* one intake: the typed words first, then the picked ideas ("the ocean, Rain, Stars") */
+  function intakeText() { return cleanAbout([el.csIn.value].concat(state.csPicked).map(function (x) { return String(x || "").trim(); }).filter(Boolean).join(", ")); }
+  el.csForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var t = intakeText();
+    if (!t || state.busy) return;
+    state.csPicked.length = 0;
+    startFromCloud(t);
+  });
   el.toCloud.addEventListener("click", function () { home(); });
   el.cloudDeck.addEventListener("click", function () { closeCloud(true); showDeck(true); });
   /* Back on the cloud: a slim row of the suggested cards and Draw along the bottom (hidden while a panel is open). */
   var cloudFlow = null;
   function renderCloudFlow() {
     if (!cloudFlow) { cloudFlow = mk("div", "cloud-flow"); el.cloud.appendChild(cloudFlow); }
+    var had = document.activeElement && cloudFlow.contains(document.activeElement) && document.activeElement.classList.contains("dir-in");
     cloudFlow.textContent = "";
     cloudFlow.hidden = !el.panel.hidden || Boolean(cloudCaption && !cloudCaption.hidden);
     renderStart();
     if (cloudFlow.hidden || !C.subjects(state.cloud).length) { cloudFlow.hidden = true; return; } /* an empty cloud: its start invite instead */
+    var note = dirNote();
+    if (note) cloudFlow.appendChild(note);
+    var din = note && note.querySelector(".dir-in");
+    if (din && (had || state.dirForm !== state.dirFocused)) { din.focus(); state.dirFocused = state.dirForm; }
     var items = refreshSuggest().filter(function (it) { return nodeOf(it.id); });
     cloudFlow.appendChild(mk("span", "kicker", "Pick up"));
     items.forEach(function (it) {
@@ -1832,7 +1880,87 @@
     var d = mk("button", "btn sm draw-btn", "Draw a card"); d.type = "button";
     d.addEventListener("click", function () { drawCard(d); });
     cloudFlow.appendChild(d);
+    maybeGrowLine();
     placeIkoSoon();
+  }
+  /*
+   * Directions (P.directions, 0 calls): one quiet line above Pick up, at most one at a time. Early on, "Want to add
+   * another direction?" (a second and a third subject, then quiet); on a return visit, one or two branches left alone
+   * for a while beside "something new"; after real progress, one soft note. Each can be closed, and that is kept in
+   * the profile (the invite for good, the return row for a while, a note for good). Adding a direction is one "more"
+   * creation call in the learner's own words; where it lands is the creation call's usual placement (new subjects
+   * are new parents under the name), never the branch they were last in.
+   */
+  function dirClose(label, fn) {
+    var b = linkBtn("\u00d7", function () { fn(); save(); renderCloudFlow(); var f = cloudFlow && cloudFlow.querySelector(".draw-btn"); if (f) f.focus(); }, "link cf-x");
+    b.setAttribute("aria-label", label);
+    return b;
+  }
+  function dirNote() {
+    var d = C.dirOf(state.cloud), now = Date.now(), dr = P.directions(state.cloud, now);
+    var box = mk("div", "cf-note");
+    if (state.dirForm) {
+      var f = mk("form", "dir-form"), inp = mk("input", "dir-in");
+      f.setAttribute("autocomplete", "off");
+      inp.maxLength = 300; inp.value = state.dirText || ""; inp.placeholder = "Something else you enjoy";
+      inp.addEventListener("input", function () { state.dirText = inp.value; }); inp.setAttribute("aria-label", "Another direction, in your own words");
+      var add = mk("button", "btn sm", "Add"); add.type = "submit";
+      f.appendChild(inp); f.appendChild(add);
+      f.appendChild(dirClose("Close", function () { state.dirForm = null; state.dirFocused = null; }));
+      f.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var t = cleanAbout(inp.value);
+        if (!t || state.busy) return;
+        if (state.dirForm === "invite") d.n = (d.n || 0) + 1;
+        state.dirForm = null; state.dirText = ""; state.dirFocused = null;
+        save();
+        buildCloud("more", [], t, "", true);
+      });
+      inp.addEventListener("keydown", function (e) { if (e.key === "Escape") { e.stopPropagation(); state.dirForm = null; state.dirFocused = null; renderCloudFlow(); var a = cloudFlow.querySelector(".dir-ask, .dir-new"); if (a) a.focus(); } });
+      box.appendChild(f);
+      return box;
+    }
+    var open = function (why) { return function () { state.dirForm = why; renderCloudFlow(); }; };
+    if ((d.later || []).length) {
+      /* ideas from the intake beyond its first few subjects: each one is a direction to add when they like */
+      box.classList.add("dir-later");
+      box.appendChild(mk("span", "kicker", "Also on your mind"));
+      var lend = mk("span", "dir-end"); /* the last idea and the close stay together on a narrow screen */
+      d.later.forEach(function (t, i) {
+        var b = linkBtn(t, function () { if (state.busy) return; d.later = d.later.filter(function (x) { return x !== t; }); save(); buildCloud("more", [], t, "", true); }, "chip dir-chip");
+        (i === d.later.length - 1 ? lend : box).appendChild(b);
+      });
+      lend.appendChild(dirClose("Not now", function () { d.later = []; }));
+      box.appendChild(lend);
+      return box;
+    }
+    if (dr.invite) {
+      box.classList.add("dir-invite");
+      box.appendChild(linkBtn("Want to add another direction?", open("invite"), "link dir-ask"));
+      box.appendChild(dirClose("Not now", function () { d.off = now; }));
+      return box;
+    }
+    if (dr.revisit.length) {
+      box.classList.add("dir-back");
+      box.appendChild(mk("span", "kicker", "Waiting for you"));
+      dr.revisit.forEach(function (id) { var n = nodeOf(id); if (n) box.appendChild(linkBtn(n.label, function () { openPanel(id); }, "chip dir-chip")); });
+      var end = mk("span", "dir-end"); /* the link and its close stay together on a narrow screen */
+      end.appendChild(linkBtn("or something new", open("new"), "link dir-new"));
+      end.appendChild(dirClose("Not now", function () { d.quiet = now; }));
+      box.appendChild(end);
+      return box;
+    }
+    if (dr.insight) {
+      box.classList.add("dir-insight");
+      /* the close sits at the end of the sentence: the last word and the close never part on a narrow screen */
+      var key = dr.insight.key, words = dr.insight.text.split(" "), last = words.pop();
+      var tx = mk("span", "dir-text", words.join(" ") + " "), tail = mk("span", "dir-tail", last + "\u00a0");
+      tail.appendChild(dirClose("Hide this note", function () { d.hide = (d.hide || []).concat([key]).slice(-24); }));
+      tx.appendChild(tail);
+      box.appendChild(tx);
+      return box;
+    }
+    return null;
   }
   function closeCloud(keepView) {
     el.cloud.hidden = true; el.panel.hidden = true; state.panelNode = null; cardSig = "";
@@ -2622,7 +2750,7 @@
   /* Once per browser session: for "seems stuck" (visits without a lesson). */
   function countVisit() {
     var pr = C.profileOf(state.cloud);
-    try { if (!sessionStorage.getItem(VISIT)) { sessionStorage.setItem(VISIT, "1"); pr.visits = (pr.visits || 0) + 1; } } catch { /* ignore */ }
+    try { if (!sessionStorage.getItem(VISIT)) { sessionStorage.setItem(VISIT, "1"); pr.visits = (pr.visits || 0) + 1; var d = C.dirOf(state.cloud); d.prev = d.seen || 0; d.seen = Date.now(); } } catch { /* ignore */ }
     save();
   }
   function greet() {

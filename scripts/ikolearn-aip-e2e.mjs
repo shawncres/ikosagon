@@ -191,7 +191,7 @@ for (const width of [390, 1280]) {
     const { ctx, p, errs, calls } = await boot(width, guide);
     try {
       /* after I've got it */
-      await p.locator(".cloud-flow .chip").first().click(); await p.waitForSelector("#l-done:not([hidden])");
+      await p.locator(".cloud-flow > .chip").first().click(); await p.waitForSelector("#l-done:not([hidden])");
       await p.click("#l-got"); await p.waitForTimeout(400);
       /* --tag before (main): the old list as it was, for the before shots */
       if (TAG === "before") { await toLesson(p); await shot(p, tag, "collapsed"); if (SHOTS) await p.screenshot({ path: path.join(SHOTS, `aip-before-${tag}-full.png`), fullPage: true }); }
@@ -230,7 +230,7 @@ for (const width of [390, 1280]) {
   {
     const { ctx, p, errs } = await boot(width, guide, false);
     try {
-      await p.locator(".cloud-flow .chip").first().click(); await p.waitForSelector("#l-done:not([hidden])");
+      await p.locator(".cloud-flow > .chip").first().click(); await p.waitForSelector("#l-done:not([hidden])");
       await p.click("#l-got"); await p.waitForTimeout(400);
       const a = await aip(p);
       ok(a.labels.length >= 1 && a.labels.length <= 3 && !a.link, `${tag}: with 3 or fewer in progress there is no "more" link`, JSON.stringify(a));
