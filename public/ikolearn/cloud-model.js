@@ -780,7 +780,14 @@
    * seen / prev: this visit's and the previous visit's start; quiet: when the return-visit row was dismissed (it
    * rests a while); hide: insight keys the learner closed (never shown again).
    */
-  function newDir() { return { off: 0, n: 0, seen: 0, prev: 0, quiet: 0, hide: [] }; }
+  function newDir() { return { off: 0, n: 0, seen: 0, prev: 0, quiet: 0, hide: [], later: [] }; }
+  /* later: ideas from the intake past its caps (the server's `later`), offered as directions to add; never ones already on the cloud */
+  function setLater(cloud, list) {
+    var d = dirOf(cloud), out = [];
+    (Array.isArray(list) ? list : []).map(cleanLabel).filter(Boolean).forEach(function (x) { if (out.length < 4 && !out.some(function (y) { return norm(y) === norm(x); }) && !findAny(cloud, x)) out.push(x); });
+    d.later = out;
+    return out;
+  }
   function dirOf(cloud) { var p = profileOf(cloud); if (!p.dir) p.dir = newDir(); return p.dir; }
   function cleanInterest(v) { return String(v == null ? "" : v).replace(/[\u0000-\u001f\u007f"<>{}[\]`*_#|\\]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40).trim(); }
   function profileOf(cloud) { if (!cloud.profile) cloud.profile = newProfile(); return cloud.profile; }
@@ -1564,7 +1571,7 @@
     /* v8 row shape; slots 0-2 and 8 (the old age band, region, region-guess flag and changedAt) are always written empty */
     var d = p.dir || newDir();
     return ["", "", 0, p.interests || [], s(p.onboarded), s(p.askedAt), p.visits || 0, p.lessonVisit || 0, 0,
-      [s(d.off), d.n || 0, s(d.seen), s(d.prev), s(d.quiet), (d.hide || []).slice(-24)]];
+      [s(d.off), d.n || 0, s(d.seen), s(d.prev), s(d.quiet), (d.hide || []).slice(-24), (d.later || []).slice(0, 4)]];
   }
   function profileFrom(a) {
     var p = newProfile();
@@ -1575,7 +1582,8 @@
     p.onboarded = ms(a[4]); p.askedAt = ms(a[5]); p.visits = Math.max(0, Number(a[6]) || 0); p.lessonVisit = Math.max(0, Number(a[7]) || 0);
     var d = Array.isArray(a[9]) ? a[9] : [];
     p.dir = { off: ms(d[0]), n: Math.max(0, Math.min(9, Math.floor(Number(d[1]) || 0))), seen: ms(d[2]), prev: ms(d[3]), quiet: ms(d[4]),
-      hide: (Array.isArray(d[5]) ? d[5] : []).filter(function (k) { return typeof k === "string" && k.length <= 80; }).slice(-24) };
+      hide: (Array.isArray(d[5]) ? d[5] : []).filter(function (k) { return typeof k === "string" && k.length <= 80; }).slice(-24),
+      later: (Array.isArray(d[6]) ? d[6] : []).map(cleanLabel).filter(Boolean).slice(0, 4) };
     return p;
   }
 
@@ -1736,7 +1744,7 @@
 
   var api = {
     VERSION: VERSION, LIMITS: LIMITS, STORE: STORE, subjectSlot: subjectSlot, promptSubjects: promptSubjects, promptView: promptView, prune: prune, MASTERED: MASTERED, OLD_SEEDS: OLD_SEEDS, HUES: HUES, subjectHue: subjectHue, plant: plant,
-    newProfile: newProfile, profileOf: profileOf, dirOf: dirOf, setProfile: setProfile, topicCount: topicCount,
+    newProfile: newProfile, profileOf: profileOf, dirOf: dirOf, setLater: setLater, setProfile: setProfile, topicCount: topicCount,
     TIERS: TIERS, TIER_NAMES: TIER_NAMES, TIER_STAGE: TIER_STAGE, ACHIEVE_RIGHT: ACHIEVE_RIGHT, roman: roman, tierOf: tierOf, mergeLevel: mergeLevel, mergeInto: mergeInto, corpusOf: corpusOf, absorbedInto: absorbedInto,
     GATE: GATE, needOf: needOf, gateCore: gateCore, coreProgress: coreProgress, prereqs: prereqs, lockedBy: lockedBy, completable: completable, addPrereqs: addPrereqs, PRE_MAX: PRE_MAX,
     checkChain: checkChain, applyRepair: applyRepair, moveUnder: moveUnder, EVENTS_MAX: EVENTS_MAX,

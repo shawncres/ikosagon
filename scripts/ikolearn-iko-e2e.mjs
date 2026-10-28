@@ -137,6 +137,11 @@ for (const width of [390, 1280]) {
       await p.waitForTimeout(500);
       const start = bodies.filter((x) => x.at === "/create");
       ok(start.length === 1 && start[0].b.kind === "start" && start[0].b.about === "the ocean and drawing" && !start[0].b.grow, `${tag}: Begin: one start call, straight away (no second question in between)`, JSON.stringify(start.map((x) => x.b.kind)));
+      /* two subjects: the "another direction" invite is on the cloud, so Iko's grow line waits; it comes once the invite is closed */
+      const g0 = await ikoState(p);
+      const inv = await p.evaluate(() => Boolean(document.querySelector(".cloud-flow:not([hidden]) .cf-note.dir-invite")));
+      ok(inv && !/grow in yourself/.test(g0.line || ""), `${tag}: the grow line waits while the direction invite is on the cloud`, JSON.stringify({ inv, line: g0.line }));
+      await p.click('.cf-note.dir-invite .cf-x'); await p.waitForTimeout(300);
       const g = await ikoState(p);
       const grow = await p.evaluate(() => [...document.querySelectorAll("#thread .ask")].map((e) => e.innerText).join(" | "));
       ok(/grow in yourself too/.test(g.line) && /When you like: is there something you'd like to grow in yourself\?/.test(grow) && /Optional\./.test(grow), `${tag}: the grow question comes after the path begins, once, from Iko (optional)`, JSON.stringify({ line: g.line, grow }));

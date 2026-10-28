@@ -2528,6 +2528,23 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(bad.length === 1 && bad[0].t === "error" && bad[0].reason === "bad_output", "createEvents: nothing usable is an error (the app offers Try again)");
   const refused = await collect(SV.createEvents(S0, ENV, fakeFetch([() => res(400, { error: { message: "bad" } })])));
   ok(refused.length === 1 && refused[0].t === "error" && refused[0].reason === "refused", "createEvents: a refused call is an error, no fallback");
+  {
+    // one intake, several ideas: each a root, at most 4 from one start; the rest come back as later, in the same call
+    const it6 = (n, sub) => ({ node: { name: n, chain: [sub] }, card: { title: n, blurb: n + ".", goal: "" }, children: [{ name: n + " A", order: 1, score: 0.8 }, { name: n + " B", order: 2, score: 0.7 }] });
+    const six = JSON.stringify({ items: [it6("Ocean Life", "Nature"), it6("Coral Reefs", "Nature"), it6("Drawing", "Art"), it6("Rhythm", "Music"), it6("Baking", "Cooking"), it6("Stars", "Space"), it6("Chess Openings", "Games")] });
+    const sixE = await collect(SV.createEvents(S0, ENV, fakeFetch([() => res(200, sse([six]))])));
+    const done6 = sixE[sixE.length - 1];
+    const roots6 = [...new Set(done6.items.map((x) => x.node.chain[0]))];
+    ok(done6.t === "done" && done6.items.length === 5 && JSON.stringify(roots6) === JSON.stringify(["Nature", "Art", "Music", "Cooking"]) && JSON.stringify(done6.later) === JSON.stringify(["Stars", "Chess Openings"]) && sf.calls.length === 1, "createEvents (start): several ideas -> 4 roots at most (a related one nests in its subject); the rest as later, in the same call", JSON.stringify({ roots6, later: done6.later }));
+    const pc6 = parseCreate(six, "start", "Mia");
+    ok(pc6 && pc6.items.length === 5 && JSON.stringify(pc6.later) === JSON.stringify(["Stars", "Chess Openings"]), "parseCreate (start): the same caps and later list");
+    const one = parseCreate(JSON.stringify({ items: [it6("Ocean Life", "Nature"), it6("Tides", "Nature")] }), "start", "Mia");
+    ok(one && one.items.length === 2 && !("later" in one), "parseCreate (start): one idea, one subject: unchanged (no later)");
+    const more6 = parseCreate(six, "more", "Mia");
+    ok(more6 && more6.items.length === 2 && !("later" in more6), "parseCreate (more): unchanged (1-2 items, no later)");
+    const cs6 = createSystem(S0);
+    ok(/They may name one thing or several\./.test(cs6) && /give each one its own broad subject/.test(cs6) && new RegExp(`at most ${LEARN_LIMITS.startRoots} different broad subjects`).test(cs6) && LEARN_LIMITS.startRoots === 4, "create prompt (start): several ideas fan out, at most 4 subjects, extras kept for later");
+  }
   ok(SV.createCheck({ ...S0, about: "", interests: [], grow: "" }).status === 422 && SV.createCheck(S0) === null, "createCheck: a start with nothing in their own words is never a call");
   ok(MODEL_LIMITS.requestTimeoutMs === 12_000 && MODEL_LIMITS.streamTimeoutMs === 38_000, "streams give up on a silent provider after 12 s (then the fallback), not 20 s");
   ok(/wantsStream\(raw\) && \(p\.input\.kind === "start" \|\| p\.input\.kind === "more"\)/.test(route) && /createCheck\(p\.input\)/.test(route) && /application\/x-ndjson/.test(route) && /createFor\(p\.input/.test(route) && /prepare\(\{ rawBody: raw/.test(route), "create route: NDJSON when asked (start and more), the same guards; plain JSON otherwise");
@@ -2540,7 +2557,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
 
   // the app: streams the build, adds each parent as it arrives, placeholders while waiting
   ok(/stream\("\/create", Object\.assign\(basePayload\(null\), \{ mode: "notice", stream: true \}, req\), \{ delta: function \(\) \{\}, item: take \}\)/.test(app) && /function cloudBuilder\(\)/.test(app) && /build\.add\(it\)/.test(app), "app: the first build streams and each parent goes on the cloud as it arrives");
-  ok(/else if \(ev\.t === "item" && on\.item && ev\.item\)/.test(app) && /else if \(ev\.ok === true && Array\.isArray\(ev\.items\)\) result = \{ ok: true, items: ev\.items \}/.test(app), "app: the reader takes items, and a plain JSON answer still works");
+  ok(/else if \(ev\.t === "item" && on\.item && ev\.item\)/.test(app) && /else if \(ev\.ok === true && Array\.isArray\(ev\.items\)\) result = \{ ok: true, items: ev\.items, later: ev\.later \}/.test(app), "app: the reader takes items (and the intake's later ideas), and a plain JSON answer still works");
   ok(/var BUILD_BEAT = 380;/.test(app) && !/wait\(700\)/.test(app), "app: the build beat is 380 ms per step (was 700)");
   ok(/m\.streaming && \(m\.pending \|\| \(m\.got && m\.got\.length\)\)/.test(app) && /"gen-ph"/.test(app) && /\.gen-ph \{/.test(css) && /@media \(prefers-reduced-motion: reduce\) \{ \.gen-ph, \.gen-got \{ animation: none; \} \}/.test(css), "app: quiet placeholders while the build is written (still with reduced motion)");
 
@@ -3275,7 +3292,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const cs = app.slice(app.indexOf("  function renderStart() {"), app.indexOf("  el.csForm.addEventListener"));
   ok(!/\b(age|years? old|kids?|child|student|grade)\b/i.test(cs) && !/\[\s*"[A-Z][a-z]+",\s*"/.test(cs), "empty cloud: no static topic list and no age wording");
   ok(/if \(open\) askHandlers\[open\.id\]\(text, t\);\s*else send\(t\);/.test(app) && !/quickStart/.test(app), "empty cloud: Begin answers the first question and builds at once (the same one start call, no new call)");
-  ok(/csEx = exRow\(function \(t\) \{ startFromCloud\(t\); \}, function \(\) \{ return !el\.cs\.hidden && !state\.busy; \}, "", true\)/.test(app) && /if \(r\.quiet\) return;/.test(app) && !/id="cs-ex"[^>]*>[^<]/.test(html), "empty cloud: the ideas under it come only from the API's cached examples (More cycles them, no call); none and no note when they can't load");
+  ok(/csEx = exRow\(null, function \(\) \{ return !el\.cs\.hidden && !state\.busy; \}, "", true, state\.csPicked\)/.test(app) && /if \(r\.quiet\) return;/.test(app) && !/id="cs-ex"[^>]*>[^<]/.test(html), "empty cloud: the ideas under it come only from the API's cached examples (More cycles them, no call); none and no note when they can't load");
   ok(/el\.csStatus\.textContent = building \? "Growing your cloud…" : failed \?/.test(app) && /if \(cloudFlow\.hidden \|\| !C\.subjects\(state\.cloud\)\.length\)/.test(app), "empty cloud: a quiet status while it grows, an honest line if it failed; no Pick up row on an empty cloud");
 }
 
@@ -3513,7 +3530,25 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const appD = fs.readFileSync("public/ikolearn/app.js", "utf8");
   const dn = appD.slice(appD.indexOf("  function dirClose("), appD.indexOf("  function closeCloud("));
   ok(/"Want to add another direction\?"/.test(dn) && /d\.off = now/.test(dn) && /d\.quiet = now/.test(dn) && /d\.hide = \(d\.hide \|\| \[\]\)\.concat\(\[key\]\)/.test(dn) && /setAttribute\("aria-label", label\)/.test(dn), "directions: the invite, the return row and the note can each be closed, and that is kept");
-  ok(!/postJson\(|stream\(/.test(dn) && (dn.match(/buildCloud\(/g) || []).length === 1 && /buildCloud\("more", \[\], t, "", true\)/.test(dn), "directions: 0 calls until the learner adds a direction (then one \"more\" creation call)");
+  ok(!/postJson\(|stream\(/.test(dn) && (dn.match(/buildCloud\(/g) || []).length === 2 && (dn.match(/buildCloud\("more", \[\], t, "", true\)/g) || []).length === 2, "directions: 0 calls until the learner adds a direction (then one \"more\" creation call)");
+}
+
+{
+  // the intake invites one thing or a few: a quiet hint, ideas picked together (aria-pressed), one answer, one start call
+  const htmlI = fs.readFileSync("public/ikolearn/index.html", "utf8"), appI = fs.readFileSync("public/ikolearn/app.js", "utf8"), cssI = fs.readFileSync("public/ikolearn/styles.css", "utf8");
+  ok(/<p id="cs-few" class="cs-few">One thing or a few, whatever's on your mind\.<\/p>/.test(htmlI) && !/\?/.test("One thing or a few, whatever's on your mind."), "intake: a quiet hint that one thing or a few is welcome (still one question)");
+  ok(/b\.setAttribute\("aria-pressed", on \? "true" : "false"\)/.test(appI) && /\.cs-ex \.ex-chip\[aria-pressed="true"\]/.test(cssI) && /if \(i >= 0\) r\.multi\.splice\(i, 1\); else r\.multi\.push\(t\);/.test(appI), "intake: ideas toggle on and off with a clear picked state (aria-pressed)");
+  ok(/function intakeText\(\) \{ return cleanAbout\(\[el\.csIn\.value\]\.concat\(state\.csPicked\)/.test(appI) && /state\.csPicked\.length = 0;\s*startFromCloud\(t\);/.test(appI), "intake: the typed words and the picked ideas go as one answer (the same one start call)");
+  // later ideas: stored additively, never ones already on the cloud
+  const lc = C.create("Maya", T0);
+  C.applyCreate(lc, { items: [{ node: { name: "Ocean Life", chain: ["Nature"] }, card: {}, children: [{ name: "Tides", order: 1, score: 0.5 }, { name: "Whales", order: 2, score: 0.5 }] }] }, { t: T0 });
+  ok(JSON.stringify(C.setLater(lc, ["Stars", "Tides", "  Chess  ", "stars", "", "A", "B", "C"])) === JSON.stringify(["Stars", "Chess", "A", "B"]), "later: cleaned, deduped, at most 4, never one already on the cloud");
+  const lr = C.dirOf(C.deserialize(C.serialize(lc)));
+  ok(JSON.stringify(lr.later) === JSON.stringify(["Stars", "Chess", "A", "B"]) && JSON.parse(C.serialize(lc)).pr[9].length === 7, "later: saved in the same additive profile slot (v9)");
+  const oldRow = JSON.parse(C.serialize(lc)); oldRow.pr[9] = oldRow.pr[9].slice(0, 6);
+  ok(C.dirOf(C.deserialize(JSON.stringify(oldRow))).later.length === 0, "later: a slot without it reads as none");
+  // Iko's grow line waits while a direction invite is on the cloud
+  ok(/if \(dirInviting\(\)\) dismissHint\("growWait"\);\s*else sayGrow\(\);/.test(appI) && /function maybeGrowLine\(\) \{\s*if \(hintSeen\("growWait"\) && !hintSeen\("growSaid"\) && !el\.cloud\.hidden && !dirInviting\(\)\) sayGrow\(\);/.test(appI), "grow line: never beside the invite; it waits until the invite is gone");
 }
 
 if (fails.length) {
