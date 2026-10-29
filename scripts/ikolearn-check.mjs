@@ -1998,7 +1998,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     ok(!/document\.|window\.|addEventListener/.test(camJs.replace(/window\.IkoCamera|root\.IkoCamera/g, "")), "camera.js is pure (no DOM)");
     ok(html.indexOf("camera.js") > 0 && html.indexOf("camera.js") < html.indexOf("cloud-view.js") && /root\.IkoCamera/.test(view), "camera.js loads before the view that uses it");
     ok(/CAM\.gestureFor\(/.test(view) && /CAM\.glide\(/.test(view) && /CAM\.lerpView\(/.test(view) && /CAM\.forwardYaw\(/.test(view) && /CAM\.fitAround\(/.test(view) && /CAM\.wheelFactor\(/.test(view) && /recentre: /.test(view) && /onView/.test(view), "the view: pan by default, glide, eased focus with forward turn and fit, deliberate wheel, recentre, view callback");
-    ok(/big\.recentre\(\)/.test(app) && /Recentre/.test(html) && /CAM\.hint\(/.test(app) && /ikolearn\.v1\.view/.test(app) && /onView: saveView/.test(app) && /big\.setView\(\{ yaw: state\.view\.y/.test(app), "the app: Recentre, the input-map hint, and the view (with focus) persisted and restored");
+    ok(/big\.recentre\(\)/.test(app) && /Recentre/.test(html) && /CAM\.hint\(/.test(app) && /ikolearn\.v1\.view/.test(app) && /onView: saveView/.test(app) && /if \(fresh\) big\.reset\(\);/.test(app) && !/big\.setView\(\{ yaw: state\.view\.y/.test(app), "the app: Recentre, the input-map hint, the view (with focus) kept as it moves, and every load begins at home (the name in its home place)");
   }
 
   // rough edges: the 404 (favicon), the phone branches strip, wiring
@@ -2151,7 +2151,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(spots.every((q) => Math.abs(q.x - 180) < 1e-9 && Math.abs(q.y - 235) < 1e-9), "orbit: with the pivot on the node, turning leaves the node fixed on screen");
   ok(new Set([0, 0.7, 2.1].map((yaw) => proj(node, { yaw, pitch: 0.4, zoom: 3, panX: -20, panY: 35 }).x.toFixed(3))).size === 3, "orbit: about the origin (before), the same turn swings the node across the screen");
   ok(/var px = p\.x - pivot\.x, py = p\.y - pivot\.y, pz = p\.z - pivot\.z;/.test(view) && /pivot = pointOf\(id\)/.test(view) && /panX: cx - w \/ 2, panY: cy - h \/ 2/.test(view) && /recentre: function \(\) \{ setFocus\(null\); animateTo\(Object\.assign\(\{ pivot: CAM\.ORIGIN \}, home\)/.test(view), "the view: focus moves the pivot to the node, Recentre puts it back at the origin");
-  ok(/state\.view\.o = \[v\.pivot\.x, v\.pivot\.y, v\.pivot\.z\]/.test(app) && /pivot: Array\.isArray\(state\.view\.o\)/.test(app), "the pivot is kept with the saved view and restored");
+  ok(/state\.view\.o = \[v\.pivot\.x, v\.pivot\.y, v\.pivot\.z\]/.test(app), "the pivot is kept with the saved view");
   ok(/CAM\.focusFrame\(cw, ch, \{ wide: wide, top: cloudTop\(\) \}\)/.test(app) && /onDraw: placeCard, onEmpty: closeCard/.test(app) && /CAM\.cardPlace\(q\.x, q\.y, pw, ph, cw, ch, cloudTop\(\)\)/.test(app) && /new ResizeObserver\(function \(\) \{ cardSig = ""; placeCard\(\); \}\)/.test(app), "the card: placed next to its node on every frame the cloud draws (follows it), again when it resizes; a tap on empty sky closes it");
   // 6) the hub and album wiring, with no model calls
   ok(/id="hub"/.test(html) && /id="hub-kids"/.test(html) && /id="hub-lesson"/.test(html) && /id="hub-test"/.test(html) && /id="d-album"/.test(html), "hub and album markup present");
@@ -2175,7 +2175,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(pkg.scripts.prebuild === "node scripts/ikolearn-minify.mjs" && /^\^?0\.\d+/.test(pkg.devDependencies.esbuild || ""), "minify: runs before next build (prebuild), esbuild is a dev dependency");
   const mjs = fs.readFileSync("scripts/ikolearn-minify.mjs", "utf8");
   ok(/process\.env\.VERCEL === "1" \|\| process\.env\.IKOLEARN_MINIFY === "1"/.test(mjs) && !/mangleProps|keepNames: false|bundle: true/.test(mjs) && /sourcesContent: true/.test(mjs), "minify: in place only on Vercel's build (or when asked), no property mangling, no bundling, readable source in the maps");
-  eq(minTargets(), ["app.js", "camera.js", "cloud-model.js", "cloud-view.js", "deck.js", "family.css", "family.js", "learners.js", "lesson.js", "orchestrator.js", "profiles.js", "rank.js", "styles.css"], "minify: every app script and stylesheet (the parents & teachers view and learners too)");
+  eq(minTargets(), ["app.js", "camera.js", "cloud-model.js", "cloud-view.js", "deck.js", "family.css", "family.js", "learners.js", "lesson.js", "orchestrator.js", "profiles.js", "rank.js", "styles.css", "transfer.js"], "minify: every app script and stylesheet (the parents & teachers view and learners too)");
   const min = {}, src = {};
   minTargets().forEach((f) => { src[f] = fs.readFileSync("public/ikolearn/" + f, "utf8"); min[f] = minifyFile(f, src[f]); });
   ok(Object.keys(min).every((f) => min[f].code.length < src[f].length * 0.85 && min[f].code.endsWith(`sourceMappingURL=${f}.map${f.endsWith(".css") ? " */" : ""}\n`)), "minify: every file is smaller and links its source map");
@@ -2392,7 +2392,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(fold.tag === "details" && !fold.attrs.open && all(fold).some((n) => n.tag === "summary" && n.textContent === "Further reading & viewing"), "further reading: a collapsed fold, \u201cFurther reading & viewing\u201d");
   ok(anchors.length === 8 && anchors.every((a) => L.allowedHref(a.href) && a.rel === "noopener noreferrer nofollow" && /^Search /.test(a.textContent)) && !all(fold).some((n) => /evil/.test(n.href || "") || /evil/.test(n.textContent || "")), "no model URL is ever rendered: every link is an allowlisted search", String(anchors.length));
   ok(L.renderReading(fdoc, []) === null && L.renderReading(fdoc, [{ title: "x", q: "https://a.b" }]) === null, "nothing to show: no fold");
-  ok(!/\.href\s*=/.test(app) && (lessonJs.match(/\.href\s*=/g) || []).length === 1 && /if \(!allowedHref\(l\.href\)\) return;/.test(lessonJs), "only lesson.js sets a link, after the allowlist check; the app never does");
+  ok((app.match(/\.href\s*=/g) || []).length === 1 && /var url = URL\.createObjectURL\(new Blob\(\[f\.text\], \{ type: "application\/json" \}\)\), a = mk\("a"\);\s*a\.href = url;/.test(app) && (lessonJs.match(/\.href\s*=/g) || []).length === 1 && /if \(!allowedHref\(l\.href\)\) return;/.test(lessonJs), "only lesson.js sets a link, after the allowlist check; the app's only one is the cloud file's own download (a blob made on the device)");
   ok(/reading = L\.cleanReading\(ev\.reading\)/.test(app) && /state\.lessons\[id\]\.rd = reading/.test(app) && /showReading\(cached\.rd\)/.test(app), "the reading list is cached with the lesson (no new call to show it again)");
 
   // newcomer hints: three, exact copy, remembered in ikolearn.v1.seen
@@ -3268,7 +3268,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/<h2 id="p-title"><\/h2>\s*<p id="p-desc" class="desc" hidden><\/p>/.test(html), "card: the description sits right under the title");
   ok(/if \(n\.blurb\) \{ d\.className = "desc"; d\.textContent = n\.blurb; return; \}/.test(app) && /d\.className = "desc loading";/.test(app) && /describe\(id\);/.test(app), "card: shows the description at once; a faint placeholder while one is written");
   ok(/P\.describeBatch\(state\.cloud, id, function \(x\) \{ return descWait\[x\] \|\| descFail\[x\]; \}\)/.test(app) && /postJson\("\/describe", body\)/.test(app) && /if \(got\) save\(\);/.test(app), "backfill: one call per batch, deduped against in-flight and failed nodes, saved with the cloud");
-  ok(/else if \(m && !m\.blurb\) descFail\[x\] = 1;/.test(app) && /if \(id === "root" \|\| !n \|\| \(!n\.blurb && descFail\[id\]\)\) el\.pNote\.appendChild\(linkBtn\("What do you notice here\?"/.test(app) && !/describe[\s\S]{0,400}Try again/.test(app.slice(app.indexOf("  function describe(id) {"), app.indexOf("  function describe(id) {") + 1500)), "fallback: a failed description hides quietly and the old line comes back (no Try again)");
+  ok(/else if \(m && !m\.blurb\) descFail\[x\] = 1;/.test(app) && /if \(!n \|\| \(!n\.blurb && descFail\[id\]\)\) el\.pNote\.appendChild\(linkBtn\("What do you notice here\?"/.test(app) && !/describe[\s\S]{0,400}Try again/.test(app.slice(app.indexOf("  function describe(id) {"), app.indexOf("  function describe(id) {") + 1500)), "fallback: a failed description hides quietly and the old line comes back (no Try again)");
   ok(/if \(state\.cloud !== cloud\) \{/.test(app), "backfill: an answer for another learner (guide mode switched meanwhile) is dropped");
   ok(/\.desc \{[^}]*-webkit-line-clamp: 3;/.test(css) && /\.desc\.loading \{[^}]*animation: gen-shimmer/.test(css) && /@media \(prefers-reduced-motion: reduce\) \{ \.desc\.loading \{ animation: none; \} \}/.test(css), "card: the description is quiet, at most 3 lines; the placeholder is still with reduced motion");
 }
@@ -3549,6 +3549,104 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(C.dirOf(C.deserialize(JSON.stringify(oldRow))).later.length === 0, "later: a slot without it reads as none");
   // Iko's grow line waits while a direction invite is on the cloud
   ok(/if \(dirInviting\(\)\) dismissHint\("growWait"\);\s*else sayGrow\(\);/.test(appI) && /function maybeGrowLine\(\) \{\s*if \(hintSeen\("growWait"\) && !hintSeen\("growSaid"\) && !el\.cloud\.hidden && !dirInviting\(\)\) sayGrow\(\);/.test(appI), "grow line: never beside the invite; it waits until the invite is gone");
+}
+
+/* ================= the cloud as one file (IkoTransfer), the home stats and renaming a learner ================= */
+{
+  const PR = require("../public/ikolearn/profiles.js");
+  const T = require("../public/ikolearn/transfer.js");
+  const NOW = Date.UTC(2026, 9, 29, 16), DAY = 864e5;
+  /* a Storage-like store with key()/length that holds at most `room` characters (like a full localStorage) */
+  const store = (init = {}, room = Infinity) => {
+    const m = new Map(Object.entries(init));
+    const size = () => [...m.entries()].reduce((a, [k, v]) => a + k.length + v.length, 0);
+    return { m, get length() { return m.size; }, key: (i) => [...m.keys()][i] ?? null, getItem: (k) => (m.has(k) ? m.get(k) : null),
+      setItem: (k, v) => { const was = m.get(k); m.set(k, String(v)); if (size() > room) { if (was == null) m.delete(k); else m.set(k, was); throw new Error("QuotaExceededError"); } }, removeItem: (k) => m.delete(k),
+      snap: () => JSON.stringify([...m.entries()].sort()) };
+  };
+  const cloud = seedFamily(C, P, NOW), raw = C.serialize(cloud);
+  const live = { "ikolearn.v1.name": "Sam", "ikolearn.v1.cloud": raw, "ikolearn.v1.thread": '[{"id":"m1","role":"user","text":"secret chat"}]', "ikolearn.v1.view": '{"x":3}',
+    "ikolearn.v1.notes": '{"n1":"a note"}', "ikolearn.v1.lessons": '{"l1":{"at":1,"got":true}}', "ikolearn.v1.tests": '{"t1":{"score":3}}', "ikolearn.v1.seen": '{"c":{"n1":"h"},"ev":2}' };
+
+  // file names: the first name, cleaned, then .ikolearn
+  eq([T.fileName("Shawn"), T.fileName("  Mary Ann "), T.fileName("Zoë"), T.fileName("O'Neil"), T.fileName("../x/<y>"), T.fileName(""), T.fileName("—")], ["Shawn.ikolearn", "Mary-Ann.ikolearn", "Zoë.ikolearn", "O'Neil.ikolearn", "xy.ikolearn", "cloud.ikolearn", "cloud.ikolearn"], "file: [firstname].ikolearn, sanitized (no paths, no symbols), a fallback when empty");
+  eq(T.MSG.saved("Shawn.ikolearn"), "Your cloud has been saved as Shawn.ikolearn. Keep this file if you want to continue on another device.", "file: the saved message, word for word");
+  eq(T.MSG.confirm, "This will replace the cloud currently on this device with the one in the file. Continue?", "file: the replace confirmation, word for word");
+
+  // building: the format, the version, what goes in and what never does
+  const b = T.build(store(live), NOW);
+  ok(b && b.name === "Sam.ikolearn" && b.file.format === "ikolearn" && b.file.version === 1 && b.file.storageVersion === 9 && b.file.storageVersion === C.VERSION && b.file.exportedAt === new Date(NOW).toISOString(), "file: {format: ikolearn, version: 1, exportedAt, storageVersion: 9, data}");
+  eq(Object.keys(b.file.data).sort(), ["cloud", "lessons", "name", "notes", "seen", "tests"], "file: carries the name, cloud, notes, lessons, tests and seen");
+  ok(JSON.stringify(b.file.data.cloud) === raw && b.file.data.lessons.l1.got === true && b.file.data.seen.ev === 2, "file: the cloud exactly as stored, lessons and seen as they are");
+  ok(!/secret chat|"thread"|"view"|profiles|apiKey|GEMINI|AIza/i.test(b.text), "file: no chat transcript, camera, learners index or keys");
+  ok(T.build(store({ "ikolearn.v1.name": "Sam" }), NOW) === null && T.build(store({ "ikolearn.v1.cloud": raw }), NOW) === null, "file: nothing to save without a name and a cloud");
+
+  // parsing: in full, before anything is written
+  const pr = T.parse(b.text);
+  ok(pr.ok && pr.name === "Sam" && pr.values.cloud === raw && JSON.parse(pr.values.lessons).l1.got === true, "open: a saved file reads back exactly");
+  const mut = (f) => { const o = JSON.parse(b.text); f(o); return JSON.stringify(o); };
+  eq([T.parse("").why, T.parse("{nope").why, T.parse("[1]").why, T.parse(mut((o) => { o.format = "other"; })).why, T.parse(mut((o) => { o.version = "1"; })).why, T.parse(mut((o) => { delete o.data; })).why,
+    T.parse(mut((o) => { o.data.name = "<>"; })).why, T.parse(mut((o) => { o.data.cloud = { v: 9 }; })).why, T.parse(mut((o) => { o.data.cloud = { v: 9, n: [["broken"]] }; })).why, T.parse(mut((o) => { o.data.lessons = [1]; })).why],
+  ["json", "json", "format", "format", "version", "fields", "fields", "fields", T.parse(mut((o) => { o.data.cloud = { v: 9, n: [["broken"]] }; })).why, "fields"], "open: empty, broken, wrong format or version, missing or bad fields are refused");
+  ok(!T.parse(mut((o) => { o.data.cloud = { v: 9, n: [["broken"]] }; })).ok, "open: a cloud that can't be read is refused");
+  eq([T.parse(mut((o) => { o.version = 2; })).why, T.parse(mut((o) => { o.storageVersion = 10; })).why, T.parse(mut((o) => { o.data.cloud.v = 10; })).why], ["newer", "newer", "newer"], "open: a newer file or storage version is refused as newer");
+  ok(/newer version/.test(T.message("newer")) && /Nothing was changed\.$/.test(T.message("newer")) && /Nothing was changed\.$/.test(T.message("json")), "open: the refusals say nothing was changed");
+  ok(T.parse("x".repeat(8e6 + 1)).why === "json", "open: an oversized file is refused before it's read");
+
+  // applying: a fresh device
+  const fresh = store();
+  const f1 = T.apply(fresh, pr);
+  ok(f1.ok && f1.how === "fresh" && fresh.getItem("ikolearn.v1.cloud") === raw && fresh.getItem("ikolearn.v1.name") === "Sam" && PR.current(fresh).mode === "self" && PR.current(fresh).list[0].name === "Sam", "open: on a fresh device the file's learner is the one learning");
+  ok(T.build(fresh, NOW).text === b.text, "open: saving again on the new device gives the same file");
+
+  // learning for yourself: replaced (the name follows the file); the old chat and camera go
+  const self = store({ ...live, "ikolearn.v1.name": "Lee", "ikolearn.v1.cloud": C.serialize(C.create("Lee", NOW)) });
+  PR.begin(self, "self", "Lee");
+  const s1 = T.apply(self, pr);
+  ok(s1.ok && s1.how === "replaced" && self.getItem("ikolearn.v1.cloud") === raw && self.getItem("ikolearn.v1.thread") === null && self.getItem("ikolearn.v1.view") === null && PR.current(self).list.length === 1 && PR.current(self).list[0].name === "Sam", "open (yourself): the cloud is replaced, the learner renamed, the old chat and camera cleared");
+
+  // guiding: the same name is replaced, a new one is added, the others kept
+  const g = store({ ...live });
+  PR.add(g, "Robin");
+  const robin = C.serialize(C.create("Robin", NOW)); g.setItem("ikolearn.v1.cloud", robin);
+  const parkedSam = g.getItem(PR.slot("p1", "cloud"));
+  const maya = T.parse(mut((o) => { o.data.name = "Maya"; }));
+  const g1 = T.apply(g, maya);
+  ok(g1.ok && g1.how === "added" && PR.current(g).list.map((x) => x.name).join() === "Sam,Robin,Maya" && g.getItem("ikolearn.v1.name") === "Maya" && g.getItem(PR.slot("p1", "cloud")) === parkedSam && g.getItem(PR.slot("p2", "cloud")) === robin, "open (guiding): a new name is added as a learner; the others are kept");
+  const robinFile = T.parse(mut((o) => { o.data.name = "robin"; }));
+  const g2 = T.apply(g, robinFile);
+  ok(g2.ok && g2.how === "replaced" && PR.current(g).list.length === 3 && PR.current(g).active === "p2" && g.getItem("ikolearn.v1.cloud") === raw, "open (guiding): the same first name (any case) is replaced and becomes the one learning");
+  const full = store({ ...live }); for (let i = 0; i < PR.MAX - 1; i++) PR.add(full, "L" + "abcdefghijklmnop"[i]);
+  const full0 = full.snap();
+  ok(T.apply(full, maya).why === "full" && full.snap() === full0, "open (guiding): no room for another learner -> refused, nothing changed");
+
+  // a store that fills up halfway: everything rolled back
+  const small = { ...live, "ikolearn.v1.name": "Lee", "ikolearn.v1.cloud": C.serialize(C.create("Lee", NOW)) };
+  const tight = store(small, Object.entries(small).reduce((a, [k, v]) => a + k.length + v.length, 0) + 200); /* the name fits, the cloud doesn't */
+  const t0 = tight.snap();
+  const t1 = T.apply(tight, pr);
+  ok(!t1.ok && t1.why === "store" && tight.snap() === t0, "open: a write that fails halfway is rolled back exactly");
+  ok(!T.apply(store(), { ok: false }).ok, "open: only a checked file is written");
+
+  // renaming a learner
+  const rn = store(); PR.begin(rn, "self", "Kai");
+  ok(PR.rename(rn, PR.index(rn).active, " Kaia ") && PR.current(rn).list[0].name === "Kaia" && PR.rename(rn, "nope", "X") === null && PR.rename(rn, PR.index(rn).active, "<>") === null, "learners: rename cleans the name, refuses unknown ids and empty names");
+  ok(PR.rename(store(live), "p1", "X") === null, "learners: an implicit (pre-learners) save has no index to rename");
+
+  // the home stats card
+  const hs = P.homeStats(cloud, NOW);
+  const topics = cloud.order.filter((id) => cloud.nodes[id].parent && !cloud.nodes[id].ghost);
+  ok(hs.subjects === C.subjects(cloud).length && hs.topics === topics.length && hs.done === topics.filter((id) => C.isDone(cloud, id)).length && hs.cards === cloud.deck.length, "home stats: subjects, topics, finished and cards counted from the cloud");
+  ok(Object.values(hs.tiers).reduce((a, x) => a + x, 0) === hs.cards && hs.right === topics.reduce((a, id) => a + (cloud.nodes[id].correct || 0), 0), "home stats: the Deck by tier, and right answers summed");
+  ok(JSON.stringify(hs.insight) === JSON.stringify(P.directions(cloud, NOW).insight), "home stats: the insight is #98's (same threshold)");
+  const quiet = C.deserialize(raw);
+  quiet.order.forEach((id) => { const n = quiet.nodes[id]; delete n.touched; delete n.doneAt; delete n.achievedAt; });
+  const tids = quiet.order.filter((id) => quiet.nodes[id].parent && !quiet.nodes[id].ghost).slice(0, 4);
+  [0, 1, 2, 5].forEach((d, i) => { const n = quiet.nodes[tids[i]]; n.opened = true; n.touched = NOW - d * DAY; });
+  const q0 = P.homeStats(quiet, NOW), q1 = P.homeStats(quiet, NOW + DAY), q2 = P.homeStats(quiet, NOW + 2 * DAY);
+  eq([q0.streak, q0.week, q0.last, q1.streak, q2.streak, q2.week], [3, 4, NOW, 3, 0, 3], "home stats: a streak ending today or yesterday, active days this week, the last activity");
+  const none = C.create("Zed", NOW);
+  ok(JSON.stringify(P.homeStats(none, NOW)) === JSON.stringify({ subjects: 0, topics: 0, done: 0, right: 0, cards: 0, tiers: {}, week: 0, streak: 0, last: 0, insight: P.directions(none, NOW).insight }), "home stats: an empty cloud is all zeros");
 }
 
 if (fails.length) {
