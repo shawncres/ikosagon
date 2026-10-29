@@ -28,7 +28,7 @@
         <p id="name-hint" class="fine" hidden>First name only. You can add more learners later.</p>
       </form>
       <p class="fine">Your name, chats and cloud stay on this device. <a href="/ikolearn/privacy">Privacy</a></p>
-      <p class="fine w-open">Have a cloud saved as a file? <button type="button" id="w-open" class="link">Open cloud</button></p>
+      <p class="fine w-open">Have an IkoCloud saved as a file? <button type="button" id="w-open" class="link">Open IkoCloud</button></p>
       <p id="w-status" class="fine ct-status" role="status" aria-live="polite"></p>
     </section>
 
@@ -54,7 +54,7 @@
           <p id="t-lede" class="fine"></p>
           <ol id="t-list"></ol>
         </section>
-        <div id="d-tools" class="d-tools" aria-label="Your cloud as a file"></div>
+        <div id="d-tools" class="d-tools" aria-label="Your IkoCloud"></div>
       </article>
       <article id="hub" class="col" hidden aria-labelledby="hub-title">
         <button type="button" id="hub-back" class="link back">Back to your deck</button>
@@ -124,6 +124,7 @@
       </div>
       <p class="cloud-hint">Drag to move · Scroll to zoom · Right-drag or Shift-drag to turn · Click a point to bring it close</p>
       <div id="cloud-start" class="cloud-start" hidden>
+        <p id="cs-name" class="cs-name" aria-hidden="true"></p>
         <p id="cs-hi" class="cs-hi"></p>
         <p id="cs-q" class="cs-q">What are you curious about, or what do you enjoy?</p>
         <p id="cs-few" class="cs-few">One thing or a few, whatever's on your mind.</p>
@@ -182,7 +183,7 @@
     </form>
     <p class="iko-foot fine"><button type="button" id="iko-all" class="link">See our whole conversation</button></p>
   </section>
-  <input type="file" id="ct-file" accept=".ikolearn,application/json,.json" hidden aria-hidden="true" tabindex="-1">
+  <input type="file" id="ct-file" accept=".ikocloud,.ikolearn,.json,application/json,application/octet-stream,text/plain" hidden aria-hidden="true" tabindex="-1">
   <div id="ik-confirm" class="ik-confirm" role="alertdialog" aria-modal="true" aria-labelledby="ikc-text" hidden>
     <div class="ikc-box">
       <p id="ikc-text" class="ikc-text"></p>

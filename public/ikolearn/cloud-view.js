@@ -33,7 +33,7 @@
     var tests = {}, testMarks = [];
     /* a cloud of any size: the camera stands further back (camD) and Recentre frames the whole cloud (home) once
        subjects reach the outer shells; a cloud of up to 12 subjects is exactly as before (camD 3.2, zoom 1) */
-    var camD = 3.2, home = HOME, zfloor = ZMIN, colors = {}, done = {}, rootBox = null;
+    var camD = 3.2, home = HOME, zfloor = ZMIN, colors = {}, done = {}, rootBox = null, hideRoot = false;
 
     function resize() {
       var r = canvas.getBoundingClientRect();
@@ -260,7 +260,7 @@
       ctx.save();
       ctx.font = "600 20px " + FONT;
       var nw = ctx.measureText(cloud.name).width;
-      placed.push({ x0: rootP.x - nw / 2 - 20, x1: rootP.x + nw / 2 + 20, y0: rootP.y - 23, y1: rootP.y + 23 }); /* the name plate and its ring */
+      if (!hideRoot) placed.push({ x0: rootP.x - nw / 2 - 20, x1: rootP.x + nw / 2 + 20, y0: rootP.y - 23, y1: rootP.y + 23 }); /* the name plate and its ring */
       labels.sort(function (a, b) { return labelRank(b) - labelRank(a); });
       ctx.textAlign = "center"; ctx.fillStyle = INK;
       labels.forEach(function (l) {
@@ -282,22 +282,24 @@
       ctx.restore();
 
       /* the learner's name, always on top: the root of the cloud, on a paper plate with a fine double ink ring, so it reads
-         as the node everything grows from */
+         as the node everything grows from (not drawn while the page shows it itself: the opening question) */
       ctx.save();
-      ctx.font = (mini ? "600 9px " : "600 20px ") + FONT;
-      ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      var tw = ctx.measureText(cloud.name).width, px = mini ? 5 : 15, ph = mini ? 8 : 18, bw = tw + 2 * px;
-      rootBox = { hw: bw / 2, hh: ph };
-      ctx.globalAlpha = 0.94; ctx.fillStyle = PAPER;
-      pill(rootP.x - bw / 2, rootP.y - ph, bw, 2 * ph); ctx.fill();
-      ctx.globalAlpha = 0.62; ctx.strokeStyle = INK; ctx.lineWidth = mini ? 0.8 : 1.3;
-      pill(rootP.x - bw / 2, rootP.y - ph, bw, 2 * ph); ctx.stroke();
-      if (!mini) {
-        ctx.globalAlpha = 0.2; ctx.lineWidth = 1;
-        pill(rootP.x - bw / 2 - 4, rootP.y - ph - 4, bw + 8, 2 * ph + 8); ctx.stroke();
+      if (!hideRoot) {
+        ctx.font = (mini ? "600 9px " : "600 20px ") + FONT;
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        var tw = ctx.measureText(cloud.name).width, px = mini ? 5 : 15, ph = mini ? 8 : 18, bw = tw + 2 * px;
+        rootBox = { hw: bw / 2, hh: ph };
+        ctx.globalAlpha = 0.94; ctx.fillStyle = PAPER;
+        pill(rootP.x - bw / 2, rootP.y - ph, bw, 2 * ph); ctx.fill();
+        ctx.globalAlpha = 0.62; ctx.strokeStyle = INK; ctx.lineWidth = mini ? 0.8 : 1.3;
+        pill(rootP.x - bw / 2, rootP.y - ph, bw, 2 * ph); ctx.stroke();
+        if (!mini) {
+          ctx.globalAlpha = 0.2; ctx.lineWidth = 1;
+          pill(rootP.x - bw / 2 - 4, rootP.y - ph - 4, bw + 8, 2 * ph + 8); ctx.stroke();
+        }
+        ctx.globalAlpha = 1; ctx.fillStyle = INK;
+        ctx.fillText(cloud.name, rootP.x, rootP.y + (mini ? 0 : 1));
       }
-      ctx.globalAlpha = 1; ctx.fillStyle = INK;
-      ctx.fillText(cloud.name, rootP.x, rootP.y + (mini ? 0 : 1));
       ctx.restore();
 
       if (idleSpin) yaw += 0.0025;
@@ -327,7 +329,7 @@
     function pick(x, y) {
       var rp = project(pos.root);
       /* the whole name plate picks the root, except right on a node peeking out from under it */
-      var onPlate = rootBox ? Math.abs(rp.x - x) <= rootBox.hw + 6 && Math.abs(rp.y - y) <= rootBox.hh + 6 : Math.hypot(rp.x - x, rp.y - y) < 22;
+      var onPlate = hideRoot ? false : rootBox ? Math.abs(rp.x - x) <= rootBox.hw + 6 && Math.abs(rp.y - y) <= rootBox.hh + 6 : Math.hypot(rp.x - x, rp.y - y) < 22;
       for (var t = 0; t < testMarks.length; t++) if (Math.hypot(testMarks[t].x - x, testMarks[t].y - y) < 11) return { test: testMarks[t].id };
       var best = null, bd = 20;
       projected.forEach(function (it) {
@@ -483,7 +485,9 @@
       setView: function (v) { if (v.zoom) setZoom(v.zoom); if (v.yaw != null) yaw = v.yaw; if (v.pitch != null) pitch = v.pitch; if (v.panX != null) panX = v.panX; if (v.panY != null) panY = v.panY; if (v.pivot && isFinite(v.pivot.x) && isFinite(v.pivot.y) && isFinite(v.pivot.z)) pivot = { x: v.pivot.x, y: v.pivot.y, z: v.pivot.z }; if (v.focus !== undefined) setFocus(v.focus); request(); },
       project: function (id) { return pos[id] ? project(pos[id]) : null; },
       focusNode: focusNode,
-      clearFocus: function () { setFocus(null); request(); }
+      clearFocus: function () { setFocus(null); request(); },
+      /* the name plate off the canvas (the opening question shows the name in the page, above the question) */
+      rootHidden: function (on) { if (hideRoot === Boolean(on)) return; hideRoot = Boolean(on); request(); }
     };
   }
 

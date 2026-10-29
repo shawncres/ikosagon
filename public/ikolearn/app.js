@@ -14,7 +14,7 @@
   "use strict";
   var PR = window.IkoProfiles; /* learners: yourself, or guiding others (additive storage; the v1 keys stay the learner learning now) */
   var C = window.IkoCloud, V = window.IkoCloudView, L = window.IkoLesson, D = window.IkoDeck, R = window.IkoRank, P = window.IkoPlan, CAM = window.IkoCamera;
-  var T = window.IkoTransfer; /* the cloud as one file: Save cloud / Open cloud (transfer.js) */
+  var T = window.IkoTransfer; /* the cloud as one file: Save IkoCloud / Open IkoCloud (transfer.js) */
   var API = "/api/ikolearn";
   var LS = { name: "ikolearn.v1.name", cloud: "ikolearn.v1.cloud", thread: "ikolearn.v1.thread", notes: "ikolearn.v1.notes", lessons: "ikolearn.v1.lessons", tests: "ikolearn.v1.tests", view: "ikolearn.v1.view", seen: "ikolearn.v1.seen" };
   var VISIT = "ikolearn.v1.visit"; /* sessionStorage: this browser session was counted as a visit */
@@ -31,7 +31,7 @@
     lesson: $("lesson"), lBack: $("l-back"), lTrail: $("l-trail"), lTitle: $("l-title"), lBody: $("l-body"), lDone: $("l-done"),
     lGot: $("l-got"), lTricky: $("l-tricky"), lStatus: $("l-status"), lPath: $("l-path"), lClar: $("l-clar"), lNext: $("l-next"), lChat: $("l-chat"), lRedo: $("l-redo"),
     cloud: $("cloud"), cloudCanvas: $("cloud-canvas"), cloudDeck: $("cloud-deck"), cloudWho: $("cloud-who"), toCloud: $("to-cloud"),
-    cs: $("cloud-start"), csHi: $("cs-hi"), csQ: $("cs-q"), csFew: $("cs-few"), csForm: $("cs-form"), csIn: $("cs-in"), csEx: $("cs-ex"), csStatus: $("cs-status"),
+    cs: $("cloud-start"), csName: $("cs-name"), csHi: $("cs-hi"), csQ: $("cs-q"), csFew: $("cs-few"), csForm: $("cs-form"), csIn: $("cs-in"), csEx: $("cs-ex"), csStatus: $("cs-status"),
     ikoWrap: $("iko-wrap"), iko: $("iko"), ikoLine: $("iko-line"), ikoCue: $("iko-cue"), ikoSheet: $("iko-sheet"), ikoAbout: $("iko-about"), ikoX: $("iko-x"), ikoSay: $("iko-say"), ikoActs: $("iko-acts"), ikoGot: $("iko-got"), ikoBody: $("iko-body"), ikoSlot: $("iko-slot"), ikoLog: $("iko-log"), ikoForm: $("iko-form"), ikoIn: $("iko-in"), ikoAll: $("iko-all"), zin: $("zin"), zout: $("zout"), zreset: $("zreset"),
     panel: $("panel"), cloudTop: document.querySelector(".cloud-top"), pKicker: $("p-kicker"), pTitle: $("p-title"), pDesc: $("p-desc"), pNote: $("p-note"), pLesson: $("p-lesson"), pCard: $("p-card"), pAdj: $("p-adj"),
     pChat: $("p-chat"), pPath: $("p-path"), pClose: $("p-close"),
@@ -47,7 +47,7 @@
   };
   var reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
 
-  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], queued: null, pick: null, glide: null, view: null, dirForm: null, dirText: "", csPicked: [], seen: { c: {}, ev: 0 }, ex: { list: [], growth: [], at: 0, gat: 0, status: "idle" } };
+  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], queued: null, pick: null, glide: null, view: null, dirForm: null, dirText: "", allDone: false, csPicked: [], seen: { c: {}, ev: 0 }, ex: { list: [], growth: [], at: 0, gat: 0, status: "idle" } };
   var mini = null, big = null;
 
   /* ---------- storage ---------- */
@@ -1692,6 +1692,9 @@
   }
 
   /* ---------- suggestions and Draw (orchestrator.js, no calls) ---------- */
+  /* a suggestion still worth offering: a card only while it's unfinished (P.unfinished, as Draw); a test and "what comes
+     next" are about finished work by design. Also guards a list saved before the card was finished. */
+  function offerable(it) { return it.kind === "test" || it.kind === "grow" || P.unfinished(state.cloud, it.id); }
   function refreshSuggest() { state.suggest = P.suggest(state.cloud); save(); return state.suggest; }
   /* A test as a card-shaped tile: the parent, how much is finished under it. */
   function testTile(pid, onOpen) {
@@ -1734,7 +1737,7 @@
   }
   /* The always-there next actions: suggested cards, Draw, Continue the active lesson, and the cloud. */
   function flowBlock(where) {
-    var items = (state.suggest || []).filter(function (it) { return nodeOf(it.id) || it.kind === "ask"; });
+    var items = (state.suggest || []).filter(function (it) { return it.kind === "ask" || (nodeOf(it.id) && offerable(it)); });
     var box = mk("div", "flow-in");
     box.appendChild(mk("p", "kicker", "Pick up a card"));
     var empty = !state.cloud.order.length;
@@ -1761,20 +1764,30 @@
     var draw = mk("button", "btn draw-btn", "Draw a card"); draw.type = "button";
     draw.addEventListener("click", function () { drawCard(draw); });
     acts.appendChild(draw);
-    var act = nodeOf(state.cloud.active);
+    var act = nodeOf(state.cloud.active) && !P.finished(state.cloud, state.cloud.active) ? nodeOf(state.cloud.active) : null; /* never a finished lesson as "Continue" (a subject's own lesson can be active too) */
     if (act) acts.appendChild(linkBtn("Continue " + act.label, function () { openLesson(act.id); }, "btn quiet"));
     if (where !== "cloud") acts.appendChild(linkBtn("Your cloud", openCloud, "btn quiet"));
     box.appendChild(acts);
     return box;
   }
   /* Draw: one card into the holder, and its lesson opens right away. */
+  /* Never a finished card (P.draw): the current path's next unfinished step first, else the deck, else something new.
+     When everything is finished, the cloud offers a new topic or direction instead of re-opening finished work. */
   function drawCard(src) {
     if (state.busy) return;
-    var id = P.draw(state.cloud, { skip: state.lessonNode });
+    var id = P.draw(state.cloud, { skip: state.lessonNode, from: state.lessonNode || state.panelNode || null });
     dismissHint("card");
     save();
-    if (!id) return;
+    if (!id) { allDone(); return; }
+    state.allDone = false;
     openCard(id, src || null);
+  }
+  function allDone() {
+    state.allDone = true;
+    if (el.cloud.hidden || state.lessonNode || !el.deck.hidden || !el.hub.hidden) home(); else if (!el.panel.hidden) closeCard();
+    renderCloudFlow();
+    var a = cloudFlow && cloudFlow.querySelector(".dir-done .dir-ask");
+    if (a) a.focus();
   }
 
   /* ---------- cloud overlay + panel ---------- */
@@ -1826,7 +1839,9 @@
     var empty = Boolean(state.cloud) && !C.subjects(state.cloud).length;
     el.cs.hidden = !empty || el.cloud.hidden;
     if (el.cloudHint) el.cloudHint.hidden = empty; /* nothing to drag yet: no input tips over the start */
+    intakeMode(!el.cs.hidden);
     if (el.cs.hidden) return;
+    el.csName.textContent = (state.cloud && state.cloud.name) || state.name || "";
     var building = state.busy, last = state.thread.filter(function (m) { return m.role === "model"; }).pop(), failed = !building && last && last.retry && last.retry.kind === "start";
     /* one calm step: a short hello, the one question, the field and Begin; a few light ideas (from the API, cycling with More) */
     el.csHi.textContent = building ? "" : "Hi " + state.name + ". Let's begin your learning cloud together.";
@@ -1842,16 +1857,53 @@
     placeIkoSoon();
   }
   var csEx = null;
-  /* the start sits just under the name label (drawn a little below its point), where the eye already is,, not at the bottom of the screen */
+  /*
+   * The opening question on a phone (and in in-app browsers with their toolbars): one still, calm column. The name sits
+   * on its plate in the page, centred above the question (the canvas doesn't draw it then, and the empty cloud holds
+   * still, so nothing drifts into the text); the cloud's controls step away; Iko keeps the top-left corner with its line
+   * and cue beside it, not over the question. The column is centred in the room between Iko and the fine print, and
+   * when the keyboard opens (visualViewport) it moves up into what is left so the field and Begin stay in view (the fine
+   * print steps aside). Taller than the room: it scrolls on its own, never under Iko or the fine print.
+   */
+  var intakeOn = false, intakeTop = { w: 0, top: 0, at: null }; /* the room's top only moves down (Iko's hello), and the column stays where it was put while it still fits: it never jumps when the line folds or the ideas change */
+  function intakeMode(on) {
+    on = Boolean(on);
+    document.body.classList.toggle("intake", on);
+    if (big && big.rootHidden) big.rootHidden(on);
+    if (big && on !== intakeOn) big.hold(on);
+    intakeOn = on;
+    if (!on) { intakeTop.top = 0; intakeTop.at = null; document.body.classList.remove("kbd"); el.cs.style.maxHeight = ""; el.cs.style.top = ""; }
+  }
   function placeStart() {
     if (!big || el.cs.hidden) return;
-    var q = big.project("root"), r = el.cloudCanvas.getBoundingClientRect();
-    if (!q || !r.height) return;
-    var foot = el.cloud.querySelector(".cloud-foot"), ft = foot && foot.getClientRects().length ? foot.getBoundingClientRect().top : window.innerHeight - 44;
-    var top = r.top + q.y + 70, room = ft - 16 - el.cs.offsetHeight; /* always a clear gap above the fine print (F: nothing crowds on a phone) */
-    el.cs.style.top = Math.round(Math.max(r.top + 60, Math.min(top, room))) + "px";
+    var vv = window.visualViewport, vh = vv ? vv.height : window.innerHeight, vt = vv ? vv.offsetTop : 0;
+    var typing = document.activeElement === el.csIn;
+    var kbd = Boolean(vv) && typing && window.innerHeight - vh > 120; /* the on-screen keyboard is up */
+    document.body.classList.toggle("kbd", kbd);
+    var wrap = el.ikoWrap && !el.ikoWrap.hidden ? el.ikoWrap.getBoundingClientRect() : null;
+    var top = Math.max(vt + 12, wrap && wrap.height ? wrap.bottom + 14 : 0);
+    if (intakeTop.w !== window.innerWidth) intakeTop = { w: window.innerWidth, top: 0, at: null };
+    top = intakeTop.top = Math.max(top, intakeTop.top);
+    var ikoBottom = top;
+    var foot = el.cloud.querySelector(".cloud-foot"), fr = !kbd && foot && foot.getClientRects().length ? foot.getBoundingClientRect() : null;
+    var bottom = fr ? fr.top - 10 : vt + vh - 10;
+    if (kbd) top = Math.max(vt + 10, wrap && wrap.height ? wrap.bottom + 8 : 0); /* the keyboard leaves little room: the column starts just under Iko */
+    var room = Math.max(120, bottom - top), need = el.cs.scrollHeight;
+    var fits = need <= room;
+    el.cs.style.maxHeight = fits ? "" : Math.round(room) + "px";
+    el.cs.classList.toggle("scrolls", !fits);
+    var at = fits ? top + (room - need) * (kbd ? 1 : 0.42) : top; /* a little above the middle; with the keyboard, just above it */
+    if (!kbd && fits) {
+      if (intakeTop.at != null && intakeTop.at >= ikoBottom && intakeTop.at + need <= bottom) at = intakeTop.at; /* still fits where it is: stay */
+      intakeTop.at = at;
+    }
+    el.cs.style.top = Math.round(at) + "px";
+    if (!fits && typing) { var f = el.csForm.offsetTop + el.csForm.offsetHeight - el.cs.clientHeight + 8; if (el.cs.scrollTop < f) el.cs.scrollTop = f; }
   }
   window.addEventListener("resize", function () { placeStart(); });
+  if (window.visualViewport) { window.visualViewport.addEventListener("resize", function () { placeStart(); }); window.visualViewport.addEventListener("scroll", function () { placeStart(); }); }
+  el.csIn.addEventListener("focus", function () { setTimeout(placeStart, 60); setTimeout(placeStart, 400); });
+  el.csIn.addEventListener("blur", function () { setTimeout(placeStart, 60); });
   if (window.ResizeObserver && el.cs) new ResizeObserver(function () { placeStart(); }).observe(el.cs); /* the ideas arrive after it is placed */
   function startFromCloud(t) {
     var text = cleanAbout(t);
@@ -1886,8 +1938,8 @@
     if (note) cloudFlow.appendChild(note);
     var din = note && note.querySelector(".dir-in");
     if (din && (had || state.dirForm !== state.dirFocused)) { din.focus(); state.dirFocused = state.dirForm; }
-    var items = refreshSuggest().filter(function (it) { return nodeOf(it.id); });
-    cloudFlow.appendChild(mk("span", "kicker", "Pick up"));
+    var items = refreshSuggest().filter(function (it) { return nodeOf(it.id) && offerable(it); });
+    if (items.length) cloudFlow.appendChild(mk("span", "kicker", "Pick up")); /* nothing to pick up: just Draw (and its all-done nudge) */
     items.forEach(function (it) {
       var n = nodeOf(it.id);
       cloudFlow.appendChild(linkBtn(it.kind === "test" ? "Test: " + n.label : it.kind === "grow" ? "Next in " + n.label : n.label, function () { if (it.kind === "test") openTest(it.id); else if (it.kind === "grow") createNext(it.id); else openLesson(it.id); }, "chip"));
@@ -1927,7 +1979,7 @@
         var t = cleanAbout(inp.value);
         if (!t || state.busy) return;
         if (state.dirForm === "invite") d.n = (d.n || 0) + 1;
-        state.dirForm = null; state.dirText = ""; state.dirFocused = null;
+        state.dirForm = null; state.dirText = ""; state.dirFocused = null; state.allDone = false;
         save();
         buildCloud("more", [], t, "", true);
       });
@@ -1936,6 +1988,16 @@
       return box;
     }
     var open = function (why) { return function () { state.dirForm = why; renderCloudFlow(); }; };
+    if (state.allDone) {
+      /* a draw found nothing unfinished: a new topic or direction, never finished work again */
+      box.classList.add("dir-done");
+      box.appendChild(mk("span", "dir-done-t", "Every card here is finished."));
+      var dend = mk("span", "dir-end"); /* the link and its close stay together on a narrow screen */
+      dend.appendChild(linkBtn("Add a new topic or direction?", open("done"), "link dir-ask"));
+      dend.appendChild(dirClose("Not now", function () { state.allDone = false; }));
+      box.appendChild(dend);
+      return box;
+    }
     if ((d.later || []).length) {
       /* ideas from the intake beyond its first few subjects: each one is a direction to add when they like */
       box.classList.add("dir-later");
@@ -2033,7 +2095,7 @@
   /*
    * The name's card: a compact look at the whole cloud (0 calls). Achievements (the cards in the Deck, by tier), a
    * progress summary (subjects, topics finished, right answers), recent activity when there is some, one soft insight
-   * (#98's notes, only once their threshold is met), what's next, and Save cloud / Open cloud.
+   * (#98's notes, only once their threshold is met), what's next, and Save IkoCloud / Open IkoCloud.
    */
   function renderStats() {
     var st = P.homeStats(state.cloud, Date.now()), box = mk("div", "stats");
@@ -2046,6 +2108,7 @@
     if (act) row("Lately", act);
     if (st.insight) box.appendChild(mk("p", "st-insight", st.insight.text));
     var nx = nodeOf(state.cloud.next);
+    if (nx && !P.unfinished(state.cloud, nx.id)) nx = nodeOf(P.pathNext(state.cloud, nx.id)); /* finished since: the next unfinished step after it */
     if (nx) {
       var pnx = mk("p", "next-up", "Next up: ");
       pnx.appendChild(linkBtn(nx.label, function () { openPanel(nx.id); }));
@@ -2282,12 +2345,33 @@
     el.ikoSheet.hidden = false;
     el.iko.setAttribute("aria-expanded", "true");
     renderIko();
-    if (!o.tricky) { try { el.ikoIn.focus({ preventScroll: true }); } catch { el.ikoIn.focus(); } } /* opens the text field; Still tricky focuses the clarification instead */
+    fitIko();
+    /* opens the text field on a mouse and keyboard; on touch the keyboard waits for a tap in the field (so it doesn't
+       cover the sheet as it opens). Still tricky focuses the clarification instead. */
+    if (!o.tricky && !coarse()) { try { el.ikoIn.focus({ preventScroll: true }); } catch { el.ikoIn.focus(); } }
   }
+  function coarse() { return Boolean(window.matchMedia && window.matchMedia("(pointer: coarse)").matches); }
+  /*
+   * The on-screen keyboard (visualViewport): the sheet sits on top of it, no taller than the visible part, so its field
+   * and the latest messages stay in view; the messages scroll to the end when the keyboard comes or goes.
+   */
+  var ikoKbd = false;
+  function fitIko() {
+    var s = el.ikoSheet.style, vv = window.visualViewport;
+    if (el.ikoSheet.hidden || !vv) { s.bottom = ""; s.maxHeight = ""; ikoKbd = false; return; }
+    var below = Math.max(0, window.innerHeight - (vv.offsetTop + vv.height)), kbd = below > 80 && document.activeElement === el.ikoIn;
+    if (kbd) { s.bottom = (below + 8) + "px"; s.maxHeight = Math.max(160, Math.min(vv.height - 16, 560)) + "px"; }
+    else { s.bottom = ""; s.maxHeight = ""; }
+    if (kbd !== ikoKbd) { ikoKbd = kbd; el.ikoBody.scrollTop = el.ikoBody.scrollHeight; }
+  }
+  if (window.visualViewport) { window.visualViewport.addEventListener("resize", fitIko); window.visualViewport.addEventListener("scroll", fitIko); }
+  el.ikoIn.addEventListener("focus", function () { fitIko(); setTimeout(fitIko, 300); });
+  el.ikoIn.addEventListener("blur", function () { setTimeout(fitIko, 0); });
   function closeIko() {
     if (!iko.open) return;
     iko.open = false;
     el.ikoSheet.hidden = true;
+    fitIko();
     el.iko.setAttribute("aria-expanded", "false");
     if (el.lClar.parentNode === el.ikoSlot) el.lFork.parentNode.insertBefore(el.lClar, el.lFork); /* back into the lesson, answers kept */
     renderIko();
@@ -2400,7 +2484,9 @@
     el.ikoCue.hidden = false;
     document.body.classList.add("iko-cueing");
     var r = el.ikoCue.getBoundingClientRect();
-    var near = [].some.call(document.querySelectorAll(".bar .brand > *, #deck-btn, .bar .mini-deck, .minideck, .home-nav > *, .cloud-top .zoom, .cloud-flow, #panel, #cloud-start, #ik-confirm, #iko-line"), function (e) {
+    /* what is on screen now: the cloud's own controls when it is open (the chat's header is underneath it then), else the header */
+    var crowd = el.cloud.hidden ? ".bar .brand > *, #deck-btn, .bar .mini-deck, .minideck, #ik-confirm, #iko-line" : ".home-nav > *, .cloud-top .zoom, .cloud-flow, #panel, #cloud-start, #ik-confirm, #iko-line";
+    var near = [].some.call(document.querySelectorAll(crowd), function (e) {
       if (e.hidden || !e.getClientRects().length) return false;
       var b = e.getBoundingClientRect();
       return b.width && b.left < r.right + 4 && b.right > r.left - 4 && b.top < r.bottom + 2 && b.bottom > r.top - 2;
@@ -2421,6 +2507,7 @@
    * would, it folds away at once. While it shows on a narrow cloud, the input tip under the controls steps aside.
    */
   function placeIko() {
+    if (intakeOn) placeStart(); /* the question keeps clear of Iko's corner (its line and cue sit beside it) */
     var w = el.ikoWrap, talking = false;
     if (!w.hidden && !el.ikoLine.hidden) {
       var line = el.ikoLine.getBoundingClientRect(), over = function (e) { if (!e || e.hidden || !e.getClientRects().length) return false; var r = e.getBoundingClientRect(); return r.width && r.left < line.right && r.right > line.left && r.top < line.bottom && r.bottom > line.top; };
@@ -2830,23 +2917,23 @@
     location.reload();
   });
 
-  /* ---------- the cloud as one file: Save cloud / Open cloud (transfer.js; no server, no account) ---------- */
-  /* the quiet pair, with its own status line (the stats card, the Deck); the welcome has its own Open cloud */
+  /* ---------- the cloud as one file, an IkoCloud: Save IkoCloud / Open IkoCloud (transfer.js; no server, no account) ---------- */
+  /* the quiet pair, with its own status line (the stats card, the Deck); the welcome has its own Open IkoCloud */
   function cloudTools() {
     var d = mk("div", "cloud-tools"), st = mk("p", "ct-status fine");
     st.setAttribute("role", "status"); st.setAttribute("aria-live", "polite");
-    d.appendChild(linkBtn("Save cloud", function () { exportCloud(st); }, "link ct-save"));
+    d.appendChild(linkBtn("Save IkoCloud", function () { exportCloud(st); }, "link ct-save"));
     d.appendChild(document.createTextNode(" · "));
-    d.appendChild(linkBtn("Open cloud", function () { pickCloud(st); }, "link ct-open"));
+    d.appendChild(linkBtn("Open IkoCloud", function () { pickCloud(st); }, "link ct-open"));
     d.appendChild(st);
     return d;
   }
-  /* Save cloud: this learner's whole cloud as [firstname].ikolearn, made here and downloaded (0 calls) */
+  /* Save IkoCloud: this learner's whole cloud as [firstname].ikocloud (application/json, safe to email), made here and downloaded (0 calls) */
   function exportCloud(st) {
     if (!T || !state.cloud) return;
     save();
     var f = T.build(localStorage, Date.now());
-    if (!f) { st.textContent = "Your cloud couldn't be saved just now."; return; }
+    if (!f) { st.textContent = "Your IkoCloud couldn't be saved just now."; return; }
     var url = URL.createObjectURL(new Blob([f.text], { type: "application/json" })), a = mk("a");
     a.href = url; a.download = f.name; a.hidden = true;
     document.body.appendChild(a); a.click(); a.remove();
@@ -2855,7 +2942,7 @@
     placeCard();
   }
   var ctStatus = null;
-  function pickCloud(st) { if (!T || !el.ctFile) return; ctStatus = st; if (st) st.textContent = ""; el.ctFile.value = ""; el.ctFile.click(); }
+  function pickCloud(st) { if (!T || !el.ctFile) return; el.ctFile.accept = T.ACCEPT; ctStatus = st; if (st) st.textContent = ""; el.ctFile.value = ""; el.ctFile.click(); }
   function ctSay(t) { if (ctStatus) ctStatus.textContent = t; placeCard(); }
   if (el.ctFile) el.ctFile.addEventListener("change", function () {
     var f = el.ctFile.files && el.ctFile.files[0];

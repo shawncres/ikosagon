@@ -1443,7 +1443,29 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   [C.findTopic(wd, "Moon"), C.findTopic(wd, "Mars")].forEach((k, i) => { C.engage(wd, k.id, "got", T0 + i); C.confirm(wd, k.id, true, T0 + 10 + i); C.confirm(wd, k.id, true, T0 + 20 + i); });
   C.setProfile(wd, { onboarded: true }, T0); C.joinDeck(wd, T0 + 30);
   const wdS = P.suggest(wd, { now: T0 + 5 * DAYMS }), wdD = P.draw(wd, { now: T0 + 5 * DAYMS });
-  ok(wdS.some((x) => x.kind === "grow") && wdS.some((x) => x.kind === "ask") && wdD && ["Moon", "Mars"].includes(wd.nodes[wdD].label) && !P.suggest(wd, { now: T0 + 5 * DAYMS, noAsk: true }).some((x) => x.kind === "ask"), "Draw never spends a call: it skips the grow and ask items and takes a card");
+  ok(wdS.some((x) => x.kind === "grow") && wdS.some((x) => x.kind === "ask") && wdD && wd.nodes[wdD].label === "Space" && !P.finished(wd, wdD) && !P.suggest(wd, { now: T0 + 5 * DAYMS, noAsk: true }).some((x) => x.kind === "ask"), "Draw never spends a call: it skips the grow and ask items and takes an unfinished card (Space, not its finished Moon and Mars)");
+  {
+    /* Draw (PR 100): never a finished card; the current path's next unfinished step first, then the deck, then something new */
+    const dm = C.create("Ada", T0);
+    C.applyCreate(dm, { items: [item("Ocean Life", ["Nature"], [kid("Coral Reefs", 1, 0.9), kid("Whales", 2, 0.8), kid("Tides", 3, 0.7)]), item("Drawing", ["Art"], [kid("Shapes", 1, 0.9), kid("Shading", 2, 0.8)])] }, { t: T0 });
+    const L = (l) => C.findTopic(dm, l).id;
+    ["Coral Reefs", "Whales", "Shapes"].forEach((l, i) => { const n = dm.nodes[L(l)]; n.ghost = false; n.opened = true; n.engaged = 3; n.spent = 600; n.doneAt = T0 + 100 + i; n.touched = T0 + 100 + i; });
+    Object.assign(dm.nodes[L("Shading")], { ghost: false, opened: true, engaged: 2, spent: 300, touched: T0 + 50 });
+    dm.nodes[L("Whales")].touched = T0 + 500;
+    C.setProfile(dm, { onboarded: true }, T0); C.joinDeck(dm, T0 + 600);
+    ["Coral Reefs", "Whales", "Shapes", "Shading"].forEach((l) => { if (!dm.deck.some((e) => e.id === L(l))) dm.deck.push({ id: L(l), label: l, subject: "", hue: "#7a5c3e", at: T0, best: 0, chain: [], blurb: "", ach: 0, tb: 0, ml: 0, inn: null, co: [] }); });
+    const src = C.serialize(dm), draws = [];
+    for (let i = 0; i < 40; i++) { const c = C.deserialize(src); const id = P.draw(c, { now: T0 + DAYMS + i * 3600e3, seed: i, skip: i % 2 ? L("Tides") : null }); draws.push(id ? c.nodes[id].label : null); }
+    ok(draws.every((l) => l && !["Coral Reefs", "Whales", "Shapes", "Ocean Life"].includes(l)), "draw: 40 draws over a deck holding finished cards never return a finished one", draws.join());
+    ok(P.draw(C.deserialize(src), { now: T0 + DAYMS }) === L("Tides") && C.deserialize(src).nodes[P.draw(C.deserialize(src), { now: T0 + DAYMS, from: L("Shapes") })].label === "Shading", "draw: the current path's next unfinished step first (the card in hand, else the active one, else the last touched)");
+    ok(draws.filter((l, i) => i % 2).every((l) => l !== "Tides"), "draw: the card already open is never drawn again");
+    const sgs = [0, 1, 2, 3].map((k) => P.suggest(C.deserialize(src), { now: T0 + (k + 1) * DAYMS, seed: k, n: 4, noAsk: true }));
+    ok(sgs.every((list) => list.filter((x) => x.kind !== "test" && x.kind !== "grow").every((x) => P.unfinished(dm, x.id)) && list.filter((x) => x.kind !== "test" && x.kind !== "grow").length >= 2), "pick up: suggestions never offer a finished card (the same unfinished() as Draw), the freed places filled", JSON.stringify(sgs.map((l) => l.map((x) => x.kind + ":" + dm.nodes[x.id].label))));
+    ok(P.unfinished(dm, L("Tides")) && !P.unfinished(dm, L("Whales")) && !P.unfinished(dm, dm.nodes[L("Tides")].parent ? C.subjects(dm)[0].id : null), "unfinished(): a topic not finished (never a subject)");
+    const allDm = C.deserialize(src); allDm.order.forEach((x) => { if (allDm.nodes[x].parent) allDm.nodes[x].doneAt = T0 + 700; });
+    allDm.profile.visits = 6;
+    ok(P.directions(allDm, T0 + 90 * DAYMS).revisit.length === 0 && P.suggest(allDm, { now: T0 + 2 * DAYMS, noAsk: true }).every((x) => x.kind === "test" || x.kind === "grow"), "all finished: no finished card in Pick up, nothing \"Waiting for you\"");
+  }
 
   // re-ask lightly: one question when the cloud is thin or the learner seems stuck, every few days at most
   const ra = C.create("Mia", T0);
@@ -1860,7 +1882,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     right(c, k("Footprints").id, 3, T0 + 1100);
     const m3 = P.settleMerges(c, T0 + 1200);
     ok(m3.length === 1 && m3[0].ids.length === 1 && d.ml === 3 && d.absorbed.length === 7, "the last child that completes the whole core upgrades it alone (Merged III)");
-    ok(D.cardSpec(c, k("Fossils").id).absorbedInto === d.id && !P.draw(c, { now: T0 + DAYMS, seed: 1 }).picks?.some?.((x) => x.id === k("Fossils").id), "absorbed cards show their parent (and are not drawn loose)");
+    ok(D.cardSpec(c, k("Fossils").id).absorbedInto === d.id && P.draw(c, { now: T0 + DAYMS, seed: 1 }) !== k("Fossils").id, "absorbed cards show their parent (and are not drawn loose)");
     const dk = D.weigh ? D.weigh(c, T0 + DAYMS) : null;
     ok(!dk || !dk.some((x) => (x.id || x) === k("Fossils").id), "deck weighting skips absorbed cards whose parent is in the deck");
 
@@ -3568,14 +3590,16 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const live = { "ikolearn.v1.name": "Sam", "ikolearn.v1.cloud": raw, "ikolearn.v1.thread": '[{"id":"m1","role":"user","text":"secret chat"}]', "ikolearn.v1.view": '{"x":3}',
     "ikolearn.v1.notes": '{"n1":"a note"}', "ikolearn.v1.lessons": '{"l1":{"at":1,"got":true}}', "ikolearn.v1.tests": '{"t1":{"score":3}}', "ikolearn.v1.seen": '{"c":{"n1":"h"},"ev":2}' };
 
-  // file names: the first name, cleaned, then .ikolearn
-  eq([T.fileName("Shawn"), T.fileName("  Mary Ann "), T.fileName("Zoë"), T.fileName("O'Neil"), T.fileName("../x/<y>"), T.fileName(""), T.fileName("—")], ["Shawn.ikolearn", "Mary-Ann.ikolearn", "Zoë.ikolearn", "O'Neil.ikolearn", "xy.ikolearn", "cloud.ikolearn", "cloud.ikolearn"], "file: [firstname].ikolearn, sanitized (no paths, no symbols), a fallback when empty");
-  eq(T.MSG.saved("Shawn.ikolearn"), "Your cloud has been saved as Shawn.ikolearn. Keep this file if you want to continue on another device.", "file: the saved message, word for word");
-  eq(T.MSG.confirm, "This will replace the cloud currently on this device with the one in the file. Continue?", "file: the replace confirmation, word for word");
+  // file names: the first name, cleaned, then .ikocloud (an IkoCloud)
+  eq([T.fileName("Shawn"), T.fileName("  Mary Ann "), T.fileName("Zoë"), T.fileName("O'Neil"), T.fileName("../x/<y>"), T.fileName(""), T.fileName("—")], ["Shawn.ikocloud", "Mary-Ann.ikocloud", "Zoë.ikocloud", "O'Neil.ikocloud", "xy.ikocloud", "IkoCloud.ikocloud", "IkoCloud.ikocloud"], "file: [firstname].ikocloud, sanitized (no paths, no symbols), a fallback when empty");
+  eq(T.MSG.saved("Shawn.ikocloud"), "Your IkoCloud has been saved as Shawn.ikocloud. Keep this file if you want to continue on another device.", "file: the saved message, word for word");
+  eq(T.MSG.confirm, "This will replace the IkoCloud currently on this device with the one in the file. Continue?", "file: the replace confirmation, word for word");
+  ok(/IkoCloud/.test(T.MSG.bad) && /IkoCloud/.test(T.MSG.newer) && /IkoCloud/.test(T.MSG.store) && T.EXT === ".ikocloud" && T.FORMAT === "ikocloud" && T.LEGACY.includes("ikolearn"), "file: the errors name the IkoCloud; .ikocloud, format ikocloud, ikolearn still read");
+  ok(T.ACCEPT.split(",").includes(".ikocloud") && T.ACCEPT.split(",").includes(".ikolearn") && T.ACCEPT.split(",").includes("application/json") && T.ACCEPT.split(",").includes("application/octet-stream"), "file: the picker takes .ikocloud, .ikolearn, JSON and any file (mobile pickers grey out unknown extensions; contents are checked)");
 
   // building: the format, the version, what goes in and what never does
   const b = T.build(store(live), NOW);
-  ok(b && b.name === "Sam.ikolearn" && b.file.format === "ikolearn" && b.file.version === 1 && b.file.storageVersion === 9 && b.file.storageVersion === C.VERSION && b.file.exportedAt === new Date(NOW).toISOString(), "file: {format: ikolearn, version: 1, exportedAt, storageVersion: 9, data}");
+  ok(b && b.name === "Sam.ikocloud" && b.file.format === "ikocloud" && b.file.version === 1 && b.file.storageVersion === 9 && b.file.storageVersion === C.VERSION && b.file.exportedAt === new Date(NOW).toISOString(), "file: {format: ikocloud, version: 1, exportedAt, storageVersion: 9, data}");
   eq(Object.keys(b.file.data).sort(), ["cloud", "lessons", "name", "notes", "seen", "tests"], "file: carries the name, cloud, notes, lessons, tests and seen");
   ok(JSON.stringify(b.file.data.cloud) === raw && b.file.data.lessons.l1.got === true && b.file.data.seen.ev === 2, "file: the cloud exactly as stored, lessons and seen as they are");
   ok(!/secret chat|"thread"|"view"|profiles|apiKey|GEMINI|AIza/i.test(b.text), "file: no chat transcript, camera, learners index or keys");
@@ -3585,6 +3609,8 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const pr = T.parse(b.text);
   ok(pr.ok && pr.name === "Sam" && pr.values.cloud === raw && JSON.parse(pr.values.lessons).l1.got === true, "open: a saved file reads back exactly");
   const mut = (f) => { const o = JSON.parse(b.text); f(o); return JSON.stringify(o); };
+  const legacy = T.parse(mut((o) => { o.format = "ikolearn"; }));
+  ok(legacy.ok && legacy.values.cloud === raw && legacy.name === "Sam", "open: an earlier .ikolearn file (format ikolearn) still opens, exactly");
   eq([T.parse("").why, T.parse("{nope").why, T.parse("[1]").why, T.parse(mut((o) => { o.format = "other"; })).why, T.parse(mut((o) => { o.version = "1"; })).why, T.parse(mut((o) => { delete o.data; })).why,
     T.parse(mut((o) => { o.data.name = "<>"; })).why, T.parse(mut((o) => { o.data.cloud = { v: 9 }; })).why, T.parse(mut((o) => { o.data.cloud = { v: 9, n: [["broken"]] }; })).why, T.parse(mut((o) => { o.data.lessons = [1]; })).why],
   ["json", "json", "format", "format", "version", "fields", "fields", "fields", T.parse(mut((o) => { o.data.cloud = { v: 9, n: [["broken"]] }; })).why, "fields"], "open: empty, broken, wrong format or version, missing or bad fields are refused");
@@ -3647,6 +3673,18 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   eq([q0.streak, q0.week, q0.last, q1.streak, q2.streak, q2.week], [3, 4, NOW, 3, 0, 3], "home stats: a streak ending today or yesterday, active days this week, the last activity");
   const none = C.create("Zed", NOW);
   ok(JSON.stringify(P.homeStats(none, NOW)) === JSON.stringify({ subjects: 0, topics: 0, done: 0, right: 0, cards: 0, tiers: {}, week: 0, streak: 0, last: 0, insight: P.directions(none, NOW).insight }), "home stats: an empty cloud is all zeros");
+}
+
+/* ================= the opening question on phones and in in-app browsers (PR 100) ================= */
+{
+  const app = fs.readFileSync("public/ikolearn/app.js", "utf8"), css = fs.readFileSync("public/ikolearn/styles.css", "utf8"), html = fs.readFileSync("public/ikolearn/index.html", "utf8"), view = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8");
+  ok(/rootHidden: function \(on\)/.test(view) && /if \(!hideRoot\) \{/.test(view) && /var onPlate = hideRoot \? false/.test(view), "intake: the canvas can leave the name out (not drawn, not picked)");
+  ok(/function intakeMode\(on\)/.test(app) && /big\.rootHidden\(on\)/.test(app) && /big\.hold\(on\)/.test(app) && /intakeMode\(!el\.cs\.hidden\)/.test(app), "intake: the name moves into the page and the empty cloud holds still while the question shows");
+  ok(/<p id="cs-name" class="cs-name" aria-hidden="true"><\/p>\s*<p id="cs-hi"/.test(html) && /body\.intake \.cs-name \{ display: block;/.test(css), "intake: the name plate sits above the greeting and the question");
+  ok(/window\.visualViewport\.addEventListener\("resize"/.test(app) && /body\.kbd \.cloud-foot \{ visibility: hidden; \}/.test(css), "intake: the keyboard (visualViewport) keeps the field and Begin in view; the fine print steps aside");
+  ok(/\.iko-wrap \{ position: fixed; left: calc\(8px \+ env\(safe-area-inset-left\)\); top: calc\(6px \+ env\(safe-area-inset-top\)\);/.test(css) && /bottom: calc\(2px \+ env\(safe-area-inset-bottom\)\)/.test(css) && /viewport-fit=cover/.test(html), "safe areas: Iko, the cloud's controls and the fine print clear the notch and the home bar");
+  ok(/body\.intake \.iko-wrap \{ flex-direction: row;/.test(css), "intake: Iko's line and cue sit beside the pebble, not over the question");
+  ok(!/autofocus/i.test(html) && !/transitionend[\s\S]{0,200}ikoIn\.focus/.test(app) && /if \(!o\.tricky && !coarse\(\)\) \{ try \{ el\.ikoIn\.focus/.test(app) && (app.match(/el\.ikoIn\.focus\(/g) || []).length === 3, "Iko on touch: no autofocus, no focus on transitionend; the open handler focuses the field only with a fine pointer (the other focus is an idea tapped into an open sheet)");
 }
 
 if (fails.length) {

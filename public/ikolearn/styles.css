@@ -335,7 +335,7 @@ button.gcard:hover { border-color: var(--soft); }
 #cloud-canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
 #cloud-canvas:active { cursor: grabbing; }
 #cloud-canvas.turning { cursor: move; }
-.cloud-top { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; }
+.cloud-top { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: calc(14px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right)) 14px calc(20px + env(safe-area-inset-left)); }
 .zoom { display: flex; gap: 6px; }
 .zoom .btn { background: var(--paper); min-width: 34px; }
 .zoom #zin, .zoom #zout { font-size: 18px; line-height: 1; }
@@ -370,7 +370,7 @@ button.gcard:hover { border-color: var(--soft); }
 .home-nav > :is(button, a) { font-size: 14px; color: var(--ink); }
 .home-nav .who-now { margin-left: 0; color: var(--soft); }
 @media (max-width: 699px) { .home-brand { display: none; } .home-nav { gap: 2px 14px; } }
-.cloud-foot { position: absolute; left: 0; right: 0; bottom: 2px; margin: 0; text-align: center; font-size: 12px; opacity: .5; transition: opacity .2s; z-index: 1; }
+.cloud-foot { position: absolute; left: 0; right: 0; bottom: calc(2px + env(safe-area-inset-bottom)); margin: 0; text-align: center; font-size: 12px; opacity: .5; transition: opacity .2s; z-index: 1; }
 .cloud-foot a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; }
 .cloud-foot:hover, .cloud-foot:focus-within { opacity: 1; }
 .cloud-foot a { color: inherit; }
@@ -392,7 +392,21 @@ button.gcard:hover { border-color: var(--soft); }
 .cs-row .btn, .cs-row input { min-height: 44px; }
 .cloud-start.busy .cs-ex { display: none; }
 .cs-status { margin: 8px 0 0; font-size: 14px; font-style: italic; color: var(--soft); }
-@media (max-height: 560px) { .cloud-start { top: auto; bottom: 40px; } }
+/* the opening question (body.intake, placed by app.js placeStart): a still column; the name on its plate above the question */
+.cs-name { display: none; }
+body.intake .cs-name { display: block; width: fit-content; margin: 4px auto 14px; padding: 4px 15px; font-size: 20px; font-weight: 600; line-height: 28px; letter-spacing: 0; color: var(--ink); background: var(--paper); border: 1.3px solid rgba(43, 33, 24, .62); border-radius: 999px; box-shadow: 0 0 0 3px var(--paper), 0 0 0 4px rgba(43, 33, 24, .2); }
+body.intake .cloud-top, body.intake .cloud-hint { display: none; } /* nothing to zoom or turn yet */
+body.intake #cloud-canvas { pointer-events: none; }
+body.intake .cloud-start { top: 50%; max-width: calc(100% - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)); overscroll-behavior: contain; }
+body.intake .cloud-start.scrolls { overflow-y: auto; padding-bottom: 4px; }
+body.intake .cs-ex .ex-row { flex-wrap: wrap; }
+body.kbd .cloud-foot { visibility: hidden; } /* the keyboard is up: the fine print steps aside for the field and Begin */
+body.intake.kbd .cs-name { display: none; } /* the keyboard leaves a short column: the name steps out rather than half-showing under Iko */
+/* Iko on the opening question: its line and cue beside the pebble (not under it, where the question is) */
+body.intake .iko-wrap { flex-direction: row; align-items: flex-start; gap: 8px; }
+body.intake .iko-line { order: 1; margin: 6px 0 0; max-width: calc(100vw - 92px - env(safe-area-inset-left) - env(safe-area-inset-right)); }
+body.intake .iko-line::before { left: -6px; top: 16px; border-top: 0; border-bottom: 1px solid var(--rule); }
+body.intake .iko-cue { order: 1; margin: 18px 0 0; }
 /* the chat with Iko: a quiet way back to the cloud, and its name */
 .to-cloud { font-size: 14px; letter-spacing: 0; color: var(--soft); margin-right: 14px; }
 .to-cloud::before { content: "\2039\00a0"; }
@@ -617,8 +631,8 @@ button.gcard:active, button.gslot:active { transform: translateY(-1px) scale(.97
 .who-now { margin-left: 10px; font-size: 14px; letter-spacing: 0; color: var(--soft); text-underline-offset: 3px; }
 
 /* ---------- Iko: a soft pebble (inline SVG), its short line, and its sheet ---------- */
-.iko-wrap { position: fixed; left: 8px; top: 6px; z-index: 20; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; pointer-events: none; }
-@media (min-width: 500px) { .iko-wrap { left: 12px; top: 8px; } }
+.iko-wrap { position: fixed; left: calc(8px + env(safe-area-inset-left)); top: calc(6px + env(safe-area-inset-top)); z-index: 20; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; pointer-events: none; }
+@media (min-width: 500px) { .iko-wrap { left: calc(12px + env(safe-area-inset-left)); top: calc(8px + env(safe-area-inset-top)); } }
 .iko { pointer-events: auto; width: 56px; height: 56px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; display: grid; place-items: center; }
 .iko-pebble { display: block; overflow: visible; }
 .iko-body { fill: #e8dabd; stroke: #8f7754; stroke-width: 1.6; }
