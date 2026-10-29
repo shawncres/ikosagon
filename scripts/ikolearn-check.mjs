@@ -3649,6 +3649,17 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(JSON.stringify(P.homeStats(none, NOW)) === JSON.stringify({ subjects: 0, topics: 0, done: 0, right: 0, cards: 0, tiers: {}, week: 0, streak: 0, last: 0, insight: P.directions(none, NOW).insight }), "home stats: an empty cloud is all zeros");
 }
 
+/* ================= the opening question on phones and in in-app browsers (PR 100) ================= */
+{
+  const app = fs.readFileSync("public/ikolearn/app.js", "utf8"), css = fs.readFileSync("public/ikolearn/styles.css", "utf8"), html = fs.readFileSync("public/ikolearn/index.html", "utf8"), view = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8");
+  ok(/rootHidden: function \(on\)/.test(view) && /if \(!hideRoot\) \{/.test(view) && /var onPlate = hideRoot \? false/.test(view), "intake: the canvas can leave the name out (not drawn, not picked)");
+  ok(/function intakeMode\(on\)/.test(app) && /big\.rootHidden\(on\)/.test(app) && /big\.hold\(on\)/.test(app) && /intakeMode\(!el\.cs\.hidden\)/.test(app), "intake: the name moves into the page and the empty cloud holds still while the question shows");
+  ok(/<p id="cs-name" class="cs-name" aria-hidden="true"><\/p>\s*<p id="cs-hi"/.test(html) && /body\.intake \.cs-name \{ display: block;/.test(css), "intake: the name plate sits above the greeting and the question");
+  ok(/window\.visualViewport\.addEventListener\("resize"/.test(app) && /body\.kbd \.cloud-foot \{ visibility: hidden; \}/.test(css), "intake: the keyboard (visualViewport) keeps the field and Begin in view; the fine print steps aside");
+  ok(/\.iko-wrap \{ position: fixed; left: calc\(8px \+ env\(safe-area-inset-left\)\); top: calc\(6px \+ env\(safe-area-inset-top\)\);/.test(css) && /bottom: calc\(2px \+ env\(safe-area-inset-bottom\)\)/.test(css) && /viewport-fit=cover/.test(html), "safe areas: Iko, the cloud's controls and the fine print clear the notch and the home bar");
+  ok(/body\.intake \.iko-wrap \{ flex-direction: row;/.test(css), "intake: Iko's line and cue sit beside the pebble, not over the question");
+}
+
 if (fails.length) {
   console.error(`ikolearn checks: ${pass} passed, ${fails.length} FAILED`);
   for (const f of fails) console.error("  x " + f);
