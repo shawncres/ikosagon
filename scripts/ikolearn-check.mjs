@@ -3687,6 +3687,17 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(!/autofocus/i.test(html) && !/transitionend[\s\S]{0,200}ikoIn\.focus/.test(app) && /if \(!o\.tricky && !coarse\(\)\) \{ try \{ el\.ikoIn\.focus/.test(app) && (app.match(/el\.ikoIn\.focus\(/g) || []).length === 3, "Iko on touch: no autofocus, no focus on transitionend; the open handler focuses the field only with a fine pointer (the other focus is an idea tapped into an open sheet)");
 }
 
+/* ================= the opening question, Shawn's QA of #100 in WhatsApp (PR 101) ================= */
+{
+  const app = fs.readFileSync("public/ikolearn/app.js", "utf8"), css = fs.readFileSync("public/ikolearn/styles.css", "utf8");
+  ok(!/\.scrolls\b/.test(css) && !/classList\.toggle\("scrolls"/.test(app) && /body\.intake \.cloud-start \{[^}]*overflow: visible;/.test(css), "intake: the column is never a scroll box (it clipped the ideas, the question and the field's focus ring)");
+  ok(/body\.intake \.cloud-start\.tight \.cs-few \{ display: none; \}/.test(css) && /body\.intake\.kbd \.cloud-start\.tight \.cs-hi \{ display: none; \}/.test(css), "intake: a short room folds the hint (and with the keyboard the greeting) instead of clipping");
+  ok(/var kbd = typing && tallest\.h - vh > 120;/.test(app), "intake: the keyboard is told by the tallest view seen at this width (a web view that shrinks the page counts too)");
+  ok(/var low = vt \+ vh - 10/.test(app) && /intakeAt\.key === key/.test(app), "intake: with the keyboard the field sits just above it; without, the column's place is worked out fresh for each screen (never left low)");
+  ok(/vt \+ vh \/ 2 - nameMid/.test(app), "intake: the name sits at the middle of the screen, as near as the column fits");
+  ok(/el\.csName\.addEventListener\("pointerdown"/.test(app) && /function clampName\(\)/.test(app) && /body\.intake \.cs-name \{[^}]*touch-action: none;/.test(css), "intake: the name can be dragged, kept clear of Iko and the text");
+}
+
 if (fails.length) {
   console.error(`ikolearn checks: ${pass} passed, ${fails.length} FAILED`);
   for (const f of fails) console.error("  x " + f);
