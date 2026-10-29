@@ -751,12 +751,41 @@
     return out;
   }
 
+  /*
+   * The name's card on the cloud (0 calls): achievements (cards in the Deck, by tier), progress (subjects, topics
+   * finished, right answers), recent activity (days with learning in the last 7 and the current run of days, from when
+   * topics were last touched or finished: a lower bound, never made up), and #98's one soft insight once its threshold
+   * is met (the same note, the same dismissals).
+   */
+  function homeStats(cloud, now) {
+    now = now || Date.now();
+    var day = function (t) { var d = new Date(t); return d.getFullYear() * 1e4 + (d.getMonth() + 1) * 100 + d.getDate(); };
+    var out = { subjects: C.subjects(cloud).length, topics: 0, done: 0, right: 0, cards: (cloud.deck || []).length, tiers: {}, week: 0, streak: 0, last: 0, insight: null };
+    var days = {};
+    cloud.order.forEach(function (id) {
+      var n = cloud.nodes[id];
+      if (!n || !n.parent || n.ghost) return;
+      out.topics += 1;
+      if (C.isDone(cloud, id)) out.done += 1;
+      out.right += n.correct || 0;
+      if (!(n.opened || (n.engaged || 0) > 0 || (n.correct || 0) > 0 || n.doneAt)) return;
+      [n.touched, n.doneAt, n.achievedAt].forEach(function (t) { if (t && t <= now) { days[day(t)] = 1; out.last = Math.max(out.last, t); } });
+    });
+    (cloud.deck || []).forEach(function (e) { var t = C.tierOf(cloud, e.id); var k = t ? t.key : "sketch"; out.tiers[k] = (out.tiers[k] || 0) + 1; });
+    for (var i = 0; i < 7; i++) if (days[day(now - i * DAY)]) out.week += 1;
+    /* a run of days ending today (or yesterday, so it isn't lost before today's first lesson) */
+    var k0 = days[day(now)] ? 0 : 1;
+    while (days[day(now - (k0 + out.streak) * DAY)] && out.streak < 366) out.streak += 1;
+    out.insight = directions(cloud, now).insight;
+    return out;
+  }
+
   var api = {
     PLAN: PLAN, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, needsRepair: needsRepair, repairRequest: repairRequest,
     MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild, nextStep: nextStep,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
     suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, placeTopic: placeTopic, placedTopic: placedTopic, DESCRIBE: DESCRIBE, describeBatch: describeBatch, isBroad: isBroad,
-    onboarding: onboarding, openQuestion: openQuestion, examples: examples, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics, directions: directions,
+    onboarding: onboarding, openQuestion: openQuestion, examples: examples, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics, directions: directions, homeStats: homeStats,
     needsNext: needsNext, readyNext: readyNext, createRequest: createRequest, OPENING: OPENING
   };
   if (node_) module.exports = api;

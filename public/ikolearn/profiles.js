@@ -131,11 +131,22 @@
     return write(s, ix);
   }
 
+  /* A learner's first name changes (a cloud opened from a file, learning for yourself): the list follows. An implicit
+     index (a save from before learners) has nothing to rename: the live name key is the truth there. */
+  function rename(s, id, name) {
+    var ix = index(s), n = cleanName(name);
+    if (!ix || !n) return null;
+    var p = ix.list.filter(function (x) { return x.id === id; })[0];
+    if (!p) return null;
+    p.name = n;
+    return write(s, ix);
+  }
+
   /* Read-only access for the parents & teachers view: a learner's stored value, wherever it lives. */
   function read(s, id, k) { var ix = current(s); return ix && ix.active === id ? get(s, live(k)) : get(s, slot(id, k)); }
   function learners(s) { var ix = current(s); return ix ? ix.list.map(function (p) { return { id: p.id, name: p.name, active: p.id === ix.active }; }) : []; }
 
-  var api = { INDEX: INDEX, KEYS: KEYS, MAX: MAX, slot: slot, live: live, cleanName: cleanName, index: index, current: current, mode: mode, reconcile: reconcile, begin: begin, switchTo: switchTo, add: add, setMode: setMode, dropActive: dropActive, read: read, learners: learners };
+  var api = { INDEX: INDEX, KEYS: KEYS, MAX: MAX, slot: slot, live: live, cleanName: cleanName, index: index, current: current, mode: mode, reconcile: reconcile, begin: begin, switchTo: switchTo, add: add, setMode: setMode, dropActive: dropActive, rename: rename, read: read, learners: learners };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.IkoProfiles = api;
 })(typeof window !== "undefined" ? window : this);

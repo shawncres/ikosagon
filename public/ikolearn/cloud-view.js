@@ -33,7 +33,7 @@
     var tests = {}, testMarks = [];
     /* a cloud of any size: the camera stands further back (camD) and Recentre frames the whole cloud (home) once
        subjects reach the outer shells; a cloud of up to 12 subjects is exactly as before (camD 3.2, zoom 1) */
-    var camD = 3.2, home = HOME, zfloor = ZMIN, colors = {};
+    var camD = 3.2, home = HOME, zfloor = ZMIN, colors = {}, done = {}, rootBox = null;
 
     function resize() {
       var r = canvas.getBoundingClientRect();
@@ -48,7 +48,7 @@
       var first = !cloud;
       cloud = c;
       pos = c ? C.layout(c) : {};
-      depth = {}; pathRank = {}; kids = {}; colors = {};
+      depth = {}; pathRank = {}; kids = {}; colors = {}; done = {};
       var ext = 1;
       if (c) C.subjects(c).forEach(function (s) { var p = pos[s.id]; if (p) ext = Math.max(ext, Math.hypot(p.x, p.y, p.z)); });
       camD = Math.max(3.2, ext * 1.7);
@@ -58,6 +58,8 @@
       if (c) {
         c.order.forEach(function (id) { var n = c.nodes[id]; if (n && n.parent) kids[n.parent] = 1; });
         Object.keys(pos).forEach(function (id) { depth[id] = pos[id].d; });
+        /* finished topics (worked out once per cloud, not per frame): their lines take the node's own colour */
+        c.order.forEach(function (id) { if (c.nodes[id] && c.nodes[id].parent && C.isDone(c, id)) done[id] = 1; });
         c.order.forEach(function (id) {
           var n = c.nodes[id];
           if (n && n.path) n.path.ids.forEach(function (x, i) { if (c.nodes[x] && c.nodes[x].parent === id) pathRank[x] = i + 1; });
@@ -154,19 +156,19 @@
       projected = items;
       var pulsing = false;
 
-      /* edges */
-      ctx.lineWidth = 1;
+      /* edges: a line leading to a finished topic takes that topic's colour; an open or unfinished path is drawn in dark
+         sepia ink so it reads clearly; dotted lines (a side path, a suggested branch) stay dotted */
       items.forEach(function (it) {
         var n = it.n, side = n.role === "optional" && n.off && at[n.off], from = side ? at[n.off] : n.parent ? at[n.parent] : rootP;
         if (!from) return;
         ctx.save();
-        var fade = Math.min(1, 0.5 + reads(n.id)) * (!mini && focusId && !focusSet[n.id] ? 0.55 : 1);
-        /* a side path: a faint dotted twig off its core step */
-        if (n.absorbedInto && n.absorbedInto === n.parent) { ctx.globalAlpha = 0.55 * it.p.f * fade; ctx.lineWidth = 0.8; ctx.strokeStyle = colorOf(n); from = at[n.parent] || from; }
-        else if (side) { ctx.setLineDash([1, 3]); ctx.globalAlpha = 0.22 * it.p.f * fade; ctx.strokeStyle = colorOf(n); }
-        else if (n.ghost) { ctx.setLineDash([2, 4]); ctx.globalAlpha = 0.3 * it.p.f * fade; ctx.strokeStyle = colorOf(n); }
-        else if (n.parent) { ctx.globalAlpha = 0.42 * it.p.f * fade; ctx.strokeStyle = colorOf(n); }
-        else { ctx.globalAlpha = 0.22; ctx.strokeStyle = INK; }
+        var fade = Math.min(1, 0.55 + reads(n.id)) * (!mini && focusId && !focusSet[n.id] ? 0.5 : 1), fin = done[n.id], k = mini ? 0.8 : 1;
+        if (n.absorbedInto && n.absorbedInto === n.parent) { ctx.globalAlpha = 0.7 * it.p.f * fade; ctx.lineWidth = 1 * k; ctx.strokeStyle = colorOf(n); from = at[n.parent] || from; }
+        else if (side) { ctx.setLineDash([1.5, 3]); ctx.globalAlpha = (fin ? 0.75 : 0.5) * it.p.f * fade; ctx.lineWidth = 1.1 * k; ctx.strokeStyle = fin ? colorOf(n) : INK; }
+        else if (n.ghost) { ctx.setLineDash([2, 4]); ctx.globalAlpha = 0.42 * it.p.f * fade; ctx.lineWidth = 1 * k; ctx.strokeStyle = INK; }
+        else if (n.parent && fin) { ctx.globalAlpha = 0.92 * it.p.f * fade; ctx.lineWidth = 1.7 * k; ctx.strokeStyle = colorOf(n); }
+        else if (n.parent) { ctx.globalAlpha = 0.66 * it.p.f * fade; ctx.lineWidth = 1.2 * k; ctx.strokeStyle = INK; }
+        else { ctx.globalAlpha = 0.5 * fade; ctx.lineWidth = 1.2 * k; ctx.strokeStyle = INK; }
         ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(it.p.x, it.p.y); ctx.stroke();
         ctx.restore();
       });
@@ -258,7 +260,7 @@
       ctx.save();
       ctx.font = "600 20px " + FONT;
       var nw = ctx.measureText(cloud.name).width;
-      placed.push({ x0: rootP.x - nw / 2 - 8, x1: rootP.x + nw / 2 + 8, y0: rootP.y - 16, y1: rootP.y + 16 });
+      placed.push({ x0: rootP.x - nw / 2 - 20, x1: rootP.x + nw / 2 + 20, y0: rootP.y - 23, y1: rootP.y + 23 }); /* the name plate and its ring */
       labels.sort(function (a, b) { return labelRank(b) - labelRank(a); });
       ctx.textAlign = "center"; ctx.fillStyle = INK;
       labels.forEach(function (l) {
@@ -279,15 +281,23 @@
       });
       ctx.restore();
 
-      /* the learner's name, always on top */
+      /* the learner's name, always on top: the root of the cloud, on a paper plate with a fine double ink ring, so it reads
+         as the node everything grows from */
       ctx.save();
-      ctx.fillStyle = PAPER; ctx.globalAlpha = 0.85;
       ctx.font = (mini ? "600 9px " : "600 20px ") + FONT;
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      var tw = ctx.measureText(cloud.name).width;
-      ctx.fillRect(rootP.x - tw / 2 - 6, rootP.y - (mini ? 7 : 14), tw + 12, mini ? 14 : 28);
+      var tw = ctx.measureText(cloud.name).width, px = mini ? 5 : 15, ph = mini ? 8 : 18, bw = tw + 2 * px;
+      rootBox = { hw: bw / 2, hh: ph };
+      ctx.globalAlpha = 0.94; ctx.fillStyle = PAPER;
+      pill(rootP.x - bw / 2, rootP.y - ph, bw, 2 * ph); ctx.fill();
+      ctx.globalAlpha = 0.62; ctx.strokeStyle = INK; ctx.lineWidth = mini ? 0.8 : 1.3;
+      pill(rootP.x - bw / 2, rootP.y - ph, bw, 2 * ph); ctx.stroke();
+      if (!mini) {
+        ctx.globalAlpha = 0.2; ctx.lineWidth = 1;
+        pill(rootP.x - bw / 2 - 4, rootP.y - ph - 4, bw + 8, 2 * ph + 8); ctx.stroke();
+      }
       ctx.globalAlpha = 1; ctx.fillStyle = INK;
-      ctx.fillText(cloud.name, rootP.x, rootP.y);
+      ctx.fillText(cloud.name, rootP.x, rootP.y + (mini ? 0 : 1));
       ctx.restore();
 
       if (idleSpin) yaw += 0.0025;
@@ -306,16 +316,25 @@
     }
 
     function request() { if (!raf) raf = root.requestAnimationFrame(draw); }
+    /* a rounded plate (a pill) as the current path */
+    function pill(x, y, bw, bh) {
+      var r = bh / 2;
+      ctx.beginPath();
+      ctx.moveTo(x + r, y); ctx.lineTo(x + bw - r, y); ctx.arc(x + bw - r, y + r, r, -Math.PI / 2, Math.PI / 2);
+      ctx.lineTo(x + r, y + bh); ctx.arc(x + r, y + r, r, Math.PI / 2, Math.PI * 1.5); ctx.closePath();
+    }
 
     function pick(x, y) {
       var rp = project(pos.root);
-      if (Math.hypot(rp.x - x, rp.y - y) < 22) return { root: true };
+      /* the whole name plate picks the root, except right on a node peeking out from under it */
+      var onPlate = rootBox ? Math.abs(rp.x - x) <= rootBox.hw + 6 && Math.abs(rp.y - y) <= rootBox.hh + 6 : Math.hypot(rp.x - x, rp.y - y) < 22;
       for (var t = 0; t < testMarks.length; t++) if (Math.hypot(testMarks[t].x - x, testMarks[t].y - y) < 11) return { test: testMarks[t].id };
       var best = null, bd = 20;
       projected.forEach(function (it) {
         var d = Math.hypot(it.p.x - x, it.p.y - y) - (focusSet[it.n.id] ? 3 : 0);
         if (d < bd) { bd = d; best = it.n; }
       });
+      if (onPlate && !(best && bd < 9)) return { root: true };
       return best ? { node: best } : null;
     }
 
@@ -344,9 +363,10 @@
       var d = depth[id] || 1, saved = view();
       var fy = o.keepYaw ? null : CAM.forwardYaw(pos[id]);
       yaw = fy == null ? yaw : fy; zoom = 1; panX = 0; panY = 0; pivot = pointOf(id);
-      var pts = (C.index(cloud)[id] || []).filter(function (k) { return pos[k]; }), box = { x0: 0, x1: 0, y0: 0, y1: 0 };
+      /* the root (the learner's name): its subjects are framed around it, never closer than the home view */
+      var isRoot = id === "root", pts = (isRoot ? C.subjects(cloud).map(function (x) { return x.id; }) : C.index(cloud)[id] || []).filter(function (k) { return pos[k]; }), box = { x0: 0, x1: 0, y0: 0, y1: 0 };
       pts.forEach(function (k) { var q = project(pos[k]), x = q.x - w / 2, y = q.y - h / 2; box.x0 = Math.min(box.x0, x); box.x1 = Math.max(box.x1, x); box.y0 = Math.min(box.y0, y); box.y1 = Math.max(box.y1, y); });
-      var lo = Math.max(1, 0.75 / C.levelScale(d + 1)), hi = Math.max(lo, 1.6 / C.levelScale(d + 1));
+      var lo = isRoot ? zfloor : Math.max(1, 0.75 / C.levelScale(d + 1)), hi = isRoot ? Math.max(home.zoom, 1) : Math.max(lo, 1.6 / C.levelScale(d + 1));
       var z = o.zoom || CAM.fitAround(box, o.aw || w, o.ah || h, lo, hi);
       var cx = o.cx == null ? w / 2 : o.cx, cy = o.cy == null ? h / 2 : o.cy;
       var to = { zoom: z, panX: cx - w / 2, panY: cy - h / 2, yaw: yaw, pitch: saved.pitch, pivot: pivot };

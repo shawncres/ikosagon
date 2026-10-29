@@ -195,6 +195,12 @@ for (const width of [390, 1280]) {
       const d = await ikoState(p), ov0 = await overlap(p, CLOUD_PARTS);
       ok(d.shown && d.line === "Hi, I'm Iko. I'm here whenever you need me." && !d.sheet && !ov0.hits.length, `${tag}: Iko by default: the pebble and its hello, clear of the Pick up row and the fine print`, JSON.stringify({ d, ov0 }));
       await shot(p, width, "2-iko-default");
+      /* top left, just the pebble; its line under it while it has something to say, then it folds back to the pebble */
+      const tl = await p.evaluate(() => { const r = document.querySelector("#iko").getBoundingClientRect(), l = document.querySelector("#iko-line"), lr = l.hidden ? null : l.getBoundingClientRect(), nav = document.querySelector(".home-nav > :not([hidden]):not(.home-brand)"), nr = nav ? nav.getBoundingClientRect() : null; return { x: r.left, y: r.top, w: r.width, below: Boolean(lr) && lr.top >= r.bottom - 1 && lr.left < 40, navClear: !nr || nr.left >= r.right, talking: document.body.classList.contains("iko-talking") }; });
+      ok(tl.x < 24 && tl.y < 16 && tl.w >= 44 && tl.below && tl.navClear && tl.talking, `${tag}: Iko sits top left (a 44px+ pebble), its hello just under it, the cloud's links clear of it`, JSON.stringify(tl));
+      await p.waitForFunction(() => document.querySelector("#iko-line").hidden, null, { timeout: 12000 }); await p.waitForTimeout(100); /* the hello's own 9 s */
+      const fold = await p.evaluate(() => ({ pebble: !document.querySelector("#iko-wrap").hidden, line: !document.querySelector("#iko-line").hidden, talking: document.body.classList.contains("iko-talking") }));
+      ok(fold.pebble && !fold.line && !fold.talking, `${tag}: once said, it folds back to just the pebble`, JSON.stringify(fold));
       /* a node: its card opens; Iko stays clear of it; tapping Iko takes that node along */
       const pt = await p.evaluate(() => { const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view, C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), id = c.order.find((x) => c.nodes[x].label === "Volcanoes"), q = v.project(id), r = document.querySelector("#cloud-canvas").getBoundingClientRect(); return { x: r.left + q.x, y: r.top + q.y }; });
       await p.mouse.click(pt.x, pt.y); await p.waitForTimeout(900);
