@@ -401,6 +401,7 @@ body.intake .cloud-start { top: 50%; max-width: calc(100% - 24px - env(safe-area
 body.intake .cloud-start.scrolls { overflow-y: auto; padding-bottom: 4px; }
 body.intake .cs-ex .ex-row { flex-wrap: wrap; }
 body.kbd .cloud-foot { visibility: hidden; } /* the keyboard is up: the fine print steps aside for the field and Begin */
+body.intake.kbd .cs-name { display: none; } /* the keyboard leaves a short column: the name steps out rather than half-showing under Iko */
 /* Iko on the opening question: its line and cue beside the pebble (not under it, where the question is) */
 body.intake .iko-wrap { flex-direction: row; align-items: flex-start; gap: 8px; }
 body.intake .iko-line { order: 1; margin: 6px 0 0; max-width: calc(100vw - 92px - env(safe-area-inset-left) - env(safe-area-inset-right)); }

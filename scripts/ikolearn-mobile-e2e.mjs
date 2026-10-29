@@ -79,6 +79,15 @@ async function boot(spec, touch) {
   return { ctx, p, errs, calls };
 }
 const shot = async (p, name) => { if (SHOTS) { await p.waitForTimeout(350); await p.screenshot({ path: path.join(SHOTS, `pr100-after-390-${name}.png`) }); } };
+/* the Pick up row (and the Waiting for you chips): each chip's card and whether it's finished; a test and "what comes next" kept apart */
+const pickUp = (p) => p.evaluate(() => {
+  const C = window.IkoCloud, P = window.IkoPlan, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), by = (l) => c.order.find((x) => c.nodes[x].label === l);
+  const f = document.querySelector(".cloud-flow:not([hidden])");
+  if (!f) return { shown: false, chips: [], kicker: false };
+  const chips = [...f.querySelectorAll(":scope > .chip, :scope > button.chip, .cf-note .dir-chip")].map((b) => { const t = b.textContent.trim(), kind = /^Test: /.test(t) ? "test" : /^Next in /.test(t) ? "grow" : b.classList.contains("dir-chip") ? "waiting" : "card"; const l = t.replace(/^Test: |^Next in /, ""), id = by(l); return { t, kind, finished: kind === "waiting" ? !c.order.some((x) => { let n = c.nodes[x]; while (n && n.parent && n.parent !== id) n = c.nodes[n.parent]; return n && n.parent === id && P.unfinished(c, x); }) : id ? P.finished(c, id) : null }; });
+  const cont = [...document.querySelectorAll("button, a")].filter((b) => /^Continue /.test(b.textContent) && b.offsetParent).map((b) => b.textContent);
+  return { shown: true, kicker: Boolean(f.querySelector(":scope > .kicker")), chips, cont };
+});
 const DONE = ["Coral Reefs", "Whales", "Shapes", "Ocean Life"];
 const MIXED = { act: { "Coral Reefs": { ago: 3, done: true }, Shapes: { ago: 2, done: true }, "Ocean Life": { ago: 2.5, done: true }, Shading: { ago: 1.5 }, Whales: { ago: 0.1, done: true } } };
 
@@ -100,6 +109,9 @@ const MIXED = { act: { "Coral Reefs": { ago: 3, done: true }, Shapes: { ago: 2, 
       return { got, bad, first, deckDone };
     }, DONE);
     ok(!many.bad.length && many.deckDone >= 3, "draw: 60 draws (some seeds skipping the card in hand) never return a finished card, though the deck holds finished ones", JSON.stringify(many));
+    const pu = await pickUp(p);
+    ok(pu.kicker && pu.chips.filter((x) => x.kind === "card").length >= 2 && pu.chips.filter((x) => x.kind === "card" || x.kind === "waiting").every((x) => x.finished === false), "Pick up (mixed): every card chip is unfinished, the freed places filled with the next unfinished ones", JSON.stringify(pu));
+    await shot(p, "pickup");
     ok(many.first === "Tides", "draw: the current path's next unfinished step comes first (Whales was last; Tides is next in Ocean Life)", JSON.stringify(many));
     /* the button, over and over: each lesson it opens is unfinished */
     const seen = [];
@@ -123,6 +135,8 @@ const MIXED = { act: { "Coral Reefs": { ago: 3, done: true }, Shapes: { ago: 2, 
   try {
     const none = await p.evaluate(() => { const C = window.IkoCloud, P = window.IkoPlan, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")); return [0, 1, 2].map((s) => P.draw(c, { seed: s })); });
     ok(none.every((x) => x === null), "all finished: the draw returns nothing (no finished card as active work)", JSON.stringify(none));
+    const pa = await pickUp(p);
+    ok(pa.chips.every((x) => x.kind === "test" || x.kind === "grow") && !pa.cont.length, "Pick up (all finished): no finished card chip and no Continue (only an optional test or what comes next)", JSON.stringify(pa));
     const c0 = calls.length;
     await p.locator(".cloud-flow .draw-btn").tap(); await p.waitForTimeout(500);
     const st = await p.evaluate(() => { const n = document.querySelector(".cloud-flow:not([hidden]) .cf-note.dir-done"), a = n && n.querySelector(".dir-ask"), r = n ? n.getBoundingClientRect() : null; return { lesson: !document.querySelector("#lesson").hidden, note: n ? n.innerText.replace(/\s+/g, " ") : "", focus: document.activeElement === a, inView: Boolean(r) && r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth }; });
@@ -185,6 +199,50 @@ const MIXED = { act: { "Coral Reefs": { ago: 3, done: true }, Shapes: { ago: 2, 
     const a = await p.evaluate(() => document.activeElement && document.activeElement.id);
     ok(a === "iko-in", "Iko with a mouse: opens straight into its text field", a);
     ok(!errs.length, "Iko with a mouse: no page errors", errs.join(" | "));
+  } finally { await ctx.close(); }
+}
+/* 5. WhatsApp's in-app browser on an iPhone (390x664, the iOS keyboard ~340px): the opening question with the name above it,
+   and tapping Iko (on the question, and on the cloud) never brings the keyboard up */
+{
+  const UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 WhatsApp/24.20.79";
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 664 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, userAgent: UA, timezoneId: "America/Toronto" });
+  const p = await ctx.newPage();
+  p.setDefaultTimeout(8000);
+  const errs = [];
+  p.on("pageerror", (e) => errs.push("pageerror " + e.message));
+  const cdp = await ctx.newCDPSession(p); await cdp.send("Emulation.setSafeAreaInsetsOverride", { insets: { top: 47, bottom: 34 } });
+  await p.addInitScript(HOOK);
+  /* every focus() on Iko's field, from anywhere (an open handler, a transitionend, a timer) */
+  await p.addInitScript(() => { const f = HTMLElement.prototype.focus; HTMLElement.prototype.focus = function (...a) { if (this.id === "iko-in") (window.__ikoFocus = window.__ikoFocus || []).push(new Error().stack.split("\n")[2] || ""); return f.apply(this, a); }; });
+  await p.route("**/api/ikolearn/**", (r) => { const at = new URL(r.request().url()).pathname.replace("/api/ikolearn", ""); if (at === "/examples") return r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, examples: ["Stars", "Rain", "Games", "Kites"], growth: ["Patience"] }) }); return r.fulfill({ status: 503, contentType: "application/json", body: '{"ok":false,"reason":"off"}' }); });
+  try {
+    await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
+    ok(!(await p.$("[autofocus]")), "WhatsApp iOS: nothing on the page has autofocus");
+    await p.tap('.who-opt[data-who="self"]'); await p.fill("#name-in", "Shawn"); await p.press("#name-in", "Enter");
+    await p.waitForSelector("#cloud-start:not([hidden])"); await p.waitForTimeout(1800);
+    const geo = () => p.evaluate(() => { const r = (s) => { const e = document.querySelector(s); if (!e || e.hidden || !e.getClientRects().length || getComputedStyle(e).visibility === "hidden") return null; const b = e.getBoundingClientRect(); return { x: b.left, y: b.top, r: b.right, b: b.bottom }; };
+      /* what shows of the name: the column scrolls on a short screen (the keyboard up), and clips what's scrolled past */
+      const cs = r("#cloud-start"), n0 = r("#cs-name"), nc = n0 && cs ? { x: Math.max(n0.x, cs.x), y: Math.max(n0.y, cs.y), r: Math.min(n0.r, cs.r), b: Math.min(n0.b, cs.b) } : null;
+      const name = nc && nc.r > nc.x && nc.b > nc.y ? nc : null, parts = ["#cs-hi", "#cs-q", "#cs-in", "#cs-go", "#iko", "#iko-line", "#iko-cue"].map((s) => [s, r(s)]).concat([...document.querySelectorAll("#cs-ex .ex-chip, #cs-ex .ex-more")].map((e, i) => ["chip" + i, (() => { const b = e.getBoundingClientRect(); return { x: b.left, y: b.top, r: b.right, b: b.bottom }; })()])).filter((x) => x[1]);
+      const hit = (a, b) => a.x < b.r - 0.5 && b.x < a.r - 0.5 && a.y < b.b - 0.5 && b.y < a.b - 0.5;
+      const vv = window.visualViewport, top = vv.offsetTop, bot = vv.offsetTop + vv.height;
+      return { name, q: r("#cs-q"), over: name ? parts.filter((x) => hit(name, x[1])).map((x) => x[0]) : [], shows: Boolean(name), clipped: Boolean(n0) && !name, inView: name ? name.y >= top && name.b <= bot : false, cx: name ? (name.x + name.r) / 2 : 0, iw: innerWidth };
+    });
+    const g1 = await geo();
+    ok(g1.shows && g1.name && g1.q && g1.name.b <= g1.q.y && !g1.over.length && Math.abs(g1.cx - g1.iw / 2) < 4, "WhatsApp iOS: the name sits centred above the question, over nothing (Iko, the text, the field, Begin, the chips)", JSON.stringify(g1));
+    if (SHOTS) { await p.waitForTimeout(300); await p.screenshot({ path: path.join(SHOTS, "pr100-after-whatsapp-ios-intake.png") }); }
+    /* the iOS keyboard: the name is never ghosted over the chips */
+    await p.tap("#cs-in"); await p.evaluate(() => window.__keyboard(340)); await p.waitForTimeout(450);
+    const g2 = await geo();
+    if (SHOTS) await p.screenshot({ path: path.join(SHOTS, "pr100-after-whatsapp-ios-keyboard.png") });
+    ok(!g2.over.length, "WhatsApp iOS + keyboard (340px): the name never shows over Iko, the text or the chips (scrolled out of the short column, or clear)", JSON.stringify(g2));
+    await p.evaluate(() => { document.activeElement.blur(); window.__keyboard(0); }); await p.waitForTimeout(400);
+    /* tapping Iko: the sheet opens, the field is never focused (now, after its transition, or a moment later) */
+    await p.tap("#iko"); await p.waitForSelector("#iko-sheet:not([hidden])"); await p.waitForTimeout(900);
+    const k = await p.evaluate(() => { const s = document.querySelector("#iko-sheet").getBoundingClientRect(); return { active: document.activeElement && (document.activeElement.id || document.activeElement.tagName), calls: window.__ikoFocus || [], coarse: matchMedia("(pointer: coarse)").matches, fits: s.top >= 0 && s.bottom <= innerHeight }; });
+    ok(k.coarse && k.active !== "iko-in" && !k.calls.length && k.fits, "WhatsApp iOS: tapping Iko opens its sheet without focusing the field (no keyboard), not even after the transition", JSON.stringify(k));
+    if (SHOTS) { await p.waitForTimeout(300); await p.screenshot({ path: path.join(SHOTS, "pr100-after-whatsapp-ios-iko-open.png") }); }
+    ok(!errs.length, "WhatsApp iOS: no page errors", errs.join(" | "));
   } finally { await ctx.close(); }
 }
 await browser.close(); server.close();

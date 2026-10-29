@@ -1692,6 +1692,9 @@
   }
 
   /* ---------- suggestions and Draw (orchestrator.js, no calls) ---------- */
+  /* a suggestion still worth offering: a card only while it's unfinished (P.unfinished, as Draw); a test and "what comes
+     next" are about finished work by design. Also guards a list saved before the card was finished. */
+  function offerable(it) { return it.kind === "test" || it.kind === "grow" || P.unfinished(state.cloud, it.id); }
   function refreshSuggest() { state.suggest = P.suggest(state.cloud); save(); return state.suggest; }
   /* A test as a card-shaped tile: the parent, how much is finished under it. */
   function testTile(pid, onOpen) {
@@ -1734,7 +1737,7 @@
   }
   /* The always-there next actions: suggested cards, Draw, Continue the active lesson, and the cloud. */
   function flowBlock(where) {
-    var items = (state.suggest || []).filter(function (it) { return nodeOf(it.id) || it.kind === "ask"; });
+    var items = (state.suggest || []).filter(function (it) { return it.kind === "ask" || (nodeOf(it.id) && offerable(it)); });
     var box = mk("div", "flow-in");
     box.appendChild(mk("p", "kicker", "Pick up a card"));
     var empty = !state.cloud.order.length;
@@ -1761,7 +1764,7 @@
     var draw = mk("button", "btn draw-btn", "Draw a card"); draw.type = "button";
     draw.addEventListener("click", function () { drawCard(draw); });
     acts.appendChild(draw);
-    var act = nodeOf(state.cloud.active);
+    var act = nodeOf(state.cloud.active) && !P.finished(state.cloud, state.cloud.active) ? nodeOf(state.cloud.active) : null; /* never a finished lesson as "Continue" (a subject's own lesson can be active too) */
     if (act) acts.appendChild(linkBtn("Continue " + act.label, function () { openLesson(act.id); }, "btn quiet"));
     if (where !== "cloud") acts.appendChild(linkBtn("Your cloud", openCloud, "btn quiet"));
     box.appendChild(acts);
@@ -1935,8 +1938,8 @@
     if (note) cloudFlow.appendChild(note);
     var din = note && note.querySelector(".dir-in");
     if (din && (had || state.dirForm !== state.dirFocused)) { din.focus(); state.dirFocused = state.dirForm; }
-    var items = refreshSuggest().filter(function (it) { return nodeOf(it.id); });
-    cloudFlow.appendChild(mk("span", "kicker", "Pick up"));
+    var items = refreshSuggest().filter(function (it) { return nodeOf(it.id) && offerable(it); });
+    if (items.length) cloudFlow.appendChild(mk("span", "kicker", "Pick up")); /* nothing to pick up: just Draw (and its all-done nudge) */
     items.forEach(function (it) {
       var n = nodeOf(it.id);
       cloudFlow.appendChild(linkBtn(it.kind === "test" ? "Test: " + n.label : it.kind === "grow" ? "Next in " + n.label : n.label, function () { if (it.kind === "test") openTest(it.id); else if (it.kind === "grow") createNext(it.id); else openLesson(it.id); }, "chip"));
@@ -2105,6 +2108,7 @@
     if (act) row("Lately", act);
     if (st.insight) box.appendChild(mk("p", "st-insight", st.insight.text));
     var nx = nodeOf(state.cloud.next);
+    if (nx && !P.unfinished(state.cloud, nx.id)) nx = nodeOf(P.pathNext(state.cloud, nx.id)); /* finished since: the next unfinished step after it */
     if (nx) {
       var pnx = mk("p", "next-up", "Next up: ");
       pnx.appendChild(linkBtn(nx.label, function () { openPanel(nx.id); }));

@@ -1459,6 +1459,12 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     ok(draws.every((l) => l && !["Coral Reefs", "Whales", "Shapes", "Ocean Life"].includes(l)), "draw: 40 draws over a deck holding finished cards never return a finished one", draws.join());
     ok(P.draw(C.deserialize(src), { now: T0 + DAYMS }) === L("Tides") && C.deserialize(src).nodes[P.draw(C.deserialize(src), { now: T0 + DAYMS, from: L("Shapes") })].label === "Shading", "draw: the current path's next unfinished step first (the card in hand, else the active one, else the last touched)");
     ok(draws.filter((l, i) => i % 2).every((l) => l !== "Tides"), "draw: the card already open is never drawn again");
+    const sgs = [0, 1, 2, 3].map((k) => P.suggest(C.deserialize(src), { now: T0 + (k + 1) * DAYMS, seed: k, n: 4, noAsk: true }));
+    ok(sgs.every((list) => list.filter((x) => x.kind !== "test" && x.kind !== "grow").every((x) => P.unfinished(dm, x.id)) && list.filter((x) => x.kind !== "test" && x.kind !== "grow").length >= 2), "pick up: suggestions never offer a finished card (the same unfinished() as Draw), the freed places filled", JSON.stringify(sgs.map((l) => l.map((x) => x.kind + ":" + dm.nodes[x.id].label))));
+    ok(P.unfinished(dm, L("Tides")) && !P.unfinished(dm, L("Whales")) && !P.unfinished(dm, dm.nodes[L("Tides")].parent ? C.subjects(dm)[0].id : null), "unfinished(): a topic not finished (never a subject)");
+    const allDm = C.deserialize(src); allDm.order.forEach((x) => { if (allDm.nodes[x].parent) allDm.nodes[x].doneAt = T0 + 700; });
+    allDm.profile.visits = 6;
+    ok(P.directions(allDm, T0 + 90 * DAYMS).revisit.length === 0 && P.suggest(allDm, { now: T0 + 2 * DAYMS, noAsk: true }).every((x) => x.kind === "test" || x.kind === "grow"), "all finished: no finished card in Pick up, nothing \"Waiting for you\"");
   }
 
   // re-ask lightly: one question when the cloud is thin or the learner seems stuck, every few days at most
@@ -3678,6 +3684,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/window\.visualViewport\.addEventListener\("resize"/.test(app) && /body\.kbd \.cloud-foot \{ visibility: hidden; \}/.test(css), "intake: the keyboard (visualViewport) keeps the field and Begin in view; the fine print steps aside");
   ok(/\.iko-wrap \{ position: fixed; left: calc\(8px \+ env\(safe-area-inset-left\)\); top: calc\(6px \+ env\(safe-area-inset-top\)\);/.test(css) && /bottom: calc\(2px \+ env\(safe-area-inset-bottom\)\)/.test(css) && /viewport-fit=cover/.test(html), "safe areas: Iko, the cloud's controls and the fine print clear the notch and the home bar");
   ok(/body\.intake \.iko-wrap \{ flex-direction: row;/.test(css), "intake: Iko's line and cue sit beside the pebble, not over the question");
+  ok(!/autofocus/i.test(html) && !/transitionend[\s\S]{0,200}ikoIn\.focus/.test(app) && /if \(!o\.tricky && !coarse\(\)\) \{ try \{ el\.ikoIn\.focus/.test(app) && (app.match(/el\.ikoIn\.focus\(/g) || []).length === 3, "Iko on touch: no autofocus, no focus on transitionend; the open handler focuses the field only with a fine pointer (the other focus is an idea tapped into an open sheet)");
 }
 
 if (fails.length) {

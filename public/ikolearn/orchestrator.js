@@ -121,7 +121,7 @@
   }
   function nextChild(cloud, pid, sc) {
     var ids = orderedChildren(cloud, pid, sc);
-    for (var i = 0; i < ids.length; i++) if (!C.isDone(cloud, ids[i])) return ids[i];
+    for (var i = 0; i < ids.length; i++) if (!finished(cloud, ids[i])) return ids[i];
     return null;
   }
   /* Fork choices in display order: by rank, keeping each choice's reason with it. */
@@ -383,7 +383,7 @@
     var subs = C.subjects(cloud).slice().sort(function (a, b) { return (drawn[a.label] || 0) - (drawn[b.label] || 0) || a.weight - b.weight || cloud.order.indexOf(a.id) - cloud.order.indexOf(b.id); });
     for (var i = 0; i < subs.length && out.length < max; i++) {
       var x = C.nextFor(cloud, subs[i].id);
-      if (!x || C.isDone(cloud, x) || skip(x)) x = nextChild(cloud, subs[i].id, sc);
+      if (!x || finished(cloud, x) || skip(x)) x = nextChild(cloud, subs[i].id, sc);
       if (x && !skip(x)) out.push({ id: x, subject: subs[i].label });
     }
     return out;
@@ -398,8 +398,11 @@
     opts = opts || {};
     var now = opts.now || Date.now(), n = opts.n || PLAN.suggest, sc = scores(cloud, now), tops = topRank(cloud, now);
     var out = [], seen = {}, exclude = opts.exclude || {};
-    var skip = function (id) { return !nodeOf(cloud, id) || seen[id] || exclude[id]; };
-    var add = function (id, kind, why) { if (skip(id) && kind !== "test") return false; if (kind === "test" && seen["t:" + id]) return false; seen[kind === "test" ? "t:" + id : id] = 1; out.push({ id: id, kind: kind, why: why, top: tops[id] || 0 }); return true; };
+    /* a card offered as work is never finished (unfinished(), the same rule as Draw); a test and "what comes next" are
+       about finished work by design (an optional check; new topics), so they keep their own rules */
+    var taken = function (id) { return !nodeOf(cloud, id) || seen[id] || exclude[id]; };
+    var skip = function (id) { return taken(id) || !unfinished(cloud, id); };
+    var add = function (id, kind, why) { if (kind === "grow" ? taken(id) : kind !== "test" && skip(id)) return false; if (kind === "test" && seen["t:" + id]) return false; seen[kind === "test" ? "t:" + id : id] = 1; out.push({ id: id, kind: kind, why: why, top: tops[id] || 0 }); return true; };
     var tests = readyTests(cloud, now);
     if (tests[0]) { add(tests[0].id, "test", "Ready for a test"); C.markOffered(cloud, tests[0].id, now); }
     /* a parent whose children are all done: "what comes next" (one creation call when picked) */
@@ -446,7 +449,7 @@
   function draw(cloud, opts) {
     opts = opts || {};
     var now = opts.now || Date.now(), day = D.dayOf(now), skipId = opts.skip || null;
-    var open = function (x) { return Boolean(x) && x !== skipId && Boolean(nodeOf(cloud, x)) && Boolean(cloud.nodes[x].parent) && !cloud.nodes[x].end && !finished(cloud, x); };
+    var open = function (x) { return Boolean(x) && x !== skipId && unfinished(cloud, x) && !cloud.nodes[x].end; };
     var id = null, from = [opts.from, cloud.active, lastTouched(cloud)].filter(function (x) { return x && nodeOf(cloud, x); })[0] || null;
     if (from) { var nx = pathNext(cloud, from); id = open(nx) ? nx : open(from) ? from : null; }
     if (!id && (cloud.deck || []).length) id = D.drawSession(cloud, { day: day, size: cloud.deck.length, seed: opts.seed }).filter(open)[0] || null;
@@ -461,6 +464,9 @@
     if (id) C.logDraw(cloud, day, [id]);
     return id;
   }
+  /* Active work, for every place that offers it (Draw, Pick up, Continue, Next up, Waiting for you): a topic (not a
+     subject) that isn't finished(). */
+  function unfinished(cloud, x) { var n = nodeOf(cloud, x); return Boolean(n && n.parent && !finished(cloud, x)); }
   /* The topic the learner touched last (the current path when no card is in hand). */
   function lastTouched(cloud) {
     var best = null, t = 0;
@@ -708,7 +714,7 @@
       while (x && x.parent && cloud.nodes[x.parent] && seen++ < 64) x = cloud.nodes[x.parent];
       return (root[id] = x ? x.id : id);
     };
-    C.subjects(cloud).forEach(function (sj) { by[sj.id] = { id: sj.id, label: sj.label, born: sj.born || 0, last: sj.touched || sj.born || 0, started: false, done: 0, right: 0, doneAts: [] }; });
+    C.subjects(cloud).forEach(function (sj) { by[sj.id] = { id: sj.id, label: sj.label, born: sj.born || 0, last: sj.touched || sj.born || 0, started: false, done: 0, right: 0, doneAts: [], open: 0 }; });
     cloud.order.forEach(function (id) {
       var n = cloud.nodes[id];
       if (!n || !n.parent) return;
@@ -716,6 +722,7 @@
       if (!st) return;
       st.last = Math.max(st.last, n.touched || 0);
       if (n.opened || (n.engaged || 0) > 0 || (n.correct || 0) > 0 || n.doneAt) st.started = true;
+      if (!finished(cloud, id)) st.open += 1;
       st.right += n.correct || 0;
       if (n.doneAt && !n.ghost) { st.done += 1; st.doneAts.push(n.doneAt); }
     });
@@ -731,7 +738,7 @@
     out.invite = subs.length < D.invite && !d.off && (d.n || 0) < D.invites;
     /* 2. a return visit: branches left alone for a while (the oldest-left started ones first, then ones never opened) */
     if ((p.visits || 0) >= 2 && subs.length >= 2 && !(d.quiet && now - d.quiet < D.revisit.quietDays * DAY)) {
-      var stale = list.filter(function (x) { return now - x.last >= D.revisit.days * DAY; });
+      var stale = list.filter(function (x) { return now - x.last >= D.revisit.days * DAY && x.open > 0; }); /* nothing left to do there: not "waiting" */
       out.revisit = stale.filter(function (x) { return x.started; }).sort(function (a, b) { return a.last - b.last; })
         .concat(stale.filter(function (x) { return !x.started; }).sort(function (a, b) { return a.born - b.born; }))
         .slice(0, D.revisit.max).map(function (x) { return x.id; });
@@ -802,7 +809,7 @@
     PLAN: PLAN, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, needsRepair: needsRepair, repairRequest: repairRequest,
     MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild, nextStep: nextStep,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
-    suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, placeTopic: placeTopic, placedTopic: placedTopic, DESCRIBE: DESCRIBE, describeBatch: describeBatch, isBroad: isBroad,
+    suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, unfinished: unfinished, placeTopic: placeTopic, placedTopic: placedTopic, DESCRIBE: DESCRIBE, describeBatch: describeBatch, isBroad: isBroad,
     onboarding: onboarding, openQuestion: openQuestion, examples: examples, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics, directions: directions, homeStats: homeStats,
     needsNext: needsNext, readyNext: readyNext, createRequest: createRequest, OPENING: OPENING
   };

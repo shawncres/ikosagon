@@ -1,6 +1,6 @@
 // End-to-end checks for the opening question on phones and in in-app browsers (PR 100), in a real browser, every
 // /api/ikolearn call mocked: at 320x568, 360x640, 375x667, 390x844 and 412x915, and as Instagram/Facebook (iOS) and
-// TikTok/LinkedIn (Android) in-app browsers with their shorter viewports and safe-area insets. Asserts that no box
+// TikTok/LinkedIn (Android) and WhatsApp (iOS) in-app browsers with their shorter viewports and safe-area insets. Asserts that no box
 // overlaps another (Iko, its hello line and cue, the name plate, the greeting, the question, the field, Begin, each idea,
 // More and the fine print), that everything is on screen and every target is at least 44px, that the name sits centred
 // above the question while the canvas leaves it out and the empty cloud holds still, that picking ideas and More keep the
@@ -48,6 +48,9 @@ const SIZES = [
   { tag: "instagram-ios-390x664", w: 390, h: 664, ua: IOS("Instagram 330.0.0.25.86 (iPhone14,5; iOS 17_5; en_US; en; scale=3.00; 1170x2532)"), inset: { top: 47, bottom: 34 } },
   { tag: "facebook-ios-375x548", w: 375, h: 548, ua: IOS("[FBAN/FBIOS;FBAV/470.0.0.40.97;FBBV/619393640;FBDV/iPhone12,8;FBMD/iPhone;FBSN/iOS;FBSV/17.5;FBSS/2;FBCR/;FBID/phone;FBLC/en_US;FBOP/5]"), inset: { top: 20, bottom: 0 } },
   { tag: "tiktok-android-360x560", w: 360, h: 560, ua: AND("trill_340005 JsSdk/1.0 NetType/WIFI Channel/googleplay AppName/musical_ly app_version/34.0.5 ByteLocale/en"), inset: { top: 24, bottom: 0 } },
+  /* WhatsApp's in-app browser on an iPhone (Shawn's #99 screenshots): ~390 wide under the URL pill, a bottom toolbar, the
+     iOS keyboard with its accessory bar taking ~340px */
+  { tag: "whatsapp-ios-390x664", w: 390, h: 664, ua: IOS("WhatsApp/24.20.79"), inset: { top: 47, bottom: 34 }, kb: 340 },
   { tag: "linkedin-android-412x775", w: 412, h: 775, ua: AND("LinkedInApp/4.1.950"), inset: { top: 24, bottom: 16 } },
 ];
 const IDEAS = ["Stars", "Rain", "Games", "Kites", "Chess", "Gardens", "Volcanoes", "Bread"];
@@ -142,7 +145,7 @@ for (const s of SIZES) {
   ok(nm2 && Math.abs(nm2.y - nm.y) <= 1, `${tag}: the question doesn't jump when the hello folds`, JSON.stringify([nm.y, nm2 && nm2.y]));
   /* 4. the keyboard: the field and Begin stay in view above it, the fine print steps aside */
   await p.tap("#cs-in"); await p.waitForTimeout(100);
-  const kb = Math.round(s.h * 0.42);
+  const kb = s.kb || Math.round(s.h * 0.42);
   await p.evaluate((h) => window.__keyboard(h), kb); await p.waitForTimeout(450);
   const L3 = await boxes(p), vh = s.h - kb;
   const fld = get(L3, "field"), beg = get(L3, "Begin");
