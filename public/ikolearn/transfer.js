@@ -1,10 +1,12 @@
 /*
- * IkoLearn cloud files (IkoTransfer): a learner's whole cloud as one file, [firstname].ikolearn, to keep or to carry to
+ * IkoCloud files (IkoTransfer): a learner's whole cloud as one file, [firstname].ikocloud, to keep or to carry to
  * another device. No server, no account: the file is made and read in the browser.
  *
  * The file is plain JSON:
- *   { format: "ikolearn", version: 1, exportedAt: ISO time, storageVersion: 9, app: "IkoLearn",
+ *   { format: "ikocloud", version: 1, exportedAt: ISO time, storageVersion: 9, app: "IkoLearn",
  *     data: { name, cloud, notes, lessons, tests, seen } }
+ *   Downloaded as application/json (safe to email) under the .ikocloud name. Earlier files (format "ikolearn", saved as
+ *   .ikolearn, the same layout otherwise) still open, as does the same JSON saved as .json.
  *   - name     the learner's first name
  *   - cloud    the v9 cloud exactly as saved (nodes with their parents, children, positions and colours, cards and their
  *              progress, the deck, paths and forks, Where Next and Also in progress, the profile with #98's directions
@@ -33,17 +35,20 @@
   var C = node_ ? require("./cloud-model.js") : root.IkoCloud;
   var PR = node_ ? require("./profiles.js") : root.IkoProfiles;
   /* eslint-enable @typescript-eslint/no-require-imports */
-  var FORMAT = "ikolearn", VERSION = 1, EXT = ".ikolearn", MAX_BYTES = 8e6;
+  var FORMAT = "ikocloud", LEGACY = ["ikolearn"], VERSION = 1, EXT = ".ikocloud", MAX_BYTES = 8e6;
+  /* the file picker: our names, the old one, JSON, and any file at all (mobile pickers grey out extensions they don't
+     know; the contents are checked in full instead) */
+  var ACCEPT = ".ikocloud,.ikolearn,.json,application/json,application/octet-stream,text/plain";
   var KEYS = ["name", "cloud", "notes", "lessons", "tests", "seen"]; /* what a file carries (ikolearn.v1.<key>) */
   var DROP = ["thread", "view"]; /* cleared when a file is opened: the old conversation and camera aren't the file's */
   var live = function (k) { return "ikolearn.v1." + k; };
   var MSG = {
-    saved: function (f) { return "Your cloud has been saved as " + f + ". Keep this file if you want to continue on another device."; },
-    confirm: "This will replace the cloud currently on this device with the one in the file. Continue?",
-    newer: "This file comes from a newer version of IkoLearn, so it can't be opened here yet. Nothing was changed.",
-    bad: "That file couldn't be opened as a cloud. Nothing was changed.",
+    saved: function (f) { return "Your IkoCloud has been saved as " + f + ". Keep this file if you want to continue on another device."; },
+    confirm: "This will replace the IkoCloud currently on this device with the one in the file. Continue?",
+    newer: "This IkoCloud comes from a newer version of IkoLearn, so it can't be opened here yet. Nothing was changed.",
+    bad: "That file couldn't be opened as an IkoCloud. Nothing was changed.",
     full: "This device already has the most learners it can hold. Nothing was changed.",
-    store: "There wasn't room to open that cloud on this device. Nothing was changed.",
+    store: "There wasn't room to open that IkoCloud on this device. Nothing was changed.",
     none: "Nothing was changed."
   };
 
@@ -51,10 +56,10 @@
   function obj(x) { return x && typeof x === "object" && !Array.isArray(x) ? x : null; }
   function json(raw, fallback) { if (raw == null || raw === "") return fallback; try { var v = JSON.parse(raw); return v == null ? fallback : v; } catch { return fallback; } }
 
-  /* The download's name: the first name (letters, marks, digits, apostrophes and hyphens; spaces become hyphens), then .ikolearn */
+  /* The download's name: the first name (letters, marks, digits, apostrophes and hyphens; spaces become hyphens), then .ikocloud */
   function fileName(name) {
     var n = String(name == null ? "" : name).normalize("NFC").replace(/[^\p{L}\p{M}\p{N}' -]/gu, "").trim().replace(/\s+/g, "-").replace(/^[.'-]+|[.'-]+$/g, "").slice(0, 40);
-    return (n || "cloud") + EXT;
+    return (n || "IkoCloud") + EXT;
   }
 
   /* The file for the learner learning now, from the store (call it after the app's own save). -> { name, text, file } or null */
@@ -75,7 +80,7 @@
     if (typeof text !== "string" || !text.trim() || text.length > MAX_BYTES) return { ok: false, why: "json" };
     var f;
     try { f = JSON.parse(text); } catch { return { ok: false, why: "json" }; }
-    if (!obj(f) || f.format !== FORMAT) return { ok: false, why: "format" };
+    if (!obj(f) || (f.format !== FORMAT && LEGACY.indexOf(f.format) < 0)) return { ok: false, why: "format" };
     if (typeof f.version !== "number" || !Number.isInteger(f.version) || f.version < 1) return { ok: false, why: "version" };
     if (f.version > VERSION) return { ok: false, why: "newer" };
     if (f.storageVersion != null && (typeof f.storageVersion !== "number" || !(f.storageVersion >= 1))) return { ok: false, why: "version" };
@@ -145,7 +150,7 @@
     return { ok: true, how: how, name: name };
   }
 
-  var api = { FORMAT: FORMAT, VERSION: VERSION, EXT: EXT, KEYS: KEYS, DROP: DROP, MSG: MSG, fileName: fileName, build: build, parse: parse, apply: apply, message: message, snapshot: snapshot, restore: restore };
+  var api = { FORMAT: FORMAT, LEGACY: LEGACY, VERSION: VERSION, EXT: EXT, ACCEPT: ACCEPT, KEYS: KEYS, DROP: DROP, MSG: MSG, fileName: fileName, build: build, parse: parse, apply: apply, message: message, snapshot: snapshot, restore: restore };
   if (node_) module.exports = api;
   else root.IkoTransfer = api;
 })(typeof window !== "undefined" ? window : this);

@@ -1443,7 +1443,23 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   [C.findTopic(wd, "Moon"), C.findTopic(wd, "Mars")].forEach((k, i) => { C.engage(wd, k.id, "got", T0 + i); C.confirm(wd, k.id, true, T0 + 10 + i); C.confirm(wd, k.id, true, T0 + 20 + i); });
   C.setProfile(wd, { onboarded: true }, T0); C.joinDeck(wd, T0 + 30);
   const wdS = P.suggest(wd, { now: T0 + 5 * DAYMS }), wdD = P.draw(wd, { now: T0 + 5 * DAYMS });
-  ok(wdS.some((x) => x.kind === "grow") && wdS.some((x) => x.kind === "ask") && wdD && ["Moon", "Mars"].includes(wd.nodes[wdD].label) && !P.suggest(wd, { now: T0 + 5 * DAYMS, noAsk: true }).some((x) => x.kind === "ask"), "Draw never spends a call: it skips the grow and ask items and takes a card");
+  ok(wdS.some((x) => x.kind === "grow") && wdS.some((x) => x.kind === "ask") && wdD && wd.nodes[wdD].label === "Space" && !P.finished(wd, wdD) && !P.suggest(wd, { now: T0 + 5 * DAYMS, noAsk: true }).some((x) => x.kind === "ask"), "Draw never spends a call: it skips the grow and ask items and takes an unfinished card (Space, not its finished Moon and Mars)");
+  {
+    /* Draw (PR 100): never a finished card; the current path's next unfinished step first, then the deck, then something new */
+    const dm = C.create("Ada", T0);
+    C.applyCreate(dm, { items: [item("Ocean Life", ["Nature"], [kid("Coral Reefs", 1, 0.9), kid("Whales", 2, 0.8), kid("Tides", 3, 0.7)]), item("Drawing", ["Art"], [kid("Shapes", 1, 0.9), kid("Shading", 2, 0.8)])] }, { t: T0 });
+    const L = (l) => C.findTopic(dm, l).id;
+    ["Coral Reefs", "Whales", "Shapes"].forEach((l, i) => { const n = dm.nodes[L(l)]; n.ghost = false; n.opened = true; n.engaged = 3; n.spent = 600; n.doneAt = T0 + 100 + i; n.touched = T0 + 100 + i; });
+    Object.assign(dm.nodes[L("Shading")], { ghost: false, opened: true, engaged: 2, spent: 300, touched: T0 + 50 });
+    dm.nodes[L("Whales")].touched = T0 + 500;
+    C.setProfile(dm, { onboarded: true }, T0); C.joinDeck(dm, T0 + 600);
+    ["Coral Reefs", "Whales", "Shapes", "Shading"].forEach((l) => { if (!dm.deck.some((e) => e.id === L(l))) dm.deck.push({ id: L(l), label: l, subject: "", hue: "#7a5c3e", at: T0, best: 0, chain: [], blurb: "", ach: 0, tb: 0, ml: 0, inn: null, co: [] }); });
+    const src = C.serialize(dm), draws = [];
+    for (let i = 0; i < 40; i++) { const c = C.deserialize(src); const id = P.draw(c, { now: T0 + DAYMS + i * 3600e3, seed: i, skip: i % 2 ? L("Tides") : null }); draws.push(id ? c.nodes[id].label : null); }
+    ok(draws.every((l) => l && !["Coral Reefs", "Whales", "Shapes", "Ocean Life"].includes(l)), "draw: 40 draws over a deck holding finished cards never return a finished one", draws.join());
+    ok(P.draw(C.deserialize(src), { now: T0 + DAYMS }) === L("Tides") && C.deserialize(src).nodes[P.draw(C.deserialize(src), { now: T0 + DAYMS, from: L("Shapes") })].label === "Shading", "draw: the current path's next unfinished step first (the card in hand, else the active one, else the last touched)");
+    ok(draws.filter((l, i) => i % 2).every((l) => l !== "Tides"), "draw: the card already open is never drawn again");
+  }
 
   // re-ask lightly: one question when the cloud is thin or the learner seems stuck, every few days at most
   const ra = C.create("Mia", T0);
@@ -1860,7 +1876,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     right(c, k("Footprints").id, 3, T0 + 1100);
     const m3 = P.settleMerges(c, T0 + 1200);
     ok(m3.length === 1 && m3[0].ids.length === 1 && d.ml === 3 && d.absorbed.length === 7, "the last child that completes the whole core upgrades it alone (Merged III)");
-    ok(D.cardSpec(c, k("Fossils").id).absorbedInto === d.id && !P.draw(c, { now: T0 + DAYMS, seed: 1 }).picks?.some?.((x) => x.id === k("Fossils").id), "absorbed cards show their parent (and are not drawn loose)");
+    ok(D.cardSpec(c, k("Fossils").id).absorbedInto === d.id && P.draw(c, { now: T0 + DAYMS, seed: 1 }) !== k("Fossils").id, "absorbed cards show their parent (and are not drawn loose)");
     const dk = D.weigh ? D.weigh(c, T0 + DAYMS) : null;
     ok(!dk || !dk.some((x) => (x.id || x) === k("Fossils").id), "deck weighting skips absorbed cards whose parent is in the deck");
 
@@ -3568,14 +3584,16 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const live = { "ikolearn.v1.name": "Sam", "ikolearn.v1.cloud": raw, "ikolearn.v1.thread": '[{"id":"m1","role":"user","text":"secret chat"}]', "ikolearn.v1.view": '{"x":3}',
     "ikolearn.v1.notes": '{"n1":"a note"}', "ikolearn.v1.lessons": '{"l1":{"at":1,"got":true}}', "ikolearn.v1.tests": '{"t1":{"score":3}}', "ikolearn.v1.seen": '{"c":{"n1":"h"},"ev":2}' };
 
-  // file names: the first name, cleaned, then .ikolearn
-  eq([T.fileName("Shawn"), T.fileName("  Mary Ann "), T.fileName("Zoë"), T.fileName("O'Neil"), T.fileName("../x/<y>"), T.fileName(""), T.fileName("—")], ["Shawn.ikolearn", "Mary-Ann.ikolearn", "Zoë.ikolearn", "O'Neil.ikolearn", "xy.ikolearn", "cloud.ikolearn", "cloud.ikolearn"], "file: [firstname].ikolearn, sanitized (no paths, no symbols), a fallback when empty");
-  eq(T.MSG.saved("Shawn.ikolearn"), "Your cloud has been saved as Shawn.ikolearn. Keep this file if you want to continue on another device.", "file: the saved message, word for word");
-  eq(T.MSG.confirm, "This will replace the cloud currently on this device with the one in the file. Continue?", "file: the replace confirmation, word for word");
+  // file names: the first name, cleaned, then .ikocloud (an IkoCloud)
+  eq([T.fileName("Shawn"), T.fileName("  Mary Ann "), T.fileName("Zoë"), T.fileName("O'Neil"), T.fileName("../x/<y>"), T.fileName(""), T.fileName("—")], ["Shawn.ikocloud", "Mary-Ann.ikocloud", "Zoë.ikocloud", "O'Neil.ikocloud", "xy.ikocloud", "IkoCloud.ikocloud", "IkoCloud.ikocloud"], "file: [firstname].ikocloud, sanitized (no paths, no symbols), a fallback when empty");
+  eq(T.MSG.saved("Shawn.ikocloud"), "Your IkoCloud has been saved as Shawn.ikocloud. Keep this file if you want to continue on another device.", "file: the saved message, word for word");
+  eq(T.MSG.confirm, "This will replace the IkoCloud currently on this device with the one in the file. Continue?", "file: the replace confirmation, word for word");
+  ok(/IkoCloud/.test(T.MSG.bad) && /IkoCloud/.test(T.MSG.newer) && /IkoCloud/.test(T.MSG.store) && T.EXT === ".ikocloud" && T.FORMAT === "ikocloud" && T.LEGACY.includes("ikolearn"), "file: the errors name the IkoCloud; .ikocloud, format ikocloud, ikolearn still read");
+  ok(T.ACCEPT.split(",").includes(".ikocloud") && T.ACCEPT.split(",").includes(".ikolearn") && T.ACCEPT.split(",").includes("application/json") && T.ACCEPT.split(",").includes("application/octet-stream"), "file: the picker takes .ikocloud, .ikolearn, JSON and any file (mobile pickers grey out unknown extensions; contents are checked)");
 
   // building: the format, the version, what goes in and what never does
   const b = T.build(store(live), NOW);
-  ok(b && b.name === "Sam.ikolearn" && b.file.format === "ikolearn" && b.file.version === 1 && b.file.storageVersion === 9 && b.file.storageVersion === C.VERSION && b.file.exportedAt === new Date(NOW).toISOString(), "file: {format: ikolearn, version: 1, exportedAt, storageVersion: 9, data}");
+  ok(b && b.name === "Sam.ikocloud" && b.file.format === "ikocloud" && b.file.version === 1 && b.file.storageVersion === 9 && b.file.storageVersion === C.VERSION && b.file.exportedAt === new Date(NOW).toISOString(), "file: {format: ikocloud, version: 1, exportedAt, storageVersion: 9, data}");
   eq(Object.keys(b.file.data).sort(), ["cloud", "lessons", "name", "notes", "seen", "tests"], "file: carries the name, cloud, notes, lessons, tests and seen");
   ok(JSON.stringify(b.file.data.cloud) === raw && b.file.data.lessons.l1.got === true && b.file.data.seen.ev === 2, "file: the cloud exactly as stored, lessons and seen as they are");
   ok(!/secret chat|"thread"|"view"|profiles|apiKey|GEMINI|AIza/i.test(b.text), "file: no chat transcript, camera, learners index or keys");
@@ -3585,6 +3603,8 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const pr = T.parse(b.text);
   ok(pr.ok && pr.name === "Sam" && pr.values.cloud === raw && JSON.parse(pr.values.lessons).l1.got === true, "open: a saved file reads back exactly");
   const mut = (f) => { const o = JSON.parse(b.text); f(o); return JSON.stringify(o); };
+  const legacy = T.parse(mut((o) => { o.format = "ikolearn"; }));
+  ok(legacy.ok && legacy.values.cloud === raw && legacy.name === "Sam", "open: an earlier .ikolearn file (format ikolearn) still opens, exactly");
   eq([T.parse("").why, T.parse("{nope").why, T.parse("[1]").why, T.parse(mut((o) => { o.format = "other"; })).why, T.parse(mut((o) => { o.version = "1"; })).why, T.parse(mut((o) => { delete o.data; })).why,
     T.parse(mut((o) => { o.data.name = "<>"; })).why, T.parse(mut((o) => { o.data.cloud = { v: 9 }; })).why, T.parse(mut((o) => { o.data.cloud = { v: 9, n: [["broken"]] }; })).why, T.parse(mut((o) => { o.data.lessons = [1]; })).why],
   ["json", "json", "format", "format", "version", "fields", "fields", "fields", T.parse(mut((o) => { o.data.cloud = { v: 9, n: [["broken"]] }; })).why, "fields"], "open: empty, broken, wrong format or version, missing or bad fields are refused");

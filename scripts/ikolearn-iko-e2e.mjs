@@ -112,7 +112,7 @@ for (const width of [390, 1280]) {
       ok(st.q === "What are you curious about, or what do you enjoy?" && (st.text.match(/\?/g) || []).length === 1 && !/grow in yourself/.test(st.text) && !/grow in yourself/.test(st.thread), `${tag}: intake: one question at a time (the grow question isn't asked yet)`, JSON.stringify(st));
       ok(st.hi === "Hi Maya. Let's begin your learning cloud together." && st.inType === "INPUT" && st.ph === "In your own words" && !/\b(age|years? old|kids?|child|student|grade)\b/i.test(st.text), `${tag}: intake: a short hello and free text first (no age wording)`, JSON.stringify(st));
       ok(JSON.stringify(st.chips) === JSON.stringify(EX_A.slice(0, 3)) && st.more, `${tag}: intake: a few light ideas, straight from the API's list, with More`, JSON.stringify(st.chips));
-      ok(st.top > st.vh * 0.5 && st.top < st.vh * 0.68 && st.bottom < st.vh - 60, `${tag}: intake: near the optical centre, just under the name (not at the bottom)`, JSON.stringify({ top: st.top, bottom: st.bottom, vh: st.vh }));
+      ok(st.top > st.vh * 0.15 && st.top < st.vh * 0.5 && st.bottom < st.vh - 60, `${tag}: intake: near the optical centre, the name on top (not at the bottom)`, JSON.stringify({ top: st.top, bottom: st.bottom, vh: st.vh }));
       await p.click("#cs-ex .ex-more"); await p.waitForTimeout(100);
       const more = await p.evaluate(() => [...document.querySelectorAll("#cs-ex .ex-chip")].map((c) => c.textContent));
       ok(JSON.stringify(more) === JSON.stringify(EX_A.slice(3, 6)) && calls.filter((c) => c === "/examples").length === 1, `${tag}: intake: More cycles the ideas on the device (no new call)`, JSON.stringify(more));

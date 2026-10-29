@@ -1,6 +1,7 @@
-// End-to-end checks for the cloud as one file (Save cloud / Open cloud), in a real browser, every /api/ikolearn call
-// mocked (no model calls), at 390 (learning for yourself) and 1280 (guiding): Save cloud downloads [firstname].ikolearn
-// (structured JSON with a version; no conversation, no keys) and says so; Open cloud on a fresh device (the welcome's
+// End-to-end checks for the cloud as one file, an IkoCloud (Save IkoCloud / Open IkoCloud), in a real browser, every
+// /api/ikolearn call mocked (no model calls), at 390 (learning for yourself) and 1280 (guiding): Save IkoCloud downloads
+// [firstname].ikocloud (application/json, format "ikocloud" with a version; no conversation, no keys) and says so; an
+// earlier .ikolearn file (format "ikolearn") and the same JSON as .json still open; Open IkoCloud on a fresh device (the welcome's
 // link, no confirm) restores the cloud exactly and lands on the name in its home place; on a device with a cloud it asks
 // first, and Cancel changes nothing; an invalid or incomplete file, a newer version, or a write that fails part way all
 // change nothing (validated in full first, rolled back on failure); guiding: a new name is added as another learner, the
@@ -34,7 +35,7 @@ const ok = (c, name, d = "") => (c ? (pass += 1) : fails.push(`${name}${d ? ` ->
 const browser = await chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" });
 const HOOK = () => { let real; Object.defineProperty(window, "IkoCloudView", { configurable: true, get: () => real, set: (v) => { real = Object.assign({}, v, { create: (c, o) => { const view = v.create(c, o); (window.__views = window.__views || []).push({ id: c.id, view }); return view; } }); } }); };
 const KEYS = ["name", "cloud", "notes", "lessons", "tests", "seen"];
-const MSG_CONFIRM = "This will replace the cloud currently on this device with the one in the file. Continue?";
+const MSG_CONFIRM = "This will replace the IkoCloud currently on this device with the one in the file. Continue?";
 
 /* a learner with a real cloud: 3 subjects, finished and open topics, cards, a path, a dismissed invite, cached lessons, a test, notes */
 const SEED = ({ name, now, guide, other }) => {
@@ -115,42 +116,48 @@ const homeAt = (p) => p.evaluate(() => { const v = window.__views.filter((x) => 
 for (const width of [390, 1280]) {
   const tag = String(width), guide = width === 1280;
   let file = null, fileName = "", before = null;
-  /* 1. Save cloud (the name's card): Maya.ikolearn, structured JSON, everything to resume, no chat, no keys */
+  /* 1. Save IkoCloud (the name's card): Maya.ikocloud, structured JSON, everything to resume, no chat, no keys */
   {
     const { ctx, p, errs, calls } = await boot(width, { name: "Maya", guide });
     try {
       before = await live(p);
       await tapRoot(p);
-      ok(!(await p.isHidden("#panel")) && (await p.textContent("#p-title")) === "Maya" && Boolean(await p.$("#panel .ct-save")) && Boolean(await p.$("#panel .ct-open")), `${tag}: the name's card has Save cloud and Open cloud`);
+      ok(!(await p.isHidden("#panel")) && (await p.textContent("#p-title")) === "Maya" && Boolean(await p.$("#panel .ct-save")) && Boolean(await p.$("#panel .ct-open")), `${tag}: the name's card has Save IkoCloud and Open IkoCloud`);
+      const labels = await p.evaluate(() => [document.querySelector("#panel .ct-save").textContent, document.querySelector("#panel .ct-open").textContent]);
+      ok(same(labels, ["Save IkoCloud", "Open IkoCloud"]), `${tag}: the labels read Save IkoCloud and Open IkoCloud`, JSON.stringify(labels));
+      await p.evaluate(() => { const real = URL.createObjectURL; URL.createObjectURL = function (b) { window.__blobType = b && b.type; return real.call(URL, b); }; });
       const [dl] = await Promise.all([p.waitForEvent("download"), p.click("#panel .ct-save")]);
       fileName = dl.suggestedFilename();
       const text = fs.readFileSync(await dl.path(), "utf8");
       file = { name: fileName, mimeType: "application/json", buffer: Buffer.from(text) };
       const j = JSON.parse(text);
-      ok(fileName === "Maya.ikolearn", `${tag}: the file is named Maya.ikolearn`, fileName);
-      ok(j.format === "ikolearn" && j.version === 1 && j.storageVersion === 9 && !Number.isNaN(Date.parse(j.exportedAt)) && same(Object.keys(j.data).sort(), KEYS.slice().sort()), `${tag}: structured JSON: format, version 1, exportedAt, storageVersion 9, data`, JSON.stringify(Object.keys(j)));
+      ok(fileName === "Maya.ikocloud", `${tag}: the file is named Maya.ikocloud`, fileName);
+      ok((await p.evaluate(() => window.__blobType)) === "application/json", `${tag}: downloaded as application/json (safe to email)`, await p.evaluate(() => window.__blobType));
+      ok(j.format === "ikocloud" && j.version === 1 && j.storageVersion === 9 && !Number.isNaN(Date.parse(j.exportedAt)) && same(Object.keys(j.data).sort(), KEYS.slice().sort()), `${tag}: structured JSON: format, version 1, exportedAt, storageVersion 9, data`, JSON.stringify(Object.keys(j)));
       ok(same({ ...j.data, cloud: steady(JSON.stringify(j.data.cloud)) }, asData(before)), `${tag}: the file holds the learner's whole stored state (name, cloud, notes, lessons, tests, seen) exactly`);
       ok(j.data.cloud.n.length > 10 && JSON.stringify(j.data.cloud).includes("Kites") && j.data.cloud.k.length > 0, `${tag}: the cloud in full: its nodes, the Deck, the directions' state`);
       ok(!/private chat line/.test(text) && !/AIza|api[_-]?key|GEMINI|secret/i.test(text) && !("thread" in j.data) && !("view" in j.data), `${tag}: no conversation, no camera, no keys in the file`);
       const st = await status(p, "#panel .ct-status");
-      ok(st === "Your cloud has been saved as Maya.ikolearn. Keep this file if you want to continue on another device.", `${tag}: the quiet confirmation after the download`, st);
+      ok(st === "Your IkoCloud has been saved as Maya.ikocloud. Keep this file if you want to continue on another device.", `${tag}: the quiet confirmation after the download`, st);
       ok(same(await live(p), before), `${tag}: saving changes nothing on the device`);
       await shot(p, width, "saved");
       /* the Deck has the same quiet pair */
       await p.click("#p-close"); await p.click("#cloud-deck"); await p.waitForTimeout(500);
-      ok(Boolean(await p.$("#deck:not([hidden]) #d-tools .ct-save")) && Boolean(await p.$("#deck:not([hidden]) #d-tools .ct-open")), `${tag}: the Deck has Save cloud and Open cloud too`);
+      ok(Boolean(await p.$("#deck:not([hidden]) #d-tools .ct-save")) && Boolean(await p.$("#deck:not([hidden]) #d-tools .ct-open")), `${tag}: the Deck has Save IkoCloud and Open IkoCloud too`);
       ok(calls.filter((c) => c !== "/examples").length === 0, `${tag}: 0 calls for saving`, JSON.stringify(calls));
       ok(!errs.length, `${tag}: no page errors (save)`, errs.join(" | "));
     } catch (e) { fails.push(`${tag}: save threw -> ${String(e.message || e).split("\n")[0]}`); }
     await ctx.close();
   }
   if (!file) continue;
-  /* 2. a fresh device: Open cloud on the welcome (nothing to replace: no confirm); restored exactly, the name at home */
+  /* 2. a fresh device: Open IkoCloud on the welcome (nothing to replace: no confirm); restored exactly, the name at home */
   {
     const { ctx, p, errs, calls } = await open(width);
     try {
       await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
-      ok(!(await p.isHidden("#welcome")) && (await p.textContent("#w-open")) === "Open cloud", `${tag}: fresh device: the welcome offers Open cloud`);
+      ok(!(await p.isHidden("#welcome")) && (await p.textContent("#w-open")) === "Open IkoCloud" && /^Have an IkoCloud saved as a file\?/.test(await p.textContent(".w-open")), `${tag}: fresh device: the welcome offers Open IkoCloud`, await p.textContent(".w-open"));
+      const acc = (await p.getAttribute("#ct-file", "accept")).split(",");
+      ok([".ikocloud", ".ikolearn", ".json", "application/json", "application/octet-stream"].every((x) => acc.includes(x)), `${tag}: the picker takes .ikocloud, .ikolearn, JSON and any file (mobile pickers grey out unknown extensions)`, acc.join());
       await shot(p, width, "welcome");
       await Promise.all([p.waitForEvent("load", { timeout: 10000 }), chooseFile(p, "#w-open", file)]);
       await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(900);
@@ -172,6 +179,20 @@ for (const width of [390, 1280]) {
     } catch (e) { fails.push(`${tag}: fresh device threw -> ${String(e.message || e).split("\n")[0]}`); }
     await ctx.close();
   }
+  /* 2b. earlier files: Maya.ikolearn (format "ikolearn") and the same JSON as Maya.json open on a fresh device, exactly */
+  for (const [n, fmt] of [["Maya.ikolearn", "ikolearn"], ["Maya.json", "ikocloud"]]) {
+    const { ctx, p, errs } = await open(width);
+    try {
+      await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
+      const j = JSON.parse(file.buffer.toString("utf8")); j.format = fmt;
+      await Promise.all([p.waitForEvent("load", { timeout: 10000 }), chooseFile(p, "#w-open", { name: n, mimeType: n.endsWith(".json") ? "application/json" : "application/octet-stream", buffer: Buffer.from(JSON.stringify(j)) })]);
+      await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(700);
+      const after = await live(p);
+      ok(same(asData(after), asData(before)), `${tag}: ${n} (format ${fmt}) opens, restored exactly`, diff(after, before));
+      ok(!errs.length, `${tag}: no page errors (${n})`, errs.join(" | "));
+    } catch (e) { fails.push(`${tag}: ${n} threw -> ${String(e.message || e).split("\n")[0]}`); }
+    await ctx.close();
+  }
   /* 3. a device with another cloud: confirm first; Cancel, invalid, newer, and a failed write all change nothing */
   {
     const { ctx, p, errs } = await boot(width, { name: "Sam" });
@@ -188,31 +209,31 @@ for (const width of [390, 1280]) {
       await chooseFile(p, "#panel .ct-open", file); await p.keyboard.press("Escape"); await p.waitForTimeout(200);
       ok(!(await confirmShown(p)) && same(await stored(p), snap) && (await samePage(p)), `${tag}: Escape is Cancel too`);
       /* invalid or incomplete files */
-      const bad = [["garbage.ikolearn", "hello, not a cloud"], ["empty.ikolearn", ""], ["other.json", JSON.stringify({ format: "something-else", version: 1, data: {} })],
-        ["nocloud.ikolearn", JSON.stringify({ format: "ikolearn", version: 1, storageVersion: 9, data: { name: "Maya" } })],
+      const bad = [["garbage.ikocloud", "hello, not a cloud"], ["empty.ikocloud", ""], ["other.json", JSON.stringify({ format: "something-else", version: 1, data: {} })],
+        ["nocloud.ikocloud", JSON.stringify({ format: "ikocloud", version: 1, storageVersion: 9, data: { name: "Maya" } })],
         ["broken.ikolearn", JSON.stringify({ format: "ikolearn", version: 1, storageVersion: 9, data: { name: "Maya", cloud: { v: 9, n: "nope" } } })],
         ["noname.ikolearn", JSON.stringify({ ...JSON.parse(file.buffer.toString("utf8")), data: { ...JSON.parse(file.buffer.toString("utf8")).data, name: "" } })]];
       for (const [n, t] of bad) {
         await chooseFile(p, "#panel .ct-open", { name: n, mimeType: "application/json", buffer: Buffer.from(t) });
         if (await confirmShown(p)) { await p.click("#ikc-yes"); await p.waitForTimeout(300); }
         const msg = await status(p, "#panel .ct-status");
-        ok(msg === "That file couldn't be opened as a cloud. Nothing was changed." && same(await stored(p), snap) && (await samePage(p)), `${tag}: an invalid file (${n}): a quiet error, nothing changes`, msg);
+        ok(msg === "That file couldn't be opened as an IkoCloud. Nothing was changed." && same(await stored(p), snap) && (await samePage(p)), `${tag}: an invalid file (${n}): a quiet error, nothing changes`, msg);
       }
       await shot(p, width, "invalid");
       /* a newer version: rejected gracefully */
       const j = JSON.parse(file.buffer.toString("utf8"));
-      for (const [n, f] of [["newer.ikolearn", { ...j, version: 2 }], ["newer-store.ikolearn", { ...j, storageVersion: 10 }]]) {
+      for (const [n, f] of [["newer.ikocloud", { ...j, version: 2 }], ["newer-store.ikolearn", { ...j, storageVersion: 10 }]]) {
         await chooseFile(p, "#panel .ct-open", { name: n, mimeType: "application/json", buffer: Buffer.from(JSON.stringify(f)) });
         if (await confirmShown(p)) { await p.click("#ikc-yes"); await p.waitForTimeout(300); }
         const msg = await status(p, "#panel .ct-status");
-        ok(msg === "This file comes from a newer version of IkoLearn, so it can't be opened here yet. Nothing was changed." && same(await stored(p), snap) && (await samePage(p)), `${tag}: a newer version (${n}) is turned away gently, nothing changes`, msg);
+        ok(msg === "This IkoCloud comes from a newer version of IkoLearn, so it can't be opened here yet. Nothing was changed." && same(await stored(p), snap) && (await samePage(p)), `${tag}: a newer version (${n}) is turned away gently, nothing changes`, msg);
       }
       /* a write that fails part way (the store fills up): rolled back, exactly as it was */
       await p.evaluate(() => { const real = Storage.prototype.setItem; window.__realSet = real; Storage.prototype.setItem = function (k, v) { if (k === "ikolearn.v1.lessons") throw new DOMException("full", "QuotaExceededError"); return real.call(this, k, v); }; });
       await chooseFile(p, "#panel .ct-open", file); await p.click("#ikc-yes"); await p.waitForTimeout(300);
       await p.evaluate(() => { Storage.prototype.setItem = window.__realSet; });
       const msg = await status(p, "#panel .ct-status");
-      ok(msg === "There wasn't room to open that cloud on this device. Nothing was changed." && same(await stored(p), snap) && (await samePage(p)), `${tag}: a write that fails part way is rolled back: nothing changes`, msg);
+      ok(msg === "There wasn't room to open that IkoCloud on this device. Nothing was changed." && same(await stored(p), snap) && (await samePage(p)), `${tag}: a write that fails part way is rolled back: nothing changes`, msg);
       /* then Continue: replaced, and the page starts again on the restored cloud */
       await chooseFile(p, "#panel .ct-open", file);
       await continueAndReload(p);
@@ -240,7 +261,7 @@ for (const width of [390, 1280]) {
       /* the same name: Lee's file replaces Lee (parked until now) */
       const lee = JSON.parse(file.buffer.toString("utf8")); lee.data.name = "Lee"; lee.data.cloud.name = "Lee";
       await tapRoot(p);
-      await chooseFile(p, "#panel .ct-open", { name: "Lee.ikolearn", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(lee)) });
+      await chooseFile(p, "#panel .ct-open", { name: "Lee.ikocloud", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(lee)) });
       await continueAndReload(p);
       ix = await p.evaluate(() => window.IkoProfiles.current(localStorage));
       const leeCloud = await p.evaluate(() => JSON.parse(localStorage.getItem("ikolearn.v1.cloud")));

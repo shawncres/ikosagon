@@ -433,21 +433,39 @@
   }
 
   /*
-   * Draw: one card for the holder. From the deck (the weighted shuffle: subject balance over the year, review timing,
-   * struggles, a nudge from the top 10), skipping the card already open; with an empty deck, the best suggestion.
-   * The draw is logged for the yearly balance. -> node id or null.
+   * Draw: one card for the holder, always active work: nothing finished (finished(): completed, achieved, merged,
+   * covered) is ever drawn; finished cards stay in the deck. In order:
+   *   1. the current path: the next unfinished step after the card in hand (opts.from, else the active card, else the
+   *      topic touched last), else that card itself when it is unfinished and not the one already open;
+   *   2. the deck (the weighted shuffle: subject balance over the year, review timing, struggles, the top 10), unfinished;
+   *   3. the best suggestion (the next step in a chain, something new), unfinished;
+   *   4. any unstarted or unfinished topic on the cloud, best score first.
+   * The card already open (opts.skip) is never drawn again. The draw is logged for the yearly balance.
+   * -> node id, or null when everything is finished (the caller offers a new topic or direction instead).
    */
   function draw(cloud, opts) {
     opts = opts || {};
     var now = opts.now || Date.now(), day = D.dayOf(now), skipId = opts.skip || null;
-    var picks = (cloud.deck || []).length ? D.drawSession(cloud, { day: day, size: 3, seed: opts.seed }) : [];
-    var id = picks.filter(function (x) { return x !== skipId && nodeOf(cloud, x); })[0] || null;
+    var open = function (x) { return Boolean(x) && x !== skipId && Boolean(nodeOf(cloud, x)) && Boolean(cloud.nodes[x].parent) && !cloud.nodes[x].end && !finished(cloud, x); };
+    var id = null, from = [opts.from, cloud.active, lastTouched(cloud)].filter(function (x) { return x && nodeOf(cloud, x); })[0] || null;
+    if (from) { var nx = pathNext(cloud, from); id = open(nx) ? nx : open(from) ? from : null; }
+    if (!id && (cloud.deck || []).length) id = D.drawSession(cloud, { day: day, size: cloud.deck.length, seed: opts.seed }).filter(open)[0] || null;
     if (!id) {
       var ex = {}; if (skipId) ex[skipId] = 1;
-      id = (suggest(cloud, { now: now, exclude: ex, n: 3, noAsk: true }).filter(function (x) { return x.kind !== "test" && x.kind !== "grow" && x.id; })[0] || {}).id || null;
+      id = (suggest(cloud, { now: now, exclude: ex, n: 3, noAsk: true }).filter(function (x) { return x.kind !== "test" && x.kind !== "grow" && open(x.id); })[0] || {}).id || null;
+    }
+    if (!id) {
+      var sc = scores(cloud, now);
+      id = cloud.order.filter(open).sort(function (a, b) { return (sc[b] || 0) - (sc[a] || 0) || cloud.order.indexOf(a) - cloud.order.indexOf(b); })[0] || null;
     }
     if (id) C.logDraw(cloud, day, [id]);
     return id;
+  }
+  /* The topic the learner touched last (the current path when no card is in hand). */
+  function lastTouched(cloud) {
+    var best = null, t = 0;
+    cloud.order.forEach(function (x) { var n = cloud.nodes[x]; if (n && n.parent && (n.touched || 0) > t) { t = n.touched; best = x; } });
+    return best;
   }
 
   /* The prompt context for a lesson call: ask for child topics only when wanted; the planned next step, for the fork. */

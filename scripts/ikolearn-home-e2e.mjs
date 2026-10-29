@@ -96,8 +96,8 @@ for (const width of [390, 1280]) {
       ok(Math.abs(r.x - r.w / 2) < 30 && Math.abs(r.y - r.h / 2) < 60, `${tag}: yourself: the name sits in the centre`, JSON.stringify(r));
       ok(/^Hi Maya\. Let's begin your learning cloud together\. What are you curious about, or what do you enjoy\?$/.test(lede) && !/\b(age|kids?|child|student|grade)\b/i.test(lede), `${tag}: yourself: an inviting line in universal words (no topic list, no age)`, lede);
       ok(await p.isHidden(".cloud-hint") && s.active === "BODY", `${tag}: yourself: no input tips on an empty cloud; no focus jump (no keyboard on phones)`, JSON.stringify(s));
-      const box = await p.evaluate(() => { const b = document.querySelector("#cloud-start").getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom, sw: document.documentElement.scrollWidth, iw: innerWidth }; });
-      ok(box.l >= 0 && box.r <= box.iw && box.t > r.y + 20 && box.sw <= box.iw, `${tag}: yourself: the start sits under the name, inside the view`, JSON.stringify(box));
+      const box = await p.evaluate(() => { const b = document.querySelector("#cloud-start").getBoundingClientRect(), n = document.querySelector("#cs-name").getBoundingClientRect(), q = document.querySelector("#cs-hi").getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom, sw: document.documentElement.scrollWidth, iw: innerWidth, ih: innerHeight, name: document.querySelector("#cs-name").textContent, nc: n.left + n.width / 2, nb: n.bottom, nh: n.height, qt: q.top }; });
+      ok(box.l >= 0 && box.r <= box.iw && box.t >= 0 && box.b <= box.ih && box.sw <= box.iw && box.name === "Maya" && box.nh > 0 && Math.abs(box.nc - box.iw / 2) < 4 && box.nb <= box.qt, `${tag}: yourself: the start sits under the name (its plate centred above the question), inside the view`, JSON.stringify(box));
       ok(calls.length === 0, `${tag}: yourself: landing makes no calls`, calls.join());
       await shot(p, width, "1-first-landing");
       /* Begin: the first question answered from the cloud; one start call; the cloud grows here */

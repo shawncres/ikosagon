@@ -2,7 +2,7 @@
 // (no model calls), at 390 and 1280: lines to finished topics take their colour and open ones are dark ink (read off the
 // canvas); Iko is a pebble top-left, clear of the invite/return row; the selection card is compact (title, a short
 // description, its three actions, a short path, no embedded cards); the name is centred on load and after Recentre, on a
-// ringed plate, and tapping it opens the stats card (achievements, progress, recent activity, Save/Open cloud, no "What do
+// ringed plate, and tapping it opens the stats card (achievements, progress, recent activity, Save/Open IkoCloud, no "What do
 // you notice"); "I've got it" saves first, then the card flies into the Deck and the Deck pulses (no flight with reduced
 // motion); the intake's targets are all 44px and nothing overlaps.
 // Run: IKOLEARN_PW=<path to node_modules/playwright-core> node scripts/ikolearn-polish-e2e.mjs [--root public]
@@ -158,7 +158,7 @@ for (const width of [390, 1280]) {
     ok(new RegExp(st.deck + " cards in your Deck").test(st.text) && /3 subjects/.test(st.text) && /3 of \d+ topics finished/.test(st.text) && /\d+ right answers/.test(st.text), `${tag}: home: achievements (Deck cards) and progress (subjects, topics finished, right answers)`, st.text.slice(0, 300));
     ok(/days in a row|of the last 7|Last time you learned/.test(st.text), `${tag}: home: recent activity or a streak`, st.text.slice(0, 300));
     ok(!/What do you notice/.test(st.text), `${tag}: home: no "What do you notice here?"`);
-    ok(st.save && st.open2, `${tag}: home: Save cloud and Open cloud on the stats card`);
+    ok(st.save && st.open2 && /Save IkoCloud · Open IkoCloud/.test(st.text), `${tag}: home: Save IkoCloud and Open IkoCloud on the stats card`);
     const h2 = await homeAt(p), pan = await box(p, "#panel"), q = await nodeAt(p, "root");
     /* centred in the room the card leaves: on a phone across the middle with the card under it, wide in the middle height with the card beside it */
     ok(width < 500 ? Math.abs(h2.dx) <= 4 && pan.y > q.y : Math.abs(h2.dy) <= 60 && pan.x > q.x, `${tag}: home: the camera centres on the name, its card beside it`, JSON.stringify([h2, pan]));

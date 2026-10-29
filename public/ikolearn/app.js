@@ -14,7 +14,7 @@
   "use strict";
   var PR = window.IkoProfiles; /* learners: yourself, or guiding others (additive storage; the v1 keys stay the learner learning now) */
   var C = window.IkoCloud, V = window.IkoCloudView, L = window.IkoLesson, D = window.IkoDeck, R = window.IkoRank, P = window.IkoPlan, CAM = window.IkoCamera;
-  var T = window.IkoTransfer; /* the cloud as one file: Save cloud / Open cloud (transfer.js) */
+  var T = window.IkoTransfer; /* the cloud as one file: Save IkoCloud / Open IkoCloud (transfer.js) */
   var API = "/api/ikolearn";
   var LS = { name: "ikolearn.v1.name", cloud: "ikolearn.v1.cloud", thread: "ikolearn.v1.thread", notes: "ikolearn.v1.notes", lessons: "ikolearn.v1.lessons", tests: "ikolearn.v1.tests", view: "ikolearn.v1.view", seen: "ikolearn.v1.seen" };
   var VISIT = "ikolearn.v1.visit"; /* sessionStorage: this browser session was counted as a visit */
@@ -47,7 +47,7 @@
   };
   var reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
 
-  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], queued: null, pick: null, glide: null, view: null, dirForm: null, dirText: "", csPicked: [], seen: { c: {}, ev: 0 }, ex: { list: [], growth: [], at: 0, gat: 0, status: "idle" } };
+  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], queued: null, pick: null, glide: null, view: null, dirForm: null, dirText: "", allDone: false, csPicked: [], seen: { c: {}, ev: 0 }, ex: { list: [], growth: [], at: 0, gat: 0, status: "idle" } };
   var mini = null, big = null;
 
   /* ---------- storage ---------- */
@@ -1768,13 +1768,23 @@
     return box;
   }
   /* Draw: one card into the holder, and its lesson opens right away. */
+  /* Never a finished card (P.draw): the current path's next unfinished step first, else the deck, else something new.
+     When everything is finished, the cloud offers a new topic or direction instead of re-opening finished work. */
   function drawCard(src) {
     if (state.busy) return;
-    var id = P.draw(state.cloud, { skip: state.lessonNode });
+    var id = P.draw(state.cloud, { skip: state.lessonNode, from: state.lessonNode || state.panelNode || null });
     dismissHint("card");
     save();
-    if (!id) return;
+    if (!id) { allDone(); return; }
+    state.allDone = false;
     openCard(id, src || null);
+  }
+  function allDone() {
+    state.allDone = true;
+    if (el.cloud.hidden || state.lessonNode || !el.deck.hidden || !el.hub.hidden) home(); else if (!el.panel.hidden) closeCard();
+    renderCloudFlow();
+    var a = cloudFlow && cloudFlow.querySelector(".dir-done .dir-ask");
+    if (a) a.focus();
   }
 
   /* ---------- cloud overlay + panel ---------- */
@@ -1966,7 +1976,7 @@
         var t = cleanAbout(inp.value);
         if (!t || state.busy) return;
         if (state.dirForm === "invite") d.n = (d.n || 0) + 1;
-        state.dirForm = null; state.dirText = ""; state.dirFocused = null;
+        state.dirForm = null; state.dirText = ""; state.dirFocused = null; state.allDone = false;
         save();
         buildCloud("more", [], t, "", true);
       });
@@ -1975,6 +1985,16 @@
       return box;
     }
     var open = function (why) { return function () { state.dirForm = why; renderCloudFlow(); }; };
+    if (state.allDone) {
+      /* a draw found nothing unfinished: a new topic or direction, never finished work again */
+      box.classList.add("dir-done");
+      box.appendChild(mk("span", "dir-done-t", "Every card here is finished."));
+      var dend = mk("span", "dir-end"); /* the link and its close stay together on a narrow screen */
+      dend.appendChild(linkBtn("Add a new topic or direction?", open("done"), "link dir-ask"));
+      dend.appendChild(dirClose("Not now", function () { state.allDone = false; }));
+      box.appendChild(dend);
+      return box;
+    }
     if ((d.later || []).length) {
       /* ideas from the intake beyond its first few subjects: each one is a direction to add when they like */
       box.classList.add("dir-later");
@@ -2072,7 +2092,7 @@
   /*
    * The name's card: a compact look at the whole cloud (0 calls). Achievements (the cards in the Deck, by tier), a
    * progress summary (subjects, topics finished, right answers), recent activity when there is some, one soft insight
-   * (#98's notes, only once their threshold is met), what's next, and Save cloud / Open cloud.
+   * (#98's notes, only once their threshold is met), what's next, and Save IkoCloud / Open IkoCloud.
    */
   function renderStats() {
     var st = P.homeStats(state.cloud, Date.now()), box = mk("div", "stats");
@@ -2321,12 +2341,33 @@
     el.ikoSheet.hidden = false;
     el.iko.setAttribute("aria-expanded", "true");
     renderIko();
-    if (!o.tricky) { try { el.ikoIn.focus({ preventScroll: true }); } catch { el.ikoIn.focus(); } } /* opens the text field; Still tricky focuses the clarification instead */
+    fitIko();
+    /* opens the text field on a mouse and keyboard; on touch the keyboard waits for a tap in the field (so it doesn't
+       cover the sheet as it opens). Still tricky focuses the clarification instead. */
+    if (!o.tricky && !coarse()) { try { el.ikoIn.focus({ preventScroll: true }); } catch { el.ikoIn.focus(); } }
   }
+  function coarse() { return Boolean(window.matchMedia && window.matchMedia("(pointer: coarse)").matches); }
+  /*
+   * The on-screen keyboard (visualViewport): the sheet sits on top of it, no taller than the visible part, so its field
+   * and the latest messages stay in view; the messages scroll to the end when the keyboard comes or goes.
+   */
+  var ikoKbd = false;
+  function fitIko() {
+    var s = el.ikoSheet.style, vv = window.visualViewport;
+    if (el.ikoSheet.hidden || !vv) { s.bottom = ""; s.maxHeight = ""; ikoKbd = false; return; }
+    var below = Math.max(0, window.innerHeight - (vv.offsetTop + vv.height)), kbd = below > 80 && document.activeElement === el.ikoIn;
+    if (kbd) { s.bottom = (below + 8) + "px"; s.maxHeight = Math.max(160, Math.min(vv.height - 16, 560)) + "px"; }
+    else { s.bottom = ""; s.maxHeight = ""; }
+    if (kbd !== ikoKbd) { ikoKbd = kbd; el.ikoBody.scrollTop = el.ikoBody.scrollHeight; }
+  }
+  if (window.visualViewport) { window.visualViewport.addEventListener("resize", fitIko); window.visualViewport.addEventListener("scroll", fitIko); }
+  el.ikoIn.addEventListener("focus", function () { fitIko(); setTimeout(fitIko, 300); });
+  el.ikoIn.addEventListener("blur", function () { setTimeout(fitIko, 0); });
   function closeIko() {
     if (!iko.open) return;
     iko.open = false;
     el.ikoSheet.hidden = true;
+    fitIko();
     el.iko.setAttribute("aria-expanded", "false");
     if (el.lClar.parentNode === el.ikoSlot) el.lFork.parentNode.insertBefore(el.lClar, el.lFork); /* back into the lesson, answers kept */
     renderIko();
@@ -2872,23 +2913,23 @@
     location.reload();
   });
 
-  /* ---------- the cloud as one file: Save cloud / Open cloud (transfer.js; no server, no account) ---------- */
-  /* the quiet pair, with its own status line (the stats card, the Deck); the welcome has its own Open cloud */
+  /* ---------- the cloud as one file, an IkoCloud: Save IkoCloud / Open IkoCloud (transfer.js; no server, no account) ---------- */
+  /* the quiet pair, with its own status line (the stats card, the Deck); the welcome has its own Open IkoCloud */
   function cloudTools() {
     var d = mk("div", "cloud-tools"), st = mk("p", "ct-status fine");
     st.setAttribute("role", "status"); st.setAttribute("aria-live", "polite");
-    d.appendChild(linkBtn("Save cloud", function () { exportCloud(st); }, "link ct-save"));
+    d.appendChild(linkBtn("Save IkoCloud", function () { exportCloud(st); }, "link ct-save"));
     d.appendChild(document.createTextNode(" · "));
-    d.appendChild(linkBtn("Open cloud", function () { pickCloud(st); }, "link ct-open"));
+    d.appendChild(linkBtn("Open IkoCloud", function () { pickCloud(st); }, "link ct-open"));
     d.appendChild(st);
     return d;
   }
-  /* Save cloud: this learner's whole cloud as [firstname].ikolearn, made here and downloaded (0 calls) */
+  /* Save IkoCloud: this learner's whole cloud as [firstname].ikocloud (application/json, safe to email), made here and downloaded (0 calls) */
   function exportCloud(st) {
     if (!T || !state.cloud) return;
     save();
     var f = T.build(localStorage, Date.now());
-    if (!f) { st.textContent = "Your cloud couldn't be saved just now."; return; }
+    if (!f) { st.textContent = "Your IkoCloud couldn't be saved just now."; return; }
     var url = URL.createObjectURL(new Blob([f.text], { type: "application/json" })), a = mk("a");
     a.href = url; a.download = f.name; a.hidden = true;
     document.body.appendChild(a); a.click(); a.remove();
@@ -2897,7 +2938,7 @@
     placeCard();
   }
   var ctStatus = null;
-  function pickCloud(st) { if (!T || !el.ctFile) return; ctStatus = st; if (st) st.textContent = ""; el.ctFile.value = ""; el.ctFile.click(); }
+  function pickCloud(st) { if (!T || !el.ctFile) return; el.ctFile.accept = T.ACCEPT; ctStatus = st; if (st) st.textContent = ""; el.ctFile.value = ""; el.ctFile.click(); }
   function ctSay(t) { if (ctStatus) ctStatus.textContent = t; placeCard(); }
   if (el.ctFile) el.ctFile.addEventListener("change", function () {
     var f = el.ctFile.files && el.ctFile.files[0];
