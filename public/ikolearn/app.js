@@ -31,7 +31,7 @@
     lGot: $("l-got"), lTricky: $("l-tricky"), lStatus: $("l-status"), lPath: $("l-path"), lClar: $("l-clar"), lNext: $("l-next"), lChat: $("l-chat"), lRedo: $("l-redo"),
     cloud: $("cloud"), cloudCanvas: $("cloud-canvas"), cloudDeck: $("cloud-deck"), cloudWho: $("cloud-who"), toCloud: $("to-cloud"),
     cs: $("cloud-start"), csHi: $("cs-hi"), csQ: $("cs-q"), csFew: $("cs-few"), csForm: $("cs-form"), csIn: $("cs-in"), csEx: $("cs-ex"), csStatus: $("cs-status"),
-    ikoWrap: $("iko-wrap"), iko: $("iko"), ikoLine: $("iko-line"), ikoSheet: $("iko-sheet"), ikoAbout: $("iko-about"), ikoX: $("iko-x"), ikoSay: $("iko-say"), ikoActs: $("iko-acts"), ikoGot: $("iko-got"), ikoBody: $("iko-body"), ikoSlot: $("iko-slot"), ikoLog: $("iko-log"), ikoForm: $("iko-form"), ikoIn: $("iko-in"), ikoAll: $("iko-all"), zin: $("zin"), zout: $("zout"), zreset: $("zreset"),
+    ikoWrap: $("iko-wrap"), iko: $("iko"), ikoLine: $("iko-line"), ikoCue: $("iko-cue"), ikoSheet: $("iko-sheet"), ikoAbout: $("iko-about"), ikoX: $("iko-x"), ikoSay: $("iko-say"), ikoActs: $("iko-acts"), ikoGot: $("iko-got"), ikoBody: $("iko-body"), ikoSlot: $("iko-slot"), ikoLog: $("iko-log"), ikoForm: $("iko-form"), ikoIn: $("iko-in"), ikoAll: $("iko-all"), zin: $("zin"), zout: $("zout"), zreset: $("zreset"),
     panel: $("panel"), cloudTop: document.querySelector(".cloud-top"), pKicker: $("p-kicker"), pTitle: $("p-title"), pDesc: $("p-desc"), pNote: $("p-note"), pLesson: $("p-lesson"), pCard: $("p-card"), pAdj: $("p-adj"),
     pChat: $("p-chat"), pPath: $("p-path"), pClose: $("p-close"),
     draw: $("draw"), deckBtn: $("deck-btn"), deck: $("deck"), dBack: $("d-back"), dLede: $("d-lede"), dAlbum: $("d-album"),
@@ -2227,7 +2227,7 @@
    * for a few seconds on the first two visits only, and later just the pebble. Markup has a face group (eyes, mouth) so
    * a light blink or an occasional tip can be added later; reduced motion keeps it still.
    */
-  var iko = { open: false, ctx: null, from: 0, lineT: 0 };
+  var iko = { open: false, ctx: null, from: 0, lineT: 0, cueKey: "", cueShown: "", cueT: 0, cueH: 0 };
   function openAsk() { return state.thread.filter(function (m) { return m.role === "ask" && !m.done && m.open && askHandlers[m.id]; })[0] || null; }
   /* what is on screen: { view, step?, topic?, id? } */
   function screenCtx() {
@@ -2336,7 +2336,8 @@
     clearTimeout(iko.lineT);
     el.ikoLine.textContent = t || "";
     el.ikoLine.hidden = !t;
-    if (t) iko.lineT = setTimeout(function () { el.ikoLine.hidden = true; placeIko(); }, ms || 9000);
+    if (t) { clearTimeout(iko.cueT); hideCue(); } /* Iko speaking: its line, never the cue */
+    if (t) iko.lineT = setTimeout(function () { el.ikoLine.hidden = true; placeIko(); cueAgain(); }, ms || 9000);
     placeIko();
   }
   /* the hello: only on the first two visits, and only until Iko has been opened once */
@@ -2350,12 +2351,61 @@
     var on = ikoScreen();
     if (iko.open && (!on || (screenCtx().id || "") !== (iko.ctx.id || "") || (screenCtx().view === "chat"))) closeIko(); /* the screen changed under it */
     el.ikoWrap.hidden = !on || iko.open;
+    el.iko.classList.toggle("glow", on && !hintSeen("iko")); /* until Iko has been opened once (seen.h.iko, v9) */
+    if (iko.open) { clearTimeout(iko.cueT); hideCue(); } /* the sheet is open: no cue (and none again on closing it) */
+    else ikoCue(on ? screenCtx() : null);
     document.body.classList.toggle("iko-on", on && el.cloud.hidden);
     document.body.classList.toggle("iko-home", on && !el.cloud.hidden && !iko.open); /* the cloud's own links make room for the pebble */
     document.body.classList.toggle("iko-lesson", iko.open && !el.lesson.hidden); /* wide screens: the sheet sits over the card, clear of Where Next */
     ikoActs();
     placeIko();
   }
+  /*
+   * "Iko is always here": a tiny cue under the pebble each time a screen opens (Ask me anything, Ask about this lesson,
+   * ...). It fades in, holds about 3.5 s and fades out. Never while Iko is speaking (its line wins) and never where it
+   * would touch the header, the invite/return rows, the selection card, the start or a confirm: then it is skipped.
+   */
+  var CUE = { cloud: "Ask me anything", topic: "Ask about this topic", home: "Ask about your cloud", lesson: "Ask about this lesson", test: "Ask about this test", card: "Ask about this card", deck: "Ask about your deck", intake: "Not sure? Ask me" };
+  function cueOf(c) {
+    if (!c) return "";
+    if (c.view === "cloud") return state.panelNode === "root" && !el.panel.hidden ? "home" : c.topic ? "topic" : "cloud";
+    return CUE[c.view] ? c.view : "";
+  }
+  function ikoCue(c) {
+    var key = cueOf(c);
+    if (key === iko.cueKey) return;
+    iko.cueKey = key; iko.cueShown = "";
+    clearTimeout(iko.cueT);
+    hideCue();
+    if (!key) return;
+    iko.cueT = setTimeout(function () { showCue(key); }, 450); /* once the new screen has settled */
+  }
+  /* once Iko's line has folded away, the screen's cue it held back gets its turn */
+  function cueAgain() { var k = iko.cueKey; if (k && iko.cueShown !== k && !iko.open) { clearTimeout(iko.cueT); iko.cueT = setTimeout(function () { showCue(k); }, 700); } }
+  function hideCue() {
+    el.ikoCue.classList.remove("on");
+    document.body.classList.remove("iko-cueing");
+    clearTimeout(iko.cueH);
+    iko.cueH = setTimeout(function () { if (!el.ikoCue.classList.contains("on")) el.ikoCue.hidden = true; }, motionOK() ? 650 : 0); /* after the fade */
+  }
+  function showCue(key) {
+    if (key !== iko.cueKey || iko.open || el.ikoWrap.hidden || !el.ikoLine.hidden) return; /* Iko is speaking (or gone): no cue */
+    el.ikoCue.textContent = CUE[key];
+    el.ikoCue.hidden = false;
+    document.body.classList.add("iko-cueing");
+    var r = el.ikoCue.getBoundingClientRect();
+    var near = [].some.call(document.querySelectorAll(".bar .brand > *, #deck-btn, .bar .mini-deck, .minideck, .home-nav > *, .cloud-top .zoom, .cloud-flow, #panel, #cloud-start, #ik-confirm, #iko-line"), function (e) {
+      if (e.hidden || !e.getClientRects().length) return false;
+      var b = e.getBoundingClientRect();
+      return b.width && b.left < r.right + 4 && b.right > r.left - 4 && b.top < r.bottom + 2 && b.bottom > r.top - 2;
+    });
+    if (near) { el.ikoCue.hidden = true; document.body.classList.remove("iko-cueing"); return; }
+    void el.ikoCue.offsetWidth;
+    el.ikoCue.classList.add("on");
+    iko.cueShown = key;
+    iko.cueT = setTimeout(function () { if (iko.cueKey === key) hideCue(); }, 3600);
+  }
+
   /* opened by Still tricky, the sheet covers the lesson's buttons on a phone, so it carries "I've got it" itself */
   function ikoActs() { el.ikoActs.hidden = !(iko.open && el.ikoSheet.classList.contains("tricky") && !el.lesson.hidden && !el.lDone.hidden && Boolean(el.lClar.querySelector(".clar-opts"))); }
   /*

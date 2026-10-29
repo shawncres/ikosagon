@@ -36,7 +36,7 @@ const HOOK = () => { let real; Object.defineProperty(window, "IkoCloudView", { c
 const nd = (rows) => rows.map((r) => JSON.stringify(r)).join("\n") + "\n";
 const QS = [{ q: "What makes the tides rise and fall?", options: ["The moon's pull", "The wind", "Fish"], answer: 0 }];
 const LESSON = nd([{ t: "start", model: "m" }, { t: "delta", text: "INTRO: Tides are the sea rising and falling twice a day.\nEXPLAIN: The moon pulls on the water, and the oceans bulge toward it." }, { t: "path", steps: [], next: "", choices: [], questions: QS, tricky: "Like a blanket pulled by a friend." }, { t: "done" }]);
-const SEED = ({ now, hello }) => {
+const SEED = ({ now, hello, fresh }) => {
   const C = window.IkoCloud, T = now - 20 * 864e5, c = C.create("Maya", T);
   const subs = [["Nature", "Ocean Life", ["Coral Reefs", "Whales", "Tides", "Deep Sea"]], ["Art", "Drawing", ["Shapes", "Shading", "Lines"]], ["Music", "Rhythm", ["Beats", "Tempo", "Drums"]]];
   subs.forEach(([sub, top, k], i) => C.applyCreate(c, { items: [{ node: { name: top, chain: [sub] }, card: { title: top, blurb: top + " in plain words.", goal: "" }, children: k.map((x, j) => ({ name: x, order: j + 1, score: 0.8 - j * 0.1, why: "", role: "core", blurb: x + " in plain words, step by step." })) }] }, { t: T + i * 1000 }));
@@ -52,7 +52,7 @@ const SEED = ({ now, hello }) => {
   Object.assign(C.dirOf(c), { off: now });
   C.joinDeck(c, now);
   localStorage.setItem("ikolearn.v1.name", "Maya"); localStorage.setItem("ikolearn.v1.cloud", C.serialize(c));
-  localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { cloud: 1, card: 1, deck: 1, iko: hello ? 0 : 1, grow: 1 } }));
+  localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { cloud: 1, card: 1, deck: 1, iko: hello || fresh ? 0 : 1, grow: 1 } }));
   localStorage.setItem("ikolearn.v1.thread", JSON.stringify([{ id: "m1", at: T, role: "model", local: true, text: "Welcome back, Maya." }]));
 };
 async function open(width, opts = {}) {
@@ -193,12 +193,74 @@ for (const width of [390, 1280]) {
     ok(errs.length === 0, `${tag}: earned: ${tg}no page errors`, errs.join(" | "));
     await ctx.close();
   }
+  /* Iko is always here: a faint glow until it is first opened (still with reduced motion), and a cue for each screen */
+  for (const reduce of [false, true]) {
+    const { ctx, p, errs } = await boot(width, { fresh: true }, reduce ? { reducedMotion: "reduce" } : {});
+    const tg = reduce ? "reduced motion: " : "";
+    const glow = () => p.evaluate(() => { const b = document.querySelector("#iko"), s = getComputedStyle(b, "::before"); return { on: b.classList.contains("glow"), anim: s.animationName, ring: s.boxShadow, opened: JSON.parse(localStorage.getItem("ikolearn.v1.seen")).h.iko || 0 }; });
+    const g0 = await glow();
+    ok(g0.on && g0.ring !== "none" && (reduce ? g0.anim === "none" : g0.anim === "iko-glow") && !g0.opened, `${tag}: Iko cue: ${tg}${reduce ? "a still, faint ring" : "a faint breathing glow"} until Iko is first opened`, JSON.stringify(g0));
+    await p.click("#iko"); await p.waitForTimeout(300); await p.click("#iko-x"); await p.waitForTimeout(300);
+    const g1 = await glow();
+    ok(!g1.on && g1.opened === 1, `${tag}: Iko cue: ${tg}the glow stops once Iko has been opened, saved on the device`, JSON.stringify(g1));
+    await p.reload({ waitUntil: "networkidle" }); await p.waitForTimeout(900);
+    ok(!(await glow()).on, `${tag}: Iko cue: ${tg}and it stays off after a reload`);
+    ok(errs.length === 0, `${tag}: Iko cue: ${tg}no page errors`, errs.join(" | "));
+    await ctx.close();
+  }
+  {
+    const { ctx, p, errs } = await open(width);
+    await p.goto(BASE + "/ikolearn"); await p.evaluate(SEED, { now: Date.now() }); await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
+    /* the cue for this screen: shown (faded in), its text, and clear of everything */
+    const cue = (text, ms = 2500) => p.waitForFunction((t) => { const c = document.querySelector("#iko-cue"); return c && !c.hidden && c.classList.contains("on") && c.textContent === t && +getComputedStyle(c).opacity > 0.5; }, text, { timeout: ms }).then(() => true, () => false);
+    const clear = () => p.evaluate(() => {
+      const c = document.querySelector("#iko-cue").getBoundingClientRect();
+      const hit = [...document.querySelectorAll(".bar .brand > *, #deck-btn, .minideck, .home-nav > *, .cloud-top .zoom, .cloud-flow, #panel, #cloud-start, #iko-line, #iko, .cloud-hint")].filter((e) => !e.hidden && e.getClientRects().length && getComputedStyle(e).visibility !== "hidden").filter((e) => { const b = e.getBoundingClientRect(); return b.left < c.right && b.right > c.left && b.top < c.bottom && b.bottom > c.top; });
+      return hit.map((e) => e.id || e.className);
+    });
+    const about = async () => { await p.click("#iko"); await p.waitForTimeout(350); const a = await p.textContent("#iko-about"); const open = !(await p.isHidden("#iko-sheet")); await p.click("#iko-x"); await p.waitForTimeout(300); return open ? a : "(not open)"; };
+    const style = await p.evaluate(() => { const s = getComputedStyle(document.querySelector("#iko-cue")); return { italic: s.fontStyle, size: parseFloat(s.fontSize) }; });
+    ok(await cue("Ask me anything"), `${tag}: Iko cue: on the cloud "Ask me anything" fades in`);
+    ok(style.italic === "italic" && style.size <= 13.5, `${tag}: Iko cue: small italic`, JSON.stringify(style));
+    const h1 = await clear();
+    ok(h1.length === 0, `${tag}: Iko cue: clear of the header, the rows, the hint and Iko's line`, JSON.stringify(h1));
+    await p.waitForTimeout(4600);
+    ok(await p.evaluate(() => { const c = document.querySelector("#iko-cue"); return c.hidden || !c.classList.contains("on"); }), `${tag}: Iko cue: it fades out after a few seconds`);
+    ok((await about()) === "On your cloud", `${tag}: Iko from the cloud knows it's the cloud`);
+    ok(!(await cue("Ask me anything", 1500)), `${tag}: Iko cue: closing Iko doesn't bring the cue back`);
+    await tap(p, "Ocean Life");
+    ok(await cue("Ask about this topic"), `${tag}: Iko cue: a topic's card -> "Ask about this topic"`);
+    ok((await about()) === "On your cloud · Ocean Life", `${tag}: Iko from a topic's card knows the topic`);
+    await p.click("#p-card"); await p.waitForTimeout(700);
+    ok(await cue("Ask about this card"), `${tag}: Iko cue: its card -> "Ask about this card"`);
+    ok((await clear()).length === 0, `${tag}: Iko cue: clear of the header on the card`, JSON.stringify(await clear()));
+    ok((await about()) === "On Ocean Life · its card", `${tag}: Iko from the card knows the card`);
+    await p.click("#hub-back"); await p.waitForTimeout(700);
+    if (!(await p.isHidden("#cloud"))) { await p.click("#cloud-deck"); await p.waitForTimeout(700); } /* the card was opened from the cloud: back there, then the Deck */
+    ok(await cue("Ask about your deck"), `${tag}: Iko cue: the Deck -> "Ask about your deck"`);
+    ok((await about()) === "On your deck", `${tag}: Iko from the Deck knows the Deck`);
+    await p.click("#d-back").catch(() => {}); await p.waitForTimeout(900);
+    if (await p.isHidden("#cloud")) await p.click("#to-cloud").catch(() => {});
+    await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(900);
+    await tap(p, "Tides"); await p.click("#p-lesson"); await p.waitForSelector("#l-quiz .opt");
+    ok(await cue("Ask about this lesson"), `${tag}: Iko cue: a lesson -> "Ask about this lesson"`);
+    ok((await clear()).length === 0, `${tag}: Iko cue: clear of the header on a lesson`, JSON.stringify(await clear()));
+    ok(/^On Tides · lesson$/.test(await about()), `${tag}: Iko from a lesson knows the lesson`);
+    ok(errs.length === 0, `${tag}: Iko cue: no page errors`, errs.join(" | "));
+    await ctx.close();
+  }
   /* F. intake: nothing crowds, every target 44px */
   {
     const { ctx, p, errs } = await open(width);
     await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
     await p.click('.who-opt[data-who="self"]'); await p.fill("#name-in", "Maya"); await p.press("#name-in", "Enter");
     await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(900);
+    /* Iko's hello is speaking: the cue waits, then takes its turn once the line has folded away */
+    ok(!(await p.isHidden("#iko-line")) && (await p.isHidden("#iko-cue")), `${tag}: Iko cue: skipped while Iko is speaking`);
+    await p.waitForFunction(() => { const c = document.querySelector("#iko-cue"); return !c.hidden && c.classList.contains("on") && c.textContent === "Not sure? Ask me"; }, null, { timeout: 12000 }).then(() => ok(true, ""), () => ok(false, `${tag}: Iko cue: the intake's "Not sure? Ask me" after the hello`));
+    await p.click("#iko"); await p.waitForTimeout(350);
+    ok((await p.textContent("#iko-about")) === "Getting started", `${tag}: Iko from the intake knows it's the start`);
+    await p.click("#iko-x"); await p.waitForTimeout(300);
     await p.click('#cs-ex .ex-chip:text-is("Stars")'); await p.waitForTimeout(500);
     const chip = await p.evaluate(() => { const e = [...document.querySelectorAll("#cs-ex .ex-chip")].find((x) => x.textContent === "Stars"), s = getComputedStyle(e); return [e.getAttribute("aria-pressed"), s.backgroundColor, e.matches(":hover")]; });
     ok(chip[0] === "true" && chip[1] === "rgb(43, 33, 24)", `${tag}: intake: a chosen idea stays filled under the pointer (readable)`, JSON.stringify(chip));

@@ -635,7 +635,14 @@ button.gcard:active, button.gslot:active { transform: translateY(-1px) scale(.97
 /* the pebble sits top left: the cloud's own links and the chat header make room for it */
 body.iko-home .home-nav { padding-left: 54px; min-height: 40px; }
 @media (max-width: 819px) { body.iko-on .bar .brand { padding-left: 56px; } }
-@media (max-width: 899px) { body.iko-talking #cloud .cloud-hint { visibility: hidden; } }
+@media (max-width: 899px) { body.iko-talking #cloud .cloud-hint, body.iko-cueing #cloud .cloud-hint { visibility: hidden; } }
+/* "always here": until Iko is opened the first time, a faint ring breathes around the pebble (still, with reduced motion) */
+.iko { position: relative; }
+.iko.glow::before { content: ""; position: absolute; inset: 4px 1px 6px; border-radius: 50%; pointer-events: none; box-shadow: 0 0 0 1px rgba(143, 119, 84, .16), 0 0 6px 2px rgba(143, 119, 84, .1); animation: iko-glow 4.2s ease-in-out infinite; }
+@keyframes iko-glow { 0%, 100% { box-shadow: 0 0 0 1px rgba(143, 119, 84, .12), 0 0 4px 1px rgba(143, 119, 84, .06); } 50% { box-shadow: 0 0 0 2px rgba(143, 119, 84, .26), 0 0 12px 4px rgba(143, 119, 84, .16); } }
+/* the screen's cue under the pebble: what Iko can help with here; it fades in, holds a few seconds, fades out */
+.iko-cue { order: 2; margin: -2px 0 0 6px; padding: 1px 8px; font-size: 12.5px; font-style: italic; line-height: 1.5; color: var(--soft); background: rgba(243, 234, 216, .9); border-radius: 10px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .6s ease; }
+.iko-cue.on { opacity: .92; }
 @keyframes iko-line-in { from { opacity: 0; } to { opacity: 1; } }
 .iko-sheet { position: fixed; z-index: 30; left: 8px; right: 8px; bottom: 8px; max-height: min(64vh, 560px); display: flex; flex-direction: column; background: var(--sheet); border: 1px solid var(--rule); border-radius: 14px; box-shadow: 0 6px 24px rgba(60, 40, 20, .14); padding: 10px 14px 8px; }
 @media (min-width: 700px) { .iko-sheet { left: auto; right: 16px; bottom: 16px; width: 390px; } }
@@ -660,7 +667,7 @@ body.iko-home .home-nav { padding-left: 54px; min-height: 40px; }
 #l-done, #l-status { scroll-margin-top: 96px; scroll-margin-bottom: 16px; } /* clear of the sticky header */
 @media (min-width: 1100px) { body.iko-lesson .iko-sheet { left: 16px; right: auto; } }
 .iko-foot { margin: 6px 0 0; text-align: center; font-size: 12.5px; }
-@media (prefers-reduced-motion: reduce) { .iko .iko-pebble, .iko-line { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .iko .iko-pebble, .iko-line { animation: none; } .iko.glow::before { animation: none; box-shadow: 0 0 0 1.5px rgba(143, 119, 84, .22); } .iko-cue { transition: none; } }
 
 /* ---------- PR 99: the name's card (stats), cloud files, the earned flight ---------- */
 #panel.is-root .actions { margin-bottom: 8px; }
