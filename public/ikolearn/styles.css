@@ -381,7 +381,7 @@ button.gcard:hover { border-color: var(--soft); }
 .cs-q:has(+ .cs-few:not([hidden])) { margin-bottom: 2px; }
 .cs-few { margin: 0 0 12px; font-size: 14px; font-style: italic; color: var(--soft); }
 /* the intake's ideas can be picked together: a picked one is filled, quietly */
-.cs-ex .ex-chip[aria-pressed="true"], .cs-ex .ex-chip[aria-pressed="true"]:hover { background: var(--ink); background-color: var(--ink); border-color: var(--ink); color: var(--paper); } /* stays filled under the pointer too */
+.cs-ex .ex-chip[aria-pressed="true"], #cloud-start .cs-ex .ex-chip[aria-pressed="true"]:hover { background: var(--ink); background-color: var(--ink); border-color: var(--ink); color: var(--paper); } /* stays filled under the pointer too */
 .cs-hi:empty, .cs-status:empty { display: none; }
 .cs-row { display: flex; gap: 8px; }
 .cs-row[hidden] { display: none; }

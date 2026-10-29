@@ -199,7 +199,9 @@ for (const width of [390, 1280]) {
     await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
     await p.click('.who-opt[data-who="self"]'); await p.fill("#name-in", "Maya"); await p.press("#name-in", "Enter");
     await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(900);
-    await p.click('#cs-ex .ex-chip:text-is("Stars")');
+    await p.click('#cs-ex .ex-chip:text-is("Stars")'); await p.waitForTimeout(500);
+    const chip = await p.evaluate(() => { const e = [...document.querySelectorAll("#cs-ex .ex-chip")].find((x) => x.textContent === "Stars"), s = getComputedStyle(e); return [e.getAttribute("aria-pressed"), s.backgroundColor, e.matches(":hover")]; });
+    ok(chip[0] === "true" && chip[1] === "rgb(43, 33, 24)", `${tag}: intake: a chosen idea stays filled under the pointer (readable)`, JSON.stringify(chip));
     const t = await p.evaluate(() => {
       const els = [...document.querySelectorAll("#cloud-start button, #cloud-start input")].filter((e) => e.getClientRects().length && !e.hidden);
       const rs = els.map((e) => { const r = e.getBoundingClientRect(); return { t: e.textContent || e.id, x: r.left, y: r.top, r: r.right, b: r.bottom, h: r.height, w: r.width }; });
