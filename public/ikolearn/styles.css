@@ -636,10 +636,11 @@ button.gcard:active, button.gslot:active { transform: translateY(-1px) scale(.97
 body.iko-home .home-nav { padding-left: 54px; min-height: 40px; }
 @media (max-width: 819px) { body.iko-on .bar .brand { padding-left: 56px; } }
 @media (max-width: 899px) { body.iko-talking #cloud .cloud-hint, body.iko-cueing #cloud .cloud-hint { visibility: hidden; } }
-/* "always here": until Iko is opened the first time, a faint ring breathes around the pebble (still, with reduced motion) */
+/* "always here": until Iko is opened the first time, a warm sepia ring with a soft halo breathes slowly around the pebble
+   (a still ring and halo with reduced motion) */
 .iko { position: relative; }
-.iko.glow::before { content: ""; position: absolute; inset: 4px 1px 6px; border-radius: 50%; pointer-events: none; box-shadow: 0 0 0 1px rgba(143, 119, 84, .16), 0 0 6px 2px rgba(143, 119, 84, .1); animation: iko-glow 4.2s ease-in-out infinite; }
-@keyframes iko-glow { 0%, 100% { box-shadow: 0 0 0 1px rgba(143, 119, 84, .12), 0 0 4px 1px rgba(143, 119, 84, .06); } 50% { box-shadow: 0 0 0 2px rgba(143, 119, 84, .26), 0 0 12px 4px rgba(143, 119, 84, .16); } }
+.iko.glow::before { content: ""; position: absolute; inset: 4px 1px 6px; border-radius: 50%; pointer-events: none; box-shadow: 0 0 0 2px rgba(158, 112, 58, .4), 0 0 10px 4px rgba(190, 140, 78, .26); animation: iko-glow 4.8s ease-in-out infinite; }
+@keyframes iko-glow { 0%, 100% { box-shadow: 0 0 0 2px rgba(158, 112, 58, .36), 0 0 9px 3px rgba(190, 140, 78, .22); } 50% { box-shadow: 0 0 0 3px rgba(158, 112, 58, .58), 0 0 18px 8px rgba(190, 140, 78, .38); } }
 /* the screen's cue under the pebble: what Iko can help with here; it fades in, holds a few seconds, fades out */
 .iko-cue { order: 2; margin: -2px 0 0 6px; padding: 1px 8px; font-size: 12.5px; font-style: italic; line-height: 1.5; color: var(--soft); background: rgba(243, 234, 216, .9); border-radius: 10px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .6s ease; }
 .iko-cue.on { opacity: .92; }
@@ -667,7 +668,7 @@ body.iko-home .home-nav { padding-left: 54px; min-height: 40px; }
 #l-done, #l-status { scroll-margin-top: 96px; scroll-margin-bottom: 16px; } /* clear of the sticky header */
 @media (min-width: 1100px) { body.iko-lesson .iko-sheet { left: 16px; right: auto; } }
 .iko-foot { margin: 6px 0 0; text-align: center; font-size: 12.5px; }
-@media (prefers-reduced-motion: reduce) { .iko .iko-pebble, .iko-line { animation: none; } .iko.glow::before { animation: none; box-shadow: 0 0 0 1.5px rgba(143, 119, 84, .22); } .iko-cue { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .iko .iko-pebble, .iko-line { animation: none; } .iko.glow::before { animation: none; box-shadow: 0 0 0 2.5px rgba(158, 112, 58, .48), 0 0 12px 5px rgba(190, 140, 78, .28); } .iko-cue { transition: none; } }
 
 /* ---------- PR 99: the name's card (stats), cloud files, the earned flight ---------- */
 #panel.is-root .actions { margin-bottom: 8px; }

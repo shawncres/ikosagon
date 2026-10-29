@@ -18,6 +18,7 @@
   var API = "/api/ikolearn";
   var LS = { name: "ikolearn.v1.name", cloud: "ikolearn.v1.cloud", thread: "ikolearn.v1.thread", notes: "ikolearn.v1.notes", lessons: "ikolearn.v1.lessons", tests: "ikolearn.v1.tests", view: "ikolearn.v1.view", seen: "ikolearn.v1.seen" };
   var VISIT = "ikolearn.v1.visit"; /* sessionStorage: this browser session was counted as a visit */
+  var CUES = "ikolearn.v1.cues"; /* sessionStorage: the screens whose Iko cue was shown this visit (each once a visit) */
   var SESSION = "ikolearn.v1.session"; /* sessionStorage: the old once-a-visit draw (no longer written; cleared on reset) */
   var HISTORY = 10, TIMEOUT_MS = 60000, MAX_LESSONS = 30;
 
@@ -2361,11 +2362,16 @@
     placeIko();
   }
   /*
-   * "Iko is always here": a tiny cue under the pebble each time a screen opens (Ask me anything, Ask about this lesson,
-   * ...). It fades in, holds about 3.5 s and fades out. Never while Iko is speaking (its line wins) and never where it
+   * "Iko is always here": a tiny cue under the pebble when a screen opens (Ask me anything, Ask about this lesson, ...),
+   * on the learner's first CUE_VISITS visits only (the cloud's profile.visits, already counted once per browser session
+   * in v9), and each screen's cue at most once a visit (sessionStorage CUES). It fades in, holds about 3.5 s and fades out. Never while Iko is speaking (its line wins) and never where it
    * would touch the header, the invite/return rows, the selection card, the start or a confirm: then it is skipped.
    */
   var CUE = { cloud: "Ask me anything", topic: "Ask about this topic", home: "Ask about your cloud", lesson: "Ask about this lesson", test: "Ask about this test", card: "Ask about this card", deck: "Ask about your deck", intake: "Not sure? Ask me" };
+  var CUE_VISITS = 3;
+  function cuesDone() { try { return JSON.parse(sessionStorage.getItem(CUES) || "{}") || {}; } catch { return {}; } }
+  function cueDone(key) { var d = cuesDone(); d[key] = 1; try { sessionStorage.setItem(CUES, JSON.stringify(d)); } catch { /* ignore */ } }
+  function cueWanted(key) { return Boolean(key) && Boolean(state.cloud) && (C.profileOf(state.cloud).visits || 1) <= CUE_VISITS && !cuesDone()[key]; }
   function cueOf(c) {
     if (!c) return "";
     if (c.view === "cloud") return state.panelNode === "root" && !el.panel.hidden ? "home" : c.topic ? "topic" : "cloud";
@@ -2389,7 +2395,7 @@
     iko.cueH = setTimeout(function () { if (!el.ikoCue.classList.contains("on")) el.ikoCue.hidden = true; }, motionOK() ? 650 : 0); /* after the fade */
   }
   function showCue(key) {
-    if (key !== iko.cueKey || iko.open || el.ikoWrap.hidden || !el.ikoLine.hidden) return; /* Iko is speaking (or gone): no cue */
+    if (key !== iko.cueKey || iko.open || el.ikoWrap.hidden || !el.ikoLine.hidden || !cueWanted(key)) return; /* Iko is speaking (or gone), a later visit, or shown already this visit: no cue */
     el.ikoCue.textContent = CUE[key];
     el.ikoCue.hidden = false;
     document.body.classList.add("iko-cueing");
@@ -2403,6 +2409,7 @@
     void el.ikoCue.offsetWidth;
     el.ikoCue.classList.add("on");
     iko.cueShown = key;
+    cueDone(key);
     iko.cueT = setTimeout(function () { if (iko.cueKey === key) hideCue(); }, 3600);
   }
 
@@ -2818,7 +2825,7 @@
     var guiding = PR && PR.mode(localStorage) === "guide";
     if (!window.confirm(guiding ? "Start over for " + state.name + "? This clears " + state.name + "'s chat, cloud and lessons from this device. Other learners are kept." : "Start over? This clears your name, chat, cloud and lessons from this device.")) return;
     Object.keys(LS).forEach(function (k) { try { localStorage.removeItem(LS[k]); } catch { /* ignore */ } });
-    try { sessionStorage.removeItem(SESSION); sessionStorage.removeItem(VISIT); } catch { /* ignore */ }
+    try { sessionStorage.removeItem(SESSION); sessionStorage.removeItem(VISIT); sessionStorage.removeItem(CUES); } catch { /* ignore */ }
     if (PR) PR.dropActive(localStorage); /* this learner leaves the list; a guide carries on with the next one */
     location.reload();
   });

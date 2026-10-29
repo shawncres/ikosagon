@@ -36,7 +36,7 @@ const HOOK = () => { let real; Object.defineProperty(window, "IkoCloudView", { c
 const nd = (rows) => rows.map((r) => JSON.stringify(r)).join("\n") + "\n";
 const QS = [{ q: "What makes the tides rise and fall?", options: ["The moon's pull", "The wind", "Fish"], answer: 0 }];
 const LESSON = nd([{ t: "start", model: "m" }, { t: "delta", text: "INTRO: Tides are the sea rising and falling twice a day.\nEXPLAIN: The moon pulls on the water, and the oceans bulge toward it." }, { t: "path", steps: [], next: "", choices: [], questions: QS, tricky: "Like a blanket pulled by a friend." }, { t: "done" }]);
-const SEED = ({ now, hello, fresh }) => {
+const SEED = ({ now, hello, fresh, visits }) => {
   const C = window.IkoCloud, T = now - 20 * 864e5, c = C.create("Maya", T);
   const subs = [["Nature", "Ocean Life", ["Coral Reefs", "Whales", "Tides", "Deep Sea"]], ["Art", "Drawing", ["Shapes", "Shading", "Lines"]], ["Music", "Rhythm", ["Beats", "Tempo", "Drums"]]];
   subs.forEach(([sub, top, k], i) => C.applyCreate(c, { items: [{ node: { name: top, chain: [sub] }, card: { title: top, blurb: top + " in plain words.", goal: "" }, children: k.map((x, j) => ({ name: x, order: j + 1, score: 0.8 - j * 0.1, why: "", role: "core", blurb: x + " in plain words, step by step." })) }] }, { t: T + i * 1000 }));
@@ -48,7 +48,7 @@ const SEED = ({ now, hello, fresh }) => {
   C.attachCard(c, { topic: "Coral Reefs", parent: "Ocean Life", chain: ["Nature", "Ocean Life"], title: "Coral reefs are alive", body: "Coral reefs are built by tiny animals called polyps. Each one makes a little stony cup, and over hundreds of years the cups pile up into a reef that shelters a quarter of all sea life." }, now - 864e5);
   C.attachCard(c, { topic: "Ocean Life", parent: "", chain: ["Nature"], title: "The ocean is mostly dark", body: "Sunlight only reaches the top 200 metres of the sea. Below that, animals make their own light, and most of the ocean has never been seen by people." }, now - 2 * 864e5);
   c.order.forEach((x) => { if (!c.nodes[x].blurb) c.nodes[x].blurb = c.nodes[x].label + " in plain words, a little at a time."; });
-  c.profile.onboarded = T; c.profile.visits = hello ? 1 : 6; c.profile.lessonVisit = 6; c.profile.askedAt = now;
+  c.profile.onboarded = T; c.profile.visits = visits != null ? visits : hello ? 1 : 6; c.profile.lessonVisit = 6; c.profile.askedAt = now;
   Object.assign(C.dirOf(c), { off: now });
   C.joinDeck(c, now);
   localStorage.setItem("ikolearn.v1.name", "Maya"); localStorage.setItem("ikolearn.v1.cloud", C.serialize(c));
@@ -197,9 +197,15 @@ for (const width of [390, 1280]) {
   for (const reduce of [false, true]) {
     const { ctx, p, errs } = await boot(width, { fresh: true }, reduce ? { reducedMotion: "reduce" } : {});
     const tg = reduce ? "reduced motion: " : "";
-    const glow = () => p.evaluate(() => { const b = document.querySelector("#iko"), s = getComputedStyle(b, "::before"); return { on: b.classList.contains("glow"), anim: s.animationName, ring: s.boxShadow, opened: JSON.parse(localStorage.getItem("ikolearn.v1.seen")).h.iko || 0 }; });
-    const g0 = await glow();
-    ok(g0.on && g0.ring !== "none" && (reduce ? g0.anim === "none" : g0.anim === "iko-glow") && !g0.opened, `${tag}: Iko cue: ${tg}${reduce ? "a still, faint ring" : "a faint breathing glow"} until Iko is first opened`, JSON.stringify(g0));
+    /* the ring and the halo, read from the computed box-shadow: [{ a: alpha, blur, spread }] */
+    const glow = () => p.evaluate(() => {
+      const b = document.querySelector("#iko"), s = getComputedStyle(b, "::before");
+      const sh = (s.boxShadow.match(/rgba?\([^)]*\)[^,]*(?:,(?![^(]*\))|$)/g) || []).map((x) => { const c = x.match(/rgba?\(([^)]*)\)/)[1].split(",").map(Number), px = (x.replace(/rgba?\([^)]*\)/, "").match(/-?[\d.]+px/g) || []).map(parseFloat); return { a: c.length > 3 ? c[3] : 1, blur: px[2] || 0, spread: px[3] || 0 }; });
+      return { on: b.classList.contains("glow"), anim: s.animationName, sh, opened: JSON.parse(localStorage.getItem("ikolearn.v1.seen")).h.iko || 0 };
+    });
+    const g0 = await glow(), ring = g0.sh[0] || {}, halo = g0.sh[1] || {};
+    ok(g0.on && (reduce ? g0.anim === "none" : g0.anim === "iko-glow") && !g0.opened, `${tag}: Iko cue: ${tg}${reduce ? "a still ring" : "a slow breathing glow"} until Iko is first opened`, JSON.stringify(g0));
+    ok(ring.a >= 0.35 && ring.spread >= 2 && halo.a >= 0.2 && halo.blur >= 9 && halo.spread >= 3, `${tag}: Iko cue: ${tg}the glow is clearly visible (a ring of at least .35 opacity and 2px, a soft halo of at least .2 and 9px blur)`, JSON.stringify(g0.sh));
     await p.click("#iko"); await p.waitForTimeout(300); await p.click("#iko-x"); await p.waitForTimeout(300);
     const g1 = await glow();
     ok(!g1.on && g1.opened === 1, `${tag}: Iko cue: ${tg}the glow stops once Iko has been opened, saved on the device`, JSON.stringify(g1));
@@ -210,7 +216,7 @@ for (const width of [390, 1280]) {
   }
   {
     const { ctx, p, errs } = await open(width);
-    await p.goto(BASE + "/ikolearn"); await p.evaluate(SEED, { now: Date.now() }); await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
+    await p.goto(BASE + "/ikolearn"); await p.evaluate(SEED, { now: Date.now(), visits: 1 }); await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
     /* the cue for this screen: shown (faded in), its text, and clear of everything */
     const cue = (text, ms = 2500) => p.waitForFunction((t) => { const c = document.querySelector("#iko-cue"); return c && !c.hidden && c.classList.contains("on") && c.textContent === t && +getComputedStyle(c).opacity > 0.5; }, text, { timeout: ms }).then(() => true, () => false);
     const clear = () => p.evaluate(() => {
@@ -241,12 +247,29 @@ for (const width of [390, 1280]) {
     ok((await about()) === "On your deck", `${tag}: Iko from the Deck knows the Deck`);
     await p.click("#d-back").catch(() => {}); await p.waitForTimeout(900);
     if (await p.isHidden("#cloud")) await p.click("#to-cloud").catch(() => {});
-    await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(900);
+    await p.waitForSelector("#cloud:not([hidden])");
+    ok(!(await cue("Ask me anything", 1800)), `${tag}: Iko cue: the cloud's cue isn't repeated in the same visit`);
     await tap(p, "Tides"); await p.click("#p-lesson"); await p.waitForSelector("#l-quiz .opt");
     ok(await cue("Ask about this lesson"), `${tag}: Iko cue: a lesson -> "Ask about this lesson"`);
     ok((await clear()).length === 0, `${tag}: Iko cue: clear of the header on a lesson`, JSON.stringify(await clear()));
     ok(/^On Tides · lesson$/.test(await about()), `${tag}: Iko from a lesson knows the lesson`);
     ok(errs.length === 0, `${tag}: Iko cue: no page errors`, errs.join(" | "));
+    await ctx.close();
+  }
+  /* the cues are for the first 3 visits only (profile.visits, counted once a browser session); a reload is the same visit */
+  for (const v of [3, 4]) {
+    const { ctx, p, errs } = await open(width);
+    await p.goto(BASE + "/ikolearn"); await p.evaluate(SEED, { now: Date.now(), visits: v - 1 }); await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
+    const shown = () => p.waitForFunction(() => { const c = document.querySelector("#iko-cue"); return !c.hidden && c.classList.contains("on"); }, null, { timeout: 2200 }).then(() => true, () => false);
+    const visits = await p.evaluate(() => window.IkoCloud.profileOf(window.IkoCloud.deserialize(localStorage.getItem("ikolearn.v1.cloud"))).visits);
+    const s1 = await shown();
+    ok(visits === v && s1 === (v <= 3), `${tag}: Iko cue: visit ${v}: ${v <= 3 ? "the cue shows" : "no cue any more"}`, JSON.stringify({ visits, s1 }));
+    if (v === 3) {
+      await p.reload({ waitUntil: "networkidle" });
+      const again = await shown(), v2 = await p.evaluate(() => window.IkoCloud.profileOf(window.IkoCloud.deserialize(localStorage.getItem("ikolearn.v1.cloud"))).visits);
+      ok(!again && v2 === 3, `${tag}: Iko cue: a reload is the same visit: the cloud's cue isn't repeated`, JSON.stringify({ again, v2 }));
+    }
+    ok(errs.length === 0, `${tag}: Iko cue: visit ${v}: no page errors`, errs.join(" | "));
     await ctx.close();
   }
   /* F. intake: nothing crowds, every target 44px */
