@@ -1858,52 +1858,96 @@
   }
   var csEx = null;
   /*
-   * The opening question on a phone (and in in-app browsers with their toolbars): one still, calm column. The name sits
-   * on its plate in the page, centred above the question (the canvas doesn't draw it then, and the empty cloud holds
-   * still, so nothing drifts into the text); the cloud's controls step away; Iko keeps the top-left corner with its line
-   * and cue beside it, not over the question. The column is centred in the room between Iko and the fine print, and
-   * when the keyboard opens (visualViewport) it moves up into what is left so the field and Begin stay in view (the fine
-   * print steps aside). Taller than the room: it scrolls on its own, never under Iko or the fine print.
+   * The opening question (#100, reworked in #101 after QA on an iPhone in WhatsApp's in-app browser). A still column in
+   * the room between Iko and the fine print, a little above the middle, its name on a plate above the question that can be
+   * dragged (within the free space above the greeting, so it never covers Iko, the text or the ideas). Nothing in it ever
+   * clips: no scroll box, no fixed height. With the keyboard up (visualViewport, compared with the tallest view seen at
+   * this width, since an in-app web view shrinks the page itself rather than overlaying it), the field sits just above the
+   * keyboard with the question in view; the name, the fine print and, on a short screen, the greeting step aside. The
+   * column's place is worked out afresh each time (nothing about a keyboard or a scrolled view is kept), and it only
+   * stays put while that is within a small step of the fresh place, so it never jumps when the hello folds or the
+   * ideas change.
    */
-  var intakeOn = false, intakeTop = { w: 0, top: 0, at: null }; /* the room's top only moves down (Iko's hello), and the column stays where it was put while it still fits: it never jumps when the line folds or the ideas change */
+  var intakeOn = false, intakeAt = null, need0 = 0, tallest = { w: 0, h: 0 }, nameOff = { x: 0, y: 0 }, nameShown = { x: 0, y: 0 }, nameDrag = null;
   function intakeMode(on) {
     on = Boolean(on);
     document.body.classList.toggle("intake", on);
     if (big && big.rootHidden) big.rootHidden(on);
     if (big && on !== intakeOn) big.hold(on);
     intakeOn = on;
-    if (!on) { intakeTop.top = 0; intakeTop.at = null; document.body.classList.remove("kbd"); el.cs.style.maxHeight = ""; el.cs.style.top = ""; }
+    if (!on) { intakeAt = null; need0 = 0; nameOff = { x: 0, y: 0 }; nameShown = { x: 0, y: 0 }; el.csName.style.transform = ""; document.body.classList.remove("kbd"); el.cs.classList.remove("tight"); el.cs.style.top = ""; }
   }
+  function ikoBottom() { var w = el.ikoWrap && !el.ikoWrap.hidden ? el.ikoWrap.getBoundingClientRect() : null; return w && w.height ? w.bottom : 0; }
   function placeStart() {
     if (!big || el.cs.hidden) return;
-    var vv = window.visualViewport, vh = vv ? vv.height : window.innerHeight, vt = vv ? vv.offsetTop : 0;
+    var vv = window.visualViewport, vh = vv ? vv.height : window.innerHeight, vt = vv ? Math.max(0, vv.offsetTop) : 0;
     var typing = document.activeElement === el.csIn;
-    var kbd = Boolean(vv) && typing && window.innerHeight - vh > 120; /* the on-screen keyboard is up */
+    if (tallest.w !== window.innerWidth) tallest = { w: window.innerWidth, h: 0 };
+    if (!typing || !tallest.h) tallest.h = Math.max(tallest.h, vh, window.innerHeight);
+    var kbd = typing && tallest.h - vh > 120; /* the on-screen keyboard is up (it overlays the page, or shrinks it) */
     document.body.classList.toggle("kbd", kbd);
-    var wrap = el.ikoWrap && !el.ikoWrap.hidden ? el.ikoWrap.getBoundingClientRect() : null;
-    var top = Math.max(vt + 12, wrap && wrap.height ? wrap.bottom + 14 : 0);
-    if (intakeTop.w !== window.innerWidth) intakeTop = { w: window.innerWidth, top: 0, at: null };
-    top = intakeTop.top = Math.max(top, intakeTop.top);
-    var ikoBottom = top;
-    var foot = el.cloud.querySelector(".cloud-foot"), fr = !kbd && foot && foot.getClientRects().length ? foot.getBoundingClientRect() : null;
-    var bottom = fr ? fr.top - 10 : vt + vh - 10;
-    if (kbd) top = Math.max(vt + 10, wrap && wrap.height ? wrap.bottom + 8 : 0); /* the keyboard leaves little room: the column starts just under Iko */
-    var room = Math.max(120, bottom - top), need = el.cs.scrollHeight;
-    var fits = need <= room;
-    el.cs.style.maxHeight = fits ? "" : Math.round(room) + "px";
-    el.cs.classList.toggle("scrolls", !fits);
-    var at = fits ? top + (room - need) * (kbd ? 1 : 0.42) : top; /* a little above the middle; with the keyboard, just above it */
-    if (!kbd && fits) {
-      if (intakeTop.at != null && intakeTop.at >= ikoBottom && intakeTop.at + need <= bottom) at = intakeTop.at; /* still fits where it is: stay */
-      intakeTop.at = at;
+    el.cs.classList.remove("tight");
+    var iko = ikoBottom(), at;
+    if (kbd) {
+      /* the field just above the keyboard; the question above it, in view and clear of Iko when Iko is in view */
+      var low = vt + vh - 10, minTop = Math.max(vt + 8, iko > vt + 4 ? iko + 6 : 0);
+      var lift = function () { var q = el.csHi.textContent && !el.csHi.hidden && el.csHi.offsetHeight ? el.csHi : el.csQ; return { form: el.csForm.offsetTop + el.csForm.offsetHeight, q: q.offsetTop }; };
+      var L = lift();
+      at = low - L.form;
+      if (at + L.q < minTop) { el.cs.classList.add("tight"); L = lift(); at = low - L.form; }
+      if (at + L.q < minTop) at = minTop - L.q;
+    } else {
+      var foot = el.cloud.querySelector(".cloud-foot"), fr = foot && foot.getClientRects().length ? foot.getBoundingClientRect() : null;
+      var top = Math.max(vt + 12, iko ? iko + 14 : 0), bottom = Math.min(fr ? fr.top - 10 : Infinity, vt + vh - 10);
+      var need = el.cs.offsetHeight;
+      if (need > bottom - top) { el.cs.classList.add("tight"); need = el.cs.offsetHeight; }
+      /* the name at the middle of the screen, as it is on the cloud; as near it as the column fits between Iko and the footer */
+      var nameMid = el.csName.offsetParent !== null ? el.csName.offsetTop + el.csName.offsetHeight / 2 : 0;
+      /* room kept below for one more row of ideas (More), so it needn't rise; the same answer however often it's asked */
+      if (!need0) need0 = need;
+      var keep = Math.min(bottom - top, Math.max(need, need0 + 56));
+      var fresh = need <= bottom - top ? Math.min(Math.max(vt + vh / 2 - nameMid, top), bottom - keep) : top;
+      /* still while only the column changes (the hello folds, the ideas arrive) and it still fits; fresh when the screen changes
+         (a turn, the keyboard gone with the page panned): never left low after the keyboard */
+      var key = Math.round(vt) + "/" + Math.round(vh) + "/" + window.innerWidth;
+      at = intakeAt && intakeAt.key === key && intakeAt.at >= top ? Math.max(top, Math.min(intakeAt.at, bottom - need)) : fresh; /* when it grows past the room, it rises only as far as it must */
+      intakeAt = { key: key, at: at };
     }
     el.cs.style.top = Math.round(at) + "px";
-    if (!fits && typing) { var f = el.csForm.offsetTop + el.csForm.offsetHeight - el.cs.clientHeight + 8; if (el.cs.scrollTop < f) el.cs.scrollTop = f; }
+    clampName();
   }
+  /* the name's plate can be dragged, like the name on the cloud: anywhere across, and up into the free space under Iko;
+     never over Iko, the greeting, the question or the ideas */
+  function clampName() {
+    if (!intakeOn || el.csName.offsetParent === null) return;
+    var r = el.csName.getBoundingClientRect(), bx = r.left - nameShown.x, by = r.top - nameShown.y, /* where it sits undragged */ w = r.width, h = r.height;
+    var first = [el.csHi, el.csQ].filter(function (x) { return x.textContent && !x.hidden && x.offsetHeight; })[0];
+    var vv = window.visualViewport, vt = vv ? Math.max(0, vv.offsetTop) : 0;
+    var minY = Math.max(vt + 8, ikoBottom() + 6), maxY = first ? first.getBoundingClientRect().top - 6 - h : by;
+    nameOff.x = Math.min(Math.max(nameOff.x, 8 - bx), window.innerWidth - 8 - w - bx);
+    nameOff.y = Math.min(Math.max(nameOff.y, Math.min(0, minY - by)), Math.max(0, maxY - by));
+    nameShown = { x: Math.round(nameOff.x), y: Math.round(nameOff.y) };
+    el.csName.style.transform = nameOff.x || nameOff.y ? "translate(" + Math.round(nameOff.x) + "px, " + Math.round(nameOff.y) + "px)" : "";
+  }
+  el.csName.addEventListener("pointerdown", function (e) {
+    if (!intakeOn || (e.pointerType === "mouse" && e.button !== 0)) return;
+    nameDrag = { id: e.pointerId, x: e.clientX - nameOff.x, y: e.clientY - nameOff.y };
+    try { el.csName.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    el.csName.classList.add("dragging");
+    e.preventDefault();
+  });
+  el.csName.addEventListener("pointermove", function (e) {
+    if (!nameDrag || e.pointerId !== nameDrag.id) return;
+    nameOff = { x: e.clientX - nameDrag.x, y: e.clientY - nameDrag.y };
+    clampName();
+  });
+  var nameUp = function (e) { if (!nameDrag || e.pointerId !== nameDrag.id) return; nameDrag = null; el.csName.classList.remove("dragging"); };
+  el.csName.addEventListener("pointerup", nameUp);
+  el.csName.addEventListener("pointercancel", nameUp);
   window.addEventListener("resize", function () { placeStart(); });
   if (window.visualViewport) { window.visualViewport.addEventListener("resize", function () { placeStart(); }); window.visualViewport.addEventListener("scroll", function () { placeStart(); }); }
   el.csIn.addEventListener("focus", function () { setTimeout(placeStart, 60); setTimeout(placeStart, 400); });
-  el.csIn.addEventListener("blur", function () { setTimeout(placeStart, 60); });
+  el.csIn.addEventListener("blur", function () { setTimeout(placeStart, 60); setTimeout(placeStart, 400); });
   if (window.ResizeObserver && el.cs) new ResizeObserver(function () { placeStart(); }).observe(el.cs); /* the ideas arrive after it is placed */
   function startFromCloud(t) {
     var text = cleanAbout(t);

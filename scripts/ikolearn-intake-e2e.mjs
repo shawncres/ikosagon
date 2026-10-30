@@ -5,7 +5,10 @@
 // More and the fine print), that everything is on screen and every target is at least 44px, that the name sits centred
 // above the question while the canvas leaves it out and the empty cloud holds still, that picking ideas and More keep the
 // row tidy, and that with the keyboard up (a shrunk visualViewport) the field and Begin stay in view and the fine print
-// steps aside.
+// steps aside. PR 101 (Shawn's QA of #100 in WhatsApp): the ideas are never clipped (no ancestor clips them, no scroll
+// box), the name sits near the middle and can be dragged, and with the keyboard up (iOS overlaying the page, or a web view
+// shrinking it) the field sits just above the keyboard with the question in view, its focus ring whole, and the column
+// returns to its place when the keyboard has gone (even after iOS panned the page).
 // Run: IKOLEARN_PW=<path to node_modules/playwright-core> node scripts/ikolearn-intake-e2e.mjs [--root public]
 import http from "node:http";
 import fs from "node:fs";
@@ -36,9 +39,10 @@ const browser = await chromium.launch({ executablePath: process.env.IKOLEARN_CHR
 /* the cloud view (to read the canvas) and a visualViewport the test can shrink, as an on-screen keyboard would */
 const HOOK = () => {
   let real; Object.defineProperty(window, "IkoCloudView", { configurable: true, get: () => real, set: (v) => { real = Object.assign({}, v, { create: (c, o) => { const view = v.create(c, o); (window.__views = window.__views || []).push({ id: c.id, view }); return view; } }); } });
-  const vv = new EventTarget(); let kb = 0;
-  Object.defineProperties(vv, { height: { get: () => window.innerHeight - kb }, width: { get: () => window.innerWidth }, offsetTop: { get: () => 0 }, offsetLeft: { get: () => 0 }, scale: { get: () => 1 } });
-  window.__keyboard = (h) => { kb = h; vv.dispatchEvent(new Event("resize")); };
+  const vv = new EventTarget(); let kb = 0, pan = 0;
+  Object.defineProperties(vv, { height: { get: () => window.innerHeight - kb }, width: { get: () => window.innerWidth }, offsetTop: { get: () => pan }, offsetLeft: { get: () => 0 }, scale: { get: () => 1 } });
+  /* h: the keyboard's height over the page; pn: how far iOS has panned the visual viewport down the page */
+  window.__keyboard = (h, pn) => { kb = h; pan = pn || 0; vv.dispatchEvent(new Event("resize")); vv.dispatchEvent(new Event("scroll")); };
   Object.defineProperty(window, "visualViewport", { configurable: true, get: () => vv });
 };
 const IOS = (app) => `Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 ${app}`;
@@ -106,6 +110,29 @@ function layout(tag, at, L, o = {}) {
   ok(small.length === 0, `${tag}: ${at}: every target at least 44px`, small.join(", "));
 }
 const get = (L, n) => L.out.find((r) => r.name === n);
+/* what of the opening column any ancestor clips (overflow other than visible), and whether the column is a scroll box */
+const clipped = (p) => p.evaluate(() => {
+  const out = [], kids = [...document.querySelectorAll("#cs-ex .ex-chip, #cs-ex .ex-more, #cs-q, #cs-in, #cs-form .btn")].filter((e) => e.getClientRects().length);
+  for (const k of kids) {
+    const r = k.getBoundingClientRect();
+    for (let a = k.parentElement; a && a !== document.body; a = a.parentElement) {
+      const cs = getComputedStyle(a); if (cs.overflowX === "visible" && cs.overflowY === "visible") continue;
+      const b = a.getBoundingClientRect(); if (r.top < b.top - 0.5 || r.bottom > b.bottom + 0.5 || r.left < b.left - 0.5 || r.right > b.right + 0.5) out.push((k.id || k.textContent) + " in " + (a.id || a.className));
+    }
+  }
+  const cs = document.querySelector("#cloud-start");
+  return { out, scrolls: cs.scrollHeight > cs.clientHeight + 1 && getComputedStyle(cs).overflowY !== "visible" };
+});
+/* the field's focus ring (outline outside the box), and the column's left edge, against the safe padding */
+const ring = (p) => p.evaluate(() => { const f = document.querySelector("#cs-in"), cs = getComputedStyle(f), r = f.getBoundingClientRect(), o = (parseFloat(cs.outlineWidth) || 0) + Math.max(0, parseFloat(cs.outlineOffset) || 0); return { left: r.left - o, right: r.right + o, w: innerWidth, sw: document.documentElement.scrollWidth, ox: scrollX }; });
+const keyboardUp = async (tag, p, vt, vh, at) => {
+  const L = await boxes(p), fld = get(L, "field"), beg = get(L, "Begin"), q = get(L, "question"), R = await ring(p), C = await clipped(p);
+  ok(fld && beg && fld.b <= vt + vh + 0.5 && vt + vh - Math.max(fld.b, beg.b) <= 24, `${tag}: ${at}: the field sits just above the keyboard (no gap)`, JSON.stringify({ fld: fld && fld.b, beg: beg && beg.b, vt, vh }));
+  ok(q && q.y >= vt - 0.5 && q.b <= fld.y, `${tag}: ${at}: the question stays in view above the field`, JSON.stringify({ q, vt }));
+  ok(q && fld.y - q.b <= 60, `${tag}: ${at}: no big gap between the question and the field`, JSON.stringify({ q: q && q.b, f: fld.y }));
+  ok(R.left >= 12 - 0.5 && R.right <= R.w - 0.5 && R.sw <= R.w && R.ox === 0, `${tag}: ${at}: the field's left edge and focus ring are whole (no sideways overflow)`, JSON.stringify(R));
+  ok(C.out.length === 0 && !C.scrolls, `${tag}: ${at}: nothing in the column is clipped (no scroll box)`, JSON.stringify(C));
+};
 
 for (const s of SIZES) {
   const tag = s.tag;
@@ -119,6 +146,13 @@ for (const s of SIZES) {
   const iko = get(L0, "Iko"), line = get(L0, "Iko's line");
   ok(iko && line && line.b < nm.y && iko.b < nm.y, `${tag}: Iko and its hello stay above the name and the question`, JSON.stringify({ iko, line, nm }));
   if (s.inset) ok(iko.y >= s.inset.top, `${tag}: Iko clears the safe area at the top`, JSON.stringify(iko));
+  /* PR 101: the ideas whole (Shawn: "the chips are getting cut off on bottom"); the name near the middle */
+  const C0 = await clipped(p), foot0 = L0.out.filter((r) => r.name.startsWith("fine print")), lastIdea = L0.out.filter((r) => r.name.startsWith("idea ") || r.name === "More").sort((a, b) => b.b - a.b)[0];
+  ok(C0.out.length === 0 && !C0.scrolls, `${tag}: no idea, nor the field or Begin, is clipped by the column or anything around it`, JSON.stringify(C0));
+  ok(lastIdea && lastIdea.b <= L0.h && foot0.every((f) => lastIdea.b <= f.y), `${tag}: the ideas end on screen, above the fine print`, JSON.stringify({ lastIdea, foot: foot0[0] }));
+  const mid = (nm.y + nm.b) / 2, footTop = foot0.length ? Math.min(...foot0.map((f) => f.y)) : L0.h;
+  ok(Math.abs(mid - L0.h / 2) <= 24 || (mid > L0.h / 2 - 24 - L0.h * 0.2 && footTop - lastIdea.b <= 40), `${tag}: the name sits at the middle of the screen (or as near as the column fits above the fine print)`, JSON.stringify({ mid, h: L0.h, gap: footTop - lastIdea.b }));
+  if (tag === "390x844" || tag.startsWith("whatsapp")) ok(mid >= L0.h * 0.38 && mid <= L0.h * 0.56, `${tag}: the name is near the vertical centre`, JSON.stringify({ mid, h: L0.h }));
   const canvas = await p.evaluate(async () => {
     const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view, cv = document.querySelector("#cloud-canvas"), k = cv.width / cv.clientWidth;
     const a = v.state().yaw, q = v.project("root"), g = cv.getContext("2d");
@@ -141,8 +175,11 @@ for (const s of SIZES) {
   ok(cue === "Not sure? Ask me", `${tag}: once the hello has folded, the opening question's cue shows`, String(cue));
   const L2 = await boxes(p);
   layout(tag, "with Iko's cue", L2);
-  const nm2 = get(L2, "name");
-  ok(nm2 && Math.abs(nm2.y - nm.y) <= 1, `${tag}: the question doesn't jump when the hello folds`, JSON.stringify([nm.y, nm2 && nm2.y]));
+  const nm2 = get(L2, "name"), nm1 = get(L1, "name");
+  ok(nm2 && Math.abs(nm2.y - nm1.y) <= 1, `${tag}: the question doesn't jump when the hello folds`, JSON.stringify([nm1.y, nm2 && nm2.y]));
+  /* More adds a row or two: the column keeps a row's room for it, and rises (never drops) only as far as the rest needs */
+  const ft1 = Math.min(...L1.out.filter((r) => r.name.startsWith("fine print")).map((r) => r.y)), mb1 = Math.max(...L1.out.filter((r) => r.name.startsWith("idea ") || r.name === "More").map((r) => r.b));
+  ok(nm1.y <= nm.y + 0.5 && (nm.y - nm1.y <= 1 || ft1 - mb1 <= 12), `${tag}: More moves the question no more than the extra ideas need (only up to the fine print, never clipped)`, JSON.stringify({ was: nm.y, now: nm1.y, gap: ft1 - mb1 }));
   /* 4. the keyboard: the field and Begin stay in view above it, the fine print steps aside */
   await p.tap("#cs-in"); await p.waitForTimeout(100);
   const kb = s.kb || Math.round(s.h * 0.42);
@@ -151,6 +188,7 @@ for (const s of SIZES) {
   const fld = get(L3, "field"), beg = get(L3, "Begin");
   ok(fld && beg && fld.y >= 0 && beg.b <= vh && fld.b <= vh, `${tag}: with the keyboard up the field and Begin stay in view`, JSON.stringify({ fld, beg, vh }));
   ok(!L3.out.some((r) => r.name.startsWith("fine print")), `${tag}: with the keyboard up the fine print steps aside`);
+  await keyboardUp(tag, p, 0, vh, "keyboard over the page");
   const kh = []; L3.out.forEach((a, i) => L3.out.slice(i + 1).forEach((b) => { const inA = (r) => r.b > 0 && r.y < vh; if (inA(a) && inA(b) && a.x < b.r - 0.5 && b.x < a.r - 0.5 && a.y < b.b - 0.5 && b.y < a.b - 0.5) kh.push(a.name + " / " + b.name); }));
   ok(kh.length === 0, `${tag}: with the keyboard up nothing visible overlaps`, kh.join(", "));
   await p.fill("#cs-in", "the ocean");
@@ -159,6 +197,33 @@ for (const s of SIZES) {
   const L4 = await boxes(p);
   layout(tag, "after the keyboard closes", L4);
   ok(L4.out.some((r) => r.name.startsWith("fine print")), `${tag}: the fine print is back after the keyboard closes`);
+  const nm4 = get(L4, "name");
+  ok(nm4 && Math.abs(nm4.y - nm2.y) <= 2, `${tag}: after the keyboard the column is back where it was`, JSON.stringify([nm2.y, nm4 && nm4.y]));
+  /* 5. iOS panning the page to the field (Shawn's WhatsApp): just above the keyboard, the question in view; then back */
+  await p.tap("#cs-in"); await p.waitForTimeout(100);
+  const pan = Math.max(0, Math.round(nm2.y + 160 - (s.h - kb)));
+  await p.evaluate(([h, pn]) => window.__keyboard(h, pn), [kb, pan]); await p.waitForTimeout(450);
+  await keyboardUp(tag, p, pan, vh, `keyboard with the page panned ${pan}px`);
+  await p.evaluate(([pn]) => window.__keyboard(0, pn), [Math.max(pan, 300)]); await p.waitForTimeout(150); /* the keyboard gone, the pan not yet */
+  await p.evaluate(() => { document.activeElement.blur(); window.__keyboard(0, 0); }); await p.waitForTimeout(450);
+  const L5 = await boxes(p), nm5 = get(L5, "name");
+  ok(nm5 && Math.abs(nm5.y - nm2.y) <= 2, `${tag}: after a panned keyboard the column returns to its place (not left low)`, JSON.stringify([nm2.y, nm5 && nm5.y]));
+  layout(tag, "after a panned keyboard", L5);
+  /* 6. a web view that shrinks the page for the keyboard (innerHeight drops too) */
+  await p.tap("#cs-in"); await p.setViewportSize({ width: s.w, height: s.h - kb }); await p.evaluate(() => window.__keyboard(0, 0)); await p.waitForTimeout(450);
+  await keyboardUp(tag, p, 0, s.h - kb, "the page shrunk for the keyboard");
+  ok(await p.evaluate(() => document.body.classList.contains("kbd")), `${tag}: a page shrunk for the keyboard counts as the keyboard up`);
+  await p.evaluate(() => document.activeElement.blur()); await p.setViewportSize({ width: s.w, height: s.h }); await p.waitForTimeout(450);
+  const L6 = await boxes(p), nm6 = get(L6, "name");
+  ok(nm6 && Math.abs(nm6.y - nm2.y) <= 2, `${tag}: after the page grows back the column is back in its place`, JSON.stringify([nm2.y, nm6 && nm6.y]));
+  layout(tag, "after the page grows back", L6);
+  /* 7. the name can be dragged (Shawn: "still movable"), and never over the text or Iko */
+  const drag = async (dx, dy) => { const r = await p.locator("#cs-name").boundingBox(); const x = r.x + r.width / 2, y = r.y + r.height / 2; await p.mouse.move(x, y); await p.mouse.down(); for (let i = 1; i <= 6; i++) await p.mouse.move(x + (dx * i) / 6, y + (dy * i) / 6); await p.mouse.up(); await p.waitForTimeout(150); return p.locator("#cs-name").boundingBox(); };
+  const r0 = await p.locator("#cs-name").boundingBox(), r1 = await drag(-60, -40);
+  ok(r1 && r1.x < r0.x - 30 && r1.y < r0.y - 10, `${tag}: the name can be dragged`, JSON.stringify({ r0, r1 }));
+  const r2 = await drag(400, 600), L7 = await boxes(p);
+  layout(tag, "after dragging the name about", L7);
+  ok(r2 && r2.x + r2.width <= s.w - 7, `${tag}: a dragged name stays on screen`, JSON.stringify(r2));
   ok(errs.length === 0, `${tag}: no page errors`, errs.join(" | "));
   await ctx.close();
 }
