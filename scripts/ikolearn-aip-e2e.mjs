@@ -214,14 +214,14 @@ for (const width of [390, 1280]) {
       }
       /* after Continue */
       const t0 = await p.textContent("#l-title");
-      await p.click("#l-next .wn-opts:not(.wn-alt) .wn-opt.on .wn-act"); await p.waitForSelector("#l-done:not([hidden])"); await p.waitForTimeout(400);
+      await p.click("#l-next .wn-opts:not(.wn-alt) .wn-opt.on .wn-act"); await p.waitForSelector("#l-done:not([hidden])"); await p.waitForTimeout(400); await passCheck(p); /* PR 103: Where next opens once the check is passed */
       ok((await p.textContent("#l-title")) !== t0, `${tag}: Continue opened the next step`);
       const tot2 = (await p.evaluate(() => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), lid = c.order.find((x) => c.nodes[x].label === document.querySelector("#l-title").textContent); return window.IkoPlan.whereNext(c, lid, null).allOthers.length; }));
       await check(p, tag, "after Continue", calls, { total: tot2, act: true });
       /* from a card on the cloud */
       await p.click("#l-back"); await p.waitForTimeout(900);
       ok(await tap(p, "Kayaking"), `${tag}: Kayaking's card on the cloud`);
-      await p.click("#p-lesson"); await p.waitForSelector("#l-done:not([hidden])"); await p.waitForTimeout(400);
+      await p.click("#p-lesson"); await p.waitForSelector("#l-done:not([hidden])"); await p.waitForTimeout(400); await passCheck(p);
       const tot3 = (await p.evaluate(() => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), lid = c.order.find((x) => c.nodes[x].label === document.querySelector("#l-title").textContent); return window.IkoPlan.whereNext(c, lid, null).allOthers.length; }));
       await check(p, tag, "from a card (Kayaking)", calls, { total: tot3 });
       ok(!errs.length, `${tag}: no console errors`, errs.join(" | "));

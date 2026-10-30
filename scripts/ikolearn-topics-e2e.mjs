@@ -270,12 +270,12 @@ for (const width of [390, 1280]) {
         await p.keyboard.press("Escape"); await p.waitForTimeout(200);
       }
       const t0 = w.title;
-      await p.click("#l-next .wn-opt.on .wn-act"); await p.waitForSelector("#l-done:not([hidden])"); await p.waitForTimeout(400);
+      await p.click("#l-next .wn-opt.on .wn-act"); await p.waitForSelector("#l-done:not([hidden])"); await p.waitForTimeout(400); await passCheck(p); /* PR 103: Where next opens once the check is passed */
       w = await whereNext(p);
       ok(w.title !== t0 && wnOk(w), `${tag}: Where Next after Continue (${w.title}): this subject only, equal boxes, the action in the selected box`, JSON.stringify(w));
       await p.click("#l-back"); await p.waitForTimeout(900);
       ok(await tap(p, "Kneading"), `${tag}: Kneading's card on the cloud`);
-      await p.click("#p-lesson"); await p.waitForSelector("#l-done:not([hidden])"); await p.waitForTimeout(400);
+      await p.click("#p-lesson"); await p.waitForSelector("#l-done:not([hidden])"); await p.waitForTimeout(400); await passCheck(p);
       w = await whereNext(p);
       ok(w.title === "Kneading" && wnOk(w) && w.alt.length > 0, `${tag}: Where Next from a card on the cloud (Kneading): Baking only; the other subjects are in Also in progress`, JSON.stringify(w));
       await p.evaluate(() => document.querySelector("#l-next").scrollIntoView({ block: "center" })); await p.waitForTimeout(200);

@@ -91,13 +91,18 @@ const hit = (a, b) => Boolean(a && b && a.x < b.r - 0.5 && b.x < a.r - 0.5 && a.
 const clear = (p, sels) => p.evaluate((sels) => {
   const vis = (e) => e && !e.closest("[hidden]") && getComputedStyle(e).visibility !== "hidden" && e.getClientRects().length;
   const mine = [document.querySelector("#iko"), document.querySelector("#iko-line")].filter(vis).map((e) => e.getBoundingClientRect());
-  const hits = [];
+  const hits = [], wrap = document.querySelector("#iko-wrap"), was = wrap.style.visibility;
+  wrap.style.visibility = "hidden"; /* so what lies under Iko can be read (elementFromPoint) */
   for (const s of sels) for (const e of document.querySelectorAll(s)) {
     if (!vis(e) || e.closest("#iko-wrap")) continue;
     const r = e.getBoundingClientRect();
     if (!r.width || !r.height || r.bottom < 0 || r.top > innerHeight) continue;
+    /* under another layer (the chat's dock below the cloud): not on screen; only Iko itself may be over it */
+    const cx = Math.min(innerWidth - 1, Math.max(0, r.left + r.width / 2)), cy = Math.min(innerHeight - 1, Math.max(0, r.top + r.height / 2)), top = document.elementFromPoint(cx, cy);
+    if (top && !e.contains(top) && !top.contains(e)) continue;
     if (mine.some((m) => m.left < r.right - 0.5 && r.left < m.right - 0.5 && m.top < r.bottom - 0.5 && r.top < m.bottom - 0.5)) hits.push(s + ":" + (e.id || e.className || e.textContent.slice(0, 20)));
   }
+  wrap.style.visibility = was;
   return { hits, shown: mine.length };
 }, sels);
 const line = (p) => p.evaluate(() => { const l = document.querySelector("#iko-line"); return l.hidden ? null : { text: l.textContent, tip: l.getAttribute("data-tip"), react: l.getAttribute("data-react") }; });
@@ -154,7 +159,7 @@ for (const width of [390, 1280]) {
       await p.locator(".cloud-flow > .chip", { hasText: "Magma" }).first().click();
       await p.waitForSelector("#l-done:not([hidden])");
       await p.waitForTimeout(300);
-      const r0 = await p.evaluate(() => ({ quiz: !document.querySelector("#l-quiz").hidden, cont: !document.querySelector("#l-cont").hidden, got: !document.querySelector("#l-got").hidden, next: document.querySelectorAll("#l-next .wn-opt").length, grow: document.querySelectorAll("#l-next .wn-grow:not([hidden])").length, phase: document.querySelector(".l-main").getAttribute("data-phase"), on: document.querySelector("#ph-learn").className }));
+      const r0 = await p.evaluate(() => ({ quiz: !document.querySelector("#l-quiz").hidden, cont: !document.querySelector("#l-cont").hidden, got: !document.querySelector("#l-got").hidden, next: document.querySelectorAll("#l-next .wn-opt:not([data-kind=progress])").length, grow: document.querySelectorAll("#l-next .wn-grow:not([hidden])").length, phase: document.querySelector(".l-main").getAttribute("data-phase"), on: document.querySelector("#ph-learn").className }));
       ok(!r0.quiz && r0.cont && !r0.got && r0.next === 0 && r0.phase === "learn" && r0.on === "on", `${tag}: lesson: reading first; Continue, no questions yet, no card, no Where next`, JSON.stringify(r0));
       const c0 = await clear(p, ["#l-done button", "#l-cont", ".l-text", "#l-card"]);
       ok(!c0.hits.length, `${tag}: lesson: Iko clear of the reading and its buttons`, JSON.stringify(c0));
@@ -165,7 +170,7 @@ for (const width of [390, 1280]) {
       ok(order, `${tag}: the check comes after the reading`);
       const pick = (qi, oi) => p.locator("#l-quiz .q").nth(qi).locator("input").nth(oi).check();
       await pick(0, 1); await p.waitForTimeout(150); await pick(1, 1); await p.waitForTimeout(300);
-      const m1 = await p.evaluate(() => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), n = c.nodes[window.__magma]; return { miss: Boolean(document.querySelector("#l-quiz .q-miss")), again: (document.querySelector("#l-quiz .q-again") || {}).innerText || "", fresh: Boolean(document.querySelector("#l-quiz .q-fresh")), got: !document.querySelector("#l-got").hidden, next: document.querySelectorAll("#l-next .wn-opt").length, deck: c.deck.length, inDeck: C.inDeck(c, window.__magma), correct: n.correct || 0, ez: (JSON.parse(localStorage.getItem("ikolearn.v1.cloud")).ez || {}) }; });
+      const m1 = await p.evaluate(() => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), n = c.nodes[window.__magma]; return { miss: Boolean(document.querySelector("#l-quiz .q-miss")), again: (document.querySelector("#l-quiz .q-again") || {}).innerText || "", fresh: Boolean(document.querySelector("#l-quiz .q-fresh")), got: !document.querySelector("#l-got").hidden, next: document.querySelectorAll("#l-next .wn-opt:not([data-kind=progress])").length, deck: c.deck.length, inDeck: C.inDeck(c, window.__magma), correct: n.correct || 0, ez: (JSON.parse(localStorage.getItem("ikolearn.v1.cloud")).ez || {}) }; });
       ok(m1.miss && /quilt over a stove/.test(m1.again) && m1.fresh && !m1.got && m1.next === 0, `${tag}: a miss: a clearer telling (prepared, 0 calls), then a fresh check; no card, no Where next`, JSON.stringify(m1));
       ok(m1.deck === deck0 && !m1.inDeck && m1.correct === 0, `${tag}: a miss earns nothing (no deck, no credit)`, JSON.stringify({ deck0, m1 }));
       ok(Object.values(m1.ez).some((v) => v < 0), `${tag}: a miss is noted as this branch's difficulty (ez, additive)`, JSON.stringify(m1.ez));
@@ -175,7 +180,7 @@ for (const width of [390, 1280]) {
       ok(f1.length === 2 && f1.every((t) => /^Fresh/.test(t)) && calls.filter((c) => c === "/lesson").length === lessonCalls, `${tag}: fresh questions (the lesson's spare set, 0 calls)`, JSON.stringify(f1));
       /* a pass */
       await pick(0, 0); await p.waitForTimeout(150); await pick(1, 1); await p.waitForTimeout(400);
-      const p1 = await p.evaluate(() => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")); return { got: !document.querySelector("#l-got").hidden, next: document.querySelectorAll("#l-next .wn-opt").length, phase: document.querySelector(".l-main").getAttribute("data-phase"), earn: document.querySelector("#ph-earn").className, correct: c.nodes[window.__magma].correct || 0, react: document.querySelector("#iko-line").getAttribute("data-react") }; });
+      const p1 = await p.evaluate(() => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")); return { got: !document.querySelector("#l-got").hidden, next: document.querySelectorAll("#l-next .wn-opt:not([data-kind=progress])").length, phase: document.querySelector(".l-main").getAttribute("data-phase"), earn: document.querySelector("#ph-earn").className, correct: c.nodes[window.__magma].correct || 0, react: document.querySelector("#iko-line").getAttribute("data-react") }; });
       ok(p1.got && p1.next >= 1 && p1.phase === "passed" && p1.earn === "on" && p1.correct >= 2, `${tag}: a pass: the next paths open and the card can be earned`, JSON.stringify(p1));
       ok(p1.react === "pass", `${tag}: Iko reacts to a passed check`, JSON.stringify(p1));
       await p.click("#l-got"); await p.waitForTimeout(1300);

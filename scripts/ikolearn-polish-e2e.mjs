@@ -216,61 +216,41 @@ for (const width of [390, 1280]) {
     await ctx.close();
   }
   {
+    /* PR 103: one Iko at the bottom; each screen gets a short bubble of its own (once a visit), clear of everything; Iko knows the screen */
     const { ctx, p, errs } = await open(width);
     await p.goto(BASE + "/ikolearn"); await p.evaluate(SEED, { now: Date.now(), visits: 1 }); await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
-    /* the cue for this screen: shown (faded in), its text, and clear of everything */
-    const cue = (text, ms = 2500) => p.waitForFunction((t) => { const c = document.querySelector("#iko-cue"); return c && !c.hidden && c.classList.contains("on") && c.textContent === t && +getComputedStyle(c).opacity > 0.5; }, text, { timeout: ms }).then(() => true, () => false);
+    const tip = (re, ms = 3000) => p.waitForFunction((src) => { const l = document.querySelector("#iko-line"); return !l.hidden && new RegExp(src).test(l.getAttribute("data-tip") || ""); }, re.source, { timeout: ms }).then(() => true, () => false);
     const clear = () => p.evaluate(() => {
-      const c = document.querySelector("#iko-cue").getBoundingClientRect();
-      const hit = [...document.querySelectorAll(".bar .brand > *, #deck-btn, .minideck, .home-nav > *, .cloud-top .zoom, .cloud-flow, #panel, #cloud-start, #iko-line, #iko, .cloud-hint")].filter((e) => !e.hidden && e.getClientRects().length && getComputedStyle(e).visibility !== "hidden").filter((e) => { const b = e.getBoundingClientRect(); return b.left < c.right && b.right > c.left && b.top < c.bottom && b.bottom > c.top; });
+      const mine = [document.querySelector("#iko"), document.querySelector("#iko-line")].filter((e) => !e.hidden && e.getClientRects().length).map((e) => e.getBoundingClientRect());
+      const hit = [...document.querySelectorAll(".bar .brand > *, #deck-btn, .minideck, .home-nav > *, .cloud-top .zoom, .cloud-flow > *, #panel, #cloud-start, .cloud-hint, #l-done button, #hub-lesson")].filter((e) => !e.hidden && !e.closest("[hidden]") && e.getClientRects().length && mine.some((m) => { const r = e.getBoundingClientRect(); return r.width && m.left < r.right - 0.5 && r.left < m.right - 0.5 && m.top < r.bottom - 0.5 && r.top < m.bottom - 0.5; }));
       return hit.map((e) => e.id || e.className);
     });
     const about = async () => { await p.click("#iko"); await p.waitForTimeout(350); const a = await p.textContent("#iko-about"); const open = !(await p.isHidden("#iko-sheet")); await p.click("#iko-x"); await p.waitForTimeout(300); return open ? a : "(not open)"; };
-    const style = await p.evaluate(() => { const s = getComputedStyle(document.querySelector("#iko-cue")); return { italic: s.fontStyle, size: parseFloat(s.fontSize) }; });
-    ok(await cue("Ask me anything"), `${tag}: Iko cue: on the cloud "Ask me anything" fades in`);
-    ok(style.italic === "italic" && style.size <= 13.5, `${tag}: Iko cue: small italic`, JSON.stringify(style));
+    ok(await tip(/^cloud\d$/), `${tag}: Iko bubble: the cloud has its own short bubble`);
     const h1 = await clear();
-    ok(h1.length === 0, `${tag}: Iko cue: clear of the header, the rows, the hint and Iko's line`, JSON.stringify(h1));
-    await p.waitForTimeout(4600);
-    ok(await p.evaluate(() => { const c = document.querySelector("#iko-cue"); return c.hidden || !c.classList.contains("on"); }), `${tag}: Iko cue: it fades out after a few seconds`);
+    ok(h1.length === 0, `${tag}: Iko bubble: clear of the header, the rows, the hint and the card`, JSON.stringify(h1));
+    ok(!(await p.evaluate(() => Boolean(document.querySelector("#iko-cue")))), `${tag}: Iko bubble: no second cue beside it (one Iko, one bubble)`);
     ok((await about()) === "On your cloud", `${tag}: Iko from the cloud knows it's the cloud`);
-    ok(!(await cue("Ask me anything", 1500)), `${tag}: Iko cue: closing Iko doesn't bring the cue back`);
     await tap(p, "Ocean Life");
-    ok(await cue("Ask about this topic"), `${tag}: Iko cue: a topic's card -> "Ask about this topic"`);
+    ok(await tip(/^topic\d$/), `${tag}: Iko bubble: a topic's card has its own`);
     ok((await about()) === "On your cloud · Ocean Life", `${tag}: Iko from a topic's card knows the topic`);
     await p.click("#p-card"); await p.waitForTimeout(700);
-    ok(await cue("Ask about this card"), `${tag}: Iko cue: its card -> "Ask about this card"`);
-    ok((await clear()).length === 0, `${tag}: Iko cue: clear of the header on the card`, JSON.stringify(await clear()));
+    ok(await tip(/^card\d$/), `${tag}: Iko bubble: its card page has its own`);
+    ok((await clear()).length === 0, `${tag}: Iko bubble: clear of the card page`, JSON.stringify(await clear()));
     ok((await about()) === "On Ocean Life · its card", `${tag}: Iko from the card knows the card`);
     await p.click("#hub-back"); await p.waitForTimeout(700);
-    if (!(await p.isHidden("#cloud"))) { await p.click("#cloud-deck"); await p.waitForTimeout(700); } /* the card was opened from the cloud: back there, then the Deck */
-    ok(await cue("Ask about your deck"), `${tag}: Iko cue: the Deck -> "Ask about your deck"`);
+    if (!(await p.isHidden("#cloud"))) { await p.click("#cloud-deck"); await p.waitForTimeout(700); }
+    ok(await tip(/^deck\d$/), `${tag}: Iko bubble: the Deck has its own`);
     ok((await about()) === "On your deck", `${tag}: Iko from the Deck knows the Deck`);
     await p.click("#d-back").catch(() => {}); await p.waitForTimeout(900);
     if (await p.isHidden("#cloud")) await p.click("#to-cloud").catch(() => {});
     await p.waitForSelector("#cloud:not([hidden])");
-    ok(!(await cue("Ask me anything", 1800)), `${tag}: Iko cue: the cloud's cue isn't repeated in the same visit`);
-    await tap(p, "Tides"); await p.click("#p-lesson"); await p.waitForSelector("#l-quiz .opt");
-    ok(await cue("Ask about this lesson"), `${tag}: Iko cue: a lesson -> "Ask about this lesson"`);
-    ok((await clear()).length === 0, `${tag}: Iko cue: clear of the header on a lesson`, JSON.stringify(await clear()));
+    ok(!(await tip(/^cloud\d$/, 1800)), `${tag}: Iko bubble: the cloud's isn't repeated in the same visit`);
+    await tap(p, "Tides"); await p.click("#p-lesson"); await p.waitForSelector("#l-cont:not([hidden])");
+    ok(await tip(/^learn\d$/), `${tag}: Iko bubble: a lesson -> what to do (read, then Continue)`);
+    ok((await clear()).length === 0, `${tag}: Iko bubble: clear of the lesson's buttons`, JSON.stringify(await clear()));
     ok(/^On Tides · lesson$/.test(await about()), `${tag}: Iko from a lesson knows the lesson`);
-    ok(errs.length === 0, `${tag}: Iko cue: no page errors`, errs.join(" | "));
-    await ctx.close();
-  }
-  /* the cues are for the first 3 visits only (profile.visits, counted once a browser session); a reload is the same visit */
-  for (const v of [3, 4]) {
-    const { ctx, p, errs } = await open(width);
-    await p.goto(BASE + "/ikolearn"); await p.evaluate(SEED, { now: Date.now(), visits: v - 1 }); await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
-    const shown = () => p.waitForFunction(() => { const c = document.querySelector("#iko-cue"); return !c.hidden && c.classList.contains("on"); }, null, { timeout: 2200 }).then(() => true, () => false);
-    const visits = await p.evaluate(() => window.IkoCloud.profileOf(window.IkoCloud.deserialize(localStorage.getItem("ikolearn.v1.cloud"))).visits);
-    const s1 = await shown();
-    ok(visits === v && s1 === (v <= 3), `${tag}: Iko cue: visit ${v}: ${v <= 3 ? "the cue shows" : "no cue any more"}`, JSON.stringify({ visits, s1 }));
-    if (v === 3) {
-      await p.reload({ waitUntil: "networkidle" });
-      const again = await shown(), v2 = await p.evaluate(() => window.IkoCloud.profileOf(window.IkoCloud.deserialize(localStorage.getItem("ikolearn.v1.cloud"))).visits);
-      ok(!again && v2 === 3, `${tag}: Iko cue: a reload is the same visit: the cloud's cue isn't repeated`, JSON.stringify({ again, v2 }));
-    }
-    ok(errs.length === 0, `${tag}: Iko cue: visit ${v}: no page errors`, errs.join(" | "));
+    ok(errs.length === 0, `${tag}: Iko bubble: no page errors`, errs.join(" | "));
     await ctx.close();
   }
   /* F. intake: nothing crowds, every target 44px */
@@ -279,15 +259,14 @@ for (const width of [390, 1280]) {
     await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
     await p.click('.who-opt[data-who="self"]'); await p.fill("#name-in", "Maya"); await p.press("#name-in", "Enter");
     await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(900);
-    /* Iko's hello is speaking: the cue waits, then takes its turn once the line has folded away */
-    ok(!(await p.isHidden("#iko-line")) && (await p.isHidden("#iko-cue")), `${tag}: Iko cue: skipped while Iko is speaking`);
-    await p.waitForFunction(() => { const c = document.querySelector("#iko-cue"); return !c.hidden && c.classList.contains("on") && c.textContent === "Not sure? Ask me"; }, null, { timeout: 12000 }).then(() => ok(true, ""), () => ok(false, `${tag}: Iko cue: the intake's "Not sure? Ask me" after the hello`));
+    /* PR 103: Iko welcomes at once (no separate cue) */
+    ok(!(await p.isHidden("#iko-line")) && (await p.getAttribute("#iko-line", "data-tip")) === "intake0", `${tag}: Iko welcomes from the start`);
     await p.click("#iko"); await p.waitForTimeout(350);
     ok((await p.textContent("#iko-about")) === "Getting started", `${tag}: Iko from the intake knows it's the start`);
     await p.click("#iko-x"); await p.waitForTimeout(300);
     await p.click('#cs-ex .ex-chip:text-is("Stars")'); await p.waitForTimeout(500);
-    const chip = await p.evaluate(() => { const e = [...document.querySelectorAll("#cs-ex .ex-chip")].find((x) => x.textContent === "Stars"), s = getComputedStyle(e); return [e.getAttribute("aria-pressed"), s.backgroundColor, e.matches(":hover")]; });
-    ok(chip[0] === "true" && chip[1] === "rgb(43, 33, 24)", `${tag}: intake: a chosen idea stays filled under the pointer (readable)`, JSON.stringify(chip));
+    const chip = await p.evaluate(() => ({ v: document.querySelector("#cs-in").value, chips: [...document.querySelectorAll("#cs-ex .ex-chip")].map((x) => x.textContent), pressed: document.querySelectorAll("#cs-ex [aria-pressed]").length }));
+    ok(chip.v === "Stars" && !chip.chips.includes("Stars") && chip.chips.length <= 3 && chip.pressed === 0, `${tag}: intake: a chosen idea goes into the field and its chip moves on (nothing stays selected)`, JSON.stringify(chip));
     const t = await p.evaluate(() => {
       const els = [...document.querySelectorAll("#cloud-start button, #cloud-start input")].filter((e) => e.getClientRects().length && !e.hidden);
       const rs = els.map((e) => { const r = e.getBoundingClientRect(); return { t: e.textContent || e.id, x: r.left, y: r.top, r: r.right, b: r.bottom, h: r.height, w: r.width }; });
