@@ -1075,19 +1075,33 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/id="holder"/.test(html) && /class="tray"/.test(html) && /id="l-quiz"/.test(html) && /id="top"/.test(html) && /id="t-list"/.test(html), "holder, tray, question area and top 10 present");
   ok(html.indexOf("cloud-model.js") < html.indexOf("rank.js") && html.indexOf("rank.js") < html.indexOf("deck.js"), "rank.js loads after the model and before deck.js");
   ok(/type = "radio"/.test(app) && /mk\("fieldset"/.test(app) && /C\.confirm\(/.test(app), "questions are real radio groups; answers confirm learning in the model");
+  /* PR 105 */
+  ok(/var it = localIntent\(text\);\s*if \(it\) \{ doIntent\(text, it\); return; \}/.test(app) && /TH\.set\(it\.mode\)/.test(app) && /role: "del", local: true/.test(app), "Iko's controls: light/dark and delete are recognised on the device before any call");
+  ok(/linkBtn\("Keep it"/.test(app) && /linkBtn\("Delete " \+ n\.label, function \(\) \{ deleteBranch\(m\); \}/.test(app) && /C\.removeBranch\(state\.cloud, n\.id\)/.test(app) && (app.match(/C\.removeBranch\(/g) || []).length === 1, "delete: a gentle word first; the branch goes only from the Delete button");
+  ok(/if \(t && ms !== 0\) iko\.lineT = setTimeout/.test(app) && /tipLine\(tip\.text, tip\.id\)/.test(app) && /past its step: the hint goes/.test(app) && /\.tip-x::before \{ content: "×"/.test(css), "hints stay until dismissed (×) or moved past; reactions and notes still fold away");
+  ok((html.match(/href="mailto:shawn@ikosagon\.com\?subject=IkoLearn%20feedback"/g) || []).length === 2 && (html.match(/href="https:\/\/x\.com\/IkosagonAI" class="sup-link" target="_blank" rel="noopener"/g) || []).length === 2 && !/donat|ko-fi|patreon|buymeacoffee/i.test(html), "support and follow links (no donate link until a real page exists)");
+  {
+    const bc = C.create("Sam", 1);
+    C.applyTopics(bc, [{ name: "Airplanes", parent: "Aviation", signal: "explored", chain: ["Aviation"] }, { name: "Chess", parent: "Games", signal: "explored", chain: ["Games"] }], 1);
+    const av = C.subjects(bc).find((x) => x.label === "Aviation"), pl = Object.values(bc.nodes).find((n) => n.label === "Airplanes");
+    bc.deck = [{ id: pl.id, at: 1, subject: "Aviation" }];
+    const gone = C.removeBranch(bc, av.id);
+    ok(gone.length === 2 && !bc.nodes[av.id] && !bc.nodes[pl.id] && !bc.deck.length && C.subjects(bc).map((x) => x.label).join() === "Games" && C.removeBranch(bc, "n999").length === 0, "removeBranch: the branch, everything under it and their deck entries; nothing else");
+  }
   const rankJs = fs.readFileSync("public/ikolearn/rank.js", "utf8");
   ok(!/innerHTML|fetch\(|localStorage/.test(rankJs), "rank.js: pure, no network or storage of its own");
   /*
    * Page weight, measured on what is served: the build minifies every .js and .css (scripts/ikolearn-minify.mjs, the
-   * same function here), index.html and the icon go as they are. Budget 330 KB raw / 105 KB gzip (PR 103 raised it from
-   * 100 KB for the companion at the bottom and the read, check, earn loop: about 4 KB gzip).
+   * same function here), index.html and the icon go as they are. Budget 330 KB raw / 106 KB gzip (PR 103 raised it from
+   * 100 KB for the companion at the bottom and the read, check, earn loop: about 4 KB gzip; PR 105 by 1 KB for Iko's
+   * light/dark and careful delete, the lasting hints and nudges, and the support links: about 1.7 KB gzip).
    */
   const files = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js", "rank.js", "orchestrator.js", "camera.js", "profiles.js", "icon.svg"];
   const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
   const bytes = files.reduce((n, f) => n + served(f).length, 0);
   const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
   ok(bytes < 330_000, "app weight under 330 KB uncompressed (served, minified)", String(bytes));
-  ok(gz < 105_000, "app weight under 105 KB gzipped (served, minified)", String(gz));
+  ok(gz < 106_000, "app weight under 106 KB gzipped (served, minified)", String(gz));
 }
 
 /* ================= the flow pass: chains, Computer Science, orchestrator, children, tests ================= */
@@ -2948,6 +2962,16 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     C.applyTopics(jc, [P.placedTopic({ name: "Airplanes", signal: "curious", placement: "child", target: games.id }, g3)], T0 + 14);
     ok(jc.order.length === n0 && JT("Airplanes").parent === JS("Aviation").id, "duplicate guard: nothing new is created and the topic stays where it was");
     ok(P.placeTopic(jc, { name: "Johnny", placement: "parent" }, games.id) === null, "never the learner's own name");
+    // PR 105: never under a branch only because it was open last. A child target off the focused line needs local evidence.
+    const avi = JS("Aviation");
+    const off1 = P.placeTopic(jc, { name: "Card Combos", parent: "", chain: [], placement: "child", target: avi.id }, games.id);
+    ok(off1.how === "ambiguous" && off1.target === games.id, "placement: a child target on another branch with nothing linking it: ask (New branch / Under the focus)", JSON.stringify(off1));
+    const off2 = P.placeTopic(jc, { name: "Jet Engines", parent: "Aviation", chain: ["Aviation"], placement: "child", target: avi.id }, games.id);
+    ok(off2.how === "child" && off2.target === avi.id, "placement: another branch named in the topic's own chain still takes it (local evidence, 0 calls)", JSON.stringify(off2));
+    const off3 = P.placeTopic(jc, { name: "Airplane Models", parent: "", chain: [], placement: "child", target: JT("Airplanes").id }, games.id);
+    ok(off3.how === "child", "placement: a shared word with the target's trail is evidence enough", JSON.stringify(off3));
+    ok(P.related(jc, { chain: [] }, "Card Combos", avi.id) === false && P.related(jc, { chain: ["Games"] }, "Speed", JS("Games").id) === true, "related(): chain names or shared words only (generic words don't count)");
+    ok(P.placeTopic(jc, { name: "Arcade Cabinets", parent: "Video Games", chain: ["Games", "Video Games"], placement: "child", target: "Video Games" }, games.id).how === "child", "placement: a target under the focus needs no extra evidence");
     // placedTopic: placement and target are not stored; the plan becomes asSubject / under
     const pt = P.placedTopic(ps, { how: "child", target: games.id }), pp = P.placedTopic(math, { how: "parent" });
     ok(!("placement" in pt) && !("target" in pt) && pt.under === games.id && pp.asSubject === true && pp.parent === "" && pp.chain.length === 0, "placed topics carry only what applyTopics needs");
@@ -2976,7 +3000,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     ok(/P\.placeTopic\(state\.cloud, tp, focusId\)/.test(gr) && /P\.placedTopic\(tp, plan\)/.test(gr) && /role: "place", plan:/.test(gr) && /if \(placed\[C\.norm\(tp\.name\)\]\) return;/.test(gr), "chat growth: placed first (reuse / parent / child / ask); a placed topic gets no bridge call");
     const pl3 = gr.slice(gr.indexOf("  function renderPlace(m) {"));
     ok(pl3.length > 500 && !/postJson\(|stream\(|fetch\(|Try again/.test(pl3), "the ambiguous choice: no call and no Try again (the cached plan applies on the device)");
-    ok(/linkBtn\("A new subject"/.test(pl3) && /"Part of " \+ f\.label/.test(pl3), "the ambiguous choice: two quiet buttons, A new subject / Part of Focus");
+    ok(/linkBtn\("New branch"/.test(pl3) && /"Under " \+ f\.label/.test(pl3), "the ambiguous choice: two quiet buttons, New branch / Under Focus");
     ok(/focusId: n \? n\.id : ""/.test(appP) && /state\.glide/.test(appP) && /function revealNode\(id\)/.test(appP), "chat sends the focus id; the camera glides to a new node and its card opens (when the cloud is on screen or next opened)");
     // the root cause of forced nesting: the focus was sticky (an earlier screen's node stayed the chat's focus, sent to the model and used to place)
     const sendSrc = appP.slice(appP.indexOf("  function send(text) {"), appP.indexOf("  function runBridge() {"));

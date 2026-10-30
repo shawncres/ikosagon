@@ -1,7 +1,7 @@
 // End-to-end checks for new topics from Iko and for Where Next, in a real browser, every /api/ikolearn call mocked (no
 // model calls). The chat mock answers like the model does with the placement it is given (it trusts the focus it is
 // sent). New topics: a broad subject while another branch is in focus becomes a new parent under the learner's name;
-// a clear subtopic goes under the focused parent; an unclear one asks first in Iko's sheet (A new subject / Part of X)
+// a clear subtopic goes under the focused parent; an unclear one asks first in Iko's sheet (New branch / Under X)
 // and both answers work; an existing subject is shown, not duplicated; a node from an earlier screen is never the focus;
 // one chat call per request and nothing else. Where Next (after I've got it, after Continue, from a card on the cloud,
 // in guide mode, with Iko open at 1280): only this subject's next steps, Also in progress for the rest, equal boxes,
@@ -199,15 +199,15 @@ for (const width of [390, 1280]) {
       const c2 = calls.length;
       await ask(p, "what about cake decorating?");
       s = await sheet(p); cl = await cloudOf(p);
-      ok(s.opts.join("|") === "A new subject|Part of Baking" && /Where should Cake Decorating go\?/.test(s.log) && !one(cl, "Cake Decorating"), `${tag}: unclear: the choice is in Iko's sheet, nothing is added yet`, JSON.stringify(s.opts) + s.log.slice(-160));
+      ok(s.opts.join("|") === "New branch|Under Baking" && /Where should Cake Decorating go\?/.test(s.log) && !one(cl, "Cake Decorating"), `${tag}: unclear: the choice is in Iko's sheet, nothing is added yet`, JSON.stringify(s.opts) + s.log.slice(-160));
       await shot(p, width, "ambiguous");
-      await p.locator("#iko-log").getByRole("button", { name: "Part of Baking" }).click(); await p.waitForTimeout(700);
+      await p.locator("#iko-log").getByRole("button", { name: "Under Baking" }).click(); await p.waitForTimeout(700);
       cl = await cloudOf(p); s = await sheet(p);
-      ok(one(cl, "Cake Decorating") && one(cl, "Cake Decorating").parent === "Baking" && one(cl, "Cake Decorating").blurb && /Cake Decorating is now under Baking\./.test(s.log) && !s.opts.length, `${tag}: "Part of Baking" puts it under Baking (with its description)`, JSON.stringify(one(cl, "Cake Decorating")));
+      ok(one(cl, "Cake Decorating") && one(cl, "Cake Decorating").parent === "Baking" && one(cl, "Cake Decorating").blurb && /Cake Decorating is now under Baking\./.test(s.log) && !s.opts.length, `${tag}: "Under Baking" puts it under Baking (with its description)`, JSON.stringify(one(cl, "Cake Decorating")));
       await ask(p, "and pastry?");
-      await p.locator("#iko-log").getByRole("button", { name: "A new subject" }).click(); await p.waitForTimeout(700);
+      await p.locator("#iko-log").getByRole("button", { name: "New branch" }).click(); await p.waitForTimeout(700);
       cl = await cloudOf(p);
-      ok(one(cl, "Pastry") && one(cl, "Pastry").parent === null, `${tag}: "A new subject" makes it a new parent`, JSON.stringify(one(cl, "Pastry")));
+      ok(one(cl, "Pastry") && one(cl, "Pastry").parent === null, `${tag}: "New branch" makes it a new parent`, JSON.stringify(one(cl, "Pastry")));
       ok(calls.slice(c2).join() === "/chat:chat,/chat:chat", `${tag}: the choices made no calls`, calls.slice(c2).join());
       if (!(await p.isHidden("#iko-sheet"))) { await p.keyboard.press("Escape"); await p.waitForTimeout(250); }
       /* an existing subject is shown, not duplicated */

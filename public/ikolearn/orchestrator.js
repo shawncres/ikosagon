@@ -668,6 +668,18 @@
     var overlap = words(label).some(function (w) { return trailWords.indexOf(w) >= 0; }) || above.some(function (a) { return trailWords.indexOf(a) >= 0 || words(a).some(function (w) { return trailWords.indexOf(w) >= 0; }); });
     return (!above.length || !rootKnown) && !overlap;
   }
+  /* the focused line: the focus, its ancestors and everything under it */
+  function onLine(cloud, focusId, id) { return C.ancestry(cloud, focusId).indexOf(id) >= 0 || C.ancestry(cloud, id).indexOf(focusId) >= 0; }
+  /* cheap local evidence that a topic belongs under a node (0 calls): its chain or parent names a node on that node's
+     trail, or the topic shares a meaningful word with it */
+  function related(cloud, tp, label, id) {
+    var words = function (v) { return C.norm(v).split(" ").filter(function (w) { return w.length > 2 && GENERIC.indexOf(w) < 0; }); };
+    var trail = C.ancestry(cloud, id).map(function (x) { return cloud.nodes[x].label; }), keys = trail.map(C.norm);
+    var named = (Array.isArray(tp && tp.chain) ? tp.chain : []).concat(tp && tp.parent ? [tp.parent] : []).map(C.norm);
+    if (named.some(function (k) { return k && keys.indexOf(k) >= 0; })) return true;
+    var tw = trail.reduce(function (a, l) { return a.concat(words(l)); }, []);
+    return words(label).some(function (w) { return tw.indexOf(w) >= 0; });
+  }
   function placeTopic(cloud, tp, focusId) {
     var label = C.cleanLabel(tp && tp.name), k = C.norm(label);
     if (!label || k === C.norm(cloud.name)) return null;
@@ -687,6 +699,9 @@
       if (!t) return broad ? asParent() : ask();
       /* a broad subject aimed at the focus (or the focus's own subject) is not clearly a subtopic: ask */
       if (broad && focus && C.ancestry(cloud, focus.id).indexOf(t.id) >= 0) return ask();
+      /* a target off the focused line (another branch, maybe the one open last) needs its own evidence: a shared word or
+         a link of the topic's chain on its trail. Without it, the learner is asked: a new branch, or under the focus. */
+      if (focus && !onLine(cloud, focus.id, t.id) && !related(cloud, tp, label, t.id)) return ask();
       return { how: "child", target: t.id, label: label };
     }
     if (pl === "ambiguous") return ask();
@@ -826,7 +841,7 @@
     PLAN: PLAN, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, needsRepair: needsRepair, repairRequest: repairRequest,
     MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild, nextStep: nextStep,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
-    suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, unfinished: unfinished, fresh: fresh, PACE: PACE, paceOf: paceOf, placeTopic: placeTopic, placedTopic: placedTopic, DESCRIBE: DESCRIBE, describeBatch: describeBatch, isBroad: isBroad,
+    suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, unfinished: unfinished, fresh: fresh, PACE: PACE, paceOf: paceOf, placeTopic: placeTopic, placedTopic: placedTopic, related: related, DESCRIBE: DESCRIBE, describeBatch: describeBatch, isBroad: isBroad,
     onboarding: onboarding, openQuestion: openQuestion, examples: examples, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics, directions: directions, homeStats: homeStats,
     needsNext: needsNext, readyNext: readyNext, createRequest: createRequest, OPENING: OPENING
   };

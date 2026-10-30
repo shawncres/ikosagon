@@ -154,6 +154,15 @@
     if (cloud.active === id) cloud.active = null;
   }
 
+  /* A branch the learner chose to delete (PR 105, only after a clear confirm): the node and everything under it, and
+     their deck entries. Returns the ids removed. */
+  function removeBranch(cloud, id) {
+    if (!node(cloud, id)) return [];
+    var gone = cloud.order.filter(function (x) { return ancestry(cloud, x).indexOf(id) >= 0; });
+    gone.forEach(function (x) { removeNode(cloud, x); });
+    if (Array.isArray(cloud.deck)) cloud.deck = cloud.deck.filter(function (e) { return gone.indexOf(e.id) < 0; });
+    return gone;
+  }
   /* On a path or offered as a fork choice: such ghosts are kept when room is needed. */
   function onSomePath(cloud, id) { return all(cloud).some(function (n) { return (n.path && n.path.ids.indexOf(id) >= 0) || (n.fork && n.fork.ids.indexOf(id) >= 0); }); }
   function hasChildren(cloud, id) { return cloud.order.some(function (x) { var n = cloud.nodes[x]; return n && n.parent === id; }); }
@@ -1786,7 +1795,7 @@
   }
 
   var api = {
-    VERSION: VERSION, LIMITS: LIMITS, STORE: STORE, subjectSlot: subjectSlot, promptSubjects: promptSubjects, promptView: promptView, prune: prune, MASTERED: MASTERED, OLD_SEEDS: OLD_SEEDS, HUES: HUES, subjectHue: subjectHue, plant: plant,
+    VERSION: VERSION, LIMITS: LIMITS, STORE: STORE, subjectSlot: subjectSlot, promptSubjects: promptSubjects, promptView: promptView, prune: prune, removeBranch: removeBranch, MASTERED: MASTERED, OLD_SEEDS: OLD_SEEDS, HUES: HUES, subjectHue: subjectHue, plant: plant,
     newProfile: newProfile, profileOf: profileOf, dirOf: dirOf, setLater: setLater, setProfile: setProfile, topicCount: topicCount,
     TIERS: TIERS, TIER_NAMES: TIER_NAMES, TIER_STAGE: TIER_STAGE, ACHIEVE_RIGHT: ACHIEVE_RIGHT, roman: roman, tierOf: tierOf, mergeLevel: mergeLevel, mergeInto: mergeInto, corpusOf: corpusOf, absorbedInto: absorbedInto,
     GATE: GATE, needOf: needOf, gateCore: gateCore, coreProgress: coreProgress, prereqs: prereqs, lockedBy: lockedBy, completable: completable, addPrereqs: addPrereqs, PRE_MAX: PRE_MAX,

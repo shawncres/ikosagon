@@ -1,0 +1,191 @@
+// End-to-end checks for PR 105 (the QA batch), in a real browser, every /api/ikolearn call mocked (no model calls, no key):
+// a new topic never lands under another branch just because it was open last (New branch / Under <focus>); Iko's hints
+// stay until dismissed (×) or the learner moves past the step, with light nudges on return visits; Iko switches light or
+// dark and deletes a branch only after a gentle word and a clear confirm (0 calls); the quiet support and follow links.
+// Run: IKOLEARN_PW=<path to node_modules/playwright-core> node scripts/ikolearn-qa-e2e.mjs   (IKOLEARN_BROWSER=webkit|firefox)
+import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+
+if (!process.env.IKOLEARN_PW) { console.log("ikolearn qa e2e: skipped (set IKOLEARN_PW to a playwright-core folder)"); process.exit(0); }
+const PW = await import(pathToFileURL(path.join(process.env.IKOLEARN_PW, "index.mjs")).href), { chromium } = PW;
+const ROOT = path.resolve("public");
+const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json" };
+const server = http.createServer((req, res) => {
+  let p = decodeURIComponent(new URL(req.url, "http://x").pathname);
+  if (p === "/ikolearn" || p === "/ikolearn/") p = "/ikolearn/index.html";
+  const f = path.join(ROOT, p);
+  if (!f.startsWith(ROOT) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); return res.end(); }
+  res.writeHead(200, { "Content-Type": TYPES[path.extname(f)] || "application/octet-stream" });
+  fs.createReadStream(f).pipe(res);
+});
+await new Promise((r) => server.listen(0, "127.0.0.1", r));
+const BASE = process.env.LIVE_BASE || `http://127.0.0.1:${server.address().port}`;
+
+let pass = 0;
+const fails = [];
+const ok = (c, name, d = "") => (c ? (pass += 1) : fails.push(`${name}${d ? ` -> ${d}` : ""}`));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const nd = (rows) => rows.map((r) => JSON.stringify(r)).join("\n") + "\n";
+const Q = (k) => [
+  { q: k + ": what is a rule?", options: ["What players must follow", "A kind of cloud", "Cold ice"], answer: 0 },
+  { q: k + ": what does a game need?", options: ["Sand", "A goal", "Steam"], answer: 1 },
+];
+const browser = await (process.env.IKOLEARN_BROWSER ? PW[process.env.IKOLEARN_BROWSER].launch() : chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" }));
+
+function seed(o) {
+  localStorage.clear();
+  const C = window.IkoCloud, T = Date.now() - 3 * 864e5, c = C.create("Johnny", T);
+  C.applyTopics(c, [{ name: "Video Games", parent: "Games", signal: "explored", chain: ["Games"] }, { name: "Puzzle Games", parent: "Games", signal: "explored", chain: ["Games"] }, { name: "Airplanes", parent: "Aviation", signal: "explored", chain: ["Aviation"] }], T);
+  C.applyTopics(c, [{ name: "Running", parent: "Physical Activity", signal: "explored", chain: ["Physical Activity"] }], T + 1000);
+  const id = (l) => c.order.find((x) => c.nodes[x].label === l);
+  c.nodes[id("Games")].blurb = "Playing and understanding games."; c.nodes[id("Aviation")].blurb = "How planes fly.";
+  c.active = id(o.active || "Games");
+  if (o.visits) C.profileOf(c).visits = o.visits;
+  localStorage.setItem("ikolearn.v1.name", "Johnny"); localStorage.setItem("ikolearn.v1.cloud", C.serialize(c));
+  localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { cloud: 1, card: 1, chat: 1, draw: 1, iko: 1 } }));
+  localStorage.setItem("ikolearn.v1.thread", JSON.stringify([]));
+  const who = ((window.IkoProfiles && window.IkoProfiles.current(localStorage)) || {}).active || "me";
+  if (o.mem) localStorage.setItem("ikolearn-iko", JSON.stringify({ [who]: o.mem })); else localStorage.removeItem("ikolearn-iko");
+  sessionStorage.clear();
+  if (o.visits) sessionStorage.setItem("ikolearn.v1.visit", "1");
+}
+
+async function run(width) {
+  const tag = String(width);
+  const ctx = await browser.newContext({ viewport: { width, height: width < 500 ? 844 : 860 }, timezoneId: "America/Toronto" });
+  const p = await ctx.newPage();
+  p.setDefaultTimeout(6000);
+  const errs = [], calls = [];
+  p.on("pageerror", (e) => errs.push("pageerror " + e.message));
+  p.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource/.test(m.text())) errs.push(m.text()); });
+  await p.route("**/api/ikolearn/**", async (route) => {
+    const at = new URL(route.request().url()).pathname.replace("/api/ikolearn", "");
+    let body = {};
+    try { body = JSON.parse(route.request().postData() || "{}"); } catch { body = {}; }
+    const done = (status, text, type = "application/x-ndjson") => route.fulfill({ status, contentType: type, body: text }).catch(() => {});
+    const last = (body.messages || []).filter((m) => m.role === "user").slice(-1)[0], text = last ? last.text : "";
+    calls.push({ at, focusId: body.focusId, text });
+    await sleep(40);
+    if (at === "/lesson") return done(200, nd([{ t: "start", model: "m" }, { t: "delta", text: "INTRO: Games have rules and a goal.\nEXPLAIN: Players follow rules to reach the goal." }, { t: "path", steps: [], next: "", choices: [{ name: "Board Games", kind: "deeper", why: "" }, { name: "Game Design", kind: "side", why: "" }], questions: Q("First"), retry: Q("Fresh") }, { t: "done" }]));
+    if (at === "/chat") {
+      /* the model points the new topic at Aviation (the branch open last), though Games is in focus and nothing links it */
+      const topics = /card combos/i.test(text) ? [{ name: "Card Combos", parent: "", signal: "curious", chain: [], placement: "child", target: body.aviation || "Aviation" }]
+        : /jet engines/i.test(text) ? [{ name: "Jet Engines", parent: "Aviation", signal: "curious", chain: ["Aviation"], placement: "child", target: "Aviation" }] : [];
+      return done(200, nd([{ t: "start", model: "m" }, { t: "delta", text: "Good one." }, { t: "cloud", topics, ghosts: [] }, { t: "done" }]));
+    }
+    return done(503, JSON.stringify({ ok: false, reason: "off" }), "application/json");
+  });
+  const cloud = () => p.evaluate(() => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), o = {}; Object.values(c.nodes).forEach((n) => { o[n.label] = n.parent ? c.nodes[n.parent].label : null; }); return { nodes: o, deck: (c.deck || []).map((e) => c.nodes[e.id] ? c.nodes[e.id].label : e.id) }; });
+  const line = () => p.evaluate(() => { const l = document.querySelector("#iko-line"); return { shown: !l.hidden && l.getClientRects().length > 0, text: l.textContent, tip: l.getAttribute("data-tip") || "", x: Boolean(l.querySelector(".tip-x")) }; });
+  const fresh = async (o) => { await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" }); await p.evaluate(seed, o || {}); await p.reload({ waitUntil: "networkidle" }); await p.waitForTimeout(700); };
+  const ask = async (text) => {
+    if (await p.locator("#iko-sheet").isHidden()) { await p.click("#iko"); await p.waitForSelector("#iko-sheet:not([hidden])"); await p.waitForTimeout(250); }
+    const n0 = calls.length;
+    await p.fill("#iko-in", text); await p.press("#iko-in", "Enter"); await p.waitForTimeout(700);
+    return calls.length - n0;
+  };
+  const lesson = async (label) => { await p.click("#iko"); await p.click("#iko-all"); await p.waitForTimeout(150); await p.getByRole("button", { name: new RegExp("Continue " + label) }).first().click(); await p.waitForSelector("#l-cont:not([hidden])"); };
+  const step = async (name, fn) => { try { await fn(); } catch (e) { fails.push(`${tag}: ${name} threw -> ${String(e.message || e).split("\n")[0]}`); } };
+
+  /* 1) hints stay until dismissed or moved past */
+  await step("hints", async () => {
+    await fresh({});
+    await p.waitForFunction(() => { const l = document.querySelector("#iko-line"); return !l.hidden && l.hasAttribute("data-tip"); }, null, { timeout: 4000 });
+    const a = await line();
+    ok(a.shown && /^cloud/.test(a.tip) && a.x, `${tag}: the cloud's hint shows, with a small ×`, JSON.stringify(a));
+    await p.waitForTimeout(10500);
+    const b = await line();
+    ok(b.shown && b.text === a.text, `${tag}: the hint is still there after 10 s (no quick timeout)`, JSON.stringify(b));
+    await p.click("#iko-line .tip-x"); await p.waitForTimeout(200);
+    const c = await line();
+    ok(!c.shown && (await p.locator("#iko-sheet").isHidden()), `${tag}: the × dismisses it (and doesn't open the chat)`, JSON.stringify(c));
+    /* a lesson: its reading hint goes once the learner moves on to the check */
+    await lesson("Games");
+    await p.waitForFunction(() => /^learn/.test(document.querySelector("#iko-line").getAttribute("data-tip") || ""), null, { timeout: 4000 });
+    const d = await line();
+    ok(d.shown && /^learn/.test(d.tip), `${tag}: the lesson's reading hint`, JSON.stringify(d));
+    await p.click("#l-cont"); await p.waitForTimeout(400);
+    const e = await line();
+    ok(!/^learn/.test(e.tip) && e.text !== d.text, `${tag}: past the reading (Continue), its hint is gone`, JSON.stringify(e));
+    ok(!errs.length, `${tag}: no console errors (hints)`, errs.join(" | "));
+  });
+
+  /* 2) a light nudge on a return visit, once the cloud's own hints have had their turn */
+  await step("nudge", async () => {
+    await fresh({ visits: 3, mem: { t: { cloud0: 1, cloud1: 1, cloud2: 1 }, r: {}, last: "" } });
+    await p.waitForFunction(() => { const l = document.querySelector("#iko-line"); return !l.hidden && l.hasAttribute("data-tip"); }, null, { timeout: 4000 });
+    const a = await line();
+    ok(/^cloud(4|5)$/.test(a.tip) && (/^Maybe .+ next\? It's right beside .+\.$/.test(a.text) || a.text === "Anything new you'd like to explore?"), `${tag}: a light nudge from the cloud itself (an adjacent topic, or something new)`, JSON.stringify(a));
+    const mem = await p.evaluate(() => Object.values(JSON.parse(localStorage.getItem("ikolearn-iko")))[0]);
+    ok(mem.t[a.tip] === 1 && mem.last === a.tip, `${tag}: counted in the ikolearn-iko rotation (never twice in a row)`, JSON.stringify(mem));
+    await p.reload({ waitUntil: "networkidle" }); await p.waitForTimeout(1200);
+    const b = await line();
+    ok(!b.shown, `${tag}: one hint a screen a visit (a reload in the same visit shows none)`, JSON.stringify(b));
+  });
+
+  /* 3) placement: Games is in focus; the model points the new topic at another branch (Aviation) */
+  await step("placement", async () => {
+    await fresh({});
+    await lesson("Games");
+    const n = await ask("add card combos");
+    const s = await p.evaluate(() => ({ opts: [...document.querySelectorAll("#iko-log .place-opt")].map((b) => b.textContent), log: document.querySelector("#iko-log").textContent }));
+    const c0 = await cloud();
+    ok(n === 1 && calls[calls.length - 1].focusId && s.opts.join("|") === "New branch|Under Games" && !("Card Combos" in c0.nodes), `${tag}: a target on another branch with nothing linking it: the quiet choice (New branch / Under Games), nothing created yet`, JSON.stringify({ n, s, nodes: Object.keys(c0.nodes) }));
+    const n0 = calls.length;
+    await p.locator("#iko-log").getByRole("button", { name: "Under Games" }).click(); await p.waitForTimeout(500);
+    const c1 = await cloud();
+    ok(c1.nodes["Card Combos"] === "Games" && calls.length === n0, `${tag}: "Under Games" puts it under the focus (0 calls)`, JSON.stringify(c1.nodes));
+    await ask("tell me about jet engines");
+    const c2 = await cloud();
+    ok(c2.nodes["Jet Engines"] === "Aviation", `${tag}: a topic whose own chain names Aviation still goes there (local evidence)`, JSON.stringify(c2.nodes));
+  });
+
+  /* 4) Iko's controls: light and dark, and a careful delete (0 calls) */
+  await step("controls", async () => {
+    await fresh({});
+    await p.evaluate(() => localStorage.removeItem("ikolearn-theme"));
+    let n = await ask("switch to dark mode");
+    const t1 = await p.evaluate(() => ({ theme: document.documentElement.getAttribute("data-theme"), saved: localStorage.getItem("ikolearn-theme"), log: document.querySelector("#iko-log").textContent }));
+    ok(n === 0 && t1.theme === "dark" && t1.saved === "dark" && /Dark mode it is\./.test(t1.log), `${tag}: "switch to dark mode": dark, kept like the toggle, 0 calls`, JSON.stringify({ n, t1 }));
+    n = await ask("light mode please");
+    const t2 = await p.evaluate(() => document.documentElement.getAttribute("data-theme"));
+    ok(n === 0 && t2 === "light", `${tag}: "light mode please": light again, 0 calls`, JSON.stringify({ n, t2 }));
+    n = await ask("what is dark matter?");
+    ok(n === 1, `${tag}: an ordinary question still goes to Iko's model`, String(n));
+    n = await ask("delete aviation");
+    const d1 = await p.evaluate(() => ({ q: (document.querySelector("#iko-log .del .place-q") || {}).textContent || "", opts: [...document.querySelectorAll("#iko-log .del .place-opt")].map((b) => b.textContent) }));
+    let c = await cloud();
+    ok(n === 0 && /We could leave Aviation be\. Branches you don't use fade slowly/.test(d1.q) && /removes the 1 topic under it/.test(d1.q) && d1.opts.join("|") === "Keep it|Delete Aviation" && "Aviation" in c.nodes, `${tag}: "delete aviation": a gentle word for leaving it, Keep it / Delete, nothing deleted yet`, JSON.stringify({ n, d1 }));
+    await p.locator("#iko-log").getByRole("button", { name: "Keep it" }).click(); await p.waitForTimeout(300);
+    c = await cloud();
+    ok("Aviation" in c.nodes && /Kept Aviation\./.test(await p.locator("#iko-log").textContent()), `${tag}: "Keep it" keeps it`);
+    await ask("remove the aviation branch");
+    await p.locator("#iko-log").getByRole("button", { name: "Delete Aviation" }).click(); await p.waitForTimeout(400);
+    c = await cloud();
+    ok(!("Aviation" in c.nodes) && !("Airplanes" in c.nodes) && "Games" in c.nodes && /Aviation is gone from your cloud\./.test(await p.locator("#iko-log").textContent()), `${tag}: only a clear "Delete Aviation" removes it (and what's under it); the rest stays`, JSON.stringify(Object.keys(c.nodes)));
+    n = await ask("delete johnny");
+    ok(n === 0 && /couldn't find|That's you/.test(await p.locator("#iko-log").textContent()), `${tag}: the learner's own name is never deleted`);
+    ok(!errs.length, `${tag}: no console errors (controls)`, errs.join(" | "));
+  });
+
+  /* 5) the quiet support and follow links */
+  await step("links", async () => {
+    const l = await p.evaluate(() => [...document.querySelectorAll("[data-sup] a")].map((a) => ({ t: a.textContent, href: a.getAttribute("href"), tgt: a.target, rel: a.rel, where: a.closest(".iko-foot") ? "iko" : a.closest("#chat") ? "chat" : "?" })));
+    const fb = l.filter((x) => x.t === "Support & feedback"), xl = l.filter((x) => x.t === "Follow on X");
+    ok(fb.length === 2 && fb.every((x) => x.href === "mailto:shawn@ikosagon.com?subject=IkoLearn%20feedback"), `${tag}: "Support & feedback" opens an email with the subject IkoLearn feedback (chat fine print and Iko's sheet)`, JSON.stringify(fb));
+    ok(xl.length === 2 && xl.every((x) => x.href === "https://x.com/IkosagonAI" && x.tgt === "_blank" && /noopener/.test(x.rel)), `${tag}: "Follow on X" goes to @IkosagonAI in a new tab`, JSON.stringify(xl));
+    ok(l.length === 4 && !l.some((x) => /fund|donat/i.test(x.t)), `${tag}: no donate link (no real donation page yet)`, JSON.stringify(l.map((x) => x.t)));
+    const sz = await p.evaluate(() => { const a = document.querySelector(".iko-foot [data-sup] a"), b = document.querySelector("#iko-all"); return [parseFloat(getComputedStyle(a).fontSize), parseFloat(getComputedStyle(b).fontSize)]; });
+    ok(sz[0] <= sz[1] + 0.5, `${tag}: the links are no louder than the fine print beside them`, JSON.stringify(sz));
+  });
+  await ctx.close();
+}
+
+for (const w of [390, 1280]) await run(w);
+await browser.close();
+server.close();
+console.log(`ikolearn qa e2e: ${pass} passed${fails.length ? `, ${fails.length} FAILED` : ""}`);
+fails.forEach((f) => console.log("  x " + f));
+process.exit(fails.length ? 1 : 0);

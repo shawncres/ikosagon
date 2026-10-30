@@ -1,7 +1,7 @@
 // End-to-end checks for where a topic asked for in chat lands, in a real browser, with every /api/ikolearn call mocked
 // (no model calls). Shawn's cloud: Johnny > Games, Aviation, Physical Activity, Social Skills, with Games in focus.
 // "I want to learn math" -> Math is a new parent beside Games (not Games > Video Games > Math); "add puzzle strategies"
-// -> under Games; an unclear one -> "A new subject" / "Part of Games" (a tap makes 0 calls).
+// -> under Games; an unclear one -> "New branch" / "Under Games" (a tap makes 0 calls).
 // Run: IKOLEARN_PW=<path to node_modules/playwright-core> node scripts/ikolearn-place-e2e.mjs [--shots DIR] [--tag after] [--root public] [--soft]
 // (--soft: screenshots only, for an older build without placement.) Skips when IKOLEARN_PW is not set.
 import http from "node:http";
@@ -177,12 +177,12 @@ async function run(width) {
     await shot("choice");
     if (SOFT) return;
     const opts = await p.evaluate(() => [...document.querySelectorAll("#thread .place-opts button")].map((b) => b.textContent));
-    ok(opts.join("|") === "A new subject|Part of Games", `${width}: an unclear request shows the two choices`, opts.join("|"));
+    ok(opts.join("|") === "New branch|Under Games", `${width}: an unclear request shows the two choices`, opts.join("|"));
     const c3 = await cloud();
     ok(!c3.nodes.Chess, `${width}: nothing is added before the learner chooses`);
     const n0 = calls.length;
     const asParent = width < 500;
-    await p.getByRole("button", { name: asParent ? "A new subject" : "Part of Games" }).click();
+    await p.getByRole("button", { name: asParent ? "New branch" : "Under Games" }).click();
     await p.waitForTimeout(500);
     ok(calls.length === n0, `${width}: the choice applies with 0 calls`, JSON.stringify(calls.slice(n0)));
     const c4 = await cloud();

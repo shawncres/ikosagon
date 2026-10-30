@@ -706,6 +706,10 @@ button.gcard:active, button.gslot:active { transform: translateY(-1px) scale(.97
 /* his bubble: just under him (a small tail up to him); on a wide page header, beside "Your cloud" (its tail to the left) */
 .iko-line { pointer-events: auto; cursor: pointer; position: relative; margin: 0; max-width: min(420px, 100%); width: fit-content; font-size: 14px; line-height: 1.4; color: var(--soft); background: var(--sheet); border: 1px solid var(--rule); border-radius: 12px; padding: 7px 11px; box-shadow: 0 4px 14px rgba(var(--shadow-rgb), .08); animation: iko-line-in .4s ease; }
 .iko-line:hover { color: var(--ink); }
+.iko-line[data-tip] { padding-right: 30px; }
+.tip-x { position: absolute; top: 50%; right: 4px; width: 24px; height: 24px; margin-top: -12px; padding: 0; border: 0; border-radius: 50%; background: none; color: inherit; opacity: .55; cursor: pointer; font: inherit; }
+.tip-x::before { content: "×"; font-size: 16px; line-height: 24px; }
+.tip-x:hover, .tip-x:focus-visible { opacity: 1; }
 .iko-line::before { content: ""; position: absolute; left: 16px; top: -6px; width: 10px; height: 10px; background: var(--sheet); border-left: 1px solid var(--rule); border-top: 1px solid var(--rule); transform: rotate(45deg); }
 body > .iko-line { display: none; } /* parked: not on this screen */
 #chat > .bar { max-width: none; padding-top: 6px; flex-wrap: wrap; column-gap: 12px; padding-left: calc(16px + env(safe-area-inset-left)); padding-right: calc(16px + env(safe-area-inset-right)); }
