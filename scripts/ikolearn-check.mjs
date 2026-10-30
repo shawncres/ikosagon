@@ -1075,19 +1075,33 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/id="holder"/.test(html) && /class="tray"/.test(html) && /id="l-quiz"/.test(html) && /id="top"/.test(html) && /id="t-list"/.test(html), "holder, tray, question area and top 10 present");
   ok(html.indexOf("cloud-model.js") < html.indexOf("rank.js") && html.indexOf("rank.js") < html.indexOf("deck.js"), "rank.js loads after the model and before deck.js");
   ok(/type = "radio"/.test(app) && /mk\("fieldset"/.test(app) && /C\.confirm\(/.test(app), "questions are real radio groups; answers confirm learning in the model");
+  /* PR 105 */
+  ok(/var it = localIntent\(text\);\s*if \(it\) \{ doIntent\(text, it\); return; \}/.test(app) && /TH\.set\(it\.mode\)/.test(app) && /role: "del", local: true/.test(app), "Iko's controls: light/dark and delete are recognised on the device before any call");
+  ok(/linkBtn\("Keep it"/.test(app) && /linkBtn\("Delete " \+ n\.label, function \(\) \{ deleteBranch\(m\); \}/.test(app) && /C\.removeBranch\(state\.cloud, n\.id\)/.test(app) && (app.match(/C\.removeBranch\(/g) || []).length === 1, "delete: a gentle word first; the branch goes only from the Delete button");
+  ok(/if \(t && ms !== 0\) iko\.lineT = setTimeout/.test(app) && /tipLine\(tip\.text, tip\.id\)/.test(app) && /past its step: the hint goes/.test(app) && /\.tip-x::before \{ content: "×"/.test(css), "hints stay until dismissed (×) or moved past; reactions and notes still fold away");
+  ok((html.match(/href="mailto:shawn@ikosagon\.com\?subject=IkoLearn%20feedback"/g) || []).length === 2 && (html.match(/href="https:\/\/x\.com\/IkosagonAI" class="sup-link" target="_blank" rel="noopener"/g) || []).length === 2 && !/donat|ko-fi|patreon|buymeacoffee/i.test(html), "support and follow links (no donate link until a real page exists)");
+  {
+    const bc = C.create("Sam", 1);
+    C.applyTopics(bc, [{ name: "Airplanes", parent: "Aviation", signal: "explored", chain: ["Aviation"] }, { name: "Chess", parent: "Games", signal: "explored", chain: ["Games"] }], 1);
+    const av = C.subjects(bc).find((x) => x.label === "Aviation"), pl = Object.values(bc.nodes).find((n) => n.label === "Airplanes");
+    bc.deck = [{ id: pl.id, at: 1, subject: "Aviation" }];
+    const gone = C.removeBranch(bc, av.id);
+    ok(gone.length === 2 && !bc.nodes[av.id] && !bc.nodes[pl.id] && !bc.deck.length && C.subjects(bc).map((x) => x.label).join() === "Games" && C.removeBranch(bc, "n999").length === 0, "removeBranch: the branch, everything under it and their deck entries; nothing else");
+  }
   const rankJs = fs.readFileSync("public/ikolearn/rank.js", "utf8");
   ok(!/innerHTML|fetch\(|localStorage/.test(rankJs), "rank.js: pure, no network or storage of its own");
   /*
    * Page weight, measured on what is served: the build minifies every .js and .css (scripts/ikolearn-minify.mjs, the
-   * same function here), index.html and the icon go as they are. Budget 330 KB raw / 105 KB gzip (PR 103 raised it from
-   * 100 KB for the companion at the bottom and the read, check, earn loop: about 4 KB gzip).
+   * same function here), index.html and the icon go as they are. Budget 330 KB raw / 106 KB gzip (PR 103 raised it from
+   * 100 KB for the companion at the bottom and the read, check, earn loop: about 4 KB gzip; PR 105 by 1 KB for Iko's
+   * light/dark and careful delete, the lasting hints and nudges, and the support links: about 1.7 KB gzip).
    */
   const files = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js", "rank.js", "orchestrator.js", "camera.js", "profiles.js", "icon.svg"];
   const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
   const bytes = files.reduce((n, f) => n + served(f).length, 0);
   const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
   ok(bytes < 330_000, "app weight under 330 KB uncompressed (served, minified)", String(bytes));
-  ok(gz < 105_000, "app weight under 105 KB gzipped (served, minified)", String(gz));
+  ok(gz < 106_000, "app weight under 106 KB gzipped (served, minified)", String(gz));
 }
 
 /* ================= the flow pass: chains, Computer Science, orchestrator, children, tests ================= */

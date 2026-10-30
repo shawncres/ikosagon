@@ -367,6 +367,7 @@
     var d;
     if (m.role === "ask") d = renderAsk(m);
     else if (m.role === "place") d = renderPlace(m);
+    else if (m.role === "del") d = renderDel(m);
     else if (m.role === "card") {
       d = cardNode(m.card, m.card.node && nodeOf(m.card.node) ? "On " + trailOf(m.card.node) : "");
     } else if (m.role === "grow") {
@@ -537,6 +538,70 @@
     if (n) revealNode(n.id);
   }
 
+  /*
+   * Asked of Iko in plain words (PR 105, 0 calls): light or dark mode (the same quiet switch as the toggle, kept like it),
+   * and deleting a branch: first a gentle word for leaving it, and it goes only on a clear tap of "Delete". Anything else
+   * goes to the model as usual.
+   */
+  var IT_THIS = ["this", "it", "this one", "that", "that one", "branch", "this branch", "that branch", "this topic"];
+  function localIntent(text) {
+    var t = String(text || "").toLowerCase().replace(/[.!?\s]+$/, "").trim();
+    if (t.length <= 60) {
+      var th = t.match(/\b(dark|light|night|day)\s*(?:mode|theme)\b/) || t.match(/^(?:please\s+)?(?:go|switch|turn|make it|change|set it)\s+(?:to\s+|it\s+)?(dark|light)(?:er)?(?:\s+please)?$/);
+      if (th && (/\b(switch|turn|go|make|change|set|use|put|enable|want|can you|could you|please)\b/.test(t) || /^(dark|light|night|day)\s*(mode|theme)$/.test(t))) {
+        var mode = /^(dark|night)$/.test(th[1]) ? "dark" : "light";
+        if (/\b(off|disable|stop)\b/.test(t)) mode = mode === "dark" ? "light" : "dark";
+        return { kind: "theme", mode: mode };
+      }
+    }
+    var d = t.match(/^(?:please\s+)?(?:(?:can|could|would) you\s+)?(?:delete|remove|get rid of|erase)\s+(?:the\s+|my\s+)?(.+?)(?:\s+(?:branch|topic|subject|node))?(?:\s+from\s+(?:my\s+|the\s+)?cloud)?(?:\s+please)?$/);
+    if (d && d[1]) return { kind: "delete", name: d[1].trim() };
+    return null;
+  }
+  function doIntent(text, it) {
+    push({ role: "user", local: true, text: text });
+    if (it.kind === "theme") {
+      var already = TH && TH.mode() === it.mode && TH.saved() === it.mode;
+      if (TH && !already) TH.set(it.mode);
+      push({ role: "model", local: true, text: already ? "We're already in " + it.mode + " mode." : it.mode === "dark" ? "Dark mode it is." : "Light mode it is." });
+      save(); return;
+    }
+    var here = iko.open && iko.ctx ? iko.ctx.id : state.focus;
+    var n = IT_THIS.indexOf(it.name) >= 0 ? nodeOf(here) : C.findAny(state.cloud, it.name);
+    if (!n || n.id === "root" || C.norm(n.label) === C.norm(state.name)) {
+      push({ role: "model", local: true, text: n ? "That's you, in the middle. I'll keep you right where you are." : IT_THIS.indexOf(it.name) >= 0 ? "Which branch? Tell me its name." : "I couldn't find " + it.name + " on your cloud." });
+      save(); return;
+    }
+    push({ role: "del", local: true, target: n.id, label: n.label });
+    save();
+  }
+  /* the gentle word and the two buttons; done: what happened */
+  function renderDel(m) {
+    var d = mk("div", "place del");
+    if (m.done) { d.appendChild(mk("p", "grow", m.done)); return d; }
+    var n = nodeOf(m.target), kids = n ? state.cloud.order.filter(function (x) { return x !== n.id && C.ancestry(state.cloud, x).indexOf(n.id) >= 0; }).length : 0;
+    if (!n) { d.appendChild(mk("p", "grow", m.label + " isn't on your cloud any more.")); return d; }
+    d.appendChild(mk("p", "place-q", "We could leave " + n.label + " be. Branches you don't use fade slowly as your cloud grows, and you can always come back to them later." + (kids ? " Deleting it also removes the " + kids + (kids === 1 ? " topic" : " topics") + " under it." : "")));
+    var row = mk("div", "place-opts");
+    row.appendChild(linkBtn("Keep it", function () { m.done = "Kept " + n.label + "."; upsert(m); save(); }, "btn sm place-opt"));
+    row.appendChild(linkBtn("Delete " + n.label, function () { deleteBranch(m); }, "btn sm place-opt del-yes"));
+    d.appendChild(row);
+    return d;
+  }
+  function deleteBranch(m) {
+    var n = nodeOf(m.target);
+    if (m.done || !n) return;
+    var gone = C.removeBranch(state.cloud, n.id), was = function (x) { return x && gone.indexOf(x) >= 0; };
+    if (was(state.lessonNode)) showLesson(false);
+    if (was(state.panelNode)) closeCard();
+    if (was(state.focus)) setFocus(null);
+    if (iko.ctx && was(iko.ctx.id)) { iko.ctx = screenCtx(); el.ikoAbout.textContent = ikoAbout(iko.ctx); }
+    m.done = n.label + " is gone from your cloud.";
+    save();
+    refreshAll([]); /* the thread too, this message with it */
+    if (iko.open) renderIkoLog();
+  }
+
   /* Test nodes on the cloud: offered (ready) or taken, from the orchestrator */
   function testMap() {
     var out = {};
@@ -676,6 +741,8 @@
     text = String(text || "").replace(/\s+$/, "").trim().slice(0, 1500);
     if (!text || state.busy) return;
     if (waitingForStart()) { var about = cleanAbout(text); push({ role: "user", text: text }); buildCloud("start", [], about); return; }
+    var it = localIntent(text);
+    if (it) { doIntent(text, it); return; } /* light or dark, or deleting a branch: done here (0 calls) */
     lock(true);
     push({ role: "user", text: text });
     var m = push({ role: "model", text: "", streaming: true });
@@ -2622,6 +2689,7 @@
     state.thread.slice(iko.from).forEach(function (m) {
       /* where a new topic should go (two quiet buttons) and what grew: here too, not only in the whole conversation */
       if (m.role === "place") { var pl = renderPlace(m); pl.classList.add("iko-msg"); el.ikoLog.appendChild(pl); return; }
+      if (m.role === "del") { var dl = renderDel(m); dl.classList.add("iko-msg"); el.ikoLog.appendChild(dl); return; }
       if (m.role === "grow") { el.ikoLog.appendChild(mk("p", "iko-msg grow", m.text)); return; }
       if (m.role !== "user" && m.role !== "model") return;
       var d = mk("div", "iko-msg " + m.role + (m.streaming ? " streaming" : ""));
@@ -2664,10 +2732,13 @@
     el.ikoLine.hidden = !t;
     el.ikoLine.removeAttribute("data-tip"); el.ikoLine.removeAttribute("data-react");
     if (t) clearTimeout(iko.tipT);
-    if (t) iko.lineT = setTimeout(function () { el.ikoLine.hidden = true; placeIko(); var nx = iko.after; iko.after = null; if (nx) nx(); else tipAgain(); }, ms || 9000);
+    if (t && ms !== 0) iko.lineT = setTimeout(function () { el.ikoLine.hidden = true; placeIko(); var nx = iko.after; iko.after = null; if (nx) nx(); else tipAgain(); }, ms || 9000); /* 0: it stays (a hint) */
     placeIko();
   }
-  el.ikoLine.addEventListener("click", function () { if (!iko.open) openIko(); });
+  el.ikoLine.addEventListener("click", function (e) {
+    if (e.target.closest && e.target.closest(".tip-x")) { iko.after = null; ikoLine(""); return; } /* dismissed: it has done its job */
+    if (!iko.open) openIko();
+  });
   /* shown on the cloud (and its opening question), a lesson or test, a card and the deck; hidden in the whole conversation and on the welcome */
   function ikoScreen() { return el.welcome.hidden && !el.chat.hidden && (!el.cloud.hidden || !el.lesson.hidden || !el.deck.hidden || !el.hub.hidden); }
   function renderIko() {
@@ -2710,10 +2781,16 @@
    */
   var TIPS = {
     /* the opening question is Iko's own speech (PR 104): no bubble there. Lines that would repeat a page's own words are gone. */
-    cloud: [{ t: "I like your cloud, it's growing!", ok: function () { return C.subjects(state.cloud).length >= 2 || (state.cloud.deck || []).length >= 1; } }, "I can add new topics anytime. Just {tap} me and tell me what you're curious about."],
+    cloud: [{ t: "I like your cloud, it's growing!", ok: function () { return C.subjects(state.cloud).length >= 2 || (state.cloud.deck || []).length >= 1; } }, "I can add new topics anytime. Just {tap} me and tell me what you're curious about.",
+      { t: "{Tap} any node to open it.", ok: function () { return !el.cloudHint.classList.contains("newcomer"); } }, /* not beside the newcomer line that says so */
+      /* light nudges (PR 105): not tied to a step, a few times each, on return visits */
+      { t: "Want to check your deck? It's up top.", max: 3, ok: function () { return (state.cloud.deck || []).length >= 1; } },
+      { t: nearIdea, max: 3, ok: function () { return back() && Boolean(nearIdea()); } },
+      { t: "Anything new you'd like to explore?", max: 3, ok: back }],
     home: ["That's you, in the middle. Your subjects grow around you."],
-    topic: ["Curious about this one? {Tap} me and ask anything."],
-    learn: ["Read along and {click} me if you have questions."],
+    topic: ["Curious about this one? {Tap} me and ask anything.", "Want to go another way? {Tap} me to add another direction."],
+    learn: ["Read along and {click} me if you have questions.", "Read the lesson first, then start the check. No rush."],
+    next: ["Nicely done! Scroll down to pick your next topic."],
     check: ["Get them all right and the card is yours to grow.", "No rush. Each question is about what you just read."],
     missed: ["Take it slowly. You've got this."],
     test: ["An optional test on what you've finished. No pressure."],
@@ -2728,27 +2805,42 @@
     return { who: who, all: all, t: m.t && typeof m.t === "object" ? m.t : {}, r: m.r && typeof m.r === "object" ? m.r : {}, last: typeof m.last === "string" ? m.last : "" };
   }
   function ikoKeep(m) { m.all[m.who] = { t: m.t, r: m.r, last: m.last }; try { localStorage.setItem(IKO_MEM, JSON.stringify(m.all)); } catch { /* full: Iko just repeats less carefully */ } }
+  function back() { return (C.profileOf(state.cloud).visits || 0) >= 2; } /* a return visit */
+  /* a quiet idea from the cloud itself: the top unfinished topic next to something already there */
+  function nearIdea() {
+    var n = topIds().map(nodeOf).filter(function (x) { return x && x.parent && nodeOf(x.parent) && !C.inDeck(state.cloud, x.id); })[0];
+    return n ? "Maybe " + n.label + " next? It's right beside " + nodeOf(n.parent).label + "." : "";
+  }
   function tipOf(c) {
     if (!c) return "";
     if (c.view === "cloud") return state.panelNode === "root" && !el.panel.hidden ? "home" : c.topic ? "topic" : "cloud";
-    if (c.view === "lesson") { var ph = lessonPhase(c.id); return c.step === "tricky" ? "" : ph === "learn" ? "learn" : ph === "check" ? "check" : ph === "missed" ? "missed" : ""; }
+    if (c.view === "lesson") { var ph = lessonPhase(c.id); return c.step === "tricky" ? "" : ph === "learn" ? "learn" : ph === "check" ? "check" : ph === "missed" ? "missed" : ph === "passed" ? "next" : ""; }
     return TIPS[c.view] ? c.view : "";
   }
   function tipsShown() { try { return JSON.parse(sessionStorage.getItem(CUES) || "{}") || {}; } catch { return {}; } }
   function pickTip(key) {
     var m = ikoMem(), list = TIPS[key] || [], best = -1;
-    list.forEach(function (x, i) { var id = key + i, n = m.t[id] || 0; if (n >= TIP_MAX || id === m.last || (x.ok && !x.ok())) return; if (best < 0 || n < (m.t[key + best] || 0)) best = i; });
-    return best < 0 ? null : { id: key + best, text: tipWords(String(list[best].t || list[best]).replace("{name}", state.name || "there")), m: m };
+    list.forEach(function (x, i) { var id = key + i, n = m.t[id] || 0; if (n >= (x.max || TIP_MAX) || id === m.last || (x.ok && !x.ok())) return; if (best < 0 || n < (m.t[key + best] || 0)) best = i; });
+    var b = list[best];
+    return best < 0 ? null : { id: key + best, text: tipWords(String(typeof b.t === "function" ? b.t() : b.t || b).replace("{name}", state.name || "there")), m: m };
   }
   function ikoTip(c) {
     var key = tipOf(c);
     if (key === iko.tipKey) return;
     iko.tipKey = key;
+    if (!el.ikoLine.hidden && el.ikoLine.hasAttribute("data-tip")) { iko.after = null; ikoLine(""); } /* past its step: the hint goes */
     clearTimeout(iko.tipT);
     if (!key) return;
     iko.tipT = setTimeout(function () { showTip(key); }, 450); /* once the new screen has settled */
   }
   function tipAgain() { var k = iko.tipKey; if (k && !iko.open && !tipsShown()[k]) { clearTimeout(iko.tipT); iko.tipT = setTimeout(function () { showTip(k); }, 700); } }
+  /* a hint stays until it is dismissed (its small ×) or the learner moves past its step (PR 105) */
+  function tipLine(t, id) {
+    ikoLine(t, 0);
+    el.ikoLine.setAttribute("data-tip", id);
+    var x = mk("button", "tip-x"); x.type = "button"; x.setAttribute("aria-label", "Hide this hint");
+    el.ikoLine.appendChild(x);
+  }
   function showTip(key) {
     if (key !== iko.tipKey || iko.open || el.ikoWrap.hidden || !el.ikoLine.hidden || !state.cloud || tipsShown()[key]) return; /* Iko is speaking (or gone), or this screen had its tip this visit */
     var tip = pickTip(key);
@@ -2756,8 +2848,7 @@
     var d = tipsShown(); d[key] = 1;
     try { sessionStorage.setItem(CUES, JSON.stringify(d)); } catch { /* ignore */ }
     tip.m.t[tip.id] = (tip.m.t[tip.id] || 0) + 1; tip.m.last = tip.id; ikoKeep(tip.m);
-    ikoLine(tip.text, 8000);
-    el.ikoLine.setAttribute("data-tip", tip.id);
+    tipLine(tip.text, tip.id);
   }
   /*
    * Short reactions to real moments (PR 103): the cloud grows, a card is earned, a check is passed. Every time at first, then
@@ -2779,7 +2870,9 @@
     var t = list[(n - 1) % list.length];
     if (!el.ikoLine.hidden && !el.ikoLine.hasAttribute("data-tip") && !el.ikoLine.hasAttribute("data-react")) return false; /* Iko is saying something that matters (the grow question): no reaction over it */
     if (iko.open || el.ikoWrap.hidden) { iko.pendingReact = t; return true; } /* said once the pebble is back */
+    var held = !el.ikoLine.hidden && el.ikoLine.getAttribute("data-tip"), was = { t: el.ikoLine.textContent, k: iko.tipKey };
     ikoLine(t, kind === "start" ? 9000 : 4500);
+    if (held) iko.after = function () { if (iko.tipKey === was.k && !iko.open) tipLine(was.t, held); }; /* the hint wasn't dismissed: it comes back */
     el.ikoLine.setAttribute("data-react", kind);
     return true;
   }
