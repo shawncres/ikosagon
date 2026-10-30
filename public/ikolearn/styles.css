@@ -681,7 +681,7 @@ button.gcard:active, button.gslot:active { transform: translateY(-1px) scale(.97
 .who-now { margin-left: 10px; font-size: 14px; letter-spacing: 0; color: var(--soft); text-underline-offset: 3px; }
 
 /* ---------- Iko: a soft pebble (inline SVG), its short line, and its sheet ---------- */
-/* #104: Iko lives in the top-left corner of every screen, in the header's own flow (no fixed layer, no reserved strip),
+/* PR 104: Iko lives in the top-left corner of every screen, in the header's own flow (no fixed layer, no reserved strip),
    and in the opening question's column while he asks it. Off screen he waits, hidden, at the end of the page. */
 .iko-dock { display: inline-flex; align-items: center; flex: none; }
 .iko-dock:empty { display: none; }

@@ -2352,7 +2352,7 @@
     if (!q) return;
     var cw = el.cloudCanvas.clientWidth, ch = el.cloudCanvas.clientHeight, box = el.panel.firstElementChild;
     var pw = el.panel.offsetWidth, ph = (box ? box.offsetHeight : el.panel.scrollHeight) + 2;
-    /* Iko's chat open as a panel at the left (#104): the card is placed in the sky to its right */
+    /* Iko's chat open as a panel at the left (PR 104): the card is placed in the sky to its right */
     var off = document.body.classList.contains("iko-side") && !el.ikoSheet.hidden ? Math.max(0, Math.round(el.ikoSheet.getBoundingClientRect().right + 12 - el.cloudCanvas.getBoundingClientRect().left)) : 0;
     var at = CAM.cardPlace(q.x - off, q.y, pw, ph, cw - off, ch, cloudTop());
     at.x += off;
@@ -2569,7 +2569,7 @@
     if (!o.tricky && !coarse()) { try { el.ikoIn.focus({ preventScroll: true }); } catch { el.ikoIn.focus(); } }
   }
   /*
-   * The chat's frame (#104): on a phone a sheet rising from below; on a wide screen a panel hanging from Iko at the top
+   * The chat's frame (PR 104): on a phone a sheet rising from below; on a wide screen a panel hanging from Iko at the top
    * left, under the header, and the page steps right to make room for it, so it never covers the reading or the deck.
    */
   var SIDE_MIN = 1100;
@@ -2680,7 +2680,7 @@
     placeIko();
   }
   /*
-   * Where Iko sits (#104): in the header's top-left corner, as the button, beside "Your cloud" on the lesson, deck and card
+   * Where Iko sits (PR 104): in the header's top-left corner, as the button, beside "Your cloud" on the lesson, deck and card
    * pages and before the brand on the cloud; in the opening question's column while he asks it. His bubble hangs just
    * under him (on the cloud, over the sky; on the pages, a line of the header itself, so it never covers the page). Both
    * live in the page's own flow, so nothing drifts or leaves a gap; off screen they wait, hidden, in #iko-wrap's place.
@@ -2705,7 +2705,7 @@
    * guidance never repeats across pages and grows quiet as the learner gets comfortable.
    */
   var TIPS = {
-    /* the opening question is Iko's own speech (#104): no bubble there. Lines that would repeat a page's own words are gone. */
+    /* the opening question is Iko's own speech (PR 104): no bubble there. Lines that would repeat a page's own words are gone. */
     cloud: [{ t: "I like your cloud, it's growing!", ok: function () { return C.subjects(state.cloud).length >= 2 || (state.cloud.deck || []).length >= 1; } }, "I can add new topics anytime. Just {tap} me and tell me what you're curious about."],
     home: ["That's you, in the middle. Your subjects grow around you."],
     topic: ["Curious about this one? {Tap} me and ask anything."],
@@ -3082,7 +3082,7 @@
     var ids = deckIds();
     refreshSuggest();
     el.dSuggest.textContent = "";
-    /* (the deck's own lede says what cards are: no second tip here, #104) */
+    /* (the deck's own lede says what cards are: no second tip here, PR 104) */
     el.dSuggest.appendChild(flowBlock("deck"));
     var held = (state.cloud.deck || []).length - ids.length;
     el.dLede.textContent = (ids.length === 1 ? "1 card you've earned" : ids.length + " cards you've earned") + (held ? " (plus " + held + " merged into parent cards)" : "") + ", by subject. Cards move from Sketch to Inked, Tinted and Achieved as you learn, and finished subtopics merge into their parent.";
