@@ -2741,6 +2741,7 @@
     var list = REACT[kind] || [];
     if (!list.length || !reactWanted(n) || (kind === "start" && n > 1)) return false;
     var t = list[(n - 1) % list.length];
+    if (!el.ikoLine.hidden && !el.ikoLine.hasAttribute("data-tip") && !el.ikoLine.hasAttribute("data-react")) return false; /* Iko is saying something that matters (the grow question): no reaction over it */
     if (iko.open || el.ikoWrap.hidden) { iko.pendingReact = t; return true; } /* said once the pebble is back */
     ikoLine(t, kind === "start" ? 9000 : 4500);
     el.ikoLine.setAttribute("data-react", kind);
@@ -2860,7 +2861,10 @@
     renderDeckButton(); /* the Deck's count goes up now; its pulse waits for the card */
     var to = el.miniDeck && el.miniDeck.getClientRects().length ? el.miniDeck : null;
     if (!state.flying) return;
-    var a = card.getBoundingClientRect(), b = to ? to.getBoundingClientRect() : null;
+    var a = card.getBoundingClientRect();
+    /* earned at the end of a check, the card can be scrolled out of view: bring it back so its flight is seen (PR 103) */
+    if (a.bottom < 0 || a.top > window.innerHeight) { card.scrollIntoView({ block: "nearest" }); a = card.getBoundingClientRect(); }
+    var b = to ? to.getBoundingClientRect() : null;
     if (!b || !a.width || !b.width || a.bottom < 0 || a.top > window.innerHeight) { state.flying = false; pulseDeck(); return; }
     var ghost = card.cloneNode(true);
     ghost.removeAttribute("id"); [].forEach.call(ghost.querySelectorAll("[id]"), function (x) { x.removeAttribute("id"); });

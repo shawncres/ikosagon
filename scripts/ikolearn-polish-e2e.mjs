@@ -120,7 +120,7 @@ for (const width of [390, 1280]) {
   {
     const { ctx, p, errs } = await boot(width);
     const ik = await box(p, "#iko"), flow = await box(p, ".cloud-flow");
-    ok(ik && ik.x < 24 && ik.y < 16 && ik.w >= 44 && ik.h >= 44, `${tag}: Iko: just the pebble, top-left, 44px`, JSON.stringify(ik));
+    ok(ik && ik.x < 24 && ik.b <= (await p.evaluate(() => innerHeight)) && ik.b > (await p.evaluate(() => innerHeight)) - 90 && ik.w >= 44 && ik.h >= 44, `${tag}: Iko: the pebble at the bottom left, 44px (PR 103)`, JSON.stringify(ik));
     ok(!flow || !meets(ik, flow), `${tag}: Iko: never over the invite/return row`, JSON.stringify([ik, flow]));
     await tap(p, "Ocean Life");
     const card = await p.evaluate(() => {
