@@ -136,16 +136,17 @@ for (const width of [390, 1280]) {
       await p.keyboard.press("Escape"); await p.waitForTimeout(200);
       /* no repeats: a new visit shows another variant; once each has been shown, the screen stays quiet */
       const seen = [l1.tip];
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < 6; i++) { /* the cloud's own hints (PR 105: up to four on a first visit), then quiet */
         await p.evaluate(() => sessionStorage.removeItem("ikolearn.v1.cues")); await p.reload({ waitUntil: "networkidle" }); await p.waitForSelector("#cloud:not([hidden])");
         const got = await waitLine(p, () => !document.querySelector("#iko-line").hidden, 2500);
         const l = got ? await line(p) : null;
         seen.push(l ? l.tip : null);
       }
-      ok(seen[1] && new Set(seen.slice(0, 2)).size === 2 && seen[2] === null && seen[3] === null, `${tag}: bubbles rotate and never repeat (then the screen stays quiet)`, JSON.stringify(seen));
+      const said = seen.filter(Boolean);
+      ok(said.length >= 2 && new Set(said).size === said.length && seen.indexOf(null) > 0 && seen.slice(seen.indexOf(null)).every((x) => x === null), `${tag}: bubbles rotate and never repeat (then the screen stays quiet)`, JSON.stringify(seen));
       const mem = await p.evaluate(() => JSON.parse(localStorage.getItem("ikolearn-iko") || "{}"));
       const own = Object.values(mem)[0], cloudRaw = await p.evaluate(() => localStorage.getItem("ikolearn.v1.cloud"));
-      ok(Object.keys(mem).length === 1 && own && Object.values(own.t).every((n) => n === 1) && Object.keys(own.t).length === 2 && !/cloud0/.test(cloudRaw), `${tag}: what Iko has said lives in its own key per learner, outside the cloud`, JSON.stringify(mem));
+      ok(Object.keys(mem).length === 1 && own && Object.values(own.t).every((n) => n === 1) && Object.keys(own.t).length === said.length && !/cloud0/.test(cloudRaw), `${tag}: what Iko has said lives in its own key per learner, outside the cloud`, JSON.stringify(mem));
       ok(errs.length === 0, `${tag}: cloud: no console errors`, errs.join(" | "));
     } catch (e) { fails.push(`${tag}: bottom threw -> ${String(e.message || e).split("\n")[0]}`); }
     await ctx.close();

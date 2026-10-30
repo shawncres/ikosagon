@@ -201,9 +201,13 @@ for (const width of [390, 1280]) {
       /* #104: top left, in the cloud's header row; its bubble just under him while he has something to say; nothing at the bottom */
       const tl = await p.evaluate(() => { const r = document.querySelector("#iko").getBoundingClientRect(), l = document.querySelector("#iko-line"), lr = l.hidden ? null : l.getBoundingClientRect(); return { x: r.left, top: r.top, w: r.width, under: Boolean(lr) && lr.top >= r.bottom - 8 && lr.left < r.right && lr.right <= innerWidth, inNav: Boolean(document.querySelector(".home-nav #iko")), strip: getComputedStyle(document.body, "::after").content, talking: document.body.classList.contains("iko-talking") }; });
       ok(tl.x < 24 && tl.top < 24 && tl.w >= 44 && tl.under && tl.inNav && (tl.strip === "none" || tl.strip === "normal") && tl.talking, `${tag}: Iko sits top left in the header row (a 44px+ pebble), its bubble under him, no strip at the bottom`, JSON.stringify(tl));
-      await p.waitForFunction(() => document.querySelector("#iko-line").hidden, null, { timeout: 12000 }); await p.waitForTimeout(100); /* the hello's own 9 s */
+      /* PR 105: a hint stays (no quick timeout) until its small × or the learner moves past its step */
+      await p.waitForTimeout(10000);
+      const stay = await p.evaluate(() => ({ line: !document.querySelector("#iko-line").hidden, text: document.querySelector("#iko-line").textContent }));
+      ok(stay.line && stay.text === "I like your cloud, it's growing!", `${tag}: the hint is still there after 10 s`, JSON.stringify(stay));
+      await p.click("#iko-line .tip-x"); await p.waitForTimeout(150);
       const fold = await p.evaluate(() => ({ pebble: !document.querySelector("#iko-wrap").hidden, line: !document.querySelector("#iko-line").hidden, talking: document.body.classList.contains("iko-talking") }));
-      ok(fold.pebble && !fold.line && !fold.talking, `${tag}: once said, it folds back to just the pebble`, JSON.stringify(fold));
+      ok(fold.pebble && !fold.line && !fold.talking, `${tag}: dismissed (×), it folds back to just the pebble`, JSON.stringify(fold));
       /* a node: its card opens; Iko stays clear of it; tapping Iko takes that node along */
       const pt = await p.evaluate(() => { const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view, C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), id = c.order.find((x) => c.nodes[x].label === "Volcanoes"), q = v.project(id), r = document.querySelector("#cloud-canvas").getBoundingClientRect(); return { x: r.left + q.x, y: r.top + q.y }; });
       await p.mouse.click(pt.x, pt.y); await p.waitForTimeout(900);
