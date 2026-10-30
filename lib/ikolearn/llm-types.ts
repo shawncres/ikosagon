@@ -41,7 +41,7 @@ export const MODEL_LIMITS = {
   /** hard cap on a whole streamed reply; a timed-out request plus one fallback stays inside the routes' 60 s */
   streamTimeoutMs: 38_000,
   chatMaxTokens: 900,
-  lessonMaxTokens: 1_800,
+  lessonMaxTokens: 2_100,
   jsonMaxTokens: 600,
   /** the creation call: up to 5 parents, each with a card and up to 6 children */
   createMaxTokens: 2_000,

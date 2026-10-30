@@ -7,6 +7,7 @@
 // in guide mode, with Iko open at 1280): only this subject's next steps, Also in progress for the rest, equal boxes,
 // the action inside the selected box.
 // Run: IKOLEARN_PW=<path to node_modules/playwright-core> node scripts/ikolearn-topics-e2e.mjs [--shots DIR] [--tag after] [--root public]
+import { passCheck } from "./fixtures/ikolearn-pass-check.mjs";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -255,6 +256,7 @@ for (const width of [390, 1280]) {
     const { ctx, p, errs } = await boot(width, guide);
     try {
       await p.locator(".cloud-flow > .chip").first().click(); await p.waitForSelector("#l-done:not([hidden])");
+      await passCheck(p); /* PR 103: the check passed first */
       await p.click("#l-got"); await p.waitForTimeout(400);
       let w = await whereNext(p);
       ok(wnOk(w), `${tag}: Where Next after I've got it: this subject only, equal boxes, the action in the selected box`, JSON.stringify(w));

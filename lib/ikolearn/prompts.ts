@@ -87,6 +87,9 @@ export const SCREEN_STEPS = ["first", "grow", "learn", "check", "tricky"] as con
 export type Screen = { view: (typeof SCREEN_VIEWS)[number]; step?: (typeof SCREEN_STEPS)[number]; topic?: string };
 export type ClarifyStyle = (typeof CLARIFY_STYLES)[number];
 
+/** How easily the learner answers in the current branch (P.paceOf on the device): gentler, as is, or a small stretch. */
+export const LESSON_PACES = ["gentle", "steady", "stretch"] as const;
+
 export type LearnInput = {
   /** clarify: "Still tricky" in a lesson, one prepared clarification (style below) about the focus, streamed inline */
   mode: "chat" | "notice" | "clarify";
@@ -112,6 +115,10 @@ export type LearnInput = {
   wantPath: boolean;
   /** Lesson only: the planned next step after the focus (from the learner's path), offered as one fork choice. */
   ahead: string;
+  /** Lesson only: how easily this learner is answering in this branch (the orchestrator's signal; "" = no signal yet). */
+  pace: (typeof LESSON_PACES)[number] | "";
+  /** Lesson only: a clearer second telling, after the check was missed twice (a fresh set of questions comes with it). */
+  again: boolean;
   /** Test only: the completed topics the test may cover (the parent and its finished children), each with its card line. */
   material: { label: string; line: string }[];
   /** Create only: what the learner said they enjoy, what the creation is for, and their top-ranked topics (to steer what comes next). */
@@ -184,7 +191,7 @@ export type Question = { q: string; options: string[]; answer: number };
 /** The hidden block at the end of a lesson: path steps (only when asked), fork choices, check questions, the card line, and whether the branch ends here. */
 /** Further reading and viewing: only a title and a search phrase (never a link); the app builds allowlisted search links. */
 export type Reading = { title: string; q: string; kind: "read" | "watch" };
-export type LessonBlock = { steps: string[]; next: string; choices: Choice[]; questions: Question[]; blurb?: string; end?: boolean; reading?: Reading[]; tricky?: string };
+export type LessonBlock = { steps: string[]; next: string; choices: Choice[]; questions: Question[]; retry?: Question[]; blurb?: string; end?: boolean; reading?: Reading[]; tricky?: string };
 
 /* ---------- input cleaning (everything from the browser is untrusted) ---------- */
 
@@ -244,6 +251,8 @@ export function parseLearnInput(raw: unknown): LearnInput | { error: string } {
     wantPath: b.wantPath === true,
     repair: b.repair === true,
     ahead: cleanLabel(b.ahead),
+    pace: (LESSON_PACES as readonly string[]).includes(b.pace as string) ? (b.pace as LearnInput["pace"]) : "",
+    again: b.again === true,
     material: (Array.isArray(b.material) ? b.material : [])
       .filter((m) => m && typeof m === "object")
       .map((m) => ({ label: cleanLabel((m as { label?: unknown }).label), line: cleanText((m as { line?: unknown }).line, LEARN_LIMITS.blurbChars).replace(/[<>{}[\]`*_#|\\]/g, " ") }))
@@ -452,15 +461,24 @@ export function lessonSystem(i: LearnInput): string {
     "NEXT: one encouraging sentence on what to try next.\n" +
     "Do not write check questions in the lesson text; they go in the hidden block below, and they only ask about what you explained. " +
     "Keep the whole lesson under 260 words. Use concrete numbers and everyday examples. Anyone reading along should be able to follow it.\n\n" +
+    lessonPace(i) +
     `${profile(i)}\n\n${lessonBlockRules(i)}`
   );
 }
 
+/** The orchestrator's gentle difficulty signal for this branch, and the clearer second telling after a missed check. */
+const lessonPace = (i: LearnInput) =>
+  (i.again ? `The learner has read this lesson before and missed its check twice: explain it again more clearly and in a different way, in smaller steps with a new everyday comparison, and ask fresh questions. ` : "") +
+  (i.pace === "gentle" ? "In this subject the learner has been finding the checks hard: keep it gentle, one idea at a time, with simple words. "
+    : i.pace === "stretch" ? "In this subject the learner has been answering easily: add one small extra detail that stretches them a little, still kind and short. " : "") +
+  (i.again || i.pace ? "\n\n" : "");
+
 /** One hidden block after every lesson (no extra call): check questions, the fork of 2 or 3 choices, the card line, and the path when asked. */
 const lessonBlockRules = (i: LearnInput) =>
   `After the lesson, on a new line, write ${PATH_OPEN} then one JSON object then ${PATH_CLOSE}, and nothing after it. The learner never sees this block as text. ` +
-  'The JSON is {"questions":[{"q":"...","options":["...","...","..."],"answer":0}],"blurb":"...","steps":["..."],"next":"...","choices":[{"name":"...","kind":"next|deeper|side","why":"...","blurb":"..."}],"reading":[{"title":"...","q":"...","kind":"read|watch"}],"tricky":"...","end":false}. ' +
+  'The JSON is {"questions":[{"q":"...","options":["...","...","..."],"answer":0}],"retry":[{"q":"...","options":["...","...","..."],"answer":0}],"blurb":"...","steps":["..."],"next":"...","choices":[{"name":"...","kind":"next|deeper|side","why":"...","blurb":"..."}],"reading":[{"title":"...","q":"...","kind":"read|watch"}],"tricky":"...","end":false}. ' +
   `questions: 2 or 3 multiple-choice questions that check understanding of what this lesson explained (not new facts, not trick questions), each with 3 short options (one clearly right, the others believable), and answer = the position of the right option counting from 0. Short and kind, at the learner's level. ` +
+  `retry: a second, different set of 2 or 3 questions on the same key ideas (asked another way, never the same wording or the same right option position), kept for a second try if the first check is missed. ` +
   `blurb: one line under 12 words that says what "${i.focus}" is, for its card, without the learner's name. ` +
   (i.wantPath ? `steps and next: the child topics of "${i.focus}". ${pathRules(i)} ` : 'steps: [] and next: "" (no child topics wanted this time). ') +
   `Each choice has a ${DESC_RULE}` +
@@ -1072,6 +1090,7 @@ export function parseLessonBlock(raw: unknown, learnerName = "", focus = "", wan
   const p = wantPath ? parsePath({ steps: obj.steps, next: obj.next }, learnerName, focus) : null;
   const choices = parseChoices(obj.choices, learnerName, focus);
   const questions = parseQuestions(obj.questions);
+  const retry = questions.length ? parseQuestions(obj.retry) : [];
   const blurb = parseBlurb(obj.blurb, learnerName);
   const end = obj.end === true;
   const reading = parseReading(obj.reading);
@@ -1079,6 +1098,7 @@ export function parseLessonBlock(raw: unknown, learnerName = "", focus = "", wan
   const steps = p ? p.steps : [];
   if (!steps.length && !choices.length && !questions.length && !end) return null;
   const out: LessonBlock = { steps, next: p ? p.next : "", choices, questions };
+  if (retry.length >= 2) out.retry = retry;
   if (blurb) out.blurb = blurb;
   if (end) out.end = true;
   if (reading.length) out.reading = reading;

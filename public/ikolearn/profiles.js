@@ -111,6 +111,28 @@
     return { ok: true, id: id };
   }
 
+  /* Several learners at once (PR 103, the welcome's "Maya, Leo"): each one after the first is listed and parked with just
+     a first name, like add(), but the learner learning now stays (their onboarding starts fresh when switched in). */
+  function addParked(s, name) {
+    var ix = current(s), n = cleanName(name);
+    if (!n) return { ok: false, why: "name" };
+    if (!ix) return { ok: false, why: "none" };
+    if (ix.list.some(function (p) { return same(p.name, n); })) return { ok: false, why: "taken" };
+    if (ix.list.length >= MAX) return { ok: false, why: "full" };
+    var id = newId(ix);
+    set(s, slot(id, "name"), n);
+    ix.list.push({ id: id, name: n, at: Date.now() });
+    ix.mode = "guide";
+    write(s, ix);
+    return { ok: true, id: id };
+  }
+  /* "Maya, Leo and Sam" -> ["Maya", "Leo", "Sam"]: commas, "and", "&" or new lines; each cleaned; repeats dropped. */
+  function splitNames(text) {
+    var out = [];
+    String(text == null ? "" : text).split(/\s*(?:,|;|\n|&|\+|\band\b)\s*/i).forEach(function (x) { var n = cleanName(x); if (n && !out.some(function (o) { return same(o, n); })) out.push(n); });
+    return out.slice(0, MAX);
+  }
+
   /* Learning for yourself <-> guiding. Nobody is removed: in "self" the others stay parked and come back with "guide". */
   function setMode(s, m) {
     var ix = current(s);
@@ -146,7 +168,7 @@
   function read(s, id, k) { var ix = current(s); return ix && ix.active === id ? get(s, live(k)) : get(s, slot(id, k)); }
   function learners(s) { var ix = current(s); return ix ? ix.list.map(function (p) { return { id: p.id, name: p.name, active: p.id === ix.active }; }) : []; }
 
-  var api = { INDEX: INDEX, KEYS: KEYS, MAX: MAX, slot: slot, live: live, cleanName: cleanName, index: index, current: current, mode: mode, reconcile: reconcile, begin: begin, switchTo: switchTo, add: add, setMode: setMode, dropActive: dropActive, rename: rename, read: read, learners: learners };
+  var api = { INDEX: INDEX, KEYS: KEYS, MAX: MAX, slot: slot, live: live, cleanName: cleanName, index: index, current: current, mode: mode, reconcile: reconcile, begin: begin, switchTo: switchTo, add: add, addParked: addParked, splitNames: splitNames, setMode: setMode, dropActive: dropActive, rename: rename, read: read, learners: learners };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.IkoProfiles = api;
 })(typeof window !== "undefined" ? window : this);

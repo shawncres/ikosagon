@@ -28,7 +28,7 @@
       <form id="name-form" autocomplete="off" hidden>
         <label for="name-in" id="name-label">What's your first name?</label>
         <div class="row"><input id="name-in" name="name" maxlength="30" autocomplete="given-name" required><button type="submit" class="btn">Start</button></div>
-        <p id="name-hint" class="fine" hidden>First name only. You can add more learners later.</p>
+        <p id="name-hint" class="fine" hidden>First names only. Add a few at once with commas (Maya, Leo), or more later.</p>
       </form>
       <p class="fine" data-theme-slot>Your name, chats and cloud stay on this device. <a href="/ikolearn/privacy">Privacy</a></p>
       <p class="fine w-open">Have an IkoCloud saved as a file? <button type="button" id="w-open" class="link">Open IkoCloud</button></p>
@@ -47,11 +47,12 @@
       <div id="thread" class="col" role="log" aria-live="polite"></div>
       <article id="deck" class="col" hidden>
         <button type="button" id="d-back" class="link back">Back to your cloud</button>
-        <div id="d-suggest" class="flow"></div>
         <h2 id="d-title">Your deck</h2>
         <p id="d-lede" class="d-lede"></p>
         <div id="d-album" class="album" aria-label="Your cards by subject"></div>
         <p id="d-balance" class="fine"></p>
+        <section id="d-next" class="d-next" aria-labelledby="d-next-t"><h3 id="d-next-t" class="d-sec">Pick up next</h3><div id="d-suggest" class="flow"></div></section>
+        <section id="d-collect" class="d-collect" hidden aria-labelledby="d-collect-t"><h3 id="d-collect-t" class="d-sec">Still to collect</h3><p class="fine">Topics on your cloud that aren't cards yet. Open one to start it.</p><div id="d-slots"></div></section>
         <section id="top" class="top10" hidden aria-labelledby="t-title">
           <h3 id="t-title">Your top 10</h3>
           <p id="t-lede" class="fine"></p>
@@ -88,10 +89,11 @@
           <button type="button" id="l-back" class="link back">Back to your cloud</button>
           <p class="kicker" id="l-trail"></p>
           <h2 id="l-title"></h2>
-          <ol id="l-phase" class="phase" aria-label="Lesson steps"><li id="ph-learn" class="on">Learn</li><li id="ph-check">Check yourself</li></ol>
+          <ol id="l-phase" class="phase" aria-label="Lesson steps"><li id="ph-learn" class="on">Learn</li><li id="ph-check">Check yourself</li><li id="ph-earn">Earn</li></ol>
           <div id="l-body" class="lesson"></div>
-          <div id="l-quiz"></div>
+          <div id="l-quiz" class="l-pane"></div>
           <div id="l-done" class="actions" hidden>
+            <button type="button" id="l-cont" class="btn sm draw-btn" hidden>Continue to Check yourself</button>
             <button type="button" id="l-got" class="btn sm">I've got it</button>
             <button type="button" id="l-tricky" class="btn sm">Still tricky</button>
           </div>
@@ -120,7 +122,7 @@
       <div class="cloud-top">
         <nav class="home-nav" aria-label="IkoLearn">
           <span class="home-brand" aria-hidden="true">IkoLearn</span>
-          <button type="button" id="cloud-deck" class="link" hidden>Your deck</button>
+          <button type="button" id="cloud-deck" class="minideck home-deck" hidden>Your deck</button>
           <a id="cloud-who" class="who-now" href="/ikolearn/learners" hidden></a>
         </nav>
         <span class="zoom"><button type="button" id="zin" class="btn sm" aria-label="Zoom in">+</button><button type="button" id="zout" class="btn sm" aria-label="Zoom out">&minus;</button><button type="button" id="zreset" class="btn sm" title="Ease back to the whole cloud">Recentre</button></span>
@@ -158,7 +160,6 @@
 
   <div id="iko-wrap" class="iko-wrap" hidden>
     <p id="iko-line" class="iko-line" role="status" hidden></p>
-    <p id="iko-cue" class="iko-cue" aria-hidden="true" hidden></p>
     <button type="button" id="iko" class="iko" aria-label="Talk to Iko" aria-haspopup="dialog" aria-expanded="false" aria-controls="iko-sheet">
       <svg class="iko-pebble" viewBox="0 0 64 56" width="52" height="46" aria-hidden="true" focusable="false">
         <path class="iko-body" d="M32 4C49 4 60 14 60 29C60 44 48 52 31 52C15 52 4 44 4 30C4 15 16 4 32 4Z"/>

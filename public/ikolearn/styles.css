@@ -306,6 +306,7 @@ button.gcard:hover { border-color: var(--soft); }
 .l-explain { margin: 0 0 .75em; }
 .phase-head { font-weight: normal; font-size: 20px; margin: 22px 0 4px; padding-top: 16px; border-top: 1px solid var(--rule); }
 .phase-head::before { content: "2 · "; color: var(--soft); }
+.phase li#ph-earn.on { text-decoration-color: var(--ink); }
 .quiz.test .phase-head::before { content: ""; }
 .q-lede { color: var(--soft); font-size: 15.5px; margin: 0 0 6px; }
 .q-topic { display: block; font-size: 12.5px; color: var(--soft); font-style: italic; }
@@ -329,6 +330,16 @@ button.gcard:hover { border-color: var(--soft); }
 .h-kids .tag { font-size: 12.5px; }
 /* check questions: radio-style options, the first answer counts */
 .quiz { margin: 14px 0 6px; }
+/* PR 103: Check yourself in its own pane, after the reading; a missed round's clearer telling inside it */
+#l-quiz[hidden] { display: none; }
+#l-quiz.l-pane-on .quiz { margin: 22px 0 6px; padding: 2px 18px 12px; background: var(--sheet); border: 1px solid var(--rule); border-radius: 14px; }
+#l-quiz.l-pane-on .phase-head { margin-top: 14px; padding-top: 0; border-top: 0; }
+.q-miss { margin: 14px 0 4px; padding: 12px 0 0; border-top: 1px solid var(--rule); }
+.q-miss .l-head { margin-top: 0; }
+.q-miss .clar { margin: 6px 0 10px; }
+.q-miss .btn { margin-top: 4px; }
+.q-miss .link { margin-left: 14px; font-size: 15px; }
+#l-done [hidden] { display: none; }
 .q { border: 0; border-left: 2px solid var(--rule); margin: 10px 0 14px; padding: 0 0 0 14px; }
 .q legend { padding: 0; margin: 0 0 6px; }
 .opt { display: flex; align-items: flex-start; gap: 10px; padding: 5px 0; cursor: pointer; }
@@ -425,8 +436,6 @@ button.gcard:hover { border-color: var(--soft); }
 .cs-q { margin: 0 0 14px; font-size: 19px; line-height: 1.35; }
 .cs-q:has(+ .cs-few:not([hidden])) { margin-bottom: 2px; }
 .cs-few { margin: 0 0 12px; font-size: 14px; font-style: italic; color: var(--soft); }
-/* the intake's ideas can be picked together: a picked one is filled, quietly */
-.cs-ex .ex-chip[aria-pressed="true"], #cloud-start .cs-ex .ex-chip[aria-pressed="true"]:hover { background: var(--ink); background-color: var(--ink); border-color: var(--ink); color: var(--paper); } /* stays filled under the pointer too */
 .cs-hi:empty, .cs-status:empty { display: none; }
 .cs-row { display: flex; gap: 8px; }
 .cs-row[hidden] { display: none; }
@@ -450,11 +459,8 @@ body.intake .cs-name.dragging { cursor: grabbing; }
 body.intake .cs-ex .ex-row { flex-wrap: wrap; }
 body.kbd .cloud-foot { visibility: hidden; } /* the keyboard is up: the fine print steps aside for the field and Begin */
 body.intake.kbd .cs-name { display: none; } /* the keyboard leaves a short column: the name steps out rather than half-showing under Iko */
-/* Iko on the opening question: its line and cue beside the pebble (not under it, where the question is) */
-body.intake .iko-wrap { flex-direction: row; align-items: flex-start; gap: 8px; }
-body.intake .iko-line { order: 1; margin: 6px 0 0; max-width: calc(100vw - 92px - env(safe-area-inset-left) - env(safe-area-inset-right)); }
-body.intake .iko-line::before { left: -6px; top: 16px; border-top: 0; border-bottom: 1px solid var(--rule); }
-body.intake .iko-cue { order: 1; margin: 18px 0 0; }
+/* the keyboard is up: Iko steps away (its room at the bottom with it), so the field and Begin sit just above the keyboard */
+body.kbd .iko-wrap { display: none; }
 /* the chat with Iko: a quiet way back to the cloud, and its name */
 .to-cloud { font-size: 14px; letter-spacing: 0; color: var(--soft); margin-right: 14px; }
 .to-cloud::before { content: "\2039\00a0"; }
@@ -679,33 +685,38 @@ button.gcard:active, button.gslot:active { transform: translateY(-1px) scale(.97
 .who-now { margin-left: 10px; font-size: 14px; letter-spacing: 0; color: var(--soft); text-underline-offset: 3px; }
 
 /* ---------- Iko: a soft pebble (inline SVG), its short line, and its sheet ---------- */
-.iko-wrap { position: fixed; left: calc(8px + env(safe-area-inset-left)); top: calc(6px + env(safe-area-inset-top)); z-index: 20; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; pointer-events: none; }
-@media (min-width: 500px) { .iko-wrap { left: calc(12px + env(safe-area-inset-left)); top: calc(8px + env(safe-area-inset-top)); } }
-.iko { pointer-events: auto; width: 56px; height: 56px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; display: grid; place-items: center; }
+/* PR 103: at the bottom, the companion on every screen: the pebble at the left, its bubble beside it. app.js keeps its room
+   (--iko-lane): the cloud's fine print and Pick up row sit above it; the lesson, deck and card pages end above a quiet strip. */
+.iko-wrap { position: fixed; left: calc(10px + env(safe-area-inset-left)); bottom: calc(6px + env(safe-area-inset-bottom)); z-index: 20; display: flex; flex-direction: row; align-items: flex-end; gap: 8px; pointer-events: none; }
+@media (min-width: 500px) { .iko-wrap { left: calc(16px + env(safe-area-inset-left)); bottom: calc(8px + env(safe-area-inset-bottom)); } }
+.iko { pointer-events: auto; width: 56px; height: 56px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; display: grid; place-items: center; flex: none; }
 .iko-pebble { display: block; overflow: visible; }
 .iko-body { fill: var(--pebble); stroke: var(--pebble-edge); stroke-width: 1.6; }
 .iko-shine { fill: none; stroke: var(--pebble-shine); stroke-width: 2.2; stroke-linecap: round; opacity: .8; }
 .iko-eye { fill: var(--pebble-face); }
 .iko-mouth { fill: none; stroke: var(--pebble-face); stroke-width: 1.7; stroke-linecap: round; }
-.iko .iko-pebble { filter: drop-shadow(0 1px 1.5px rgba(var(--shadow-rgb), .18)); transform-origin: 50% 90%; animation: iko-breathe 7s ease-in-out infinite; }
+/* a little alive: it breathes, bobs gently and blinks now and then (all still under reduced motion) */
+.iko .iko-pebble { filter: drop-shadow(0 1px 1.5px rgba(var(--shadow-rgb), .18)); transform-origin: 50% 90%; animation: iko-breathe 7s ease-in-out infinite, iko-bob 5.5s ease-in-out infinite; }
+.iko .iko-eye { transform-box: fill-box; transform-origin: 50% 50%; animation: iko-blink 6.5s ease-in-out infinite; }
 .iko:hover .iko-body, .iko:focus-visible .iko-body { fill: var(--pebble-hover); }
 .iko:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
-@keyframes iko-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.025, .985); } }
-.iko-line { pointer-events: auto; order: 1; position: relative; margin: 0 0 0 4px; max-width: min(280px, calc(100vw - 28px)); font-size: 14px; line-height: 1.4; color: var(--soft); background: var(--sheet); border: 1px solid var(--rule); border-radius: 12px; padding: 7px 11px; box-shadow: 0 4px 14px rgba(var(--shadow-rgb), .08); animation: iko-line-in .4s ease; }
-/* a small tail up to the pebble: Iko is the one speaking */
-.iko-line::before { content: ""; position: absolute; left: 20px; top: -6px; width: 10px; height: 10px; background: var(--sheet); border-left: 1px solid var(--rule); border-top: 1px solid var(--rule); transform: rotate(45deg); }
-/* the pebble sits top left: the cloud's own links and the chat header make room for it */
-body.iko-home .home-nav { padding-left: 54px; min-height: 40px; }
-@media (max-width: 819px) { body.iko-on .bar .brand { padding-left: 56px; } }
-@media (max-width: 899px) { body.iko-talking #cloud .cloud-hint, body.iko-cueing #cloud .cloud-hint { visibility: hidden; } }
+@keyframes iko-breathe { 0%, 100% { scale: 1; } 50% { scale: 1.025 .985; } }
+@keyframes iko-bob { 0%, 100% { translate: 0 0; } 50% { translate: 0 -2px; } }
+@keyframes iko-blink { 0%, 93%, 100% { transform: scaleY(1); } 95.5% { transform: scaleY(.12); } }
+.iko-line { order: 1; pointer-events: auto; cursor: pointer; position: relative; margin: 0 0 8px; max-width: min(300px, calc(100vw - 98px - env(safe-area-inset-left) - env(safe-area-inset-right))); font-size: 14px; line-height: 1.4; color: var(--soft); background: var(--sheet); border: 1px solid var(--rule); border-radius: 12px; padding: 7px 11px; box-shadow: 0 4px 14px rgba(var(--shadow-rgb), .08); animation: iko-line-in .4s ease; }
+.iko-line:hover { color: var(--ink); }
+/* a small tail to the pebble: Iko is the one speaking */
+.iko-line::before { content: ""; position: absolute; left: -6px; bottom: 12px; width: 10px; height: 10px; background: var(--sheet); border-left: 1px solid var(--rule); border-bottom: 1px solid var(--rule); transform: rotate(45deg); }
+/* Iko's room: on the cloud, the fine print and the Pick up row sit above it; elsewhere the page ends above a quiet strip */
+body.iko-home .cloud-foot { bottom: calc(var(--iko-lane, 70px) + 12px + env(safe-area-inset-bottom)); } /* + the sun/moon's 44px target, which reaches past its line */
+body.iko-home .cloud-flow { bottom: calc(var(--iko-lane, 70px) + 58px + env(safe-area-inset-bottom)); }
+body.iko-on #chat { padding-bottom: calc(var(--iko-lane, 70px) + env(safe-area-inset-bottom)); }
+body.iko-on::after { content: ""; position: fixed; left: 0; right: 0; bottom: 0; z-index: 19; height: calc(var(--iko-lane, 70px) + env(safe-area-inset-bottom)); background: var(--paper); border-top: 1px solid var(--rule); }
 /* "always here": until Iko is opened the first time, a warm sepia ring with a soft halo breathes slowly around the pebble
    (a still ring and halo with reduced motion) */
 .iko { position: relative; }
 .iko.glow::before { content: ""; position: absolute; inset: 4px 1px 6px; border-radius: 50%; pointer-events: none; box-shadow: 0 0 0 2px rgba(var(--glow-a), .4), 0 0 10px 4px rgba(var(--glow-b), .26); animation: iko-glow 4.8s ease-in-out infinite; }
 @keyframes iko-glow { 0%, 100% { box-shadow: 0 0 0 2px rgba(var(--glow-a), .36), 0 0 9px 3px rgba(var(--glow-b), .22); } 50% { box-shadow: 0 0 0 3px rgba(var(--glow-a), .58), 0 0 18px 8px rgba(var(--glow-b), .38); } }
-/* the screen's cue under the pebble: what Iko can help with here; it fades in, holds a few seconds, fades out */
-.iko-cue { order: 2; margin: -2px 0 0 6px; padding: 1px 8px; font-size: 12.5px; font-style: italic; line-height: 1.5; color: var(--soft); background: rgba(var(--paper-rgb), .9); border-radius: 10px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .6s ease; }
-.iko-cue.on { opacity: .92; }
 @keyframes iko-line-in { from { opacity: 0; } to { opacity: 1; } }
 .iko-sheet { position: fixed; z-index: 30; left: 8px; right: 8px; bottom: 8px; max-height: min(64vh, 560px); display: flex; flex-direction: column; background: var(--sheet); border: 1px solid var(--rule); border-radius: 14px; box-shadow: 0 6px 24px rgba(var(--shadow-rgb), .14); padding: 10px 14px 8px; }
 @media (min-width: 700px) { .iko-sheet { left: auto; right: 16px; bottom: 16px; width: 390px; } }
@@ -730,7 +741,7 @@ body.iko-home .home-nav { padding-left: 54px; min-height: 40px; }
 #l-done, #l-status { scroll-margin-top: 96px; scroll-margin-bottom: 16px; } /* clear of the sticky header */
 @media (min-width: 1100px) { body.iko-lesson .iko-sheet { left: 16px; right: auto; } }
 .iko-foot { margin: 6px 0 0; text-align: center; font-size: 12.5px; }
-@media (prefers-reduced-motion: reduce) { .iko .iko-pebble, .iko-line { animation: none; } .iko.glow::before { animation: none; box-shadow: 0 0 0 2.5px rgba(var(--glow-a), .48), 0 0 12px 5px rgba(var(--glow-b), .28); } .iko-cue { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .iko .iko-pebble, .iko .iko-eye, .iko-line { animation: none; } .iko.glow::before { animation: none; box-shadow: 0 0 0 2.5px rgba(var(--glow-a), .48), 0 0 12px 5px rgba(var(--glow-b), .28); } }
 
 /* ---------- PR 99: the name's card (stats), cloud files, the earned flight ---------- */
 #panel.is-root .actions { margin-bottom: 8px; }
@@ -757,3 +768,13 @@ body.iko-home .home-nav { padding-left: 54px; min-height: 40px; }
 .ikc-box .btn { min-height: 44px; }
 .fly-card { box-shadow: 0 12px 24px rgba(var(--shadow-rgb), .22); border-radius: 4px; will-change: transform, opacity; }
 @media (max-width: 699px) { .cloud-hint { top: 66px; } }
+
+/* ---------- PR 103: the deck keeps the earned cards; what to pick up and what is still to collect sit apart ---------- */
+.d-sec { font-weight: normal; font-size: 19px; margin: 30px 0 6px; padding-top: 18px; border-top: 1px solid var(--rule); }
+.d-next .flow-in > .kicker { display: none; } /* the section's own heading says it */
+.d-collect[hidden] { display: none; }
+.d-collect > .fine { margin: 0 0 8px; }
+.collect-row .ap-row-head { color: var(--soft); }
+/* the cloud's deck: the same fanned icon and count as the header's */
+.home-nav .home-deck { align-self: center; opacity: .92; margin: -8px 0; }
+.home-nav .home-deck:hover, .home-nav .home-deck:focus-visible { opacity: 1; }

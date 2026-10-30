@@ -120,6 +120,8 @@ const note = (p) => p.evaluate(() => {
     ikoClear: !ir || kids.every((k) => k.right <= ir.left || k.left >= ir.right || k.bottom <= ir.top || k.top >= ir.bottom),
     x: [...n.querySelectorAll(".cf-x")].map((b) => b.getAttribute("aria-label")), xWithLast: (() => { const x = n.querySelector(".cf-x"); if (!x) return true; const a = x.getBoundingClientRect(), prev = x.previousElementSibling; if (prev) { const b = prev.getBoundingClientRect(); return Math.abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2) < 8; } const r = document.createRange(), t = x.parentNode.firstChild; r.setStart(t, 0); r.setEnd(t, Math.max(1, t.textContent.trim().length)); const b = r.getBoundingClientRect(); return Math.abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2) < 10; })() };
 });
+/* PR 103: Iko's reassurance after the first interests has its say first; the grow line follows it */
+const growSoon = (p) => p.waitForFunction(() => { const l = document.querySelector("#iko-line"); return Boolean(l && !l.hidden && /grow in yourself/.test(l.textContent)); }, null, { timeout: 12000 }).then(() => true, () => false);
 const growLine = (p) => p.evaluate(() => { const l = document.querySelector("#iko-line"); return Boolean(l && !l.hidden && /grow in yourself/.test(l.textContent)); });
 const inviteOn = (p) => p.evaluate(() => Boolean(document.querySelector(".cloud-flow:not([hidden]) .cf-note.dir-invite")));
 /* name, then the intake on the cloud */
@@ -141,17 +143,19 @@ for (const width of [390, 1280]) {
       await toIntake(p, guide);
       const few = await p.evaluate(() => { const f = document.querySelector("#cs-few"), q = document.querySelector("#cs-q"); return { text: f && !f.hidden ? f.textContent : "", below: f && q && f.getBoundingClientRect().top >= q.getBoundingClientRect().bottom - 1, qs: (document.querySelector("#cloud-start").innerText.match(/\?/g) || []).length }; });
       ok(few.text === "One thing or a few, whatever's on your mind." && few.below && few.qs === 1, `${tag}: intake: one question, with a quiet "one thing or a few" under it`, JSON.stringify(few));
-      ok(JSON.stringify(await chipState(p)) === JSON.stringify(["Stars", "Rain", "Games"]), `${tag}: intake: the ideas start unpicked (aria-pressed false)`, JSON.stringify(await chipState(p)));
-      await p.click('#cs-ex .ex-chip:text-is("Stars")'); await p.click('#cs-ex .ex-chip:text-is("Rain")'); await p.waitForTimeout(100);
-      ok(JSON.stringify(await chipState(p)) === JSON.stringify(["Stars*", "Rain*", "Games"]) && calls.filter((c) => c !== "/examples").length === 0, `${tag}: intake: two ideas picked together (no call yet)`, JSON.stringify(await chipState(p)));
-      await p.click('#cs-ex .ex-chip:text-is("Rain")'); await p.waitForTimeout(100);
-      const off = await chipState(p);
-      await p.focus('#cs-ex .ex-chip:text-is("Rain")'); await p.keyboard.press("Enter"); await p.waitForTimeout(100);
-      const kb = await p.evaluate(() => document.activeElement && document.activeElement.textContent);
-      ok(JSON.stringify(off) === JSON.stringify(["Stars*", "Rain", "Games"]) && JSON.stringify(await chipState(p)) === JSON.stringify(["Stars*", "Rain*", "Games"]) && kb === "Rain", `${tag}: intake: a tap unpicks; Enter picks again and keeps the focus`, JSON.stringify({ off, kb }));
-      await p.click("#cs-ex .ex-more"); await p.waitForTimeout(100);
-      ok(JSON.stringify(await chipState(p)) === JSON.stringify(["Stars*", "Rain*", "Kites", "Chess", "Gardens"]), `${tag}: intake: More shows other ideas and keeps the picked ones in view`, JSON.stringify(await chipState(p)));
+      ok(JSON.stringify(await chipState(p)) === JSON.stringify(["Stars", "Rain", "Games"]), `${tag}: intake: a few plain idea chips (nothing toggled)`, JSON.stringify(await chipState(p)));
+      /* PR 103: a tap adds the idea to the field and that chip moves on to an idea not yet used (they never pile up) */
       await p.fill("#cs-in", "the ocean");
+      await p.click('#cs-ex .ex-chip:text-is("Stars")'); await p.waitForTimeout(100);
+      const one = { v: await p.inputValue("#cs-in"), chips: await chipState(p) };
+      ok(one.v === "the ocean, Stars" && !one.chips.includes("Stars") && one.chips.length === 3 && one.chips.every((c) => !/\*$/.test(c)) && calls.filter((c) => c !== "/examples").length === 0, `${tag}: intake: a tapped idea goes into the field; its chip moves on (no call yet)`, JSON.stringify(one));
+      await p.focus('#cs-ex .ex-chip:text-is("Rain")'); await p.keyboard.press("Enter"); await p.waitForTimeout(100);
+      const kb = await p.evaluate(() => ({ v: document.querySelector("#cs-in").value, on: document.activeElement && document.activeElement.classList.contains("ex-chip") ? document.activeElement.textContent : "" }));
+      ok(kb.v === "the ocean, Stars, Rain" && kb.on && kb.on !== "Rain" && !(await chipState(p)).some((c) => /^(Stars|Rain)$/.test(c)), `${tag}: intake: Enter adds an idea too and keeps the focus on the chips`, JSON.stringify(kb));
+      const before = await chipState(p);
+      await p.click("#cs-ex .ex-more"); await p.waitForTimeout(100);
+      const more = await chipState(p);
+      ok(more.length >= 2 && more.length <= 3 && JSON.stringify(more) !== JSON.stringify(before) && !more.some((c) => /^(Stars|Rain)$/.test(c)), `${tag}: intake: More shows other ideas (never one already in the field)`, JSON.stringify({ before, more }));
       if (SHOTS) await p.screenshot({ path: path.join(SHOTS, `dirs-intake-${tag}-picked.png`) });
       await p.click("#cs-form button[type=submit]");
       await built(p, 3); await p.waitForTimeout(1200);
@@ -159,10 +163,10 @@ for (const width of [390, 1280]) {
       const cl = await cloudNow(p);
       ok(st.length === 1 && st[0].b.kind === "start" && st[0].b.about === "the ocean, Stars, Rain", `${tag}: intake: the typed words and the picked ideas go as one answer, in one start call`, JSON.stringify(st.map((x) => x.b.about)));
       ok(cl.subjects.join() === "Nature,Space,Weather" && cl.roots && cl.parentOf["Ocean Life"] === "Nature" && cl.parentOf.Stars === "Space" && cl.parentOf.Rain === "Weather", `${tag}: intake: each idea its own parent under the name`, JSON.stringify(cl.subjects));
-      ok(!(await inviteOn(p)) && await growLine(p), `${tag}: intake made 3 subjects: no invite, and Iko's grow line comes straight away`);
+      ok(!(await inviteOn(p)) && await growSoon(p), `${tag}: intake made 3 subjects: no invite, and Iko's grow line comes (after its reassurance)`);
       await p.click("#zreset"); await p.waitForTimeout(1400);
       if (SHOTS) await p.screenshot({ path: path.join(SHOTS, `dirs-intake-${tag}-fanned.png`) });
-      ok(JSON.stringify(await p.evaluate(() => document.querySelectorAll("#cs-ex .ex-chip[aria-pressed=true]").length)) === "0", `${tag}: intake: the picks are cleared once used`);
+      ok((await p.inputValue("#cs-in")) === "", `${tag}: intake: the field is cleared once used`);
       ok(!errs.length, `${tag}: no console errors (intake)`, errs.join(" | "));
     } catch (e) { fails.push(`${tag}: intake threw -> ${String(e.message || e).split("\n")[0]}`); }
     await ctx.close();
@@ -183,8 +187,9 @@ for (const width of [390, 1280]) {
     const o = await open(width);
     try {
       await toIntake(o.p, guide);
+      await o.p.fill("#cs-in", "the sea, drawing, music and baking");
       await o.p.click('#cs-ex .ex-chip:text-is("Stars")'); await o.p.click('#cs-ex .ex-chip:text-is("Rain")'); await o.p.click('#cs-ex .ex-chip:text-is("Games")');
-      await o.p.fill("#cs-in", "the sea, drawing, music and baking"); await o.p.click("#cs-form button[type=submit]");
+      await o.p.click("#cs-form button[type=submit]");
       await built(o.p, 4); await o.p.waitForTimeout(1300);
       const cl = await cloudNow(o.p), n = await note(o.p);
       ok(o.calls.filter((c) => c === "/create").length === 1 && cl.subjects.join() === "Nature,Art,Music,Cooking" && JSON.stringify(cl.dir.later) === JSON.stringify(["Stars", "Rain", "Board Games"]), `${tag}: seven ideas: 4 subjects now (one call); the rest kept for later`, JSON.stringify({ s: cl.subjects, later: cl.dir.later }));
@@ -197,7 +202,7 @@ for (const width of [390, 1280]) {
       const b2 = o.bodies.filter((x) => x.at === "/create").pop().b, cl2 = await cloudNow(o.p);
       ok(o.calls.slice(c0).join() === "/create" && b2.kind === "more" && b2.about === "Rain" && b2.favorites.length === 0 && cl2.subjects.includes("Weather") && JSON.stringify(cl2.dir.later) === JSON.stringify(["Stars", "Board Games"]), `${tag}: one of them, tapped: one "more" call, a new parent; it leaves the list`, JSON.stringify({ about: b2.about, later: cl2.dir.later, s: cl2.subjects }));
       await o.p.click('.cf-note.dir-later .cf-x'); await o.p.waitForTimeout(300);
-      ok(!(await o.p.$(".cf-note.dir-later")) && (await cloudNow(o.p)).dir.later.length === 0 && await growLine(o.p), `${tag}: Not now clears them; then the grow line comes`);
+      ok(!(await o.p.$(".cf-note.dir-later")) && (await cloudNow(o.p)).dir.later.length === 0 && await growSoon(o.p), `${tag}: Not now clears them; then the grow line comes`);
       ok(!o.errs.length, `${tag}: no console errors (later)`, o.errs.join(" | "));
     } catch (e) { fails.push(`${tag}: later threw -> ${String(e.message || e).split("\n")[0]}`); }
     await o.ctx.close();
@@ -248,7 +253,7 @@ for (const width of [390, 1280]) {
       cl = await cloudNow(p); n = await note(p);
       ok(calls.slice(c0).join() === "/create" && cl.subjects.join() === "Nature,Art,Music" && cl.roots && cl.parentOf.Rhythm === "Music", `${tag}: a third direction: 3 parents, fanned out from the name`, JSON.stringify(cl.subjects));
       ok(!n || !/dir-invite/.test(n.cls), `${tag}: with 3 subjects the invite goes quiet`, JSON.stringify(n));
-      ok(await growLine(p) && !(await inviteOn(p)), `${tag}: once the invite has gone, Iko's grow line comes (once)`);
+      ok(await growSoon(p) && !(await inviteOn(p)), `${tag}: once the invite has gone, Iko's grow line comes (once)`);
       await p.click("#zreset"); await p.waitForTimeout(1400);
       await shot(p, tag, "fanned");
       /* the next visit: still quiet */

@@ -1557,7 +1557,46 @@
     return JSON.stringify({ v: VERSION, name: cloud.name, seq: cloud.seq, rev: cloud.rev, created: cloud.created, next: cloud.next || 0, n: n, p: paths, f: forks, cards: cloud.cards,
       k: (cloud.deck || []).map(function (e) { var r = [e.id, e.label, e.subject, e.hue, s(e.at), e.best || 0, e.chain || [], e.blurb || "", s(e.ach)]; if (e.tb || e.ml || e.inn || (e.co && e.co.length)) r.push(e.tb || 0, e.ml || 0, e.inn || 0, e.co && e.co.length ? e.co : 0); return r; }), g: cloud.draws || [], ss: cloud.sessions || 0,
       t: tests, sg: sg, fl: cloud.active || 0, pr: profileRow(cloud.profile),
-      ev: (cloud.events || []).map(function (e) { return [s(e.t), e.k, e.id, e.lv || 0, e.ids || [], e.why || ""]; }), mo: motifMap(cloud) });
+      ev: (cloud.events || []).map(function (e) { return [s(e.t), e.k, e.id, e.lv || 0, e.ids || [], e.why || ""]; }), mo: motifMap(cloud), ez: easeMap(cloud) });
+  }
+  /*
+   * How easily the learner answers in a branch (PR 103): one number per subject, -1 (finding the checks hard) .. 1 (answering
+   * easily), a running average of each finished check round's share of right answers. The orchestrator turns it into the
+   * lesson's pace (P.paceOf). An optional v9 field (ez: { subjectId: -100..100 }), written only when set: older readers ignore it.
+   */
+  var EASE = { keep: 0.65 };
+  function easeOf(cloud, id) { var s = subjectOf(cloud, id); return s && Number.isFinite(s.ez) ? s.ez : 0; }
+  function noteEase(cloud, id, share) {
+    var s = subjectOf(cloud, id);
+    if (!s || !Number.isFinite(share)) return 0;
+    var v = Math.max(-1, Math.min(1, share * 2 - 1)), was = Number.isFinite(s.ez) ? s.ez : 0;
+    s.ez = Math.round((was * EASE.keep + v * (1 - EASE.keep)) * 100) / 100;
+    return s.ez;
+  }
+  function easeMap(cloud) {
+    var m = {};
+    subjects(cloud).forEach(function (s) { if (Number.isFinite(s.ez) && s.ez) m[s.id] = Math.round(s.ez * 100); });
+    return Object.keys(m).length ? m : undefined;
+  }
+  /*
+   * A branch left alone fades a little (PR 103): never removed, only quieter on the cloud. The last activity anywhere in a
+   * subject (opened, answered, time spent: touched / heatAt) older than FADE.after days eases its nodes down to FADE.floor
+   * of their strength by FADE.full days; any new activity brings it straight back. -> 0 (fresh) .. 1 - FADE.floor.
+   */
+  var FADE = { after: 21, full: 120, floor: 0.55 };
+  function lastActive(cloud, sid) {
+    var t = 0;
+    all(cloud).forEach(function (n) { if (n.id === sid || ancestry(cloud, n.id)[0] === sid) t = Math.max(t, n.touched || 0, n.heatAt || 0, n.born || 0); });
+    return t;
+  }
+  function fadeOf(cloud, id, now) {
+    var s = subjectOf(cloud, id) || node(cloud, id);
+    if (!s) return 0;
+    var last = lastActive(cloud, s.id);
+    if (!last) return 0;
+    var days = (now_(now) - last) / 864e5;
+    if (days <= FADE.after) return 0;
+    return Math.round(Math.min(1, (days - FADE.after) / (FADE.full - FADE.after)) * (1 - FADE.floor) * 1000) / 1000;
   }
   /* the card motifs, { id: motif }, only for nodes that have one (an optional v9 field: older v9 readers ignore it) */
   function motifMap(cloud) {
@@ -1687,6 +1726,7 @@
       var out;
       try { out = finish(base, list, c.cards, c.p, { forks: c.f, deck: c.k, draws: c.g, sessions: c.ss, tests: c.t, suggest: c.sg, active: c.fl, profile: c.pr, events: c.ev }); } finally { gateOff = false; }
       if (c.mo && typeof c.mo === "object") Object.keys(c.mo).forEach(function (id) { if (out.nodes[id]) out.nodes[id].motif = cleanMotif(c.mo[id]); });
+      if (c.ez && typeof c.ez === "object") Object.keys(c.ez).forEach(function (id) { var x = out.nodes[id], v = Number(c.ez[id]); if (x && !x.parent && Number.isFinite(v)) x.ez = Math.max(-1, Math.min(1, Math.round(v) / 100)); });
       var nowS = Math.round(Date.now() / 1000) * 1000; /* whole seconds, as stored, so a migrated cloud round-trips exactly */
       if (c.v < 5) adoptComputerScience(out, nowS); /* v4 and older: Computer Science becomes its own subject */
       if (c.v < 6) { pruneSeeds(out); joinDeck(out, nowS); } /* v5 and older: untouched starter seeds go; everything learned stays */
@@ -1759,6 +1799,7 @@
     attachCard: attachCard, cardsFor: cardsFor, summarize: summarize, knownUnder: knownUnder, subjectLabels: subjectLabels,
     subjects: subjects, childrenOf: childrenOf, ancestry: ancestry, depthOf: depthOf, subjectOf: subjectOf, trail: trail, index: index,
     findSubject: findSubject, findTopic: findTopic, findAny: findAny, norm: norm, cleanLabel: cleanLabel,
+    EASE: EASE, easeOf: easeOf, noteEase: noteEase, FADE: FADE, fadeOf: fadeOf, lastActive: lastActive,
     colorOf: colorOf, levelScale: levelScale, layout: layout, serialize: serialize, deserialize: deserialize, trimThread: trimThread
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;

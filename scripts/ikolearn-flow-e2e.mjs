@@ -5,6 +5,7 @@
 // node tap, cancel on navigation, lessons queue while busy, and "Try again" only on a real failure.
 // Run: IKOLEARN_PW=<path to node_modules/playwright-core> node scripts/ikolearn-flow-e2e.mjs [--shots DIR] [--tag after] [--root public] [--soft]
 // (--soft: screenshots only, for an older build without these features.) Skips when IKOLEARN_PW is not set.
+import { passCheck } from "./fixtures/ikolearn-pass-check.mjs";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -367,8 +368,7 @@ async function runShawn(width) {
     await p.getByRole("button", { name: /Continue Data Management/ }).first().click();
     await p.waitForSelector("#l-done:not([hidden])");
     await p.waitForTimeout(200);
-    await p.locator("#l-quiz label.opt").nth(2).click();
-    await p.waitForTimeout(200);
+    await passCheck(p); /* PR 103: Continue, then a passed check, before the card and Where next */
     const n0 = calls.length;
     await p.click("#l-got"); await p.waitForTimeout(400);
     const r = await p.evaluate(() => ({

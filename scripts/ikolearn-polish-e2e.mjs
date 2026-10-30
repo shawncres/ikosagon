@@ -6,6 +6,7 @@
 // you notice"); "I've got it" saves first, then the card flies into the Deck and the Deck pulses (no flight with reduced
 // motion); the intake's targets are all 44px and nothing overlaps.
 // Run: IKOLEARN_PW=<path to node_modules/playwright-core> node scripts/ikolearn-polish-e2e.mjs [--root public]
+import { passCheck } from "./fixtures/ikolearn-pass-check.mjs";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -170,8 +171,8 @@ for (const width of [390, 1280]) {
   for (const reduce of [false, true]) {
     const { ctx, p, errs } = await boot(width, {}, reduce ? { reducedMotion: "reduce" } : {});
     const tid = await idOf(p, "Tides");
-    await tap(p, "Tides"); await p.click("#p-lesson"); await p.waitForSelector("#l-quiz .opt"); await p.waitForTimeout(400);
-    await p.click("#l-quiz .opt >> nth=0"); await p.waitForTimeout(400);
+    await tap(p, "Tides"); await p.click("#p-lesson"); await p.waitForSelector("#l-cont:not([hidden])"); await p.waitForTimeout(400);
+    await passCheck(p); await p.waitForTimeout(200); /* PR 103: Continue, a passed check, then the card */
     const deck0 = await p.evaluate(() => window.IkoCloud.deserialize(localStorage.getItem("ikolearn.v1.cloud")).deck.length);
     await p.click("#l-got");
     await p.waitForTimeout(80);

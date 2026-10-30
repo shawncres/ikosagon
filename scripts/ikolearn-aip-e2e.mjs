@@ -4,6 +4,7 @@
 // selecting and opening in the long list, most recent activity first, nothing from the lesson's own line, Where Next
 // unchanged, no link with 3 or fewer, 0 calls; after I've got it, after Continue, from a card, with Iko's sheet at 1280.
 // Run: IKOLEARN_PW=<path to node_modules/playwright-core> node scripts/ikolearn-aip-e2e.mjs [--shots DIR] [--tag after] [--root public]
+import { passCheck } from "./fixtures/ikolearn-pass-check.mjs";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -192,6 +193,7 @@ for (const width of [390, 1280]) {
     try {
       /* after I've got it */
       await p.locator(".cloud-flow > .chip").first().click(); await p.waitForSelector("#l-done:not([hidden])");
+      await passCheck(p); /* PR 103: the check passed first */
       await p.click("#l-got"); await p.waitForTimeout(400);
       /* --tag before (main): the old list as it was, for the before shots */
       if (TAG === "before") { await toLesson(p); await shot(p, tag, "collapsed"); if (SHOTS) await p.screenshot({ path: path.join(SHOTS, `aip-before-${tag}-full.png`), fullPage: true }); }
@@ -231,6 +233,7 @@ for (const width of [390, 1280]) {
     const { ctx, p, errs } = await boot(width, guide, false);
     try {
       await p.locator(".cloud-flow > .chip").first().click(); await p.waitForSelector("#l-done:not([hidden])");
+      await passCheck(p); /* PR 103: the check passed first */
       await p.click("#l-got"); await p.waitForTimeout(400);
       const a = await aip(p);
       ok(a.labels.length >= 1 && a.labels.length <= 3 && !a.link, `${tag}: with 3 or fewer in progress there is no "more" link`, JSON.stringify(a));
@@ -244,7 +247,7 @@ for (const width of [390, 1280]) {
     try {
       await p.waitForTimeout(600);
       const k = await p.evaluate(() => { const b = document.querySelector("#iko"), r = b.getBoundingClientRect(), l = document.querySelector("#iko-line"); return { shown: !b.hidden && r.width >= 44, label: b.getAttribute("aria-label"), svg: Boolean(b.querySelector("svg.iko-pebble")), line: l.hidden ? "" : l.textContent }; });
-      ok(k.shown && k.label === "Talk to Iko" && k.svg && k.line === "Hi, I'm Iko. I'm here whenever you need me.", `${tag} audit: on a 40-subject cloud, the Iko pebble (SVG) and its hello on an early visit`, JSON.stringify(k));
+      ok(k.shown && k.label === "Talk to Iko" && k.svg && /^Hi Maya, I'm Iko\./.test(k.line), `${tag} audit: on a 40-subject cloud, the Iko pebble (SVG) and its hello on an early visit`, JSON.stringify(k));
       ok(await tap(p, "Zoology"), `${tag} audit: Zoology's card (outer shell)`);
       await p.click("#p-chat"); await p.waitForTimeout(300);
       ok((await sheet(p)).about === "On your cloud · Zoology", `${tag} audit: Iko opens with the card's context`, (await sheet(p)).about);

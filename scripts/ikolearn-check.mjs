@@ -10,6 +10,7 @@ import {
   PATH_OPEN, PATH_CLOSE, lessonSystem, lessonContents, pathSystem, PATH_SCHEMA, CARD_SCHEMA, parsePath, parseChoices, parseLessonBlock, parseQuestions, parseBlurb, parseChain,
   parseTest, testSystem, TEST_SCHEMA, createSystem, parseCreate, CREATE_SCHEMA, examplesSystem, parseExamples, EXAMPLES_SCHEMA, EXAMPLE_LIMITS, SIGNALS, parseReading,
 } from "../lib/ikolearn/prompts.ts";
+import { LESSON_PACES } from "../lib/ikolearn/prompts.ts";
 import { DEFAULT_MODEL, FALLBACK_MODEL, GEMINI_BASE, chatBody, jsonBody, readSse } from "../lib/ikolearn/gemini.ts";
 import { MODEL_LIMITS, streamText, generateJson, llmConfig, llmReady } from "../lib/ikolearn/llm.ts";
 import { toMessages } from "../lib/ikolearn/openai-compatible.ts";
@@ -1078,14 +1079,15 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(!/innerHTML|fetch\(|localStorage/.test(rankJs), "rank.js: pure, no network or storage of its own");
   /*
    * Page weight, measured on what is served: the build minifies every .js and .css (scripts/ikolearn-minify.mjs, the
-   * same function here), index.html and the icon go as they are. Budget 330 KB raw / 100 KB gzip.
+   * same function here), index.html and the icon go as they are. Budget 330 KB raw / 105 KB gzip (PR 103 raised it from
+   * 100 KB for the companion at the bottom and the read, check, earn loop: about 4 KB gzip).
    */
   const files = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js", "rank.js", "orchestrator.js", "camera.js", "profiles.js", "icon.svg"];
   const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
   const bytes = files.reduce((n, f) => n + served(f).length, 0);
   const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
   ok(bytes < 330_000, "app weight under 330 KB uncompressed (served, minified)", String(bytes));
-  ok(gz < 100_000, "app weight under 100 KB gzipped (served, minified)", String(gz));
+  ok(gz < 105_000, "app weight under 105 KB gzipped (served, minified)", String(gz));
 }
 
 /* ================= the flow pass: chains, Computer Science, orchestrator, children, tests ================= */
@@ -2444,7 +2446,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/id="p-close" class="card-x" aria-label="Close"/.test(fs.readFileSync("public/ikolearn/index.html", "utf8")), "the card's close control is a labelled button at its top");
   // node states
   ok(/var sel = !mini && n\.id === focusId, sk = sel \? selEase\(now\) : 0;/.test(view) && /if \(sel\) \{ r \*= 1 \+ 0\.28 \* sk;/.test(view) && /createRadialGradient/.test(view) && /function selEase\(now\) \{ if \(reduce\) return 1;/.test(view), "nodes: the selected one is a little larger, with a soft glow and a fine ring that ease in (still with reduced motion)");
-  ok(/var quiet = !mini && focusId && !focusSet\[n\.id\] \? 0\.55 : 1;/.test(view) && /if \(focusId && !focusSet\[n\.id\]\) la \*= 0\.6;/.test(view), "nodes: with one selected, everything off its branch steps back (quieter nodes, edges and labels)");
+  ok(/var quiet = \(!mini && focusId && !focusSet\[n\.id\] \? 0\.55 : 1\)/.test(view) && /if \(focusId && !focusSet\[n\.id\]\) la \*= 0\.6;/.test(view), "nodes: with one selected, everything off its branch steps back (quieter nodes, edges and labels)");
   ok(/if \(n\.ghost\) \{ ctx\.setLineDash\(\[1\.5, 2\]\);/.test(view) && /else if \(n\.ghost\) \{ ctx\.setLineDash\(\[2, 4\]\);/.test(view), "nodes: unexplored (ghost) topics are dotted rings on dotted branches");
   ok(/else if \(kids\[id\] && v >= 0\.42 && v <= 1\.9\) a = Math\.max\(a, 0\.72\);/.test(view), "labels: a branch's parent stays readable zoomed out; its children's labels come in as you zoom in");
 
@@ -3204,7 +3206,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const app = fs.readFileSync("public/ikolearn/app.js", "utf8"), html = fs.readFileSync("public/ikolearn/index.html", "utf8"), lj = fs.readFileSync("public/ikolearn/learners.js", "utf8"), lh = fs.readFileSync("public/ikolearn/learners.html", "utf8"), fj = fs.readFileSync("public/ikolearn/family.js", "utf8");
   ok(/data-who="self">Learning for yourself</.test(html) && /data-who="guide">Guiding other learners</.test(html) && /<form id="name-form" autocomplete="off" hidden>/.test(html), "welcome: \"Who's learning?\" is a quick tap before the name");
   ok(!/\b(parent|teacher|tutor|mentor|child|kid|student|adult|age)\b/i.test(html.slice(html.indexOf('id="who"'), html.indexOf('id="name-form"'))), "welcome: universal wording (no roles or ages assumed)");
-  ok(/"Your first learner's first name" : "What's your first name\?"/.test(app) && /PR\.begin\(localStorage, who, n\)/.test(app), "welcome: yourself keeps the name question; a guide names their first learner");
+  ok(/"Your learners' first names" : "What's your first name\?"/.test(app) && /PR\.begin\(localStorage, who, n\); names\.slice\(1\)\.forEach\(function \(x\) \{ PR\.addParked\(localStorage, x\); \}\);/.test(app), "welcome: yourself keeps the name question; a guide names their learners (several at once: the first starts, the rest are parked)");
   ok(/PR\.reconcile\(localStorage\)/.test(app) && /if \(PR\) PR\.dropActive\(localStorage\);/.test(app), "app: repairs an interrupted switch on load; Start over is per learner");
   ok(/id="who-now" class="who-now" href="\/ikolearn\/learners" hidden/.test(html) && /el\.whoNow\.textContent = state\.name \+ " · switch"/.test(app), "app: a quiet switcher by the brand, only when guiding");
   ok(/<a href="\/ikolearn\/learners" id="learners-link">Learners<\/a>/.test(html), "app: a quiet Learners link in the footer line (switch modes later)");
@@ -3307,14 +3309,14 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/el\.toCloud\.addEventListener\("click", function \(\) \{ home\(\); \}\)/.test(app) && /id="to-cloud"[^>]*>Your cloud</.test(html) && /class="chat-name" aria-hidden="true">Iko</.test(html), "Iko (the chat): a quiet way back to the cloud in its header");
   ok(!/id="cloud-close"/.test(html) && /id="iko" class="iko" aria-label="Talk to Iko"/.test(html) && /id="p-chat" class="btn sm">Talk to Iko</.test(html) && /id="l-chat" class="link">Ask Iko about this</.test(html) && /placeholder="Ask Iko anything"/.test(html) && !/>Talk in chat<|>Back to chat<|in chat</.test(html), "wording: Talk to Iko, Ask Iko about this, Ask Iko anything (no \"chat\" left in the visible labels)");
   ok(/You are Iko, the warm, calm learning companion in IkoLearn/.test(SYSTEM_BASE), "Iko: the companion knows its name (prompt wording only, no extra call)");
-  ok(/<nav class="home-nav" aria-label="IkoLearn">/.test(html) && /id="cloud-deck" class="link" hidden>/.test(html) && /id="cloud-who" class="who-now" href="\/ikolearn\/learners" hidden>/.test(html) && /el\.cloudWho\.hidden = !\(ix && ix\.mode === "guide"\);/.test(app), "home nav: Talk to Iko, the deck (once there are cards) and the learner switch for guides, in one labelled nav");
+  ok(/<nav class="home-nav" aria-label="IkoLearn">/.test(html) && /id="cloud-deck" class="minideck home-deck" hidden>/.test(html) && /id="cloud-who" class="who-now" href="\/ikolearn\/learners" hidden>/.test(html) && /el\.cloudWho\.hidden = !\(ix && ix\.mode === "guide"\);/.test(app), "home nav: the deck (the same fanned icon and count, once there are cards) and the learner switch for guides, in one labelled nav");
   ok(/\.home-nav > :is\(button, a\) \{ opacity: \.62;/.test(css) && /\.cloud-foot \{[^}]*opacity: \.5;/.test(css) && /@media \(max-width: 699px\) \{ \.home-brand \{ display: none; \}/.test(css), "home nav: quiet (dimmed until hovered or focused), the brand dropped on phones");
   // the empty-cloud start
   ok(/var empty = Boolean\(state\.cloud\) && !C\.subjects\(state\.cloud\)\.length;/.test(app) && /id="cs-q" class="cs-q">What are you curious about, or what do you enjoy\?</.test(html) && !/id="cs-iko"/.test(html) && /Let's begin your learning cloud together\./.test(app), "empty cloud: the name in the centre and one calm step (hello, the one question, the field, Begin); Iko is the way to talk");
   const cs = app.slice(app.indexOf("  function renderStart() {"), app.indexOf("  el.csForm.addEventListener"));
   ok(!/\b(age|years? old|kids?|child|student|grade)\b/i.test(cs) && !/\[\s*"[A-Z][a-z]+",\s*"/.test(cs), "empty cloud: no static topic list and no age wording");
   ok(/if \(open\) askHandlers\[open\.id\]\(text, t\);\s*else send\(t\);/.test(app) && !/quickStart/.test(app), "empty cloud: Begin answers the first question and builds at once (the same one start call, no new call)");
-  ok(/csEx = exRow\(null, function \(\) \{ return !el\.cs\.hidden && !state\.busy; \}, "", true, state\.csPicked\)/.test(app) && /if \(r\.quiet\) return;/.test(app) && !/id="cs-ex"[^>]*>[^<]/.test(html), "empty cloud: the ideas under it come only from the API's cached examples (More cycles them, no call); none and no note when they can't load");
+  ok(/csEx = exRow\(addIdea, function \(\) \{ return !el\.cs\.hidden && !state\.busy; \}, "", true, true\)/.test(app) && /if \(r\.quiet\) return;/.test(app) && !/id="cs-ex"[^>]*>[^<]/.test(html), "empty cloud: the ideas under it come only from the API's cached examples (More cycles them, no call); none and no note when they can't load");
   ok(/el\.csStatus\.textContent = building \? "Growing your cloud…" : failed \?/.test(app) && /if \(cloudFlow\.hidden \|\| !C\.subjects\(state\.cloud\)\.length\)/.test(app), "empty cloud: a quiet status while it grows, an honest line if it failed; no Pick up row on an empty cloud");
 }
 
@@ -3339,8 +3341,8 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/screen: iko\.open && iko\.ctx \? screenOf\(iko\.ctx\) : \{ view: "chat" \}/.test(app) && /function screenOf\(c\) \{ var o = \{ view: c\.view \}; if \(c\.step\) o\.step = c\.step; if \(c\.topic\) o\.topic = c\.topic; return o; \}/.test(iko), "Iko: the screen context rides on the same chat call (view, step, topic; no ids, nothing about the learner)");
   ok(!/postJson\(|stream\(|getJson\(/.test(iko), "Iko: the pebble and its sheet make no calls of their own");
   ok(/<svg class="iko-pebble"/.test(html) && /class="iko-face"/.test(html) && !/<img[^>]*iko/i.test(html) && /aria-label="Talk to Iko"/.test(html), "Iko: an inline SVG pebble with a face group (for a later light animation), no image; a labelled button");
-  ok(/Hi, I'm Iko\. I'm here whenever you need me\./.test(iko) && /!hintSeen\("iko"\) && \(pr\.visits \|\| 0\) <= 2/.test(iko), "Iko: the hello only on the first visits, until Iko is opened");
-  ok(/@media \(prefers-reduced-motion: reduce\) \{ \.iko \.iko-pebble, \.iko-line \{ animation: none; \}/.test(fs.readFileSync("public/ikolearn/styles.css", "utf8")), "Iko: still with reduced motion");
+  ok(/Hi \{name\}, I'm Iko\. Tell me a few things you enjoy/.test(iko) && /el\.iko\.classList\.toggle\("glow", on && !hintSeen\("iko"\)\)/.test(iko), "Iko: a welcome from the start; the glow on the first visits, until Iko is opened");
+  ok(/@media \(prefers-reduced-motion: reduce\) \{ \.iko \.iko-pebble, \.iko \.iko-eye, \.iko-line \{ animation: none; \}/.test(fs.readFileSync("public/ikolearn/styles.css", "utf8")), "Iko: still with reduced motion (no breathing, bobbing or blinking)");
   ok(/el\.pChat\.addEventListener\("click", function \(\) \{ openIko\(\); \}\);/.test(app) && /el\.lChat\.addEventListener\("click", function \(\) \{ openIko\(\); \}\);/.test(app), "Iko: the card's Talk to Iko and the lesson's Ask Iko open Iko on that screen");
 }
 
@@ -3559,8 +3561,8 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   // the intake invites one thing or a few: a quiet hint, ideas picked together (aria-pressed), one answer, one start call
   const htmlI = fs.readFileSync("public/ikolearn/index.html", "utf8"), appI = fs.readFileSync("public/ikolearn/app.js", "utf8"), cssI = fs.readFileSync("public/ikolearn/styles.css", "utf8");
   ok(/<p id="cs-few" class="cs-few">One thing or a few, whatever's on your mind\.<\/p>/.test(htmlI) && !/\?/.test("One thing or a few, whatever's on your mind."), "intake: a quiet hint that one thing or a few is welcome (still one question)");
-  ok(/b\.setAttribute\("aria-pressed", on \? "true" : "false"\)/.test(appI) && /\.cs-ex \.ex-chip\[aria-pressed="true"\]/.test(cssI) && /if \(i >= 0\) r\.multi\.splice\(i, 1\); else r\.multi\.push\(t\);/.test(appI), "intake: ideas toggle on and off with a clear picked state (aria-pressed)");
-  ok(/function intakeText\(\) \{ return cleanAbout\(\[el\.csIn\.value\]\.concat\(state\.csPicked\)/.test(appI) && /state\.csPicked\.length = 0;\s*startFromCloud\(t\);/.test(appI), "intake: the typed words and the picked ideas go as one answer (the same one start call)");
+  ok(/b\.setAttribute\("aria-label", "Add " \+ t\)/.test(appI) && /function addIdea\(t\)/.test(appI) && !/aria-pressed/.test(cssI), "intake: a tapped idea is added to the field and its chip cycles to another (no pile-up, no toggled state)");
+  ok(/function intakeText\(\) \{ return cleanAbout\(el\.csIn\.value/.test(appI) && /startFromCloud\(t\);/.test(appI) && !/csPicked/.test(appI), "intake: the field holds the typed words and the added ideas, one answer (the same one start call)");
   // later ideas: stored additively, never ones already on the cloud
   const lc = C.create("Maya", T0);
   C.applyCreate(lc, { items: [{ node: { name: "Ocean Life", chain: ["Nature"] }, card: {}, children: [{ name: "Tides", order: 1, score: 0.5 }, { name: "Whales", order: 2, score: 0.5 }] }] }, { t: T0 });
@@ -3682,8 +3684,8 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/function intakeMode\(on\)/.test(app) && /big\.rootHidden\(on\)/.test(app) && /big\.hold\(on\)/.test(app) && /intakeMode\(!el\.cs\.hidden\)/.test(app), "intake: the name moves into the page and the empty cloud holds still while the question shows");
   ok(/<p id="cs-name" class="cs-name" aria-hidden="true"><\/p>\s*<p id="cs-hi"/.test(html) && /body\.intake \.cs-name \{ display: block;/.test(css), "intake: the name plate sits above the greeting and the question");
   ok(/window\.visualViewport\.addEventListener\("resize"/.test(app) && /body\.kbd \.cloud-foot \{ visibility: hidden; \}/.test(css), "intake: the keyboard (visualViewport) keeps the field and Begin in view; the fine print steps aside");
-  ok(/\.iko-wrap \{ position: fixed; left: calc\(8px \+ env\(safe-area-inset-left\)\); top: calc\(6px \+ env\(safe-area-inset-top\)\);/.test(css) && /bottom: calc\(2px \+ env\(safe-area-inset-bottom\)\)/.test(css) && /viewport-fit=cover/.test(html), "safe areas: Iko, the cloud's controls and the fine print clear the notch and the home bar");
-  ok(/body\.intake \.iko-wrap \{ flex-direction: row;/.test(css), "intake: Iko's line and cue sit beside the pebble, not over the question");
+  ok(/\.iko-wrap \{ position: fixed; left: calc\(10px \+ env\(safe-area-inset-left\)\); bottom: calc\(6px \+ env\(safe-area-inset-bottom\)\);/.test(css) && /bottom: calc\(2px \+ env\(safe-area-inset-bottom\)\)/.test(css) && /viewport-fit=cover/.test(html), "safe areas: Iko (at the bottom), the cloud's controls and the fine print clear the notch and the home bar");
+  ok(/body\.kbd \.iko-wrap \{ display: none; \}/.test(css) && /--iko-lane/.test(css), "intake: Iko keeps its own room at the bottom, and steps away while the keyboard is up");
   ok(!/autofocus/i.test(html) && !/transitionend[\s\S]{0,200}ikoIn\.focus/.test(app) && /if \(!o\.tricky && !coarse\(\)\) \{ try \{ el\.ikoIn\.focus/.test(app) && (app.match(/el\.ikoIn\.focus\(/g) || []).length === 3, "Iko on touch: no autofocus, no focus on transitionend; the open handler focuses the field only with a fine pointer (the other focus is an idea tapped into an open sheet)");
 }
 
@@ -3738,6 +3740,55 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(TH.forDark("hsla(120, 35%, 55%, 0.55)").startsWith("hsla(120, 26%,") && TH.forDark("#123456") === "#123456", "theme dark: placeholders keep their alpha; other colours pass through");
   TH.set(null);
   ok(!("ikolearn-theme" in store) && attrs["data-theme"] === "light", "theme: clearing the choice follows the device again");
+}
+
+/* ================= PR 103: Iko at the bottom, read -> check -> earn, the deck, onboarding, the cloud ================= */
+{
+  const app = fs.readFileSync("public/ikolearn/app.js", "utf8"), html = fs.readFileSync("public/ikolearn/index.html", "utf8"), css = fs.readFileSync("public/ikolearn/styles.css", "utf8");
+  const view = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8");
+  const PR = require("../public/ikolearn/profiles.js");
+  // the lesson's pace and its spare questions: local signals, no extra call
+  ok(LESSON_PACES.join() === "gentle,steady,stretch", "pace: a closed set (gentle, steady, stretch)");
+  const li = (o) => parseLearnInput(Object.assign({ name: "Maya", mode: "notice", focus: "Magma" }, o));
+  ok(li({ pace: "gentle" }).pace === "gentle" && li({ pace: "fast!" }).pace === "" && li({ again: true }).again === true && li({ again: "yes" }).again === false, "pace: only a known pace is taken; again only as true");
+  ok(/gentle/i.test(lessonSystem(li({ pace: "gentle" }))) && /more clearly/i.test(lessonSystem(li({ again: true }))) && lessonSystem(li({})) !== lessonSystem(li({ pace: "stretch" })), "pace: the lesson's prompt follows the pace, and a missed check asks for a clearer telling");
+  const qs = (k) => [1, 2, 3].map((i) => ({ q: k + " question " + i + "?", options: ["a " + i, "b " + i, "c " + i], answer: 0 }));
+  const blk = parseLessonBlock(JSON.stringify({ steps: [], next: "", choices: [], questions: qs("First"), retry: qs("Fresh"), tricky: "" }));
+  ok(blk && Array.isArray(blk.retry) && blk.retry.length === 3 && /Fresh/.test(blk.retry[0].q), "lesson block: a spare set of questions comes with the lesson (fresh questions after a miss, 0 calls)", JSON.stringify(blk && blk.retry));
+  const nob = parseLessonBlock(JSON.stringify({ steps: [], next: "", choices: [], questions: [], retry: qs("Fresh"), tricky: "" }));
+  ok(!nob || !nob.retry, "lesson block: no spare set without a check");
+  // the difficulty signal: per subject, additive in v9
+  const T0 = Date.UTC(2026, 0, 1), c = C.create("Maya", T0);
+  C.applyCreate(c, { items: [{ node: { name: "Volcanoes", chain: [] }, card: { title: "Volcanoes", blurb: "", goal: "" }, children: [{ name: "Magma", order: 1, score: 0.9, why: "", role: "core", blurb: "" }] }] }, { t: T0 });
+  const mag = c.order.find((x) => c.nodes[x].label === "Magma"), vol = c.order.find((x) => c.nodes[x].label === "Volcanoes");
+  ok(C.easeOf(c, mag) === 0 && P.paceOf(c, mag) === "", "ease: nothing until a check is answered (no pace sent)");
+  C.noteEase(c, mag, 0); C.noteEase(c, mag, 0);
+  ok(C.easeOf(c, mag) < P.PACE.gentle && P.paceOf(c, mag) === "gentle", "ease: missed checks make the subject's lessons gentler", String(C.easeOf(c, mag)));
+  const raw = C.serialize(c), back = C.deserialize(raw), js = JSON.parse(raw);
+  ok(js.v === 9 && js.ez && js.ez[vol] === Math.round(C.easeOf(c, mag) * 100) && C.easeOf(back, mag) === C.easeOf(c, mag), "ease: kept in v9 as an optional ez map (round-trips)");
+  ok(!("ez" in JSON.parse(C.serialize(C.create("Sam", T0)))), "ease: not written when unset (older clouds unchanged)");
+  for (let i = 0; i < 6; i++) C.noteEase(c, mag, 1);
+  ok(P.paceOf(c, mag) === "stretch", "ease: passing checks with ease stretches a little");
+  // fading: quieter, never removed
+  ok(C.fadeOf(c, mag, T0 + 10 * 864e5) === 0 && C.fadeOf(c, mag, T0 + 60 * 864e5) > 0 && C.fadeOf(c, vol, T0 + 400 * 864e5) === Math.round((1 - C.FADE.floor) * 1000) / 1000, "fade: none for three weeks, then gently down to its floor (never gone)");
+  const nodesBefore = c.order.length;
+  C.touch ? C.touch(c, mag, T0 + 60 * 864e5) : (c.nodes[mag].touched = T0 + 60 * 864e5);
+  ok(C.fadeOf(c, vol, T0 + 61 * 864e5) === 0 && c.order.length === nodesBefore, "fade: any activity brings the branch straight back; nothing is deleted");
+  ok(/fadeK\[n\.id\]/.test(view) && /vivid: vivid, fill: Object\.assign\(\{\}, fill\), fade: Object\.assign\(\{\}, fadeK\)/.test(view), "cloud: fades, vividness and each subject's fill reach the drawing (and state())");
+  // suggestions: only new or sketched cards
+  ok(/var skip = function \(id\) \{ return taken\(id\) \|\| !fresh\(cloud, id\); \};/.test(fs.readFileSync("public/ikolearn/orchestrator.js", "utf8")), "suggest: never an Inked card or beyond");
+  // several learners at once
+  const st = {}, S = { getItem: (k) => (k in st ? st[k] : null), setItem: (k, v) => { st[k] = String(v); }, removeItem: (k) => { delete st[k]; } };
+  ok(JSON.stringify(PR.splitNames("Maya, Leo and Sam & Zoë, maya\nAlexandra")) === JSON.stringify(["Maya", "Leo", "Sam", "Zoë", "Alexandra"]), "learners: names split on commas, and, & and new lines; repeats dropped");
+  PR.begin(S, "guide", "Maya");
+  const a1 = PR.addParked(S, "Leo"), a2 = PR.addParked(S, "maya"), ix = PR.current(S);
+  ok(a1.ok && !a2.ok && a2.why === "taken" && ix.list.length === 2 && ix.list[0].name === "Maya" && ix.active === ix.list[0].id, "learners: the first starts, the rest wait (parked), no duplicates", JSON.stringify(ix));
+  // the lesson loop in the page
+  ok(/id="l-cont"/.test(html) && /id="ph-earn"/.test(html) && /id="l-quiz" class="l-pane"/.test(html) && /#l-quiz\.l-pane-on \.quiz \{/.test(css), "lesson: Continue, the check in its own pane, and an Earn step");
+  ok(/function lessonPhase\(id\)/.test(app) && /function finishLesson\(kind\)[\s\S]{0,300}if \(kind === "got" && lessonPhase\(id\) !== "passed"\) return;/.test(app), "lesson: earning only after the check is passed");
+  ok(/function reactWanted\(n\) \{ return n <= REACT_EVERY\[0\] \|\| \(n <= REACT_EVERY\[1\] \? n % 3 === 0 : n % 8 === 0\); \}/.test(app), "Iko: reactions come less often over time");
+  ok(/var IKO_MEM = "ikolearn-iko"/.test(app) && !/ikolearn\.v1\.iko/.test(app), "Iko: what it has said is kept on this device under its own key (outside the cloud)");
+  ok(/@keyframes iko-blink/.test(css) && /body\.iko-on #chat \{[^}]*padding-bottom/.test(css), "Iko: blinks; the pages keep its room at the bottom");
 }
 
 if (fails.length) {
