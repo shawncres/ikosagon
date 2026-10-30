@@ -513,8 +513,8 @@
     }
     d.appendChild(mk("p", "place-q", "Where should " + p.name + " go?"));
     var row = mk("div", "place-opts");
-    row.appendChild(linkBtn("A new subject", function () { applyPlace(m, "parent"); }, "btn sm place-opt"));
-    if (f) row.appendChild(linkBtn("Part of " + f.label, function () { applyPlace(m, "child"); }, "btn sm place-opt"));
+    row.appendChild(linkBtn("New branch", function () { applyPlace(m, "parent"); }, "btn sm place-opt"));
+    if (f) row.appendChild(linkBtn("Under " + f.label, function () { applyPlace(m, "child"); }, "btn sm place-opt"));
     d.appendChild(row);
     return d;
   }

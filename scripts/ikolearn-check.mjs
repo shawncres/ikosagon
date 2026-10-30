@@ -2948,6 +2948,16 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     C.applyTopics(jc, [P.placedTopic({ name: "Airplanes", signal: "curious", placement: "child", target: games.id }, g3)], T0 + 14);
     ok(jc.order.length === n0 && JT("Airplanes").parent === JS("Aviation").id, "duplicate guard: nothing new is created and the topic stays where it was");
     ok(P.placeTopic(jc, { name: "Johnny", placement: "parent" }, games.id) === null, "never the learner's own name");
+    // PR 105: never under a branch only because it was open last. A child target off the focused line needs local evidence.
+    const avi = JS("Aviation");
+    const off1 = P.placeTopic(jc, { name: "Card Combos", parent: "", chain: [], placement: "child", target: avi.id }, games.id);
+    ok(off1.how === "ambiguous" && off1.target === games.id, "placement: a child target on another branch with nothing linking it: ask (New branch / Under the focus)", JSON.stringify(off1));
+    const off2 = P.placeTopic(jc, { name: "Jet Engines", parent: "Aviation", chain: ["Aviation"], placement: "child", target: avi.id }, games.id);
+    ok(off2.how === "child" && off2.target === avi.id, "placement: another branch named in the topic's own chain still takes it (local evidence, 0 calls)", JSON.stringify(off2));
+    const off3 = P.placeTopic(jc, { name: "Airplane Models", parent: "", chain: [], placement: "child", target: JT("Airplanes").id }, games.id);
+    ok(off3.how === "child", "placement: a shared word with the target's trail is evidence enough", JSON.stringify(off3));
+    ok(P.related(jc, { chain: [] }, "Card Combos", avi.id) === false && P.related(jc, { chain: ["Games"] }, "Speed", JS("Games").id) === true, "related(): chain names or shared words only (generic words don't count)");
+    ok(P.placeTopic(jc, { name: "Arcade Cabinets", parent: "Video Games", chain: ["Games", "Video Games"], placement: "child", target: "Video Games" }, games.id).how === "child", "placement: a target under the focus needs no extra evidence");
     // placedTopic: placement and target are not stored; the plan becomes asSubject / under
     const pt = P.placedTopic(ps, { how: "child", target: games.id }), pp = P.placedTopic(math, { how: "parent" });
     ok(!("placement" in pt) && !("target" in pt) && pt.under === games.id && pp.asSubject === true && pp.parent === "" && pp.chain.length === 0, "placed topics carry only what applyTopics needs");
@@ -2976,7 +2986,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     ok(/P\.placeTopic\(state\.cloud, tp, focusId\)/.test(gr) && /P\.placedTopic\(tp, plan\)/.test(gr) && /role: "place", plan:/.test(gr) && /if \(placed\[C\.norm\(tp\.name\)\]\) return;/.test(gr), "chat growth: placed first (reuse / parent / child / ask); a placed topic gets no bridge call");
     const pl3 = gr.slice(gr.indexOf("  function renderPlace(m) {"));
     ok(pl3.length > 500 && !/postJson\(|stream\(|fetch\(|Try again/.test(pl3), "the ambiguous choice: no call and no Try again (the cached plan applies on the device)");
-    ok(/linkBtn\("A new subject"/.test(pl3) && /"Part of " \+ f\.label/.test(pl3), "the ambiguous choice: two quiet buttons, A new subject / Part of Focus");
+    ok(/linkBtn\("New branch"/.test(pl3) && /"Under " \+ f\.label/.test(pl3), "the ambiguous choice: two quiet buttons, New branch / Under Focus");
     ok(/focusId: n \? n\.id : ""/.test(appP) && /state\.glide/.test(appP) && /function revealNode\(id\)/.test(appP), "chat sends the focus id; the camera glides to a new node and its card opens (when the cloud is on screen or next opened)");
     // the root cause of forced nesting: the focus was sticky (an earlier screen's node stayed the chat's focus, sent to the model and used to place)
     const sendSrc = appP.slice(appP.indexOf("  function send(text) {"), appP.indexOf("  function runBridge() {"));
