@@ -14,7 +14,7 @@ import { pathToFileURL } from "node:url";
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const SHOTS = arg("--shots", ""), TAG = arg("--tag", "after"), ROOT = path.resolve(arg("--root", "public")), SOFT = process.argv.includes("--soft");
 if (!process.env.IKOLEARN_PW) { console.log("ikolearn flow e2e: skipped (set IKOLEARN_PW to a playwright-core folder)"); process.exit(0); }
-const { chromium } = await import(pathToFileURL(path.join(process.env.IKOLEARN_PW, "index.mjs")).href);
+const PW = await import(pathToFileURL(path.join(process.env.IKOLEARN_PW, "index.mjs")).href), { chromium } = PW; /* IKOLEARN_BROWSER=webkit|firefox runs the same checks in that engine */
 
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json", ".png": "image/png" };
 const server = http.createServer((req, res) => {
@@ -47,7 +47,7 @@ const DM_FORK = [{ name: "Python Basics", why: "Review your strong coding skills
 const DM_LESSON = "INTRO: Data management is keeping information organised so you can find it again.\nEXPLAIN: Most data lives in tables.\nSTEP: Each row is one thing.\nSTEP: Each column is one detail about it.\nEXAMPLE: A class list with names and birthdays.";
 const ndjson = (evs) => evs.map((e) => JSON.stringify(e)).join("\n") + "\n";
 
-const browser = await chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" });
+const browser = await (process.env.IKOLEARN_BROWSER ? PW[process.env.IKOLEARN_BROWSER].launch() : chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" }));
 
 async function run(width) {
   const ctx = await browser.newContext({ viewport: { width, height: width < 500 ? 844 : 860 }, timezoneId: "America/Toronto" });

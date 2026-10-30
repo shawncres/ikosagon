@@ -12,7 +12,7 @@ import { pathToFileURL } from "node:url";
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const SHOTS = arg("--shots", ""), TAG = arg("--tag", "after"), ROOT = path.resolve(arg("--root", "public"));
 if (!process.env.IKOLEARN_PW) { console.log("ikolearn home e2e: skipped (set IKOLEARN_PW to a playwright-core folder)"); process.exit(0); }
-const { chromium } = await import(pathToFileURL(path.join(process.env.IKOLEARN_PW, "index.mjs")).href);
+const PW = await import(pathToFileURL(path.join(process.env.IKOLEARN_PW, "index.mjs")).href), { chromium } = PW; /* IKOLEARN_BROWSER=webkit|firefox runs the same checks in that engine */
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json" };
 const server = http.createServer((req, res) => {
   let p = decodeURIComponent(new URL(req.url, "http://x").pathname);
@@ -28,7 +28,7 @@ const BASE = process.env.LIVE_BASE || `http://127.0.0.1:${server.address().port}
 let pass = 0;
 const fails = [];
 const ok = (c, name, d = "") => (c ? (pass += 1) : fails.push(`${name}${d ? ` -> ${d}` : ""}`));
-const browser = await chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" });
+const browser = await (process.env.IKOLEARN_BROWSER ? PW[process.env.IKOLEARN_BROWSER].launch() : chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" }));
 const HOOK = () => { let real; Object.defineProperty(window, "IkoCloudView", { configurable: true, get: () => real, set: (v) => { real = Object.assign({}, v, { create: (c, o) => { const view = v.create(c, o); (window.__views = window.__views || []).push({ id: c.id, view }); return view; } }); } }); };
 
 /* the mocked API. examples: the shared, cached list (the only source of the intake's ideas); off with ex: null */
@@ -71,8 +71,9 @@ const overlap = (p, sels) => p.evaluate((sels) => {
   const vis = (e) => e && !e.closest("[hidden]") && getComputedStyle(e).visibility !== "hidden" && e.getClientRects().length;
   const mine = [document.querySelector("#iko"), document.querySelector("#iko-line")].filter(vis).map((e) => e.getBoundingClientRect());
   const hits = [];
+  const me = [document.querySelector("#iko-wrap"), document.querySelector("#iko-line")];
   for (const s of sels) for (const e of document.querySelectorAll(s)) {
-    if (!vis(e)) continue;
+    if (!vis(e) || me.some((m) => m && (m === e || m.contains(e) || e.contains(m)))) continue; /* Iko himself, and the column he asks in (#104) */
     const r = e.getBoundingClientRect();
     if (!r.width || !r.height || r.bottom < 0 || r.top > innerHeight) continue;
     if (mine.some((m) => m.left < r.right && r.left < m.right && m.top < r.bottom && r.top < m.bottom)) hits.push(s + ":" + (e.id || e.className || e.textContent.slice(0, 20)));
@@ -117,7 +118,7 @@ for (const width of [390, 1280]) {
       const more = await p.evaluate(() => [...document.querySelectorAll("#cs-ex .ex-chip")].map((c) => c.textContent));
       ok(JSON.stringify(more) === JSON.stringify(EX_A.slice(3, 6)) && calls.filter((c) => c === "/examples").length === 1, `${tag}: intake: More cycles the ideas on the device (no new call)`, JSON.stringify(more));
       const k = await ikoState(p), ov = await overlap(p, CLOUD_PARTS);
-      ok(k.shown && k.label === "Talk to Iko" && k.w >= 44 && k.h >= 44 && k.svg && !k.img && k.line === "Hi Maya, I'm Iko. Tell me a few things you enjoy, and I'll start your cloud." && k.active !== "iko", `${tag}: Iko: a pebble (SVG, no image), a labelled button, a welcome from the start; no focus jump`, JSON.stringify(k));
+      ok(k.shown && k.label === "Talk to Iko" && k.w >= 44 && k.h >= 44 && k.svg && !k.img && k.line === "" && k.active !== "iko" && (await p.evaluate(() => Boolean(document.querySelector("#cloud-start .cs-ask #iko") && document.querySelector(".cs-ask .say #cs-q") && document.querySelector(".cs-ask .say #cs-hi")))), `${tag}: Iko: a pebble (SVG, no image), a labelled button; he asks the opening question himself (it is his speech); no focus jump`, JSON.stringify(k));
       ok(!ov.hits.length && ov.right <= ov.iw, `${tag}: Iko: clear of the start, the fine print and the top`, JSON.stringify(ov));
       ok(calls.filter((c) => c !== "/examples").length === 0, `${tag}: intake: landing makes no calls (the ideas are the shared cached list)`, calls.join());
       await shot(p, width, "1-intake");
@@ -195,11 +196,11 @@ for (const width of [390, 1280]) {
       await p.evaluate(SEED);
       await p.reload({ waitUntil: "networkidle" }); await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(600);
       const d = await ikoState(p), ov0 = await overlap(p, CLOUD_PARTS);
-      ok(d.shown && d.line === "Hi Maya, I'm Iko. Tap a point on your cloud to open it, or pick up a card below." && !d.sheet && !ov0.hits.length, `${tag}: Iko by default: the pebble and the cloud's bubble, clear of the Pick up row and the fine print`, JSON.stringify({ d, ov0 }));
+      ok(d.shown && d.line === "I like your cloud, it's growing!" && !d.sheet && !ov0.hits.length, `${tag}: Iko by default: the pebble and the cloud's bubble, clear of the Pick up row and the fine print`, JSON.stringify({ d, ov0 }));
       await shot(p, width, "2-iko-default");
-      /* PR 103: bottom left, the pebble; its bubble beside it while it has something to say, then it folds back to the pebble */
-      const tl = await p.evaluate(() => { const r = document.querySelector("#iko").getBoundingClientRect(), l = document.querySelector("#iko-line"), lr = l.hidden ? null : l.getBoundingClientRect(); return { x: r.left, bottom: r.bottom, ih: innerHeight, w: r.width, beside: Boolean(lr) && lr.left >= r.right - 1 && lr.bottom <= innerHeight && lr.right <= innerWidth, topFree: !document.querySelector(".cloud-top #iko, .home-nav #iko"), talking: document.body.classList.contains("iko-talking") }; });
-      ok(tl.x < 24 && tl.bottom > tl.ih - 90 && tl.bottom <= tl.ih && tl.w >= 44 && tl.beside && tl.topFree && tl.talking, `${tag}: Iko sits bottom left (a 44px+ pebble), its bubble beside it, nothing at the top`, JSON.stringify(tl));
+      /* #104: top left, in the cloud's header row; its bubble just under him while he has something to say; nothing at the bottom */
+      const tl = await p.evaluate(() => { const r = document.querySelector("#iko").getBoundingClientRect(), l = document.querySelector("#iko-line"), lr = l.hidden ? null : l.getBoundingClientRect(); return { x: r.left, top: r.top, w: r.width, under: Boolean(lr) && lr.top >= r.bottom - 8 && lr.left < r.right && lr.right <= innerWidth, inNav: Boolean(document.querySelector(".home-nav #iko")), strip: getComputedStyle(document.body, "::after").content, talking: document.body.classList.contains("iko-talking") }; });
+      ok(tl.x < 24 && tl.top < 24 && tl.w >= 44 && tl.under && tl.inNav && (tl.strip === "none" || tl.strip === "normal") && tl.talking, `${tag}: Iko sits top left in the header row (a 44px+ pebble), its bubble under him, no strip at the bottom`, JSON.stringify(tl));
       await p.waitForFunction(() => document.querySelector("#iko-line").hidden, null, { timeout: 12000 }); await p.waitForTimeout(100); /* the hello's own 9 s */
       const fold = await p.evaluate(() => ({ pebble: !document.querySelector("#iko-wrap").hidden, line: !document.querySelector("#iko-line").hidden, talking: document.body.classList.contains("iko-talking") }));
       ok(fold.pebble && !fold.line && !fold.talking, `${tag}: once said, it folds back to just the pebble`, JSON.stringify(fold));
@@ -218,8 +219,10 @@ for (const width of [390, 1280]) {
       const b2 = screenOf(bodies);
       ok(b2 && JSON.stringify(b2.screen) === JSON.stringify({ view: "cloud", topic: "Volcanoes" }) && b2.focus === "Volcanoes" && calls.length === n0 + 1, `${tag}: Iko on a node: one chat call, the screen and focus sent`, JSON.stringify(b2 && { screen: b2.screen, focus: b2.focus }));
       await shot(p, width, "3-iko-node");
-      const sheetBox = await p.evaluate(() => { const r = document.querySelector("#iko-sheet").getBoundingClientRect(); return { l: r.left, r: r.right, b: r.bottom, iw: innerWidth, ih: innerHeight }; });
-      ok(sheetBox.l >= 0 && sheetBox.r <= sheetBox.iw && sheetBox.b <= sheetBox.ih, `${tag}: Iko's sheet fits the screen`, JSON.stringify(sheetBox));
+      await p.waitForTimeout(300); /* its opening motion done */
+      const sheetBox = await p.evaluate(() => { const r = document.querySelector("#iko-sheet").getBoundingClientRect(), k = document.querySelector("#iko").getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom, iw: innerWidth, ih: innerHeight, ikoB: k.bottom, side: document.body.classList.contains("iko-side") }; });
+      ok(sheetBox.l >= 0 && sheetBox.r <= sheetBox.iw && sheetBox.b <= sheetBox.ih + 0.5, `${tag}: Iko's sheet fits the screen`, JSON.stringify(sheetBox));
+      ok(width < 600 ? !sheetBox.side && sheetBox.l === 0 && sheetBox.r === sheetBox.iw && Math.abs(sheetBox.b - sheetBox.ih) < 1 : sheetBox.side && sheetBox.l < 24 && sheetBox.t >= sheetBox.ikoB && sheetBox.t < sheetBox.ikoB + 24, `${tag}: Iko's chat: a sheet from below on a phone, a panel hanging from him at the top left on a wide screen`, JSON.stringify(sheetBox));
       await p.keyboard.press("Escape"); await p.waitForTimeout(150);
       ok(!(await ikoState(p)).sheet && !(await p.isHidden("#panel")), `${tag}: Escape closes Iko first (the card stays)`);
       await p.click("#p-close"); await p.waitForTimeout(250);
