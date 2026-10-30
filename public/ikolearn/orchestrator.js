@@ -401,7 +401,8 @@
     /* a card offered as work is never finished (unfinished(), the same rule as Draw); a test and "what comes next" are
        about finished work by design (an optional check; new topics), so they keep their own rules */
     var taken = function (id) { return !nodeOf(cloud, id) || seen[id] || exclude[id]; };
-    var skip = function (id) { return taken(id) || !unfinished(cloud, id); };
+    /* PR 103: an active next step is a new or Sketch card only; an Inked (or further) card is already under way, never offered as one */
+    var skip = function (id) { return taken(id) || !fresh(cloud, id); };
     var add = function (id, kind, why) { if (kind === "grow" ? taken(id) : kind !== "test" && skip(id)) return false; if (kind === "test" && seen["t:" + id]) return false; seen[kind === "test" ? "t:" + id : id] = 1; out.push({ id: id, kind: kind, why: why, top: tops[id] || 0 }); return true; };
     var tests = readyTests(cloud, now);
     if (tests[0]) { add(tests[0].id, "test", "Ready for a test"); C.markOffered(cloud, tests[0].id, now); }
@@ -425,8 +426,8 @@
       .sort(function (a, b) { return b.s - a.s || a.i - b.i; }).map(function (r) { return r.x; });
     var items = head.concat(rest).slice(0, n);
     /* free exploration stays on the table: something new always keeps the last place */
-    var fresh = out.filter(function (x) { return x.kind === "new"; })[0];
-    if (fresh && n >= 3 && items.indexOf(fresh) < 0) items[items.length - 1] = fresh;
+    var newOne = out.filter(function (x) { return x.kind === "new"; })[0];
+    if (newOne && n >= 3 && items.indexOf(newOne) < 0) items[items.length - 1] = newOne;
     items.forEach(function (x) { if (x.top && x.kind !== "test" && x.kind !== "grow") x.why = "In your top 10 · " + x.why; });
     cloud.suggest = { at: now, items: items.map(function (x) { return { id: x.id, kind: x.kind, why: x.why }; }) };
     /* a light question to propose new branches: when the cloud is thin or the learner seems stuck (no call until answered) */
@@ -467,6 +468,8 @@
   /* Active work, for every place that offers it (Draw, Pick up, Continue, Next up, Waiting for you): a topic (not a
      subject) that isn't finished(). */
   function unfinished(cloud, x) { var n = nodeOf(cloud, x); return Boolean(n && n.parent && !finished(cloud, x)); }
+  /* A next-card suggestion (PR 103): unfinished and still new or a Sketch (tier 0), never Inked or further along. */
+  function fresh(cloud, x) { if (!unfinished(cloud, x)) return false; var t = C.tierOf(cloud, x); return !t || t.rank === 0; }
   /* The topic the learner touched last (the current path when no card is in hand). */
   function lastTouched(cloud) {
     var best = null, t = 0;
@@ -476,7 +479,21 @@
 
   /* The prompt context for a lesson call: ask for child topics only when wanted; the planned next step, for the fork. */
   function lessonContext(cloud, id) {
-    return { wantPath: wantChildren(cloud, id), ahead: aheadOf(cloud, id) };
+    var ctx = { wantPath: wantChildren(cloud, id), ahead: aheadOf(cloud, id) }, pace = paceOf(cloud, id);
+    if (pace) ctx.pace = pace;
+    return ctx;
+  }
+  /*
+   * The branch's pace (PR 103), from how easily the learner has been answering its checks (C.easeOf, a running average per
+   * subject): "gentle" when the checks have been hard, "stretch" when they have been easy, "steady" between; "" before
+   * any check round in this subject. Sent with the lesson call, which adjusts its explanation a little (no extra call).
+   */
+  var PACE = { gentle: -0.3, stretch: 0.55 };
+  function paceOf(cloud, id) {
+    var s = C.subjectOf(cloud, id);
+    if (!s || !Number.isFinite(s.ez)) return "";
+    var e = s.ez;
+    return e <= PACE.gentle ? "gentle" : e >= PACE.stretch ? "stretch" : "steady";
   }
   /* The planned next step after this topic: the following unfinished step on a path above it. */
   function aheadOf(cloud, id) {
@@ -809,7 +826,7 @@
     PLAN: PLAN, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, needsRepair: needsRepair, repairRequest: repairRequest,
     MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild, nextStep: nextStep,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
-    suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, unfinished: unfinished, placeTopic: placeTopic, placedTopic: placedTopic, DESCRIBE: DESCRIBE, describeBatch: describeBatch, isBroad: isBroad,
+    suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, unfinished: unfinished, fresh: fresh, PACE: PACE, paceOf: paceOf, placeTopic: placeTopic, placedTopic: placedTopic, DESCRIBE: DESCRIBE, describeBatch: describeBatch, isBroad: isBroad,
     onboarding: onboarding, openQuestion: openQuestion, examples: examples, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics, directions: directions, homeStats: homeStats,
     needsNext: needsNext, readyNext: readyNext, createRequest: createRequest, OPENING: OPENING
   };

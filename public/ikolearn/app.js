@@ -20,7 +20,8 @@
   var API = "/api/ikolearn";
   var LS = { name: "ikolearn.v1.name", cloud: "ikolearn.v1.cloud", thread: "ikolearn.v1.thread", notes: "ikolearn.v1.notes", lessons: "ikolearn.v1.lessons", tests: "ikolearn.v1.tests", view: "ikolearn.v1.view", seen: "ikolearn.v1.seen" };
   var VISIT = "ikolearn.v1.visit"; /* sessionStorage: this browser session was counted as a visit */
-  var CUES = "ikolearn.v1.cues"; /* sessionStorage: the screens whose Iko cue was shown this visit (each once a visit) */
+  var CUES = "ikolearn.v1.cues"; /* sessionStorage: the screens whose Iko bubble was shown this visit (each once a visit) */
+  var IKO_MEM = "ikolearn-iko"; /* localStorage, this device only (beside the theme, outside every learner's cloud and IkoCloud file): the tips and reactions Iko has shown, per learner */
   var SESSION = "ikolearn.v1.session"; /* sessionStorage: the old once-a-visit draw (no longer written; cleared on reset) */
   var HISTORY = 10, TIMEOUT_MS = 60000, MAX_LESSONS = 30;
 
@@ -31,10 +32,10 @@
     thumb: $("thumb"), thumbCanvas: $("thumb-canvas"), reset: $("reset"),
     focusChip: $("focus-chip"), focusText: $("focus-text"), focusClear: $("focus-clear"),
     lesson: $("lesson"), lBack: $("l-back"), lTrail: $("l-trail"), lTitle: $("l-title"), lBody: $("l-body"), lDone: $("l-done"),
-    lGot: $("l-got"), lTricky: $("l-tricky"), lStatus: $("l-status"), lPath: $("l-path"), lClar: $("l-clar"), lNext: $("l-next"), lChat: $("l-chat"), lRedo: $("l-redo"),
+    lGot: $("l-got"), lTricky: $("l-tricky"), lCont: $("l-cont"), phEarn: $("ph-earn"), lStatus: $("l-status"), lPath: $("l-path"), lClar: $("l-clar"), lNext: $("l-next"), lChat: $("l-chat"), lRedo: $("l-redo"),
     cloud: $("cloud"), cloudCanvas: $("cloud-canvas"), cloudDeck: $("cloud-deck"), cloudWho: $("cloud-who"), toCloud: $("to-cloud"),
     cs: $("cloud-start"), csName: $("cs-name"), csHi: $("cs-hi"), csQ: $("cs-q"), csFew: $("cs-few"), csForm: $("cs-form"), csIn: $("cs-in"), csEx: $("cs-ex"), csStatus: $("cs-status"),
-    ikoWrap: $("iko-wrap"), iko: $("iko"), ikoLine: $("iko-line"), ikoCue: $("iko-cue"), ikoSheet: $("iko-sheet"), ikoAbout: $("iko-about"), ikoX: $("iko-x"), ikoSay: $("iko-say"), ikoActs: $("iko-acts"), ikoGot: $("iko-got"), ikoBody: $("iko-body"), ikoSlot: $("iko-slot"), ikoLog: $("iko-log"), ikoForm: $("iko-form"), ikoIn: $("iko-in"), ikoAll: $("iko-all"), zin: $("zin"), zout: $("zout"), zreset: $("zreset"),
+    ikoWrap: $("iko-wrap"), iko: $("iko"), ikoLine: $("iko-line"), ikoSheet: $("iko-sheet"), ikoAbout: $("iko-about"), ikoX: $("iko-x"), ikoSay: $("iko-say"), ikoActs: $("iko-acts"), ikoGot: $("iko-got"), ikoBody: $("iko-body"), ikoSlot: $("iko-slot"), ikoLog: $("iko-log"), ikoForm: $("iko-form"), ikoIn: $("iko-in"), ikoAll: $("iko-all"), zin: $("zin"), zout: $("zout"), zreset: $("zreset"),
     panel: $("panel"), cloudTop: document.querySelector(".cloud-top"), pKicker: $("p-kicker"), pTitle: $("p-title"), pDesc: $("p-desc"), pNote: $("p-note"), pLesson: $("p-lesson"), pCard: $("p-card"), pAdj: $("p-adj"),
     pChat: $("p-chat"), pPath: $("p-path"), pClose: $("p-close"),
     draw: $("draw"), deckBtn: $("deck-btn"), deck: $("deck"), dBack: $("d-back"), dLede: $("d-lede"), dAlbum: $("d-album"),
@@ -49,7 +50,7 @@
   };
   var reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
 
-  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], queued: null, pick: null, glide: null, view: null, dirForm: null, dirText: "", allDone: false, csPicked: [], seen: { c: {}, ev: 0 }, ex: { list: [], growth: [], at: 0, gat: 0, status: "idle" } };
+  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], queued: null, pick: null, glide: null, view: null, dirForm: null, dirText: "", allDone: false, seen: { c: {}, ev: 0 }, ex: { list: [], growth: [], at: 0, gat: 0, status: "idle" } };
   var mini = null, big = null;
 
   /* ---------- storage ---------- */
@@ -278,7 +279,7 @@
    */
   var EX_SHOW = 3, exRows = [];
   /* set: "" (the first question's list, personalised once a cloud exists) or "growth" (the second question's, as it came) */
-  /* multi: an array of picked ideas (the intake): a tap picks or unpicks one (aria-pressed); they go with the answer */
+  /* multi (the intake): a tap adds the idea to the field and the chip cycles on to another (PR 103: no pile-up) */
   function exRow(pick, live, set, quiet, multi) {
     var r = { node: mk("div", "ex-row"), pick: pick, live: live || function () { return true; }, set: set || "", quiet: Boolean(quiet), multi: multi || null };
     exRows.push(r);
@@ -302,20 +303,19 @@
     if (!list.length) return;
     var at = state.ex[key] % list.length;
     if (r.multi) {
-      /* the ideas in view, with any picked ones kept in view (first) while More moves on */
-      var shown = [];
-      for (var j = 0; j < Math.min(EX_SHOW, list.length); j++) shown.push(list[(at + j) % list.length]);
-      r.multi.filter(function (t) { return shown.indexOf(t) < 0; }).reverse().forEach(function (t) { shown.unshift(t); });
-      shown.forEach(function (t) {
-        var on = r.multi.indexOf(t) >= 0, b = linkBtn(t, function () {
+      /* the intake (PR 103): 2 or 3 ideas; a tap adds one to the field and that chip moves on to an idea not yet used (no
+         chip stays selected, none pile up) */
+      var used = (el.csIn.value || "").toLowerCase().split(/\s*,\s*/), shown = [];
+      for (var j = 0; j < list.length && shown.length < EX_SHOW; j++) { var c = list[(at + j) % list.length]; if (used.indexOf(c.toLowerCase()) < 0) shown.push(c); }
+      shown.forEach(function (t, slot) {
+        var b = linkBtn(t, function () {
           if (state.busy || !r.live()) return;
-          var i = r.multi.indexOf(t);
-          if (i >= 0) r.multi.splice(i, 1); else r.multi.push(t);
+          r.pick(t);
           fillEx(r);
-          var again = [].filter.call(r.node.querySelectorAll(".ex-chip"), function (x) { return x.textContent === t; })[0];
+          var again = r.node.querySelectorAll(".ex-chip")[slot] || r.node.querySelector(".ex-chip, .ex-more");
           if (again) again.focus();
         }, "btn ex-chip");
-        b.setAttribute("aria-pressed", on ? "true" : "false");
+        b.setAttribute("aria-label", "Add " + t);
         box.appendChild(b);
       });
     } else for (var k = 0; k < Math.min(EX_SHOW, list.length); k++) {
@@ -339,6 +339,7 @@
       state.ex.status = list.length ? "ok" : "off";
       state.ex.at = 0; state.ex.gat = 0;
       refreshEx();
+      if (intakeOn) rotatePh();
     });
   }
   /* An open answer in the learner's own words: one line of plain text, at most 300 characters. */
@@ -664,7 +665,7 @@
   /* One call at a time. A lesson, test or clarification asked for meanwhile waits in state.queued and starts here. */
   function lock(on) {
     state.busy = on;
-    [el.send, el.pCard, el.pAdj, el.pLesson, el.pTest, el.lGot, el.lTricky, el.ikoGot].forEach(function (b) { b.disabled = on; });
+    [el.send, el.pCard, el.pAdj, el.pLesson, el.pTest, el.lGot, el.lTricky, el.lCont, el.ikoGot].forEach(function (b) { b.disabled = on; });
     Array.prototype.forEach.call(document.querySelectorAll(".draw-btn, .clar-opt"), function (b) { b.disabled = on; });
     if (!on && state.queued) { var q = state.queued; state.queued = null; setTimeout(q, 0); }
     renderStart();
@@ -841,6 +842,7 @@
           m.opens = ids.slice(0, 5);
           upsert(m);
           if (kind === "start") state.offerGrow = true; /* asked once the build settles (below) */
+          ikoReact(kind === "start" ? "start" : "grow"); /* the first cloud: Iko reassures (more can come later, no wrong picks) */
         });
       }
       m.streaming = false;
@@ -868,6 +870,7 @@
     else sayGrow();
   }
   function sayGrow() {
+    if (!el.ikoLine.hidden && el.ikoLine.getAttribute("data-react") === "start") { iko.after = sayGrow; return; } /* after Iko's reassurance */
     dismissHint("growSaid");
     ikoLine("Your path has begun. When you like, tell me something you'd like to grow in yourself too.", 12000);
   }
@@ -887,6 +890,7 @@
         var r = C.applyCreate(state.cloud, { items: j.items.slice(0, 1) }, { focusId: id });
         save();
         refreshAll(r.children);
+        if (r.children.length) ikoReact("grow");
         var first = nodeOf(P.nextChild(state.cloud, id));
         say(r.children.length ? "Next in " + n.label + ": " + r.children.map(function (x) { return nodeOf(x).label; }).join(", ") + "." + (first ? " " + first.label + " is a good place to start." : "") : "Nothing new to add in " + n.label + " right now.");
       } else say("I couldn't work out what comes next just now (" + ((j && (j.reason || j.error)) || "error") + "). Try again in a moment.");
@@ -1084,10 +1088,64 @@
       return q && typeof q.q === "string" && Array.isArray(q.options) && q.options.length >= 2 && Number.isInteger(q.answer) && q.answer >= 0 && q.answer < q.options.length;
     }).slice(0, 3);
   }
-  /* The two phases of a lesson: Learn (the teaching) then Check yourself (the questions). */
+  /*
+   * Read -> check -> earn (PR 103). A lesson opens on its reading (Learn) with Continue; Continue opens Check yourself in
+   * its own pane. A round counts when every question is answered: all right is a pass (the right answers are confirmed
+   * then, the card can grow and be earned with "I've got it", and Where next opens); anything wrong is a miss: nothing is
+   * earned, a clearer telling comes first (the "Still tricky" one prepared with the lesson, 0 calls; after a second miss a
+   * fresh, gentler version of the lesson, 1 call), then a fresh set of questions (the lesson's spare set, 0 calls, or the
+   * new version's own). Each finished round tells the orchestrator how easily this branch is going (C.noteEase).
+   * Kept with the lesson (ikolearn.v1.lessons): ck = { r: rounds finished, p: passed at, miss: misses, c: this round is
+   * open (Continue tapped), set: which set is on screen (0 its own, 1 the spare, 2+ reshuffled) }.
+   */
+  function hasQs(id) { var q = state.quiz; return Boolean(q && q.id === id && q.qs.length); }
+  function ckOf(id) { var les = state.lessons[id]; if (!les) return null; if (!les.ck || typeof les.ck !== "object") les.ck = { r: 0, p: 0, miss: 0, c: 0, set: 0 }; return les.ck; }
+  function passed(id) {
+    var les = state.lessons[id], ck = les && les.ck;
+    if (ck && ck.p) return true;
+    if (les && les.got) return true;
+    /* a lesson answered in full before PR 103, every answer right: that was a pass */
+    var qs = les ? validQs(les.qs) : [], ans = les && Array.isArray(les.ans) ? les.ans : [];
+    return Boolean(!(ck && ck.r) && qs.length && ans.length >= qs.length && qs.every(function (q, i) { return ans[i] === q.answer; }));
+  }
+  /* what the lesson shows now: learn (reading + Continue), check (the questions), missed (a clearer telling, then a fresh set), passed */
+  function lessonPhase(id) {
+    if (state.mode !== "lesson" || state.lessonNode !== id) return "learn";
+    if (!hasQs(id) || passed(id)) return "passed";
+    var ck = ckOf(id);
+    return !ck || !ck.c ? "learn" : state.quiz.missed ? "missed" : "check";
+  }
+  function nextOpen(id) { return state.mode === "lesson" && lessonPhase(id) === "passed"; }
   function setPhase(which) {
     el.phLearn.className = which === "learn" ? "on" : "past";
-    el.phCheck.className = which === "check" ? "on" : "";
+    el.phCheck.className = which === "check" ? "on" : which === "earn" ? "past" : "";
+    if (el.phEarn) el.phEarn.className = which === "earn" ? "on" : "";
+  }
+  /* the lesson's controls for its phase: Continue while reading; the earn buttons once passed (or with no questions) */
+  function applyPhase() {
+    var id = state.lessonNode;
+    if (!nodeOf(id) || state.mode !== "lesson") return;
+    var ph = lessonPhase(id), qs = hasQs(id);
+    setPhase(ph === "learn" ? "learn" : ph === "passed" ? (qs ? "earn" : "learn") : "check");
+    el.lQuiz.hidden = ph === "learn";
+    el.lQuiz.classList.toggle("l-pane-on", ph !== "learn" && qs);
+    el.lDone.hidden = !(ph === "learn" || ph === "passed");
+    el.lCont.hidden = ph !== "learn";
+    el.lGot.hidden = ph !== "passed";
+    el.lTricky.hidden = false;
+    el.lMain.setAttribute("data-phase", ph);
+    ikoActs();
+  }
+  /* Continue: the reading is done, the questions open in their own pane (their first question focused) */
+  function startCheck() {
+    var id = state.lessonNode, ck = ckOf(id);
+    if (!ck || !hasQs(id)) return;
+    ck.c = 1; save();
+    renderQuiz();
+    applyPhase();
+    renderIko();
+    var f = el.lQuiz.querySelector(".quiz");
+    if (f) { f.tabIndex = -1; showNear(f); try { f.focus({ preventScroll: true }); } catch { f.focus(); } }
   }
   function renderQuiz(streaming) {
     var q = state.quiz;
@@ -1100,16 +1158,17 @@
       el.lQuiz.appendChild(wrap);
       return;
     }
-    var answered = q.ans.filter(Number.isInteger).length;
-    wrap.appendChild(mk("p", "q-lede", answered >= q.qs.length ? "All done. Nice work checking yourself." : (q.qs.length === 1 ? "One quick question" : q.qs.length + " quick questions") + " about what you just learned. No pressure: each right answer brings colour into your card."));
-    if (answered) setPhase("check");
+    var answered = q.ans.filter(Number.isInteger).length, ok = passed(q.id), ck = ckOf(q.id) || {};
+    wrap.appendChild(mk("p", "q-lede", ok && answered >= q.qs.length ? "All done. Nice work checking yourself."
+      : q.missed ? "Not quite yet. That's how learning goes."
+      : (ck.r ? "A fresh set: " : "") + (q.qs.length === 1 ? "One quick question" : q.qs.length + " quick questions") + " about what you just learned. Get " + (q.qs.length === 1 ? "it" : "them all") + " right and the card is yours to grow."));
     q.qs.forEach(function (item, qi) {
       var set = mk("fieldset", "q"), done = Number.isInteger(q.ans[qi]);
       set.appendChild(mk("legend", null, item.q));
       item.options.forEach(function (o, oi) {
         var lab = mk("label", "opt" + (done && oi === item.answer ? " right" : "") + (done && oi === q.ans[qi] && oi !== item.answer ? " wrong" : ""));
         var inp = mk("input");
-        inp.type = "radio"; inp.name = "q" + qi + "-" + q.id; inp.value = String(oi); inp.checked = done && q.ans[qi] === oi; inp.disabled = done;
+        inp.type = "radio"; inp.name = "q" + qi + "-" + q.id + "-" + (ck.r || 0); inp.value = String(oi); inp.checked = done && q.ans[qi] === oi; inp.disabled = done;
         inp.addEventListener("change", function () { answerQ(qi, oi); });
         lab.appendChild(inp);
         lab.appendChild(mk("span", "opt-t", String.fromCharCode(65 + oi) + ". " + String(o)));
@@ -1118,31 +1177,101 @@
       if (done) set.appendChild(mk("p", "q-fb", q.ans[qi] === item.answer ? "That's it." : "Not quite. It's " + String.fromCharCode(65 + item.answer) + ": " + item.options[item.answer] + "."));
       wrap.appendChild(set);
     });
+    if (q.missed) wrap.appendChild(missBox(q.id));
     el.lQuiz.appendChild(wrap);
     if (quizSaidIt()) { var dup = el.lStatus.querySelector("strong.yes"); if (dup) dup.parentNode.removeChild(dup); }
   }
+  /* a missed round: a clearer telling first, then a fresh set of questions (never the card) */
+  function missBox(id) {
+    var les = state.lessons[id], ck = ckOf(id), box = mk("div", "q-miss"), n = nodeOf(id);
+    box.appendChild(mk("p", "l-head", "Let's look at it another way"));
+    var spare = les && validQs(les.rq).length >= 2 && (ck.set || 0) < 1;
+    if (ck.miss <= 1 && les && les.tk) {
+      var cl = mk("div", "clar q-again"); paragraphs(cl, les.tk); box.appendChild(cl);
+      box.appendChild(mk("p", "fine", "Then try a fresh set of questions on " + n.label + "."));
+      box.appendChild(linkBtn("Try a fresh check", function () { freshCheck(id); }, "btn sm draw-btn q-fresh"));
+    } else {
+      box.appendChild(mk("p", null, "I'll write " + n.label + " again, more clearly and in smaller steps. Read it through, then a fresh set of questions comes."));
+      box.appendChild(linkBtn("Read a clearer version", function () { retell(id); }, "btn sm draw-btn q-retell"));
+      if (spare) box.appendChild(linkBtn("Or try a fresh check now", function () { freshCheck(id); }, "link q-fresh"));
+    }
+    return box;
+  }
+  /* options in a new order (the right one moves), questions in a new order: a fallback set when nothing new is to hand */
+  function shuffled(qs, seed) {
+    var r = function (i) { return C.hash(seed + ":" + i) % 1000; };
+    return qs.map(function (q, qi) {
+      var idx = q.options.map(function (_, i) { return i; }).sort(function (a, b) { return r(qi * 10 + a) - r(qi * 10 + b); });
+      if (idx[q.answer] === q.answer && idx.length > 1) idx.push(idx.shift());
+      return { q: q.q, options: idx.map(function (i) { return q.options[i]; }), answer: idx.indexOf(q.answer) };
+    }).sort(function (a, b) { return r(a.q.length) - r(b.q.length); });
+  }
+  /* the next set: the lesson's spare set (written with it, 0 calls), else the questions once more in a new order */
+  function freshCheck(id) {
+    var les = state.lessons[id], ck = ckOf(id), q = state.quiz;
+    if (!les || !q || q.id !== id) return;
+    var spare = validQs(les.rq);
+    ck.set = (ck.set || 0) + 1;
+    q.qs = ck.set === 1 && spare.length >= 2 ? spare : shuffled(validQs(les.qs).length ? validQs(les.qs) : q.qs, id + ck.r + ck.set);
+    les.cur = q.qs; /* the set on screen, kept so a return shows the same questions */
+    q.ans = []; les.ans = []; q.missed = false; ck.c = 1;
+    save();
+    renderQuiz(); applyPhase(); renderLessonPath(); renderIko();
+    var f = el.lQuiz.querySelector(".quiz");
+    if (f) { f.tabIndex = -1; showNear(f); try { f.focus({ preventScroll: true }); } catch { f.focus(); } }
+  }
+  /* a second miss: the lesson written again, clearer and gentler, with its own fresh questions (1 call) */
+  function retell(id) { openLesson(id, true, null, { again: true }); }
   /* "That's it." is said once: a right quiz answer already says it, so the status line doesn't repeat it */
   function quizSaidIt() { return [].some.call(el.lQuiz.querySelectorAll(".q-fb"), function (x) { return x.textContent === "That's it."; }); }
   function answerQ(qi, oi) {
     var q = state.quiz, id = q && q.id;
-    if (!q || id !== state.lessonNode || Number.isInteger(q.ans[qi]) || !q.qs[qi]) return;
-    var before = C.growthOf(state.cloud, id);
+    if (!q || id !== state.lessonNode || Number.isInteger(q.ans[qi]) || !q.qs[qi] || lessonPhase(id) !== "check") return;
     q.ans[qi] = oi;
-    C.confirm(state.cloud, id, oi === q.qs[qi].answer);
     if (state.lessons[id]) state.lessons[id].ans = q.ans.slice();
-    var note = growthNote(id, before);
-    var kids = oi === q.qs[qi].answer ? growChildren(id) : [];
+    var all = q.qs.every(function (_, i) { return Number.isInteger(q.ans[i]); });
+    if (all) { endRound(id); return; }
     save();
     renderQuiz();
-    if (note) el.lStatus.textContent = note;
-    if (kids.length) el.lStatus.textContent = (el.lStatus.textContent ? el.lStatus.textContent + " " : "") + kidsLine(id, kids);
-    settleMerges().forEach(function (m) { var pn = nodeOf(m.id); if (pn) el.lStatus.textContent += " " + pn.label + " is now a Merged " + C.roman(m.level) + " card, holding " + C.corpusOf(state.cloud, m.id).length + " cards."; });
-    renderLessonCard(Boolean(note));
-    renderLessonPath();
-    refreshViews(kids);
-    offerTest(id);
     var fb = el.lQuiz.querySelectorAll(".q")[qi];
     if (fb) { fb.tabIndex = -1; fb.focus({ preventScroll: true }); }
+  }
+  /* every question answered: a pass confirms the right answers (colour, children, the deck); a miss earns nothing */
+  function endRound(id) {
+    var q = state.quiz, ck = ckOf(id), right = q.qs.filter(function (it, i) { return q.ans[i] === it.answer; }).length, all = right === q.qs.length;
+    var before = C.growthOf(state.cloud, id), kids = [];
+    ck.r = (ck.r || 0) + 1; ck.c = 0;
+    /* how easily it went: a first-time pass is easy, a pass after misses less so, a miss by how many were right */
+    C.noteEase(state.cloud, id, all ? (ck.miss ? 0.6 : 1) : 0.8 * right / q.qs.length);
+    if (all) {
+      q.qs.forEach(function () { C.confirm(state.cloud, id, true); });
+      ck.p = Date.now(); ck.c = 1;
+      kids = growChildren(id);
+    } else {
+      q.qs.forEach(function (it, i) { if (q.ans[i] !== it.answer) C.confirm(state.cloud, id, false); });
+      ck.miss = (ck.miss || 0) + 1; ck.c = 1;
+      q.missed = true;
+    }
+    var note = growthNote(id, before);
+    save();
+    renderQuiz();
+    el.lStatus.textContent = "";
+    if (all) {
+      el.lStatus.textContent = (note ? note + " " : "") + "You've shown you understand " + nodeOf(id).label + ". Tap \u201cI've got it\u201d to keep it, or pick where to go next.";
+      if (kids.length) el.lStatus.textContent += " " + kidsLine(id, kids);
+      settleMerges().forEach(function (m) { var pn = nodeOf(m.id); if (pn) el.lStatus.textContent += " " + pn.label + " is now a Merged " + C.roman(m.level) + " card, holding " + C.corpusOf(state.cloud, m.id).length + " cards."; });
+      ikoReact("pass");
+    }
+    applyPhase();
+    renderLessonCard(Boolean(note));
+    renderLessonPath();
+    renderFork(id);
+    refreshViews(kids);
+    offerTest(id);
+    if (kids.length) ikoReact("grow");
+    renderIko();
+    var f = el.lQuiz.querySelector(all ? ".q-lede" : ".q-miss");
+    if (!all && f) { f.tabIndex = -1; showNear(f); try { f.focus({ preventScroll: true }); } catch { f.focus(); } }
   }
 
   /*
@@ -1179,7 +1308,7 @@
     el.lFork.textContent = "";
     var n = nodeOf(id);
     if (!n || state.mode !== "lesson") return;
-    if (C.isTerminal(state.cloud, id)) {
+    if (C.isTerminal(state.cloud, id) && nextOpen(id)) {
       var others = C.otherBranches(state.cloud, id, 3, topIds()).map(nodeOf).filter(Boolean);
       var w = mk("div", "others");
       w.appendChild(mk("p", "l-head", "This branch is done"));
@@ -1201,9 +1330,10 @@
   }
 
   /* Opens a node as a lesson: from the cache (no call) or streamed once (one call; maps the path too if it has none). */
-  function openLesson(id, fresh, from) {
+  function openLesson(id, fresh, from, opts) {
     var n = nodeOf(id);
     if (!n) return;
+    opts = opts || {};
     /* moving on cancels what belonged to the last view (the note, a bridge, another lesson or clarification still being written) */
     cancelNav();
     if (calls.lessonFor !== id) { cancelCall("lesson"); cancelCall("clarify"); }
@@ -1226,16 +1356,19 @@
     el.lStatus.textContent = "";
     el.lDone.hidden = true;
     el.lFork.textContent = "";
-    el.lQuiz.textContent = "";
+    el.lQuiz.textContent = ""; el.lQuiz.hidden = true;
     el.lClar.textContent = "";
+    el.lCont.hidden = true;
     showReading(null);
     renderLessonPath();
     animateIn(from);
     var cached = !fresh && state.lessons[id];
     if (cached) {
       /* every saved answer comes back (one per question: 2 or 3) */
-      var qs = validQs(cached.qs);
+      var qs = validQs(cached.cur).length ? validQs(cached.cur) : validQs(cached.qs), ck = cached.ck || {};
       state.quiz = { id: id, qs: qs, ans: Array.isArray(cached.ans) ? cached.ans.slice(0, qs.length) : [] };
+      /* a round answered in full and missed: its clearer telling is still waiting */
+      state.quiz.missed = Boolean(qs.length && !passed(id) && ck.c && state.quiz.ans.length >= qs.length && qs.every(function (_, i) { return Number.isInteger(state.quiz.ans[i]); }));
       renderLessonBody(cached.text, false);
       lessonReady(id, false);
       showReading(cached.rd);
@@ -1246,13 +1379,15 @@
       /* something else is still being written: this lesson waits its turn and starts by itself (no "try again") */
       el.lBody.textContent = "";
       el.lBody.appendChild(mk("p", "l-intro wait", "Getting this lesson ready. It starts as soon as the last answer is finished."));
-      state.queued = function () { if (state.lessonNode === id && state.mode === "lesson" && !state.lessons[id]) openLesson(id, fresh); };
+      state.queued = function () { if (state.lessonNode === id && state.mode === "lesson" && (!state.lessons[id] || opts.again)) openLesson(id, fresh, null, opts); };
       return;
     }
     lock(true);
     calls.lessonFor = id;
     /* the orchestrator builds the context: child topics only when wanted, and the planned next step for the fork */
-    var ctx = P.lessonContext(state.cloud, id), text = "", wantPath = ctx.wantPath, reading = [], tricky = "";
+    var ctx = P.lessonContext(state.cloud, id), text = "", wantPath = ctx.wantPath, reading = [], tricky = "", retry = [];
+    var prevCk = state.lessons[id] && state.lessons[id].ck; /* a fresh version keeps the lesson's check rounds (never a free pass) */
+    if (opts.again) { ctx.again = true; ctx.pace = "gentle"; }
     el.lBody.textContent = "";
     renderLessonBody("", true);
     renderQuiz(true);
@@ -1265,6 +1400,7 @@
         reading = L.cleanReading(ev.reading); /* titles and search phrases only; links are built on the device (allowlist) */
         tricky = typeof ev.tricky === "string" ? ev.tricky.trim().slice(0, 600) : ""; /* "Still tricky", prepared in this same call: shown only if asked */
         if (state.quiz && state.quiz.id === id) state.quiz.qs = validQs(ev.questions);
+        retry = validQs(ev.retry); /* the spare set for a second try (0 calls) */
         if (ev.end) C.markEnd(state.cloud, id);
         if (wantPath && ev.steps && ev.steps.length) {
           /* child topics: straight onto the cloud if the topic is already engaged, else they wait for a right answer or "I've got it" */
@@ -1280,6 +1416,8 @@
       var parsed = L.parse(text);
       if (r.ok && L.usable(parsed)) {
         state.lessons[id] = { text: text.trim(), at: Date.now(), qs: state.quiz && state.quiz.id === id ? state.quiz.qs : [], ans: [] };
+        if (retry.length >= 2) state.lessons[id].rq = retry;
+        if (prevCk && (prevCk.r || prevCk.p)) state.lessons[id].ck = { r: prevCk.r || 0, p: prevCk.p || 0, miss: prevCk.miss || 0, c: 0, set: 0, again: opts.again ? 1 : 0 };
         if (reading.length) state.lessons[id].rd = reading;
         if (tricky) state.lessons[id].tk = tricky;
         if (state.lessonNode === id) { renderLessonBody(text, false); lessonReady(id, true); showReading(reading); }
@@ -1303,7 +1441,6 @@
     var was = n.ghost, before = C.growthOf(state.cloud, id);
     C.engage(state.cloud, id, "open");
     var kids = growChildren(id);
-    el.lDone.hidden = false;
     var note = growthNote(id, before);
     if (kids.length) note = (note ? note + " " : "") + kidsLine(id, kids);
     var les = state.lessons[id], marked = n.mastery >= C.MASTERED || Boolean(les && les.got); /* "I've got it" is kept with the lesson */
@@ -1315,9 +1452,11 @@
     renderLessonPath();
     renderLessonCard(Boolean(note));
     renderQuiz();
+    applyPhase();
     renderFork(id);
     if (state.lessons[id] && state.lessons[id].cl) renderClarify(id, !marked); /* clarifications already written: shown again, 0 calls (options only while not done) */
     offerTest(id);
+    renderIko();
   }
   /*
    * "I've got it": confirmed on the device (0 calls). Progress is marked, a short note says so, and the learner stays
@@ -1329,6 +1468,7 @@
   function finishLesson(kind) {
     var id = state.lessonNode, n = nodeOf(id);
     if (!n) return;
+    if (kind === "got" && lessonPhase(id) !== "passed") return; /* earned only once the check is passed (PR 103) */
     var before = C.growthOf(state.cloud, id);
     var r = C.engage(state.cloud, id, kind);
     var kids = kind === "got" ? growChildren(id) : [];
@@ -1354,7 +1494,8 @@
     renderFork(id);
     offerTest(id);
     ikoActs();
-    if (kind === "got") flyToDeck(id); /* saved above: the flight is only a picture of it */
+    applyPhase();
+    if (kind === "got") { flyToDeck(id); if (C.inDeck(state.cloud, id)) ikoReact("earn"); } /* saved above: the flight is only a picture of it */
   }
 
   /* ---------- "Still tricky": prepared clarifications, inline ---------- */
@@ -1469,6 +1610,8 @@
     var others = expanded ? w.allOthers : w.others;
     var items = w.choices.map(function (c) { return c.id; }).concat(others);
     var grow = !w.path && !n.end && !C.isTerminal(state.cloud, id) && (!n.path || P.needsNext(state.cloud, id));
+    /* PR 103: the next paths open once the check is passed; Also in progress (switching to other work) is always here */
+    if (!nextOpen(id)) { w = Object.assign({}, w, { choices: [], next: null }); grow = false; items = others.slice(); }
     if (!items.length && !grow) return;
     /* the learner's own tap wins; otherwise the computed pick (it can change, e.g. when the fork arrives) */
     var sel = items.indexOf(state.pick) >= 0 ? state.pick : w.next || items[0];
@@ -1568,6 +1711,7 @@
     home(id);
   });
   el.lGot.addEventListener("click", function () { finishLesson("got"); });
+  el.lCont.addEventListener("click", startCheck);
   el.lTricky.addEventListener("click", function () { finishLesson("tricky"); });
   el.ikoGot.addEventListener("click", function () {
     if (el.lGot.disabled) return;
@@ -1606,6 +1750,7 @@
     el.lTrail.textContent = "Test · " + trailOf(pid);
     el.lTitle.textContent = "Test: " + p.label;
     el.lStatus.textContent = ""; el.lDone.hidden = true; el.lFork.textContent = ""; el.lPath.textContent = ""; el.lQuiz.textContent = ""; el.lClar.textContent = ""; el.lNext.textContent = "";
+    el.lQuiz.hidden = false; el.lQuiz.classList.remove("l-pane-on"); el.lMain.setAttribute("data-phase", "test");
     el.lBody.textContent = "";
     el.lBody.appendChild(mk("p", "l-intro", "This test only covers what you've finished: " + labels.join(", ") + ". It's optional and there's no timer. Right answers bring colour into those cards, and every attempt makes " + p.label + " stronger."));
     renderLessonCard(false);
@@ -1826,7 +1971,8 @@
   /* the cloud's own quiet links: Talk to Iko, the deck (once there is a card), and the learner switch when guiding */
   function renderHomeNav() {
     var n = (state.cloud && state.cloud.deck || []).length;
-    el.cloudDeck.hidden = !n; el.cloudDeck.textContent = "Your deck · " + n;
+    el.cloudDeck.hidden = !n;
+    if (n) deckFan(el.cloudDeck, miniDeckCards(), n); /* the Deck's own icon and count, as in the header (PR 103) */
     var ix = PR && PR.current(localStorage);
     el.cloudWho.hidden = !(ix && ix.mode === "guide");
     if (!el.cloudWho.hidden) { el.cloudWho.textContent = state.name + " · switch"; el.cloudWho.setAttribute("aria-label", state.name + " is learning now. Switch learner"); }
@@ -1851,7 +1997,7 @@
     el.csFew.hidden = building;
     el.csForm.hidden = building;
     /* the ideas can be picked together; Begin sends them with whatever was typed, as one answer (the same one start call) */
-    if (!csEx) { csEx = exRow(null, function () { return !el.cs.hidden && !state.busy; }, "", true, state.csPicked); el.csEx.appendChild(csEx); }
+    if (!csEx) { csEx = exRow(addIdea, function () { return !el.cs.hidden && !state.busy; }, "", true, true); el.csEx.appendChild(csEx); }
     else refreshEx();
     el.csStatus.textContent = building ? "Growing your cloud…" : failed ? "That didn't work just now. Try again in a moment, or talk it over with Iko." : "";
     el.cs.classList.toggle("busy", building);
@@ -1876,10 +2022,11 @@
     document.body.classList.toggle("intake", on);
     if (big && big.rootHidden) big.rootHidden(on);
     if (big && on !== intakeOn) big.hold(on);
+    var was = intakeOn;
     intakeOn = on;
+    if (on !== was) rotatePh();
     if (!on) { intakeAt = null; need0 = 0; nameOff = { x: 0, y: 0 }; nameShown = { x: 0, y: 0 }; el.csName.style.transform = ""; document.body.classList.remove("kbd"); el.cs.classList.remove("tight"); el.cs.style.top = ""; }
   }
-  function ikoBottom() { var w = el.ikoWrap && !el.ikoWrap.hidden ? el.ikoWrap.getBoundingClientRect() : null; return w && w.height ? w.bottom : 0; }
   function placeStart() {
     if (!big || el.cs.hidden) return;
     var vv = window.visualViewport, vh = vv ? vv.height : window.innerHeight, vt = vv ? Math.max(0, vv.offsetTop) : 0;
@@ -1889,10 +2036,10 @@
     var kbd = typing && tallest.h - vh > 120; /* the on-screen keyboard is up (it overlays the page, or shrinks it) */
     document.body.classList.toggle("kbd", kbd);
     el.cs.classList.remove("tight");
-    var iko = ikoBottom(), at;
+    var at;
     if (kbd) {
-      /* the field just above the keyboard; the question above it, in view and clear of Iko when Iko is in view */
-      var low = vt + vh - 10, minTop = Math.max(vt + 8, iko > vt + 4 ? iko + 6 : 0);
+      /* the field just above the keyboard; the question above it, in view (Iko steps away while the keyboard is up) */
+      var low = vt + vh - 10, minTop = vt + 8;
       var lift = function () { var q = el.csHi.textContent && !el.csHi.hidden && el.csHi.offsetHeight ? el.csHi : el.csQ; return { form: el.csForm.offsetTop + el.csForm.offsetHeight, q: q.offsetTop }; };
       var L = lift();
       at = low - L.form;
@@ -1900,7 +2047,11 @@
       if (at + L.q < minTop) at = minTop - L.q;
     } else {
       var foot = el.cloud.querySelector(".cloud-foot"), fr = foot && foot.getClientRects().length ? foot.getBoundingClientRect() : null;
-      var top = Math.max(vt + 12, iko ? iko + 14 : 0), bottom = Math.min(fr ? fr.top - 10 : Infinity, vt + vh - 10);
+      /* the fine print's visible top (its links and the sun/moon icon), not its line box: the toggle's 44px target reaches
+         above and below its line, and the line sits clear of Iko's room (PR 103), so measuring the box would push the name off centre */
+      if (fr) { var ink = [].map.call(foot.querySelectorAll("a, .theme-tg svg"), function (x) { return x.getBoundingClientRect().top; }).filter(function (t) { return t > 0; }); if (ink.length) fr = { top: Math.min.apply(null, ink) }; }
+      var lane = laneH && !el.ikoWrap.hidden ? window.innerHeight - laneH : Infinity; /* Iko's room at the bottom (placeIko) */
+      var top = vt + 12, bottom = Math.min(fr ? fr.top - 10 : Infinity, lane - 10, vt + vh - 10);
       var need = el.cs.offsetHeight;
       if (need > bottom - top) { el.cs.classList.add("tight"); need = el.cs.offsetHeight; }
       /* the name at the middle of the screen, as it is on the cloud; as near it as the column fits between Iko and the footer */
@@ -1925,7 +2076,7 @@
     var r = el.csName.getBoundingClientRect(), bx = r.left - nameShown.x, by = r.top - nameShown.y, /* where it sits undragged */ w = r.width, h = r.height;
     var first = [el.csHi, el.csQ].filter(function (x) { return x.textContent && !x.hidden && x.offsetHeight; })[0];
     var vv = window.visualViewport, vt = vv ? Math.max(0, vv.offsetTop) : 0;
-    var minY = Math.max(vt + 8, ikoBottom() + 6), maxY = first ? first.getBoundingClientRect().top - 6 - h : by;
+    var minY = vt + 8, maxY = first ? first.getBoundingClientRect().top - 6 - h : by;
     nameOff.x = Math.min(Math.max(nameOff.x, 8 - bx), window.innerWidth - 8 - w - bx);
     nameOff.y = Math.min(Math.max(nameOff.y, Math.min(0, minY - by)), Math.max(0, maxY - by));
     nameShown = { x: Math.round(nameOff.x), y: Math.round(nameOff.y) };
@@ -1961,12 +2112,33 @@
     renderStart();
   }
   /* one intake: the typed words first, then the picked ideas ("the ocean, Rain, Stars") */
-  function intakeText() { return cleanAbout([el.csIn.value].concat(state.csPicked).map(function (x) { return String(x || "").trim(); }).filter(Boolean).join(", ")); }
+  function intakeText() { return cleanAbout(el.csIn.value.replace(/[,\s]+$/, "")); }
+  /* an idea chip tapped (PR 103): it goes into the field, in the learner's own list, and the chip moves on to another idea */
+  function addIdea(t) {
+    var v = el.csIn.value.replace(/[,\s]+$/, "");
+    if (v.toLowerCase().split(/\s*,\s*/).indexOf(String(t).toLowerCase()) >= 0) return;
+    el.csIn.value = (v ? v + ", " : "") + t;
+    rotatePh();
+  }
+  /* the field's placeholder: a few of the ideas, rotating ("fishing, statistics, anime"), until something is typed */
+  var phAt = 0, phT = 0;
+  function rotatePh() {
+    clearInterval(phT); phT = 0;
+    if (!intakeOn || el.cs.hidden) return;
+    var list = state.ex.status === "ok" ? state.ex.list : [], step = function () {
+      if (!list.length) { el.csIn.placeholder = "In your own words"; return; }
+      var g = [];
+      for (var i = 0; i < 3 && g.length < list.length; i++) { var t = list[(phAt + i) % list.length].toLowerCase(); if ((g.concat([t]).join(", ")).length > 34 && g.length >= 2) break; g.push(t); }
+      phAt = (phAt + g.length) % list.length;
+      el.csIn.placeholder = g.join(", ");
+    };
+    step();
+    if (list.length > 3) phT = setInterval(step, 3800);
+  }
   el.csForm.addEventListener("submit", function (e) {
     e.preventDefault();
     var t = intakeText();
     if (!t || state.busy) return;
-    state.csPicked.length = 0;
     startFromCloud(t);
   });
   el.toCloud.addEventListener("click", function () { home(); });
@@ -2186,6 +2358,12 @@
     var pw = el.panel.offsetWidth, ph = (box ? box.offsetHeight : el.panel.scrollHeight) + 2;
     var at = CAM.cardPlace(q.x, q.y, pw, ph, cw, ch, cloudTop());
     var x = Math.max(CAM.CARD.margin, Math.min(cw - CAM.CARD.margin - pw, at.x)), y = Math.max(CAM.CARD.margin, at.y);
+    /* clear of Iko at the bottom left (PR 103): a card that would reach down over the pebble is placed within the room above it */
+    var pr = laneH && !el.ikoWrap.hidden ? el.iko.getBoundingClientRect() : null, cr = el.cloudCanvas.getBoundingClientRect();
+    if (pr && pr.width && x < pr.right - cr.left + 8 && y + Math.min(ph, at.maxH) > ch - laneH) {
+      at = CAM.cardPlace(q.x, q.y, pw, ph, cw, ch - laneH, cloudTop());
+      x = Math.max(CAM.CARD.margin, Math.min(cw - CAM.CARD.margin - pw, at.x)); y = Math.max(CAM.CARD.margin, at.y);
+    }
     var sig = x + "," + y + "," + at.maxH + "," + at.side;
     if (sig === cardSig) return;
     cardSig = sig;
@@ -2337,7 +2515,7 @@
    * for a few seconds on the first two visits only, and later just the pebble. Markup has a face group (eyes, mouth) so
    * a light blink or an occasional tip can be added later; reduced motion keeps it still.
    */
-  var iko = { open: false, ctx: null, from: 0, lineT: 0, cueKey: "", cueShown: "", cueT: 0, cueH: 0 };
+  var iko = { open: false, ctx: null, from: 0, lineT: 0, tipKey: "", tipT: 0, pendingReact: null };
   function openAsk() { return state.thread.filter(function (m) { return m.role === "ask" && !m.done && m.open && askHandlers[m.id]; })[0] || null; }
   /* what is on screen: { view, step?, topic?, id? } */
   function screenCtx() {
@@ -2462,104 +2640,139 @@
     if (!el.cloud.hidden) closeCloud(); else { renderDraw(); el.input.focus(); }
     scrollDown();
   });
-  /* the short line by the pebble ("" hides it); it fades on its own */
+  /*
+   * Iko's bubble beside the pebble ("" hides it); it folds away on its own. Tapping it opens the full chat, like the pebble.
+   * One thing at a time: a reaction or a note replaces the screen's tip, and a tip held back gets its turn afterwards.
+   */
   function ikoLine(t, ms) {
     clearTimeout(iko.lineT);
     el.ikoLine.textContent = t || "";
     el.ikoLine.hidden = !t;
-    if (t) { clearTimeout(iko.cueT); hideCue(); } /* Iko speaking: its line, never the cue */
-    if (t) iko.lineT = setTimeout(function () { el.ikoLine.hidden = true; placeIko(); cueAgain(); }, ms || 9000);
+    el.ikoLine.removeAttribute("data-tip"); el.ikoLine.removeAttribute("data-react");
+    if (t) clearTimeout(iko.tipT);
+    if (t) iko.lineT = setTimeout(function () { el.ikoLine.hidden = true; placeIko(); var nx = iko.after; iko.after = null; if (nx) nx(); else tipAgain(); }, ms || 9000);
     placeIko();
   }
-  /* the hello: only on the first two visits, and only until Iko has been opened once */
-  function ikoHello() {
-    var pr = C.profileOf(state.cloud);
-    if (!hintSeen("iko") && (pr.visits || 0) <= 2) ikoLine("Hi, I'm Iko. I'm here whenever you need me.", 9000);
-  }
-  /* shown on the cloud, a lesson or test, a card and the deck; hidden in the whole conversation and on the welcome */
+  el.ikoLine.addEventListener("click", function () { if (!iko.open) openIko(); });
+  /* shown on the cloud (and its opening question), a lesson or test, a card and the deck; hidden in the whole conversation and on the welcome */
   function ikoScreen() { return el.welcome.hidden && !el.chat.hidden && (!el.cloud.hidden || !el.lesson.hidden || !el.deck.hidden || !el.hub.hidden); }
   function renderIko() {
     var on = ikoScreen();
     if (iko.open && (!on || (screenCtx().id || "") !== (iko.ctx.id || "") || (screenCtx().view === "chat"))) closeIko(); /* the screen changed under it */
     el.ikoWrap.hidden = !on || iko.open;
-    el.iko.classList.toggle("glow", on && !hintSeen("iko")); /* until Iko has been opened once (seen.h.iko, v9) */
-    if (iko.open) { clearTimeout(iko.cueT); hideCue(); } /* the sheet is open: no cue (and none again on closing it) */
-    else ikoCue(on ? screenCtx() : null);
+    el.iko.classList.toggle("glow", on && !hintSeen("iko")); /* the first visits' cue: until Iko has been opened once (seen.h.iko, v9) */
+    if (iko.open) clearTimeout(iko.tipT); /* the sheet is open: no tip (and none again on closing it) */
+    else ikoTip(on ? screenCtx() : null);
     document.body.classList.toggle("iko-on", on && el.cloud.hidden);
-    document.body.classList.toggle("iko-home", on && !el.cloud.hidden && !iko.open); /* the cloud's own links make room for the pebble */
+    document.body.classList.toggle("iko-home", on && !el.cloud.hidden);
     document.body.classList.toggle("iko-lesson", iko.open && !el.lesson.hidden); /* wide screens: the sheet sits over the card, clear of Where Next */
     ikoActs();
     placeIko();
   }
   /*
-   * "Iko is always here": a tiny cue under the pebble when a screen opens (Ask me anything, Ask about this lesson, ...),
-   * on the learner's first CUE_VISITS visits only (the cloud's profile.visits, already counted once per browser session
-   * in v9), and each screen's cue at most once a visit (sessionStorage CUES). It fades in, holds about 3.5 s and fades out. Never while Iko is speaking (its line wins) and never where it
-   * would touch the header, the invite/return rows, the selection card, the start or a confirm: then it is skipped.
+   * A short bubble for each screen (PR 103): light context and what to do next, from local templates (0 calls). Each screen
+   * has a few variants; one shows when the screen opens (at most once a visit per screen, sessionStorage CUES), the least
+   * shown first, never the one shown last, and each variant at most TIP_MAX times for this learner (ikolearn-iko): so the
+   * guidance never repeats across pages and grows quiet as the learner gets comfortable.
    */
-  var CUE = { cloud: "Ask me anything", topic: "Ask about this topic", home: "Ask about your cloud", lesson: "Ask about this lesson", test: "Ask about this test", card: "Ask about this card", deck: "Ask about your deck", intake: "Not sure? Ask me" };
-  var CUE_VISITS = 3;
-  function cuesDone() { try { return JSON.parse(sessionStorage.getItem(CUES) || "{}") || {}; } catch { return {}; } }
-  function cueDone(key) { var d = cuesDone(); d[key] = 1; try { sessionStorage.setItem(CUES, JSON.stringify(d)); } catch { /* ignore */ } }
-  function cueWanted(key) { return Boolean(key) && Boolean(state.cloud) && (C.profileOf(state.cloud).visits || 1) <= CUE_VISITS && !cuesDone()[key]; }
-  function cueOf(c) {
+  var TIPS = {
+    intake: ["Hi {name}, I'm Iko. Tell me a few things you enjoy, and I'll start your cloud.", "Any words will do: a hobby, a question, something you'd like to get better at."],
+    cloud: ["Hi {name}, I'm Iko. Tap a point on your cloud to open it, or pick up a card below.", "Each branch is something you're exploring. Drag to turn your cloud.", "Not sure where to start? Draw a card and I'll pick a good one."],
+    home: ["That's you, in the middle. Your subjects grow around you."],
+    topic: ["Start a lesson here, or open its card to see its branches.", "Lessons are short: read, then check yourself."],
+    learn: ["Read it through. When you're ready, tap Continue to check yourself.", "Take your time with the reading. The questions come after."],
+    check: ["A few quick questions. Get them all right and the card is yours to grow.", "No rush. Each question is about what you just read."],
+    missed: ["Here's another way to see it. Then a fresh set of questions."],
+    test: ["An optional test on what you've finished. No pressure."],
+    card: ["Its card: its branches and what you've covered so far."],
+    deck: ["These are the cards you've earned. New ones to pick up are further down.", "Cards gain colour as you show what you've learned."]
+  };
+  var TIP_MAX = 1;
+  function ikoMem() {
+    var who = (PR && PR.current(localStorage) || {}).active || "me", all = {};
+    try { all = JSON.parse(localStorage.getItem(IKO_MEM) || "{}") || {}; } catch { all = {}; }
+    var m = all[who] && typeof all[who] === "object" ? all[who] : {};
+    return { who: who, all: all, t: m.t && typeof m.t === "object" ? m.t : {}, r: m.r && typeof m.r === "object" ? m.r : {}, last: typeof m.last === "string" ? m.last : "" };
+  }
+  function ikoKeep(m) { m.all[m.who] = { t: m.t, r: m.r, last: m.last }; try { localStorage.setItem(IKO_MEM, JSON.stringify(m.all)); } catch { /* full: Iko just repeats less carefully */ } }
+  function tipOf(c) {
     if (!c) return "";
     if (c.view === "cloud") return state.panelNode === "root" && !el.panel.hidden ? "home" : c.topic ? "topic" : "cloud";
-    return CUE[c.view] ? c.view : "";
+    if (c.view === "lesson") { var ph = lessonPhase(c.id); return c.step === "tricky" ? "" : ph === "learn" ? "learn" : ph === "check" ? "check" : ph === "missed" ? "missed" : ""; }
+    return TIPS[c.view] ? c.view : "";
   }
-  function ikoCue(c) {
-    var key = cueOf(c);
-    if (key === iko.cueKey) return;
-    iko.cueKey = key; iko.cueShown = "";
-    clearTimeout(iko.cueT);
-    hideCue();
+  function tipsShown() { try { return JSON.parse(sessionStorage.getItem(CUES) || "{}") || {}; } catch { return {}; } }
+  function pickTip(key) {
+    var m = ikoMem(), list = TIPS[key] || [], best = -1;
+    list.forEach(function (_, i) { var id = key + i, n = m.t[id] || 0; if (n >= TIP_MAX || id === m.last) return; if (best < 0 || n < (m.t[key + best] || 0)) best = i; });
+    return best < 0 ? null : { id: key + best, text: list[best].replace("{name}", state.name || "there"), m: m };
+  }
+  function ikoTip(c) {
+    var key = tipOf(c);
+    if (key === iko.tipKey) return;
+    iko.tipKey = key;
+    clearTimeout(iko.tipT);
     if (!key) return;
-    iko.cueT = setTimeout(function () { showCue(key); }, 450); /* once the new screen has settled */
+    iko.tipT = setTimeout(function () { showTip(key); }, 450); /* once the new screen has settled */
   }
-  /* once Iko's line has folded away, the screen's cue it held back gets its turn */
-  function cueAgain() { var k = iko.cueKey; if (k && iko.cueShown !== k && !iko.open) { clearTimeout(iko.cueT); iko.cueT = setTimeout(function () { showCue(k); }, 700); } }
-  function hideCue() {
-    el.ikoCue.classList.remove("on");
-    document.body.classList.remove("iko-cueing");
-    clearTimeout(iko.cueH);
-    iko.cueH = setTimeout(function () { if (!el.ikoCue.classList.contains("on")) el.ikoCue.hidden = true; }, motionOK() ? 650 : 0); /* after the fade */
+  function tipAgain() { var k = iko.tipKey; if (k && !iko.open && !tipsShown()[k]) { clearTimeout(iko.tipT); iko.tipT = setTimeout(function () { showTip(k); }, 700); } }
+  function showTip(key) {
+    if (key !== iko.tipKey || iko.open || el.ikoWrap.hidden || !el.ikoLine.hidden || !state.cloud || tipsShown()[key]) return; /* Iko is speaking (or gone), or this screen had its tip this visit */
+    var tip = pickTip(key);
+    if (!tip) return;
+    var d = tipsShown(); d[key] = 1;
+    try { sessionStorage.setItem(CUES, JSON.stringify(d)); } catch { /* ignore */ }
+    tip.m.t[tip.id] = (tip.m.t[tip.id] || 0) + 1; tip.m.last = tip.id; ikoKeep(tip.m);
+    ikoLine(tip.text, 8000);
+    el.ikoLine.setAttribute("data-tip", tip.id);
   }
-  function showCue(key) {
-    if (key !== iko.cueKey || iko.open || el.ikoWrap.hidden || !el.ikoLine.hidden || !cueWanted(key)) return; /* Iko is speaking (or gone), a later visit, or shown already this visit: no cue */
-    el.ikoCue.textContent = CUE[key];
-    el.ikoCue.hidden = false;
-    document.body.classList.add("iko-cueing");
-    var r = el.ikoCue.getBoundingClientRect();
-    /* what is on screen now: the cloud's own controls when it is open (the chat's header is underneath it then), else the header */
-    var crowd = el.cloud.hidden ? ".bar .brand > *, #deck-btn, .bar .mini-deck, .minideck, #ik-confirm, #iko-line" : ".home-nav > *, .cloud-top .zoom, .cloud-flow, #panel, #cloud-start, #ik-confirm, #iko-line";
-    var near = [].some.call(document.querySelectorAll(crowd), function (e) {
-      if (e.hidden || !e.getClientRects().length) return false;
-      var b = e.getBoundingClientRect();
-      return b.width && b.left < r.right + 4 && b.right > r.left - 4 && b.top < r.bottom + 2 && b.bottom > r.top - 2;
-    });
-    if (near) { el.ikoCue.hidden = true; document.body.classList.remove("iko-cueing"); return; }
-    void el.ikoCue.offsetWidth;
-    el.ikoCue.classList.add("on");
-    iko.cueShown = key;
-    cueDone(key);
-    iko.cueT = setTimeout(function () { if (iko.cueKey === key) hideCue(); }, 3600);
+  /*
+   * Short reactions to real moments (PR 103): the cloud grows, a card is earned, a check is passed. Every time at first, then
+   * less often as they become familiar: the first REACT_EVERY[0] times, then every 3rd up to 12, then every 8th.
+   */
+  var REACT = {
+    grow: ["Your cloud just grew.", "New branches to explore.", "Look, more room to grow."],
+    earn: ["A new card for your deck!", "That card is yours now.", "Another one in your deck."],
+    pass: ["All right! Well done.", "You've got it. Nicely done.", "That's understanding."],
+    start: ["Lovely start. You can add more any time, and there are no wrong picks: your cloud grows and changes with you. Add things a few at a time and watch here to see what's growing."]
+  };
+  var REACT_EVERY = [3, 12];
+  function reactWanted(n) { return n <= REACT_EVERY[0] || (n <= REACT_EVERY[1] ? n % 3 === 0 : n % 8 === 0); }
+  function ikoReact(kind) {
+    var m = ikoMem(), n = (m.r[kind] = (m.r[kind] || 0) + 1);
+    ikoKeep(m);
+    var list = REACT[kind] || [];
+    if (!list.length || !reactWanted(n) || (kind === "start" && n > 1)) return false;
+    var t = list[(n - 1) % list.length];
+    if (!el.ikoLine.hidden && !el.ikoLine.hasAttribute("data-tip") && !el.ikoLine.hasAttribute("data-react")) return false; /* Iko is saying something that matters (the grow question): no reaction over it */
+    if (iko.open || el.ikoWrap.hidden) { iko.pendingReact = t; return true; } /* said once the pebble is back */
+    ikoLine(t, kind === "start" ? 9000 : 4500);
+    el.ikoLine.setAttribute("data-react", kind);
+    return true;
   }
 
   /* opened by Still tricky, the sheet covers the lesson's buttons on a phone, so it carries "I've got it" itself */
-  function ikoActs() { el.ikoActs.hidden = !(iko.open && el.ikoSheet.classList.contains("tricky") && !el.lesson.hidden && !el.lDone.hidden && Boolean(el.lClar.querySelector(".clar-opts"))); }
+  function ikoActs() { el.ikoActs.hidden = !(iko.open && el.ikoSheet.classList.contains("tricky") && !el.lesson.hidden && !el.lDone.hidden && !el.lGot.hidden && Boolean(el.lClar.querySelector(".clar-opts"))); }
   /*
-   * Top left, just the pebble. Its line (a hello, a tip, the grow line) shows under it only while Iko has something to
-   * say, then it folds back into the pebble. The line never covers the selection card, the start or a confirm: if it
-   * would, it folds away at once. While it shows on a narrow cloud, the input tip under the controls steps aside.
+   * At the bottom (PR 103), the companion on every screen: the pebble at the left, its bubble beside it. The room it needs
+   * is kept clear for it (--iko-lane): the cloud's fine print and its Pick up row sit above it, and the lesson, deck and
+   * card pages end above a quiet strip, so the pebble never covers a field, a chip, the deck or the fine print. With the
+   * keyboard up it steps away. The bubble folds away at once if it would touch the selection card, the start or a confirm.
    */
+  var laneH = 0, laneTop = 0, laneW = 0;
   function placeIko() {
-    if (intakeOn) placeStart(); /* the question keeps clear of Iko's corner (its line and cue sit beside it) */
-    var w = el.ikoWrap, talking = false;
-    if (!w.hidden && !el.ikoLine.hidden) {
+    var w = el.ikoWrap, talking = false, on = !w.hidden && w.getClientRects().length;
+    if (on && !el.ikoLine.hidden) {
       var line = el.ikoLine.getBoundingClientRect(), over = function (e) { if (!e || e.hidden || !e.getClientRects().length) return false; var r = e.getBoundingClientRect(); return r.width && r.left < line.right && r.right > line.left && r.top < line.bottom && r.bottom > line.top; };
-      if (line.width && (over(el.cloud.hidden ? null : el.panel) || over(el.cloud.hidden ? null : el.cs) || over(el.ikc))) { clearTimeout(iko.lineT); el.ikoLine.hidden = true; }
+      if (line.width && (over(el.cloud.hidden ? null : el.panel) || over(el.ikc))) { clearTimeout(iko.lineT); el.ikoLine.hidden = true; }
       else talking = true;
     }
+    if (on && iko.pendingReact) { var pr = iko.pendingReact; iko.pendingReact = null; setTimeout(function () { ikoLine(pr, 4500); }, 300); }
+    var h = on ? Math.ceil(w.getBoundingClientRect().height) + 8 : ikoScreen() && (iko.open || document.body.classList.contains("kbd")) ? laneH : 0; /* the sheet open or the keyboard up: its room is kept (nothing jumps back) */
+    /* the room only grows at a given width (a longer bubble), so nothing above it moves as a bubble folds or a shorter one shows */
+    if (laneW !== window.innerWidth) { laneW = window.innerWidth; laneTop = 0; }
+    if (h) { laneTop = Math.max(laneTop, h); h = laneTop; }
+    if (h !== laneH) { laneH = h; document.documentElement.style.setProperty("--iko-lane", h + "px"); if (intakeOn) placeStart(); if (!el.panel.hidden) { cardSig = ""; placeCard(); } }
     document.body.classList.toggle("iko-talking", talking);
   }
   var ikoRaf = 0;
@@ -2617,10 +2830,15 @@
     var sig = n + ":" + cards.map(function (c) { return D.evolveKey(c); }).join(",");
     var rise = miniSig !== null && sig !== miniSig && (n > Number(miniSig.split(":")[0]) || cards.reduce(function (a, c) { return a + D.evolveKey(c); }, 0) > miniSig.split(":")[1].split(",").reduce(function (a, k) { return a + (Number(k) || 0); }, 0));
     miniSig = sig;
-    el.miniDeck.textContent = "";
-    el.miniDeck.classList.toggle("empty", !cards.length);
-    el.miniDeck.setAttribute("aria-label", n ? "Your deck, " + n + (n === 1 ? " card" : " cards") + ". Open the album" : "Your deck (no cards yet). Open the album");
-    el.miniDeck.title = n ? "Your deck · " + n : "Your deck";
+    deckFan(el.miniDeck, cards, n);
+    if (rise && motionOK() && !state.flying) pulseDeck(); /* a card in flight pulses it when it lands */
+  }
+  /* the fanned stack with its count: the header's mini-Deck and (PR 103) the same on the cloud */
+  function deckFan(btn, cards, n) {
+    btn.textContent = "";
+    btn.classList.toggle("empty", !cards.length);
+    btn.setAttribute("aria-label", n ? "Your deck, " + n + (n === 1 ? " card" : " cards") + ". Open the album" : "Your deck (no cards yet). Open the album");
+    btn.title = n ? "Your deck · " + n : "Your deck";
     var fan = mk("span", "md-fan");
     if (!cards.length) fan.appendChild(mk("span", "md-card md-slot"));
     cards.slice().reverse().forEach(function (sp, i, all) {
@@ -2631,9 +2849,8 @@
       if (art) c.appendChild(art);
       fan.appendChild(c);
     });
-    el.miniDeck.appendChild(fan);
-    if (n) el.miniDeck.appendChild(mk("span", "md-n", String(n)));
-    if (rise && motionOK() && !state.flying) pulseDeck(); /* a card in flight pulses it when it lands */
+    btn.appendChild(fan);
+    if (n) btn.appendChild(mk("span", "md-n", String(n)));
   }
   function pulseDeck() { if (!el.miniDeck || !motionOK()) return; el.miniDeck.classList.remove("pulse"); void el.miniDeck.offsetWidth; el.miniDeck.classList.add("pulse"); }
   /*
@@ -2647,7 +2864,10 @@
     renderDeckButton(); /* the Deck's count goes up now; its pulse waits for the card */
     var to = el.miniDeck && el.miniDeck.getClientRects().length ? el.miniDeck : null;
     if (!state.flying) return;
-    var a = card.getBoundingClientRect(), b = to ? to.getBoundingClientRect() : null;
+    var a = card.getBoundingClientRect();
+    /* earned at the end of a check, the card can be scrolled out of view: bring it back so its flight is seen (PR 103) */
+    if (a.bottom < 0 || a.top > window.innerHeight) { card.scrollIntoView({ block: "nearest" }); a = card.getBoundingClientRect(); }
+    var b = to ? to.getBoundingClientRect() : null;
     if (!b || !a.width || !b.width || a.bottom < 0 || a.top > window.innerHeight) { state.flying = false; pulseDeck(); return; }
     var ghost = card.cloneNode(true);
     ghost.removeAttribute("id"); [].forEach.call(ghost.querySelectorAll("[id]"), function (x) { x.removeAttribute("id"); });
@@ -2847,7 +3067,7 @@
     if (dtip) el.dSuggest.appendChild(dtip);
     el.dSuggest.appendChild(flowBlock("deck"));
     var held = (state.cloud.deck || []).length - ids.length;
-    el.dLede.textContent = (ids.length === 1 ? "1 card" : ids.length + " cards") + (held ? " (plus " + held + " merged into parent cards)" : "") + ", by subject. Cards move from Sketch to Inked, Tinted and Achieved as you learn, and finished subtopics merge into their parent. Dashed outlines are topics you haven't collected yet.";
+    el.dLede.textContent = (ids.length === 1 ? "1 card you've earned" : ids.length + " cards you've earned") + (held ? " (plus " + held + " merged into parent cards)" : "") + ", by subject. Cards move from Sketch to Inked, Tinted and Achieved as you learn, and finished subtopics merge into their parent.";
     renderAlbum(opening);
     saveSeen();
     var rows = D.balance(state.cloud, D.dayOf(Date.now())).filter(function (r) { return r.draws; });
@@ -2860,7 +3080,12 @@
     el.dAlbum.textContent = "";
     el.dAlbum.classList.toggle("opening", Boolean(opening) && motionOK());
     var pages = D.albumModel(state.cloud), go = function (cid, src) { openHub(cid, src, "deck"); };
-    if (!pages.length) { el.dAlbum.appendChild(mk("p", "album-empty", "Your album is empty for now. Open a lesson and its card joins your deck.")); return; }
+    /* PR 103: the album holds the earned cards; topics not collected yet live apart, under Still to collect */
+    var collect = [];
+    pages.forEach(function (pg) { pg.rows.forEach(function (r) { if (r.slots.length || r.more) collect.push({ pg: pg, r: r }); }); });
+    renderCollect(collect, go);
+    pages = pages.filter(function (pg) { return pg.rows.some(function (r) { return r.cards.length; }); });
+    if (!pages.length) { el.dAlbum.appendChild(mk("p", "album-empty", "Your album is empty for now. Pass a lesson's check and its card joins your deck.")); return; }
     pages.forEach(function (pg, i) {
       var page = mk("section", "album-page");
       page.style.setProperty("--i", String(Math.min(i, 6)));
@@ -2875,10 +3100,11 @@
       setTimeout(function () { bar.style.setProperty("--p", String(pg.known ? Math.round((pg.covered / pg.known) * 100) / 100 : 0)); }, 30);
       var j = 0;
       pg.rows.forEach(function (r) {
+        if (!r.cards.length) return;
         var row = mk("div", "ap-row"), rh = mk("p", "ap-row-head");
         if (r.head && nodeOf(r.head)) rh.appendChild(linkBtn(r.label, function () { go(r.head); }));
         else rh.appendChild(mk("span", null, r.label));
-        rh.appendChild(mk("span", null, r.cards.length + (r.cards.length === 1 ? " card" : " cards") + (r.slots.length + r.more ? " · " + (r.slots.length + r.more) + " to collect" : "")));
+        rh.appendChild(mk("span", null, r.cards.length + (r.cards.length === 1 ? " card" : " cards")));
         row.appendChild(rh);
         var g = mk("div", "ap-grid");
         r.cards.forEach(function (cid, k) {
@@ -2890,23 +3116,35 @@
           markEvolve(c, sp);
           g.appendChild(c);
         });
-        r.slots.forEach(function (sid) {
-          var sl = D.renderSlot(document, state.cloud, sid, { onOpen: go });
-          sl.style.setProperty("--i", String(Math.min(i, 6))); sl.style.setProperty("--j", String(Math.min(j++, 14)));
-          g.appendChild(sl);
-        });
-        if (r.more) {
-          var more = mk("button", "gslot more");
-          more.type = "button";
-          more.appendChild(mk("span", "gs-title", "+" + r.more + " more"));
-          more.appendChild(mk("span", "gs-state", "in " + r.label));
-          more.addEventListener("click", function () { go(r.head, more); });
-          g.appendChild(more);
-        }
         row.appendChild(g);
         page.appendChild(row);
       });
       el.dAlbum.appendChild(page);
+    });
+  }
+  /* Still to collect: the dashed slots of topics on the cloud that aren't cards yet, by branch, apart from the earned album */
+  function renderCollect(rows, go) {
+    var box = $("d-slots"), sec = $("d-collect");
+    if (!box || !sec) return;
+    box.textContent = "";
+    sec.hidden = !rows.length;
+    rows.forEach(function (x) {
+      var row = mk("div", "ap-row collect-row"), rh = mk("p", "ap-row-head");
+      rh.appendChild(mk("span", null, x.pg.subject === x.r.label ? x.r.label : x.pg.subject + " · " + x.r.label));
+      rh.appendChild(mk("span", null, (x.r.slots.length + x.r.more) + " to collect"));
+      row.appendChild(rh);
+      var g = mk("div", "ap-grid");
+      x.r.slots.forEach(function (sid) { g.appendChild(D.renderSlot(document, state.cloud, sid, { onOpen: go })); });
+      if (x.r.more) {
+        var more = mk("button", "gslot more");
+        more.type = "button";
+        more.appendChild(mk("span", "gs-title", "+" + x.r.more + " more"));
+        more.appendChild(mk("span", "gs-state", "in " + x.r.label));
+        more.addEventListener("click", function () { go(x.r.head, more); });
+        g.appendChild(more);
+      }
+      row.appendChild(g);
+      box.appendChild(row);
     });
   }
   /* The top 10: what this learner has used most lately (rank.js). A quiet list; it nudges the draw, never decides it. */
@@ -3038,7 +3276,6 @@
     if (P.needsOnboarding(state.cloud)) { if (!state.thread.some(function (m) { return m.role === "user"; })) state.thread = []; renderThread(); runOnboarding(); }
     else if (!state.thread.length) greet();
     startSession();
-    ikoHello();
     openCloud(true); /* home: the cloud, with the name in the centre (a first visit, a guide's learner, a return) */
   }
   /* Once per browser session: for "seems stuck" (visits without a lesson). */
@@ -3064,8 +3301,9 @@
     b.addEventListener("click", function () {
       who = b.getAttribute("data-who") === "guide" ? "guide" : "self";
       Array.prototype.forEach.call(document.querySelectorAll(".who-opt"), function (x) { x.setAttribute("aria-pressed", String(x === b)); x.classList.toggle("on", x === b); });
-      el.nameLabel.textContent = who === "guide" ? "Your first learner's first name" : "What's your first name?";
+      el.nameLabel.textContent = who === "guide" ? "Your learners' first names" : "What's your first name?";
       el.nameHint.hidden = who !== "guide";
+      el.nameIn.maxLength = who === "guide" ? 160 : 30; /* guiding: one name or a few, "Maya, Leo" (PR 103) */
       el.nameForm.hidden = false;
       el.nameIn.focus();
     });
@@ -3083,11 +3321,13 @@
   }
   el.nameForm.addEventListener("submit", function (e) {
     e.preventDefault();
-    var n = C.cleanLabel(el.nameIn.value).replace(/[^\p{L}\p{M}' -]/gu, "").trim();
+    /* guiding: several learners at once ("Maya, Leo and Sam"): the first starts now, the others are listed, each with their own cloud (PR 103) */
+    var names = who === "guide" && PR && PR.splitNames ? PR.splitNames(el.nameIn.value) : [];
+    var n = C.cleanLabel(names[0] || el.nameIn.value).replace(/[^\p{L}\p{M}' -]/gu, "").trim();
     if (!n) { el.nameIn.focus(); return; }
     state.name = n;
     store(LS.name, n);
-    if (PR) { try { PR.begin(localStorage, who, n); } catch { /* storage full: carries on as one learner */ } }
+    if (PR) { try { PR.begin(localStorage, who, n); names.slice(1).forEach(function (x) { PR.addParked(localStorage, x); }); } catch { /* storage full: carries on as one learner */ } }
     showWho();
     state.cloud = C.create(n);
     state.thread = [];

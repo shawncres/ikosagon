@@ -144,8 +144,10 @@ for (const s of SIZES) {
   const nm = get(L0, "name"), hi = get(L0, "greeting"), q = get(L0, "question");
   ok(nm && hi && q && Math.abs((nm.x + nm.r) / 2 - L0.w / 2) <= 2 && nm.b <= hi.y && hi.b <= q.y + 1, `${tag}: the name sits centred above the greeting and the question`, JSON.stringify({ nm, hi, q }));
   const iko = get(L0, "Iko"), line = get(L0, "Iko's line");
-  ok(iko && line && line.b < nm.y && iko.b < nm.y, `${tag}: Iko and its hello stay above the name and the question`, JSON.stringify({ iko, line, nm }));
-  if (s.inset) ok(iko.y >= s.inset.top, `${tag}: Iko clears the safe area at the top`, JSON.stringify(iko));
+  /* PR 103: Iko lives at the bottom now, its welcome beside it, below the whole column (the overlap checks above cover the rest) */
+  const below = L0.out.filter((r) => !/^(Iko|fine print)/.test(r.name)).reduce((m, r) => Math.max(m, r.b), 0);
+  ok(iko && line && iko.y >= below && line.y >= below - 0.5 && line.x >= iko.r - 1 && iko.b <= L0.h, `${tag}: Iko and its welcome sit at the bottom, below the name, the question and the ideas`, JSON.stringify({ iko, line, below }));
+  if (s.inset) ok(iko.b <= L0.h - s.inset.bottom && line.b <= L0.h - s.inset.bottom, `${tag}: Iko clears the safe area at the bottom`, JSON.stringify({ iko, inset: s.inset }));
   /* PR 101: the ideas whole (Shawn: "the chips are getting cut off on bottom"); the name near the middle */
   const C0 = await clipped(p), foot0 = L0.out.filter((r) => r.name.startsWith("fine print")), lastIdea = L0.out.filter((r) => r.name.startsWith("idea ") || r.name === "More").sort((a, b) => b.b - a.b)[0];
   ok(C0.out.length === 0 && !C0.scrolls, `${tag}: no idea, nor the field or Begin, is clipped by the column or anything around it`, JSON.stringify(C0));
@@ -170,11 +172,14 @@ for (const s of SIZES) {
   const ch = L1.out.filter((r) => r.name.startsWith("idea ") || r.name === "More");
   const gaps = []; for (let i = 0; i < ch.length; i++) for (let j = i + 1; j < ch.length; j++) { const a = ch[i], b = ch[j]; if (Math.abs(a.y - b.y) < 4) { const g = Math.max(b.x - a.r, a.x - b.r); if (g < 6) gaps.push(a.name + "|" + b.name + ":" + Math.round(g)); } else if (Math.min(Math.abs(b.y - a.b), Math.abs(a.y - b.b)) < 6 && a.x < b.r && b.x < a.r) gaps.push(a.name + "|" + b.name + " rows"); }
   ok(ch.length >= 4 && gaps.length === 0, `${tag}: the ideas and More keep a clear gap, in rows and between rows`, gaps.join(", "));
-  /* 3. Iko's hello folds away; its cue for the opening question shows beside the pebble, still clear of everything */
-  const cue = await p.waitForFunction(() => { const c = document.querySelector("#iko-cue"); return !c.hidden && c.classList.contains("on") && +getComputedStyle(c).opacity > 0.5 ? c.textContent : null; }, null, { timeout: 13000 }).then((h) => h.jsonValue(), () => null);
-  ok(cue === "Not sure? Ask me", `${tag}: once the hello has folded, the opening question's cue shows`, String(cue));
+  /* PR 103: ideas add to the field and cycle (they never pile up): still 3 and More, none already in the field */
+  const pk = await p.evaluate(() => ({ v: document.querySelector("#cs-in").value, chips: [...document.querySelectorAll("#cs-ex .ex-chip")].map((c) => c.textContent) }));
+  ok(pk.chips.length <= 3 && pk.v.split(",").length === 2 && pk.chips.every((c) => !pk.v.toLowerCase().includes(c.toLowerCase())), `${tag}: tapped ideas go into the field and their chips cycle on (no pile-up)`, JSON.stringify(pk));
+  /* 3. Iko's welcome folds away to the pebble (one bubble a screen a visit), still clear of everything */
+  const folded = await p.waitForFunction(() => document.querySelector("#iko-line").hidden, null, { timeout: 13000 }).then(() => true, () => false);
+  ok(folded, `${tag}: Iko's welcome folds away to the pebble`);
   const L2 = await boxes(p);
-  layout(tag, "with Iko's cue", L2);
+  layout(tag, "with the welcome folded", L2);
   const nm2 = get(L2, "name"), nm1 = get(L1, "name");
   ok(nm2 && Math.abs(nm2.y - nm1.y) <= 1, `${tag}: the question doesn't jump when the hello folds`, JSON.stringify([nm1.y, nm2 && nm2.y]));
   /* More adds a row or two: the column keeps a row's room for it, and rises (never drops) only as far as the rest needs */
@@ -207,7 +212,7 @@ for (const s of SIZES) {
   await p.evaluate(([pn]) => window.__keyboard(0, pn), [Math.max(pan, 300)]); await p.waitForTimeout(150); /* the keyboard gone, the pan not yet */
   await p.evaluate(() => { document.activeElement.blur(); window.__keyboard(0, 0); }); await p.waitForTimeout(450);
   const L5 = await boxes(p), nm5 = get(L5, "name");
-  ok(nm5 && Math.abs(nm5.y - nm2.y) <= 2, `${tag}: after a panned keyboard the column returns to its place (not left low)`, JSON.stringify([nm2.y, nm5 && nm5.y]));
+  ok(nm5 && Math.abs(nm5.y - nm2.y) <= 2, `${tag}: after a panned keyboard the column returns to its place (not left low)`, JSON.stringify([nm2.y, nm5 && nm5.y, await p.evaluate(() => [document.documentElement.style.getPropertyValue("--iko-lane"), document.querySelector("#iko-line").hidden, document.querySelector("#iko-line").textContent, document.body.className, document.querySelector("#iko-wrap").hidden])]));
   layout(tag, "after a panned keyboard", L5);
   /* 6. a web view that shrinks the page for the keyboard (innerHeight drops too) */
   await p.tap("#cs-in"); await p.setViewportSize({ width: s.w, height: s.h - kb }); await p.evaluate(() => window.__keyboard(0, 0)); await p.waitForTimeout(450);

@@ -89,8 +89,8 @@ for (const w of [390, 1280]) {
     const { ctx, p, errs, calls } = await open(w);
     await p.goto(BASE + "/ikolearn/", { waitUntil: "networkidle" });
     await p.click("text=Guiding other learners");
-    const f = await p.evaluate(() => ({ label: document.querySelector("#name-label").textContent, hint: document.querySelector("#name-hint").hidden }));
-    ok(f.label === "Your first learner's first name" && !f.hint, `${tag}: guide: names their first learner`, JSON.stringify(f));
+    const f = await p.evaluate(() => ({ label: document.querySelector("#name-label").textContent, hint: document.querySelector("#name-hint").hidden, text: document.querySelector("#name-hint").textContent }));
+    ok(f.label === "Your learners' first names" && !f.hint && /commas/.test(f.text), `${tag}: guide: names their learners (several at once, with commas)`, JSON.stringify(f));
     await shot(p, `${w}-guide-name`);
     await p.fill("#name-in", "Robin");
     await p.click("#name-form button[type=submit]");

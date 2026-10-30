@@ -7,6 +7,7 @@
 // in guide mode, with Iko open at 1280): only this subject's next steps, Also in progress for the rest, equal boxes,
 // the action inside the selected box.
 // Run: IKOLEARN_PW=<path to node_modules/playwright-core> node scripts/ikolearn-topics-e2e.mjs [--shots DIR] [--tag after] [--root public]
+import { passCheck } from "./fixtures/ikolearn-pass-check.mjs";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -255,6 +256,7 @@ for (const width of [390, 1280]) {
     const { ctx, p, errs } = await boot(width, guide);
     try {
       await p.locator(".cloud-flow > .chip").first().click(); await p.waitForSelector("#l-done:not([hidden])");
+      await passCheck(p); /* PR 103: the check passed first */
       await p.click("#l-got"); await p.waitForTimeout(400);
       let w = await whereNext(p);
       ok(wnOk(w), `${tag}: Where Next after I've got it: this subject only, equal boxes, the action in the selected box`, JSON.stringify(w));
@@ -268,12 +270,12 @@ for (const width of [390, 1280]) {
         await p.keyboard.press("Escape"); await p.waitForTimeout(200);
       }
       const t0 = w.title;
-      await p.click("#l-next .wn-opt.on .wn-act"); await p.waitForSelector("#l-done:not([hidden])"); await p.waitForTimeout(400);
+      await p.click("#l-next .wn-opt.on .wn-act"); await p.waitForSelector("#l-done:not([hidden])"); await p.waitForTimeout(400); await passCheck(p); /* PR 103: Where next opens once the check is passed */
       w = await whereNext(p);
       ok(w.title !== t0 && wnOk(w), `${tag}: Where Next after Continue (${w.title}): this subject only, equal boxes, the action in the selected box`, JSON.stringify(w));
       await p.click("#l-back"); await p.waitForTimeout(900);
       ok(await tap(p, "Kneading"), `${tag}: Kneading's card on the cloud`);
-      await p.click("#p-lesson"); await p.waitForSelector("#l-done:not([hidden])"); await p.waitForTimeout(400);
+      await p.click("#p-lesson"); await p.waitForSelector("#l-done:not([hidden])"); await p.waitForTimeout(400); await passCheck(p);
       w = await whereNext(p);
       ok(w.title === "Kneading" && wnOk(w) && w.alt.length > 0, `${tag}: Where Next from a card on the cloud (Kneading): Baking only; the other subjects are in Also in progress`, JSON.stringify(w));
       await p.evaluate(() => document.querySelector("#l-next").scrollIntoView({ block: "center" })); await p.waitForTimeout(200);

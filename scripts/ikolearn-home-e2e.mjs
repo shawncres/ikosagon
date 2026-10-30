@@ -141,9 +141,9 @@ for (const width of [390, 1280]) {
       await p.evaluate(SEED);
       await p.reload({ waitUntil: "networkidle" }); await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(500);
       const s = await screen(p);
-      const nav = await p.evaluate(() => ({ iko: document.querySelector("#iko").getAttribute("aria-label"), deck: document.querySelector("#cloud-deck").hidden ? "" : document.querySelector("#cloud-deck").textContent, op: getComputedStyle(document.querySelector("#cloud-deck")).opacity, foot: getComputedStyle(document.querySelector(".cloud-foot")).opacity }));
+      const nav = await p.evaluate(() => ({ iko: document.querySelector("#iko").getAttribute("aria-label"), deck: document.querySelector("#cloud-deck").hidden ? "" : document.querySelector("#cloud-deck").getAttribute("aria-label") + "|" + (document.querySelector("#cloud-deck .md-n") || {}).textContent, fan: Boolean(document.querySelector("#cloud-deck .md-fan")), op: getComputedStyle(document.querySelector("#cloud-deck")).opacity, foot: getComputedStyle(document.querySelector(".cloud-foot")).opacity }));
       ok(s.cloud && !s.start && s.flow && s.active === "BODY", `${tag}: returning: opens on the cloud (Pick up row, no start, no focus jump)`, JSON.stringify(s));
-      ok(nav.iko === "Talk to Iko" && /^Your deck · \d+$/.test(nav.deck) && parseFloat(nav.op) < 0.8 && parseFloat(nav.foot) <= 0.6, `${tag}: returning: quiet links (Talk to Iko, Your deck) and fine print`, JSON.stringify(nav));
+      ok(nav.iko === "Talk to Iko" && /^Your deck, (\d+) cards?\. Open the album\|\1$/.test(nav.deck) && nav.fan && parseFloat(nav.op) <= 0.92 && parseFloat(nav.foot) <= 0.6, `${tag}: returning: Iko, the deck (the same fanned icon and count as the header's) and quiet fine print`, JSON.stringify(nav));
       ok(calls.length === 0, `${tag}: returning: 0 calls`, calls.join());
       await shot(p, width, "2-returning");
       /* a lesson from the cloud, and back: home, on its topic */

@@ -115,19 +115,24 @@ for (const width of [390, 1280]) {
   const { ctx, p, errs, calls } = await open(width);
   try {
     await p.goto(BASE + "/ikolearn"); await p.evaluate(SEED); await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" }); await p.waitForTimeout(600);
-    await p.locator(".cloud-flow > .chip").first().click(); await p.waitForSelector("#l-quiz fieldset.q"); await p.waitForSelector("#l-done:not([hidden])");
+    await p.locator(".cloud-flow > .chip").first().click(); await p.waitForSelector("#l-cont:not([hidden])"); await p.waitForSelector("#l-done:not([hidden])");
+    /* PR 103: read first; Continue opens the check in its own pane */
+    ok(await p.isHidden("#l-quiz") && await p.isHidden("#l-got"), `${tag}: the reading comes first (the check and the card wait for Continue)`);
+    await p.click("#l-cont"); await p.waitForSelector("#l-quiz fieldset.q");
     const lessonCalls = calls.filter((c) => c === "/lesson").length;
     ok(lessonCalls === 1 && (await p.locator("#l-quiz fieldset.q").count()) === 3, `${tag}: a lesson with 3 questions (1 lesson call)`);
     /* each answer is kept as it happens: two answered, out to the card and back, both still there and the third open */
     await answer(p, 0); await answer(p, 1);
     const k0 = await look(p);
-    ok(JSON.stringify(k0.stored) === "[0,1]" && k0.correct === 2, `${tag}: each answer is saved the moment it is given`, JSON.stringify(k0));
+    ok(JSON.stringify(k0.stored) === "[0,1]" && k0.correct === 0, `${tag}: each answer is saved the moment it is given (credited only once the whole check is passed)`, JSON.stringify(k0));
     await p.locator("#l-card .gcard").first().click(); await p.waitForSelector("#hub:not([hidden])"); await p.waitForTimeout(400);
     await p.click("#hub-lesson"); await p.waitForTimeout(700);
     const k1 = await look(p);
     ok(k1.lesson && k1.answered === 2 && k1.open === 1 && JSON.stringify(k1.checked) === "[0,1,-1]", `${tag}: partway: out to the card and back, the two answers are there and the third is still open`, JSON.stringify(k1));
     await answer(p, 2);
-    const nextBefore = (await look(p)).next;
+    const kp = await look(p);
+    ok(kp.correct === 3 && !(await p.isHidden("#l-got")), `${tag}: the round passed: the three right answers count, and the card can be earned`, JSON.stringify(kp));
+    const nextBefore = kp.next;
     await p.click("#l-got"); await p.waitForTimeout(400);
     const k2 = await look(p);
     ok(k2.lesson && k2.title === "Magma" && JSON.stringify(k2.stored) === "[0,1,2]" && k2.got && k2.done && k2.v === 9, `${tag}: "I've got it": saved at once with all 3 answers; no auto-advance (still on Magma); storage v9`, JSON.stringify(k2));

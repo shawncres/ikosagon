@@ -110,14 +110,14 @@ for (const width of [390, 1280]) {
       await name(p, "self", "Maya");
       const st = await p.evaluate(() => { const cs = document.querySelector("#cloud-start"), b = cs.getBoundingClientRect(); return { text: cs.innerText, q: document.querySelector("#cs-q").textContent, hi: document.querySelector("#cs-hi").textContent, ph: document.querySelector("#cs-in").placeholder, inType: document.querySelector("#cs-in").tagName, chips: [...cs.querySelectorAll(".ex-chip")].map((c) => c.textContent), more: Boolean(cs.querySelector(".ex-more")), top: b.top, bottom: b.bottom, vh: innerHeight, thread: document.querySelector("#thread").innerText }; });
       ok(st.q === "What are you curious about, or what do you enjoy?" && (st.text.match(/\?/g) || []).length === 1 && !/grow in yourself/.test(st.text) && !/grow in yourself/.test(st.thread), `${tag}: intake: one question at a time (the grow question isn't asked yet)`, JSON.stringify(st));
-      ok(st.hi === "Hi Maya. Let's begin your learning cloud together." && st.inType === "INPUT" && st.ph === "In your own words" && !/\b(age|years? old|kids?|child|student|grade)\b/i.test(st.text), `${tag}: intake: a short hello and free text first (no age wording)`, JSON.stringify(st));
+      ok(st.hi === "Hi Maya. Let's begin your learning cloud together." && st.inType === "INPUT" && st.ph.split(", ").length >= 2 && st.ph.split(", ").every((x) => EX_A.map((e) => e.toLowerCase()).includes(x)) && !/\b(age|years? old|kids?|child|student|grade)\b/i.test(st.text), `${tag}: intake: a short hello and free text first (no age wording); the placeholder shows a few of the API's ideas`, JSON.stringify(st));
       ok(JSON.stringify(st.chips) === JSON.stringify(EX_A.slice(0, 3)) && st.more, `${tag}: intake: a few light ideas, straight from the API's list, with More`, JSON.stringify(st.chips));
       ok(st.top > st.vh * 0.15 && st.top < st.vh * 0.5 && st.bottom < st.vh - 60, `${tag}: intake: near the optical centre, the name on top (not at the bottom)`, JSON.stringify({ top: st.top, bottom: st.bottom, vh: st.vh }));
       await p.click("#cs-ex .ex-more"); await p.waitForTimeout(100);
       const more = await p.evaluate(() => [...document.querySelectorAll("#cs-ex .ex-chip")].map((c) => c.textContent));
       ok(JSON.stringify(more) === JSON.stringify(EX_A.slice(3, 6)) && calls.filter((c) => c === "/examples").length === 1, `${tag}: intake: More cycles the ideas on the device (no new call)`, JSON.stringify(more));
       const k = await ikoState(p), ov = await overlap(p, CLOUD_PARTS);
-      ok(k.shown && k.label === "Talk to Iko" && k.w >= 44 && k.h >= 44 && k.svg && !k.img && k.line === "Hi, I'm Iko. I'm here whenever you need me." && k.active !== "iko", `${tag}: Iko: a pebble (SVG, no image), a labelled button, a short hello; no focus jump`, JSON.stringify(k));
+      ok(k.shown && k.label === "Talk to Iko" && k.w >= 44 && k.h >= 44 && k.svg && !k.img && k.line === "Hi Maya, I'm Iko. Tell me a few things you enjoy, and I'll start your cloud." && k.active !== "iko", `${tag}: Iko: a pebble (SVG, no image), a labelled button, a welcome from the start; no focus jump`, JSON.stringify(k));
       ok(!ov.hits.length && ov.right <= ov.iw, `${tag}: Iko: clear of the start, the fine print and the top`, JSON.stringify(ov));
       ok(calls.filter((c) => c !== "/examples").length === 0, `${tag}: intake: landing makes no calls (the ideas are the shared cached list)`, calls.join());
       await shot(p, width, "1-intake");
@@ -142,6 +142,8 @@ for (const width of [390, 1280]) {
       const inv = await p.evaluate(() => Boolean(document.querySelector(".cloud-flow:not([hidden]) .cf-note.dir-invite")));
       ok(inv && !/grow in yourself/.test(g0.line || ""), `${tag}: the grow line waits while the direction invite is on the cloud`, JSON.stringify({ inv, line: g0.line }));
       await p.click('.cf-note.dir-invite .cf-x'); await p.waitForTimeout(300);
+      /* PR 103: Iko's start reassurance has its say first; the grow line follows it */
+      await p.waitForFunction(() => /grow in yourself too/.test(document.querySelector("#iko-line").hidden ? "" : document.querySelector("#iko-line").textContent), null, { timeout: 15000 });
       const g = await ikoState(p);
       const grow = await p.evaluate(() => [...document.querySelectorAll("#thread .ask")].map((e) => e.innerText).join(" | "));
       ok(/grow in yourself too/.test(g.line) && /When you like: is there something you'd like to grow in yourself\?/.test(grow) && /Optional\./.test(grow), `${tag}: the grow question comes after the path begins, once, from Iko (optional)`, JSON.stringify({ line: g.line, grow }));
@@ -193,11 +195,11 @@ for (const width of [390, 1280]) {
       await p.evaluate(SEED);
       await p.reload({ waitUntil: "networkidle" }); await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(600);
       const d = await ikoState(p), ov0 = await overlap(p, CLOUD_PARTS);
-      ok(d.shown && d.line === "Hi, I'm Iko. I'm here whenever you need me." && !d.sheet && !ov0.hits.length, `${tag}: Iko by default: the pebble and its hello, clear of the Pick up row and the fine print`, JSON.stringify({ d, ov0 }));
+      ok(d.shown && d.line === "Hi Maya, I'm Iko. Tap a point on your cloud to open it, or pick up a card below." && !d.sheet && !ov0.hits.length, `${tag}: Iko by default: the pebble and the cloud's bubble, clear of the Pick up row and the fine print`, JSON.stringify({ d, ov0 }));
       await shot(p, width, "2-iko-default");
-      /* top left, just the pebble; its line under it while it has something to say, then it folds back to the pebble */
-      const tl = await p.evaluate(() => { const r = document.querySelector("#iko").getBoundingClientRect(), l = document.querySelector("#iko-line"), lr = l.hidden ? null : l.getBoundingClientRect(), nav = document.querySelector(".home-nav > :not([hidden]):not(.home-brand)"), nr = nav ? nav.getBoundingClientRect() : null; return { x: r.left, y: r.top, w: r.width, below: Boolean(lr) && lr.top >= r.bottom - 1 && lr.left < 40, navClear: !nr || nr.left >= r.right, talking: document.body.classList.contains("iko-talking") }; });
-      ok(tl.x < 24 && tl.y < 16 && tl.w >= 44 && tl.below && tl.navClear && tl.talking, `${tag}: Iko sits top left (a 44px+ pebble), its hello just under it, the cloud's links clear of it`, JSON.stringify(tl));
+      /* PR 103: bottom left, the pebble; its bubble beside it while it has something to say, then it folds back to the pebble */
+      const tl = await p.evaluate(() => { const r = document.querySelector("#iko").getBoundingClientRect(), l = document.querySelector("#iko-line"), lr = l.hidden ? null : l.getBoundingClientRect(); return { x: r.left, bottom: r.bottom, ih: innerHeight, w: r.width, beside: Boolean(lr) && lr.left >= r.right - 1 && lr.bottom <= innerHeight && lr.right <= innerWidth, topFree: !document.querySelector(".cloud-top #iko, .home-nav #iko"), talking: document.body.classList.contains("iko-talking") }; });
+      ok(tl.x < 24 && tl.bottom > tl.ih - 90 && tl.bottom <= tl.ih && tl.w >= 44 && tl.beside && tl.topFree && tl.talking, `${tag}: Iko sits bottom left (a 44px+ pebble), its bubble beside it, nothing at the top`, JSON.stringify(tl));
       await p.waitForFunction(() => document.querySelector("#iko-line").hidden, null, { timeout: 12000 }); await p.waitForTimeout(100); /* the hello's own 9 s */
       const fold = await p.evaluate(() => ({ pebble: !document.querySelector("#iko-wrap").hidden, line: !document.querySelector("#iko-line").hidden, talking: document.body.classList.contains("iko-talking") }));
       ok(fold.pebble && !fold.line && !fold.talking, `${tag}: once said, it folds back to just the pebble`, JSON.stringify(fold));

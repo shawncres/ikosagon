@@ -40,6 +40,10 @@
     /* a cloud of any size: the camera stands further back (camD) and Recentre frames the whole cloud (home) once
        subjects reach the outer shells; a cloud of up to 12 subjects is exactly as before (camD 3.2, zoom 1) */
     var camD = 3.2, home = HOME, zfloor = ZMIN, colors = {}, done = {}, rootBox = null, hideRoot = false;
+    /* PR 103: a little more life as the cloud grows: vivid (0..1, from how many topics are finished), each subject's fill (its
+       finished share: a soft halo of its own colour that warms as the branch fills in), and fadeK, a branch left alone
+       for weeks drawn a little quieter (C.fadeOf; never removed, back at once with any activity) */
+    var vivid = 0, fill = {}, fadeK = {}, subOf = {};
 
     function resize() {
       var r = canvas.getBoundingClientRect();
@@ -54,7 +58,7 @@
       var first = !cloud;
       cloud = c;
       pos = c ? C.layout(c) : {};
-      depth = {}; pathRank = {}; kids = {}; colors = {}; done = {};
+      depth = {}; pathRank = {}; kids = {}; colors = {}; done = {}; fill = {}; fadeK = {}; subOf = {}; vivid = 0;
       var ext = 1;
       if (c) C.subjects(c).forEach(function (s) { var p = pos[s.id]; if (p) ext = Math.max(ext, Math.hypot(p.x, p.y, p.z)); });
       camD = Math.max(3.2, ext * 1.7);
@@ -66,6 +70,23 @@
         Object.keys(pos).forEach(function (id) { depth[id] = pos[id].d; });
         /* finished topics (worked out once per cloud, not per frame): their lines take the node's own colour */
         c.order.forEach(function (id) { if (c.nodes[id] && c.nodes[id].parent && C.isDone(c, id)) done[id] = 1; });
+        var tally = {}, now = Date.now(), nDone = 0;
+        var last = {};
+        C.subjects(c).forEach(function (sj) { tally[sj.id] = { all: 0, done: 0 }; subOf[sj.id] = sj.id; last[sj.id] = Math.max(sj.touched || 0, sj.heatAt || 0, sj.born || 0); });
+        c.order.forEach(function (id) {
+          var n = c.nodes[id];
+          if (!n || !n.parent) return;
+          var sid = C.ancestry(c, id)[0], t = tally[sid];
+          subOf[id] = sid;
+          if (sid in last) last[sid] = Math.max(last[sid], n.touched || 0, n.heatAt || 0, n.born || 0);
+          if (!t || n.ghost) return;
+          t.all += 1; if (done[id]) { t.done += 1; nDone += 1; }
+        });
+        /* one pass for every branch's last activity (the same rule as C.fadeOf) */
+        Object.keys(last).forEach(function (sid) { fadeK[sid] = 1 - (C.fadeAfter ? C.fadeAfter(last[sid], now) : 0); });
+        Object.keys(subOf).forEach(function (id) { if (fadeK[id] == null) fadeK[id] = fadeK[subOf[id]] == null ? 1 : fadeK[subOf[id]]; });
+        Object.keys(tally).forEach(function (sid) { fill[sid] = tally[sid].all ? tally[sid].done / tally[sid].all : 0; });
+        vivid = Math.min(1, nDone / 12);
         c.order.forEach(function (id) {
           var n = c.nodes[id];
           if (n && n.path) n.path.ids.forEach(function (x, i) { if (c.nodes[x] && c.nodes[x].parent === id) pathRank[x] = i + 1; });
@@ -168,11 +189,11 @@
         var n = it.n, side = n.role === "optional" && n.off && at[n.off], from = side ? at[n.off] : n.parent ? at[n.parent] : rootP;
         if (!from) return;
         ctx.save();
-        var fade = Math.min(1, 0.55 + reads(n.id)) * (!mini && focusId && !focusSet[n.id] ? 0.5 : 1), fin = done[n.id], k = mini ? 0.8 : 1;
+        var fade = Math.min(1, 0.55 + reads(n.id)) * (!mini && focusId && !focusSet[n.id] ? 0.5 : 1) * (fadeK[n.id] == null ? 1 : fadeK[n.id]), fin = done[n.id], k = mini ? 0.8 : 1;
         if (n.absorbedInto && n.absorbedInto === n.parent) { ctx.globalAlpha = 0.7 * it.p.f * fade; ctx.lineWidth = 1 * k; ctx.strokeStyle = colorOf(n); from = at[n.parent] || from; }
         else if (side) { ctx.setLineDash([1.5, 3]); ctx.globalAlpha = (fin ? 0.75 : 0.5) * it.p.f * fade; ctx.lineWidth = 1.1 * k; ctx.strokeStyle = fin ? colorOf(n) : INK; }
         else if (n.ghost) { ctx.setLineDash([2, 4]); ctx.globalAlpha = 0.42 * it.p.f * fade; ctx.lineWidth = 1 * k; ctx.strokeStyle = INK; }
-        else if (n.parent && fin) { ctx.globalAlpha = 0.92 * it.p.f * fade; ctx.lineWidth = 1.7 * k; ctx.strokeStyle = colorOf(n); }
+        else if (n.parent && fin) { ctx.globalAlpha = 0.92 * it.p.f * fade; ctx.lineWidth = (1.7 + 0.7 * vivid) * k; ctx.strokeStyle = colorOf(n); }
         else if (n.parent) { ctx.globalAlpha = 0.66 * it.p.f * fade; ctx.lineWidth = 1.2 * k; ctx.strokeStyle = INK; }
         else { ctx.globalAlpha = 0.5 * fade; ctx.lineWidth = 1.2 * k; ctx.strokeStyle = INK; }
         ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(it.p.x, it.p.y); ctx.stroke();
@@ -183,7 +204,8 @@
       var labels = [];
       items.forEach(function (it) {
         var n = it.n, p = it.p, d = depth[n.id] || 1;
-        var base = !n.parent ? 4.5 + Math.min(6, Math.sqrt(n.weight) * 1.2) : (n.ghost ? 2.2 : 2.4 + Math.min(4, Math.sqrt(n.weight) * 1.1));
+        /* a clear hierarchy: the name (its plate), then subjects, then branches, then their leaves, a little smaller each step */
+        var base = !n.parent ? 5.2 + Math.min(6.5, Math.sqrt(n.weight) * 1.25) : (n.ghost ? 2.2 : (2.4 + Math.min(4, Math.sqrt(n.weight) * 1.1)) * (d >= 3 ? 0.9 : 1));
         var ml = Math.min(3, n.ml || 0), absorbed = Boolean(n.absorbedInto);
         base *= (1 + 0.16 * ml) * (absorbed ? 0.72 : 1); /* merged: a stronger node; absorbed: a small star of its constellation */
         var r = mini ? base * 0.6 : base * Math.max(0.55, Math.min(1.6, reads(n.id) * 0.9 + (d > 1 ? 0.25 : 0))) * p.f;
@@ -191,8 +213,18 @@
         var sel = !mini && n.id === focusId, sk = sel ? selEase(now) : 0;
         if (sel) { r *= 1 + 0.28 * sk; if (sk < 1) pulsing = true; }
         /* quiet: with a node selected, everything off its branch steps back */
-        var quiet = !mini && focusId && !focusSet[n.id] ? 0.55 : 1;
+        var quiet = (!mini && focusId && !focusSet[n.id] ? 0.55 : 1) * (fadeK[n.id] == null ? 1 : fadeK[n.id]);
         ctx.save();
+        if (!n.parent && !mini && !n.ghost) {
+          /* a subject's halo, in its own colour: stronger as its branch fills in and as the cloud grows; calm, never a glare */
+          var fl = fill[n.id] || 0, ha = (0.07 + 0.2 * fl) * (0.55 + 0.45 * vivid) * quiet, hr = r + 7 + 10 * fl;
+          if (ha > 0.02) { /* two soft discs (no gradient: cheap on a cloud of any size) */
+            ctx.fillStyle = col;
+            ctx.globalAlpha = ha * 0.45; ctx.beginPath(); ctx.arc(p.x, p.y, hr, 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = ha * 0.6; ctx.beginPath(); ctx.arc(p.x, p.y, (r + hr) / 2, 0, Math.PI * 2); ctx.fill();
+          }
+          if (fl >= 0.5) { ctx.globalAlpha = 0.28 * quiet; ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(p.x, p.y, r + 3.5, 0, Math.PI * 2); ctx.stroke(); } /* half its branch done: a fine ring of its colour */
+        }
         if (sel) {
           /* the selected node: a soft glow of its own colour and a fine ink ring that fade in (no motion with reduced motion) */
           var gl = ctx.createRadialGradient(p.x, p.y, r * 0.6, p.x, p.y, r + 16);
@@ -234,7 +266,7 @@
         if (absorbed && !focusSet[n.id]) la *= 0.55; /* the constellation reads as one: its labels stay quiet until focused */
         if (age < 6000 || n.id === cloud.next || n.id === focusId) la = Math.max(la, 0.92);
         if (focusId && !focusSet[n.id]) la *= 0.6;
-        la *= Math.min(1, 0.35 + 0.65 * p.f);
+        la *= Math.min(1, 0.35 + 0.65 * p.f) * (fadeK[n.id] == null ? 1 : Math.max(0.7, fadeK[n.id]));
         if (la < 0.03) return;
         var size = !n.parent ? 14 + Math.min(3, n.weight * 0.2) : 12.5;
         var text = (pathRank[n.id] && reads(n.id) >= 0.8 ? pathRank[n.id] + ". " : "") + n.label + (ml ? " " + C.roman(n.ml) : "");
@@ -488,7 +520,7 @@
       reset: function () { apply(Object.assign({ pivot: CAM.ORIGIN }, home)); tween = null; glideV = null; setFocus(null); request(); changed(); },
       /* Recentre: ease back to the whole cloud, the pivot back to the origin, and let go of the focus */
       recentre: function () { setFocus(null); animateTo(Object.assign({ pivot: CAM.ORIGIN }, home), CAM.CAM.focusMs); },
-      state: function () { return { yaw: yaw, pitch: pitch, zoom: zoom, panX: panX, panY: panY, pivot: { x: pivot.x, y: pivot.y, z: pivot.z }, focus: focusId, drawn: projected.length, drawMs: drawMs, moving: Boolean(tween || glideV), spinning: spinning, held: spinHeld }; },
+      state: function () { return { yaw: yaw, pitch: pitch, zoom: zoom, panX: panX, panY: panY, pivot: { x: pivot.x, y: pivot.y, z: pivot.z }, focus: focusId, drawn: projected.length, drawMs: drawMs, moving: Boolean(tween || glideV), spinning: spinning, held: spinHeld, vivid: vivid, fill: Object.assign({}, fill), fade: Object.assign({}, fadeK) }; },
       setView: function (v) { if (v.zoom) setZoom(v.zoom); if (v.yaw != null) yaw = v.yaw; if (v.pitch != null) pitch = v.pitch; if (v.panX != null) panX = v.panX; if (v.panY != null) panY = v.panY; if (v.pivot && isFinite(v.pivot.x) && isFinite(v.pivot.y) && isFinite(v.pivot.z)) pivot = { x: v.pivot.x, y: v.pivot.y, z: v.pivot.z }; if (v.focus !== undefined) setFocus(v.focus); request(); },
       project: function (id) { return pos[id] ? project(pos[id]) : null; },
       focusNode: focusNode,
