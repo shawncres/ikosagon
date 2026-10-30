@@ -18,7 +18,7 @@ import { pathToFileURL } from "node:url";
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const ROOT = path.resolve(arg("--root", "public"));
 if (!process.env.IKOLEARN_PW) { console.log("ikolearn intake e2e: skipped (set IKOLEARN_PW to a playwright-core folder)"); process.exit(0); }
-const { chromium } = await import(pathToFileURL(path.join(process.env.IKOLEARN_PW, "index.mjs")).href);
+const PW = await import(pathToFileURL(path.join(process.env.IKOLEARN_PW, "index.mjs")).href), { chromium } = PW; /* IKOLEARN_BROWSER=webkit|firefox runs the same checks in that engine */
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json" };
 const server = http.createServer((req, res) => {
   let p = decodeURIComponent(new URL(req.url, "http://x").pathname);
@@ -35,7 +35,7 @@ const BASE = process.env.LIVE_BASE || `http://127.0.0.1:${server.address().port}
 let pass = 0;
 const fails = [];
 const ok = (c, name, d = "") => (c ? (pass += 1) : fails.push(`${name}${d ? ` -> ${d}` : ""}`));
-const browser = await chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" });
+const browser = await (process.env.IKOLEARN_BROWSER ? PW[process.env.IKOLEARN_BROWSER].launch() : chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" }));
 /* the cloud view (to read the canvas) and a visualViewport the test can shrink, as an on-screen keyboard would */
 const HOOK = () => {
   let real; Object.defineProperty(window, "IkoCloudView", { configurable: true, get: () => real, set: (v) => { real = Object.assign({}, v, { create: (c, o) => { const view = v.create(c, o); (window.__views = window.__views || []).push({ id: c.id, view }); return view; } }); } });
@@ -65,7 +65,7 @@ async function intake(s) {
   const errs = [];
   p.on("pageerror", (e) => errs.push("pageerror " + e.message));
   p.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource/.test(m.text())) errs.push(m.text()); });
-  if (s.inset) { const cdp = await ctx.newCDPSession(p); await cdp.send("Emulation.setSafeAreaInsetsOverride", { insets: s.inset }); }
+  if (s.inset && !process.env.IKOLEARN_BROWSER) { const cdp = await ctx.newCDPSession(p); await cdp.send("Emulation.setSafeAreaInsetsOverride", { insets: s.inset }); }
   await p.addInitScript(HOOK);
   let more = 0;
   await p.route("**/api/ikolearn/**", (r) => {
@@ -84,7 +84,6 @@ const boxes = (p) => p.evaluate(() => {
   const add = (name, e, tap) => { if (!vis(e)) return; const r = e.getBoundingClientRect(); if (r.width && r.height) out.push({ name, tap: Boolean(tap), x: r.left, y: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height }); };
   add("Iko", document.querySelector("#iko"), true);
   add("Iko's line", document.querySelector("#iko-line"));
-  add("Iko's cue", document.querySelector("#iko-cue"));
   add("name", document.querySelector("#cs-name"));
   add("greeting", document.querySelector("#cs-hi"));
   add("question", document.querySelector("#cs-q"));
@@ -137,17 +136,15 @@ const keyboardUp = async (tag, p, vt, vh, at) => {
 for (const s of SIZES) {
   const tag = s.tag;
   const { ctx, p, errs } = await intake(s);
-  /* 1. as it opens (Iko's hello beside the pebble) */
+  /* 1. as it opens: Iko asks it himself (#104), the greeting and the question his speech beside him; no second bubble */
   const L0 = await boxes(p);
-  ok(Boolean(get(L0, "Iko's line")), `${tag}: Iko says hello on the opening question`);
-  layout(tag, "with Iko's hello", L0);
+  ok(!get(L0, "Iko's line") && await p.evaluate(() => Boolean(document.querySelector("#cloud-start .cs-ask #iko") && document.querySelector(".cs-ask .say #cs-q"))), `${tag}: Iko asks the opening question (it is his speech; no extra bubble)`);
+  layout(tag, "with Iko asking", L0);
   const nm = get(L0, "name"), hi = get(L0, "greeting"), q = get(L0, "question");
   ok(nm && hi && q && Math.abs((nm.x + nm.r) / 2 - L0.w / 2) <= 2 && nm.b <= hi.y && hi.b <= q.y + 1, `${tag}: the name sits centred above the greeting and the question`, JSON.stringify({ nm, hi, q }));
   const iko = get(L0, "Iko"), line = get(L0, "Iko's line");
-  /* PR 103: Iko lives at the bottom now, its welcome beside it, below the whole column (the overlap checks above cover the rest) */
-  const below = L0.out.filter((r) => !/^(Iko|fine print)/.test(r.name)).reduce((m, r) => Math.max(m, r.b), 0);
-  ok(iko && line && iko.y >= below && line.y >= below - 0.5 && line.x >= iko.r - 1 && iko.b <= L0.h, `${tag}: Iko and its welcome sit at the bottom, below the name, the question and the ideas`, JSON.stringify({ iko, line, below }));
-  if (s.inset) ok(iko.b <= L0.h - s.inset.bottom && line.b <= L0.h - s.inset.bottom, `${tag}: Iko clears the safe area at the bottom`, JSON.stringify({ iko, inset: s.inset }));
+  /* #104: Iko beside his question, in the column (below the name, left of the speech), on screen and a 44px target */
+  ok(iko && !line && iko.r <= q.x && iko.y >= nm.b && iko.y < q.b && iko.b <= L0.h && iko.x >= 0, `${tag}: Iko sits beside his question, in the column`, JSON.stringify({ iko, q, nm }));
   /* PR 101: the ideas whole (Shawn: "the chips are getting cut off on bottom"); the name near the middle */
   const C0 = await clipped(p), foot0 = L0.out.filter((r) => r.name.startsWith("fine print")), lastIdea = L0.out.filter((r) => r.name.startsWith("idea ") || r.name === "More").sort((a, b) => b.b - a.b)[0];
   ok(C0.out.length === 0 && !C0.scrolls, `${tag}: no idea, nor the field or Begin, is clipped by the column or anything around it`, JSON.stringify(C0));
@@ -175,13 +172,13 @@ for (const s of SIZES) {
   /* PR 103: ideas add to the field and cycle (they never pile up): still 3 and More, none already in the field */
   const pk = await p.evaluate(() => ({ v: document.querySelector("#cs-in").value, chips: [...document.querySelectorAll("#cs-ex .ex-chip")].map((c) => c.textContent) }));
   ok(pk.chips.length <= 3 && pk.v.split(",").length === 2 && pk.chips.every((c) => !pk.v.toLowerCase().includes(c.toLowerCase())), `${tag}: tapped ideas go into the field and their chips cycle on (no pile-up)`, JSON.stringify(pk));
-  /* 3. Iko's welcome folds away to the pebble (one bubble a screen a visit), still clear of everything */
-  const folded = await p.waitForFunction(() => document.querySelector("#iko-line").hidden, null, { timeout: 13000 }).then(() => true, () => false);
-  ok(folded, `${tag}: Iko's welcome folds away to the pebble`);
+  /* 3. a while later: still no extra bubble over the question (he is already speaking), still clear of everything */
+  await p.waitForTimeout(1500);
+  ok(await p.evaluate(() => document.querySelector("#iko-line").hidden), `${tag}: no second bubble while Iko asks`);
   const L2 = await boxes(p);
-  layout(tag, "with the welcome folded", L2);
+  layout(tag, "a while later", L2);
   const nm2 = get(L2, "name"), nm1 = get(L1, "name");
-  ok(nm2 && Math.abs(nm2.y - nm1.y) <= 1, `${tag}: the question doesn't jump when the hello folds`, JSON.stringify([nm1.y, nm2 && nm2.y]));
+  ok(nm2 && Math.abs(nm2.y - nm1.y) <= 1, `${tag}: the question stays still`, JSON.stringify([nm1.y, nm2 && nm2.y]));
   /* More adds a row or two: the column keeps a row's room for it, and rises (never drops) only as far as the rest needs */
   const ft1 = Math.min(...L1.out.filter((r) => r.name.startsWith("fine print")).map((r) => r.y)), mb1 = Math.max(...L1.out.filter((r) => r.name.startsWith("idea ") || r.name === "More").map((r) => r.b));
   ok(nm1.y <= nm.y + 0.5 && (nm.y - nm1.y <= 1 || ft1 - mb1 <= 12), `${tag}: More moves the question no more than the extra ideas need (only up to the fine print, never clipped)`, JSON.stringify({ was: nm.y, now: nm1.y, gap: ft1 - mb1 }));

@@ -18,7 +18,7 @@
       <h1 class="brand-lg">IkoLearn</h1>
       <p class="lede">A quiet place to learn, with a map that grows as you do. We at Ikosagon keep it simple: you talk, it helps, and your learning cloud fills in around your name.</p>
       <div id="who" class="who" role="group" aria-labelledby="who-q">
-        <p id="who-q" class="who-q">Who's learning?</p>
+        <div class="iko-ask"><span class="iko-still" aria-hidden="true"><svg class="iko-pebble" viewBox="0 0 64 56" width="44" height="39" aria-hidden="true" focusable="false"><path class="iko-body" d="M32 4C49 4 60 14 60 29C60 44 48 52 31 52C15 52 4 44 4 30C4 15 16 4 32 4Z"/><path class="iko-shine" d="M17 15C21 11 26 10 30 10"/><g class="iko-face"><circle class="iko-eye" cx="24" cy="28" r="2.4"/><circle class="iko-eye" cx="40" cy="28" r="2.4"/><path class="iko-mouth" d="M28 36Q32 39 36 36"/></g></svg></span><p id="who-q" class="who-q say">Who's learning?</p></div>
         <div class="who-opts">
           <button type="button" class="btn who-opt" data-who="self">Learning for yourself</button>
           <button type="button" class="btn who-opt" data-who="guide">Guiding other learners</button>
@@ -26,7 +26,7 @@
         <p class="fine">Guiding is for anyone helping one or more people learn. Each learner gets their own cloud and cards. You can change this later.</p>
       </div>
       <form id="name-form" autocomplete="off" hidden>
-        <label for="name-in" id="name-label">What's your first name?</label>
+        <div class="iko-ask"><span class="iko-still" aria-hidden="true"><svg class="iko-pebble" viewBox="0 0 64 56" width="44" height="39" aria-hidden="true" focusable="false"><path class="iko-body" d="M32 4C49 4 60 14 60 29C60 44 48 52 31 52C15 52 4 44 4 30C4 15 16 4 32 4Z"/><path class="iko-shine" d="M17 15C21 11 26 10 30 10"/><g class="iko-face"><circle class="iko-eye" cx="24" cy="28" r="2.4"/><circle class="iko-eye" cx="40" cy="28" r="2.4"/><path class="iko-mouth" d="M28 36Q32 39 36 36"/></g></svg></span><label for="name-in" id="name-label" class="say">What's your first name?</label></div>
         <div class="row"><input id="name-in" name="name" maxlength="30" autocomplete="given-name" required><button type="submit" class="btn">Start</button></div>
         <p id="name-hint" class="fine" hidden>First names only. Add a few at once with commas (Maya, Leo), or more later.</p>
       </form>
@@ -37,7 +37,7 @@
 
     <section id="chat" hidden>
       <header class="bar col">
-        <span class="brand"><button type="button" id="to-cloud" class="link to-cloud" aria-label="Back to your cloud">Your cloud</button><span class="chat-name" aria-hidden="true">Iko</span><a id="who-now" class="who-now" href="/ikolearn/learners" hidden></a></span>
+        <span class="brand"><span id="bar-iko" class="iko-dock"></span><button type="button" id="to-cloud" class="link to-cloud" aria-label="Back to your cloud">Your cloud</button><span class="chat-name" aria-hidden="true">Iko</span><a id="who-now" class="who-now" href="/ikolearn/learners" hidden></a></span>
         <span class="bar-r">
           <button type="button" id="deck-btn" class="link deck-link" hidden>Your deck</button>
           <button type="button" id="thumb" class="thumb" aria-label="Open your learning cloud"><canvas id="thumb-canvas" width="72" height="72"></canvas></button>
@@ -121,7 +121,7 @@
       <canvas id="cloud-canvas" aria-label="Your learning cloud. Drag to move, pinch or scroll to zoom, right-drag or twist to turn, tap a point to bring it close."></canvas>
       <div class="cloud-top">
         <nav class="home-nav" aria-label="IkoLearn">
-          <span class="home-brand" aria-hidden="true">IkoLearn</span>
+          <span id="home-iko" class="iko-dock"></span><span class="home-brand" aria-hidden="true">IkoLearn</span>
           <button type="button" id="cloud-deck" class="minideck home-deck" hidden>Your deck</button>
           <a id="cloud-who" class="who-now" href="/ikolearn/learners" hidden></a>
         </nav>
@@ -130,8 +130,8 @@
       <p class="cloud-hint">Drag to move · Scroll to zoom · Right-drag or Shift-drag to turn · Click a point to bring it close</p>
       <div id="cloud-start" class="cloud-start" hidden>
         <p id="cs-name" class="cs-name" aria-hidden="true"></p>
-        <p id="cs-hi" class="cs-hi"></p>
-        <p id="cs-q" class="cs-q">What are you curious about, or what do you enjoy?</p>
+        <div class="iko-ask cs-ask"><span id="cs-iko" class="iko-dock"></span><div class="say"><p id="cs-hi" class="cs-hi"></p>
+        <p id="cs-q" class="cs-q">What are you curious about, or what do you enjoy?</p></div></div>
         <p id="cs-few" class="cs-few">One thing or a few, whatever's on your mind.</p>
         <form id="cs-form" class="cs-row" autocomplete="off"><input id="cs-in" maxlength="300" placeholder="In your own words" aria-labelledby="cs-q"><button type="submit" class="btn sm">Begin</button></form>
         <div id="cs-ex" class="cs-ex" aria-label="A few ideas"></div>
@@ -158,14 +158,10 @@
     </section>
   </main>
 
+  <p id="iko-line" class="iko-line" role="status" hidden></p>
   <div id="iko-wrap" class="iko-wrap" hidden>
-    <p id="iko-line" class="iko-line" role="status" hidden></p>
     <button type="button" id="iko" class="iko" aria-label="Talk to Iko" aria-haspopup="dialog" aria-expanded="false" aria-controls="iko-sheet">
-      <svg class="iko-pebble" viewBox="0 0 64 56" width="52" height="46" aria-hidden="true" focusable="false">
-        <path class="iko-body" d="M32 4C49 4 60 14 60 29C60 44 48 52 31 52C15 52 4 44 4 30C4 15 16 4 32 4Z"/>
-        <path class="iko-shine" d="M17 15C21 11 26 10 30 10"/>
-        <g class="iko-face"><circle class="iko-eye" cx="24" cy="28" r="2.4"/><circle class="iko-eye" cx="40" cy="28" r="2.4"/><path class="iko-mouth" d="M28 36Q32 39 36 36"/></g>
-      </svg>
+      <svg class="iko-pebble" viewBox="0 0 64 56" width="44" height="39" aria-hidden="true" focusable="false"><path class="iko-body" d="M32 4C49 4 60 14 60 29C60 44 48 52 31 52C15 52 4 44 4 30C4 15 16 4 32 4Z"/><path class="iko-shine" d="M17 15C21 11 26 10 30 10"/><g class="iko-face"><circle class="iko-eye" cx="24" cy="28" r="2.4"/><circle class="iko-eye" cx="40" cy="28" r="2.4"/><path class="iko-mouth" d="M28 36Q32 39 36 36"/></g></svg>
     </button>
   </div>
   <section id="iko-sheet" class="iko-sheet" role="dialog" aria-modal="false" aria-labelledby="iko-name" hidden>

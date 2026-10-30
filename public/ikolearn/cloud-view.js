@@ -27,7 +27,7 @@
     var mini = Boolean(opts.mini);
     var ctx = canvas.getContext("2d");
     var cloud = null, pos = {}, depth = {}, pathRank = {}, highlight = {}, kids = {}, raf = 0, w = 0, h = 0, dpr = 1;
-    var yaw = HOME.yaw, pitch = HOME.pitch, zoom = HOME.zoom, panX = HOME.panX, panY = HOME.panY, pivot = CAM.ORIGIN;
+    var yaw = HOME.yaw, pitch = HOME.pitch, zoom = HOME.zoom, panX = HOME.panX, panY = mini ? 0 : HOME.panY, pivot = CAM.ORIGIN; /* the header's small cloud: its name (the root) at the centre of the circle, PR 104 */
     var pointers = {}, gesture = null, idleSpin = mini && !reduce, tween = null, glideV = null;
     var focusId = null, focusSet = {}, selectAt = 0; /* selectAt: when the focused node was picked (its ring eases in) */
     /* the big cloud's idle spin (camera.js spinState): on only while the overlay is open (spinOn) and nothing covers it (spinHeld) */
@@ -39,7 +39,7 @@
     var tests = {}, testMarks = [];
     /* a cloud of any size: the camera stands further back (camD) and Recentre frames the whole cloud (home) once
        subjects reach the outer shells; a cloud of up to 12 subjects is exactly as before (camD 3.2, zoom 1) */
-    var camD = 3.2, home = HOME, zfloor = ZMIN, colors = {}, done = {}, rootBox = null, hideRoot = false;
+    var camD = 3.2, home = mini ? Object.assign({}, HOME, { panY: 0 }) : HOME, zfloor = ZMIN, colors = {}, done = {}, rootBox = null, hideRoot = false;
     /* PR 103: a little more life as the cloud grows: vivid (0..1, from how many topics are finished), each subject's fill (its
        finished share: a soft halo of its own colour that warms as the branch fills in), and fadeK, a branch left alone
        for weeks drawn a little quieter (C.fadeOf; never removed, back at once with any activity) */
@@ -62,7 +62,7 @@
       var ext = 1;
       if (c) C.subjects(c).forEach(function (s) { var p = pos[s.id]; if (p) ext = Math.max(ext, Math.hypot(p.x, p.y, p.z)); });
       camD = Math.max(3.2, ext * 1.7);
-      home = Object.assign({}, HOME, { zoom: Math.min(1, 1.15 / ext) });
+      home = Object.assign({}, HOME, { zoom: Math.min(1, 1.15 / ext) }, mini ? { panY: 0 } : {});
       zfloor = Math.min(ZMIN, home.zoom * 0.7);
       if (first && c) zoom = home.zoom; /* a restored view (setView) still wins */
       if (c) {
@@ -325,7 +325,12 @@
       if (!hideRoot) {
         ctx.font = (mini ? "600 9px " : "600 20px ") + FONT;
         ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        var tw = ctx.measureText(cloud.name).width, px = mini ? 5 : 15, ph = mini ? 8 : 18, bw = tw + 2 * px;
+        var label = cloud.name, tw = ctx.measureText(label).width, px = mini ? 5 : 15, ph = mini ? 8 : 18;
+        if (mini && tw + 2 * px > w - 8) { /* a long name still fits inside the small circle: a smaller face, then an ellipsis */
+          ctx.font = "600 " + Math.max(7, Math.floor(9 * (w - 8 - 2 * px) / tw)) + "px " + FONT; tw = ctx.measureText(label).width;
+          while (label.length > 2 && tw + 2 * px > w - 8) { label = label.slice(0, -2) + "\u2026"; tw = ctx.measureText(label).width; }
+        }
+        var bw = tw + 2 * px;
         rootBox = { hw: bw / 2, hh: ph };
         ctx.globalAlpha = 0.94; ctx.fillStyle = PAPER;
         pill(rootP.x - bw / 2, rootP.y - ph, bw, 2 * ph); ctx.fill();
@@ -336,7 +341,7 @@
           pill(rootP.x - bw / 2 - 4, rootP.y - ph - 4, bw + 8, 2 * ph + 8); ctx.stroke();
         }
         ctx.globalAlpha = 1; ctx.fillStyle = INK;
-        ctx.fillText(cloud.name, rootP.x, rootP.y + (mini ? 0 : 1));
+        ctx.fillText(label, rootP.x, rootP.y + (mini ? 0 : 1));
       }
       ctx.restore();
 

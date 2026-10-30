@@ -13,7 +13,7 @@ import { pathToFileURL } from "node:url";
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const ROOT = path.resolve(arg("--root", "public")), SHOTS = arg("--shots", "");
 if (!process.env.IKOLEARN_PW) { console.log("ikolearn mobile e2e: skipped (set IKOLEARN_PW to a playwright-core folder)"); process.exit(0); }
-const { chromium } = await import(pathToFileURL(path.join(process.env.IKOLEARN_PW, "index.mjs")).href);
+const PW = await import(pathToFileURL(path.join(process.env.IKOLEARN_PW, "index.mjs")).href), { chromium } = PW; /* IKOLEARN_BROWSER=webkit|firefox runs the same checks in that engine */
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json" };
 const server = http.createServer((req, res) => {
   let p = decodeURIComponent(new URL(req.url, "http://x").pathname);
@@ -28,7 +28,7 @@ const BASE = `http://127.0.0.1:${server.address().port}`;
 let pass = 0;
 const fails = [];
 const ok = (c, name, d = "") => (c ? (pass += 1) : fails.push(`${name}${d ? ` -> ${d}` : ""}`));
-const browser = await chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" });
+const browser = await (process.env.IKOLEARN_BROWSER ? PW[process.env.IKOLEARN_BROWSER].launch() : chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" }));
 /* a visualViewport the test can shrink, as an on-screen keyboard would */
 const HOOK = () => {
   const vv = new EventTarget(); let kb = 0;
@@ -210,7 +210,7 @@ const MIXED = { act: { "Coral Reefs": { ago: 3, done: true }, Shapes: { ago: 2, 
   p.setDefaultTimeout(8000);
   const errs = [];
   p.on("pageerror", (e) => errs.push("pageerror " + e.message));
-  const cdp = await ctx.newCDPSession(p); await cdp.send("Emulation.setSafeAreaInsetsOverride", { insets: { top: 47, bottom: 34 } });
+  if (!process.env.IKOLEARN_BROWSER) { const cdp = await ctx.newCDPSession(p); await cdp.send("Emulation.setSafeAreaInsetsOverride", { insets: { top: 47, bottom: 34 } }); } /* safe-area emulation is Chromium's (CDP) */
   await p.addInitScript(HOOK);
   /* every focus() on Iko's field, from anywhere (an open handler, a transitionend, a timer) */
   await p.addInitScript(() => { const f = HTMLElement.prototype.focus; HTMLElement.prototype.focus = function (...a) { if (this.id === "iko-in") (window.__ikoFocus = window.__ikoFocus || []).push(new Error().stack.split("\n")[2] || ""); return f.apply(this, a); }; });

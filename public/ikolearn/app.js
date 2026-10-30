@@ -2025,6 +2025,7 @@
     var was = intakeOn;
     intakeOn = on;
     if (on !== was) rotatePh();
+    if (on !== was && iko) renderIko(); /* Iko moves into the question's column, or back to the header */
     if (!on) { intakeAt = null; need0 = 0; nameOff = { x: 0, y: 0 }; nameShown = { x: 0, y: 0 }; el.csName.style.transform = ""; document.body.classList.remove("kbd"); el.cs.classList.remove("tight"); el.cs.style.top = ""; }
   }
   function placeStart() {
@@ -2040,7 +2041,7 @@
     if (kbd) {
       /* the field just above the keyboard; the question above it, in view (Iko steps away while the keyboard is up) */
       var low = vt + vh - 10, minTop = vt + 8;
-      var lift = function () { var q = el.csHi.textContent && !el.csHi.hidden && el.csHi.offsetHeight ? el.csHi : el.csQ; return { form: el.csForm.offsetTop + el.csForm.offsetHeight, q: q.offsetTop }; };
+      var lift = function () { var q = el.csHi.textContent && !el.csHi.hidden && el.csHi.offsetHeight ? el.csHi : el.csQ, c0 = el.cs.getBoundingClientRect().top; return { form: el.csForm.offsetTop + el.csForm.offsetHeight, q: Math.min(q.getBoundingClientRect().top, el.cs.querySelector(".cs-ask").getBoundingClientRect().top) - c0 }; };
       var L = lift();
       at = low - L.form;
       if (at + L.q < minTop) { el.cs.classList.add("tight"); L = lift(); at = low - L.form; }
@@ -2050,8 +2051,7 @@
       /* the fine print's visible top (its links and the sun/moon icon), not its line box: the toggle's 44px target reaches
          above and below its line, and the line sits clear of Iko's room (PR 103), so measuring the box would push the name off centre */
       if (fr) { var ink = [].map.call(foot.querySelectorAll("a, .theme-tg svg"), function (x) { return x.getBoundingClientRect().top; }).filter(function (t) { return t > 0; }); if (ink.length) fr = { top: Math.min.apply(null, ink) }; }
-      var lane = laneH && !el.ikoWrap.hidden ? window.innerHeight - laneH : Infinity; /* Iko's room at the bottom (placeIko) */
-      var top = vt + 12, bottom = Math.min(fr ? fr.top - 10 : Infinity, lane - 10, vt + vh - 10);
+      var top = vt + 12, bottom = Math.min(fr ? fr.top - 10 : Infinity, vt + vh - 10);
       var need = el.cs.offsetHeight;
       if (need > bottom - top) { el.cs.classList.add("tight"); need = el.cs.offsetHeight; }
       /* the name at the middle of the screen, as it is on the cloud; as near it as the column fits between Iko and the footer */
@@ -2356,14 +2356,11 @@
     if (!q) return;
     var cw = el.cloudCanvas.clientWidth, ch = el.cloudCanvas.clientHeight, box = el.panel.firstElementChild;
     var pw = el.panel.offsetWidth, ph = (box ? box.offsetHeight : el.panel.scrollHeight) + 2;
-    var at = CAM.cardPlace(q.x, q.y, pw, ph, cw, ch, cloudTop());
-    var x = Math.max(CAM.CARD.margin, Math.min(cw - CAM.CARD.margin - pw, at.x)), y = Math.max(CAM.CARD.margin, at.y);
-    /* clear of Iko at the bottom left (PR 103): a card that would reach down over the pebble is placed within the room above it */
-    var pr = laneH && !el.ikoWrap.hidden ? el.iko.getBoundingClientRect() : null, cr = el.cloudCanvas.getBoundingClientRect();
-    if (pr && pr.width && x < pr.right - cr.left + 8 && y + Math.min(ph, at.maxH) > ch - laneH) {
-      at = CAM.cardPlace(q.x, q.y, pw, ph, cw, ch - laneH, cloudTop());
-      x = Math.max(CAM.CARD.margin, Math.min(cw - CAM.CARD.margin - pw, at.x)); y = Math.max(CAM.CARD.margin, at.y);
-    }
+    /* Iko's chat open as a panel at the left (PR 104): the card is placed in the sky to its right */
+    var off = document.body.classList.contains("iko-side") && !el.ikoSheet.hidden ? Math.max(0, Math.round(el.ikoSheet.getBoundingClientRect().right + 12 - el.cloudCanvas.getBoundingClientRect().left)) : 0;
+    var at = CAM.cardPlace(q.x - off, q.y, pw, ph, cw - off, ch, cloudTop());
+    at.x += off;
+    var x = Math.max(CAM.CARD.margin + off, Math.min(cw - CAM.CARD.margin - pw, at.x)), y = Math.max(CAM.CARD.margin, at.y);
     var sig = x + "," + y + "," + at.maxH + "," + at.side;
     if (sig === cardSig) return;
     cardSig = sig;
@@ -2569,10 +2566,26 @@
     el.ikoSheet.hidden = false;
     el.iko.setAttribute("aria-expanded", "true");
     renderIko();
+    sideIko();
     fitIko();
     /* opens the text field on a mouse and keyboard; on touch the keyboard waits for a tap in the field (so it doesn't
        cover the sheet as it opens). Still tricky focuses the clarification instead. */
     if (!o.tricky && !coarse()) { try { el.ikoIn.focus({ preventScroll: true }); } catch { el.ikoIn.focus(); } }
+  }
+  /*
+   * The chat's frame (PR 104): on a phone a sheet rising from below; on a wide screen a panel hanging from Iko at the top
+   * left, under the header, and the page steps right to make room for it, so it never covers the reading or the deck.
+   */
+  var SIDE_MIN = 1100;
+  function sideIko() {
+    var side = iko.open && window.innerWidth >= SIDE_MIN && !el.ikoWrap.hidden && !intakeOn;
+    var was = document.body.classList.contains("iko-side");
+    document.body.classList.toggle("iko-side", side);
+    if (was !== side && !el.panel.hidden) { cardSig = ""; requestAnimationFrame(placeCard); }
+    if (!side) return;
+    var bar = el.cloud.hidden ? el.chat.querySelector(".bar") : el.cloudTop, b = bar ? bar.getBoundingClientRect().bottom : 0;
+    var top = Math.max(8, Math.round(Math.min(b, el.iko.getBoundingClientRect().bottom + 16)));
+    document.documentElement.style.setProperty("--iko-top", top + "px");
   }
   function coarse() { return Boolean(window.matchMedia && window.matchMedia("(pointer: coarse)").matches); }
   /*
@@ -2595,6 +2608,7 @@
     if (!iko.open) return;
     iko.open = false;
     el.ikoSheet.hidden = true;
+    sideIko();
     fitIko();
     el.iko.setAttribute("aria-expanded", "false");
     if (el.lClar.parentNode === el.ikoSlot) el.lFork.parentNode.insertBefore(el.lClar, el.lFork); /* back into the lesson, answers kept */
@@ -2659,15 +2673,34 @@
   function renderIko() {
     var on = ikoScreen();
     if (iko.open && (!on || (screenCtx().id || "") !== (iko.ctx.id || "") || (screenCtx().view === "chat"))) closeIko(); /* the screen changed under it */
-    el.ikoWrap.hidden = !on || iko.open;
+    dockIko(on);
+    el.ikoWrap.hidden = !on;
     el.iko.classList.toggle("glow", on && !hintSeen("iko")); /* the first visits' cue: until Iko has been opened once (seen.h.iko, v9) */
     if (iko.open) clearTimeout(iko.tipT); /* the sheet is open: no tip (and none again on closing it) */
     else ikoTip(on ? screenCtx() : null);
     document.body.classList.toggle("iko-on", on && el.cloud.hidden);
     document.body.classList.toggle("iko-home", on && !el.cloud.hidden);
-    document.body.classList.toggle("iko-lesson", iko.open && !el.lesson.hidden); /* wide screens: the sheet sits over the card, clear of Where Next */
     ikoActs();
     placeIko();
+  }
+  /*
+   * Where Iko sits (PR 104): in the header's top-left corner, as the button, beside "Your cloud" on the lesson, deck and card
+   * pages and before the brand on the cloud; in the opening question's column while he asks it. His bubble hangs just
+   * under him (on the cloud, over the sky; on the pages, a line of the header itself, so it never covers the page). Both
+   * live in the page's own flow, so nothing drifts or leaves a gap; off screen they wait, hidden, in #iko-wrap's place.
+   */
+  function dockIko(on) {
+    var asking = on && intakeOn, home = on && !asking && !el.cloud.hidden;
+    var slot = !on ? null : asking ? $("cs-iko") : home ? $("home-iko") : $("bar-iko");
+    if (slot && el.ikoWrap.parentNode !== slot) slot.appendChild(el.ikoWrap);
+    if (!slot && el.ikoWrap.parentNode !== document.body) document.body.appendChild(el.ikoWrap);
+    var lineAt = !on || asking ? document.body : home ? el.cloudTop : el.chat.querySelector(".bar");
+    if (lineAt && el.ikoLine.parentNode !== lineAt) {
+      if (!el.ikoLine.hidden && el.ikoLine.hasAttribute("data-tip")) { clearTimeout(iko.lineT); el.ikoLine.hidden = true; } /* a screen's own tip stays with its screen */
+      if (lineAt === document.body) lineAt.insertBefore(el.ikoLine, el.ikoWrap.parentNode === document.body ? el.ikoWrap : null);
+      else lineAt.appendChild(el.ikoLine);
+    }
+    document.body.classList.toggle("iko-asks", asking);
   }
   /*
    * A short bubble for each screen (PR 103): light context and what to do next, from local templates (0 calls). Each screen
@@ -2676,17 +2709,17 @@
    * guidance never repeats across pages and grows quiet as the learner gets comfortable.
    */
   var TIPS = {
-    intake: ["Hi {name}, I'm Iko. Tell me a few things you enjoy, and I'll start your cloud.", "Any words will do: a hobby, a question, something you'd like to get better at."],
-    cloud: ["Hi {name}, I'm Iko. Tap a point on your cloud to open it, or pick up a card below.", "Each branch is something you're exploring. Drag to turn your cloud.", "Not sure where to start? Draw a card and I'll pick a good one."],
+    /* the opening question is Iko's own speech (PR 104): no bubble there. Lines that would repeat a page's own words are gone. */
+    cloud: [{ t: "I like your cloud, it's growing!", ok: function () { return C.subjects(state.cloud).length >= 2 || (state.cloud.deck || []).length >= 1; } }, "I can add new topics anytime. Just {tap} me and tell me what you're curious about."],
     home: ["That's you, in the middle. Your subjects grow around you."],
-    topic: ["Start a lesson here, or open its card to see its branches.", "Lessons are short: read, then check yourself."],
-    learn: ["Read it through. When you're ready, tap Continue to check yourself.", "Take your time with the reading. The questions come after."],
-    check: ["A few quick questions. Get them all right and the card is yours to grow.", "No rush. Each question is about what you just read."],
-    missed: ["Here's another way to see it. Then a fresh set of questions."],
+    topic: ["Curious about this one? {Tap} me and ask anything."],
+    learn: ["Read along and {click} me if you have questions."],
+    check: ["Get them all right and the card is yours to grow.", "No rush. Each question is about what you just read."],
+    missed: ["Take it slowly. You've got this."],
     test: ["An optional test on what you've finished. No pressure."],
-    card: ["Its card: its branches and what you've covered so far."],
-    deck: ["These are the cards you've earned. New ones to pick up are further down.", "Cards gain colour as you show what you've learned."]
+    deck: [{ t: "Wow, your deck is coming along.", ok: function () { return (state.cloud.deck || []).length >= 2; } }, "{Tap} any card to keep it growing."]
   };
+  function tipWords(t) { var c = coarse(); return t.replace("{tap}", c ? "tap" : "click").replace("{Tap}", c ? "Tap" : "Click").replace("{click}", c ? "tap" : "click"); }
   var TIP_MAX = 1;
   function ikoMem() {
     var who = (PR && PR.current(localStorage) || {}).active || "me", all = {};
@@ -2704,8 +2737,8 @@
   function tipsShown() { try { return JSON.parse(sessionStorage.getItem(CUES) || "{}") || {}; } catch { return {}; } }
   function pickTip(key) {
     var m = ikoMem(), list = TIPS[key] || [], best = -1;
-    list.forEach(function (_, i) { var id = key + i, n = m.t[id] || 0; if (n >= TIP_MAX || id === m.last) return; if (best < 0 || n < (m.t[key + best] || 0)) best = i; });
-    return best < 0 ? null : { id: key + best, text: list[best].replace("{name}", state.name || "there"), m: m };
+    list.forEach(function (x, i) { var id = key + i, n = m.t[id] || 0; if (n >= TIP_MAX || id === m.last || (x.ok && !x.ok())) return; if (best < 0 || n < (m.t[key + best] || 0)) best = i; });
+    return best < 0 ? null : { id: key + best, text: tipWords(String(list[best].t || list[best]).replace("{name}", state.name || "there")), m: m };
   }
   function ikoTip(c) {
     var key = tipOf(c);
@@ -2753,27 +2786,17 @@
 
   /* opened by Still tricky, the sheet covers the lesson's buttons on a phone, so it carries "I've got it" itself */
   function ikoActs() { el.ikoActs.hidden = !(iko.open && el.ikoSheet.classList.contains("tricky") && !el.lesson.hidden && !el.lDone.hidden && !el.lGot.hidden && Boolean(el.lClar.querySelector(".clar-opts"))); }
-  /*
-   * At the bottom (PR 103), the companion on every screen: the pebble at the left, its bubble beside it. The room it needs
-   * is kept clear for it (--iko-lane): the cloud's fine print and its Pick up row sit above it, and the lesson, deck and
-   * card pages end above a quiet strip, so the pebble never covers a field, a chip, the deck or the fine print. With the
-   * keyboard up it steps away. The bubble folds away at once if it would touch the selection card, the start or a confirm.
-   */
-  var laneH = 0, laneTop = 0, laneW = 0;
+  /* the bubble steps aside at once if it would touch the selection card or a confirm, and waits while Iko asks the opening question */
   function placeIko() {
-    var w = el.ikoWrap, talking = false, on = !w.hidden && w.getClientRects().length;
+    var on = !el.ikoWrap.hidden && el.ikoWrap.getClientRects().length, talking = false;
     if (on && !el.ikoLine.hidden) {
       var line = el.ikoLine.getBoundingClientRect(), over = function (e) { if (!e || e.hidden || !e.getClientRects().length) return false; var r = e.getBoundingClientRect(); return r.width && r.left < line.right && r.right > line.left && r.top < line.bottom && r.bottom > line.top; };
-      if (line.width && (over(el.cloud.hidden ? null : el.panel) || over(el.ikc))) { clearTimeout(iko.lineT); el.ikoLine.hidden = true; }
+      if (intakeOn || (line.width && (over(el.cloud.hidden ? null : el.panel) || over(el.ikc)))) { clearTimeout(iko.lineT); el.ikoLine.hidden = true; }
       else talking = true;
     }
-    if (on && iko.pendingReact) { var pr = iko.pendingReact; iko.pendingReact = null; setTimeout(function () { ikoLine(pr, 4500); }, 300); }
-    var h = on ? Math.ceil(w.getBoundingClientRect().height) + 8 : ikoScreen() && (iko.open || document.body.classList.contains("kbd")) ? laneH : 0; /* the sheet open or the keyboard up: its room is kept (nothing jumps back) */
-    /* the room only grows at a given width (a longer bubble), so nothing above it moves as a bubble folds or a shorter one shows */
-    if (laneW !== window.innerWidth) { laneW = window.innerWidth; laneTop = 0; }
-    if (h) { laneTop = Math.max(laneTop, h); h = laneTop; }
-    if (h !== laneH) { laneH = h; document.documentElement.style.setProperty("--iko-lane", h + "px"); if (intakeOn) placeStart(); if (!el.panel.hidden) { cardSig = ""; placeCard(); } }
+    if (on && !intakeOn && iko.pendingReact && !iko.open) { var pr = iko.pendingReact; iko.pendingReact = null; setTimeout(function () { ikoLine(pr, 4500); }, 300); }
     document.body.classList.toggle("iko-talking", talking);
+    if (iko.open) sideIko();
   }
   var ikoRaf = 0;
   function placeIkoSoon() { if (!ikoRaf) ikoRaf = requestAnimationFrame(function () { ikoRaf = 0; placeIko(); }); }
@@ -3063,8 +3086,7 @@
     var ids = deckIds();
     refreshSuggest();
     el.dSuggest.textContent = "";
-    var dtip = ids.length ? hintEl("deck") : null;
-    if (dtip) el.dSuggest.appendChild(dtip);
+    /* (the deck's own lede says what cards are: no second tip here, PR 104) */
     el.dSuggest.appendChild(flowBlock("deck"));
     var held = (state.cloud.deck || []).length - ids.length;
     el.dLede.textContent = (ids.length === 1 ? "1 card you've earned" : ids.length + " cards you've earned") + (held ? " (plus " + held + " merged into parent cards)" : "") + ", by subject. Cards move from Sketch to Inked, Tinted and Achieved as you learn, and finished subtopics merge into their parent.";

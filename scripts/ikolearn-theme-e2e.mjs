@@ -14,7 +14,7 @@ import { pathToFileURL } from "node:url";
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const SHOTS = arg("--shots", ""), ROOT = path.resolve(arg("--root", "public"));
 if (!process.env.IKOLEARN_PW) { console.log("ikolearn theme e2e: skipped (set IKOLEARN_PW to a playwright-core folder)"); process.exit(0); }
-const { chromium } = await import(pathToFileURL(path.join(process.env.IKOLEARN_PW, "index.mjs")).href);
+const PW = await import(pathToFileURL(path.join(process.env.IKOLEARN_PW, "index.mjs")).href), { chromium } = PW; /* IKOLEARN_BROWSER=webkit|firefox runs the same checks in that engine */
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json" };
 const server = http.createServer((req, res) => {
   let p = decodeURIComponent(new URL(req.url, "http://x").pathname);
@@ -30,7 +30,7 @@ const BASE = process.env.LIVE_BASE || `http://127.0.0.1:${server.address().port}
 let pass = 0;
 const fails = [];
 const ok = (c, name, d = "") => (c ? (pass += 1) : fails.push(`${name}${d ? ` -> ${d}` : ""}`));
-const browser = await chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" });
+const browser = await (process.env.IKOLEARN_BROWSER ? PW[process.env.IKOLEARN_BROWSER].launch() : chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" }));
 /* the cloud view (to read the canvas), and the theme the page had when <body> first appeared (before any paint) */
 const HOOK = () => {
   let real; Object.defineProperty(window, "IkoCloudView", { configurable: true, get: () => real, set: (v) => { real = Object.assign({}, v, { create: (c, o) => { const view = v.create(c, o); (window.__views = window.__views || []).push({ id: c.id, view }); return view; } }); } });
@@ -147,6 +147,7 @@ for (const width of [390, 1280]) for (const scheme of ["light", "dark"]) {
     /* Iko open */
     await p.click("#iko"); await p.waitForSelector("#iko-sheet:not([hidden])"); await p.waitForTimeout(400);
     aa(tag, "Iko open", await contrast(p, ["#iko-name", "#iko-say", "#iko-about", "#iko-all", "#iko-in"]));
+    await p.mouse.move(1, 1); await p.waitForTimeout(200); /* Iko stays in view while he talks: read his resting colours, not the hover */
     const peb = await p.evaluate(() => { const b = getComputedStyle(document.querySelector("#iko .iko-body")), e = getComputedStyle(document.querySelector("#iko .iko-eye")); return { body: b.fill, edge: b.stroke, eye: e.fill }; });
     ok(scheme === "dark" ? peb.body === "rgb(140, 119, 91)" && peb.eye === "rgb(30, 23, 18)" : peb.body === "rgb(232, 218, 189)", `${tag}: Iko's pebble takes the ${scheme} colours`, JSON.stringify(peb));
     await shot(p, name("iko"));

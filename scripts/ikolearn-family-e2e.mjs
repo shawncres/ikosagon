@@ -15,7 +15,7 @@ import { seedFamily } from "./fixtures/ikolearn-family-seed.mjs";
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const SHOTS = arg("--shots", ""), TAG = arg("--tag", "dashboard"), ROOT = path.resolve(arg("--root", "public"));
 if (!process.env.IKOLEARN_PW) { console.log("ikolearn family e2e: skipped (set IKOLEARN_PW to a playwright-core folder)"); process.exit(0); }
-const { chromium } = await import(pathToFileURL(path.join(process.env.IKOLEARN_PW, "index.mjs")).href);
+const PW = await import(pathToFileURL(path.join(process.env.IKOLEARN_PW, "index.mjs")).href), { chromium } = PW; /* IKOLEARN_BROWSER=webkit|firefox runs the same checks in that engine */
 const require = createRequire(import.meta.url);
 const C = require("../public/ikolearn/cloud-model.js"), P = require("../public/ikolearn/orchestrator.js"), F = require("../public/ikolearn/family.js");
 
@@ -45,7 +45,7 @@ const LESSONS = JSON.stringify({});
 const expect = F.summary(C.deserialize(SAVED), { now: NOW });
 /* the page builds its own summary on load (its own clock); same facts, so the copied text equals this one unless a day boundary passes */
 
-const browser = await chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" });
+const browser = await (process.env.IKOLEARN_BROWSER ? PW[process.env.IKOLEARN_BROWSER].launch() : chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" }));
 
 async function page(width, seeded) {
   const ctx = await browser.newContext({ viewport: { width, height: width < 500 ? 844 : 900 }, timezoneId: "America/Toronto", locale: "en-CA" });

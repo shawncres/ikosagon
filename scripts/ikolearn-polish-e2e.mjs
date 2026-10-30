@@ -15,7 +15,7 @@ import { pathToFileURL } from "node:url";
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const ROOT = path.resolve(arg("--root", "public"));
 if (!process.env.IKOLEARN_PW) { console.log("ikolearn polish e2e: skipped (set IKOLEARN_PW to a playwright-core folder)"); process.exit(0); }
-const { chromium } = await import(pathToFileURL(path.join(process.env.IKOLEARN_PW, "index.mjs")).href);
+const PW = await import(pathToFileURL(path.join(process.env.IKOLEARN_PW, "index.mjs")).href), { chromium } = PW; /* IKOLEARN_BROWSER=webkit|firefox runs the same checks in that engine */
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json" };
 const server = http.createServer((req, res) => {
   let p = decodeURIComponent(new URL(req.url, "http://x").pathname);
@@ -32,7 +32,7 @@ const BASE = process.env.LIVE_BASE || `http://127.0.0.1:${server.address().port}
 let pass = 0;
 const fails = [];
 const ok = (c, name, d = "") => (c ? (pass += 1) : fails.push(`${name}${d ? ` -> ${d}` : ""}`));
-const browser = await chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" });
+const browser = await (process.env.IKOLEARN_BROWSER ? PW[process.env.IKOLEARN_BROWSER].launch() : chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" }));
 const HOOK = () => { let real; Object.defineProperty(window, "IkoCloudView", { configurable: true, get: () => real, set: (v) => { real = Object.assign({}, v, { create: (c, o) => { const view = v.create(c, o); (window.__views = window.__views || []).push({ id: c.id, view }); return view; } }); } }); };
 const nd = (rows) => rows.map((r) => JSON.stringify(r)).join("\n") + "\n";
 const QS = [{ q: "What makes the tides rise and fall?", options: ["The moon's pull", "The wind", "Fish"], answer: 0 }];
@@ -120,7 +120,7 @@ for (const width of [390, 1280]) {
   {
     const { ctx, p, errs } = await boot(width);
     const ik = await box(p, "#iko"), flow = await box(p, ".cloud-flow");
-    ok(ik && ik.x < 24 && ik.b <= (await p.evaluate(() => innerHeight)) && ik.b > (await p.evaluate(() => innerHeight)) - 90 && ik.w >= 44 && ik.h >= 44, `${tag}: Iko: the pebble at the bottom left, 44px (PR 103)`, JSON.stringify(ik));
+    ok(ik && ik.x < 24 && ik.y < 24 && ik.w >= 44 && ik.h >= 44, `${tag}: Iko: the pebble at the top left, 44px (PR 104)`, JSON.stringify(ik));
     ok(!flow || !meets(ik, flow), `${tag}: Iko: never over the invite/return row`, JSON.stringify([ik, flow]));
     await tap(p, "Ocean Life");
     const card = await p.evaluate(() => {
@@ -216,13 +216,13 @@ for (const width of [390, 1280]) {
     await ctx.close();
   }
   {
-    /* PR 103: one Iko at the bottom; each screen gets a short bubble of its own (once a visit), clear of everything; Iko knows the screen */
+    /* PR 104: one Iko at the top left; each screen gets a short bubble of its own (once a visit), clear of everything; Iko knows the screen */
     const { ctx, p, errs } = await open(width);
     await p.goto(BASE + "/ikolearn"); await p.evaluate(SEED, { now: Date.now(), visits: 1 }); await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
     const tip = (re, ms = 3000) => p.waitForFunction((src) => { const l = document.querySelector("#iko-line"); return !l.hidden && new RegExp(src).test(l.getAttribute("data-tip") || ""); }, re.source, { timeout: ms }).then(() => true, () => false);
     const clear = () => p.evaluate(() => {
       const mine = [document.querySelector("#iko"), document.querySelector("#iko-line")].filter((e) => !e.hidden && e.getClientRects().length).map((e) => e.getBoundingClientRect());
-      const hit = [...document.querySelectorAll(".bar .brand > *, #deck-btn, .minideck, .home-nav > *, .cloud-top .zoom, .cloud-flow > *, #panel, #cloud-start, .cloud-hint, #l-done button, #hub-lesson")].filter((e) => !e.hidden && !e.closest("[hidden]") && e.getClientRects().length && mine.some((m) => { const r = e.getBoundingClientRect(); return r.width && m.left < r.right - 0.5 && r.left < m.right - 0.5 && m.top < r.bottom - 0.5 && r.top < m.bottom - 0.5; }));
+      const hit = [...document.querySelectorAll(".bar .brand > *, #deck-btn, .minideck, .home-nav > *, .cloud-top .zoom, .cloud-flow > *, #panel, #cloud-start, .cloud-hint, #l-done button, #hub-lesson")].filter((e) => !e.hidden && !e.closest("[hidden]") && e.getClientRects().length && getComputedStyle(e).visibility !== "hidden" && !e.contains(document.querySelector("#iko")) && !(document.querySelector("#cloud").hidden === false && e.closest("#chat")) && mine.some((m) => { const r = e.getBoundingClientRect(); return r.width && m.left < r.right - 0.5 && r.left < m.right - 0.5 && m.top < r.bottom - 0.5 && r.top < m.bottom - 0.5; }));
       return hit.map((e) => e.id || e.className);
     });
     const about = async () => { await p.click("#iko"); await p.waitForTimeout(350); const a = await p.textContent("#iko-about"); const open = !(await p.isHidden("#iko-sheet")); await p.click("#iko-x"); await p.waitForTimeout(300); return open ? a : "(not open)"; };
@@ -235,7 +235,7 @@ for (const width of [390, 1280]) {
     ok(await tip(/^topic\d$/), `${tag}: Iko bubble: a topic's card has its own`);
     ok((await about()) === "On your cloud · Ocean Life", `${tag}: Iko from a topic's card knows the topic`);
     await p.click("#p-card"); await p.waitForTimeout(700);
-    ok(await tip(/^card\d$/), `${tag}: Iko bubble: its card page has its own`);
+    ok(!(await tip(/^card\d$/, 1500)), `${tag}: Iko bubble: its card page speaks for itself (no second hint)`);
     ok((await clear()).length === 0, `${tag}: Iko bubble: clear of the card page`, JSON.stringify(await clear()));
     ok((await about()) === "On Ocean Life · its card", `${tag}: Iko from the card knows the card`);
     await p.click("#hub-back"); await p.waitForTimeout(700);
@@ -259,8 +259,8 @@ for (const width of [390, 1280]) {
     await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
     await p.click('.who-opt[data-who="self"]'); await p.fill("#name-in", "Maya"); await p.press("#name-in", "Enter");
     await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(900);
-    /* PR 103: Iko welcomes at once (no separate cue) */
-    ok(!(await p.isHidden("#iko-line")) && (await p.getAttribute("#iko-line", "data-tip")) === "intake0", `${tag}: Iko welcomes from the start`);
+    /* PR 104: Iko asks the opening question himself (his speech beside him; no separate bubble) */
+    ok((await p.isHidden("#iko-line")) && await p.evaluate(() => Boolean(document.querySelector("#cloud-start .cs-ask #iko"))), `${tag}: Iko welcomes and asks from the start`);
     await p.click("#iko"); await p.waitForTimeout(350);
     ok((await p.textContent("#iko-about")) === "Getting started", `${tag}: Iko from the intake knows it's the start`);
     await p.click("#iko-x"); await p.waitForTimeout(300);

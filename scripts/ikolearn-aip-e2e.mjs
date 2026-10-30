@@ -13,7 +13,7 @@ import { pathToFileURL } from "node:url";
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const SHOTS = arg("--shots", ""), TAG = arg("--tag", "after"), ROOT = path.resolve(arg("--root", "public"));
 if (!process.env.IKOLEARN_PW) { console.log("ikolearn aip e2e: skipped (set IKOLEARN_PW to a playwright-core folder)"); process.exit(0); }
-const { chromium } = await import(pathToFileURL(path.join(process.env.IKOLEARN_PW, "index.mjs")).href);
+const PW = await import(pathToFileURL(path.join(process.env.IKOLEARN_PW, "index.mjs")).href), { chromium } = PW; /* IKOLEARN_BROWSER=webkit|firefox runs the same checks in that engine */
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json" };
 const server = http.createServer((req, res) => {
   let p = decodeURIComponent(new URL(req.url, "http://x").pathname);
@@ -30,7 +30,7 @@ const BASE = process.env.LIVE_BASE || `http://127.0.0.1:${server.address().port}
 let pass = 0;
 const fails = [];
 const ok = (c, name, d = "") => (c ? (pass += 1) : fails.push(`${name}${d ? ` -> ${d}` : ""}`));
-const browser = await chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" });
+const browser = await (process.env.IKOLEARN_BROWSER ? PW[process.env.IKOLEARN_BROWSER].launch() : chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" }));
 const HOOK = () => { let real; Object.defineProperty(window, "IkoCloudView", { configurable: true, get: () => real, set: (v) => { real = Object.assign({}, v, { create: (c, o) => { const view = v.create(c, o); (window.__views = window.__views || []).push({ id: c.id, view }); return view; } }); } }); };
 
 /* the mocked API. examples: the shared, cached list (the only source of the intake's ideas); off with ex: null */
@@ -247,7 +247,7 @@ for (const width of [390, 1280]) {
     try {
       await p.waitForTimeout(600);
       const k = await p.evaluate(() => { const b = document.querySelector("#iko"), r = b.getBoundingClientRect(), l = document.querySelector("#iko-line"); return { shown: !b.hidden && r.width >= 44, label: b.getAttribute("aria-label"), svg: Boolean(b.querySelector("svg.iko-pebble")), line: l.hidden ? "" : l.textContent }; });
-      ok(k.shown && k.label === "Talk to Iko" && k.svg && /^Hi Maya, I'm Iko\./.test(k.line), `${tag} audit: on a 40-subject cloud, the Iko pebble (SVG) and its hello on an early visit`, JSON.stringify(k));
+      ok(k.shown && k.label === "Talk to Iko" && k.svg && /^(I like your cloud, it's growing!|I can add new topics anytime\.)/.test(k.line), `${tag} audit: on a 40-subject cloud, the Iko pebble (SVG) and one of his short cloud lines on an early visit`, JSON.stringify(k));
       ok(await tap(p, "Zoology"), `${tag} audit: Zoology's card (outer shell)`);
       await p.click("#p-chat"); await p.waitForTimeout(300);
       ok((await sheet(p)).about === "On your cloud · Zoology", `${tag} audit: Iko opens with the card's context`, (await sheet(p)).about);
