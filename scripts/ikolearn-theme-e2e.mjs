@@ -147,6 +147,7 @@ for (const width of [390, 1280]) for (const scheme of ["light", "dark"]) {
     /* Iko open */
     await p.click("#iko"); await p.waitForSelector("#iko-sheet:not([hidden])"); await p.waitForTimeout(400);
     aa(tag, "Iko open", await contrast(p, ["#iko-name", "#iko-say", "#iko-about", "#iko-all", "#iko-in"]));
+    await p.mouse.move(1, 1); await p.waitForTimeout(200); /* Iko stays in view while he talks: read his resting colours, not the hover */
     const peb = await p.evaluate(() => { const b = getComputedStyle(document.querySelector("#iko .iko-body")), e = getComputedStyle(document.querySelector("#iko .iko-eye")); return { body: b.fill, edge: b.stroke, eye: e.fill }; });
     ok(scheme === "dark" ? peb.body === "rgb(140, 119, 91)" && peb.eye === "rgb(30, 23, 18)" : peb.body === "rgb(232, 218, 189)", `${tag}: Iko's pebble takes the ${scheme} colours`, JSON.stringify(peb));
     await shot(p, name("iko"));

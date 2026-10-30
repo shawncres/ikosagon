@@ -247,7 +247,7 @@ for (const width of [390, 1280]) {
     try {
       await p.waitForTimeout(600);
       const k = await p.evaluate(() => { const b = document.querySelector("#iko"), r = b.getBoundingClientRect(), l = document.querySelector("#iko-line"); return { shown: !b.hidden && r.width >= 44, label: b.getAttribute("aria-label"), svg: Boolean(b.querySelector("svg.iko-pebble")), line: l.hidden ? "" : l.textContent }; });
-      ok(k.shown && k.label === "Talk to Iko" && k.svg && /^Hi Maya, I'm Iko\./.test(k.line), `${tag} audit: on a 40-subject cloud, the Iko pebble (SVG) and its hello on an early visit`, JSON.stringify(k));
+      ok(k.shown && k.label === "Talk to Iko" && k.svg && /^(I like your cloud, it's growing!|I can add new topics anytime\.)/.test(k.line), `${tag} audit: on a 40-subject cloud, the Iko pebble (SVG) and one of his short cloud lines on an early visit`, JSON.stringify(k));
       ok(await tap(p, "Zoology"), `${tag} audit: Zoology's card (outer shell)`);
       await p.click("#p-chat"); await p.waitForTimeout(300);
       ok((await sheet(p)).about === "On your cloud · Zoology", `${tag} audit: Iko opens with the card's context`, (await sheet(p)).about);
