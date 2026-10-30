@@ -71,15 +71,20 @@
         /* finished topics (worked out once per cloud, not per frame): their lines take the node's own colour */
         c.order.forEach(function (id) { if (c.nodes[id] && c.nodes[id].parent && C.isDone(c, id)) done[id] = 1; });
         var tally = {}, now = Date.now(), nDone = 0;
-        C.subjects(c).forEach(function (sj) { tally[sj.id] = { all: 0, done: 0 }; fadeK[sj.id] = 1 - (C.fadeOf ? C.fadeOf(c, sj.id, now) : 0); subOf[sj.id] = sj.id; });
+        var last = {};
+        C.subjects(c).forEach(function (sj) { tally[sj.id] = { all: 0, done: 0 }; subOf[sj.id] = sj.id; last[sj.id] = Math.max(sj.touched || 0, sj.heatAt || 0, sj.born || 0); });
         c.order.forEach(function (id) {
           var n = c.nodes[id];
           if (!n || !n.parent) return;
           var sid = C.ancestry(c, id)[0], t = tally[sid];
-          subOf[id] = sid; fadeK[id] = fadeK[sid] == null ? 1 : fadeK[sid];
+          subOf[id] = sid;
+          if (sid in last) last[sid] = Math.max(last[sid], n.touched || 0, n.heatAt || 0, n.born || 0);
           if (!t || n.ghost) return;
           t.all += 1; if (done[id]) { t.done += 1; nDone += 1; }
         });
+        /* one pass for every branch's last activity (the same rule as C.fadeOf) */
+        Object.keys(last).forEach(function (sid) { fadeK[sid] = 1 - (C.fadeAfter ? C.fadeAfter(last[sid], now) : 0); });
+        Object.keys(subOf).forEach(function (id) { if (fadeK[id] == null) fadeK[id] = fadeK[subOf[id]] == null ? 1 : fadeK[subOf[id]]; });
         Object.keys(tally).forEach(function (sid) { fill[sid] = tally[sid].all ? tally[sid].done / tally[sid].all : 0; });
         vivid = Math.min(1, nDone / 12);
         c.order.forEach(function (id) {
@@ -213,11 +218,10 @@
         if (!n.parent && !mini && !n.ghost) {
           /* a subject's halo, in its own colour: stronger as its branch fills in and as the cloud grows; calm, never a glare */
           var fl = fill[n.id] || 0, ha = (0.07 + 0.2 * fl) * (0.55 + 0.45 * vivid) * quiet, hr = r + 7 + 10 * fl;
-          if (ha > 0.02) {
-            var hg = ctx.createRadialGradient(p.x, p.y, r * 0.5, p.x, p.y, hr);
-            hg.addColorStop(0, col); hg.addColorStop(1, "rgba(0,0,0,0)");
-            ctx.globalAlpha = ha; ctx.fillStyle = hg;
-            ctx.beginPath(); ctx.arc(p.x, p.y, hr, 0, Math.PI * 2); ctx.fill();
+          if (ha > 0.02) { /* two soft discs (no gradient: cheap on a cloud of any size) */
+            ctx.fillStyle = col;
+            ctx.globalAlpha = ha * 0.45; ctx.beginPath(); ctx.arc(p.x, p.y, hr, 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = ha * 0.6; ctx.beginPath(); ctx.arc(p.x, p.y, (r + hr) / 2, 0, Math.PI * 2); ctx.fill();
           }
           if (fl >= 0.5) { ctx.globalAlpha = 0.28 * quiet; ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(p.x, p.y, r + 3.5, 0, Math.PI * 2); ctx.stroke(); } /* half its branch done: a fine ring of its colour */
         }

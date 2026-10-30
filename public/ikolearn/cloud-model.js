@@ -1592,7 +1592,10 @@
   function fadeOf(cloud, id, now) {
     var s = subjectOf(cloud, id) || node(cloud, id);
     if (!s) return 0;
-    var last = lastActive(cloud, s.id);
+    return fadeAfter(lastActive(cloud, s.id), now);
+  }
+  /* the fade for a branch last active at `last` (ms): 0 .. 1 - FADE.floor (cloud-view works out `last` for every branch in one pass) */
+  function fadeAfter(last, now) {
     if (!last) return 0;
     var days = (now_(now) - last) / 864e5;
     if (days <= FADE.after) return 0;
@@ -1799,7 +1802,7 @@
     attachCard: attachCard, cardsFor: cardsFor, summarize: summarize, knownUnder: knownUnder, subjectLabels: subjectLabels,
     subjects: subjects, childrenOf: childrenOf, ancestry: ancestry, depthOf: depthOf, subjectOf: subjectOf, trail: trail, index: index,
     findSubject: findSubject, findTopic: findTopic, findAny: findAny, norm: norm, cleanLabel: cleanLabel,
-    EASE: EASE, easeOf: easeOf, noteEase: noteEase, FADE: FADE, fadeOf: fadeOf, lastActive: lastActive,
+    EASE: EASE, easeOf: easeOf, noteEase: noteEase, FADE: FADE, fadeOf: fadeOf, fadeAfter: fadeAfter, lastActive: lastActive,
     colorOf: colorOf, levelScale: levelScale, layout: layout, serialize: serialize, deserialize: deserialize, trimThread: trimThread
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;

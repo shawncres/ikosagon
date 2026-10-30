@@ -2047,6 +2047,9 @@
       if (at + L.q < minTop) at = minTop - L.q;
     } else {
       var foot = el.cloud.querySelector(".cloud-foot"), fr = foot && foot.getClientRects().length ? foot.getBoundingClientRect() : null;
+      /* the fine print's visible top (its links and the sun/moon icon), not its line box: the toggle's 44px target reaches
+         above and below its line, and the line sits clear of Iko's room (PR 103), so measuring the box would push the name off centre */
+      if (fr) { var ink = [].map.call(foot.querySelectorAll("a, .theme-tg svg"), function (x) { return x.getBoundingClientRect().top; }).filter(function (t) { return t > 0; }); if (ink.length) fr = { top: Math.min.apply(null, ink) }; }
       var lane = laneH && !el.ikoWrap.hidden ? window.innerHeight - laneH : Infinity; /* Iko's room at the bottom (placeIko) */
       var top = vt + 12, bottom = Math.min(fr ? fr.top - 10 : Infinity, lane - 10, vt + vh - 10);
       var need = el.cs.offsetHeight;

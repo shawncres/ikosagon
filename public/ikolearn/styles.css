@@ -708,8 +708,10 @@ button.gcard:active, button.gslot:active { transform: translateY(-1px) scale(.97
 /* a small tail to the pebble: Iko is the one speaking */
 .iko-line::before { content: ""; position: absolute; left: -6px; bottom: 12px; width: 10px; height: 10px; background: var(--sheet); border-left: 1px solid var(--rule); border-bottom: 1px solid var(--rule); transform: rotate(45deg); }
 /* Iko's room: on the cloud, the fine print and the Pick up row sit above it; elsewhere the page ends above a quiet strip */
-body.iko-home .cloud-foot { bottom: calc(var(--iko-lane, 70px) + 12px + env(safe-area-inset-bottom)); } /* + the sun/moon's 44px target, which reaches past its line */
-body.iko-home .cloud-flow { bottom: calc(var(--iko-lane, 70px) + 58px + env(safe-area-inset-bottom)); }
+body.iko-home .cloud-foot { bottom: calc(var(--iko-lane, 70px) + env(safe-area-inset-bottom)); }
+/* the sun/moon's 44px target reaches up from its line, not down into Iko's room (PR 103) */
+body.iko-home .cloud-foot .theme-tg { margin: -28px -12px 0; }
+body.iko-home .cloud-flow { bottom: calc(var(--iko-lane, 70px) + 46px + env(safe-area-inset-bottom)); }
 body.iko-on #chat { padding-bottom: calc(var(--iko-lane, 70px) + env(safe-area-inset-bottom)); }
 body.iko-on::after { content: ""; position: fixed; left: 0; right: 0; bottom: 0; z-index: 19; height: calc(var(--iko-lane, 70px) + env(safe-area-inset-bottom)); background: var(--paper); border-top: 1px solid var(--rule); }
 /* "always here": until Iko is opened the first time, a warm sepia ring with a soft halo breathes slowly around the pebble
