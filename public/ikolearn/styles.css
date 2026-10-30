@@ -1,4 +1,5 @@
-/* IkoLearn: warm paper, dark ink, lots of room. No webfonts, no icons. */
+/* IkoLearn: warm paper, dark ink, lots of room. No webfonts, no icons. Light and dark (PR 102): every colour is a
+   custom property here; html[data-theme="dark"] (set before the first paint, see theme.js) swaps them for warm ink. */
 :root {
   --paper: #f3ead8;
   --sheet: #f9f3e6;
@@ -6,9 +7,53 @@
   --soft: #5f4e3c;
   --rule: #d8c9ac;
   --fold: #e2d3b4;
+  --ink-rgb: 43, 33, 24; /* the ink, for washes and borders with alpha */
+  --soft-rgb: 95, 78, 60; /* the paper's fibres on cards */
+  --shadow-rgb: 60, 40, 20;
+  --paper-rgb: 243, 234, 216;
+  --sheet-rgb: 249, 243, 230;
+  --hi-rgb: 255, 251, 238; /* a card's sheen */
+  --tray: #c9b597; --tray-a: #c7b393; --tray-b: #bba786; --tray-foot: rgba(90, 70, 45, .14);
+  --pebble: #e8dabd; --pebble-hover: #efe3c9; --pebble-edge: #8f7754; --pebble-shine: #fbf6ea; --pebble-face: #3b2e22;
+  --glow-a: 158, 112, 58; --glow-b: 190, 140, 78; /* Iko's glow */
+  --scrim: rgba(var(--ink-rgb), .18);
+  --art-turn: opacity(1); /* a card's art as drawn */
+  color-scheme: light;
   --col: 680px;
   font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
 }
+/* dark: deep warm brown paper (never black), soft cream ink, the same quiet sepia; text pairs pass WCAG AA */
+html[data-theme="dark"] {
+  --paper: #1e1712;
+  --sheet: #29201a;
+  --ink: #eee2cb;
+  --soft: #c4b195;
+  --rule: #4e3f31;
+  --fold: #3a2e24;
+  --ink-rgb: 238, 226, 203;
+  --soft-rgb: 214, 196, 168;
+  --shadow-rgb: 0, 0, 0;
+  --paper-rgb: 30, 23, 18;
+  --sheet-rgb: 41, 32, 26;
+  --hi-rgb: 255, 236, 205;
+  --tray: #5b4937; --tray-a: #5e4b39; --tray-b: #4c3c2d; --tray-foot: rgba(0, 0, 0, .3);
+  --pebble: #8c775b; --pebble-hover: #9b8567; --pebble-edge: #d8c19b; --pebble-shine: #d9c7a5; --pebble-face: #1e1712;
+  --glow-a: 214, 168, 104; --glow-b: 226, 176, 110;
+  --scrim: rgba(0, 0, 0, .5);
+  --art-paper: #f3ead8; /* a card's art is drawn on paper and turned for the dark page */
+  --art-turn: invert(.86) hue-rotate(180deg) saturate(.85);
+  color-scheme: dark;
+}
+/* a change of theme eases (the first paint never does: the theme is set before it) */
+html.theme-easing, html.theme-easing body, html.theme-easing .iko-sheet, html.theme-easing .node-card, html.theme-easing .gcard { transition: background-color .3s ease, color .3s ease, border-color .3s ease; }
+@media (prefers-reduced-motion: reduce) { html.theme-easing, html.theme-easing * { transition: none !important; } }
+/* the sun/moon in the fine print: one quiet glyph, a 44px target */
+.theme-tg { display: inline-grid; place-items: center; width: 44px; height: 44px; margin: -14px -12px -14px -12px; padding: 0; vertical-align: middle; color: var(--soft); background: none; border: 0; border-radius: 50%; cursor: pointer; }
+.theme-tg:hover { color: var(--ink); }
+.theme-tg svg { display: block; }
+/* the art on cards is drawn for paper: on the dark page it is turned to light lines on dark, keeping its hues */
+.gc-art .art, .md-card .art { filter: var(--art-turn); }
+html[data-theme="dark"] .gc-art .art, html[data-theme="dark"] .md-card .art { background: var(--art-paper); } /* drawn on light paper, then turned as one (--art-turn): warm stays warm */
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--paper); color: var(--ink); }
 body { font-size: 17px; line-height: 1.6; -webkit-text-size-adjust: 100%; }
@@ -90,7 +135,7 @@ a { color: var(--ink); }
   text-align: left; font: inherit; color: var(--ink); border: 1px solid var(--rule); border-radius: 3px; vertical-align: top;
   background-color: var(--sheet);
   background-image: radial-gradient(ellipse at 96% 70%, var(--card-wash), transparent 58%), radial-gradient(ellipse at 4% 100%, var(--card-wash), transparent 46%), var(--tex, linear-gradient(transparent, transparent));
-  box-shadow: inset 0 0 0 3px var(--sheet), inset 0 0 0 4px var(--rule), 0 1px 2px rgba(60, 40, 20, .06);
+  box-shadow: inset 0 0 0 3px var(--sheet), inset 0 0 0 4px var(--rule), 0 1px 2px rgba(var(--shadow-rgb), .06);
   overflow: hidden; isolation: isolate;
 }
 button.gcard { cursor: pointer; }
@@ -121,30 +166,30 @@ button.gcard:hover { border-color: var(--soft); }
 .gcard > .gc-chain, .gcard > .gc-corpus, .gcard > .gc-after, .gcard > .gc-rule { flex-shrink: 1; min-height: 0; } /* never the clamped text: it would cut mid-line */
 .gcard > .gc-bleed, .gcard > .gc-sheen, .gcard > .gc-prog { position: absolute; }
 .gc-bleed { inset: 0; z-index: 0; pointer-events: none; opacity: 0; background: radial-gradient(circle at 22% 20%, var(--card-ink) 0, var(--card-wash) 42%, transparent 72%); mix-blend-mode: multiply; }
-.gc-sheen { inset: 0; z-index: 2; pointer-events: none; background: linear-gradient(115deg, transparent 38%, rgba(255, 251, 238, .6) 48%, transparent 58%); background-size: 260% 100%; background-position: 92% 0; mix-blend-mode: soft-light; opacity: .55; }
+.gc-sheen { inset: 0; z-index: 2; pointer-events: none; background: linear-gradient(115deg, transparent 38%, rgba(var(--hi-rgb), .6) 48%, transparent 58%); background-size: 260% 100%; background-position: 92% 0; mix-blend-mode: soft-light; opacity: .55; }
 /* tiers: frame weight, paper texture and plate grow with rarity; no icons */
-.gcard.tier-sketch .gc-art .art { filter: grayscale(.4) sepia(.3); opacity: .9; }
+.gcard.tier-sketch .gc-art .art { filter: grayscale(.4) sepia(.3) var(--art-turn); opacity: .9; }
 .gcard.tier-inked .gc-chain .gc-link.last { color: var(--ink); }
-.gcard.tier-tinted { border-color: var(--card-soft); border-width: 1.5px; --tex: repeating-linear-gradient(90deg, rgba(95, 78, 60, .03) 0 1px, transparent 1px 5px); box-shadow: inset 0 0 0 3px var(--sheet), inset 0 0 0 4px var(--card-soft), 0 1px 2px rgba(60, 40, 20, .08); }
-.gcard.tier-achieved { --tex: repeating-linear-gradient(90deg, rgba(95, 78, 60, .04) 0 1px, transparent 1px 4px), repeating-linear-gradient(0deg, rgba(95, 78, 60, .025) 0 1px, transparent 1px 6px); }
+.gcard.tier-tinted { border-color: var(--card-soft); border-width: 1.5px; --tex: repeating-linear-gradient(90deg, rgba(var(--soft-rgb), .03) 0 1px, transparent 1px 5px); box-shadow: inset 0 0 0 3px var(--sheet), inset 0 0 0 4px var(--card-soft), 0 1px 2px rgba(var(--shadow-rgb), .08); }
+.gcard.tier-achieved { --tex: repeating-linear-gradient(90deg, rgba(var(--soft-rgb), .04) 0 1px, transparent 1px 4px), repeating-linear-gradient(0deg, rgba(var(--soft-rgb), .025) 0 1px, transparent 1px 6px); }
 .gcard.tier-achieved .gc-art { box-shadow: 2px 2px 0 var(--sheet), 3px 3px 0 var(--card-ink); }
-.gcard.tier-merged { --tex: repeating-linear-gradient(90deg, rgba(95, 78, 60, .05) 0 1px, transparent 1px 4px), repeating-linear-gradient(0deg, rgba(95, 78, 60, .03) 0 1px, transparent 1px 5px);
-  border: 2px solid var(--card-ink); box-shadow: inset 0 0 0 3px var(--sheet), inset 0 0 0 4px var(--card-ink), inset 0 0 0 6px var(--sheet), inset 0 0 0 7px var(--card-soft), 0 2px 6px rgba(60, 40, 20, .16); }
+.gcard.tier-merged { --tex: repeating-linear-gradient(90deg, rgba(var(--soft-rgb), .05) 0 1px, transparent 1px 4px), repeating-linear-gradient(0deg, rgba(var(--soft-rgb), .03) 0 1px, transparent 1px 5px);
+  border: 2px solid var(--card-ink); box-shadow: inset 0 0 0 3px var(--sheet), inset 0 0 0 4px var(--card-ink), inset 0 0 0 6px var(--sheet), inset 0 0 0 7px var(--card-soft), 0 2px 6px rgba(var(--shadow-rgb), .16); }
 .gcard.tier-merged .gc-art { border-color: var(--card-ink); outline: 1px solid var(--card-soft); outline-offset: 2px; box-shadow: none; }
 .gcard.tier-merged .gc-mark { color: var(--card-ink); font-weight: 600; }
 .gcard.tier-merged .gc-sheen { opacity: .8; }
 .gcard.tier-merged .gc-pips .pip { opacity: 1; box-shadow: 0 0 0 1px var(--sheet), 0 0 0 1.5px var(--card-ink); }
-.gcard.lv-2, .gcard.lv-3, .gcard.lv-4 { box-shadow: inset 0 0 0 3px var(--sheet), inset 0 0 0 4px var(--card-ink), inset 0 0 0 6px var(--sheet), inset 0 0 0 7px var(--card-ink), 0 3px 9px rgba(60, 40, 20, .2); }
+.gcard.lv-2, .gcard.lv-3, .gcard.lv-4 { box-shadow: inset 0 0 0 3px var(--sheet), inset 0 0 0 4px var(--card-ink), inset 0 0 0 6px var(--sheet), inset 0 0 0 7px var(--card-ink), 0 3px 9px rgba(var(--shadow-rgb), .2); }
 /* the colour-evolution transition: an ink wash bleeds out from the plate as the card takes its new colour */
 .gcard.evolve .gc-bleed { animation: ink-bleed 1.4s cubic-bezier(.2, .6, .2, 1) 1 both; }
 .gcard.evolve .gc-art .art { animation: wash-in 1.4s ease-out 1 both; }
 .gcard.evolve .gc-sheen, button.gcard:hover .gc-sheen { animation: sheen 1.6s ease-in-out 1; }
 .gcard.merged-up { animation: gather 1.2s ease-out 1; }
 @keyframes ink-bleed { 0% { opacity: .75; clip-path: circle(0% at 22% 20%); } 50% { opacity: .5; } 100% { opacity: 0; clip-path: circle(150% at 22% 20%); } }
-@keyframes wash-in { from { filter: grayscale(1) sepia(.7) contrast(.9); } to { filter: none; } }
+@keyframes wash-in { from { filter: grayscale(1) sepia(.7) contrast(.9) var(--art-turn); } to { filter: var(--art-turn); } }
 @keyframes sheen { from { background-position: 130% 0; } to { background-position: -30% 0; } }
 @keyframes gather { from { outline: 6px solid var(--card-soft); outline-offset: 12px; } to { outline: 1px solid transparent; outline-offset: 0; } }
-.gcard.achieved { border-color: var(--card-ink); box-shadow: inset 0 0 0 3px var(--sheet), inset 0 0 0 4px var(--card-ink), 0 1px 2px rgba(60, 40, 20, .08); }
+.gcard.achieved { border-color: var(--card-ink); box-shadow: inset 0 0 0 3px var(--sheet), inset 0 0 0 4px var(--card-ink), 0 1px 2px rgba(var(--shadow-rgb), .08); }
 .gcard.achieved .gc-mark { color: var(--card-ink); }
 .gcard.stage-3 .gc-art, .gcard.achieved .gc-art { border-color: var(--card-ink); }
 .gcard.size-mini { width: 58px; padding: 4px; justify-content: flex-start; }
@@ -224,7 +269,7 @@ button.gcard:hover { border-color: var(--soft); }
 .holder > .tray { grid-row: 1 / span 2; }
 .holder > .h-note, .holder > .h-kids { grid-column: 2; }
 .tray { position: relative; }
-.tray::after { content: ""; position: absolute; left: -6px; right: -6px; bottom: -6px; height: 12px; border-radius: 3px; background: #c9b597; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 2px 3px rgba(60, 40, 20, .12); }
+.tray::after { content: ""; position: absolute; left: -6px; right: -6px; bottom: -6px; height: 12px; border-radius: 3px; background: var(--tray); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 2px 3px rgba(var(--shadow-rgb), .12); }
 @media (max-width: 899px) {
   .holder .gcard.size-full { padding: 6px 6px 7px; }
   .holder .gcard.size-full .gc-title { font-size: 12.5px; margin-top: 5px; }
@@ -341,7 +386,7 @@ button.gcard:hover { border-color: var(--soft); }
 .zoom #zin, .zoom #zout { font-size: 18px; line-height: 1; }
 .cloud-hint { position: absolute; left: 0; right: 0; top: 58px; width: fit-content; max-width: calc(100% - 32px); margin: 0 auto; box-sizing: border-box; padding: 3px 12px; border-radius: 999px; background: color-mix(in srgb, var(--paper) 90%, transparent); z-index: 2; text-align: center; font-size: 12px; line-height: 1.4; color: var(--soft); opacity: .6; pointer-events: none; } /* the input map, one faint line under the controls */
 /* the selection card: a quiet rounded card next to its node (placed by app.js placeCard / camera.js cardPlace) */
-#panel { position: absolute; left: 12px; top: 72px; z-index: 3; box-sizing: border-box; width: min(320px, calc(100vw - 24px)); max-height: calc(100% - 84px); overflow: auto; overscroll-behavior: contain; background: var(--paper); border: 1px solid var(--rule); border-radius: 12px; box-shadow: 0 8px 28px rgba(60, 40, 20, .12), 0 1px 3px rgba(60, 40, 20, .06); }
+#panel { position: absolute; left: 12px; top: 72px; z-index: 3; box-sizing: border-box; width: min(320px, calc(100vw - 24px)); max-height: calc(100% - 84px); overflow: auto; overscroll-behavior: contain; background: var(--paper); border: 1px solid var(--rule); border-radius: 12px; box-shadow: 0 8px 28px rgba(var(--shadow-rgb), .12), 0 1px 3px rgba(var(--shadow-rgb), .06); }
 .panel-in { position: relative; padding: 14px 16px 12px; }
 .card-x { position: absolute; top: 6px; right: 6px; width: 32px; height: 32px; border: 0; border-radius: 50%; background: transparent; color: var(--soft); font: inherit; font-size: 20px; line-height: 1; cursor: pointer; }
 .card-x:hover, .card-x:focus-visible { background: var(--sheet); color: var(--ink); }
@@ -394,7 +439,7 @@ button.gcard:hover { border-color: var(--soft); }
 .cs-status { margin: 8px 0 0; font-size: 14px; font-style: italic; color: var(--soft); }
 /* the opening question (body.intake, placed by app.js placeStart): a still column; the name on its plate above the question */
 .cs-name { display: none; }
-body.intake .cs-name { display: block; width: fit-content; margin: 4px auto 14px; padding: 4px 15px; font-size: 20px; font-weight: 600; line-height: 28px; letter-spacing: 0; color: var(--ink); background: var(--paper); border: 1.3px solid rgba(43, 33, 24, .62); border-radius: 999px; box-shadow: 0 0 0 3px var(--paper), 0 0 0 4px rgba(43, 33, 24, .2); }
+body.intake .cs-name { display: block; width: fit-content; margin: 4px auto 14px; padding: 4px 15px; font-size: 20px; font-weight: 600; line-height: 28px; letter-spacing: 0; color: var(--ink); background: var(--paper); border: 1.3px solid rgba(var(--ink-rgb), .62); border-radius: 999px; box-shadow: 0 0 0 3px var(--paper), 0 0 0 4px rgba(var(--ink-rgb), .2); }
 body.intake .cloud-top, body.intake .cloud-hint { display: none; } /* nothing to zoom or turn yet */
 body.intake #cloud-canvas { pointer-events: none; }
 body.intake .cloud-start { top: 50%; max-width: calc(100% - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)); overflow: visible; }
@@ -423,8 +468,8 @@ body.intake .iko-cue { order: 1; margin: 18px 0 0; }
   .holder .gcard.size-full { padding-bottom: 42px; } /* the foot clears the tray's lip */
   .holder .gcard.size-full :is(.gc-goal, .gc-corpus) { display: none; }
   .tray { padding: 0 18px; }
-  .tray::after { left: 0; right: 0; bottom: -30px; height: 64px; border-radius: 4px; background: linear-gradient(#c7b393, #bba786); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), inset 0 -2px 0 rgba(0, 0, 0, .06), 0 6px 14px rgba(60, 40, 20, .16); }
-  .tray::before { content: ""; position: absolute; left: 32%; right: 32%; bottom: -6px; height: 12px; border-radius: 2px 2px 6px 6px; background: rgba(90, 70, 45, .14); z-index: 1; }
+  .tray::after { left: 0; right: 0; bottom: -30px; height: 64px; border-radius: 4px; background: linear-gradient(var(--tray-a), var(--tray-b)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .3), inset 0 -2px 0 rgba(0, 0, 0, .06), 0 6px 14px rgba(var(--shadow-rgb), .16); }
+  .tray::before { content: ""; position: absolute; left: 32%; right: 32%; bottom: -6px; height: 12px; border-radius: 2px 2px 6px 6px; background: var(--tray-foot); z-index: 1; }
   .h-note { display: block; font-size: 13px; color: var(--soft); margin: 46px 0 0; }
   .h-kids { margin: 14px 0 0; }
   .h-fold > summary { flex-wrap: wrap; row-gap: 2px; }
@@ -452,14 +497,14 @@ body.intake .iko-cue { order: 1; margin: 18px 0 0; }
 .ex-note { font-size: 13px; color: var(--soft); font-style: italic; }
 .ask-tile .ex-row { margin: 4px 0 8px; }
 .ask-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
-.ask-in { flex: 1 1 180px; min-width: 0; font: inherit; padding: 7px 10px; border: 1px solid rgba(59, 47, 34, 0.35); border-radius: 8px; background: transparent; color: inherit; }
+.ask-in { flex: 1 1 180px; min-width: 0; font: inherit; padding: 7px 10px; border: 1px solid rgba(var(--ink-rgb), 0.35); border-radius: 8px; background: transparent; color: inherit; }
 /* an open question: a quiet lined-paper field in the learner's own words */
 .ask-hint { margin: 2px 0 0; font-size: 0.86rem; opacity: 0.7; font-style: italic; }
-.ask-open-in { flex-basis: 100%; resize: none; line-height: 1.45; padding: 8px 10px; background: rgba(255, 250, 238, 0.55); border-color: rgba(59, 47, 34, 0.28); font-family: inherit; }
-.ask-open-in:focus { outline: none; border-color: rgba(59, 47, 34, 0.6); box-shadow: 0 0 0 3px rgba(150, 110, 60, 0.12); }
+.ask-open-in { flex-basis: 100%; resize: none; line-height: 1.45; padding: 8px 10px; background: rgba(var(--sheet-rgb), 0.55); border-color: rgba(var(--ink-rgb), 0.28); font-family: inherit; }
+.ask-open-in:focus { outline: none; border-color: rgba(var(--ink-rgb), 0.6); box-shadow: 0 0 0 3px rgba(150, 110, 60, 0.12); }
 .cloud-caption { position: absolute; left: 0; right: 0; bottom: 46px; margin: 0; text-align: center; font-style: italic; opacity: 0.8; pointer-events: none; }
 .grow-tile { border-style: dashed; text-align: left; cursor: pointer; }
-.ask-tile { width: 180px; max-width: 100%; padding: 10px 12px; border: 1px dashed rgba(59, 47, 34, 0.4); border-radius: 6px; font-size: 0.92rem; }
+.ask-tile { width: 180px; max-width: 100%; padding: 10px 12px; border: 1px dashed rgba(var(--ink-rgb), 0.4); border-radius: 6px; font-size: 0.92rem; }
 .ask-tile .ask-q { margin: 4px 0 8px; }
 .ask-tile .ask-in { flex-basis: 100%; }
 .gcard .gc-goal { display: block; margin-top: 6px; font-size: 0.8rem; font-style: italic; opacity: 0.8; }
@@ -482,7 +527,7 @@ body.intake .iko-cue { order: 1; margin: 18px 0 0; }
 button.gslot { cursor: pointer; }
 .gslot::before { content: ""; position: absolute; left: 9px; right: 9px; top: 9px; aspect-ratio: 4 / 3; border: 1px dashed var(--rule); opacity: .7; }
 .gslot.ghost { border-style: dotted; }
-.gslot.is-progress { border-style: solid; border-color: var(--rule); background: rgba(249, 243, 230, .7); color: var(--ink); }
+.gslot.is-progress { border-style: solid; border-color: var(--rule); background: rgba(var(--sheet-rgb), .7); color: var(--ink); }
 .gslot.is-progress::before { border-style: solid; border-color: var(--card-ink, var(--rule)); opacity: .35; }
 .gslot.is-covered { border-style: solid; border-color: var(--card-ink, var(--soft)); color: var(--ink); }
 .gs-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; font-size: 13.5px; line-height: 1.2; overflow-wrap: anywhere; }
@@ -493,7 +538,7 @@ button.gslot { cursor: pointer; }
 .album { display: grid; gap: 22px; margin: 18px 0 10px; perspective: 1400px; }
 .album-page {
   position: relative; background: var(--sheet); border: 1px solid var(--rule); border-radius: 4px 6px 6px 4px; padding: 14px 14px 16px 34px;
-  box-shadow: 0 1px 0 var(--rule), 0 10px 18px -12px rgba(60, 40, 20, .35); transform-origin: 0 50%;
+  box-shadow: 0 1px 0 var(--rule), 0 10px 18px -12px rgba(var(--shadow-rgb), .35); transform-origin: 0 50%;
 }
 /* the binder: punched holes down the spine, and a hairline in the subject's colour */
 .album-page::before { content: ""; position: absolute; left: 9px; top: 10px; bottom: 10px; width: 12px; background: radial-gradient(circle at 6px 50%, var(--paper) 0 3.6px, var(--rule) 3.6px 4.6px, transparent 4.8px) 0 0 / 12px 46px repeat-y; }
@@ -562,8 +607,8 @@ button.gslot { cursor: pointer; }
 .link:active { transform: translateY(1px); }
 button.gcard:active, button.gslot:active { transform: translateY(-1px) scale(.97); }
 @media (hover: hover) {
-  .btn:not(.draw-btn):not(:disabled):hover, .chip:hover { background-color: rgba(43, 33, 24, .05); }
-  button.gcard:hover, button.gslot:hover { transform: translateY(-3px) rotate(-.4deg); filter: drop-shadow(0 7px 7px rgba(60, 40, 20, .16)); }
+  .btn:not(.draw-btn):not(:disabled):hover, .chip:hover { background-color: rgba(var(--ink-rgb), .05); }
+  button.gcard:hover, button.gslot:hover { transform: translateY(-3px) rotate(-.4deg); filter: drop-shadow(0 7px 7px rgba(var(--shadow-rgb), .16)); }
 }
 .view-in { animation: view-in .34s cubic-bezier(.2, .7, .2, 1) both; }
 @keyframes view-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
@@ -583,7 +628,7 @@ button.gcard:active, button.gslot:active { transform: translateY(-1px) scale(.97
 /* polish: the mini-Deck (header), newcomer hints, further reading */
 .minideck { position: relative; width: 46px; height: 56px; padding: 0; border: 0; background: none; cursor: pointer; flex: none; }
 .md-fan { position: absolute; inset: 0; transform-origin: 50% 100%; animation: md-drift 7s ease-in-out infinite; }
-.md-card { position: absolute; left: 50%; bottom: 5px; width: 30px; height: 42px; margin-left: -15px; overflow: hidden; background: var(--sheet); border: 1px solid var(--rule); border-radius: 3px; box-shadow: 0 1px 2px rgba(60, 40, 20, .14); transform-origin: 50% 100%; transform: rotate(calc((var(--i, 0) - (var(--n, 1) - 1) / 2) * 11deg)); }
+.md-card { position: absolute; left: 50%; bottom: 5px; width: 30px; height: 42px; margin-left: -15px; overflow: hidden; background: var(--sheet); border: 1px solid var(--rule); border-radius: 3px; box-shadow: 0 1px 2px rgba(var(--shadow-rgb), .14); transform-origin: 50% 100%; transform: rotate(calc((var(--i, 0) - (var(--n, 1) - 1) / 2) * 11deg)); }
 .md-card .art { display: block; width: 100%; height: 64%; }
 .md-card.t2 { border-color: var(--soft); }
 .md-card.t3 { border-color: var(--ink); }
@@ -596,7 +641,7 @@ button.gcard:active, button.gslot:active { transform: translateY(-1px) scale(.97
 .minideck.pulse::after { content: ""; position: absolute; inset: 4px 2px 2px; border-radius: 6px; animation: md-ring 1.4s ease-out 1; pointer-events: none; }
 @keyframes md-drift { 0%, 100% { transform: rotate(-1.6deg); } 50% { transform: rotate(1.6deg) translateY(-1px); } }
 @keyframes md-pulse { 0% { transform: scale(1); } 30% { transform: scale(1.12) translateY(-2px); } 100% { transform: scale(1); } }
-@keyframes md-ring { 0% { box-shadow: 0 0 0 0 rgba(43, 33, 24, .3); } 100% { box-shadow: 0 0 0 10px rgba(43, 33, 24, 0); } }
+@keyframes md-ring { 0% { box-shadow: 0 0 0 0 rgba(var(--ink-rgb), .3); } 100% { box-shadow: 0 0 0 10px rgba(var(--ink-rgb), 0); } }
 @media (max-width: 699px) { .deck-link { display: none; } } /* on phones the mini-Deck is the way in */
 .hint { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 8px 0 12px; padding: 2px 0 2px 12px; border-left: 2px solid var(--rule); font-size: 14.5px; font-style: italic; color: var(--soft); }
 .hint-x { font-size: 13px; font-style: normal; color: var(--soft); white-space: nowrap; }
@@ -638,15 +683,15 @@ button.gcard:active, button.gslot:active { transform: translateY(-1px) scale(.97
 @media (min-width: 500px) { .iko-wrap { left: calc(12px + env(safe-area-inset-left)); top: calc(8px + env(safe-area-inset-top)); } }
 .iko { pointer-events: auto; width: 56px; height: 56px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; display: grid; place-items: center; }
 .iko-pebble { display: block; overflow: visible; }
-.iko-body { fill: #e8dabd; stroke: #8f7754; stroke-width: 1.6; }
-.iko-shine { fill: none; stroke: #fbf6ea; stroke-width: 2.2; stroke-linecap: round; opacity: .8; }
-.iko-eye { fill: #3b2e22; }
-.iko-mouth { fill: none; stroke: #3b2e22; stroke-width: 1.7; stroke-linecap: round; }
-.iko .iko-pebble { filter: drop-shadow(0 1px 1.5px rgba(60, 40, 20, .18)); transform-origin: 50% 90%; animation: iko-breathe 7s ease-in-out infinite; }
-.iko:hover .iko-body, .iko:focus-visible .iko-body { fill: #efe3c9; }
+.iko-body { fill: var(--pebble); stroke: var(--pebble-edge); stroke-width: 1.6; }
+.iko-shine { fill: none; stroke: var(--pebble-shine); stroke-width: 2.2; stroke-linecap: round; opacity: .8; }
+.iko-eye { fill: var(--pebble-face); }
+.iko-mouth { fill: none; stroke: var(--pebble-face); stroke-width: 1.7; stroke-linecap: round; }
+.iko .iko-pebble { filter: drop-shadow(0 1px 1.5px rgba(var(--shadow-rgb), .18)); transform-origin: 50% 90%; animation: iko-breathe 7s ease-in-out infinite; }
+.iko:hover .iko-body, .iko:focus-visible .iko-body { fill: var(--pebble-hover); }
 .iko:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 @keyframes iko-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.025, .985); } }
-.iko-line { pointer-events: auto; order: 1; position: relative; margin: 0 0 0 4px; max-width: min(280px, calc(100vw - 28px)); font-size: 14px; line-height: 1.4; color: var(--soft); background: var(--sheet); border: 1px solid var(--rule); border-radius: 12px; padding: 7px 11px; box-shadow: 0 4px 14px rgba(60, 40, 20, .08); animation: iko-line-in .4s ease; }
+.iko-line { pointer-events: auto; order: 1; position: relative; margin: 0 0 0 4px; max-width: min(280px, calc(100vw - 28px)); font-size: 14px; line-height: 1.4; color: var(--soft); background: var(--sheet); border: 1px solid var(--rule); border-radius: 12px; padding: 7px 11px; box-shadow: 0 4px 14px rgba(var(--shadow-rgb), .08); animation: iko-line-in .4s ease; }
 /* a small tail up to the pebble: Iko is the one speaking */
 .iko-line::before { content: ""; position: absolute; left: 20px; top: -6px; width: 10px; height: 10px; background: var(--sheet); border-left: 1px solid var(--rule); border-top: 1px solid var(--rule); transform: rotate(45deg); }
 /* the pebble sits top left: the cloud's own links and the chat header make room for it */
@@ -656,13 +701,13 @@ body.iko-home .home-nav { padding-left: 54px; min-height: 40px; }
 /* "always here": until Iko is opened the first time, a warm sepia ring with a soft halo breathes slowly around the pebble
    (a still ring and halo with reduced motion) */
 .iko { position: relative; }
-.iko.glow::before { content: ""; position: absolute; inset: 4px 1px 6px; border-radius: 50%; pointer-events: none; box-shadow: 0 0 0 2px rgba(158, 112, 58, .4), 0 0 10px 4px rgba(190, 140, 78, .26); animation: iko-glow 4.8s ease-in-out infinite; }
-@keyframes iko-glow { 0%, 100% { box-shadow: 0 0 0 2px rgba(158, 112, 58, .36), 0 0 9px 3px rgba(190, 140, 78, .22); } 50% { box-shadow: 0 0 0 3px rgba(158, 112, 58, .58), 0 0 18px 8px rgba(190, 140, 78, .38); } }
+.iko.glow::before { content: ""; position: absolute; inset: 4px 1px 6px; border-radius: 50%; pointer-events: none; box-shadow: 0 0 0 2px rgba(var(--glow-a), .4), 0 0 10px 4px rgba(var(--glow-b), .26); animation: iko-glow 4.8s ease-in-out infinite; }
+@keyframes iko-glow { 0%, 100% { box-shadow: 0 0 0 2px rgba(var(--glow-a), .36), 0 0 9px 3px rgba(var(--glow-b), .22); } 50% { box-shadow: 0 0 0 3px rgba(var(--glow-a), .58), 0 0 18px 8px rgba(var(--glow-b), .38); } }
 /* the screen's cue under the pebble: what Iko can help with here; it fades in, holds a few seconds, fades out */
-.iko-cue { order: 2; margin: -2px 0 0 6px; padding: 1px 8px; font-size: 12.5px; font-style: italic; line-height: 1.5; color: var(--soft); background: rgba(243, 234, 216, .9); border-radius: 10px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .6s ease; }
+.iko-cue { order: 2; margin: -2px 0 0 6px; padding: 1px 8px; font-size: 12.5px; font-style: italic; line-height: 1.5; color: var(--soft); background: rgba(var(--paper-rgb), .9); border-radius: 10px; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .6s ease; }
 .iko-cue.on { opacity: .92; }
 @keyframes iko-line-in { from { opacity: 0; } to { opacity: 1; } }
-.iko-sheet { position: fixed; z-index: 30; left: 8px; right: 8px; bottom: 8px; max-height: min(64vh, 560px); display: flex; flex-direction: column; background: var(--sheet); border: 1px solid var(--rule); border-radius: 14px; box-shadow: 0 6px 24px rgba(60, 40, 20, .14); padding: 10px 14px 8px; }
+.iko-sheet { position: fixed; z-index: 30; left: 8px; right: 8px; bottom: 8px; max-height: min(64vh, 560px); display: flex; flex-direction: column; background: var(--sheet); border: 1px solid var(--rule); border-radius: 14px; box-shadow: 0 6px 24px rgba(var(--shadow-rgb), .14); padding: 10px 14px 8px; }
 @media (min-width: 700px) { .iko-sheet { left: auto; right: 16px; bottom: 16px; width: 390px; } }
 .iko-head { display: flex; align-items: center; gap: 8px; padding-right: 30px; position: relative; }
 .iko-head .card-x { position: absolute; right: -6px; top: -4px; }
@@ -685,7 +730,7 @@ body.iko-home .home-nav { padding-left: 54px; min-height: 40px; }
 #l-done, #l-status { scroll-margin-top: 96px; scroll-margin-bottom: 16px; } /* clear of the sticky header */
 @media (min-width: 1100px) { body.iko-lesson .iko-sheet { left: 16px; right: auto; } }
 .iko-foot { margin: 6px 0 0; text-align: center; font-size: 12.5px; }
-@media (prefers-reduced-motion: reduce) { .iko .iko-pebble, .iko-line { animation: none; } .iko.glow::before { animation: none; box-shadow: 0 0 0 2.5px rgba(158, 112, 58, .48), 0 0 12px 5px rgba(190, 140, 78, .28); } .iko-cue { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .iko .iko-pebble, .iko-line { animation: none; } .iko.glow::before { animation: none; box-shadow: 0 0 0 2.5px rgba(var(--glow-a), .48), 0 0 12px 5px rgba(var(--glow-b), .28); } .iko-cue { transition: none; } }
 
 /* ---------- PR 99: the name's card (stats), cloud files, the earned flight ---------- */
 #panel.is-root .actions { margin-bottom: 8px; }
@@ -705,10 +750,10 @@ body.iko-home .home-nav { padding-left: 54px; min-height: 40px; }
 .d-tools { margin: 28px 0 8px; }
 .w-open { margin-top: 18px; }
 .w-open .link { display: inline-flex; align-items: center; min-height: 44px; }
-.ik-confirm { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: rgba(43, 33, 24, .18); }
+.ik-confirm { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: var(--scrim); }
 .ik-confirm[hidden] { display: none; }
-.ikc-box { width: min(380px, 100%); background: var(--paper); border: 1px solid var(--rule); border-radius: 14px; box-shadow: 0 10px 32px rgba(60, 40, 20, .18); padding: 18px 18px 6px; }
+.ikc-box { width: min(380px, 100%); background: var(--paper); border: 1px solid var(--rule); border-radius: 14px; box-shadow: 0 10px 32px rgba(var(--shadow-rgb), .18); padding: 18px 18px 6px; }
 .ikc-text { margin: 0 0 14px; font-size: 16px; line-height: 1.5; }
 .ikc-box .btn { min-height: 44px; }
-.fly-card { box-shadow: 0 12px 24px rgba(60, 40, 20, .22); border-radius: 4px; will-change: transform, opacity; }
+.fly-card { box-shadow: 0 12px 24px rgba(var(--shadow-rgb), .22); border-radius: 4px; will-change: transform, opacity; }
 @media (max-width: 699px) { .cloud-hint { top: 66px; } }

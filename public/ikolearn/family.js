@@ -175,7 +175,7 @@
   function meter(doc, done, total, hue) {
     var m = el(doc, "span", "fam-meter"); m.setAttribute("aria-hidden", "true");
     var f = el(doc, "span", "fam-fill"); f.style.width = (total ? Math.round(100 * done / total) : 0) + "%";
-    if (hue != null) f.style.background = "hsl(" + hue + " 32% 46%)";
+    if (hue != null) { if (root.IkoTheme) root.IkoTheme.paint(f, { "background-color": "hsl(" + hue + ", 32%, 46%)" }); else f.style.background = "hsl(" + hue + " 32% 46%)"; }
     m.appendChild(f); return m;
   }
   function list(doc, items, fn) { var ul = el(doc, "ul", "fam-list"); items.forEach(function (x) { var li = el(doc, "li"); fn(li, x); ul.appendChild(li); }); return ul; }

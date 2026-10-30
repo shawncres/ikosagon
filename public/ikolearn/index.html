@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#f3ead8">
+  <meta name="color-scheme" content="light dark">
+  <!-- light or dark before the first paint (no flash): the learner's choice on this device, else the device's (theme.js) -->
+  <script>(function(){var m;try{m=localStorage.getItem("ikolearn-theme")}catch(e){}if(m!=="dark"&&m!=="light")m=window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";document.documentElement.setAttribute("data-theme",m);var t=document.querySelector('meta[name="theme-color"]');if(t)t.setAttribute("content",m==="dark"?"#1e1712":"#f3ead8")})()</script>
   <title>IkoLearn</title>
   <link rel="icon" href="/ikolearn/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/ikolearn/styles.css">
@@ -27,7 +30,7 @@
         <div class="row"><input id="name-in" name="name" maxlength="30" autocomplete="given-name" required><button type="submit" class="btn">Start</button></div>
         <p id="name-hint" class="fine" hidden>First name only. You can add more learners later.</p>
       </form>
-      <p class="fine">Your name, chats and cloud stay on this device. <a href="/ikolearn/privacy">Privacy</a></p>
+      <p class="fine" data-theme-slot>Your name, chats and cloud stay on this device. <a href="/ikolearn/privacy">Privacy</a></p>
       <p class="fine w-open">Have an IkoCloud saved as a file? <button type="button" id="w-open" class="link">Open IkoCloud</button></p>
       <p id="w-status" class="fine ct-status" role="status" aria-live="polite"></p>
     </section>
@@ -107,7 +110,7 @@
             <textarea id="input" rows="1" maxlength="1500" placeholder="Ask Iko anything" aria-label="Message to Iko"></textarea>
             <button type="submit" id="send" class="btn">Send</button>
           </form>
-          <p class="fine">Replies come from Gemini and can be wrong. Kept on this device. <a href="/ikolearn/privacy">Privacy</a> · <a href="/ikolearn/family" id="family-link">For parents &amp; teachers</a> · <a href="/ikolearn/learners" id="learners-link">Learners</a> · <button type="button" id="reset" class="link">Start over</button></p>
+          <p class="fine" data-theme-slot>Replies come from Gemini and can be wrong. Kept on this device. <a href="/ikolearn/privacy">Privacy</a> · <a href="/ikolearn/family" id="family-link">For parents &amp; teachers</a> · <a href="/ikolearn/learners" id="learners-link">Learners</a> · <button type="button" id="reset" class="link">Start over</button></p>
         </div>
       </div>
     </section>
@@ -132,7 +135,7 @@
         <div id="cs-ex" class="cs-ex" aria-label="A few ideas"></div>
         <p id="cs-status" class="cs-status" aria-live="polite"></p>
       </div>
-      <p class="cloud-foot fine"><a href="/ikolearn/learners">Learners</a> · <a href="/ikolearn/family">For parents &amp; teachers</a> · <a href="/ikolearn/privacy">Privacy</a></p>
+      <p class="cloud-foot fine" data-theme-slot><a href="/ikolearn/learners">Learners</a> · <a href="/ikolearn/family">For parents &amp; teachers</a> · <a href="/ikolearn/privacy">Privacy</a></p>
       <aside id="panel" class="node-card" hidden aria-labelledby="p-title">
         <div class="panel-in">
           <button type="button" id="p-close" class="card-x" aria-label="Close">&times;</button>
@@ -190,6 +193,7 @@
       <div class="actions"><button type="button" id="ikc-yes" class="btn sm draw-btn">Continue</button><button type="button" id="ikc-no" class="btn sm">Cancel</button></div>
     </div>
   </div>
+  <script src="/ikolearn/theme.js"></script>
   <script src="/ikolearn/cloud-model.js"></script>
   <script src="/ikolearn/rank.js"></script>
   <script src="/ikolearn/deck.js"></script>

@@ -2197,7 +2197,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(pkg.scripts.prebuild === "node scripts/ikolearn-minify.mjs" && /^\^?0\.\d+/.test(pkg.devDependencies.esbuild || ""), "minify: runs before next build (prebuild), esbuild is a dev dependency");
   const mjs = fs.readFileSync("scripts/ikolearn-minify.mjs", "utf8");
   ok(/process\.env\.VERCEL === "1" \|\| process\.env\.IKOLEARN_MINIFY === "1"/.test(mjs) && !/mangleProps|keepNames: false|bundle: true/.test(mjs) && /sourcesContent: true/.test(mjs), "minify: in place only on Vercel's build (or when asked), no property mangling, no bundling, readable source in the maps");
-  eq(minTargets(), ["app.js", "camera.js", "cloud-model.js", "cloud-view.js", "deck.js", "family.css", "family.js", "learners.js", "lesson.js", "orchestrator.js", "profiles.js", "rank.js", "styles.css", "transfer.js"], "minify: every app script and stylesheet (the parents & teachers view and learners too)");
+  eq(minTargets(), ["app.js", "camera.js", "cloud-model.js", "cloud-view.js", "deck.js", "family.css", "family.js", "learners.js", "lesson.js", "orchestrator.js", "profiles.js", "rank.js", "styles.css", "theme.js", "transfer.js"], "minify: every app script and stylesheet (the parents & teachers view and learners too)");
   const min = {}, src = {};
   minTargets().forEach((f) => { src[f] = fs.readFileSync("public/ikolearn/" + f, "utf8"); min[f] = minifyFile(f, src[f]); });
   ok(Object.keys(min).every((f) => min[f].code.length < src[f].length * 0.85 && min[f].code.endsWith(`sourceMappingURL=${f}.map${f.endsWith(".css") ? " */" : ""}\n`)), "minify: every file is smaller and links its source map");
@@ -3056,7 +3056,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(famHtml.indexOf("cloud-model.js") < famHtml.indexOf("rank.js") && famHtml.indexOf("rank.js") < famHtml.indexOf("deck.js") && famHtml.indexOf("deck.js") < famHtml.indexOf("orchestrator.js") && famHtml.indexOf("orchestrator.js") < famHtml.indexOf("family.js"), "family page: the model scripts load in the app's order, the view last");
   ok(/\{ source: "\/ikolearn\/family", destination: "\/ikolearn\/family\.html" \}/.test(fs.readFileSync("next.config.ts", "utf8")), "next.config: /ikolearn/family serves the view (noindex via /ikolearn/:path*)");
   const idx = fs.readFileSync("public/ikolearn/index.html", "utf8");
-  ok(/<a href="\/ikolearn\/family" id="family-link">For parents &amp; teachers<\/a>/.test(idx) && (idx.match(/ikolearn\/family/g) || []).length === 2 && /<p class="cloud-foot fine">[^\n]*<a href="\/ikolearn\/family">For parents &amp; teachers<\/a>/.test(idx), "app: one quiet text link, \"For parents & teachers\", in the chat's footer line and in the cloud's fine print");
+  ok(/<a href="\/ikolearn\/family" id="family-link">For parents &amp; teachers<\/a>/.test(idx) && (idx.match(/ikolearn\/family/g) || []).length === 2 && /<p class="cloud-foot fine"(?: data-theme-slot)?>[^\n]*<a href="\/ikolearn\/family">For parents &amp; teachers<\/a>/.test(idx), "app: one quiet text link, \"For parents & teachers\", in the chat's footer line and in the cloud's fine print");
   ok(/@media print/.test(famCss) && /\.fam-tools[^}]*display: none|\.fam-back, \.fam-tools/.test(famCss), "family page: prints without its buttons");
   const servedFam = ["family.html", "family.css", "family.js"].reduce((n, f) => n + (/\.(js|css)$/.test(f) ? Buffer.byteLength(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.statSync("public/ikolearn/" + f).size), 0);
   ok(servedFam < 20_000, "family page: its own files stay small (under 20 KB served)", String(servedFam));
@@ -3696,6 +3696,48 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/var low = vt \+ vh - 10/.test(app) && /intakeAt\.key === key/.test(app), "intake: with the keyboard the field sits just above it; without, the column's place is worked out fresh for each screen (never left low)");
   ok(/vt \+ vh \/ 2 - nameMid/.test(app), "intake: the name sits at the middle of the screen, as near as the column fits");
   ok(/el\.csName\.addEventListener\("pointerdown"/.test(app) && /function clampName\(\)/.test(app) && /body\.intake \.cs-name \{[^}]*touch-action: none;/.test(css), "intake: the name can be dragged, kept clear of Iko and the text");
+}
+
+/* ================= light and dark (PR 102) ================= */
+{
+  const css = fs.readFileSync("public/ikolearn/styles.css", "utf8"), th = fs.readFileSync("public/ikolearn/theme.js", "utf8");
+  const block = (sel) => { const i = css.indexOf(sel + " {"); return i < 0 ? "" : css.slice(i, css.indexOf("}", i)); };
+  const vars = (b) => Object.fromEntries([...b.matchAll(/--([\w-]+):\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
+  const light = vars(block(":root")), dark = vars(block('html[data-theme="dark"]'));
+  const lum = (hex) => { const h = hex.replace("#", ""), c = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  const pairs = [["ink", "paper"], ["ink", "sheet"], ["soft", "paper"], ["soft", "sheet"], ["paper", "ink"]];
+  for (const [nm, v] of [["light", light], ["dark", dark]]) {
+    const low = pairs.map(([a, b]) => [a + "/" + b, ratio(v[a], v[b])]).filter((p) => p[1] < 4.5);
+    ok(low.length === 0, `theme ${nm}: text pairs (ink and soft on paper and sheet, a pressed chip) pass WCAG AA 4.5:1`, JSON.stringify(low));
+  }
+  ok(["paper", "sheet", "ink", "soft", "rule", "fold", "ink-rgb", "shadow-rgb", "pebble", "pebble-face", "scrim"].every((k) => light[k] && dark[k]), "theme: every colour has a light and a dark value (custom properties)");
+  ok(lum(dark.paper) > 0.004 && lum(dark.paper) < 0.02 && /^#(?!000)/.test(dark.paper), "theme dark: a deep warm brown paper, not black");
+  ok(!/#[0-9a-f]{3,8}\b/i.test(css.replace(block(":root"), "").replace(block('html[data-theme="dark"]'), "").replace(/rgba\((255, 255, 255|0, 0, 0|150, 110, 60)[^)]*\)/g, "")), "theme: no colour is written outside the two palettes (bar white and black washes)");
+  for (const f of ["index.html", "learners.html", "family.html", "privacy.html"]) {
+    const h = fs.readFileSync("public/ikolearn/" + f, "utf8"), i = h.indexOf('setAttribute("data-theme"'), j = h.indexOf('<link rel="stylesheet"');
+    ok(i > 0 && i < j && /localStorage\.getItem\("ikolearn-theme"\)/.test(h) && /prefers-color-scheme: dark/.test(h) && /<meta name="theme-color" content="#f3ead8">/.test(h) && /"#1e1712":"#f3ead8"/.test(h) && /<script src="\/ikolearn\/theme\.js"><\/script>/.test(h), `theme ${f}: set before the first paint (the saved choice, else the device), theme-color for both, theme.js loaded`);
+  }
+  ok(/var KEY = "ikolearn-theme"/.test(th) && !/ikolearn\.v/.test(th), "theme: the choice is kept on this device under its own key, outside the ikolearn. keys (never in a cloud, an IkoCloud file or storage v9)");
+  ok(/prefers-reduced-motion: reduce\) \{ html\.theme-easing, html\.theme-easing \* \{ transition: none !important; \} \}/.test(css), "theme: the cross-fade on a change stays still under reduced motion");
+  ok(/\.theme-tg \{[^}]*width: 44px; height: 44px;/.test(css) && /aria-pressed/.test(th) && /"Dark mode"/.test(th), "theme: the sun/moon is a 44px target with a label and pressed state");
+  // the tone for the dark page, run as the browser would: node and card colours readable on dark paper and sheet (AA)
+  const store = {}, attrs = {};
+  const fake = { localStorage: { getItem: (k) => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); }, removeItem: (k) => { delete store[k]; } }, matchMedia: () => ({ matches: false, addEventListener() {} }), addEventListener() {}, dispatchEvent() {}, CustomEvent: class { constructor(t) { this.type = t; } }, getComputedStyle: () => ({ getPropertyValue: () => "" }),
+    document: { readyState: "complete", documentElement: { getAttribute: (k) => attrs[k] ?? null, setAttribute: (k, v) => { attrs[k] = v; }, classList: { add() {}, remove() {} } }, querySelectorAll: () => [], addEventListener() {} } };
+  fake.window = fake;
+  vm.runInNewContext(th, Object.assign(fake, { setTimeout: () => 0, clearTimeout() {}, JSON, Math, Object, String }), { filename: "theme.js" });
+  const TH = fake.IkoTheme;
+  ok(TH && attrs["data-theme"] === "light" && TH.mode() === "light", "theme: follows the device (light) with nothing saved");
+  TH.set("dark");
+  ok(store["ikolearn-theme"] === "dark" && attrs["data-theme"] === "dark" && TH.dark(), "theme: a choice is applied and kept");
+  const hex = (hsl) => { const m = /hsla?\((\d+), (\d+)%, (\d+)%/.exec(hsl), h = +m[1], s = m[2] / 100, l = m[3] / 100, k = (n) => (n + h / 30) % 12, a = s * Math.min(l, 1 - l), f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1))); return "#" + [f(0), f(8), f(4)].map((x) => Math.round(x * 255).toString(16).padStart(2, "0")).join(""); };
+  const weak = [];
+  for (let h = 0; h < 360; h += 15) for (const [sat, l] of [[52, 50], [46, 34], [46, 59], [30, 22], [16, 38], [58, 46], [42, 36]]) { const c = TH.forDark(`hsl(${h}, ${sat}%, ${l}%)`); for (const bg of [dark.paper, dark.sheet]) if (ratio(hex(c), bg) < 4.5) weak.push(c + " on " + bg); }
+  ok(weak.length === 0, "theme dark: node and card colours, toned for the dark page, read at AA on paper and sheet (every hue)", weak.slice(0, 6).join(", "));
+  ok(TH.forDark("hsla(120, 35%, 55%, 0.55)").startsWith("hsla(120, 26%,") && TH.forDark("#123456") === "#123456", "theme dark: placeholders keep their alpha; other colours pass through");
+  TH.set(null);
+  ok(!("ikolearn-theme" in store) && attrs["data-theme"] === "light", "theme: clearing the choice follows the device again");
 }
 
 if (fails.length) {
