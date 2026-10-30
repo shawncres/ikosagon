@@ -87,9 +87,6 @@ a { color: var(--ink); }
 /* the bar is as narrow as the chat column; paint its paper edge to edge so wide views (the lesson) scroll under it cleanly */
 .bar { box-shadow: 0 0 0 100vmax var(--paper); clip-path: inset(0 -100vmax); }
 .brand { font-size: 16px; letter-spacing: .04em; color: var(--soft); }
-.thumb { width: 56px; height: 56px; padding: 0; border: 1px solid var(--rule); border-radius: 50%; background: var(--sheet); cursor: pointer; overflow: hidden; }
-.thumb canvas { width: 100%; height: 100%; display: block; }
-.thumb.grew { border-color: var(--ink); }
 #thread { flex: 1; width: 100%; padding-top: 18px; padding-bottom: 24px; }
 .msg { margin: 0 0 22px; overflow-wrap: anywhere; }
 .msg p { margin: 0 0 .7em; }
@@ -460,7 +457,6 @@ body.intake .cs-ex .ex-row { flex-wrap: wrap; }
 body.kbd .cloud-foot { visibility: hidden; } /* the keyboard is up: the fine print steps aside for the field and Begin */
 body.intake.kbd .cs-name { display: none; } /* the keyboard leaves a short column: the name steps out rather than half-showing under Iko */
 /* the keyboard is up: Iko steps away (its room at the bottom with it), so the field and Begin sit just above the keyboard */
-body.kbd .iko-wrap { display: none; }
 /* the chat with Iko: a quiet way back to the cloud, and its name */
 .to-cloud { font-size: 14px; letter-spacing: 0; color: var(--soft); margin-right: 14px; }
 .to-cloud::before { content: "\2039\00a0"; }
@@ -685,43 +681,76 @@ button.gcard:active, button.gslot:active { transform: translateY(-1px) scale(.97
 .who-now { margin-left: 10px; font-size: 14px; letter-spacing: 0; color: var(--soft); text-underline-offset: 3px; }
 
 /* ---------- Iko: a soft pebble (inline SVG), its short line, and its sheet ---------- */
-/* PR 103: at the bottom, the companion on every screen: the pebble at the left, its bubble beside it. app.js keeps its room
-   (--iko-lane): the cloud's fine print and Pick up row sit above it; the lesson, deck and card pages end above a quiet strip. */
-.iko-wrap { position: fixed; left: calc(10px + env(safe-area-inset-left)); bottom: calc(6px + env(safe-area-inset-bottom)); z-index: 20; display: flex; flex-direction: row; align-items: flex-end; gap: 8px; pointer-events: none; }
-@media (min-width: 500px) { .iko-wrap { left: calc(16px + env(safe-area-inset-left)); bottom: calc(8px + env(safe-area-inset-bottom)); } }
-.iko { pointer-events: auto; width: 56px; height: 56px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; display: grid; place-items: center; flex: none; }
+/* #104: Iko lives in the top-left corner of every screen, in the header's own flow (no fixed layer, no reserved strip),
+   and in the opening question's column while he asks it. Off screen he waits, hidden, at the end of the page. */
+.iko-dock { display: inline-flex; align-items: center; flex: none; }
+.iko-dock:empty { display: none; }
+.iko-wrap { display: inline-flex; align-items: center; }
+.iko { pointer-events: auto; width: 46px; height: 46px; margin: -2px 0; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; display: grid; place-items: center; flex: none; }
 .iko-pebble { display: block; overflow: visible; }
 .iko-body { fill: var(--pebble); stroke: var(--pebble-edge); stroke-width: 1.6; }
 .iko-shine { fill: none; stroke: var(--pebble-shine); stroke-width: 2.2; stroke-linecap: round; opacity: .8; }
 .iko-eye { fill: var(--pebble-face); }
 .iko-mouth { fill: none; stroke: var(--pebble-face); stroke-width: 1.7; stroke-linecap: round; }
 /* a little alive: it breathes, bobs gently and blinks now and then (all still under reduced motion) */
-.iko .iko-pebble { filter: drop-shadow(0 1px 1.5px rgba(var(--shadow-rgb), .18)); transform-origin: 50% 90%; animation: iko-breathe 7s ease-in-out infinite, iko-bob 5.5s ease-in-out infinite; }
-.iko .iko-eye { transform-box: fill-box; transform-origin: 50% 50%; animation: iko-blink 6.5s ease-in-out infinite; }
+.iko .iko-pebble, .iko-still .iko-pebble { filter: drop-shadow(0 1px 1.5px rgba(var(--shadow-rgb), .18)); transform-origin: 50% 90%; animation: iko-breathe 7s ease-in-out infinite, iko-bob 5.5s ease-in-out infinite; }
+.iko .iko-eye, .iko-still .iko-eye { transform-box: fill-box; transform-origin: 50% 50%; animation: iko-blink 6.5s ease-in-out infinite; }
 .iko:hover .iko-body, .iko:focus-visible .iko-body { fill: var(--pebble-hover); }
 .iko:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 @keyframes iko-breathe { 0%, 100% { scale: 1; } 50% { scale: 1.025 .985; } }
 @keyframes iko-bob { 0%, 100% { translate: 0 0; } 50% { translate: 0 -2px; } }
 @keyframes iko-blink { 0%, 93%, 100% { transform: scaleY(1); } 95.5% { transform: scaleY(.12); } }
-.iko-line { order: 1; pointer-events: auto; cursor: pointer; position: relative; margin: 0 0 8px; max-width: min(300px, calc(100vw - 98px - env(safe-area-inset-left) - env(safe-area-inset-right))); font-size: 14px; line-height: 1.4; color: var(--soft); background: var(--sheet); border: 1px solid var(--rule); border-radius: 12px; padding: 7px 11px; box-shadow: 0 4px 14px rgba(var(--shadow-rgb), .08); animation: iko-line-in .4s ease; }
+/* his bubble: just under him (a small tail up to him); on a wide page header, beside "Your cloud" (its tail to the left) */
+.iko-line { pointer-events: auto; cursor: pointer; position: relative; margin: 0; max-width: min(420px, 100%); width: fit-content; font-size: 14px; line-height: 1.4; color: var(--soft); background: var(--sheet); border: 1px solid var(--rule); border-radius: 12px; padding: 7px 11px; box-shadow: 0 4px 14px rgba(var(--shadow-rgb), .08); animation: iko-line-in .4s ease; }
 .iko-line:hover { color: var(--ink); }
-/* a small tail to the pebble: Iko is the one speaking */
-.iko-line::before { content: ""; position: absolute; left: -6px; bottom: 12px; width: 10px; height: 10px; background: var(--sheet); border-left: 1px solid var(--rule); border-bottom: 1px solid var(--rule); transform: rotate(45deg); }
-/* Iko's room: on the cloud, the fine print and the Pick up row sit above it; elsewhere the page ends above a quiet strip */
-body.iko-home .cloud-foot { bottom: calc(var(--iko-lane, 70px) + env(safe-area-inset-bottom)); }
-/* the sun/moon's 44px target reaches up from its line, not down into Iko's room (PR 103) */
-body.iko-home .cloud-foot .theme-tg { margin: -28px -12px 0; }
-body.iko-home .cloud-flow { bottom: calc(var(--iko-lane, 70px) + 46px + env(safe-area-inset-bottom)); }
-body.iko-on #chat { padding-bottom: calc(var(--iko-lane, 70px) + env(safe-area-inset-bottom)); }
-body.iko-on::after { content: ""; position: fixed; left: 0; right: 0; bottom: 0; z-index: 19; height: calc(var(--iko-lane, 70px) + env(safe-area-inset-bottom)); background: var(--paper); border-top: 1px solid var(--rule); }
+.iko-line::before { content: ""; position: absolute; left: 16px; top: -6px; width: 10px; height: 10px; background: var(--sheet); border-left: 1px solid var(--rule); border-top: 1px solid var(--rule); transform: rotate(45deg); }
+body > .iko-line { display: none; } /* parked: not on this screen */
+#chat > .bar { max-width: none; flex-wrap: wrap; column-gap: 12px; padding-left: calc(16px + env(safe-area-inset-left)); padding-right: calc(16px + env(safe-area-inset-right)); }
+#chat > .bar > .brand { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; min-width: 0; }
+#chat > .bar > .bar-r { order: 2; margin-left: auto; }
+#chat > .bar > .iko-line { order: 3; margin: 4px 0 2px 2px; }
+@media (min-width: 900px) {
+  #chat > .bar { flex-wrap: nowrap; }
+  #chat > .bar > .iko-line { order: 1; flex: 0 1 auto; min-width: 0; margin: 0 0 0 6px; }
+  #chat > .bar > .iko-line::before { left: -6px; top: calc(50% - 5px); border-top: 0; border-bottom: 1px solid var(--rule); }
+}
+body.iko-on .chat-name { display: none; } /* Iko himself is the button now: no second "Iko" beside him */
+.cloud-top > .iko-line { position: absolute; z-index: 4; top: calc(100% - 4px); left: calc(16px + env(safe-area-inset-left)); max-width: min(340px, calc(100vw - 32px)); }
+body.iko-home.iko-talking .cloud-hint { visibility: hidden; } /* one voice at a time */
+.home-nav { align-items: center; }
+.home-nav .iko-dock { margin: -6px -6px -6px -4px; }
+#bar-iko { margin-left: -4px; }
+/* Iko asks the opening questions: the question is his speech, in a bubble beside him */
+.ask { display: flex; align-items: flex-end; gap: 6px; }
+.iko-still { flex: none; display: grid; place-items: center; width: 46px; height: 46px; }
+.say { position: relative; margin: 0 0 6px 4px; background: var(--sheet); border: 1px solid var(--rule); border-radius: 14px; padding: 8px 13px; text-align: left; }
+.say::before { content: ""; position: absolute; left: -6px; bottom: 12px; width: 10px; height: 10px; background: var(--sheet); border-left: 1px solid var(--rule); border-bottom: 1px solid var(--rule); transform: rotate(45deg); }
+.who .ask { margin: 0 0 12px; }
+.who-q.say, #name-form label.say { margin: 0 0 6px 4px; }
+#name-form .ask { margin-bottom: 10px; }
+#who:not([hidden]) ~ #name-form .iko-still { visibility: hidden; } /* one Iko: the second question follows the first */
+.cs-ask { justify-content: center; margin: 0 0 12px; }
+.cs-ask .say { min-width: 0; }
+.cs-ask .cs-q, .cs-ask .cs-q:has(+ .cs-few:not([hidden])) { margin: 0; }
+.cs-ask .cs-hi { margin: 0 0 3px; }
+.cs-ask:has(+ .cs-few:not([hidden])) { margin-bottom: 6px; }
 /* "always here": until Iko is opened the first time, a warm sepia ring with a soft halo breathes slowly around the pebble
    (a still ring and halo with reduced motion) */
 .iko { position: relative; }
 .iko.glow::before { content: ""; position: absolute; inset: 4px 1px 6px; border-radius: 50%; pointer-events: none; box-shadow: 0 0 0 2px rgba(var(--glow-a), .4), 0 0 10px 4px rgba(var(--glow-b), .26); animation: iko-glow 4.8s ease-in-out infinite; }
 @keyframes iko-glow { 0%, 100% { box-shadow: 0 0 0 2px rgba(var(--glow-a), .36), 0 0 9px 3px rgba(var(--glow-b), .22); } 50% { box-shadow: 0 0 0 3px rgba(var(--glow-a), .58), 0 0 18px 8px rgba(var(--glow-b), .38); } }
 @keyframes iko-line-in { from { opacity: 0; } to { opacity: 1; } }
-.iko-sheet { position: fixed; z-index: 30; left: 8px; right: 8px; bottom: 8px; max-height: min(64vh, 560px); display: flex; flex-direction: column; background: var(--sheet); border: 1px solid var(--rule); border-radius: 14px; box-shadow: 0 6px 24px rgba(var(--shadow-rgb), .14); padding: 10px 14px 8px; }
-@media (min-width: 700px) { .iko-sheet { left: auto; right: 16px; bottom: 16px; width: 390px; } }
+/* the chat: on a phone or tablet a sheet rising from below; on a wide screen a panel hanging from Iko at the top left,
+   and the page steps right to make room for it (body.iko-side, app.js sideIko) */
+.iko-sheet { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; max-height: min(72vh, 600px); display: flex; flex-direction: column; background: var(--sheet); border: 1px solid var(--rule); border-bottom: 0; border-radius: 16px 16px 0 0; box-shadow: 0 -6px 24px rgba(var(--shadow-rgb), .14); padding: 10px 16px calc(8px + env(safe-area-inset-bottom)); animation: iko-rise .26s ease-out; }
+@media (min-width: 600px) and (max-width: 1099px) { .iko-sheet { left: 50%; right: auto; width: 560px; margin-left: -280px; } }
+@keyframes iko-rise { from { transform: translateY(28px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes iko-drop { from { transform: translateY(-10px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (min-width: 1100px) {
+  .iko-sheet { left: calc(16px + env(safe-area-inset-left)); right: auto; top: var(--iko-top, 76px); bottom: auto; width: 360px; max-height: calc(100vh - var(--iko-top, 76px) - 16px); border-bottom: 1px solid var(--rule); border-radius: 14px; box-shadow: 0 6px 24px rgba(var(--shadow-rgb), .14); padding-bottom: 8px; animation: iko-drop .22s ease-out; }
+  body.iko-side #chat > .col:not(.bar) { margin-left: max(392px, calc((100% - var(--col)) / 2)); margin-right: auto; width: auto; }
+  body.iko-side #chat > .game { margin-left: max(392px, calc((100% - 1040px) / 2)); margin-right: auto; }
+}
 .iko-head { display: flex; align-items: center; gap: 8px; padding-right: 30px; position: relative; }
 .iko-head .card-x { position: absolute; right: -6px; top: -4px; }
 .iko-name { margin: 0; font-size: 16px; font-weight: normal; }
@@ -741,9 +770,8 @@ body.iko-on::after { content: ""; position: fixed; left: 0; right: 0; bottom: 0;
 .iko-acts { display: flex; justify-content: flex-end; margin: 6px 0 0; }
 .iko-acts[hidden] { display: none; }
 #l-done, #l-status { scroll-margin-top: 96px; scroll-margin-bottom: 16px; } /* clear of the sticky header */
-@media (min-width: 1100px) { body.iko-lesson .iko-sheet { left: 16px; right: auto; } }
 .iko-foot { margin: 6px 0 0; text-align: center; font-size: 12.5px; }
-@media (prefers-reduced-motion: reduce) { .iko .iko-pebble, .iko .iko-eye, .iko-line { animation: none; } .iko.glow::before { animation: none; box-shadow: 0 0 0 2.5px rgba(var(--glow-a), .48), 0 0 12px 5px rgba(var(--glow-b), .28); } }
+@media (prefers-reduced-motion: reduce) { .iko .iko-pebble, .iko .iko-eye, .iko-still .iko-pebble, .iko-still .iko-eye, .iko-line, .iko-sheet { animation: none; } .iko.glow::before { animation: none; box-shadow: 0 0 0 2.5px rgba(var(--glow-a), .48), 0 0 12px 5px rgba(var(--glow-b), .28); } }
 
 /* ---------- PR 99: the name's card (stats), cloud files, the earned flight ---------- */
 #panel.is-root .actions { margin-bottom: 8px; }
