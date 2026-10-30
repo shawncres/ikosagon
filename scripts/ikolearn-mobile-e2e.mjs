@@ -210,7 +210,7 @@ const MIXED = { act: { "Coral Reefs": { ago: 3, done: true }, Shapes: { ago: 2, 
   p.setDefaultTimeout(8000);
   const errs = [];
   p.on("pageerror", (e) => errs.push("pageerror " + e.message));
-  const cdp = await ctx.newCDPSession(p); await cdp.send("Emulation.setSafeAreaInsetsOverride", { insets: { top: 47, bottom: 34 } });
+  if (!process.env.IKOLEARN_BROWSER) { const cdp = await ctx.newCDPSession(p); await cdp.send("Emulation.setSafeAreaInsetsOverride", { insets: { top: 47, bottom: 34 } }); } /* safe-area emulation is Chromium's (CDP) */
   await p.addInitScript(HOOK);
   /* every focus() on Iko's field, from anywhere (an open handler, a transitionend, a timer) */
   await p.addInitScript(() => { const f = HTMLElement.prototype.focus; HTMLElement.prototype.focus = function (...a) { if (this.id === "iko-in") (window.__ikoFocus = window.__ikoFocus || []).push(new Error().stack.split("\n")[2] || ""); return f.apply(this, a); }; });

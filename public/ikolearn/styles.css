@@ -723,19 +723,20 @@ body.iko-home.iko-talking .cloud-hint { visibility: hidden; } /* one voice at a 
 .home-nav { align-items: center; }
 .home-nav .iko-dock { margin: -6px -6px -6px -4px; }
 /* Iko asks the opening questions: the question is his speech, in a bubble beside him */
-.ask { display: flex; align-items: flex-end; gap: 6px; }
+.iko-ask { display: flex; align-items: flex-end; gap: 6px; }
 .iko-still { flex: none; display: grid; place-items: center; width: 46px; height: 46px; }
 .say { position: relative; margin: 0 0 6px 4px; background: var(--sheet); border: 1px solid var(--rule); border-radius: 14px; padding: 8px 13px; text-align: left; }
 .say::before { content: ""; position: absolute; left: -6px; bottom: 12px; width: 10px; height: 10px; background: var(--sheet); border-left: 1px solid var(--rule); border-bottom: 1px solid var(--rule); transform: rotate(45deg); }
-.who .ask { margin: 0 0 12px; }
+.who .iko-ask { margin: 0 0 12px; }
 .who-q.say, #name-form label.say { margin: 0 0 6px 4px; }
-#name-form .ask { margin-bottom: 10px; }
+#name-form .iko-ask { margin-bottom: 10px; }
 #who:not([hidden]) ~ #name-form .iko-still { visibility: hidden; } /* one Iko: the second question follows the first */
 .cs-ask { justify-content: center; margin: 0 0 12px; }
-.cs-ask .say { min-width: 0; }
+.cs-ask .say { min-width: 0; margin-bottom: 0; } /* his foot level with the bubble's: nothing hangs below the question */
 .cs-ask .cs-q, .cs-ask .cs-q:has(+ .cs-few:not([hidden])) { margin: 0; }
 .cs-ask .cs-hi { margin: 0 0 3px; }
 .cs-ask:has(+ .cs-few:not([hidden])) { margin-bottom: 6px; }
+body.intake.kbd .cs-few { display: none; } /* the keyboard up: Iko's question stays right above the field; its "one thing or a few" steps aside */
 /* "always here": until Iko is opened the first time, a warm sepia ring with a soft halo breathes slowly around the pebble
    (a still ring and halo with reduced motion) */
 .iko { position: relative; }

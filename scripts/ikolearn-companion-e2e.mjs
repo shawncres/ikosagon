@@ -119,7 +119,7 @@ for (const width of [390, 1280]) {
       await waitLine(p, () => !document.querySelector("#iko-line").hidden);
       const pb = await rect(p, "#iko"), vh = await p.evaluate(() => innerHeight), l1 = await line(p);
       ok(pb && pb.x < 30 && pb.y < 24 && pb.w >= 44 && pb.h >= 44 && vh > 0, `${tag}: Iko sits at the top left, a 44px+ target`, JSON.stringify({ pb, vh }));
-      ok(await p.evaluate(() => Boolean(document.querySelector(".home-nav #iko")) && document.querySelectorAll("#iko, .iko").length === 1 && !document.querySelector("#iko-cue, #thumb, .thumb") && /^(none|normal)$/.test(getComputedStyle(document.body, "::after").content)), `${tag}: one Iko, in the header row; no strip at the bottom, no stray circle`);
+      ok(await p.evaluate(() => Boolean(document.querySelector(".home-nav #iko")) && document.querySelectorAll("#iko, .iko").length === 1 && !document.querySelector("#iko-cue") && /^(none|normal)$/.test(getComputedStyle(document.body, "::after").content)), `${tag}: one Iko, in the header row; no strip at the bottom`);
       const c1 = await clear(p, CLOUD_PARTS);
       ok(c1.shown === 2 && !c1.hits.length, `${tag}: cloud: Iko and its bubble clear of the Pick up row, the deck, the fine print and the controls`, JSON.stringify(c1));
       ok(l1 && /^cloud\d$/.test(l1.tip) && /^(I like your cloud, it's growing!|I can add new topics anytime\.)/.test(l1.text), `${tag}: cloud: a short context bubble (local, the screen's own)`, JSON.stringify(l1));

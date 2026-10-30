@@ -65,7 +65,7 @@ async function intake(s) {
   const errs = [];
   p.on("pageerror", (e) => errs.push("pageerror " + e.message));
   p.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource/.test(m.text())) errs.push(m.text()); });
-  if (s.inset) { const cdp = await ctx.newCDPSession(p); await cdp.send("Emulation.setSafeAreaInsetsOverride", { insets: s.inset }); }
+  if (s.inset && !process.env.IKOLEARN_BROWSER) { const cdp = await ctx.newCDPSession(p); await cdp.send("Emulation.setSafeAreaInsetsOverride", { insets: s.inset }); }
   await p.addInitScript(HOOK);
   let more = 0;
   await p.route("**/api/ikolearn/**", (r) => {
