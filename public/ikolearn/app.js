@@ -29,7 +29,7 @@
   var el = {
     welcome: $("welcome"), nameForm: $("name-form"), nameIn: $("name-in"), who: $("who"), nameLabel: $("name-label"), nameHint: $("name-hint"), whoNow: $("who-now"),
     chat: $("chat"), thread: $("thread"), dock: $("dock"), composer: $("composer"), input: $("input"), send: $("send"),
-    reset: $("reset"),
+    thumb: $("thumb"), thumbCanvas: $("thumb-canvas"), reset: $("reset"),
     focusChip: $("focus-chip"), focusText: $("focus-text"), focusClear: $("focus-clear"),
     lesson: $("lesson"), lBack: $("l-back"), lTrail: $("l-trail"), lTitle: $("l-title"), lBody: $("l-body"), lDone: $("l-done"),
     lGot: $("l-got"), lTricky: $("l-tricky"), lCont: $("l-cont"), phEarn: $("ph-earn"), lStatus: $("l-status"), lPath: $("l-path"), lClar: $("l-clar"), lNext: $("l-next"), lChat: $("l-chat"), lRedo: $("l-redo"),
@@ -550,6 +550,10 @@
     var tm = testMap();
     if (mini) { mini.setCloud(state.cloud); mini.setTests(tm); mini.flash(flashIds); }
     if (big) { big.setCloud(state.cloud); big.setTests(tm); big.flash(flashIds); }
+    if (flashIds && flashIds.length) {
+      el.thumb.classList.add("grew");
+      setTimeout(function () { el.thumb.classList.remove("grew"); }, 2400);
+    }
   }
   /* Paths and mastery show in several places; redraw them all after a change. */
   function refreshAll(flashIds) {
@@ -2843,7 +2847,7 @@
       el.miniDeck = mk("button", "minideck");
       el.miniDeck.type = "button";
       el.miniDeck.addEventListener("click", function () { showDeck(true); });
-      el.deckBtn.parentNode.appendChild(el.miniDeck);
+      el.thumb.parentNode.insertBefore(el.miniDeck, el.thumb);
     }
     var cards = miniDeckCards(), n = (state.cloud.deck || []).length;
     var sig = n + ":" + cards.map(function (c) { return D.evolveKey(c); }).join(",");
@@ -3209,6 +3213,7 @@
   function submit(e) { if (e) e.preventDefault(); var t = el.input.value; if (!t.trim() || state.busy) return; el.input.value = ""; autosize(); send(t); }
   el.composer.addEventListener("submit", submit);
   el.focusClear.addEventListener("click", function () { setFocus(null); });
+  el.thumb.addEventListener("click", openCloud);
   el.reset.addEventListener("click", function () {
     var guiding = PR && PR.mode(localStorage) === "guide";
     if (!window.confirm(guiding ? "Start over for " + state.name + "? This clears " + state.name + "'s chat, cloud and lessons from this device. Other learners are kept." : "Start over? This clears your name, chat, cloud and lessons from this device.")) return;
@@ -3285,6 +3290,8 @@
   function startChat() {
     el.welcome.hidden = true;
     el.chat.hidden = false;
+    mini = V.create(el.thumbCanvas, { mini: true, onOpen: openCloud });
+    mini.setCloud(state.cloud);
     renderThread();
     renderDeckButton();
     countVisit();

@@ -296,6 +296,8 @@ for (const width of [390, 1280]) {
 /* 9. #104: Iko top left in the header at 320, 390, 768 and 1280, in the same place on every screen (no drift); his bubble
    never covers the header's controls or the page; the chat a sheet from below on a phone or tablet, a panel from him on a
    wide screen that sits clear of the deck and the reading */
+/* the header's cloud circle: drawn pixels (alpha) and their centre, in canvas pixels */
+const thumbInk = (p) => p.evaluate(() => { const cv = document.querySelector("#thumb-canvas"), b = document.querySelector("#thumb"), g = cv.getContext("2d"), W = cv.width, H = cv.height, d = g.getImageData(0, 0, W, H).data; let ink = 0, cx = 0, cy = 0; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (d[(y * W + x) * 4 + 3] > 40) { ink++; cx += x; cy += y; } return { W, H, ink, c: ink ? [cx / ink, cy / ink] : [0, 0], round: Boolean(b && b.getClientRects().length) && getComputedStyle(b).borderRadius === "50%", badge: Boolean(document.querySelector(".bar .minideck .md-n")) }; });
 const boxOf = (p, sels) => p.evaluate((sels) => { const out = {}; for (const s of sels) { const e = document.querySelector(s); if (e && !e.closest("[hidden]") && e.getClientRects().length && getComputedStyle(e).visibility !== "hidden") { const r = e.getBoundingClientRect(); if (r.width && r.height) out[s] = { x: r.left, y: r.top, r: r.right, b: r.bottom }; } } return out; }, sels);
 const overl = (a, list) => Object.entries(list).filter(([, b]) => hit(a, b)).map(([k]) => k);
 for (const width of [320, 390, 768, 1280]) {
@@ -315,8 +317,10 @@ for (const width of [320, 390, 768, 1280]) {
     const hd = Object.fromEntries(HEAD.map((k) => [k, d[k]]).filter(([, v]) => v)), pg = Object.fromEntries(PAGE.map((k) => [k, d[k]]).filter(([, v]) => v));
     ok(!d["#iko-line"] || (!overl(d["#iko-line"], hd).length && !overl(d["#iko-line"], pg).length && d["#iko-line"].r <= vw + 0.5), `${tag}: deck: his bubble covers neither the header's controls nor the page`, JSON.stringify(d));
     ok(!overl(d["#iko"], hd).length && !overl(d["#iko"], pg).length, `${tag}: deck: Iko covers nothing`, JSON.stringify(d));
-    const strip = await p.evaluate(() => ({ after: getComputedStyle(document.body, "::after").content, pad: parseFloat(getComputedStyle(document.querySelector("#chat")).paddingBottom), circles: [...document.querySelectorAll(".bar *")].filter((e) => e.getClientRects().length && getComputedStyle(e).borderRadius === "50%" && !e.closest("#iko-wrap") && !e.textContent.trim() && !e.querySelector("svg, canvas, img")).length }));
-    ok(/^(none|normal)$/.test(strip.after) && strip.pad === 0 && strip.circles === 0, `${tag}: deck: no strip or room kept at the bottom, no empty circle in the header`, JSON.stringify(strip));
+    const strip = await p.evaluate(() => ({ after: getComputedStyle(document.body, "::after").content, pad: parseFloat(getComputedStyle(document.querySelector("#chat")).paddingBottom) }));
+    ok(/^(none|normal)$/.test(strip.after) && strip.pad === 0, `${tag}: deck: no strip or room kept at the bottom`, JSON.stringify(strip));
+    const th = await thumbInk(p);
+    ok(th.round && th.ink > 80 && Math.abs(th.c[0] - th.W / 2) <= 4 && Math.abs(th.c[1] - th.H / 2) <= 4 && th.badge, `${tag}: the header's cloud circle shows the learner's name at its centre (not empty), the deck's count beside it`, JSON.stringify(th));
     await p.click("#iko"); await p.waitForTimeout(400);
     const s = await boxOf(p, ["#iko-sheet", ".bar", "#d-title", "#d-album", "#d-lede", "#d-back"]), ih = await p.evaluate(() => innerHeight);
     const sh = s["#iko-sheet"];
@@ -399,6 +403,8 @@ for (const width of [320, 390, 768, 1280]) {
     await p.click("#l-back"); await p.waitForTimeout(700); if (!(await p.isHidden("#panel"))) { await p.click("#p-close"); await p.waitForTimeout(200); }
     await p.click("#cloud-deck"); await p.waitForSelector("#deck:not([hidden])"); await p.waitForTimeout(200);
     const d = await contrast();
+    const th = await thumbInk(p);
+    ok(th.round && th.ink > 80 && Math.abs(th.c[0] - th.W / 2) <= 4 && Math.abs(th.c[1] - th.H / 2) <= 4, "dark mode: the header's cloud circle shows the name at its centre", JSON.stringify(th));
     const all = Object.assign({}, a.out, b.out, c.out, d.out);
     const need = ["#iko-line", "#l-cont", "#l-quiz .q-miss .l-head", "#l-quiz .q-miss .clar", ".d-sec", "#d-collect .fine"];
     ok(a.theme === "dark" && need.every((k) => all[k] >= 4.5) && Object.values(all).every((v) => v >= 4.5), "dark mode: Iko's bubble, Continue, the missed-check box and the deck's sections read at AA", JSON.stringify(all));

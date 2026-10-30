@@ -1036,7 +1036,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
       const css2 = fs.readFileSync("public/ikolearn/styles.css", "utf8");
       ok(/\.gcard\.test-tile > \.gc-chain, \.gcard\.grow-tile > \.gc-chain \{ flex-shrink: 0; min-height: 1\.4em; font-size: 11px/.test(css2), "test and grow tiles: the corner label never shrinks or clips");
       const cv2 = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8");
-      ok(/HOME = \{ yaw: -0\.5, pitch: 0\.32, zoom: 1, panX: 0, panY: 40 \}/.test(cv2) && /var yaw = HOME\.yaw, pitch = HOME\.pitch, zoom = HOME\.zoom, panX = HOME\.panX, panY = HOME\.panY/.test(cv2), "the cloud opens on the home view, a little low, so the top branches clear the hint line");
+      ok(/HOME = \{ yaw: -0\.5, pitch: 0\.32, zoom: 1, panX: 0, panY: 40 \}/.test(cv2) && /var yaw = HOME\.yaw, pitch = HOME\.pitch, zoom = HOME\.zoom, panX = HOME\.panX, panY = mini \? 0 : HOME\.panY/.test(cv2), "the cloud opens on the home view, a little low, so the top branches clear the hint line (the header's small cloud: its name at the centre, PR 104)");
       ok(/\.cloud-hint \{[^}]*width: fit-content;[^}]*background: color-mix\(in srgb, var\(--paper\)/.test(css2), "cloud hint sits on a paper pill, readable over branches");
     }
     ok(/IkoLearn is for anyone curious, at any age\. Parents can also use it to plan and guide homeschool learning\./.test(privacy), "privacy: the neutral who-it's-for line");
@@ -3788,7 +3788,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/function lessonPhase\(id\)/.test(app) && /function finishLesson\(kind\)[\s\S]{0,300}if \(kind === "got" && lessonPhase\(id\) !== "passed"\) return;/.test(app), "lesson: earning only after the check is passed");
   ok(/function reactWanted\(n\) \{ return n <= REACT_EVERY\[0\] \|\| \(n <= REACT_EVERY\[1\] \? n % 3 === 0 : n % 8 === 0\); \}/.test(app), "Iko: reactions come less often over time");
   ok(/var IKO_MEM = "ikolearn-iko"/.test(app) && !/ikolearn\.v1\.iko/.test(app), "Iko: what it has said is kept on this device under its own key (outside the cloud)");
-  ok(/@keyframes iko-blink/.test(css) && !/body\.iko-on #chat \{[^}]*padding-bottom/.test(css) && !/body\.iko-on::after/.test(css) && !/id="thumb"/.test(html), "Iko: blinks; no strip or room at the bottom of the pages, no empty circle in the header (PR 104)");
+  ok(/@keyframes iko-blink/.test(css) && !/body\.iko-on #chat \{[^}]*padding-bottom/.test(css) && !/body\.iko-on::after/.test(css) && /id="thumb" class="thumb"/.test(html), "Iko: blinks; no strip or room at the bottom of the pages; the header keeps its cloud circle (PR 104)");
 }
 
 if (fails.length) {
