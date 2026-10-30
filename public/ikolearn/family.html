@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="robots" content="noindex, nofollow">
   <meta name="theme-color" content="#f3ead8">
+  <meta name="color-scheme" content="light dark">
+  <!-- light or dark before the first paint (no flash): the learner's choice on this device, else the device's (theme.js) -->
+  <script>(function(){var m;try{m=localStorage.getItem("ikolearn-theme")}catch(e){}if(m!=="dark"&&m!=="light")m=window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";document.documentElement.setAttribute("data-theme",m);var t=document.querySelector('meta[name="theme-color"]');if(t)t.setAttribute("content",m==="dark"?"#1e1712":"#f3ead8")})()</script>
   <title>IkoLearn for parents &amp; teachers</title>
   <link rel="icon" href="/ikolearn/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/ikolearn/styles.css">
@@ -19,8 +22,9 @@
       <button type="button" id="fam-print" class="btn sm">Print</button>
       <p id="fam-status" class="fine" role="status"></p>
     </div>
-    <p class="fine fam-foot">A read-only view of the learning saved in this browser. It changes nothing and sends nothing. <a href="/ikolearn/privacy">Privacy</a></p>
+    <p class="fine fam-foot" data-theme-slot>A read-only view of the learning saved in this browser. It changes nothing and sends nothing. <a href="/ikolearn/privacy">Privacy</a></p>
   </main>
+  <script src="/ikolearn/theme.js"></script>
   <script src="/ikolearn/cloud-model.js"></script>
   <script src="/ikolearn/rank.js"></script>
   <script src="/ikolearn/deck.js"></script>

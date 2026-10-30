@@ -14,6 +14,8 @@
   "use strict";
   var PR = window.IkoProfiles; /* learners: yourself, or guiding others (additive storage; the v1 keys stay the learner learning now) */
   var C = window.IkoCloud, V = window.IkoCloudView, L = window.IkoLesson, D = window.IkoDeck, R = window.IkoRank, P = window.IkoPlan, CAM = window.IkoCamera;
+  var TH = window.IkoTheme; /* light and dark (theme.js): colours set from script are toned for the page */
+  function tint(el, props) { if (TH) return TH.paint(el, props); Object.keys(props).forEach(function (k) { el.style.setProperty(k, props[k]); }); }
   var T = window.IkoTransfer; /* the cloud as one file: Save IkoCloud / Open IkoCloud (transfer.js) */
   var API = "/api/ikolearn";
   var LS = { name: "ikolearn.v1.name", cloud: "ikolearn.v1.cloud", thread: "ikolearn.v1.thread", notes: "ikolearn.v1.notes", lessons: "ikolearn.v1.lessons", tests: "ikolearn.v1.tests", view: "ikolearn.v1.view", seen: "ikolearn.v1.seen" };
@@ -1700,7 +1702,7 @@
   function testTile(pid, onOpen) {
     var p = nodeOf(pid), st = P.testState(state.cloud, pid), sp = D.cardSpec(state.cloud, pid);
     var b = mk("button", "gcard size-tile test-tile"); b.type = "button";
-    if (sp) { b.style.setProperty("--card-ink", sp.color.ink); b.style.setProperty("--card-wash", sp.color.wash); b.style.setProperty("--card-soft", sp.color.soft); }
+    if (sp) tint(b, { "--card-ink": sp.color.ink, "--card-wash": sp.color.wash, "--card-soft": sp.color.soft });
     b.appendChild(mk("span", "gc-chain", "Test"));
     b.appendChild(mk("span", "gc-title", p.label));
     b.appendChild(mk("span", "gc-desc", (st ? st.done.length : 0) + " topics finished. Optional."));
@@ -1713,7 +1715,7 @@
   function growTile(pid) {
     var p = nodeOf(pid), sp = D.cardSpec(state.cloud, pid);
     var b = mk("button", "gcard size-tile grow-tile"); b.type = "button";
-    if (sp) { b.style.setProperty("--card-ink", sp.color.ink); b.style.setProperty("--card-wash", sp.color.wash); b.style.setProperty("--card-soft", sp.color.soft); }
+    if (sp) tint(b, { "--card-ink": sp.color.ink, "--card-wash": sp.color.wash, "--card-soft": sp.color.soft });
     b.appendChild(mk("span", "gc-chain", "What comes next"));
     b.appendChild(mk("span", "gc-title", p.label));
     b.appendChild(mk("span", "gc-desc", "You've finished its topics. Let's see what's next."));
@@ -2862,7 +2864,7 @@
     pages.forEach(function (pg, i) {
       var page = mk("section", "album-page");
       page.style.setProperty("--i", String(Math.min(i, 6)));
-      if (pg.hue != null) page.style.setProperty("--page-ink", "hsl(" + pg.hue + ", 42%, 36%)");
+      if (pg.hue != null) tint(page, { "--page-ink": "hsl(" + pg.hue + ", 42%, 36%)" });
       var head = mk("div", "ap-head");
       head.appendChild(mk("h3", null, pg.subject));
       head.appendChild(mk("span", "ap-count", pg.covered + " of " + pg.known + (pg.known === 1 ? " topic" : " topics") + " covered"));

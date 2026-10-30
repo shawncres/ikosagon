@@ -4,6 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#f3ead8">
+  <meta name="color-scheme" content="light dark">
+  <!-- light or dark before the first paint (no flash): the learner's choice on this device, else the device's (theme.js) -->
+  <script>(function(){var m;try{m=localStorage.getItem("ikolearn-theme")}catch(e){}if(m!=="dark"&&m!=="light")m=window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";document.documentElement.setAttribute("data-theme",m);var t=document.querySelector('meta[name="theme-color"]');if(t)t.setAttribute("content",m==="dark"?"#1e1712":"#f3ead8")})()</script>
   <title>IkoLearn privacy</title>
   <link rel="stylesheet" href="/ikolearn/styles.css">
 </head>
@@ -20,7 +24,9 @@
     <p><strong>Limits.</strong> To keep the service free we count requests per IP address for a short time, in memory only, to stop overuse.</p>
     <p><strong>Accuracy.</strong> Replies and cards are written by AI. They can be wrong, so check anything important against a trusted source.</p>
     <p><strong>Who it's for.</strong> IkoLearn is for anyone curious, at any age. Parents can also use it to plan and guide homeschool learning.</p>
-    <p>No accounts, no ads, no tracking scripts.</p>
+    <p><strong>Light or dark.</strong> IkoLearn follows your device's light or dark setting. If you pick one with the small sun or moon, that choice is kept in this browser only; it is not part of your cloud or of an IkoCloud file.</p>
+    <p data-theme-slot>No accounts, no ads, no tracking scripts.</p>
   </main>
+  <script src="/ikolearn/theme.js"></script>
 </body>
 </html>

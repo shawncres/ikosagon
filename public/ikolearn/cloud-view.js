@@ -12,6 +12,12 @@
   "use strict";
   var C = root.IkoCloud, CAM = root.IkoCamera;
   var INK = "#2b2118", PAPER = "#f3ead8";
+  /* light and dark (theme.js): the canvas takes the page's ink and paper, and node colours toned for the page; on the
+     dark page an open path is a light ink (never black) and a finished line keeps its node's colour */
+  var TH = root.IkoTheme;
+  function retheme() { if (!TH) return; var k = TH.inks(); INK = k.ink; PAPER = k.paper; }
+  retheme();
+  if (TH && root.addEventListener) root.addEventListener("ikotheme", retheme);
   var FONT = "Georgia, 'Iowan Old Style', serif";
   var DRAW_CAP = 260, ZMIN = CAM.CAM.zmin, ZMAX = CAM.CAM.zmax, HOME = { yaw: -0.5, pitch: 0.32, zoom: 1, panX: 0, panY: 40 }; /* panY: the home view sits a little low, so the top branches stay clear of the controls and the hint line */
   var reduce = root.matchMedia && root.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -342,7 +348,8 @@
 
     function setZoom(z) { zoom = Math.max(zfloor, Math.min(ZMAX, z)); request(); }
     /* colours only change with the cloud (setCloud): worked out once per node, not three times a frame */
-    function colorOf(n) { var c = colors[n.id]; if (!c) c = colors[n.id] = C.colorOf(cloud, n); return c; }
+    function colorOf(n) { var c = colors[n.id]; if (!c) c = colors[n.id] = TH ? TH.tone(C.colorOf(cloud, n)) : C.colorOf(cloud, n); return c; }
+    if (TH && root.addEventListener) root.addEventListener("ikotheme", function () { colors = {}; request(); });
 
     function view() { return { zoom: zoom, panX: panX, panY: panY, yaw: yaw, pitch: pitch, pivot: pivot, zmin: zfloor }; }
     function apply(v) { zoom = v.zoom; panX = v.panX; panY = v.panY; yaw = v.yaw; pitch = v.pitch; pivot = v.pivot || CAM.ORIGIN; }

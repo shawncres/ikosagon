@@ -17,6 +17,10 @@
   // eslint-disable-next-line @typescript-eslint/no-require-imports -- UMD, as above
   var RK = typeof module !== "undefined" && module.exports ? require("./rank.js") : root.IkoRank;
 
+  /* colours set from script go through IkoTheme (theme.js), which tones them for the dark page and re-tones them when
+     the theme changes; without it (Node, an old page) they are set as they are */
+  function paintInk(el, props) { var TH = root && root.IkoTheme; if (TH && el && el.setAttribute) return TH.paint(el, props); Object.keys(props).forEach(function (k) { if (props[k] != null) el.style.setProperty(k, props[k]); }); }
+
   /* ---------- seeded random ---------- */
   function seedOf(str) {
     var h = 2166136261;
@@ -295,9 +299,7 @@
       d.addEventListener("click", function (e) { e.stopPropagation(); opts.onOpen(spec.id, d); });
     }
     d.dataset.card = spec.id;
-    d.style.setProperty("--card-ink", spec.color.ink);
-    d.style.setProperty("--card-wash", spec.color.wash);
-    d.style.setProperty("--card-soft", spec.color.soft);
+    paintInk(d, { "--card-ink": spec.color.ink, "--card-wash": spec.color.wash, "--card-soft": spec.color.soft });
     var art = doc.createElement("span"); art.className = "gc-art";
     art.appendChild(artSvg(doc, spec));
     /* the plate: the landscape is set into the card's corner like a printed plate, framed by tier */
@@ -541,7 +543,7 @@
     var d = doc.createElement(opts.onOpen ? "button" : "div");
     d.className = "gslot is-" + cv.state + (n && n.ghost ? " ghost" : "");
     d.dataset.card = id;
-    if (n) d.style.setProperty("--card-ink", C.colorOf(cloud, n));
+    if (n) paintInk(d, { "--card-ink": C.colorOf(cloud, n) });
     d.appendChild(Object.assign(doc.createElement("span"), { className: "gs-title", textContent: n ? n.label : opts.label || "" }));
     d.appendChild(Object.assign(doc.createElement("span"), { className: "gs-state", textContent: opts.text || cv.text }));
     if (opts.onOpen) {
