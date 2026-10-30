@@ -2352,8 +2352,11 @@
     if (!q) return;
     var cw = el.cloudCanvas.clientWidth, ch = el.cloudCanvas.clientHeight, box = el.panel.firstElementChild;
     var pw = el.panel.offsetWidth, ph = (box ? box.offsetHeight : el.panel.scrollHeight) + 2;
-    var at = CAM.cardPlace(q.x, q.y, pw, ph, cw, ch, cloudTop());
-    var x = Math.max(CAM.CARD.margin, Math.min(cw - CAM.CARD.margin - pw, at.x)), y = Math.max(CAM.CARD.margin, at.y);
+    /* Iko's chat open as a panel at the left (#104): the card is placed in the sky to its right */
+    var off = document.body.classList.contains("iko-side") && !el.ikoSheet.hidden ? Math.max(0, Math.round(el.ikoSheet.getBoundingClientRect().right + 12 - el.cloudCanvas.getBoundingClientRect().left)) : 0;
+    var at = CAM.cardPlace(q.x - off, q.y, pw, ph, cw - off, ch, cloudTop());
+    at.x += off;
+    var x = Math.max(CAM.CARD.margin + off, Math.min(cw - CAM.CARD.margin - pw, at.x)), y = Math.max(CAM.CARD.margin, at.y);
     var sig = x + "," + y + "," + at.maxH + "," + at.side;
     if (sig === cardSig) return;
     cardSig = sig;
@@ -2569,10 +2572,12 @@
    * The chat's frame (#104): on a phone a sheet rising from below; on a wide screen a panel hanging from Iko at the top
    * left, under the header, and the page steps right to make room for it, so it never covers the reading or the deck.
    */
-  var SIDE_MIN = 900;
+  var SIDE_MIN = 1100;
   function sideIko() {
-    var side = iko.open && window.innerWidth >= SIDE_MIN && !el.ikoWrap.hidden;
+    var side = iko.open && window.innerWidth >= SIDE_MIN && !el.ikoWrap.hidden && !intakeOn;
+    var was = document.body.classList.contains("iko-side");
     document.body.classList.toggle("iko-side", side);
+    if (was !== side && !el.panel.hidden) { cardSig = ""; requestAnimationFrame(placeCard); }
     if (!side) return;
     var bar = el.cloud.hidden ? el.chat.querySelector(".bar") : el.cloudTop, b = bar ? bar.getBoundingClientRect().bottom : 0;
     var top = Math.max(8, Math.round(Math.min(b, el.iko.getBoundingClientRect().bottom + 16)));
@@ -2687,6 +2692,7 @@
     if (!slot && el.ikoWrap.parentNode !== document.body) document.body.appendChild(el.ikoWrap);
     var lineAt = !on || asking ? document.body : home ? el.cloudTop : el.chat.querySelector(".bar");
     if (lineAt && el.ikoLine.parentNode !== lineAt) {
+      if (!el.ikoLine.hidden && el.ikoLine.hasAttribute("data-tip")) { clearTimeout(iko.lineT); el.ikoLine.hidden = true; } /* a screen's own tip stays with its screen */
       if (lineAt === document.body) lineAt.insertBefore(el.ikoLine, el.ikoWrap.parentNode === document.body ? el.ikoWrap : null);
       else lineAt.appendChild(el.ikoLine);
     }
