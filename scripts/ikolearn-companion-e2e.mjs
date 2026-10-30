@@ -12,7 +12,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
-const SHOTS = arg("--shots", ""), TAG = arg("--tag", "after"), ROOT = path.resolve(arg("--root", "public"));
+const ROOT = path.resolve(arg("--root", "public"));
 if (!process.env.IKOLEARN_PW) { console.log("ikolearn companion e2e: skipped (set IKOLEARN_PW to a playwright-core folder)"); process.exit(0); }
 const { chromium } = await import(pathToFileURL(path.join(process.env.IKOLEARN_PW, "index.mjs")).href);
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json" };
@@ -117,7 +117,7 @@ for (const width of [390, 1280]) {
     const { ctx, p, errs } = await seeded(width);
     try {
       await waitLine(p, () => !document.querySelector("#iko-line").hidden);
-      const pb = await rect(p, "#iko"), wrap = await rect(p, "#iko-wrap"), vh = await p.evaluate(() => innerHeight), l1 = await line(p);
+      const pb = await rect(p, "#iko"), vh = await p.evaluate(() => innerHeight), l1 = await line(p);
       ok(pb && pb.x < 30 && pb.b <= vh && pb.b > vh - 90 && pb.w >= 44 && pb.h >= 44, `${tag}: Iko sits at the bottom left, a 44px+ target`, JSON.stringify({ pb, vh }));
       ok(!(await p.evaluate(() => Boolean(document.querySelector(".home-nav #iko, .cloud-top #iko, #iko-cue")))), `${tag}: one Iko: nothing left at the top (the old pebble and cue are gone)`);
       const c1 = await clear(p, CLOUD_PARTS);
@@ -164,7 +164,7 @@ for (const width of [390, 1280]) {
       const c0 = await clear(p, ["#l-done button", "#l-cont", ".l-text", "#l-card"]);
       ok(!c0.hits.length, `${tag}: lesson: Iko clear of the reading and its buttons`, JSON.stringify(c0));
       await p.click("#l-cont"); await p.waitForTimeout(250);
-      const r1 = await p.evaluate(() => { const qz = document.querySelector("#l-quiz"), txt = document.querySelector(".l-main .l-text") || document.querySelector("#l-body"); return { quiz: !qz.hidden, pane: qz.classList.contains("l-pane-on"), legends: [...qz.querySelectorAll("legend")].map((l) => l.textContent), cont: !document.querySelector("#l-cont").hidden, got: !document.querySelector("#l-got").hidden, focus: Boolean(document.activeElement && document.activeElement.closest("#l-quiz")), phase: document.querySelector(".l-main").getAttribute("data-phase"), check: document.querySelector("#ph-check").className }; });
+      const r1 = await p.evaluate(() => { const qz = document.querySelector("#l-quiz"); return { quiz: !qz.hidden, pane: qz.classList.contains("l-pane-on"), legends: [...qz.querySelectorAll("legend")].map((l) => l.textContent), cont: !document.querySelector("#l-cont").hidden, got: !document.querySelector("#l-got").hidden, focus: Boolean(document.activeElement && document.activeElement.closest("#l-quiz")), phase: document.querySelector(".l-main").getAttribute("data-phase"), check: document.querySelector("#ph-check").className }; });
       ok(r1.quiz && r1.pane && r1.legends.length === 2 && /^First/.test(r1.legends[0]) && !r1.cont && !r1.got && r1.focus && r1.phase === "check" && r1.check === "on", `${tag}: Continue: the check in its own pane, focused`, JSON.stringify(r1));
       const order = await p.evaluate(() => { const a = document.querySelector("#l-quiz").getBoundingClientRect(), t = document.querySelector("#l-text, .l-text, #l-body"); return t ? t.getBoundingClientRect().bottom <= a.top + 1 : true; });
       ok(order, `${tag}: the check comes after the reading`);
@@ -192,7 +192,6 @@ for (const width of [390, 1280]) {
       if (!(await p.isHidden("#panel"))) { await p.click("#p-close"); await p.waitForTimeout(200); }
       await p.evaluate(() => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")); window.__er = c.order.find((x) => c.nodes[x].label === "Eruptions"); });
       await p.evaluate(() => { document.querySelector("#iko-line").hidden = true; });
-      await p.evaluate(() => window.__ikoTest && 0);
       await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" }); await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(500);
       const chip = p.locator(".cloud-flow > .chip", { hasText: "Eruptions" });
       if (await chip.count()) {
