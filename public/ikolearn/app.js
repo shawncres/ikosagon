@@ -1014,7 +1014,7 @@
     if (hintSeen("grow")) return;
     dismissHint("grow");
     var q = P.openQuestion(state.cloud, "grow");
-    ask(q, function (v) { dismissHint("growSaid"); if (v) buildCloud("more", [], cleanAbout("Something I'd like to grow in myself: " + v)); });
+    ask(q, function (v) { dismissHint("growSaid"); if (el.ikoLine.getAttribute("data-say") === "grow") ikoLine(""); /* answered or skipped: its line goes */ if (v) buildCloud("more", [], cleanAbout("Something I'd like to grow in myself: " + v)); });
     save();
     /* never beside the "another direction" invite: while one is on the cloud, Iko's line waits until it is gone
        (used, closed, or the cloud has its 3 subjects), this visit or a later one. The question is in the conversation already. */
@@ -1024,7 +1024,8 @@
   function sayGrow() {
     if (!el.ikoLine.hidden && el.ikoLine.getAttribute("data-react") === "start") { iko.after = sayGrow; return; } /* after Iko's reassurance */
     dismissHint("growSaid");
-    ikoLine("Your path has begun. When you like, tell me something you'd like to grow in yourself too.", 12000);
+    ikoLine("Your path has begun. When you like, tell me something you'd like to grow in yourself too.", 0); /* PR 107: stays until tapped or answered */
+    el.ikoLine.setAttribute("data-say", "grow");
   }
   function dirInviting() { return Boolean(state.cloud && (P.directions(state.cloud).invite || (C.dirOf(state.cloud).later || []).length)); }
   function maybeGrowLine() {
@@ -2837,13 +2838,16 @@
     el.ikoLine.textContent = t || "";
     el.ikoLine.hidden = !t;
     if (t) el.ikoLine.setAttribute("aria-label", "Dismiss hint: " + t);
-    el.ikoLine.removeAttribute("data-tip"); el.ikoLine.removeAttribute("data-react");
+    el.ikoLine.removeAttribute("data-tip"); el.ikoLine.removeAttribute("data-react"); el.ikoLine.removeAttribute("data-say");
     if (t) clearTimeout(iko.tipT);
-    if (t && ms !== 0) iko.lineT = setTimeout(function () { el.ikoLine.hidden = true; placeIko(); var nx = iko.after; iko.after = null; if (nx) nx(); else tipAgain(); }, ms || 9000); /* 0: it stays (a hint) */
+    if (t && ms !== 0) iko.lineT = setTimeout(function () { el.ikoLine.hidden = true; placeIko(); var nx = iko.after; iko.after = null; if (nx) nx(); else tipAgain(); }, ms || readMs(t)); /* 0: it stays (a hint) */
     placeIko();
   }
-  /* PR 106: tapping the bubble dismisses it (Enter or Space too); tapping Iko himself opens the chat */
-  function dismissLine() { iko.after = null; ikoLine(""); tipAgain(); }
+  /* PR 107: long enough to read, by length: about 65 ms a character, 7 to 20 s (a line that guides stays until tapped) */
+  function readMs(t) { return Math.min(20000, Math.max(7000, 3500 + 65 * String(t || "").length)); }
+  /* PR 106: tapping the bubble dismisses it (Enter or Space too); tapping Iko himself opens the chat. PR 107: whatever
+     was waiting behind it (the grow question after the first reassurance) comes next */
+  function dismissLine() { var nx = iko.after; iko.after = null; ikoLine(""); if (nx) nx(); else tipAgain(); }
   el.ikoLine.addEventListener("click", dismissLine);
   el.ikoLine.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); dismissLine(); if (!el.ikoWrap.hidden) el.iko.focus(); } });
   /* shown on the cloud (and its opening question), a lesson or test, a card and the deck; hidden in the whole conversation and on the welcome */
@@ -2951,10 +2955,16 @@
     if (key === iko.tipKey) return;
     iko.tipKey = key;
     if (!el.ikoLine.hidden && el.ikoLine.hasAttribute("data-tip")) { iko.after = null; ikoLine(""); } /* past its step: the hint goes */
+    else if (!el.ikoLine.hidden && el.ikoLine.getAttribute("data-react") === "start" && key && !/^(cloud|home)$/.test(key)) { var nx = iko.after; iko.after = null; ikoLine(""); if (nx) nx(); } /* the first reassurance: until tapped or the learner starts */
     clearTimeout(iko.tipT);
     if (!key) return;
     iko.tipT = setTimeout(function () { showTip(key); }, 450); /* once the new screen has settled */
   }
+  var ABOUT = {
+    cloud: { k: "aboutCloud", t: "This is your cloud: everything you learn grows here, around your name. {Tap} a node to start." },
+    lesson: { k: "aboutLesson", t: "This is a lesson: read it, check yourself with a few questions, then earn its card." },
+    deck: { k: "aboutDeck", t: "This is your deck: every card you earn lives here, and it keeps growing as you learn." }
+  };
   function tipFresh(k) { return Date.now() - (Number(tipsShown()[k]) || 0) >= GAP; }
   function tipAgain() { var k = iko.tipKey; if (k && !iko.open && tipFresh(k)) { clearTimeout(iko.tipT); iko.tipT = setTimeout(function () { showTip(k); }, 700); } }
   /* a hint stays until it is tapped away or the learner moves past its step (PR 105, PR 106) */
@@ -2964,6 +2974,15 @@
   }
   function showTip(key) {
     if (key !== iko.tipKey || iko.open || el.ikoWrap.hidden || !el.ikoLine.hidden || !state.cloud || !tipFresh(key)) return; /* Iko is speaking (or gone), or this screen had its line a moment ago */
+    /* PR 107: the first visit to the cloud, a lesson or the deck: one short line on what that screen is for (once each, seen.h) */
+    var ab = ABOUT[/^(cloud|home|topic)$/.test(key) ? "cloud" : key === "deck" ? "deck" : /^(learn|check|missed|next|test)$/.test(key) ? "lesson" : ""];
+    if (ab && !hintSeen(ab.k)) {
+      dismissHint(ab.k);
+      var d0 = tipsShown(); d0[key] = Date.now();
+      try { sessionStorage.setItem(CUES, JSON.stringify(d0)); } catch { /* ignore */ }
+      tipLine(tipWords(ab.t), ab.k);
+      return;
+    }
     var tip = pickTip(key);
     if (!tip) return;
     var d = tipsShown(); d[key] = Date.now(); if (tip.nudge) d.n = 1;
@@ -2992,7 +3011,7 @@
     if (!el.ikoLine.hidden && !el.ikoLine.hasAttribute("data-tip") && !el.ikoLine.hasAttribute("data-react")) return false; /* Iko is saying something that matters (the grow question): no reaction over it */
     if (iko.open || el.ikoWrap.hidden) { iko.pendingReact = t; return true; } /* said once the pebble is back */
     var held = !el.ikoLine.hidden && el.ikoLine.getAttribute("data-tip"), was = { t: el.ikoLine.textContent, k: iko.tipKey };
-    ikoLine(t, kind === "start" ? 9000 : 4500);
+    ikoLine(t, kind === "start" ? 0 : Math.max(6500, Math.min(14000, 3000 + 60 * t.length))); /* PR 107: the first reassurance stays until tapped (or the learner starts); others fold, a little later */
     if (held) iko.after = function () { if (iko.tipKey === was.k && !iko.open) tipLine(was.t, held); }; /* the hint wasn't dismissed: it comes back */
     el.ikoLine.setAttribute("data-react", kind);
     return true;
@@ -3599,7 +3618,7 @@
     try { state.lessons = JSON.parse(load(LS.lessons) || "{}") || {}; } catch { state.lessons = {}; }
     try { state.tests = JSON.parse(load(LS.tests) || "{}") || {}; } catch { state.tests = {}; }
     try { var v = JSON.parse(load(LS.view) || "null"); state.view = v && Number.isFinite(v.z) ? v : null; } catch { state.view = null; }
-    try { var sn = JSON.parse(load(LS.seen) || "null"); if (sn && sn.c && typeof sn.c === "object") state.seen = { c: sn.c, ev: Number(sn.ev) || 0, h: sn.h && typeof sn.h === "object" ? { cloud: sn.h.cloud ? 1 : 0, card: sn.h.card ? 1 : 0, deck: sn.h.deck ? 1 : 0, iko: sn.h.iko ? 1 : 0, grow: sn.h.grow ? 1 : 0 } : {} }; } catch { /* keep the empty default */ }
+    try { var sn = JSON.parse(load(LS.seen) || "null"); if (sn && sn.c && typeof sn.c === "object") state.seen = { c: sn.c, ev: Number(sn.ev) || 0, h: sn.h && typeof sn.h === "object" ? { cloud: sn.h.cloud ? 1 : 0, card: sn.h.card ? 1 : 0, deck: sn.h.deck ? 1 : 0, iko: sn.h.iko ? 1 : 0, grow: sn.h.grow ? 1 : 0, aboutCloud: sn.h.aboutCloud ? 1 : 0, aboutLesson: sn.h.aboutLesson ? 1 : 0, aboutDeck: sn.h.aboutDeck ? 1 : 0 } : {} }; } catch { /* keep the empty default */ }
     save(); /* writes a migrated (older -> v9) cloud back in the compact format, with the deck backfilled */
     startChat();
     settleMerges(); /* existing completion data can already form parent cards (0 calls) */

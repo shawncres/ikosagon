@@ -175,7 +175,7 @@ for (const w of [390, 1280]) {
   /* 3. an existing v9 save: untouched, one learner, no question; becomes the first learner when a guide adds another */
   await step(tag, "migration", async () => {
     const { ctx, p, errs } = await open(w);
-    await p.addInitScript((c) => { if (sessionStorage.getItem("s")) return; sessionStorage.setItem("s", "1"); localStorage.setItem("ikolearn.v1.name", "Sam"); localStorage.setItem("ikolearn.v1.cloud", c); localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { cloud: 1, card: 1, deck: 1 } })); }, samCloud);
+    await p.addInitScript((c) => { if (sessionStorage.getItem("s")) return; sessionStorage.setItem("s", "1"); localStorage.setItem("ikolearn.v1.name", "Sam"); localStorage.setItem("ikolearn.v1.cloud", c); localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { aboutCloud: 1, aboutLesson: 1, aboutDeck: 1, cloud: 1, card: 1, deck: 1 } })); }, samCloud);
     await app(p);
     const s0 = await liveCloud(p), st0 = await ls(p);
     ok(await p.isHidden("#welcome") && await p.isHidden("#who-now") && !("ikolearn.v1.profiles" in st0) && s0.deck === 10, `${tag}: a v9 save opens as before (no question, no switcher, nothing new written)`);

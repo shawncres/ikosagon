@@ -108,7 +108,7 @@ async function run(width) {
       C.joinDeck(c, T + 4000);
       c.active = id("Magma");
       localStorage.setItem("ikolearn.v1.name", "Maya"); localStorage.setItem("ikolearn.v1.cloud", C.serialize(c));
-      localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { cloud: 1, card: 1, chat: 1, draw: 1 } }));
+      localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { aboutCloud: 1, aboutLesson: 1, aboutDeck: 1, cloud: 1, card: 1, chat: 1, draw: 1 } }));
       localStorage.setItem("ikolearn.v1.thread", JSON.stringify([{ id: "m1", at: T, role: "model", local: true, text: "Welcome back, Maya." }]));
     });
     await p.reload({ waitUntil: "networkidle" });
@@ -358,7 +358,7 @@ async function runShawn(width) {
       C.joinDeck(c, T + 4000);
       c.active = id("Data Management");
       localStorage.setItem("ikolearn.v1.name", "Shawn"); localStorage.setItem("ikolearn.v1.cloud", C.serialize(c));
-      localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { cloud: 1, card: 1, chat: 1, draw: 1 } }));
+      localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { aboutCloud: 1, aboutLesson: 1, aboutDeck: 1, cloud: 1, card: 1, chat: 1, draw: 1 } }));
       localStorage.setItem("ikolearn.v1.thread", JSON.stringify([{ id: "m1", at: T, role: "model", local: true, text: "Welcome back, Shawn." }]));
     });
     await p.reload({ waitUntil: "networkidle" }); await p.waitForTimeout(300);

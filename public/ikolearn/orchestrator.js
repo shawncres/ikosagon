@@ -391,7 +391,7 @@
     oceania: ["Coral reefs", "Marsupials", "Ocean navigation", "Southern stars"]
   };
   var BAND_IDEAS = {
-    u10: ["Dinosaurs", "How plants grow", "Drawing animals"],
+    u10: ["Bugs and beetles", "How plants grow", "Shapes and patterns"],
     "10-13": ["Coding a game", "Space travel", "Inventions"],
     "14-17": ["Photography", "Psychology", "Music production"],
     "18+": ["Personal finance", "Cooking basics", "Philosophy"]

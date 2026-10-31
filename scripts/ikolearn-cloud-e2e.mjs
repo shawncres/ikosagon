@@ -41,7 +41,7 @@ const SEED = (o) => {
   ];
   C.applyCreate(c, { items: o.fresh ? items.slice(0, 1) : items }, { t: T });
   localStorage.setItem("ikolearn.v1.name", "Maya"); localStorage.setItem("ikolearn.v1.cloud", C.serialize(c));
-  localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { cloud: o.hint ? 0 : 1, card: 1, chat: 1, draw: 1 } }));
+  localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { aboutCloud: 1, aboutLesson: 1, aboutDeck: 1, cloud: o.hint ? 0 : 1, card: 1, chat: 1, draw: 1 } }));
   localStorage.setItem("ikolearn.v1.thread", JSON.stringify([{ id: "m1", at: T, role: "model", local: true, text: "Welcome back, Maya." }]));
   if (o.guide) localStorage.setItem("ikolearn.v1.profiles", JSON.stringify({ v: 1, mode: "guide", active: "p1", seq: 2, list: [{ id: "p1", name: "Maya", at: T }, { id: "p2", name: "Robin", at: T }] }));
 };

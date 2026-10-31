@@ -68,7 +68,7 @@ const SEED = ({ subs, act, visits, active, guide, now, dir }) => {
   if (dir) Object.assign(C.dirOf(c), dir);
   localStorage.setItem("ikolearn.v1.name", "Maya"); localStorage.setItem("ikolearn.v1.cloud", C.serialize(c));
   if (guide) window.IkoProfiles.begin(localStorage, "guide", "Maya");
-  localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { cloud: 1, card: 1, chat: 1, draw: 1, iko: 1, grow: 1 } }));
+  localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { aboutCloud: 1, aboutLesson: 1, aboutDeck: 1, cloud: 1, card: 1, chat: 1, draw: 1, iko: 1, grow: 1 } }));
   localStorage.setItem("ikolearn.v1.thread", JSON.stringify([{ id: "m1", at: T, role: "model", local: true, text: "Welcome back, Maya." }]));
 };
 async function open(width, ctx0) {

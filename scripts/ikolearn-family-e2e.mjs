@@ -61,7 +61,7 @@ async function page(width, seeded) {
       if (sessionStorage.getItem("seeded")) return;
       sessionStorage.setItem("seeded", "1");
       localStorage.setItem("ikolearn.v1.name", "Sam"); localStorage.setItem("ikolearn.v1.cloud", cloud); localStorage.setItem("ikolearn.v1.lessons", lessons);
-      localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { cloud: 1, card: 1, deck: 1 } }));
+      localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { aboutCloud: 1, aboutLesson: 1, aboutDeck: 1, cloud: 1, card: 1, deck: 1 } }));
       localStorage.setItem("ikolearn.v1.thread", JSON.stringify([{ id: "m1", at: Date.now(), role: "model", local: true, text: "Welcome back, Sam." }]));
     }, [SAVED, LESSONS]);
   }
