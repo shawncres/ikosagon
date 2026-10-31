@@ -1060,7 +1060,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/fold/i.test(css) && /prefers-reduced-motion/.test(css), "card fold + reduced motion");
   const lessonJs = fs.readFileSync("public/ikolearn/lesson.js", "utf8");
   ok(/<script src="\/ikolearn\/lesson\.js/.test(html) && html.indexOf("lesson.js") < html.indexOf("app.js") && html.indexOf("cloud-model.js") < html.indexOf("lesson.js"), "lesson.js loads before app.js");
-  ok(/id="lesson"/.test(html) && /id="l-got"/.test(html) && /id="l-tricky"/.test(html) && /id="p-lesson"/.test(html) && /id="p-path"/.test(html), "lesson view + panel buttons present");
+  ok(/id="lesson"/.test(html) && /id="l-got"/.test(html) && !/id="l-tricky"/.test(html) && /id="l-conf"/.test(html) && /id="p-lesson"/.test(html) && /id="p-path"/.test(html), "lesson view + panel buttons present");
   ok(/ikolearn\.v1\.lessons/.test(app) && /MAX_LESSONS/.test(app) && /"\/lesson"/.test(app) && /"\/create"/.test(app) && !/"\/path"/.test(app), "lessons cached in localStorage; lesson and create endpoints (paths now come from the creation call)");
   ok(!/generativelanguage|GEMINI_API_KEY|x-goog-api-key|innerHTML/.test(lessonJs) && !/innerHTML\s*=(?!\s*"")/.test(app), "lesson rendering uses text nodes only");
   ok(!/montessori|waldorf|bloom|common core/i.test(app + lessonJs + html), "UI never names frameworks");
@@ -3040,9 +3040,11 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
 
   // the app: wiring (static), the behaviour is covered end to end by scripts/ikolearn-flow-e2e.mjs
   const app = fs.readFileSync("public/ikolearn/app.js", "utf8"), html = fs.readFileSync("public/ikolearn/index.html", "utf8"), css = fs.readFileSync("public/ikolearn/styles.css", "utf8");
-  const fin = app.slice(app.indexOf("  function finishLesson(kind) {"), app.indexOf("  /* ---------- \"Still tricky\""));
+  const fin = app.slice(app.indexOf("  function finishLesson(kind, o) {"), app.indexOf("  /* ---------- \"Still tricky\""));
   ok(fin.length > 200 && !/postJson\(|stream\(|openLesson\(|createNext\(|linkBtn\("Try again"/.test(fin) && /That's it\. /.test(fin), "I've got it: confirmed on the device: no call, no auto-advance, no Try again; a short \"That's it.\"");
-  ok(/openIko\(\{ tricky: true \}\);[^\n]*\n\s*prepareClarify\(id\)/.test(fin) && /Iko has another way to see it\./.test(fin) && !/openLesson\(|showLesson\(false\)/.test(fin), "Still tricky: stays in the lesson and opens Iko, with the clarification already there");
+  ok(!/Still tricky/.test(html) && /function refreshAttempt\(id\)/.test(app) && /linkBtn\("Refresh", function \(\) \{ refreshAttempt\(id\); \}, "btn sm q-refresh"\)/.test(app) && /if \(!refreshLocal\(id\)\) \{ retell\(id\); return; \}/.test(app) && /q\.ans = \[\]; les\.ans = \[\]; q\.missed = false; ck\.c = 0; les\.ra = 1;/.test(app), "PR 109: no Still tricky; a missed check offers Refresh: a new attempt (prepared telling + spare set on the device, else one call), back to the reading first");
+  ok(/if \(all\) \{ finishLesson\("got", \{ auto: true, pre: pre\.trim\(\) \}\); return; \}/.test(app) && /el\.lGot\.hidden = !solo;/.test(app) && /var dn = lessonDone\(id\), solo = ph === "passed" && !qs && !dn;/.test(app), "PR 109: passing the check earns the card; \u201cI've got it\u201d only where a lesson has no questions");
+  ok(/\.l-main\[data-done="1"\]:not\(\.reread\) #l-body/.test(css) && /"Reread the lesson"/.test(app) && /"You learned: " \+ tk/.test(app) && /function showConf\(\)/.test(app), "PR 109: once earned, a confirmation (what was learned) and Where next instead of the lesson; a quiet Reread");
   {
     const prep = app.slice(app.indexOf("  function prepareClarify(id) {"), app.indexOf("  function focusClar(style) {"));
     ok(/les\.tk && !\(les\.cl && les\.cl\.simpler\)\) \{ les\.cl = les\.cl \|\| \{\}; les\.cl\.simpler = les\.tk; save\(\); \}/.test(prep) && /else clarify\(id, "simpler"\);/.test(prep) && /focusClar\("simpler"\)/.test(prep) && !/stream\(|postJson\(/.test(prep), "Still tricky: the lesson's prepared simpler explanation is shown at once (0 calls); an older lesson without one writes it (1 call)");
@@ -3078,7 +3080,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/if \(!quizSaidIt\(\)\) el\.lStatus\.appendChild\(mk\("strong", "yes", "That's it\. "\)\)/.test(fin) && /function quizSaidIt\(\)/.test(app) && /if \(quizSaidIt\(\)\) \{ var dup = el\.lStatus\.querySelector\("strong\.yes"\)/.test(app), "\"That's it.\" is said once (the quiz or the status line, never both)");
   ok(/\[".clar-opts", ".clar-chat"\]\.forEach\(function \(q\) \{ var co = el\.lClar\.querySelector\(q\); if \(co\) co\.parentNode\.removeChild\(co\); \}\);/.test(fin) && /renderClarify\(id, !marked\)/.test(app), "I've got it hides the clarify options and the chat link (answers already shown stay)");
   ok(/ans: Array\.isArray\(cached\.ans\) \? cached\.ans\.slice\(0, qs\.length\) : \[\]/.test(app) && !/cached\.ans\.slice\(0, 2\)/.test(app), "a lesson comes back with every saved answer (one per question, 2 or 3; none dropped)");
-  ok(/if \(kind === "got"\) \{ state\.lessons\[id\]\.got = Date\.now\(\);[^}]*\} else delete state\.lessons\[id\]\.got;/.test(fin) && /marked = n\.mastery >= C\.MASTERED \|\| Boolean\(les && les\.got\)/.test(app), "\"I've got it\" is kept with the lesson (saved at once) and shown again on return; \"Still tricky\" clears it");
+  ok(/if \(state\.lessons\[id\]\) \{ state\.lessons\[id\]\.got = Date\.now\(\);/.test(fin) && /marked = n\.mastery >= C\.MASTERED \|\| Boolean\(les && les\.got\)/.test(app), "the earn is kept with the lesson (saved at once) and shown again on return");
   const nt = app.slice(app.indexOf("  function notice(id) {"), app.indexOf("  el.pLesson.addEventListener"));
   ok(nt.length > 300 && !/lock\(/.test(nt), "the note never holds the app busy (navigation and lessons stay available while it's written)");
   ok(/\} else if \(r\.reason === "aborted"\) \{/.test(app) && /reason: signal && signal\.aborted \? "aborted" : "offline"/.test(app), "a cancelled call is never shown as a failure");
@@ -3829,7 +3831,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(a1.ok && !a2.ok && a2.why === "taken" && ix.list.length === 2 && ix.list[0].name === "Maya" && ix.active === ix.list[0].id, "learners: the first starts, the rest wait (parked), no duplicates", JSON.stringify(ix));
   // the lesson loop in the page
   ok(/id="l-cont"/.test(html) && /id="ph-earn"/.test(html) && /id="l-quiz" class="l-pane"/.test(html) && /#l-quiz\.l-pane-on \.quiz \{/.test(css), "lesson: Continue, the check in its own pane, and an Earn step");
-  ok(/function lessonPhase\(id\)/.test(app) && /function finishLesson\(kind\)[\s\S]{0,300}if \(kind === "got" && lessonPhase\(id\) !== "passed"\) return;/.test(app), "lesson: earning only after the check is passed");
+  ok(/function lessonPhase\(id\)/.test(app) && /function finishLesson\(kind, o\)[\s\S]{0,300}if \(kind !== "got" \|\| lessonPhase\(id\) !== "passed"\) return;/.test(app), "lesson: earning only after the check is passed");
   ok(/function reactWanted\(n\) \{ return n <= REACT_EVERY\[0\] \|\| \(n <= REACT_EVERY\[1\] \? n % 3 === 0 : n % 8 === 0\); \}/.test(app), "Iko: reactions come less often over time");
   ok(/var IKO_MEM = "ikolearn-iko"/.test(app) && !/ikolearn\.v1\.iko/.test(app), "Iko: what it has said is kept on this device under its own key (outside the cloud)");
   ok(/@keyframes iko-blink/.test(css) && !/body\.iko-on #chat \{[^}]*padding-bottom/.test(css) && !/body\.iko-on::after/.test(css) && /id="thumb" class="thumb"/.test(html), "Iko: blinks; no strip or room at the bottom of the pages; the header keeps its cloud circle (PR 104)");

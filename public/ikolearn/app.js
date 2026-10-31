@@ -32,7 +32,7 @@
     thumb: $("thumb"), thumbCanvas: $("thumb-canvas"), reset: $("reset"),
     focusChip: $("focus-chip"), focusText: $("focus-text"), focusClear: $("focus-clear"),
     lesson: $("lesson"), lBack: $("l-back"), lTrail: $("l-trail"), lTitle: $("l-title"), lBody: $("l-body"), lDone: $("l-done"),
-    lGot: $("l-got"), lTricky: $("l-tricky"), lCont: $("l-cont"), phEarn: $("ph-earn"), lStatus: $("l-status"), lPath: $("l-path"), lClar: $("l-clar"), lNext: $("l-next"), lChat: $("l-chat"), lRedo: $("l-redo"),
+    lGot: $("l-got"), lConf: $("l-conf"), lCont: $("l-cont"), phEarn: $("ph-earn"), lStatus: $("l-status"), lPath: $("l-path"), lClar: $("l-clar"), lNext: $("l-next"), lChat: $("l-chat"), lRedo: $("l-redo"),
     cloud: $("cloud"), cloudCanvas: $("cloud-canvas"), cloudDeck: $("cloud-deck"), cloudRet: $("cloud-ret"), barRet: $("bar-ret"), cloudWho: $("cloud-who"), chatBack: $("chat-back"),
     ageLink: $("age-link"),
     cs: $("cloud-start"), csName: $("cs-name"), csAges: $("cs-ages"), csHi: $("cs-hi"), csQ: $("cs-q"), csFew: $("cs-few"), csForm: $("cs-form"), csIn: $("cs-in"), csEx: $("cs-ex"), csStatus: $("cs-status"),
@@ -805,7 +805,7 @@
   /* One call at a time. A lesson, test or clarification asked for meanwhile waits in state.queued and starts here. */
   function lock(on) {
     state.busy = on;
-    [el.send, el.pCard, el.pAdj, el.pLesson, el.pTest, el.lGot, el.lTricky, el.lCont, el.ikoGot].forEach(function (b) { b.disabled = on; });
+    [el.send, el.pCard, el.pAdj, el.pLesson, el.pTest, el.lGot, el.lCont, el.ikoGot].forEach(function (b) { b.disabled = on; });
     Array.prototype.forEach.call(document.querySelectorAll(".draw-btn, .clar-opt"), function (b) { b.disabled = on; });
     if (!on && state.queued) { var q = state.queued; state.queued = null; setTimeout(q, 0); }
     renderStart();
@@ -1274,11 +1274,15 @@
     setPhase(ph === "learn" ? "learn" : ph === "passed" ? (qs ? "earn" : "learn") : "check");
     el.lQuiz.hidden = ph === "learn" || ph === "passed"; /* PR 108: the reading or the check, never both; passed: the check is put away */
     el.lQuiz.classList.toggle("l-pane-on", ph !== "learn" && qs);
-    el.lDone.hidden = !(ph === "learn" || ph === "passed");
+    /* PR 109: a check earns the card itself; "I've got it" is only for a lesson with no questions, until it's earned */
+    var dn = lessonDone(id), solo = ph === "passed" && !qs && !dn;
+    el.lDone.hidden = !(ph === "learn" || solo);
     el.lCont.hidden = ph !== "learn";
-    el.lGot.hidden = ph !== "passed";
-    el.lTricky.hidden = false;
+    el.lGot.hidden = !solo;
     el.lMain.setAttribute("data-phase", ph);
+    el.lMain.setAttribute("data-done", dn ? "1" : "");
+    if (!dn) el.lMain.classList.remove("reread");
+    renderConf(id);
     ikoActs();
   }
   /* Continue: the reading is done, the questions open in their own pane (their first question focused) */
@@ -1330,17 +1334,13 @@
   /* a missed round: a clearer telling first, then a fresh set of questions (never the card) */
   function missBox(id) {
     var les = state.lessons[id], ck = ckOf(id), box = mk("div", "q-miss"), n = nodeOf(id);
-    box.appendChild(mk("p", "l-head", "Let's look at it another way"));
-    var spare = les && validQs(les.rq).length >= 2 && (ck.set || 0) < 1;
-    if (ck.miss <= 1 && les && les.tk) {
-      var cl = mk("div", "clar q-again"); paragraphs(cl, les.tk); box.appendChild(cl);
-      box.appendChild(mk("p", "fine", "Then try a fresh set of questions on " + n.label + "."));
-      box.appendChild(linkBtn("Try a fresh check", function () { freshCheck(id); }, "btn sm draw-btn q-fresh"));
-    } else {
-      box.appendChild(mk("p", null, "I'll write " + n.label + " again, more clearly and in smaller steps. Read it through, then a fresh set of questions comes."));
-      box.appendChild(linkBtn("Read a clearer version", function () { retell(id); }, "btn sm draw-btn q-retell"));
-      if (spare) box.appendChild(linkBtn("Or try a fresh check now", function () { freshCheck(id); }, "link q-fresh"));
-    }
+    /* PR 109: one quiet Refresh: a new attempt at the card, the reading first, then a fresh check */
+    box.appendChild(mk("p", "l-head", "Not passed yet"));
+    box.appendChild(mk("p", null, refreshLocal(id) ? "Refresh for a new attempt: another way to see " + n.label + ", then a fresh set of questions."
+      : "Refresh for a new attempt: I'll write " + n.label + " again, more clearly and in smaller steps, with fresh questions."));
+    var rb = linkBtn("Refresh", function () { refreshAttempt(id); }, "btn sm q-refresh");
+    rb.setAttribute("aria-label", "Refresh: a new attempt at " + n.label);
+    box.appendChild(rb);
     return box;
   }
   /* options in a new order (the right one moves), questions in a new order: a fallback set when nothing new is to hand */
@@ -1368,6 +1368,57 @@
   }
   /* a second miss: the lesson written again, clearer and gentler, with its own fresh questions (1 call) */
   function retell(id) { openLesson(id, true, null, { again: true }); }
+  /*
+   * PR 109: Refresh, after a missed check: a new attempt at the card. The first time, on the device (0 calls): the
+   * clearer telling the lesson call prepared leads the reading and the spare questions wait behind Continue. After that
+   * (or with nothing prepared) the lesson is written again, gentler, with its own questions (1 call, as before). Either
+   * way the learner starts on the reading again, then the check. The ease already noted from the miss stays.
+   */
+  function refreshLocal(id) {
+    var les = state.lessons[id], ck = ckOf(id) || {};
+    return Boolean(les && les.tk && (ck.miss || 0) <= 1 && validQs(les.rq).length >= 2 && (ck.set || 0) < 1);
+  }
+  function refreshAttempt(id) {
+    var les = state.lessons[id], ck = ckOf(id), q = state.quiz;
+    if (!les || !ck || !q || q.id !== id || state.busy) return;
+    if (!refreshLocal(id)) { retell(id); return; }
+    ck.set = 1; q.qs = validQs(les.rq); les.cur = q.qs;
+    q.ans = []; les.ans = []; q.missed = false; ck.c = 0; les.ra = 1;
+    save();
+    renderLessonBody(les.text, false); againBox(id);
+    renderQuiz(); applyPhase(); renderLessonPath(); renderFork(id); renderIko();
+    var top = el.lTitle; top.tabIndex = -1;
+    try { top.scrollIntoView({ block: "start", behavior: motionOK() ? "smooth" : "auto" }); top.focus({ preventScroll: true }); } catch { /* old browsers */ }
+  }
+  /* a local new attempt: the prepared clearer telling, at the top of the reading */
+  function againBox(id) {
+    var les = state.lessons[id];
+    if (!les || !les.ra || !les.tk || el.lBody.querySelector(".q-again")) return;
+    var cl = mk("div", "clar q-again"); cl.appendChild(mk("p", "kicker", "Another way to see it")); paragraphs(cl, les.tk);
+    el.lBody.insertBefore(cl, el.lBody.firstChild);
+  }
+  /* PR 109: the card is earned (its check passed, or "I've got it" where there are no questions) */
+  function lessonDone(id) {
+    var les = state.lessons[id];
+    return state.mode === "lesson" && state.lessonNode === id && (hasQs(id) ? passed(id) : Boolean(les && les.got));
+  }
+  /* PR 109: once earned, a short confirmation in place of the lesson (what was learned), then Where next; the lesson
+     itself one quiet tap away */
+  function renderConf(id) {
+    var dn = lessonDone(id);
+    el.lConf.hidden = !dn;
+    if (!dn) { el.lConf.textContent = ""; return; }
+    var n = nodeOf(id), tk = takeawayOf(id), inDeck = C.inDeck(state.cloud, id);
+    el.lConf.textContent = "";
+    el.lConf.appendChild(mk("p", "l-head", inDeck ? "Card earned \u00b7 in your deck" : "Passed"));
+    el.lConf.appendChild(mk("p", "conf-take", tk ? "You learned: " + tk : "You've shown you understand " + n.label + "."));
+    if (state.lessons[id] && state.lessons[id].text) {
+      var re = el.lMain.classList.contains("reread");
+      var p = mk("p", "fine");
+      p.appendChild(linkBtn(re ? "Hide the lesson" : "Reread the lesson", function () { el.lMain.classList.toggle("reread"); renderConf(id); }, "link conf-reread"));
+      el.lConf.appendChild(p);
+    }
+  }
   /* "That's it." is said once: a right quiz answer already says it, so the status line doesn't repeat it */
   function quizSaidIt() { return !el.lQuiz.hidden && [].some.call(el.lQuiz.querySelectorAll(".q-fb"), function (x) { return x.textContent === "That's it."; }); }
   function answerQ(qi, oi) {
@@ -1402,11 +1453,13 @@
     save();
     renderQuiz();
     el.lStatus.textContent = "";
+    var pre = "";
     if (all) {
-      el.lStatus.textContent = (note ? note + " " : "") + "You've shown you understand " + nodeOf(id).label + ". Tap \u201cI've got it\u201d to keep it, or pick where to go next.";
-      if (kids.length) el.lStatus.textContent += " " + kidsLine(id, kids);
-      settleMerges().forEach(function (m) { var pn = nodeOf(m.id); if (pn) el.lStatus.textContent += " " + pn.label + " is now a Merged " + C.roman(m.level) + " card, holding " + C.corpusOf(state.cloud, m.id).length + " cards."; });
-      ikoReact("pass");
+      /* PR 109: passing the check earns the card (no "I've got it" step) */
+      pre = (note ? note + " " : "") + (kids.length ? kidsLine(id, kids) + " " : "");
+      settleMerges().forEach(function (m) { var pn = nodeOf(m.id); if (pn) pre += pn.label + " is now a Merged " + C.roman(m.level) + " card, holding " + C.corpusOf(state.cloud, m.id).length + " cards. "; });
+      var les1 = state.lessons[id];
+      if (les1 && (les1.earned || les1.got)) ikoReact("pass"); /* (a first earn has its own word) */
     }
     applyPhase();
     renderLessonCard(Boolean(note));
@@ -1416,8 +1469,9 @@
     offerTest(id);
     if (kids.length) ikoReact("grow");
     renderIko();
-    var f = el.lQuiz.querySelector(all ? ".q-lede" : ".q-miss");
-    if (!all && f) { f.tabIndex = -1; showNear(f); try { f.focus({ preventScroll: true }); } catch { f.focus(); } }
+    if (all) { finishLesson("got", { auto: true, pre: pre.trim() }); return; }
+    var f = el.lQuiz.querySelector(".q-miss");
+    if (f) { f.tabIndex = -1; showNear(f); try { f.focus({ preventScroll: true }); } catch { f.focus(); } }
   }
 
   /*
@@ -1592,8 +1646,8 @@
     var kids = growChildren(id);
     var note = growthNote(id, before);
     if (kids.length) note = (note ? note + " " : "") + kidsLine(id, kids);
-    var les = state.lessons[id], marked = n.mastery >= C.MASTERED || Boolean(les && les.got); /* "I've got it" is kept with the lesson */
-    if (marked) el.lStatus.textContent = "You've marked this one as done.";
+    var les = state.lessons[id], marked = n.mastery >= C.MASTERED || Boolean(les && les.got); /* earned: kept with the lesson */
+    if (les && les.ra) againBox(id);
     if (note) el.lStatus.textContent = (el.lStatus.textContent ? el.lStatus.textContent + " " : "") + note;
     save();
     settleMerges();
@@ -1606,6 +1660,7 @@
     if (state.lessons[id] && state.lessons[id].cl) renderClarify(id, !marked); /* clarifications already written: shown again, 0 calls (options only while not done) */
     offerTest(id);
     renderIko();
+    if (hasQs(id) && passed(id) && les && !les.got) finishLesson("got", { auto: true, quiet: true }); /* PR 109: passed before this change, never tapped: earned now */
   }
   /*
    * "I've got it": confirmed on the device (0 calls). Progress is marked, a short note says so, and the learner stays
@@ -1632,31 +1687,28 @@
     if (t.length > 160) t = t.slice(0, 157).replace(/\s+\S*$/, "") + "\u2026";
     return t.length >= 8 ? t : "";
   }
-  function finishLesson(kind) {
+  function finishLesson(kind, o) {
     var id = state.lessonNode, n = nodeOf(id);
+    o = o || {};
     if (!n) return;
-    if (kind === "got" && lessonPhase(id) !== "passed") return; /* earned only once the check is passed (PR 103) */
-    var keep = kind === "got" ? holdScroll() : null; /* PR 107: the earn never moves the page (it used to jump to the top on a phone) */
+    if (kind !== "got" || lessonPhase(id) !== "passed") return; /* earned only once the check is passed (PR 103) */
+    var keep = o.auto ? null : holdScroll(); /* PR 107: the earn never moves the page (it used to jump to the top on a phone); PR 109: a pass brings Where next up instead */
     var les0 = state.lessons[id], wasEarned = Boolean(les0 && (les0.earned || les0.got)); /* PR 108: the card's flight plays only the first time it is earned */
     var before = C.growthOf(state.cloud, id);
     var r = C.engage(state.cloud, id, kind);
     var kids = kind === "got" ? growChildren(id) : [];
     var note = growthNote(id, before);
-    if (state.lessons[id]) { if (kind === "got") { state.lessons[id].got = Date.now(); var tk = takeawayOf(id); if (tk) state.lessons[id].take = tk; } else delete state.lessons[id].got; } /* kept with the lesson: shown again on return; PR 108: its one-line takeaway too */
+    if (state.lessons[id]) { state.lessons[id].got = Date.now(); var tk = takeawayOf(id); if (tk) state.lessons[id].take = tk; } /* kept with the lesson: shown again on return; PR 108: its one-line takeaway too */
     if (C.isDone(state.cloud, id) && state.cloud.active === id) state.cloud.active = null;
     save();
     settleMerges();
     refreshViews([id].concat(r.next ? [r.next] : [], kids));
     el.lStatus.textContent = "";
-    if (kind === "got") {
-      /* understood: the clarify options go; an answer already shown stays */
-      [".clar-opts", ".clar-chat"].forEach(function (q) { var co = el.lClar.querySelector(q); if (co) co.parentNode.removeChild(co); });
+    /* understood: the clarify options go; an answer already shown stays */
+    [".clar-opts", ".clar-chat"].forEach(function (q) { var co = el.lClar.querySelector(q); if (co) co.parentNode.removeChild(co); });
+    if (!o.quiet) {
       if (!quizSaidIt()) el.lStatus.appendChild(mk("strong", "yes", "That's it. ")); /* said once: the quiz may already have */
-      el.lStatus.appendChild(document.createTextNode((note || n.label + " is growing stronger on your cloud.") + (kids.length ? " " + kidsLine(id, kids) : "")));
-    } else {
-      el.lStatus.appendChild(document.createTextNode((note ? note + " " : "") + "That's okay, it takes a few tries. Iko has another way to see it."));
-      openIko({ tricky: true }); /* the clarification lives in Iko's sheet now: prepared with the lesson, so 0 calls */
-      prepareClarify(id);
+      el.lStatus.appendChild(document.createTextNode((o.pre ? o.pre + " " : "") + (note || n.label + " is growing stronger on your cloud.") + (kids.length ? " " + kidsLine(id, kids) : "")));
     }
     renderLessonPath();
     renderLessonCard(Boolean(note));
@@ -1664,14 +1716,20 @@
     offerTest(id);
     ikoActs();
     applyPhase();
-    if (kind === "got") {
-      /* the pressed button is gone now: the focus moves to the result line, without scrolling */
-      el.lStatus.tabIndex = -1; try { el.lStatus.focus({ preventScroll: true }); } catch { /* old browsers: leave it */ }
-      if (keep) keep();
-      if (!wasEarned && C.inDeck(state.cloud, id)) { flyToDeck(id); ikoReact("earn"); if (state.lessons[id]) { state.lessons[id].earned = Date.now(); save(); } } /* kept (additive): "Still tricky" never clears it */
-      else renderDeckButton();
-      if (keep) { keep(); requestAnimationFrame(keep); setTimeout(keep, 1000); } /* after the redraws and the card's flight too */
-    }
+    /* the pressed button (or the check) is gone now: the focus moves to the confirmation, without a jump */
+    el.lConf.tabIndex = -1; try { el.lConf.focus({ preventScroll: true }); } catch { /* old browsers: leave it */ }
+    if (keep) keep();
+    if (o.auto && !o.quiet) showConf();
+    if (!wasEarned && C.inDeck(state.cloud, id)) { flyToDeck(id); ikoReact("earn"); if (state.lessons[id]) { state.lessons[id].earned = Date.now(); save(); } } /* kept (additive) */
+    else renderDeckButton();
+    if (keep) { keep(); requestAnimationFrame(keep); setTimeout(keep, 1000); } /* after the redraws and the card's flight too */
+  }
+  /* PR 109: after a pass the confirmation and Where next come into view, gently (never a jump to the top) */
+  function showConf() {
+    var r = el.lConf.getBoundingClientRect(), head = 72;
+    if (r.top >= head && r.top < window.innerHeight * 0.5) return; /* already where the eye is */
+    var se = document.scrollingElement || document.documentElement, y = Math.max(0, se.scrollTop + r.top - head - 8);
+    try { window.scrollTo({ top: y, behavior: motionOK() ? "smooth" : "auto" }); } catch { window.scrollTo(0, y); }
   }
   /*
    * PR 107: the page's scroll position, put back if anything moved it. The cause of the jump on phones: the card flew from
@@ -1902,7 +1960,6 @@
   });
   el.lGot.addEventListener("click", function () { finishLesson("got"); });
   el.lCont.addEventListener("click", startCheck);
-  el.lTricky.addEventListener("click", function () { finishLesson("tricky"); });
   el.ikoGot.addEventListener("click", function () {
     if (el.lGot.disabled) return;
     closeIko();

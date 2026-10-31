@@ -872,3 +872,11 @@ html[data-theme="dark"] .gcard.earned { filter: saturate(1.3) brightness(1.06); 
 }
 .iko-line .iko-yes { font: inherit; font-size: .9em; color: var(--ink); background: transparent; border: 1px solid var(--rule); border-radius: 999px; padding: 1px 10px; margin-left: 2px; cursor: pointer; min-height: 26px; }
 .iko-line .iko-yes:hover { border-color: var(--ink); }
+/* PR 109: once earned, a short confirmation in place of the lesson (the lesson one quiet tap away) */
+.l-main[data-done="1"]:not(.reread) #l-body, .l-main[data-done="1"]:not(.reread) .l-read { display: none; }
+.l-conf { margin: 10px 0 4px; padding: 12px 14px; border: 1px solid var(--rule); border-radius: 12px; background: var(--sheet); }
+.l-conf .l-head { margin: 0 0 4px; }
+.l-conf .conf-take { margin: 0; color: var(--ink); line-height: 1.5; }
+.l-conf .fine { margin: 6px 0 0; }
+.l-conf:focus { outline: none; }
+.q-again { margin: 0 0 14px; }
