@@ -38,6 +38,8 @@ const nd = (rows) => rows.map((r) => JSON.stringify(r)).join("\n") + "\n";
 const TRICKY = "Picture the ground as a thick warm quilt over a stove. Deep down it gets so hot that rock turns soft and runny, and that runny rock is magma.";
 const QS = [{ q: "What is magma?", options: ["Hot melted rock", "Cold ice", "Sea water"], answer: 0 }, { q: "Where does magma gather?", options: ["In clouds", "In chambers under the volcano", "In rivers"], answer: 1 }, { q: "What is magma called above ground?", options: ["Ash", "Steam", "Lava"], answer: 2 }];
 const LESSON = nd([{ t: "start", model: "m" }, { t: "delta", text: "INTRO: Magma is hot melted rock deep underground.\nEXPLAIN: When it comes out of a volcano, we call it lava.\nSTEP: It gathers in chambers under the volcano.\nEXAMPLE: Like thick soup bubbling in a pot." }, { t: "path", steps: [], next: "", choices: [], questions: QS, tricky: TRICKY }, { t: "done" }]);
+const SPARE_Q = [{ q: "Magma is best described as?", options: ["Melted rock", "Frozen water", "Dry sand"], answer: 0 }, { q: "Lava is magma that is?", options: ["Under the sea", "Above ground", "In the sky"], answer: 1 }];
+const SPARE_LESSON = nd([{ t: "start", model: "m" }, { t: "delta", text: "INTRO: Magma is hot melted rock deep underground.\nEXPLAIN: When it comes out of a volcano, we call it lava.\nSTEP: It gathers in chambers under the volcano.\nEXAMPLE: Like thick soup bubbling in a pot." }, { t: "path", steps: [], next: "", choices: [], questions: QS, retry: SPARE_Q, tricky: TRICKY }, { t: "done" }]);
 const kids = (n) => n.map((x, i) => ({ name: x, order: i + 1, score: 0.9 - i * 0.1, why: "A good first step", role: "core", blurb: x + " in plain words, one step at a time, for anyone." }));
 const ITEMS = [
   { node: { name: "Ocean Life", chain: ["Nature"] }, card: { title: "Ocean Life", blurb: "Living things of the sea.", goal: "" }, children: kids(["Coral Reefs", "Whales", "Tides"]) },
@@ -150,16 +152,18 @@ for (const width of [390, 1280]) {
       await boot(p);
       await toLesson(p);
       await p.click("#l-cont"); await p.waitForSelector("#l-quiz fieldset.q");
-      for (let i = 0; i < 3; i += 1) await answer(p, i);
-      await p.waitForSelector("#l-got:not([hidden])");
-      await p.evaluate(() => document.querySelector("#l-got").scrollIntoView({ block: "center" })); await p.waitForTimeout(400);
+      for (let i = 0; i < 2; i += 1) await answer(p, i);
+      await p.evaluate(() => document.querySelectorAll("#l-quiz fieldset.q")[2].scrollIntoView({ block: "center" })); await p.waitForTimeout(400);
       const y0 = await p.evaluate(() => scrollY);
-      await p.click("#l-got");
+      await answer(p, 2); /* PR 109: the pass earns the card by itself */
+      await p.waitForSelector("#l-conf:not([hidden])");
       const ys = [];
       for (let i = 0; i < 8; i += 1) { await p.waitForTimeout(200); ys.push(await p.evaluate(() => scrollY)); }
-      ok(y0 > 200 && ys.every((y) => Math.abs(y - y0) <= 4), `${tag}: after "I've got it" and the card's flight, the page stays where it was (no jump to the top)`, JSON.stringify({ y0, ys }));
-      const st = await p.evaluate(() => { const n = [document.querySelector("#l-fork"), document.querySelector("#l-next")].find((x) => x && x.firstElementChild && x.getClientRects().length); const line = document.querySelector("#iko-line"); return { below: Boolean(n) && n.getBoundingClientRect().top > innerHeight - 40, line: line && !line.hidden ? line.textContent : "", done: document.querySelector("#l-status").textContent }; });
-      ok(!st.below || /Scroll down to pick another topic/.test(st.line), `${tag}: with the next step below the fold, Iko says to scroll down for it`, JSON.stringify(st));
+      const st = await p.evaluate(() => { const c = document.querySelector("#l-conf").getBoundingClientRect(), nx = document.querySelector("#l-next"), nr = nx.getBoundingClientRect(), vis = (q) => { const e = document.querySelector(q); return Boolean(e && e.getClientRects().length && getComputedStyle(e).display !== "none" && !e.hidden); }; const line = document.querySelector("#iko-line"); return { confTop: c.top, confBottom: c.bottom, nextTop: nr.top, nextKids: nx.childElementCount, body: vis("#l-body"), quiz: vis("#l-quiz"), got: vis("#l-got"), below: nr.top > innerHeight - 40, line: line && !line.hidden ? line.textContent : "", h: innerHeight, conf: document.querySelector("#l-conf").textContent }; });
+      ok(st.confTop >= 0 && st.confTop < st.h * 0.6, `${tag}: after the pass, the confirmation comes into view (smoothly)`, JSON.stringify(st));
+      ok(!st.body && !st.quiz && !st.got && /You learned: When it comes out of a volcano/.test(st.conf) && /Card earned/i.test(st.conf), `${tag}: after the pass: no lesson, no check and no "I've got it", just the confirmation (what was learned, earned)`, JSON.stringify(st));
+      ok(st.nextKids > 0 && st.nextTop >= st.confBottom - 1, `${tag}: Where next comes right after the confirmation`, JSON.stringify(st));
+      ok(!st.below || /Scroll down to pick another topic/.test(st.line), `${tag}: with Where next below the fold, Iko says to scroll down for it`, JSON.stringify(st));
       ok(errs.length === 0, `${tag}: earn: no page errors`, errs.join(" | "));
     } finally { await ctx.close(); }
   }
@@ -312,6 +316,24 @@ for (const width of [390, 1280]) {
         await p.mouse.move(xy.l + 6, xy.t + xy.h - 6); await p.waitForTimeout(250);
         const nearOff = await p.evaluate(() => window.__views.filter((x) => x.id === "cloud-canvas").pop().view.state().near);
         ok(nearOn === true && nearOff === false, `${tag}: the cloud slows its drift with the pointer near a node (and not elsewhere)`, JSON.stringify({ nearOn, nearOff }));
+        /* PR 109: the learner's name (the home node) slows it too, almost to a stop */
+        const view = () => p.evaluate(() => window.__views.filter((x) => x.id === "cloud-canvas").pop().view.state());
+        const rp = await p.evaluate(() => { const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view, q = v.project("root"), r = document.querySelector("#cloud-canvas").getBoundingClientRect(); return { x: r.left + q.x, y: r.top + q.y }; });
+        await p.mouse.move(rp.x + 6, rp.y + 2);
+        await p.waitForFunction(() => window.__views.filter((x) => x.id === "cloud-canvas").pop().view.state().spinning, null, { timeout: 10000 }).catch(() => {}); /* the pointer's move waits the spin out first */
+        await p.waitForTimeout(600);
+        const onName = await view();
+        ok(onName.near === true && onName.slow <= 0.1, `${tag}: over the learner's name the cloud slows almost to a stop (<= 10%)`, JSON.stringify({ near: onName.near, slow: onName.slow }));
+        await p.mouse.move(xy.l + 6, xy.t + xy.h - 6);
+        /* PR 109: the idle spin is subtle: about 250 s a turn once eased in, no faster on a bigger cloud */
+        await p.waitForFunction(() => { const s = window.__views.filter((x) => x.id === "cloud-canvas").pop().view.state(); return s.spinning && s.slow > 0.98; }, null, { timeout: 12000 }).catch(() => {});
+        await p.waitForTimeout(1600);
+        const s1 = await view(); const t1 = Date.now(); await p.waitForTimeout(2000); const s2 = await view(); const dt = Date.now() - t1;
+        const rate = (s2.yaw - s1.yaw) / dt, full = (2 * Math.PI) / 250000;
+        ok(s2.spinning && rate > 0 && rate <= full * 1.15, `${tag}: the idle spin is subtle (about 250 s a turn, was 75 s)`, JSON.stringify({ rate, full, turnS: Math.round(2 * Math.PI / rate / 1000) }));
+        /* PR 109: the fog is clearly there on paper in light mode (multiplied into the parchment) */
+        const fog = await p.evaluate(() => { const c = document.querySelector(".cloud-fog"); if (!c) return null; const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data; let maxA = 0, maxD = 0, sum = 0, n = 0; for (let i = 0; i < d.length; i += 4) { const a = d[i + 3] / 255; if (!a) continue; const dk = a * (255 - Math.min(d[i], d[i + 1], d[i + 2])); maxA = Math.max(maxA, a); maxD = Math.max(maxD, dk); sum += dk; n += 1; } return { maxA, maxD, mean: n ? sum / n : 0, blend: getComputedStyle(c).mixBlendMode, pe: getComputedStyle(c).pointerEvents }; });
+        ok(fog && fog.blend === "multiply" && fog.pe === "none" && fog.maxA >= 0.3 && fog.maxD >= 40, `${tag}: light mode: the fog reads clearly on the parchment (multiplied, strong enough), and never takes a tap`, JSON.stringify(fog));
         /* Iko's background pool: a short line after a silence, tap to dismiss, never the same twice in a row */
         if (await p.isVisible("#iko-line")) { await p.click("#iko-line"); }
         const ids = [];
@@ -336,14 +358,17 @@ for (const width of [390, 1280]) {
       const b2 = await both();
       ok(!b2.read && b2.quiz, `${tag}: after Continue, the check only (never both on screen)`, JSON.stringify(b2));
       for (let i = 0; i < 3; i += 1) await answer(p, i);
-      await p.waitForSelector("#l-got:not([hidden])");
-      await p.click("#l-got"); await p.waitForTimeout(1400);
+      await p.waitForSelector("#l-conf:not([hidden])"); await p.waitForTimeout(1400);
       const f1 = await p.evaluate(() => window.__fly);
       const b3 = await both();
-      ok(f1 >= 1, `${tag}: the first "I've got it" plays the card's flight`, String(f1));
-      ok(!b3.quiz, `${tag}: once passed, the check is put away`, JSON.stringify(b3));
-      if (await vis("#l-got")) { await p.click("#l-got"); await p.waitForTimeout(1200); }
-      ok(await p.evaluate((n) => window.__fly === n, f1), `${tag}: a later tap never plays it again`);
+      ok(f1 >= 1, `${tag}: passing the check earns the card and plays its flight`, String(f1));
+      ok(!b3.quiz && !b3.read && !(await vis("#l-got")), `${tag}: once passed, the check and the lesson are put away (no "I've got it")`, JSON.stringify(b3));
+      await p.click(".conf-reread"); await p.waitForTimeout(200);
+      const b5 = await both();
+      ok(b5.read && !b5.quiz && /Hide the lesson/.test(await p.textContent(".conf-reread")), `${tag}: a quiet "Reread the lesson" brings the reading back (never the check)`, JSON.stringify(b5));
+      await p.click(".conf-reread"); await p.waitForTimeout(200);
+      ok(!(await both()).read, `${tag}: and "Hide the lesson" puts it away again`);
+      ok(await p.evaluate((n) => window.__fly === n, f1), `${tag}: the flight plays once`);
       const label = await p.evaluate(() => document.querySelector("#l-card .gc-title").textContent);
       const take = await p.evaluate(() => { const s = JSON.parse(localStorage.getItem("ikolearn.v1.lessons") || "{}"); return Object.values(s).map((x) => x && x.take).filter(Boolean); }).catch(() => []);
       const note = await p.evaluate(() => document.querySelector("#h-note") ? document.querySelector("#h-note").textContent : "");
@@ -355,13 +380,43 @@ for (const width of [390, 1280]) {
       await p.locator("#d-album .gcard", { hasText: label }).first().click(); await p.waitForTimeout(700);
       const hn = await p.evaluate(() => document.querySelector("#hub-note").textContent);
       ok(/^You learned: When it comes out of a volcano/.test(hn), `${tag}: revisiting the earned card: a short reminder of the key idea`, hn);
-      await p.click("#hub-lesson"); await p.waitForSelector("#l-done:not([hidden])"); await p.waitForTimeout(600);
-      const b4 = await both();
-      ok(b4.read && !b4.quiz, `${tag}: a passed lesson revisited: the reading, the check stays put away`, JSON.stringify(b4));
-      const f0 = await p.evaluate(() => window.__fly);
-      if (await vis("#l-got")) { await p.click("#l-got"); await p.waitForTimeout(1200); }
+      await p.click("#hub-lesson"); await p.waitForSelector("#l-conf:not([hidden])"); await p.waitForTimeout(900);
+      const f0 = await p.evaluate(() => window.__fly); await p.waitForTimeout(1200);
+      const b4 = await both(), c4 = await p.textContent("#l-conf"), n4 = await p.evaluate(() => document.querySelector("#l-next").childElementCount);
+      ok(!b4.read && !b4.quiz && /You learned: When it comes out of a volcano/.test(c4) && n4 > 0, `${tag}: an earned card revisited: the confirmation and Where next (no lesson, no check)`, JSON.stringify({ b4, c4, n4 }));
       ok(await p.evaluate((n) => window.__fly === n, f0), `${tag}: revisited, no earn flight again`);
       ok(errs.length === 0, `${tag}: PR 108 flow: no page errors`, errs.join(" | "));
+    } finally { await ctx.close(); }
+  }
+
+  /* ---- PR 109: a missed check offers Refresh: a new attempt (on the device first, then one call), the reading first ---- */
+  {
+    const { ctx, p, errs, calls } = await open(width, { lesson: SPARE_LESSON });
+    try {
+      await boot(p);
+      await toLesson(p);
+      const vis = (q) => p.evaluate((s) => { const e = document.querySelector(s); return Boolean(e && !e.closest("[hidden]") && e.getClientRects().length && getComputedStyle(e).display !== "none"); }, q);
+      ok(!(await p.$("#l-tricky")) && !/Still tricky/.test(await p.content()), `${tag}: no "Still tricky" anywhere`);
+      await p.click("#l-cont"); await p.waitForSelector("#l-quiz fieldset.q");
+      const wrong = async (i) => { await p.locator("#l-quiz fieldset.q").nth(i).locator("label.opt").nth((QS[i].answer + 1) % 3).click(); await p.waitForTimeout(150); };
+      for (let i = 0; i < 3; i += 1) await wrong(i);
+      await p.waitForSelector(".q-refresh");
+      const m1 = await p.evaluate(() => ({ got: !document.querySelector("#l-got").closest("[hidden]") && Boolean(document.querySelector("#l-got").getClientRects().length), conf: !document.querySelector("#l-conf").hidden, text: document.querySelector(".q-miss").textContent }));
+      ok(!m1.got && !m1.conf && /Refresh/.test(m1.text) && /another way to see/.test(m1.text), `${tag}: a missed check: no card, a quiet Refresh for a new attempt`, JSON.stringify(m1));
+      const c0 = calls.filter((c) => c === "/lesson").length;
+      await p.click(".q-refresh"); await p.waitForTimeout(600);
+      const r1 = { read: await vis("#l-body"), quiz: await vis("#l-quiz"), cont: await vis("#l-cont"), again: await p.evaluate(() => (document.querySelector("#l-body .q-again") || {}).textContent || "") };
+      ok(r1.read && !r1.quiz && r1.cont && /thick warm quilt/.test(r1.again), `${tag}: Refresh: back to the reading of the new attempt (the prepared clearer telling first), the check behind Continue`, JSON.stringify(r1));
+      ok(calls.filter((c) => c === "/lesson").length === c0, `${tag}: the first Refresh makes no call (prepared with the lesson)`);
+      await p.click("#l-cont"); await p.waitForSelector("#l-quiz fieldset.q");
+      const qs2 = await p.evaluate(() => [...document.querySelectorAll("#l-quiz legend")].map((l) => l.textContent));
+      ok(qs2.length === 2 && qs2[0] === SPARE_Q[0].q, `${tag}: then a fresh set of questions (the spare set)`, JSON.stringify(qs2));
+      for (let i = 0; i < 2; i += 1) { await p.locator("#l-quiz fieldset.q").nth(i).locator("label.opt").nth((SPARE_Q[i].answer + 1) % 3).click(); await p.waitForTimeout(150); }
+      await p.waitForSelector(".q-refresh");
+      ok(/write .* again/.test(await p.textContent(".q-miss")), `${tag}: a second miss: Refresh writes it again`);
+      await p.click(".q-refresh"); await p.waitForSelector("#l-cont:not([hidden])"); await p.waitForTimeout(400);
+      ok(calls.filter((c) => c === "/lesson").length === c0 + 1 && await vis("#l-body") && !(await vis("#l-quiz")), `${tag}: that Refresh is one lesson call, and starts on the reading again`, String(calls.filter((c) => c === "/lesson").length - c0));
+      ok(errs.length === 0, `${tag}: Refresh: no page errors`, errs.join(" | "));
     } finally { await ctx.close(); }
   }
 }

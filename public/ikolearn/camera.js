@@ -19,7 +19,11 @@
   var TAU = Math.PI * 2;
   var CAM = { zmin: 0.6, zmax: 60, glideTau: 260, glideStop: 0.02, glideMin: 0.12, focusMs: 650, zoomMs: 220, wheel: 0.0015, wheelStep: [0.82, 1.22], margin: 0.62 };
 
-  var SPIN = { rate: TAU / 75000, resumeMs: 3500, easeMs: 1500, maxDt: 50 };
+  /* PR 109: subtler, one turn in about 250 s (was 75 s); maxPx: the outer edge of a large cloud never sweeps faster than this
+     (px a second), since the angle's speed alone made a big or zoomed-in cloud look fast */
+  var SPIN = { rate: TAU / 250000, resumeMs: 3500, easeMs: 1500, maxDt: 50, maxPx: 12 };
+  /* how much of the spin a cloud of this on-screen radius (px) gets: all of it, unless its edge would pass maxPx a second */
+  function spinCap(extentPx) { return extentPx > 0 ? Math.min(1, SPIN.maxPx / (SPIN.rate * 1000 * extentPx)) : 1; }
   /* -> { on, wait }: spinning now, or how many ms until it may resume (Infinity while it cannot spin at all). */
   function spinState(o) {
     o = o || {};
@@ -132,7 +136,7 @@
   /* One wheel notch, kept deliberate: a capped factor per event (a trackpad pinch sends ctrlKey and a small delta). */
   function wheelFactor(deltaY, ctrl) { return clamp(Math.exp(-deltaY * CAM.wheel * (ctrl ? 4 : 1)), CAM.wheelStep[0], CAM.wheelStep[1]); }
 
-  var api = { CAM: CAM, SPIN: SPIN, spinState: spinState, spinStep: spinStep, spinEase: spinEase, gestureFor: gestureFor, hint: hint, easeInOutCubic: easeInOutCubic, wrap: wrap, lerpView: lerpView, lerpPoint: lerpPoint, ORIGIN: ORIGIN, fitAround: fitAround, focusFrame: focusFrame, cardPlace: cardPlace, CARD: CARD, forwardYaw: forwardYaw, fitZoom: fitZoom, glide: glide, velocity: velocity, twist: twist, zoomAbout: zoomAbout, wheelFactor: wheelFactor };
+  var api = { CAM: CAM, SPIN: SPIN, spinState: spinState, spinStep: spinStep, spinCap: spinCap, spinEase: spinEase, gestureFor: gestureFor, hint: hint, easeInOutCubic: easeInOutCubic, wrap: wrap, lerpView: lerpView, lerpPoint: lerpPoint, ORIGIN: ORIGIN, fitAround: fitAround, focusFrame: focusFrame, cardPlace: cardPlace, CARD: CARD, forwardYaw: forwardYaw, fitZoom: fitZoom, glide: glide, velocity: velocity, twist: twist, zoomAbout: zoomAbout, wheelFactor: wheelFactor };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.IkoCamera = api;
 })(typeof window !== "undefined" ? window : this);

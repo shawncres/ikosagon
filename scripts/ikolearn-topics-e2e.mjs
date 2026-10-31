@@ -3,7 +3,7 @@
 // sent). New topics: a broad subject while another branch is in focus becomes a new parent under the learner's name;
 // a clear subtopic goes under the focused parent; an unclear one asks first in Iko's sheet (New branch / Under X)
 // and both answers work; an existing subject is shown, not duplicated; a node from an earlier screen is never the focus;
-// one chat call per request and nothing else. Where Next (after I've got it, after Continue, from a card on the cloud,
+// one chat call per request and nothing else. Where Next (after the pass, after Continue, from a card on the cloud,
 // in guide mode, with Iko open at 1280): only this subject's next steps, Also in progress for the rest, equal boxes,
 // the action inside the selected box.
 // Run: IKOLEARN_PW=<path to node_modules/playwright-core> node scripts/ikolearn-topics-e2e.mjs [--shots DIR] [--tag after] [--root public]
@@ -257,9 +257,9 @@ for (const width of [390, 1280]) {
     try {
       await p.locator(".cloud-flow > .chip").first().click(); await p.waitForSelector("#l-done:not([hidden])");
       await passCheck(p); /* PR 103: the check passed first */
-      await p.click("#l-got"); await p.waitForTimeout(400);
+      await p.waitForSelector("#l-conf:not([hidden])"); await p.waitForTimeout(400); /* PR 109: the pass earns it */
       let w = await whereNext(p);
-      ok(wnOk(w), `${tag}: Where Next after I've got it: this subject only, equal boxes, the action in the selected box`, JSON.stringify(w));
+      ok(wnOk(w), `${tag}: Where Next after the pass: this subject only, equal boxes, the action in the selected box`, JSON.stringify(w));
       await p.evaluate(() => document.querySelector("#l-next").scrollIntoView({ block: "center" })); await p.waitForTimeout(200);
       await shot(p, width, "wherenext-got");
       if (width >= 1100) {

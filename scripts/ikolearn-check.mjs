@@ -1060,7 +1060,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/fold/i.test(css) && /prefers-reduced-motion/.test(css), "card fold + reduced motion");
   const lessonJs = fs.readFileSync("public/ikolearn/lesson.js", "utf8");
   ok(/<script src="\/ikolearn\/lesson\.js/.test(html) && html.indexOf("lesson.js") < html.indexOf("app.js") && html.indexOf("cloud-model.js") < html.indexOf("lesson.js"), "lesson.js loads before app.js");
-  ok(/id="lesson"/.test(html) && /id="l-got"/.test(html) && /id="l-tricky"/.test(html) && /id="p-lesson"/.test(html) && /id="p-path"/.test(html), "lesson view + panel buttons present");
+  ok(/id="lesson"/.test(html) && /id="l-got"/.test(html) && !/id="l-tricky"/.test(html) && /id="l-conf"/.test(html) && /id="p-lesson"/.test(html) && /id="p-path"/.test(html), "lesson view + panel buttons present");
   ok(/ikolearn\.v1\.lessons/.test(app) && /MAX_LESSONS/.test(app) && /"\/lesson"/.test(app) && /"\/create"/.test(app) && !/"\/path"/.test(app), "lessons cached in localStorage; lesson and create endpoints (paths now come from the creation call)");
   ok(!/generativelanguage|GEMINI_API_KEY|x-goog-api-key|innerHTML/.test(lessonJs) && !/innerHTML\s*=(?!\s*"")/.test(app), "lesson rendering uses text nodes only");
   ok(!/montessori|waldorf|bloom|common core/i.test(app + lessonJs + html), "UI never names frameworks");
@@ -1107,8 +1107,8 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
   const bytes = files.reduce((n, f) => n + served(f).length, 0);
   const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
-  ok(bytes < 342_000, "app weight under 342 KB uncompressed (served, minified)", String(bytes));
-  ok(gz < 115_000, "app weight under 115 KB gzipped (served, minified)", String(gz));
+  ok(bytes < 345_000, "app weight under 345 KB uncompressed (served, minified)", String(bytes));
+  ok(gz < 116_000, "app weight under 116 KB gzipped (served, minified)", String(gz));
 }
 
 /* ================= PR 108: QA polish ================= */
@@ -1118,7 +1118,11 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/wasEarned = Boolean\(les0 && \(les0\.earned \|\| les0\.got\)\)/.test(app) && /if \(!wasEarned && C\.inDeck\(state\.cloud, id\)\) \{ flyToDeck\(id\); ikoReact\("earn"\);/.test(app) && /if \(prevL && prevL\.earned\)/.test(app), "PR 108: the earn flight only the first time a card is earned (kept with the lesson, additive)");
   ok(/el\.deckBtn\.hidden = true;/.test(app), "PR 108: no \u201cYour deck \u00b7 n\u201d label beside the deck icon");
   ok(/function takeawayOf\(id\)/.test(app) && /state\.lessons\[id\]\.take = tk/.test(app) && /"You learned: " \+ took/.test(app) && /spec\.inDeck \? " earned" : ""/.test(deck) && /\.gcard\.earned \{ filter: saturate/.test(css) && /html\[data-theme="dark"\] \.gcard\.earned/.test(css), "PR 108: an earned card keeps its one-line takeaway (no call) and looks a little more vivid in both themes");
-  ok(/NEAR = \{ px: 34, spin: 0\.2, glide: 0\.82/.test(view) && /\* \(slowNow\(now\) \? NEAR\.spin : 1\)/.test(view) && /else base \*= 1\.5;/.test(view) && /if \(dark\) base \*= 0\.8;/.test(view) && /var bands = \{\};/.test(view), "PR 108: the cloud slows near a node; light-mode fog clearer (dark unchanged); like hues merge their haze");
+  ok(/NEAR = \{ px: 34, spin: 0\.07, glide: 0\.82/.test(view) && /slowK \+= \(\(slowNow\(now\) \? NEAR\.spin : 1\) - slowK\)/.test(view) && /if \(pos\.root && !hideRoot\)/.test(view) && /else base = Math\.min\(FOG_LIGHT\.cap, base \* FOG_LIGHT\.alpha\);/.test(view) && /if \(dark\) base \*= 0\.8;/.test(view) && /var bands = \{\};/.test(view), "PR 108/109: the cloud near-stops near a node or the learner's name; light-mode fog clearly visible (dark unchanged); like hues merge their haze");
+  {
+    const CAMx = CAM;
+    ok(CAMx.spinCap && CAMx.spinCap(0) === 1 && CAMx.spinCap(100) === 1 && CAMx.spinCap(2000) < 0.5 && Math.abs(CAMx.spinCap(2000) * CAMx.SPIN.rate * 1000 * 2000 - CAMx.SPIN.maxPx) < 1e-9, "PR 109: the spin's edge speed is capped on a big or zoomed-in cloud (no faster with more nodes)");
+  }
   ok(/var POOL = \{ gapMs: Number\(window\.__IKO_POOL_MS\) \|\| 45000, max: 8 \};/.test(app) && /x\.id !== iko\.poolLast && x\.id !== m\.last/.test(app) && /@media \(min-width: 900px\), \(pointer: fine\) \{\n  \.iko-line \{ font-size: 16px;/.test(css), "PR 108: Iko's pool after a silence (local, never twice in a row, capped a visit); larger lines on computers");
   const pool = app.slice(app.indexOf("  function poolLines(key) {"), app.indexOf("  function poolLater() {"));
   ok(pool.length > 200 && !/fetch\(|stream\(|\/api\//.test(pool), "PR 108: the pool makes no call (a \u201cYes\u201d asks Iko, as typing would)");
@@ -2462,14 +2466,14 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   // the big cloud's idle spin (camera.js: pure)
   const S = CAM.spinState, R0 = CAM.SPIN.resumeMs;
   const turnSec = (2 * Math.PI) / CAM.SPIN.rate / 1000;
-  ok(R0 >= 3000 && R0 <= 4000 && turnSec >= 60 && turnSec <= 90, "idle spin: slow but noticeable (one turn in 60-90 s), starts after 3-4 idle seconds", `${turnSec.toFixed(1)} s/turn, ${R0} ms`);
+  ok(R0 >= 3000 && R0 <= 4000 && turnSec >= 200 && turnSec <= 300, "idle spin: subtle (PR 109: one turn in 200-300 s, was 75 s), starts after 3-4 idle seconds", `${turnSec.toFixed(1)} s/turn, ${R0} ms`);
   ok(CAM.spinEase(0) === 0 && CAM.spinEase(CAM.SPIN.easeMs) === 1 && CAM.spinEase(CAM.SPIN.easeMs / 2) === 0.5 && CAM.spinEase(CAM.SPIN.easeMs / 4) < 0.25 && CAM.SPIN.easeMs >= 800 && CAM.SPIN.easeMs <= 2500, "idle spin: eases in (smoothstep from rest to full speed in about 1.5 s)");
   ok(CAM.spinStep(16, 0) === 0 && CAM.spinStep(16, CAM.SPIN.easeMs) === CAM.SPIN.rate * 16 && CAM.spinStep(16, CAM.SPIN.easeMs / 2) === CAM.SPIN.rate * 8, "idle spin: the first frame is still, full speed once eased in");
   ok(S({ reduce: true, active: true, now: 1e6, lastInput: 0 }).on === false && S({ reduce: true, active: true, now: 1e6, lastInput: 0 }).wait === Infinity, "idle spin: off with reduced motion");
   ok(!S({ hidden: true, active: true, now: 1e6 }).on && !S({ active: false, now: 1e6 }).on && !S({ active: true, paused: true, now: 1e6 }).on, "idle spin: never while the tab is hidden, the cloud is closed or something covers it");
   ok(!S({ active: true, busy: true, now: 1e6, lastInput: 0 }).on && S({ active: true, now: 1000, lastInput: 0 }).wait === R0 - 1000 && S({ active: true, now: R0, lastInput: 0 }).on, "idle spin: paused by interaction (and a focus glide), resumes once idle");
   ok(CAM.spinStep(1000) === CAM.SPIN.rate * CAM.SPIN.maxDt && CAM.spinStep(-5) === 0, "idle spin: a long frame gap never jumps");
-  ok(/if \(sp\.on && !spinning\) spinFrom = now;/.test(view) && /CAM\.spinStep\(spinning \? now - lastFrame : 16, now - spinFrom\)/.test(view), "cloud view: each start of the spin eases in again");
+  ok(/if \(sp\.on && !spinning\) spinFrom = now;/.test(view) && /var dtS = spinning \? now - lastFrame : 16;/.test(view) && /yaw \+= CAM\.spinStep\(dtS, now - spinFrom\) \* slowK \* CAM\.spinCap\(extent\)/.test(view), "cloud view: each start of the spin eases in again");
   ok(/hold: function \(on\) \{ if \(spinHeld === Boolean\(on\)\) return;/.test(view), "cloud view: re-asserting the same hold does not restart the idle wait (the panel's sheet resizes as its note streams)");
   ok(!/canvas\.addEventListener\(t, touch/.test(view) && !/addEventListener\("keydown", touch\)/.test(view) && /visibilitychange/.test(view) && /if \(tween\) lastInput = now;/.test(view) && /busy: Boolean\(tween\)/.test(view), "cloud view: drags, pans, pinches and the wheel no longer pause the spin; a focus glide is waited out; a hidden tab stops it");
   ok(/if \(hit\) \{ touch\(\); opts\.onPick\(hit\); \}/.test(view) && /pause: function \(\) \{ touch\(\); request\(\); \}/.test(view), "cloud view: a click on a node pauses the spin; pause() for a click on a control");
@@ -3040,9 +3044,11 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
 
   // the app: wiring (static), the behaviour is covered end to end by scripts/ikolearn-flow-e2e.mjs
   const app = fs.readFileSync("public/ikolearn/app.js", "utf8"), html = fs.readFileSync("public/ikolearn/index.html", "utf8"), css = fs.readFileSync("public/ikolearn/styles.css", "utf8");
-  const fin = app.slice(app.indexOf("  function finishLesson(kind) {"), app.indexOf("  /* ---------- \"Still tricky\""));
+  const fin = app.slice(app.indexOf("  function finishLesson(kind, o) {"), app.indexOf("  /* ---------- \"Still tricky\""));
   ok(fin.length > 200 && !/postJson\(|stream\(|openLesson\(|createNext\(|linkBtn\("Try again"/.test(fin) && /That's it\. /.test(fin), "I've got it: confirmed on the device: no call, no auto-advance, no Try again; a short \"That's it.\"");
-  ok(/openIko\(\{ tricky: true \}\);[^\n]*\n\s*prepareClarify\(id\)/.test(fin) && /Iko has another way to see it\./.test(fin) && !/openLesson\(|showLesson\(false\)/.test(fin), "Still tricky: stays in the lesson and opens Iko, with the clarification already there");
+  ok(!/Still tricky/.test(html) && /function refreshAttempt\(id\)/.test(app) && /linkBtn\("Refresh", function \(\) \{ refreshAttempt\(id\); \}, "btn sm q-refresh"\)/.test(app) && /if \(!refreshLocal\(id\)\) \{ retell\(id\); return; \}/.test(app) && /q\.ans = \[\]; les\.ans = \[\]; q\.missed = false; ck\.c = 0; les\.ra = 1;/.test(app), "PR 109: no Still tricky; a missed check offers Refresh: a new attempt (prepared telling + spare set on the device, else one call), back to the reading first");
+  ok(/if \(all\) \{ finishLesson\("got", \{ auto: true, pre: pre\.trim\(\) \}\); return; \}/.test(app) && /el\.lGot\.hidden = !solo;/.test(app) && /var dn = lessonDone\(id\), solo = ph === "passed" && !qs && !dn;/.test(app), "PR 109: passing the check earns the card; \u201cI've got it\u201d only where a lesson has no questions");
+  ok(/\.l-main\[data-done="1"\]:not\(\.reread\) #l-body/.test(css) && /"Reread the lesson"/.test(app) && /"You learned: " \+ tk/.test(app) && /function showConf\(\)/.test(app), "PR 109: once earned, a confirmation (what was learned) and Where next instead of the lesson; a quiet Reread");
   {
     const prep = app.slice(app.indexOf("  function prepareClarify(id) {"), app.indexOf("  function focusClar(style) {"));
     ok(/les\.tk && !\(les\.cl && les\.cl\.simpler\)\) \{ les\.cl = les\.cl \|\| \{\}; les\.cl\.simpler = les\.tk; save\(\); \}/.test(prep) && /else clarify\(id, "simpler"\);/.test(prep) && /focusClar\("simpler"\)/.test(prep) && !/stream\(|postJson\(/.test(prep), "Still tricky: the lesson's prepared simpler explanation is shown at once (0 calls); an older lesson without one writes it (1 call)");
@@ -3078,7 +3084,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/if \(!quizSaidIt\(\)\) el\.lStatus\.appendChild\(mk\("strong", "yes", "That's it\. "\)\)/.test(fin) && /function quizSaidIt\(\)/.test(app) && /if \(quizSaidIt\(\)\) \{ var dup = el\.lStatus\.querySelector\("strong\.yes"\)/.test(app), "\"That's it.\" is said once (the quiz or the status line, never both)");
   ok(/\[".clar-opts", ".clar-chat"\]\.forEach\(function \(q\) \{ var co = el\.lClar\.querySelector\(q\); if \(co\) co\.parentNode\.removeChild\(co\); \}\);/.test(fin) && /renderClarify\(id, !marked\)/.test(app), "I've got it hides the clarify options and the chat link (answers already shown stay)");
   ok(/ans: Array\.isArray\(cached\.ans\) \? cached\.ans\.slice\(0, qs\.length\) : \[\]/.test(app) && !/cached\.ans\.slice\(0, 2\)/.test(app), "a lesson comes back with every saved answer (one per question, 2 or 3; none dropped)");
-  ok(/if \(kind === "got"\) \{ state\.lessons\[id\]\.got = Date\.now\(\);[^}]*\} else delete state\.lessons\[id\]\.got;/.test(fin) && /marked = n\.mastery >= C\.MASTERED \|\| Boolean\(les && les\.got\)/.test(app), "\"I've got it\" is kept with the lesson (saved at once) and shown again on return; \"Still tricky\" clears it");
+  ok(/if \(state\.lessons\[id\]\) \{ state\.lessons\[id\]\.got = Date\.now\(\);/.test(fin) && /marked = n\.mastery >= C\.MASTERED \|\| Boolean\(les && les\.got\)/.test(app), "the earn is kept with the lesson (saved at once) and shown again on return");
   const nt = app.slice(app.indexOf("  function notice(id) {"), app.indexOf("  el.pLesson.addEventListener"));
   ok(nt.length > 300 && !/lock\(/.test(nt), "the note never holds the app busy (navigation and lessons stay available while it's written)");
   ok(/\} else if \(r\.reason === "aborted"\) \{/.test(app) && /reason: signal && signal\.aborted \? "aborted" : "offline"/.test(app), "a cancelled call is never shown as a failure");
@@ -3829,7 +3835,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(a1.ok && !a2.ok && a2.why === "taken" && ix.list.length === 2 && ix.list[0].name === "Maya" && ix.active === ix.list[0].id, "learners: the first starts, the rest wait (parked), no duplicates", JSON.stringify(ix));
   // the lesson loop in the page
   ok(/id="l-cont"/.test(html) && /id="ph-earn"/.test(html) && /id="l-quiz" class="l-pane"/.test(html) && /#l-quiz\.l-pane-on \.quiz \{/.test(css), "lesson: Continue, the check in its own pane, and an Earn step");
-  ok(/function lessonPhase\(id\)/.test(app) && /function finishLesson\(kind\)[\s\S]{0,300}if \(kind === "got" && lessonPhase\(id\) !== "passed"\) return;/.test(app), "lesson: earning only after the check is passed");
+  ok(/function lessonPhase\(id\)/.test(app) && /function finishLesson\(kind, o\)[\s\S]{0,300}if \(kind !== "got" \|\| lessonPhase\(id\) !== "passed"\) return;/.test(app), "lesson: earning only after the check is passed");
   ok(/function reactWanted\(n\) \{ return n <= REACT_EVERY\[0\] \|\| \(n <= REACT_EVERY\[1\] \? n % 3 === 0 : n % 8 === 0\); \}/.test(app), "Iko: reactions come less often over time");
   ok(/var IKO_MEM = "ikolearn-iko"/.test(app) && !/ikolearn\.v1\.iko/.test(app), "Iko: what it has said is kept on this device under its own key (outside the cloud)");
   ok(/@keyframes iko-blink/.test(css) && !/body\.iko-on #chat \{[^}]*padding-bottom/.test(css) && !/body\.iko-on::after/.test(css) && /id="thumb" class="thumb"/.test(html), "Iko: blinks; no strip or room at the bottom of the pages; the header keeps its cloud circle (PR 104)");

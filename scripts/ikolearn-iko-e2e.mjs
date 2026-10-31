@@ -195,7 +195,7 @@ for (const width of [390, 1280]) {
     } catch (e) { fails.push(`${tag}: no-examples threw -> ${String(e.message || e).split("\n")[0]}`); }
     await ctx.close();
   }
-  /* 3. returning: Iko by default, on a node with its context, in a lesson ("Still tricky"), on the deck; the whole conversation */
+  /* 3. returning: Iko by default, on a node with its context, in a lesson, on the deck; the whole conversation */
   {
     const { ctx, p, errs, calls, bodies } = await open(width);
     try {
@@ -237,7 +237,7 @@ for (const width of [390, 1280]) {
       await p.keyboard.press("Escape"); await p.waitForTimeout(150);
       ok(!(await ikoState(p)).sheet && !(await p.isHidden("#panel")), `${tag}: Escape closes Iko first (the card stays)`);
       await p.click("#p-close"); await p.waitForTimeout(250);
-      /* a lesson: Iko there too, clear of Where Next; "Still tricky" opens Iko with the prepared clarification (0 calls) */
+      /* a lesson: Iko there too, clear of Where Next */
       await p.locator(".cloud-flow > .chip").first().click(); await p.waitForSelector("#l-done:not([hidden])");
       await p.evaluate(() => document.querySelector("#l-next").scrollIntoView({ block: "center" })); await p.waitForTimeout(200);
       const ov2 = await overlap(p, [".wn-opt", "#l-next button", "#l-done button"]), k3 = await ikoState(p);
@@ -245,36 +245,13 @@ for (const width of [390, 1280]) {
       await p.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight)); await p.waitForTimeout(200);
       const ov3 = await overlap(p, ["#l-chat", "#l-redo", "#l-path button", "#l-path a"]);
       ok(!ov3.hits.length, `${tag}: lesson: at the end of the page the last links sit clear of Iko`, JSON.stringify(ov3));
-      await p.evaluate(() => document.querySelector("#l-done").scrollIntoView({ block: "center" }));
+      /* PR 109: no "Still tricky"; a lesson with no check keeps a single "I've got it", which earns it (0 calls) */
       const c0 = calls.length;
-      await p.click("#l-tricky"); await p.waitForTimeout(400);
-      const tr = await p.evaluate(() => ({ sheet: !document.querySelector("#iko-sheet").hidden, inSheet: Boolean(document.querySelector("#iko-slot #l-clar")), simpler: (document.querySelector('#iko-slot .clar[data-style="simpler"] .clar-body') || {}).innerText || "", focusIn: Boolean(document.activeElement && document.activeElement.closest("#iko-sheet")), about: document.querySelector("#iko-about").textContent, lesson: !document.querySelector("#lesson").hidden, opts: document.querySelectorAll("#iko-slot .clar-opt").length }));
-      ok(tr.sheet && tr.inSheet && tr.simpler.startsWith("Picture the ground as a thick warm quilt") && tr.focusIn && tr.lesson && tr.opts === 3 && tr.about === "On Magma · lesson", `${tag}: Still tricky: Iko opens with the prepared clarification (the lesson stays)`, JSON.stringify(tr));
-      ok(calls.length === c0, `${tag}: Still tricky: 0 calls (prepared with the lesson)`, calls.slice(c0).join());
-      await shot(p, width, "4-tricky");
-      /* the sheet covers the lesson's buttons on a phone, so it carries "I've got it": visible and on top, even after the page scrolls */
-      const gotOk = () => p.evaluate(() => { const b = document.querySelector("#iko-got"), r = b.getBoundingClientRect(), hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return Boolean(b.offsetParent) && hit === b && r.top >= 0 && r.bottom <= innerHeight; });
-      ok(await gotOk(), `${tag}: Still tricky: "I've got it" is in Iko's sheet, visible and tappable`);
-      await p.mouse.move(Math.round(width / 4), 140); await p.mouse.wheel(0, 300); await p.waitForTimeout(250);
-      await p.evaluate(() => window.scrollBy(0, -300)); await p.waitForTimeout(150);
-      ok(await gotOk(), `${tag}: Still tricky: it stays visible and tappable when the page scrolls`);
-      if (width >= 1100) {
-        const wn = await p.evaluate(() => { const s = document.querySelector("#iko-sheet").getBoundingClientRect(); return [...document.querySelectorAll("#l-next .wn-opt, #l-next button, #l-done button")].filter((e) => { const r = e.getBoundingClientRect(); return r.width && r.left < s.right && r.right > s.left && r.top < s.bottom && r.bottom > s.top; }).map((e) => e.textContent.trim().slice(0, 30)); });
-        ok(!wn.length, `${tag}: Still tricky: on a wide screen the sheet sits clear of Where Next and the lesson's buttons`, JSON.stringify(wn));
-      }
-      await ikoSend(p, "Which part is the hardest?");
-      const b3 = screenOf(bodies);
-      ok(b3 && JSON.stringify(b3.screen) === JSON.stringify({ view: "lesson", step: "tricky", topic: "Magma" }) && b3.focus === "Magma", `${tag}: Still tricky: a question to Iko carries the lesson, its step and topic`, JSON.stringify(b3 && b3.screen));
-      await p.keyboard.press("Escape"); await p.waitForTimeout(150);
-      const back = await p.evaluate(() => ({ sheet: !document.querySelector("#iko-sheet").hidden, inLesson: Boolean(document.querySelector(".l-main #l-clar .clar")), lesson: !document.querySelector("#lesson").hidden }));
-      ok(!back.sheet && back.inLesson && back.lesson, `${tag}: closing Iko puts the clarification back in the lesson`, JSON.stringify(back));
-      /* again, and done from the sheet: "I've got it" there finishes the lesson (0 calls) and closes the sheet */
+      ok(!(await p.$("#l-tricky")) && await p.isVisible("#l-got"), `${tag}: a lesson with no check: one "I've got it", no "Still tricky"`);
       await p.evaluate(() => document.querySelector("#l-done").scrollIntoView({ block: "center" }));
-      const c1 = calls.length;
-      await p.click("#l-tricky"); await p.waitForTimeout(300);
-      await p.click("#iko-got"); await p.waitForTimeout(300);
-      const fin = await p.evaluate(() => ({ sheet: !document.querySelector("#iko-sheet").hidden, opts: document.querySelectorAll("#l-clar .clar-opt").length, status: document.querySelector("#l-status").innerText, lesson: !document.querySelector("#lesson").hidden, acts: !document.querySelector("#iko-acts").hidden }));
-      ok(!fin.sheet && !fin.opts && fin.lesson && !fin.acts && /growing|stronger|That's it/.test(fin.status) && calls.length === c1, `${tag}: "I've got it" in the sheet finishes the lesson and closes it (0 calls)`, JSON.stringify(fin) + calls.slice(c1).join());
+      await p.click("#l-got"); await p.waitForTimeout(400);
+      const fin = await p.evaluate(() => ({ conf: document.querySelector("#l-conf").hidden ? "" : document.querySelector("#l-conf").innerText, got: Boolean(document.querySelector("#l-got").getClientRects().length), lesson: !document.querySelector("#lesson").hidden, next: document.querySelector("#l-next").childElementCount }));
+      ok(fin.conf && !fin.got && fin.lesson && fin.next > 0 && calls.length === c0, `${tag}: "I've got it" earns it: the confirmation and Where next, 0 calls`, JSON.stringify(fin) + calls.slice(c0).join());
       await p.click("#l-back"); await p.waitForTimeout(900);
       if (!(await p.isHidden("#panel"))) { await p.click("#p-close"); await p.waitForTimeout(200); }
       /* the deck */
@@ -293,7 +270,7 @@ for (const width of [390, 1280]) {
       await p.waitForTimeout(400);
       const b5 = screenOf(bodies);
       ok(b5 && JSON.stringify(b5.screen) === JSON.stringify({ view: "chat" }), `${tag}: the whole conversation sends view chat`, JSON.stringify(b5 && b5.screen));
-      ok(calls.filter((c) => c === "/lesson").length === 1 && calls.filter((c) => /:clarify/.test(c)).length === 0 && calls.filter((c) => c === "/chat:chat").length === 4, `${tag}: returning: 1 lesson call, 0 clarify calls, 4 chat calls (one per message)`, calls.join());
+      ok(calls.filter((c) => c === "/lesson").length === 1 && calls.filter((c) => /:clarify/.test(c)).length === 0 && calls.filter((c) => c === "/chat:chat").length === 3, `${tag}: returning: 1 lesson call, 0 clarify calls, 3 chat calls (one per message)`, calls.join());
       ok(errs.length === 0, `${tag}: returning: no console errors`, errs.join(" | "));
     } catch (e) { fails.push(`${tag}: returning threw -> ${String(e.message || e).split("\n")[0]}`); }
     await ctx.close();

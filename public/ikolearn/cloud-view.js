@@ -30,8 +30,16 @@
     var yaw = HOME.yaw, pitch = HOME.pitch, zoom = HOME.zoom, panX = HOME.panX, panY = mini ? 0 : HOME.panY, pivot = CAM.ORIGIN; /* the header's small cloud: its name (the root) at the centre of the circle, PR 104 */
     var pointers = {}, gesture = null, idleSpin = mini && !reduce, tween = null, glideV = null;
     /* PR 108: a pointer resting near a node (or a finger just down by one) slows the drift, so a node is easy to tap */
-    var hoverAt = null, nearUntil = 0, NEAR = { px: 34, spin: 0.2, glide: 0.82, holdMs: 700 };
-    function nearAt(x, y) { for (var i = 0; i < projected.length; i++) { var q = projected[i].p; if (Math.abs(q.x - x) < NEAR.px && Math.abs(q.y - y) < NEAR.px && Math.hypot(q.x - x, q.y - y) < NEAR.px) return true; } return false; }
+    /* PR 109: near-stop (was 20%), eased over easeMs; the learner's name (the home node) counts too */
+    var hoverAt = null, nearUntil = 0, NEAR = { px: 34, spin: 0.07, glide: 0.82, holdMs: 700, easeMs: 180 }, slowK = 1, extent = 0;
+    function nearAt(x, y) {
+      if (pos.root && !hideRoot) {
+        var rq = project(pos.root);
+        if (rootBox ? Math.abs(rq.x - x) <= rootBox.hw + 10 && Math.abs(rq.y - y) <= rootBox.hh + 10 : Math.hypot(rq.x - x, rq.y - y) < NEAR.px) return true;
+      }
+      for (var i = 0; i < projected.length; i++) { var q = projected[i].p; if (Math.abs(q.x - x) < NEAR.px && Math.abs(q.y - y) < NEAR.px && Math.hypot(q.x - x, q.y - y) < NEAR.px) return true; }
+      return false;
+    }
     function slowNow(now) { return !mini && (now < nearUntil || Boolean(hoverAt && !gesture && nearAt(hoverAt.x, hoverAt.y))); }
     var focusId = null, focusSet = {}, selectAt = 0; /* selectAt: when the focused node was picked (its ring eases in) */
     /* the big cloud's idle spin (camera.js spinState): on only while the overlay is open (spinOn) and nothing covers it (spinHeld) */
@@ -184,6 +192,7 @@
       var rootP = project(pos.root);
       var vis = visibleIds(now), items = [], at = { root: rootP };
       Object.keys(vis).forEach(function (id) { var p = project(pos[id]); at[id] = p; items.push({ n: cloud.nodes[id], p: p }); });
+      extent = 0; for (var ei = 0; ei < items.length; ei++) extent = Math.max(extent, Math.hypot(items[ei].p.x - rootP.x, items[ei].p.y - rootP.y)); /* PR 109: the cloud's on-screen radius (caps the spin) */
       items.sort(function (a, b) { return b.p.z - a.p.z; });
       projected = items;
       var pulsing = false;
@@ -352,13 +361,15 @@
       }
       ctx.restore();
 
-      if (idleSpin) yaw += 0.0025;
+      if (idleSpin) yaw += 0.00015 * (lastFrame ? Math.max(0, Math.min(50, now - lastFrame)) : 16); /* PR 109: by time, not by frame (a 120 Hz screen spun it twice as fast) */
       var sp = { on: false, wait: Infinity };
       if (!mini) {
         if (tween) lastInput = now; /* a focus glide (it follows a click) is waited out; a drag, pan, pinch or glide keeps the spin going */
         sp = CAM.spinState({ reduce: reduce, hidden: Boolean(doc && doc.hidden), active: spinOn, paused: spinHeld, busy: Boolean(tween), now: now, lastInput: lastInput });
         if (sp.on && !spinning) spinFrom = now; /* eases in from here */
-        if (sp.on) yaw += CAM.spinStep(spinning ? now - lastFrame : 16, now - spinFrom) * (slowNow(now) ? NEAR.spin : 1);
+        var dtS = spinning ? now - lastFrame : 16;
+        slowK += ((slowNow(now) ? NEAR.spin : 1) - slowK) * Math.min(1, Math.max(0, dtS) / NEAR.easeMs); /* eases toward a near-stop and back */
+        if (sp.on) yaw += CAM.spinStep(dtS, now - spinFrom) * slowK * CAM.spinCap(extent);
       }
       spinning = sp.on; lastFrame = now;
       drawMs = performance.now() - t0;
@@ -400,6 +411,17 @@
      */
     var fogC = null, fogX = null, fogAt = 0, fogKey = "", fogLate = 0, FOG = { scale: 6, every: 110, cap: 32 };
     function hsla(c, a) { var m = /^hsla?\(([^,]+),\s*([^,]+),\s*([^,)]+)/.exec(c || ""); return m ? "hsla(" + m[1] + ", " + m[2] + ", " + m[3] + ", " + a.toFixed(3) + ")" : "rgba(120, 100, 80, " + a.toFixed(3) + ")"; }
+    /*
+     * PR 109: the fog in light mode: about 2.7x the PR 108 strength (x4 the base, capped), the subjects' hues more
+     * saturated and a touch deeper, 1.3x the size, and multiplied into the parchment (styles.css) so it reads as colour
+     * on paper rather than a white wash. Still soft; dark mode unchanged.
+     */
+    var FOG_LIGHT = { alpha: 4, cap: 0.42, sat: 1.4, light: 0.86, radius: 1.3 }, vividC = {};
+    function vividOf(c) {
+      if (vividC[c]) return vividC[c];
+      var m = /^hsla?\(([^,]+),\s*([\d.]+)%,\s*([\d.]+)%/.exec(c || "");
+      return (vividC[c] = m ? "hsl(" + m[1] + ", " + Math.min(88, +m[2] * FOG_LIGHT.sat).toFixed(1) + "%, " + Math.max(30, +m[3] * FOG_LIGHT.light).toFixed(1) + "%)" : c);
+    }
     function drawFog(now, at, items) {
       if (mini || !doc || !cloud) return;
       var subs = C.subjects(cloud);
@@ -421,7 +443,8 @@
         fogKey = key; fogAt = now;
         var t = reduce ? 0 : now, grow = Math.min(1, nTopics / 60), base = 0.09 + 0.09 * grow, dark = Boolean(TH && TH.dark && TH.dark());
         if (dark) base *= 0.8;
-        else base *= 1.5; /* PR 108: clearer on paper (dark mode as it was) */
+        else base = Math.min(FOG_LIGHT.cap, base * FOG_LIGHT.alpha); /* PR 109: clearly there on paper (was x1.5); dark mode as it was */
+        var fogCol = dark ? colorOf : function (n) { return vividOf(colorOf(n)); }, rk = dark ? 1 : FOG_LIGHT.radius;
         fogX.setTransform(1, 0, 0, 1, 0, 0);
         fogX.clearRect(0, 0, fw, fh);
         var blob = function (x, y, r, col, a) {
@@ -433,8 +456,8 @@
         var shown = subs.slice(0, FOG.cap), n = shown.length;
         shown.forEach(function (sj, i) {
           var p = at[sj.id] || project(pos[sj.id] || CAM.ORIGIN);
-          var col = colorOf(sj), next = colorOf(shown[(i + 1) % n]);
-          var r = Math.min(Math.min(w, h) * 0.42, (34 + 13 * Math.sqrt(subN[sj.id] || 0)) * Math.max(0.5, zoom) * p.f) / sc;
+          var col = fogCol(sj), next = fogCol(shown[(i + 1) % n]);
+          var r = Math.min(Math.min(w, h) * 0.42 * rk, (34 + 13 * Math.sqrt(subN[sj.id] || 0)) * rk * Math.max(0.5, zoom) * p.f) / sc;
           var dx = Math.sin(t / 7000 + i * 1.7) * r * 0.28, dy = Math.cos(t / 9000 + i * 2.3) * r * 0.22;
           var k = (fadeK[sj.id] == null ? 1 : fadeK[sj.id]) * (focusId && !focusSet[sj.id] ? 0.6 : 1);
           blob(p.x / sc, p.y / sc, r, col, base * k);
@@ -447,7 +470,7 @@
         var bands = {};
         for (var u = 0; u < items.length; u++) {
           var iu = items[u]; if (!iu.n.parent || iu.n.ghost || !done[iu.n.id]) continue;
-          var hm = /^hsla?\(([\d.]+)/.exec(colorOf(iu.n)); if (!hm) continue;
+          var hm = /^hsla?\(([\d.]+)/.exec(fogCol(iu.n)); if (!hm) continue;
           var hk = Math.round(+hm[1] / 24) % 15;
           (bands[hk] = bands[hk] || []).push(iu);
         }
@@ -455,14 +478,14 @@
           var g = bands[hk]; if (g.length < 2) return;
           var cx = 0, cy = 0; g.forEach(function (it) { cx += it.p.x; cy += it.p.y; }); cx /= g.length; cy /= g.length;
           var spread = 0; g.forEach(function (it) { spread = Math.max(spread, Math.hypot(it.p.x - cx, it.p.y - cy)); });
-          var rr = Math.min(Math.min(w, h) * 0.4, spread + (22 + 7 * Math.min(g.length, 12)) * Math.max(0.6, zoom));
-          blob(cx / sc, cy / sc, rr / sc, colorOf(g[0].n), base * Math.min(0.9, 0.35 + 0.08 * g.length));
+          var rr = Math.min(Math.min(w, h) * 0.4 * rk, spread + (22 + 7 * Math.min(g.length, 12)) * rk * Math.max(0.6, zoom));
+          blob(cx / sc, cy / sc, rr / sc, fogCol(g[0].n), base * Math.min(0.9, 0.35 + 0.08 * g.length));
         });
         /* along the branches: a thinner haze over the topics, every other one on a big cloud */
         var step = Math.max(1, Math.ceil(items.length / 40));
         for (var j = 0; j < items.length; j += step) {
           var it = items[j]; if (!it.n.parent || it.n.ghost) continue;
-          blob(it.p.x / sc, it.p.y / sc, (16 + 10 * grow) * Math.max(0.6, zoom) * it.p.f / sc, colorOf(it.n), base * 0.45);
+          blob(it.p.x / sc, it.p.y / sc, (16 + 10 * grow) * Math.max(0.6, zoom) * it.p.f / sc, fogCol(it.n), base * 0.45);
         }
       }
     }
@@ -614,7 +637,7 @@
       reset: function () { apply(Object.assign({ pivot: CAM.ORIGIN }, home)); tween = null; glideV = null; setFocus(null); request(); changed(); },
       /* Recentre: ease back to the whole cloud, the pivot back to the origin, and let go of the focus */
       recentre: function () { setFocus(null); animateTo(Object.assign({ pivot: CAM.ORIGIN }, home), CAM.CAM.focusMs); },
-      state: function () { return { yaw: yaw, pitch: pitch, zoom: zoom, panX: panX, panY: panY, pivot: { x: pivot.x, y: pivot.y, z: pivot.z }, focus: focusId, drawn: projected.length, drawMs: drawMs, moving: Boolean(tween || glideV), spinning: spinning, near: slowNow(performance.now()), held: spinHeld, vivid: vivid, fill: Object.assign({}, fill), fade: Object.assign({}, fadeK) }; },
+      state: function () { return { yaw: yaw, pitch: pitch, zoom: zoom, panX: panX, panY: panY, pivot: { x: pivot.x, y: pivot.y, z: pivot.z }, focus: focusId, drawn: projected.length, drawMs: drawMs, moving: Boolean(tween || glideV), spinning: spinning, near: slowNow(performance.now()), slow: slowK, extent: extent, held: spinHeld, vivid: vivid, fill: Object.assign({}, fill), fade: Object.assign({}, fadeK) }; },
       setView: function (v) { if (v.zoom) setZoom(v.zoom); if (v.yaw != null) yaw = v.yaw; if (v.pitch != null) pitch = v.pitch; if (v.panX != null) panX = v.panX; if (v.panY != null) panY = v.panY; if (v.pivot && isFinite(v.pivot.x) && isFinite(v.pivot.y) && isFinite(v.pivot.z)) pivot = { x: v.pivot.x, y: v.pivot.y, z: v.pivot.z }; if (v.focus !== undefined) setFocus(v.focus); request(); },
       project: function (id) { return pos[id] ? project(pos[id]) : null; },
       focusNode: focusNode,

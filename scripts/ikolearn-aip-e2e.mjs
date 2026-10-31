@@ -2,7 +2,7 @@
 // calls). A seeded 40-subject cloud at 390 and 1280 (guide mode): the 3 most recent by default, a quiet "more · N"
 // button (aria-expanded) that opens the whole list inline in its own scrolling area and folds it again ("fewer"),
 // selecting and opening in the long list, most recent activity first, nothing from the lesson's own line, Where Next
-// unchanged, no link with 3 or fewer, 0 calls; after I've got it, after Continue, from a card, with Iko's sheet at 1280.
+// unchanged, no link with 3 or fewer, 0 calls; after the pass, after Continue, from a card, with Iko's sheet at 1280.
 // Run: IKOLEARN_PW=<path to node_modules/playwright-core> node scripts/ikolearn-aip-e2e.mjs [--shots DIR] [--tag after] [--root public]
 import { passCheck } from "./fixtures/ikolearn-pass-check.mjs";
 import http from "node:http";
@@ -194,7 +194,7 @@ for (const width of [390, 1280]) {
       /* after I've got it */
       await p.locator(".cloud-flow > .chip").first().click(); await p.waitForSelector("#l-done:not([hidden])");
       await passCheck(p); /* PR 103: the check passed first */
-      await p.click("#l-got"); await p.waitForTimeout(400);
+      await p.waitForSelector("#l-conf:not([hidden])"); await p.waitForTimeout(400); /* PR 109: the pass earns it */
       /* --tag before (main): the old list as it was, for the before shots */
       if (TAG === "before") { await toLesson(p); await shot(p, tag, "collapsed"); if (SHOTS) await p.screenshot({ path: path.join(SHOTS, `aip-before-${tag}-full.png`), fullPage: true }); }
       const total = (await p.evaluate(() => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), lid = c.order.find((x) => c.nodes[x].label === document.querySelector("#l-title").textContent); return window.IkoPlan.whereNext(c, lid, null).allOthers.length; }));
@@ -234,14 +234,14 @@ for (const width of [390, 1280]) {
     try {
       await p.locator(".cloud-flow > .chip").first().click(); await p.waitForSelector("#l-done:not([hidden])");
       await passCheck(p); /* PR 103: the check passed first */
-      await p.click("#l-got"); await p.waitForTimeout(400);
+      await p.waitForSelector("#l-conf:not([hidden])"); await p.waitForTimeout(400); /* PR 109: the pass earns it */
       const a = await aip(p);
       ok(a.labels.length >= 1 && a.labels.length <= 3 && !a.link, `${tag}: with 3 or fewer in progress there is no "more" link`, JSON.stringify(a));
       ok(!errs.length, `${tag}: no console errors (few)`, errs.join(" | "));
     } catch (e) { fails.push(`${tag}: few threw -> ${String(e.message || e).split("\n")[0]}`); }
     await ctx.close();
   }
-  /* audit (#93 on a 40-subject cloud): the Iko pebble, its hello, its context, Still tricky; the light re-ask builds new roots */
+  /* audit (#93 on a 40-subject cloud): the Iko pebble, its hello, its context; the light re-ask builds new roots */
   {
     const { ctx, p, errs, calls } = await boot(width, guide, true, { hello: true });
     try {
@@ -255,9 +255,10 @@ for (const width of [390, 1280]) {
       if (!(await p.isHidden("#panel"))) await p.click("#p-lesson"); else { await tap(p, "Zoology"); await p.click("#p-lesson"); }
       await p.waitForSelector("#l-done:not([hidden])"); await p.waitForTimeout(400);
       const lt = await p.textContent("#l-title"), c0 = calls.length;
-      await p.click("#l-tricky"); await p.waitForTimeout(400);
-      const tr = await p.evaluate(() => ({ sheet: !document.querySelector("#iko-sheet").hidden, inSheet: Boolean(document.querySelector("#iko-slot #l-clar")), about: document.querySelector("#iko-about").textContent, text: (document.querySelector("#iko-slot #l-clar") || {}).innerText || "" }));
-      ok(tr.sheet && tr.inSheet && tr.about === "On " + lt + " · lesson" && /thick warm quilt/.test(tr.text) && calls.length === c0, `${tag} audit: Still tricky opens Iko with the prepared clarification and the lesson's context (0 calls)`, JSON.stringify({ ...tr, text: tr.text.slice(0, 40) }));
+      await p.click("#l-chat"); await p.waitForTimeout(400);
+      const tr = await p.evaluate(() => ({ sheet: !document.querySelector("#iko-sheet").hidden, about: document.querySelector("#iko-about").textContent, tricky: Boolean(document.querySelector("#l-tricky")) }));
+      ok(tr.sheet && tr.about === "On " + lt + " · lesson" && !tr.tricky && calls.length === c0, `${tag} audit: Ask Iko about this opens Iko with the lesson's context (0 calls); no Still tricky (PR 109)`, JSON.stringify(tr));
+      await p.keyboard.press("Escape"); await p.waitForTimeout(200);
       ok(!errs.length, `${tag} audit: no console errors (Iko)`, errs.join(" | "));
     } catch (e) { fails.push(`${tag}: audit Iko threw -> ${String(e.message || e).split("\n")[0]}`); }
     await ctx.close();

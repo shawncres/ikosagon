@@ -176,20 +176,23 @@ for (const width of [390, 1280]) {
       ok(order, `${tag}: the check comes after the reading`);
       const pick = (qi, oi) => p.locator("#l-quiz .q").nth(qi).locator("input").nth(oi).check();
       await pick(0, 1); await p.waitForTimeout(150); await pick(1, 1); await p.waitForTimeout(300);
-      const m1 = await p.evaluate(() => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), n = c.nodes[window.__magma]; return { miss: Boolean(document.querySelector("#l-quiz .q-miss")), again: (document.querySelector("#l-quiz .q-again") || {}).innerText || "", fresh: Boolean(document.querySelector("#l-quiz .q-fresh")), got: !document.querySelector("#l-got").hidden, next: document.querySelectorAll("#l-next .wn-opt:not([data-kind=progress])").length, deck: c.deck.length, inDeck: C.inDeck(c, window.__magma), correct: n.correct || 0, ez: (JSON.parse(localStorage.getItem("ikolearn.v1.cloud")).ez || {}) }; });
-      ok(m1.miss && /quilt over a stove/.test(m1.again) && m1.fresh && !m1.got && m1.next === 0, `${tag}: a miss: a clearer telling (prepared, 0 calls), then a fresh check; no card, no Where next`, JSON.stringify(m1));
+      const m1 = await p.evaluate(() => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), n = c.nodes[window.__magma]; return { miss: Boolean(document.querySelector("#l-quiz .q-miss")), text: (document.querySelector("#l-quiz .q-miss") || {}).innerText || "", fresh: Boolean(document.querySelector("#l-quiz .q-refresh")), got: !document.querySelector("#l-got").hidden, next: document.querySelectorAll("#l-next .wn-opt:not([data-kind=progress])").length, deck: c.deck.length, inDeck: C.inDeck(c, window.__magma), correct: n.correct || 0, ez: (JSON.parse(localStorage.getItem("ikolearn.v1.cloud")).ez || {}) }; });
+      ok(m1.miss && /Refresh for a new attempt: another way to see/.test(m1.text) && m1.fresh && !m1.got && m1.next === 0, `${tag}: a miss: a quiet Refresh for a new attempt (no Still tricky); no card, no Where next`, JSON.stringify(m1));
       ok(m1.deck === deck0 && !m1.inDeck && m1.correct === 0, `${tag}: a miss earns nothing (no deck, no credit)`, JSON.stringify({ deck0, m1 }));
       ok(Object.values(m1.ez).some((v) => v < 0), `${tag}: a miss is noted as this branch's difficulty (ez, additive)`, JSON.stringify(m1.ez));
       const lessonCalls = calls.filter((c) => c === "/lesson").length;
-      await p.click("#l-quiz .q-fresh"); await p.waitForTimeout(300);
+      await p.click("#l-quiz .q-refresh"); await p.waitForTimeout(300);
+      const rf = await p.evaluate(() => ({ again: (document.querySelector("#l-body .q-again") || {}).innerText || "", quiz: Boolean(document.querySelector("#l-quiz").getClientRects().length) && !document.querySelector("#l-quiz").hidden, cont: !document.querySelector("#l-cont").hidden, phase: document.querySelector(".l-main").getAttribute("data-phase") }));
+      ok(/quilt over a stove/.test(rf.again) && !rf.quiz && rf.cont && rf.phase === "learn", `${tag}: Refresh: the new attempt starts on the reading (the prepared clearer telling first, 0 calls), the check behind Continue`, JSON.stringify(rf));
+      await p.click("#l-cont"); await p.waitForTimeout(250);
       const f1 = await p.evaluate(() => [...document.querySelectorAll("#l-quiz legend")].map((l) => l.textContent));
       ok(f1.length === 2 && f1.every((t) => /^Fresh/.test(t)) && calls.filter((c) => c === "/lesson").length === lessonCalls, `${tag}: fresh questions (the lesson's spare set, 0 calls)`, JSON.stringify(f1));
       /* a pass */
       await pick(0, 0); await p.waitForTimeout(150); await pick(1, 1); await p.waitForTimeout(400);
-      const p1 = await p.evaluate(() => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")); return { got: !document.querySelector("#l-got").hidden, next: document.querySelectorAll("#l-next .wn-opt:not([data-kind=progress])").length, phase: document.querySelector(".l-main").getAttribute("data-phase"), earn: document.querySelector("#ph-earn").className, correct: c.nodes[window.__magma].correct || 0, react: document.querySelector("#iko-line").getAttribute("data-react") }; });
-      ok(p1.got && p1.next >= 1 && p1.phase === "passed" && p1.earn === "on" && p1.correct >= 2, `${tag}: a pass: the next paths open and the card can be earned`, JSON.stringify(p1));
-      ok(p1.react === "pass", `${tag}: Iko reacts to a passed check`, JSON.stringify(p1));
-      await p.click("#l-got"); await p.waitForTimeout(1300);
+      const p1 = await p.evaluate(() => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")); return { got: !document.querySelector("#l-got").hidden, conf: document.querySelector("#l-conf").hidden ? "" : document.querySelector("#l-conf").innerText, body: Boolean(document.querySelector("#l-body").getClientRects().length), next: document.querySelectorAll("#l-next .wn-opt:not([data-kind=progress])").length, phase: document.querySelector(".l-main").getAttribute("data-phase"), earn: document.querySelector("#ph-earn").className, correct: c.nodes[window.__magma].correct || 0, react: document.querySelector("#iko-line").getAttribute("data-react") }; });
+      ok(!p1.got && /Card earned/i.test(p1.conf) && !p1.body && p1.next >= 1 && p1.phase === "passed" && p1.earn === "on" && p1.correct >= 2, `${tag}: a pass earns the card: the confirmation, the next paths open (no "I've got it", no lesson)`, JSON.stringify(p1));
+      ok(p1.react === "earn", `${tag}: Iko reacts to the card earned`, JSON.stringify(p1));
+      await p.waitForTimeout(1300);
       const e1 = await p.evaluate(() => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")); return { inDeck: C.inDeck(c, window.__magma), deck: c.deck.length, mini: (document.querySelector(".minideck .md-n") || {}).textContent }; });
       ok(e1.inDeck && e1.deck === deck0 + 1 && e1.mini === String(deck0 + 1), `${tag}: earned: the card joins the deck (the count follows)`, JSON.stringify(e1));
       ok(errs.length === 0, `${tag}: lesson: no console errors`, errs.join(" | "));
@@ -215,12 +218,12 @@ for (const width of [390, 1280]) {
         await p.waitForSelector("#l-cont:not([hidden])");
         await p.click("#l-cont"); await p.waitForTimeout(200);
         await pick(0, 2); await p.waitForTimeout(100); await pick(1, 2); await p.waitForTimeout(300);
-        await p.click("#l-quiz .q-fresh"); await p.waitForTimeout(250);
+        await p.click("#l-quiz .q-refresh"); await p.waitForTimeout(250); await p.click("#l-cont"); await p.waitForTimeout(250);
         await pick(0, 2); await p.waitForTimeout(100); await pick(1, 2); await p.waitForTimeout(300);
-        const m2 = await p.evaluate(() => ({ retell: Boolean(document.querySelector("#l-quiz .q-retell")), got: !document.querySelector("#l-got").hidden }));
-        ok(m2.retell && !m2.got, `${tag}: a second miss offers a clearer version of the lesson (still no card)`, JSON.stringify(m2));
+        const m2 = await p.evaluate(() => ({ retell: /write .* again/.test((document.querySelector("#l-quiz .q-miss") || {}).innerText || "") && Boolean(document.querySelector("#l-quiz .q-refresh")), got: !document.querySelector("#l-got").hidden }));
+        ok(m2.retell && !m2.got, `${tag}: a second miss: Refresh writes a clearer version of the lesson (still no card)`, JSON.stringify(m2));
         const n0 = calls.filter((c) => c === "/lesson").length;
-        await p.click("#l-quiz .q-retell"); await p.waitForSelector("#l-cont:not([hidden])"); await p.waitForTimeout(300);
+        await p.click("#l-quiz .q-refresh"); await p.waitForSelector("#l-cont:not([hidden])"); await p.waitForTimeout(300);
         const last = bodies.filter((x) => x.at === "/lesson").pop().b;
         ok(calls.filter((c) => c === "/lesson").length === n0 + 1 && last.again === true && last.pace === "gentle", `${tag}: the clearer version: one lesson call, gentle, marked again`, JSON.stringify({ again: last.again, pace: last.pace }));
         await p.click("#l-cont"); await p.waitForTimeout(200);
@@ -373,12 +376,10 @@ for (const width of [320, 390, 768, 1280]) {
     await p.click("#l-cont"); await p.waitForTimeout(200);
     await p.locator("#l-quiz .q").nth(0).locator("input").nth(0).check(); await p.waitForTimeout(100);
     await p.locator("#l-quiz .q").nth(1).locator("input").nth(1).check(); await p.waitForTimeout(400);
-    const r = await p.evaluate(() => ({ got: !document.querySelector("#l-got").hidden, react: document.querySelector("#iko-line").hidden ? "" : document.querySelector("#iko-line").getAttribute("data-react"), n: Object.values(JSON.parse(localStorage.getItem("ikolearn-iko")))[0].r.pass }));
-    ok(r.got && r.react !== "pass" && r.n === 4, "reactions: the 4th passed check passes quietly (counted, not said)", JSON.stringify(r));
-    await p.click("#l-got");
+    /* PR 109: the pass earns the card, and a first earn has its own word (the pass's own line is folded into it) */
     const e = await waitLine(p, () => document.querySelector("#iko-line").getAttribute("data-react") === "earn", 6000);
-    const en = await p.evaluate(() => Object.values(JSON.parse(localStorage.getItem("ikolearn-iko")))[0].r.earn);
-    ok(e && en === 10, "reactions: a card earned is always acknowledged, even the 10th (PR 106)", JSON.stringify({ e, en }));
+    const r = await p.evaluate(() => ({ got: Boolean(document.querySelector("#l-got").getClientRects().length), r: Object.values(JSON.parse(localStorage.getItem("ikolearn-iko")))[0].r }));
+    ok(e && !r.got && r.r.earn === 10 && r.r.pass === 3, "reactions: a card earned is always acknowledged, even the 10th (PR 106); the pass that earned it adds no second line", JSON.stringify({ e, r }));
   } catch (e) { fails.push(`reactions threw -> ${String(e.message || e).split("\n")[0]}`); }
   await ctx.close();
 }
@@ -407,7 +408,7 @@ for (const width of [320, 390, 768, 1280]) {
       const lum = ([r, g, b]) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
       const bgOf = (e) => { for (let x = e; x; x = x.parentElement) { const c = rgb(getComputedStyle(x).backgroundColor); if (c.length >= 3 && (c.length < 4 || c[3] > 0.5)) return c; } return rgb(getComputedStyle(document.body).backgroundColor); };
       const out = {};
-      for (const s of ["#iko-line", "#l-cont", "#l-quiz .q-lede", "#l-quiz legend", "#l-quiz .q-miss .l-head", "#l-quiz .q-miss .clar", ".d-sec", "#d-collect .fine", "#cloud-deck .md-n"]) {
+      for (const s of ["#iko-line", "#l-cont", "#l-quiz .q-lede", "#l-quiz legend", "#l-quiz .q-miss .l-head", "#l-quiz .q-miss p:not(.l-head)", ".d-sec", "#d-collect .fine", "#cloud-deck .md-n"]) {
         const e = document.querySelector(s); if (!e || !e.getClientRects().length) continue;
         const a = lum(rgb(getComputedStyle(e).color)), b = lum(bgOf(e));
         out[s] = Math.round(((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)) * 100) / 100;
@@ -427,7 +428,7 @@ for (const width of [320, 390, 768, 1280]) {
     const th = await thumbInk(p);
     ok(th.round && th.ink > 80 && Math.abs(th.c[0] - th.W / 2) <= 4 && Math.abs(th.c[1] - th.H / 2) <= 4, "dark mode: the header's cloud circle shows the name at its centre", JSON.stringify(th));
     const all = Object.assign({}, a.out, b.out, c.out, d.out);
-    const need = ["#iko-line", "#l-cont", "#l-quiz .q-miss .l-head", "#l-quiz .q-miss .clar", ".d-sec", "#d-collect .fine"];
+    const need = ["#iko-line", "#l-cont", "#l-quiz .q-miss .l-head", "#l-quiz .q-miss p:not(.l-head)", ".d-sec", "#d-collect .fine"];
     ok(a.theme === "dark" && need.every((k) => all[k] >= 4.5) && Object.values(all).every((v) => v >= 4.5), "dark mode: Iko's bubble, Continue, the missed-check box and the deck's sections read at AA", JSON.stringify(all));
   } catch (e) { fails.push(`dark threw -> ${String(e.message || e).split("\n")[0]}`); }
   await ctx.close();

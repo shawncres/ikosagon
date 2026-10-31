@@ -104,7 +104,7 @@ for (const width of (process.env.WIDTHS || "390,1280").split(",").map(Number)) {
       const full = await turn(p, 2000);
       ok(full.on && full.d > 0, `${tag}: main cloud: spins after the idle delay`, JSON.stringify({ d: full.d }));
       const secPerTurn = (2 * Math.PI) / (full.d / 2);
-      ok(secPerTurn >= 60 && secPerTurn <= 95, `${tag}: main cloud: slow but noticeable (about ${Math.round(secPerTurn)} s per turn)`, String(secPerTurn));
+      ok(secPerTurn >= 200 && secPerTurn <= 300, `${tag}: main cloud: slow but noticeable (about ${Math.round(secPerTurn)} s per turn)`, String(secPerTurn));
       ok(ease.d / 0.3 < (full.d / 2) * 0.95, `${tag}: main cloud: eases in (slower at the start than at full speed)`, JSON.stringify({ start: ease.d / 0.3, full: full.d / 2 }));
       await shot(p, `spin-${TAG}-${width}-main.png`);
       /* a drag, a pan and the wheel do NOT stop it: the spin goes on through movement */

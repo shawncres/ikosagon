@@ -1,6 +1,5 @@
 // End-to-end checks for the lesson flow in a real browser, with every /api/ikolearn call mocked (no model calls):
-// "I've got it" (0 calls, stays, no auto-advance), "Still tricky" (a clarification prepared in the lesson's own call,
-// shown at once with 0 calls; otherwise 1 call; more options 1 call each, inline; a chat link), Where Next (only the
+// "I've got it" on a lesson with no check (0 calls, stays, no auto-advance; PR 109: no "Still tricky"), Where Next (only the
 // current subject, equal boxes, the action inside the picked box, other subjects under "Also in progress"), no call on a
 // node tap, cancel on navigation, lessons queue while busy, and "Try again" only on a real failure.
 // Run: IKOLEARN_PW=<path to node_modules/playwright-core> node scripts/ikolearn-flow-e2e.mjs [--shots DIR] [--tag after] [--root public] [--soft]
@@ -178,43 +177,8 @@ async function run(width) {
     await p.locator("#l-next .wn-opt .wn-pick").nth(0).click();
   });
 
-  await step("Still tricky", async () => {
-    const n0 = calls.length;
-    await p.click("#l-tricky");
-    await p.waitForTimeout(300);
-    ok(!(await p.locator("#lesson").isHidden()) && calls.length === n0, `${width}: "Still tricky" stays on the lesson; the prepared clarification is 0 calls`, calls.slice(n0).join());
-    await shot("tricky-prepared", "#l-status");
-    if (SOFT) return;
-    const prep = await p.evaluate(() => ({ simpler: (document.querySelector('#l-clar .clar[data-style="simpler"] .clar-body') || {}).innerText || "", focus: Boolean(document.activeElement && document.activeElement.closest('#l-clar .clar[data-style="simpler"]')), chat: (document.querySelector("#l-clar .clar-chat") || {}).innerText || "", status: document.querySelector("#l-status").innerText }));
-    ok(/thick warm quilt/.test(prep.simpler) && /Where does the heat come from\?/.test(prep.simpler), `${width}: the simpler explanation is shown at once (written with the lesson)`, JSON.stringify(prep));
-    ok(prep.focus, `${width}: focus moves to the prepared clarification`);
-    ok(/Talk it through with Iko/.test(prep.chat) && /another way to see it/.test(prep.status), `${width}: a short note, and a way to talk it through in chat`, JSON.stringify(prep));
-    const opts = await p.evaluate(() => [...document.querySelectorAll("#l-clar .clar-opt")].map((b) => b.textContent));
-    eq(opts, ["Explain it more simply", "Show me a worked example", "Ask me a question"], `${width}: three ways to clarify are still offered`);
-    for (const [i, style] of ["simpler", "example", "question"].entries()) {
-      const before = count(/:clarify:/);
-      await p.locator("#l-clar .clar-opt").nth(i).click();
-      await p.waitForFunction((st) => { const b = document.querySelector(`#l-clar .clar[data-style="${st}"] .clar-body`); return b && !b.classList.contains("streaming") && b.innerText.length > 20; }, style);
-      await p.waitForTimeout(100);
-      if (i === 0) ok(count(/:clarify:/) === before, `${width}: "simpler" is already written: 0 calls`);
-      else ok(count(/:clarify:/) === before + 1 && count(new RegExp(":clarify:" + style + "$")) === 1, `${width}: "${style}" is exactly 1 call`);
-      if (i === 1) await shot("clarified", "#l-clar");
-    }
-    const txt = await text("#l-clar");
-    ok(/quilt/.test(txt) && /soup/.test(txt) && /Which part feels tricky/.test(txt) && !/Try again/.test(txt) && !(await p.locator("#lesson").isHidden()), `${width}: the clarifications are answered inline in the lesson`);
-    const c3 = count(/:clarify:/);
-    await p.locator("#l-clar .clar-opt").nth(2).click(); await p.waitForTimeout(200);
-    ok(count(/:clarify:/) === c3, `${width}: asking for one already written is 0 calls`);
-    // understood after all: the options and the chat link go, the answers already shown stay; still no auto-advance
-    const t0 = await p.textContent("#l-title");
-    // Iko's sheet covers the lesson's buttons on a phone, so it carries "I've got it": visible and tappable, at any scroll
-    const gotAt = await p.evaluate(() => { const b = document.querySelector("#iko-got"), r = b.getBoundingClientRect(), hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return { shown: Boolean(b.offsetParent), top: hit === b, inView: r.top >= 0 && r.bottom <= innerHeight }; });
-    ok(gotAt.shown && gotAt.top && gotAt.inView, `${width}: with Iko's sheet open, "I've got it" is in the sheet, visible and on top`, JSON.stringify(gotAt));
-    await p.click("#iko-got"); await p.waitForTimeout(300);
-    ok(await p.isHidden("#iko-sheet"), `${width}: "I've got it" in the sheet closes it`);
-    const cl = await p.evaluate(() => ({ opts: document.querySelectorAll("#l-clar .clar-opt").length, chat: document.querySelectorAll("#l-clar .clar-chat").length, answers: document.querySelectorAll("#l-clar .clar").length, title: document.querySelector("#l-title").textContent }));
-    ok(cl.opts === 0 && cl.chat === 0 && cl.answers === 3 && cl.title === t0 && count(/:clarify:/) === c3, `${width}: "I've got it" hides the options and chat link; the answers stay (0 calls, no auto-advance)`, JSON.stringify(cl));
-    await shot("got-after-clarify", "#l-status");
+  await step("no Still tricky (PR 109)", async () => {
+    ok(!(await p.$("#l-tricky")) && !/Still tricky/.test(await p.content()), `${width}: no "Still tricky" (a missed check offers Refresh instead)`);
   });
 
   if (SOFT) { await ctx.close(); return { errs }; }
@@ -250,25 +214,6 @@ async function run(width) {
     const picked = await p.evaluate((lbl) => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")); const e = c.order.find((x) => c.nodes[x].label === "Eruptions"); const f = c.nodes[e].fork; return Boolean(f && f.picked && c.nodes[f.picked].label === lbl); }, pickLabel);
     ok(picked, `${width}: opening a choice records it as the learner's pick (pre-selected next time)`);
 
-    /* this lesson came without a prepared clarification: "Still tricky" writes one (exactly 1 call); a real failure offers Try again */
-    mock.failClarify = true;
-    const cf = count(/:clarify:/);
-    await p.click("#l-tricky");
-    await p.waitForFunction(() => /Try again/.test(document.querySelector("#l-clar").innerText));
-    ok(count(/:clarify:/) === cf + 1 && count(/:clarify:simpler$/) >= 1, `${width}: not prepared: "Still tricky" asks for the simpler one by itself (exactly 1 call)`, calls.slice(-3).join());
-    ok(!/Try again/.test(await text("#l-status")) && /couldn't get an answer/.test(await text("#l-clar")), `${width}: a real failure shows Try again (in the clarification only)`);
-    mock.failClarify = false;
-    const c0 = count(/:clarify:/);
-    await p.locator("#l-clar").getByRole("button", { name: "Try again" }).click();
-    await p.waitForFunction(() => /thick blanket/.test(document.querySelector("#l-clar").innerText));
-    ok(count(/:clarify:/) === c0 + 1, `${width}: Try again is one call and answers inline`);
-    /* talking it through: the chat opens on this topic with the question ready (no call until it is sent) */
-    const cc = calls.length;
-    await p.locator("#l-clar .clar-chat").getByRole("button", { name: "Talk it through with Iko" }).click();
-    await p.waitForTimeout(250);
-    const chat = await p.evaluate(() => ({ lesson: !document.querySelector("#lesson").hidden, sheet: !document.querySelector("#iko-sheet").hidden, input: document.querySelector("#iko-in").value, focus: document.activeElement && document.activeElement.id }));
-    ok(chat.lesson && chat.sheet && /still finding .+ tricky/.test(chat.input) && chat.input.includes(pickLabel) && chat.focus === "iko-in" && calls.length === cc, `${width}: "Talk it through with Iko" (in Iko's sheet, the lesson stays) has the question ready (0 calls)`, JSON.stringify(chat));
-    await p.keyboard.press("Escape"); await p.waitForTimeout(100);
   });
 
   await step("node tap + cancel on navigation", async () => {
@@ -320,7 +265,7 @@ async function run(width) {
   return { errs };
 }
 
-/* Shawn's case: a Data Management lesson (path Tables > Queries > Filtering), the quiz answered right, "I've got it". */
+/* Shawn's case: a Data Management lesson (path Tables > Queries > Filtering), the quiz answered right (which earns the card). */
 async function runShawn(width) {
   const ctx = await browser.newContext({ viewport: { width, height: width < 500 ? 844 : 860 }, timezoneId: "America/Toronto" });
   const p = await ctx.newPage();
@@ -370,7 +315,7 @@ async function runShawn(width) {
     await p.waitForTimeout(200);
     await passCheck(p); /* PR 103: Continue, then a passed check, before the card and Where next */
     const n0 = calls.length;
-    await p.click("#l-got"); await p.waitForTimeout(400);
+    await p.waitForSelector("#l-conf:not([hidden])"); await p.waitForTimeout(400); /* PR 109: the pass earns it */
     const r = await p.evaluate(() => ({
       items: [...document.querySelectorAll("#l-next .wn-opt")].map((b) => ({ l: b.querySelector(".wn-label").textContent, kind: b.getAttribute("data-kind"), on: (b.querySelector(".wn-pick") || b).getAttribute("aria-checked") === "true", why: b.querySelector(".why").textContent })),
       open: (document.querySelector("#l-next .wn-opt.on .wn-act") || {}).getAttribute?.("aria-label"),
@@ -382,7 +327,7 @@ async function runShawn(width) {
     await p.evaluate(() => document.querySelector("#l-quiz").scrollIntoView({ block: "start" })); await p.waitForTimeout(200);
     if (SHOTS) await p.screenshot({ path: path.join(SHOTS, `flow-${TAG}-${width}-shawn-where-next.png`) });
     if (!SOFT) {
-      ok(calls.length === n0, `${tag}: answering and "I've got it" make 0 calls`);
+      ok(calls.length === n0, `${tag}: answering (and the earn) make 0 calls`);
       ok(r.items[0] && r.items[0].l === "Tables" && r.items[0].on && r.items[0].kind === "path" && /^Next on this path/.test(r.items[0].why) && r.open === "Continue with Tables", `${tag}: Tables, the path's next step, is first and pre-selected ("Next on this path")`, JSON.stringify(r.items[0]) + " " + r.open);
       ok(r.pathNext === "Tables", `${tag}: it matches Your Path's "next"`, r.pathNext);
       ok(!r.items.some((x) => x.l.startsWith("Python Basics")) && !/Python Basics|top 10|strong coding skills/i.test(r.next), `${tag}: the completed Python Basics appears nowhere in Where Next (no claims about the learner either)`, JSON.stringify(r.items));

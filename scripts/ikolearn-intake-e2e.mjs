@@ -232,6 +232,53 @@ for (const s of SIZES) {
   await ctx.close();
 }
 
+/* PR 109 (t297u): the age step on a desktop is calm and centred: the question, the bands on their own row, Skip a quiet
+   link on its own line; clear gaps, nothing overlapping, the column centred under the name. A phone keeps its layout. */
+for (const s of [{ w: 1280, h: 800, scheme: "light" }, { w: 1024, h: 768, scheme: "dark" }, { w: 390, h: 844, scheme: "light", phone: true }, { w: 320, h: 568, scheme: "light", phone: true }]) {
+  const tag = `age step ${s.w}x${s.h} ${s.scheme}`;
+  const ctx = await browser.newContext({ viewport: { width: s.w, height: s.h }, isMobile: Boolean(s.phone), hasTouch: Boolean(s.phone), colorScheme: s.scheme, timezoneId: "America/Toronto" });
+  const p = await ctx.newPage();
+  const errs = [];
+  p.on("pageerror", (e) => errs.push("pageerror " + e.message));
+  await p.route("**/api/ikolearn/**", (r) => (/examples/.test(r.request().url()) ? r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, examples: IDEAS, growth: [] }) }) : r.fulfill({ status: 503, contentType: "application/json", body: '{"ok":false}' })));
+  await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
+  await p.click('.who-opt[data-who="self"]'); await p.fill("#name-in", "Maya"); await p.press("#name-in", "Enter");
+  await p.waitForSelector("#cs-age-skip"); await p.waitForTimeout(1200);
+  const A = await p.evaluate(() => {
+    const box = (e) => { if (!e || !e.getClientRects().length) return null; const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, r: r.right, b: r.bottom }; };
+    const chips = [...document.querySelectorAll("#cs-ages .age-opt")].map(box);
+    const others = [["Iko", "#iko"], ["name", "#cs-name"], ["greeting", "#cs-hi"]].map(([n, q]) => [n, box(document.querySelector(q))]).filter((x) => x[1]);
+    document.querySelectorAll(".cloud-foot a").forEach((e) => { const b = box(e); if (b) others.push(["fine print " + e.textContent, b]); });
+    const sk = document.querySelector("#cs-age-skip"), cs = getComputedStyle(sk);
+    return { q: box(document.querySelector("#cs-q")), chips, skip: box(sk), skipBorder: parseFloat(cs.borderTopWidth) || 0, skipBg: cs.backgroundColor, others, say: box(document.querySelector(".cs-ask .say")), w: innerWidth, h: innerHeight, theme: document.documentElement.getAttribute("data-theme") || "" };
+  });
+  const hit = (a, b) => a.x < b.r - 0.5 && b.x < a.r - 0.5 && a.y < b.b - 0.5 && b.y < a.b - 0.5;
+  const named = [["question", A.q], ...A.chips.map((c, i) => ["band " + i, c]), ["Skip", A.skip], ...A.others];
+  const hits = [];
+  for (let i = 0; i < named.length; i++) for (let j = i + 1; j < named.length; j++) if (hit(named[i][1], named[j][1])) hits.push(named[i][0] + " / " + named[j][0]);
+  ok(A.chips.length >= 4 && !hits.length, `${tag}: the question, the bands, Skip and the rest of the opening never overlap`, hits.join(", "));
+  ok(named.every(([, b]) => b.x >= -0.5 && b.r <= A.w + 0.5 && b.y >= -0.5 && b.b <= A.h + 0.5), `${tag}: all of the age step is on screen`);
+  if (!s.phone) {
+    const top = Math.min(...A.chips.map((c) => c.y)), bot = Math.max(...A.chips.map((c) => c.b)), left = Math.min(...A.chips.map((c) => c.x)), right = Math.max(...A.chips.map((c) => c.r));
+    const gaps = A.chips.slice(1).map((c, i) => c.x - A.chips[i].r);
+    const nm = A.others.find((x) => x[0] === "name")[1], mid = (b) => (b.x + b.r) / 2;
+    ok(A.chips.every((c) => Math.abs(c.y - top) < 1), `${tag}: the bands sit together on one row`, JSON.stringify(A.chips.map((c) => Math.round(c.y))));
+    ok(gaps.every((g) => g >= 8), `${tag}: at least 8px between the bands`, JSON.stringify(gaps));
+    ok(top - A.q.b >= 14, `${tag}: at least 14px between the question and the bands`, String(top - A.q.b));
+    ok(A.skip.y - bot >= 8 && A.skip.x >= left - 0.5 && A.skip.r <= right + 0.5, `${tag}: Skip on its own line under the bands`, JSON.stringify({ gap: A.skip.y - bot }));
+    ok(A.skipBorder === 0 && /rgba\(0, 0, 0, 0\)|transparent/.test(A.skipBg), `${tag}: Skip is a quiet text link, not a chip`, JSON.stringify({ border: A.skipBorder, bg: A.skipBg }));
+    ok(Math.abs(mid(A.say) - mid(nm)) <= 3 && Math.abs((left + right) / 2 - mid(nm)) <= 3 && Math.abs(mid(A.skip) - mid(nm)) <= 3, `${tag}: the question, bands and Skip are centred under the name`, JSON.stringify({ name: mid(nm), say: mid(A.say), bands: (left + right) / 2, skip: mid(A.skip) }));
+    const below = A.others.filter((x) => x[0].startsWith("fine print")).map((x) => x[1].y - Math.max(A.say.b, A.skip.b));
+    ok(below.every((d) => d >= 24), `${tag}: the fine print keeps its distance (24px+)`, JSON.stringify(below));
+    ok((s.scheme === "dark") === (A.theme === "dark") || s.scheme === "light", `${tag}: the theme follows the system`, A.theme);
+  } else {
+    const last = A.chips[A.chips.length - 1];
+    ok(Math.abs(A.skip.y - last.y) < 1, `${tag}: on a phone the layout is as before (Skip beside the last band)`, JSON.stringify({ skip: A.skip.y, last: last.y }));
+  }
+  ok(errs.length === 0, `${tag}: no page errors`, errs.join(" | "));
+  await ctx.close();
+}
+
 await browser.close();
 server.close();
 if (fails.length) {

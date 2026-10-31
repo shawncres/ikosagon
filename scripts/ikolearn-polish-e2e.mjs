@@ -3,7 +3,7 @@
 // canvas); Iko is a pebble top-left, clear of the invite/return row; the selection card is compact (title, a short
 // description, its three actions, a short path, no embedded cards); the name is centred on load and after Recentre, on a
 // ringed plate, and tapping it opens the stats card (achievements, progress, recent activity, Save/Open IkoCloud, no "What do
-// you notice"); "I've got it" saves first, then the card flies into the Deck and the Deck pulses (no flight with reduced
+// you notice"); the pass saves first, then the card flies into the Deck and the Deck pulses (no flight with reduced
 // motion); the intake's targets are all 44px and nothing overlaps.
 // Run: IKOLEARN_PW=<path to node_modules/playwright-core> node scripts/ikolearn-polish-e2e.mjs [--root public]
 import { passCheck } from "./fixtures/ikolearn-pass-check.mjs";
@@ -174,15 +174,14 @@ for (const width of [390, 1280]) {
     const { ctx, p, errs } = await boot(width, {}, reduce ? { reducedMotion: "reduce" } : {});
     const tid = await idOf(p, "Tides");
     await tap(p, "Tides"); await p.click("#p-lesson"); await p.waitForSelector("#l-cont:not([hidden])"); await p.waitForTimeout(400);
-    await passCheck(p); await p.waitForTimeout(200); /* PR 103: Continue, a passed check, then the card */
     const deck0 = await p.evaluate(() => window.IkoCloud.deserialize(localStorage.getItem("ikolearn.v1.cloud")).deck.length);
-    await p.click("#l-got");
+    await passCheck(p, { noWait: true }); /* PR 109: Continue, a passed check: the pass earns the card */
     await p.waitForTimeout(80);
     const saved = await p.evaluate((id) => { const c = window.IkoCloud.deserialize(localStorage.getItem("ikolearn.v1.cloud")), l = JSON.parse(localStorage.getItem("ikolearn.v1.lessons") || "{}"); return { inDeck: window.IkoCloud.inDeck(c, id), got: Boolean(l[id] && l[id].got), deck: c.deck.length }; }, tid);
     await p.waitForTimeout(320);
     const mid = await p.evaluate(() => { const f = document.querySelector(".fly-card"); if (!f) return null; const r = f.getBoundingClientRect(), src = document.querySelector("#l-card").firstElementChild.getBoundingClientRect(); return { w: r.width, src: src.width, top: r.top, srcTop: src.top }; });
     const tg = reduce ? "reduced motion: " : "";
-    ok(saved.inDeck && saved.got && saved.deck === deck0 + (saved.deck > deck0 ? 1 : 0), `${tag}: earned: ${tg}progress is saved straight away (the card in the Deck, "I've got it" kept)`, JSON.stringify(saved));
+    ok(saved.inDeck && saved.got && saved.deck === deck0 + (saved.deck > deck0 ? 1 : 0), `${tag}: earned: ${tg}progress is saved straight away (the card in the Deck, the earn kept)`, JSON.stringify(saved));
     if (!reduce) {
       ok(mid && mid.w < mid.src * 0.95 && mid.top < mid.srcTop, `${tag}: earned: mid-flight the card is smaller and on its way up to the Deck`, JSON.stringify(mid));
       await p.waitForTimeout(1100);
