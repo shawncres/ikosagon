@@ -361,6 +361,58 @@
     return out;
   }
 
+  /*
+   * Starter ideas (PR 107), made on the device with no call: a few chips biased by a coarse area and the learner's age
+   * band while the cloud is still small. The area comes only from the browser's own time zone and language setting
+   * (no location permission, no lookup); it is worked out when needed and never stored, sent or shown. The learner's
+   * own words stay the source of real nodes: a chip only adds its words to the field.
+   */
+  var NA_TZ = /^America\/(New_York|Chicago|Denver|Los_Angeles|Phoenix|Anchorage|Juneau|Boise|Detroit|Indiana|Kentucky|North_Dakota|Menominee|Toronto|Vancouver|Edmonton|Winnipeg|Regina|Halifax|St_Johns|Moncton|Whitehorse|Yellowknife|Iqaluit|Glace_Bay|Goose_Bay|Swift_Current|Dawson|Sitka|Nome|Yakutat|Metlakatla|Adak)|^(US|Canada)\//;
+  function areaOf(tz, lang) {
+    tz = String(tz || ""); lang = String(lang || "").toLowerCase();
+    if (NA_TZ.test(tz) || (/^America\//.test(tz) && /-(us|ca)$/.test(lang))) return "na";
+    if (/^America\//.test(tz)) return "latam";
+    if (/^(Australia|Pacific)\//.test(tz) || /-(au|nz)$/.test(lang)) return "oceania";
+    if (/^Asia\/(Dubai|Riyadh|Qatar|Bahrain|Kuwait|Muscat|Baghdad|Tehran|Jerusalem|Tel_Aviv|Amman|Beirut|Damascus|Aden)$/.test(tz) || tz === "Europe/Istanbul") return "mideast";
+    if (/^Asia\/(Kolkata|Calcutta|Karachi|Dhaka|Colombo|Kathmandu|Thimphu)$/.test(tz)) return "southasia";
+    if (/^Asia\//.test(tz)) return "eastasia";
+    if (/^Africa\//.test(tz)) return "africa";
+    if (/^(Europe|Atlantic)\//.test(tz)) return "europe";
+    return "";
+  }
+  var AREA_IDEAS = {
+    na: ["Northern lights", "Great Lakes", "Bison and prairies", "Maple trees"],
+    latam: ["Rainforests", "Ancient Maya", "Andes mountains", "Volcanoes"],
+    europe: ["Castles", "Ancient Rome", "Rivers and canals", "Famous painters"],
+    africa: ["Savanna animals", "Ancient Egypt", "Deserts", "Drums and rhythm"],
+    mideast: ["Early writing", "Desert life", "Geometric patterns", "Stars and navigation"],
+    southasia: ["Monsoons", "The Himalayas", "Spices", "Cricket science"],
+    eastasia: ["Origami", "Earthquakes", "Rice farming", "Paper and printing"],
+    oceania: ["Coral reefs", "Marsupials", "Ocean navigation", "Southern stars"]
+  };
+  var BAND_IDEAS = {
+    u10: ["Dinosaurs", "How plants grow", "Drawing animals"],
+    "10-13": ["Coding a game", "Space travel", "Inventions"],
+    "14-17": ["Photography", "Psychology", "Music production"],
+    "18+": ["Personal finance", "Cooking basics", "Philosophy"]
+  };
+  var STARTER = { maxSubjects: 3 };
+  function starterIdeas(area, band) {
+    var a = (AREA_IDEAS[area] || []).slice(), b = (BAND_IDEAS[band] || []).slice(), out = [];
+    while (a.length || b.length) { if (a.length) out.push(a.shift()); if (b.length) out.push(b.shift()); }
+    return out;
+  }
+  /* the cloud is still small: a few starter ideas mixed into the API's list (every other chip), else the list as it is */
+  function mixStarters(cloud, list, area) {
+    if (cloud && C.subjects(cloud).length >= STARTER.maxSubjects) return list;
+    var mine = starterIdeas(area, cloud ? C.bandOf(cloud) : ""), out = [], seen = {}, i = 0, j = 0;
+    var onCloud = {}; if (cloud) cloud.order.forEach(function (id) { var n = cloud.nodes[id]; if (n) onCloud[n.label.toLowerCase()] = 1; });
+    var add = function (t) { var k = String(t).toLowerCase(); if (!seen[k] && !onCloud[k]) { seen[k] = 1; out.push(t); } };
+    list = list || [];
+    while (i < list.length || j < mine.length) { if (i < list.length) add(list[i++]); if (j < mine.length) add(mine[j++]); }
+    return out;
+  }
+
   /* ---------- suggestions and Draw ---------- */
   /* Next steps in chains the learner is working in (touched lately), the busiest chain first. */
   function nextSteps(cloud, now, sc) {
@@ -844,7 +896,7 @@
     PLAN: PLAN, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, needsRepair: needsRepair, repairRequest: repairRequest,
     MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild, nextStep: nextStep,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
-    suggest: suggest, draw: draw, lessonContext: lessonContext, withBand: withBand, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, unfinished: unfinished, fresh: fresh, PACE: PACE, paceOf: paceOf, placeTopic: placeTopic, placedTopic: placedTopic, related: related, DESCRIBE: DESCRIBE, describeBatch: describeBatch, isBroad: isBroad,
+    suggest: suggest, draw: draw, lessonContext: lessonContext, withBand: withBand, areaOf: areaOf, starterIdeas: starterIdeas, mixStarters: mixStarters, STARTER: STARTER, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, unfinished: unfinished, fresh: fresh, PACE: PACE, paceOf: paceOf, placeTopic: placeTopic, placedTopic: placedTopic, related: related, DESCRIBE: DESCRIBE, describeBatch: describeBatch, isBroad: isBroad,
     onboarding: onboarding, openQuestion: openQuestion, examples: examples, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics, directions: directions, homeStats: homeStats,
     needsNext: needsNext, readyNext: readyNext, createRequest: createRequest, OPENING: OPENING
   };

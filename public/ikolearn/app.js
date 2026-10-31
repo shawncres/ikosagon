@@ -308,7 +308,7 @@
       return;
     }
     var grow = r.set === "growth", key = grow ? "gat" : "at";
-    var list = state.ex.status !== "ok" ? [] : grow ? state.ex.growth : P.examples(state.cloud, state.ex.list, Date.now());
+    var list = state.ex.status !== "ok" ? [] : grow ? state.ex.growth : P.mixStarters(state.cloud, P.examples(state.cloud, state.ex.list, Date.now()), coarseArea());
     if (!list.length) return;
     var at = state.ex[key] % list.length;
     if (r.multi) {
@@ -331,6 +331,12 @@
       (function (t) { box.appendChild(linkBtn(t, function () { if (!state.busy && r.live()) r.pick(t); }, "btn ex-chip")); })(list[(at + k) % list.length]);
     }
     if (list.length > EX_SHOW) box.appendChild(linkBtn("More", function () { state.ex[key] = (at + EX_SHOW) % list.length; refreshEx(); }, "link ex-more"));
+  }
+  /* PR 107: a coarse area for starter ideas only, from the browser's own settings each time (never stored, sent or shown) */
+  function coarseArea() {
+    var tz = "";
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { tz = ""; }
+    return P.areaOf(tz, navigator.language || "");
   }
   function refreshEx() {
     exRows = exRows.filter(function (r) { return r.node.isConnected; });
@@ -2892,7 +2898,9 @@
       /* light nudges (PR 105): not tied to a step, a few times each, on return visits */
       { t: "Want to check your deck? It's up top.", n: 1, ok: function () { return deckN() >= 1; } },
       { t: nearIdea, n: 1, ok: function () { return back() && Boolean(nearIdea()); } },
-      { t: "Anything new you'd like to explore?", n: 1, ok: back }],
+      { t: "Anything new you'd like to explore?", n: 1, ok: back },
+      /* PR 107: while the cloud is small, an idea from the starter set (coarse area and age band, made on the device) */
+      { t: starterLine, n: 1, ok: function () { return Boolean(starterLine()); } }],
     home: ["That's you, in the middle. Your subjects grow around you.", "Everything you learn grows out from here."],
     topic: ["Start a lesson when you're ready.", "Curious about this one? {Tap} me and ask anything.", "Want to go another way? {Tap} me to add another direction."],
     learn: ["Read along and {click} me if you have questions.", "Read the lesson first, then start the check. No rush."],
@@ -2915,6 +2923,11 @@
   function ikoKeep(m) { m.all[m.who] = { t: m.t, r: m.r, last: m.last }; try { localStorage.setItem(IKO_MEM, JSON.stringify(m.all)); } catch { /* full: Iko just repeats less carefully */ } }
   function back() { return (C.profileOf(state.cloud).visits || 0) >= 2; } /* a return visit */
   /* a quiet idea from the cloud itself: the top unfinished topic next to something already there */
+  function starterLine() {
+    if (C.subjects(state.cloud).length >= P.STARTER.maxSubjects) return "";
+    var t = P.mixStarters(state.cloud, [], coarseArea())[0];
+    return t ? "Curious about " + t + "? {Tap} me and tell me, and I'll add it." : "";
+  }
   function nearIdea() {
     var n = topIds().map(nodeOf).filter(function (x) { return x && x.parent && nodeOf(x.parent) && !C.inDeck(state.cloud, x.id); })[0];
     return n ? "Maybe " + n.label + " next? It's right beside " + nodeOf(n.parent).label + "." : "";
