@@ -146,7 +146,9 @@ for (const width of [390, 1280]) {
       const inv = await p.evaluate(() => Boolean(document.querySelector(".cloud-flow:not([hidden]) .cf-note.dir-invite")));
       ok(inv && !/grow in yourself/.test(g0.line || ""), `${tag}: the grow line waits while the direction invite is on the cloud`, JSON.stringify({ inv, line: g0.line }));
       await p.click('.cf-note.dir-invite .cf-x'); await p.waitForTimeout(300);
-      /* PR 103: Iko's start reassurance has its say first; the grow line follows it */
+      /* PR 103: Iko's start reassurance has its say first; the grow line follows it (PR 107: the reassurance stays until tapped) */
+      await p.waitForTimeout(400);
+      await p.evaluate(() => { const l = document.querySelector("#iko-line"); if (l && !l.hidden && l.getAttribute("data-react") === "start") l.click(); });
       await p.waitForFunction(() => /grow in yourself too/.test(document.querySelector("#iko-line").hidden ? "" : document.querySelector("#iko-line").textContent), null, { timeout: 15000 });
       const g = await ikoState(p);
       const grow = await p.evaluate(() => [...document.querySelectorAll("#thread .ask")].map((e) => e.innerText).join(" | "));

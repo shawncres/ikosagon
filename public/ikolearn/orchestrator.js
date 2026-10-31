@@ -396,20 +396,22 @@
     "14-17": ["Photography", "Psychology", "Music production"],
     "18+": ["Personal finance", "Cooking basics", "Philosophy"]
   };
-  var STARTER = { maxSubjects: 3 };
+  var STARTER = { maxSubjects: 3, lead: 3 };
   function starterIdeas(area, band) {
     var a = (AREA_IDEAS[area] || []).slice(), b = (BAND_IDEAS[band] || []).slice(), out = [];
     while (a.length || b.length) { if (a.length) out.push(a.shift()); if (b.length) out.push(b.shift()); }
     return out;
   }
-  /* the cloud is still small: a few starter ideas mixed into the API's list (every other chip), else the list as it is */
+  /* the cloud is still small: a few starter ideas mixed into the API's list (after its first few, every other chip), else the list as it is */
   function mixStarters(cloud, list, area) {
     if (cloud && C.subjects(cloud).length >= STARTER.maxSubjects) return list;
     var mine = starterIdeas(area, cloud ? C.bandOf(cloud) : ""), out = [], seen = {}, i = 0, j = 0;
     var onCloud = {}; if (cloud) cloud.order.forEach(function (id) { var n = cloud.nodes[id]; if (n) onCloud[n.label.toLowerCase()] = 1; });
     var add = function (t) { var k = String(t).toLowerCase(); if (!seen[k] && !onCloud[k]) { seen[k] = 1; out.push(t); } };
     list = list || [];
-    while (i < list.length || j < mine.length) { if (i < list.length) add(list[i++]); if (j < mine.length) add(mine[j++]); }
+    /* the API's first few lead (the opening row keeps its length on the smallest phones); then every other one is local */
+    while (i < list.length && i < STARTER.lead) add(list[i++]);
+    while (i < list.length || j < mine.length) { if (j < mine.length) add(mine[j++]); if (i < list.length) add(list[i++]); }
     return out;
   }
 

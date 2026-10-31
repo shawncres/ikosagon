@@ -856,3 +856,4 @@ fieldset.q { min-width: 0; }
 }
 @keyframes zr-nudge { 0%, 64%, 100% { transform: none; } 72% { transform: translate(-2px, 0) rotate(-10deg); } 80% { transform: translate(2px, 0) scale(1.1) rotate(8deg); } 88% { transform: scale(.94); } }
 @media (prefers-reduced-motion: reduce) { .zoom .zr-ico { animation: none !important; } }
+@media (max-width: 359px) { body.intake .cloud-foot .age-bit { display: none; } } /* the smallest phones: the fine print stays one line on the opening (Iko asks later) */

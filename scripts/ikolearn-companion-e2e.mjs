@@ -201,6 +201,7 @@ for (const width of [390, 1280]) {
       /* PR 107: the Pick up row's deck draw changes by the day, so Eruptions may not be offered there today: then from its node's card */
       const openEr = async () => {
         if (await chip.count()) { await chip.first().click(); return true; }
+        await p.evaluate(() => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")); window.__er = c.order.find((x) => c.nodes[x].label === "Eruptions"); }); /* the reload cleared it */
         await p.evaluate(() => { const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view; v.focusNode(window.__er); });
         await p.waitForTimeout(900);
         const xy = await p.evaluate(() => { const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view, q = v.project(window.__er), r = document.querySelector("#cloud-canvas").getBoundingClientRect(); return { x: r.left + q.x, y: r.top + q.y }; });
