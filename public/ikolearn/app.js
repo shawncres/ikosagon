@@ -1142,9 +1142,9 @@
       old.classList.remove("grew"); void old.offsetWidth; old.classList.add("grew"); /* restart the pulse */
     }
     el.hNote.textContent = sp.level ? "Merged " + C.roman(sp.level) + ". It holds " + sp.corpus.length + " cards and rises a level with each new batch you finish."
+      : sp.inDeck && takeawayOf(state.lessonNode) ? "You learned: " + takeawayOf(state.lessonNode) + (sp.achieved ? " Achieved: it stays in your deck for good." : "") /* PR 108: the key idea, not a generic line */
       : sp.achieved ? "Achieved. This card stays in your deck for good. Finish a few of its branches and they merge into it."
       : sp.after.length ? "Best after " + D.listOf(sp.after) + ". You can explore it now; it completes once " + (sp.after.length === 1 ? "that's" : "those are") + " done."
-      : sp.inDeck && takeawayOf(state.lessonNode) ? "You learned: " + takeawayOf(state.lessonNode)
       : (sp.inDeck ? "In your deck. " : "") + (sp.tier < 2 && coreLeftNote(state.lessonNode) || ["Its first right answer inks it in.", "Finish it (\u201cI've got it\u201d or two right answers) to tint it.", "Three right answers and it's Achieved, in full colour."][sp.tier]);
     renderKids();
   }
@@ -1369,7 +1369,7 @@
   /* a second miss: the lesson written again, clearer and gentler, with its own fresh questions (1 call) */
   function retell(id) { openLesson(id, true, null, { again: true }); }
   /* "That's it." is said once: a right quiz answer already says it, so the status line doesn't repeat it */
-  function quizSaidIt() { return [].some.call(el.lQuiz.querySelectorAll(".q-fb"), function (x) { return x.textContent === "That's it."; }); }
+  function quizSaidIt() { return !el.lQuiz.hidden && [].some.call(el.lQuiz.querySelectorAll(".q-fb"), function (x) { return x.textContent === "That's it."; }); }
   function answerQ(qi, oi) {
     var q = state.quiz, id = q && q.id;
     if (!q || id !== state.lessonNode || Number.isInteger(q.ans[qi]) || !q.qs[qi] || lessonPhase(id) !== "check") return;
@@ -1562,7 +1562,9 @@
       calls.lessonFor = null;
       var parsed = L.parse(text);
       if (r.ok && L.usable(parsed)) {
+        var prevL = state.lessons[id];
         state.lessons[id] = { text: text.trim(), at: Date.now(), qs: state.quiz && state.quiz.id === id ? state.quiz.qs : [], ans: [] };
+        if (prevL && prevL.earned) { state.lessons[id].earned = prevL.earned; if (prevL.take) state.lessons[id].take = prevL.take; } /* PR 108: earned once, for good */
         if (retry.length >= 2) state.lessons[id].rq = retry;
         if (prevCk && (prevCk.r || prevCk.p)) state.lessons[id].ck = { r: prevCk.r || 0, p: prevCk.p || 0, miss: prevCk.miss || 0, c: 0, set: 0, again: opts.again ? 1 : 0 };
         if (reading.length) state.lessons[id].rd = reading;
@@ -1635,7 +1637,7 @@
     if (!n) return;
     if (kind === "got" && lessonPhase(id) !== "passed") return; /* earned only once the check is passed (PR 103) */
     var keep = kind === "got" ? holdScroll() : null; /* PR 107: the earn never moves the page (it used to jump to the top on a phone) */
-    var wasIn = C.inDeck(state.cloud, id); /* PR 108: the card's flight plays only when it is first earned */
+    var les0 = state.lessons[id], wasEarned = Boolean(les0 && (les0.earned || les0.got)); /* PR 108: the card's flight plays only the first time it is earned */
     var before = C.growthOf(state.cloud, id);
     var r = C.engage(state.cloud, id, kind);
     var kids = kind === "got" ? growChildren(id) : [];
@@ -1666,7 +1668,7 @@
       /* the pressed button is gone now: the focus moves to the result line, without scrolling */
       el.lStatus.tabIndex = -1; try { el.lStatus.focus({ preventScroll: true }); } catch { /* old browsers: leave it */ }
       if (keep) keep();
-      if (!wasIn && C.inDeck(state.cloud, id)) { flyToDeck(id); ikoReact("earn"); }
+      if (!wasEarned && C.inDeck(state.cloud, id)) { flyToDeck(id); ikoReact("earn"); if (state.lessons[id]) { state.lessons[id].earned = Date.now(); save(); } } /* kept (additive): "Still tricky" never clears it */
       else renderDeckButton();
       if (keep) { keep(); requestAnimationFrame(keep); setTimeout(keep, 1000); } /* after the redraws and the card's flight too */
     }
@@ -2218,6 +2220,7 @@
   var csEx = null, CS_Q = el.csQ.textContent;
   function ageDone() {
     dismissHint("ageAsked");
+    intakeAt = null; need0 = 0; /* the column is placed afresh for the question (the age step was shorter) */
     renderStart();
     if (!coarse()) { try { el.csIn.focus({ preventScroll: true }); } catch { el.csIn.focus(); } }
   }
@@ -3057,7 +3060,7 @@
    * "Yes"), or what this screen is for. Never the same line twice in a row, at most POOL.max a visit, tap to dismiss.
    * 0 calls: all from local templates and what is already on the device (a "Yes" asks Iko, like typing it would).
    */
-  var POOL = { gapMs: 45000, max: 8 };
+  var POOL = { gapMs: Number(window.__IKO_POOL_MS) || 45000, max: 8 }; /* (the e2e shortens the wait) */
   function poolLines(key) {
     var out = [], n = deckN(), k = C.subjects(state.cloud).length, cloudish = /^(cloud|home|topic)$/.test(key);
     if (n >= 1) out.push({ id: "deck", t: n + (n === 1 ? " card" : " cards") + " in your deck. Each one keeps growing when you go back to it." });

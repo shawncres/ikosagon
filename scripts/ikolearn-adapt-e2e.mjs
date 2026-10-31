@@ -295,6 +295,75 @@ for (const width of [390, 1280]) {
       ok(errs.length === 0, `${tag}: first visits: no page errors`, errs.join(" | "));
     } finally { await ctx.close(); }
   }
+
+  /* ---- PR 108: reading or check (never both), the earn flight once, no deck text, the earned card's takeaway, Iko's size and pool, the cloud slowing near a node ---- */
+  {
+    const { ctx, p, errs } = await open(width);
+    try {
+      await p.addInitScript(() => { window.__IKO_POOL_MS = 1800; window.__fly = 0; const a = Element.prototype.animate; Element.prototype.animate = function (...x) { if (this.classList && (this.classList.contains("gcard") || /fly/.test(this.className || ""))) window.__fly += 1; return a.apply(this, x); }; });
+      await boot(p);
+      const vis = (q) => p.evaluate((s) => { const e = document.querySelector(s); return Boolean(e && !e.closest("[hidden]") && e.getClientRects().length && getComputedStyle(e).display !== "none"); }, q);
+      ok(!(await vis("#deck-btn")) && !/Your deck ·/.test(await p.evaluate(() => [...document.querySelectorAll("button, a")].filter((e) => e.getClientRects().length).map((e) => e.textContent).join(" "))), `${tag}: no "Your deck · n" text beside the deck icon`);
+      ok(await p.evaluate(() => [...document.querySelectorAll(".minideck")].filter((e) => e.getClientRects().length).every((e) => /deck/i.test(e.getAttribute("aria-label") || ""))), `${tag}: the deck icon keeps its label for screen readers`);
+      if (!phone) {
+        const xy = await p.evaluate(() => { const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view, C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), id = c.order.find((x) => c.nodes[x].label === "Volcanoes"), q = v.project(id), r = document.querySelector("#cloud-canvas").getBoundingClientRect(); return { x: r.left + q.x, y: r.top + q.y, w: r.width, h: r.height, l: r.left, t: r.top }; });
+        await p.mouse.move(xy.x + 4, xy.y + 3); await p.waitForTimeout(250);
+        const nearOn = await p.evaluate(() => window.__views.filter((x) => x.id === "cloud-canvas").pop().view.state().near);
+        await p.mouse.move(xy.l + 6, xy.t + xy.h - 6); await p.waitForTimeout(250);
+        const nearOff = await p.evaluate(() => window.__views.filter((x) => x.id === "cloud-canvas").pop().view.state().near);
+        ok(nearOn === true && nearOff === false, `${tag}: the cloud slows its drift with the pointer near a node (and not elsewhere)`, JSON.stringify({ nearOn, nearOff }));
+        /* Iko's background pool: a short line after a silence, tap to dismiss, never the same twice in a row */
+        if (await p.isVisible("#iko-line")) { await p.click("#iko-line"); }
+        const ids = [];
+        for (let i = 0; i < 3; i += 1) {
+          await p.waitForSelector("#iko-line[data-pool]:not([hidden])", { timeout: 6000 }).catch(() => {});
+          const id = await p.evaluate(() => { const l = document.querySelector("#iko-line"); return l && !l.hidden ? l.getAttribute("data-pool") || "" : ""; });
+          ids.push(id);
+          if (id) { await p.click("#iko-line", { position: { x: 8, y: 8 } }); await p.waitForTimeout(150); }
+        }
+        ok(ids.every(Boolean) && ids.every((x, i) => !i || x !== ids[i - 1]), `${tag}: after a silence Iko says a short line from his pool, never the same one twice in a row, and a tap dismisses it`, JSON.stringify(ids));
+        ok(await p.evaluate(() => document.querySelector("#iko-line").hidden), `${tag}: the pool line is dismissed by a tap`);
+        await p.evaluate(() => { document.querySelector("#iko-line").hidden = false; document.querySelector("#iko-line").textContent = "x"; });
+        const fs1 = await p.evaluate(() => parseFloat(getComputedStyle(document.querySelector("#iko-line")).fontSize));
+        await p.evaluate(() => { document.querySelector("#iko-line").hidden = true; });
+        ok(fs1 >= 16, `${tag}: on a computer Iko's lines are larger`, String(fs1));
+      }
+      await toLesson(p);
+      const both = async () => ({ read: await vis("#l-body"), quiz: await vis("#l-quiz") });
+      const b1 = await both();
+      ok(b1.read && !b1.quiz, `${tag}: a lesson opens on the reading only`, JSON.stringify(b1));
+      await p.click("#l-cont"); await p.waitForSelector("#l-quiz fieldset.q"); await p.waitForTimeout(200);
+      const b2 = await both();
+      ok(!b2.read && b2.quiz, `${tag}: after Continue, the check only (never both on screen)`, JSON.stringify(b2));
+      for (let i = 0; i < 3; i += 1) await answer(p, i);
+      await p.waitForSelector("#l-got:not([hidden])");
+      await p.click("#l-got"); await p.waitForTimeout(1400);
+      const f1 = await p.evaluate(() => window.__fly);
+      const b3 = await both();
+      ok(f1 >= 1, `${tag}: the first "I've got it" plays the card's flight`, String(f1));
+      ok(!b3.quiz, `${tag}: once passed, the check is put away`, JSON.stringify(b3));
+      if (await vis("#l-got")) { await p.click("#l-got"); await p.waitForTimeout(1200); }
+      ok(await p.evaluate((n) => window.__fly === n, f1), `${tag}: a later tap never plays it again`);
+      const label = await p.evaluate(() => document.querySelector("#l-card .gc-title").textContent);
+      const take = await p.evaluate(() => { const s = JSON.parse(localStorage.getItem("ikolearn.v1.lessons") || "{}"); return Object.values(s).map((x) => x && x.take).filter(Boolean); }).catch(() => []);
+      const note = await p.evaluate(() => document.querySelector("#h-note") ? document.querySelector("#h-note").textContent : "");
+      ok(/You learned: When it comes out of a volcano, we call it lava\./.test(note), `${tag}: the earned card says the key idea learned`, note + " " + JSON.stringify(take));
+      ok(await p.evaluate(() => Boolean(document.querySelector("#l-card .gcard.earned"))), `${tag}: an earned card is marked to look a little more vivid`);
+      /* revisit after a reload: from the deck, its card, then the lesson again */
+      await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" }); await p.waitForTimeout(800);
+      await p.click("#cloud-deck"); await p.waitForTimeout(700);
+      await p.locator("#d-album .gcard", { hasText: label }).first().click(); await p.waitForTimeout(700);
+      const hn = await p.evaluate(() => document.querySelector("#hub-note").textContent);
+      ok(/^You learned: When it comes out of a volcano/.test(hn), `${tag}: revisiting the earned card: a short reminder of the key idea`, hn);
+      await p.click("#hub-lesson"); await p.waitForSelector("#l-done:not([hidden])"); await p.waitForTimeout(600);
+      const b4 = await both();
+      ok(b4.read && !b4.quiz, `${tag}: a passed lesson revisited: the reading, the check stays put away`, JSON.stringify(b4));
+      const f0 = await p.evaluate(() => window.__fly);
+      if (await vis("#l-got")) { await p.click("#l-got"); await p.waitForTimeout(1200); }
+      ok(await p.evaluate((n) => window.__fly === n, f0), `${tag}: revisited, no earn flight again`);
+      ok(errs.length === 0, `${tag}: PR 108 flow: no page errors`, errs.join(" | "));
+    } finally { await ctx.close(); }
+  }
 }
 
 await browser.close();

@@ -1107,8 +1107,21 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
   const bytes = files.reduce((n, f) => n + served(f).length, 0);
   const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
-  ok(bytes < 336_000, "app weight under 336 KB uncompressed (served, minified)", String(bytes));
-  ok(gz < 113_000, "app weight under 113 KB gzipped (served, minified)", String(gz));
+  ok(bytes < 342_000, "app weight under 342 KB uncompressed (served, minified)", String(bytes));
+  ok(gz < 115_000, "app weight under 115 KB gzipped (served, minified)", String(gz));
+}
+
+/* ================= PR 108: QA polish ================= */
+{
+  const app = fs.readFileSync("public/ikolearn/app.js", "utf8"), view = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8"), css = fs.readFileSync("public/ikolearn/styles.css", "utf8"), deck = fs.readFileSync("public/ikolearn/deck.js", "utf8");
+  ok(/el\.lQuiz\.hidden = ph === "learn" \|\| ph === "passed";/.test(app) && /\.l-main\[data-phase="check"\] #l-body, \.l-main\[data-phase="missed"\] #l-body/.test(css), "PR 108: the reading or the check, never both; the check put away once passed");
+  ok(/wasEarned = Boolean\(les0 && \(les0\.earned \|\| les0\.got\)\)/.test(app) && /if \(!wasEarned && C\.inDeck\(state\.cloud, id\)\) \{ flyToDeck\(id\); ikoReact\("earn"\);/.test(app) && /if \(prevL && prevL\.earned\)/.test(app), "PR 108: the earn flight only the first time a card is earned (kept with the lesson, additive)");
+  ok(/el\.deckBtn\.hidden = true;/.test(app), "PR 108: no \u201cYour deck \u00b7 n\u201d label beside the deck icon");
+  ok(/function takeawayOf\(id\)/.test(app) && /state\.lessons\[id\]\.take = tk/.test(app) && /"You learned: " \+ took/.test(app) && /spec\.inDeck \? " earned" : ""/.test(deck) && /\.gcard\.earned \{ filter: saturate/.test(css) && /html\[data-theme="dark"\] \.gcard\.earned/.test(css), "PR 108: an earned card keeps its one-line takeaway (no call) and looks a little more vivid in both themes");
+  ok(/NEAR = \{ px: 34, spin: 0\.2, glide: 0\.82/.test(view) && /\* \(slowNow\(now\) \? NEAR\.spin : 1\)/.test(view) && /else base \*= 1\.5;/.test(view) && /if \(dark\) base \*= 0\.8;/.test(view) && /var bands = \{\};/.test(view), "PR 108: the cloud slows near a node; light-mode fog clearer (dark unchanged); like hues merge their haze");
+  ok(/var POOL = \{ gapMs: Number\(window\.__IKO_POOL_MS\) \|\| 45000, max: 8 \};/.test(app) && /x\.id !== iko\.poolLast && x\.id !== m\.last/.test(app) && /@media \(min-width: 900px\), \(pointer: fine\) \{\n  \.iko-line \{ font-size: 16px;/.test(css), "PR 108: Iko's pool after a silence (local, never twice in a row, capped a visit); larger lines on computers");
+  const pool = app.slice(app.indexOf("  function poolLines(key) {"), app.indexOf("  function poolLater() {"));
+  ok(pool.length > 200 && !/fetch\(|stream\(|\/api\//.test(pool), "PR 108: the pool makes no call (a \u201cYes\u201d asks Iko, as typing would)");
 }
 
 /* ================= the flow pass: chains, Computer Science, orchestrator, children, tests ================= */
