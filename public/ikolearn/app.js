@@ -2221,8 +2221,7 @@
   function ageDone() {
     dismissHint("ageAsked");
     intakeAt = null; need0 = 1; /* the column is placed afresh for the question (the age step was shorter); its ideas are already in, so no extra room is kept for them */
-    renderStart();
-    if (!coarse()) { try { el.csIn.focus({ preventScroll: true }); } catch { el.csIn.focus(); } }
+    renderStart(); /* no focus jump into the field (as when the opening first shows) */
   }
   /*
    * The opening question (#100, reworked in #101 after QA on an iPhone in WhatsApp's in-app browser). A still column in
