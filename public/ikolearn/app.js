@@ -2212,7 +2212,11 @@
   /* Back on the cloud: a slim row of the suggested cards and Draw along the bottom (hidden while a panel is open). */
   var cloudFlow = null;
   function renderCloudFlow() {
-    if (!cloudFlow) { cloudFlow = mk("div", "cloud-flow"); el.cloud.appendChild(cloudFlow); }
+    if (!cloudFlow) {
+      cloudFlow = mk("div", "cloud-flow"); el.cloud.appendChild(cloudFlow);
+      /* the zoom controls sit just above whatever the Pick up row holds (a note can wrap to a few lines) */
+      if (window.ResizeObserver) new ResizeObserver(function () { el.cloud.style.setProperty("--flow-h", (cloudFlow.hidden ? 0 : cloudFlow.offsetHeight) + "px"); }).observe(cloudFlow);
+    }
     var had = document.activeElement && cloudFlow.contains(document.activeElement) && document.activeElement.classList.contains("dir-in");
     cloudFlow.textContent = "";
     cloudFlow.hidden = !el.panel.hidden || Boolean(cloudCaption && !cloudCaption.hidden);
