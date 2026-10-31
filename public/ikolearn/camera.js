@@ -125,6 +125,18 @@
   /* Smoothed pointer velocity (px/ms): an exponential moving average of the latest samples. */
   function velocity(prev, dx, dt, alpha) { if (!(dt > 0)) return prev; var a = alpha == null ? 0.35 : alpha; return prev * (1 - a) + (dx / dt) * a; }
   /* The twist between two finger pairs (radians, the short way). */
+  /* PR 110: a press becomes a drag once the pointer is clearly away from where it went down (a finger wobbles more than a
+     mouse); until then it can still be a tap. g: { far (px from the start, the most so far), touch } */
+  var TAP = { touch: 10, mouse: 5 };
+  function dragging(g) { return Boolean(g) && g.far >= (g.touch ? TAP.touch : TAP.mouse); }
+  /* PR 110: what a two-finger gesture is, decided once: "zoom" when the fingers spread or close, "twist" when they circle
+     with the spread steady, "" while it is still unclear (then it only zooms and pans, never turns) */
+  var PINCH = { zoom: 0.08, twist: 0.3 };
+  function pinchMode(scale, turned) {
+    if (Math.abs(Math.log(Math.max(1e-3, scale))) > PINCH.zoom) return "zoom";
+    if (Math.abs(turned) > PINCH.twist) return "twist";
+    return "";
+  }
   function twist(a0, b0, a1, b1) { return wrap(Math.atan2(b1.y - a1.y, b1.x - a1.x) - Math.atan2(b0.y - a0.y, b0.x - a0.x)); }
   /* Zoom by k about a screen point: the point under the cursor stays put. */
   function zoomAbout(view, k, at, w, h) {
@@ -136,7 +148,7 @@
   /* One wheel notch, kept deliberate: a capped factor per event (a trackpad pinch sends ctrlKey and a small delta). */
   function wheelFactor(deltaY, ctrl) { return clamp(Math.exp(-deltaY * CAM.wheel * (ctrl ? 4 : 1)), CAM.wheelStep[0], CAM.wheelStep[1]); }
 
-  var api = { CAM: CAM, SPIN: SPIN, spinState: spinState, spinStep: spinStep, spinCap: spinCap, spinEase: spinEase, gestureFor: gestureFor, hint: hint, easeInOutCubic: easeInOutCubic, wrap: wrap, lerpView: lerpView, lerpPoint: lerpPoint, ORIGIN: ORIGIN, fitAround: fitAround, focusFrame: focusFrame, cardPlace: cardPlace, CARD: CARD, forwardYaw: forwardYaw, fitZoom: fitZoom, glide: glide, velocity: velocity, twist: twist, zoomAbout: zoomAbout, wheelFactor: wheelFactor };
+  var api = { CAM: CAM, SPIN: SPIN, spinState: spinState, spinStep: spinStep, spinCap: spinCap, spinEase: spinEase, gestureFor: gestureFor, hint: hint, easeInOutCubic: easeInOutCubic, wrap: wrap, lerpView: lerpView, lerpPoint: lerpPoint, ORIGIN: ORIGIN, fitAround: fitAround, focusFrame: focusFrame, cardPlace: cardPlace, CARD: CARD, forwardYaw: forwardYaw, fitZoom: fitZoom, glide: glide, velocity: velocity, twist: twist, dragging: dragging, pinchMode: pinchMode, TAP: TAP, PINCH: PINCH, zoomAbout: zoomAbout, wheelFactor: wheelFactor };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.IkoCamera = api;
 })(typeof window !== "undefined" ? window : this);

@@ -555,14 +555,14 @@
       canvas.addEventListener("pointerleave", function () { hoverAt = null; });
       canvas.addEventListener("pointerdown", function (e) {
         tween = null; glideV = null;
-        canvas.setPointerCapture(e.pointerId);
+        try { canvas.setPointerCapture(e.pointerId); } catch (x) { /* a pointer the browser no longer tracks: still handled */ }
         pointers[e.pointerId] = local(e);
         if (e.pointerType !== "mouse") { var lp0 = local(e); if (nearAt(lp0.x, lp0.y)) nearUntil = performance.now() + NEAR.holdMs; }
         var ids = Object.keys(pointers);
-        if (ids.length === 1) gesture = { type: CAM.gestureFor({ pointers: 1, button: e.button, shift: e.shiftKey, alt: e.altKey }), start: local(e), last: local(e), t: performance.now(), vx: 0, vy: 0, moved: 0 };
+        if (ids.length === 1) gesture = { type: CAM.gestureFor({ pointers: 1, button: e.button, shift: e.shiftKey, alt: e.altKey }), start: local(e), last: local(e), t: performance.now(), vx: 0, vy: 0, moved: 0, far: 0, touch: e.pointerType !== "mouse" };
         else if (ids.length === 2) {
           var a = pointers[ids[0]], b = pointers[ids[1]];
-          gesture = { type: "pinch", dist: Math.hypot(a.x - b.x, a.y - b.y), mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, zoom: zoom, a: a, b: b, moved: 99 };
+          gesture = { type: "pinch", dist: Math.hypot(a.x - b.x, a.y - b.y), mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, zoom: zoom, a: a, b: b, moved: 99, far: 99, mode: "", twAll: 0 };
         }
         canvas.classList.toggle("turning", gesture && gesture.type === "rotate");
         request();
@@ -575,15 +575,22 @@
         if (gesture.type === "pinch" && ids.length >= 2) {
           var a = pointers[ids[0]], b = pointers[ids[1]];
           var d = Math.hypot(a.x - b.x, a.y - b.y), mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-          zoomAt((gesture.zoom * d / Math.max(1, gesture.dist)) / zoom, mid);
+          if (gesture.mode !== "twist") zoomAt((gesture.zoom * d / Math.max(1, gesture.dist)) / zoom, mid);
           panX += mid.x - gesture.mid.x; panY += mid.y - gesture.mid.y; gesture.mid = mid;
           var tw = CAM.twist(gesture.a, gesture.b, a, b);
-          yaw += tw; /* a two-finger twist turns the cloud */
-          gesture.tw = (gesture.tw || 0) + Math.abs(tw);
+          /* PR 110: a pinch zooms; it only turns the cloud once it is clearly a twist (fingers circling, not spreading).
+             Before, every pinch's small angle wobble turned the cloud too: "turns things weirdly" on a phone. */
+          gesture.twAll += tw;
+          if (!gesture.mode) gesture.mode = CAM.pinchMode(d / Math.max(1, gesture.dist), gesture.twAll);
+          if (gesture.mode === "twist") { yaw += tw; gesture.tw = (gesture.tw || 0) + Math.abs(tw); } /* a two-finger twist turns the cloud */
           gesture.a = { x: a.x, y: a.y }; gesture.b = { x: b.x, y: b.y };
         } else if (ids.length === 1 && gesture.type !== "pinch") {
           var p = local(e), dx = p.x - gesture.last.x, dy = p.y - gesture.last.y, t = performance.now(), dt = t - gesture.t;
           gesture.moved += Math.abs(dx) + Math.abs(dy);
+          gesture.far = Math.max(gesture.far, Math.hypot(p.x - gesture.start.x, p.y - gesture.start.y));
+          /* PR 110: a finger's tap wobbles a few pixels: until it has clearly left its start, nothing moves (no jitter);
+             then the whole way from the start is applied at once, so the cloud stays under the finger */
+          if (!CAM.dragging(gesture)) return;
           gesture.last = p;
           if (gesture.type === "pan") { panX += dx; panY += dy; gesture.vx = CAM.velocity(gesture.vx, dx, dt); gesture.vy = CAM.velocity(gesture.vy, dy, dt); gesture.t = t; }
           else { yaw += dx * 0.008; pitch = Math.max(-1.3, Math.min(1.3, pitch + dy * 0.008)); }
@@ -593,13 +600,15 @@
       var end = function (e) {
         var g = gesture;
         delete pointers[e.pointerId];
-        if (g && opts.onGesture && (g.type === "pinch" || (g.type === "pan" && g.moved >= 6))) opts.onGesture(g.type === "pinch" ? "zoom" : "drag"); /* the movement hint learns what's been tried */
-        if (g && opts.onGesture && ((g.type === "pinch" && g.tw > 0.15) || (g.type === "rotate" && g.moved >= 6))) opts.onGesture("turn"); /* PR 107: a twist or a turn */
+        if (g && opts.onGesture && (g.type === "pinch" || (g.type === "pan" && CAM.dragging(g)))) opts.onGesture(g.type === "pinch" ? "zoom" : "drag"); /* the movement hint learns what's been tried */
+        if (g && opts.onGesture && ((g.type === "pinch" && g.tw > 0.15) || (g.type === "rotate" && CAM.dragging(g)))) opts.onGesture("turn"); /* PR 107: a twist or a turn */
         if (!Object.keys(pointers).length) {
           gesture = null;
           canvas.classList.remove("turning");
-          if (g && g.type !== "pinch" && g.moved < 6 && opts.onPick) {
-            var hit = pick(g.start.x, g.start.y);
+          if (g && g.type !== "pinch" && !CAM.dragging(g) && opts.onPick) {
+            /* PR 110: a tap is judged by how far the finger got from where it went down (a few px of wobble on a phone),
+               not by the sum of every tiny move, which a real finger on an iPhone always passed: taps read as drags */
+            var hit = pick(g.start.x, g.start.y) || pick(g.last.x, g.last.y);
             if (hit) { touch(); opts.onPick(hit); } /* a click on a node pauses the spin */
             else if (opts.onEmpty) opts.onEmpty(); /* a tap on empty sky: dismiss the card */
           } else if (g && g.type === "pan" && !reduce && performance.now() - g.t < 90 && Math.hypot(g.vx, g.vy) > CAM.CAM.glideMin) {
