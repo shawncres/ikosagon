@@ -2258,7 +2258,7 @@
     el.csForm.hidden = building || ageStep;
     el.csEx.hidden = ageStep;
     el.csAges.hidden = !ageStep;
-    el.cs.classList.toggle("age-step", ageStep); /* PR 109: a calmer, centred layout for the age step on a desktop (styles.css) */
+    el.cs.classList.toggle("band-step", ageStep); /* PR 109: calmer and centred on a desktop (styles.css) */
     if (ageStep && !el.csAges.firstChild) {
       var row = bandRow(function (b) { setBand(b); ageDone(); });
       var skip = linkBtn("Skip", ageDone, "link cs-age-skip"); skip.id = "cs-age-skip";
