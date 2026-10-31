@@ -2139,8 +2139,15 @@
     renderIko();
     if (landing !== true && !el.ikoWrap.hidden) el.iko.focus();
   }
+  /* PR 108: "Support & feedback" opens the site's contact form (no email client), the learner's first name filled in */
+  function feedbackHref(name) {
+    var n = String(name || "").replace(/[\u0000-\u001f\u007f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
+    return "https://ikosagon.com/contact?" + (n ? "name=" + encodeURIComponent(n) + "&" : "") + "subject=IkoLearn%20Feedback";
+  }
+  function renderFeedback() { [].forEach.call(document.querySelectorAll("a.fb-link"), function (a) { a.href = feedbackHref(state.name); }); }
   /* the cloud's own quiet links: Talk to Iko, the deck (once there is a card), and the learner switch when guiding */
   function renderHomeNav() {
+    renderFeedback();
     var n = (state.cloud && state.cloud.deck || []).length;
     el.cloudDeck.hidden = !n;
     if (n) deckFan(el.cloudDeck, miniDeckCards(), n); /* the Deck's own icon and count, as in the header (PR 103) */
@@ -3660,6 +3667,7 @@
     if (!el.who || !PR) { el.nameForm.hidden = false; el.nameIn.focus(); }
   }
   function showWho() {
+    renderFeedback();
     var ix = PR && PR.current(localStorage);
     if (!el.whoNow || !ix || ix.mode !== "guide") return;
     el.whoNow.textContent = state.name + " · switch";

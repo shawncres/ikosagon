@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cleanPrefill } from "@/lib/contact-prefill";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/contact" },
@@ -8,11 +9,13 @@ export const metadata: Metadata = {
 };
 
 type ContactPageProps = {
-  searchParams: Promise<{ sent?: string; topic?: string }>;
+  searchParams: Promise<{ sent?: string; topic?: string; name?: string | string[]; subject?: string | string[] }>;
 };
 
+
 export default async function ContactPage({ searchParams }: ContactPageProps) {
-  const { sent, topic } = await searchParams;
+  const { sent, topic, name: rawName, subject: rawSubject } = await searchParams;
+  const prefillName = cleanPrefill(rawName, 60), prefillSubject = cleanPrefill(rawSubject, 80);
   const showSuccess = sent === "1";
   /* "Book a short intro call" links here with ?topic=project: the Start a project form is the one to use */
   const introCall = topic === "project";
@@ -52,7 +55,12 @@ export default async function ContactPage({ searchParams }: ContactPageProps) {
           ) : null}
           <form action="/api/contact" method="POST" className="card-surface space-y-4 rounded-2xl p-6">
             <input type="hidden" name="door" value="build" />
-            <input name="name" required placeholder="Name" className="w-full rounded-xl border border-border bg-black/40 px-4 py-2" />
+            {prefillSubject ? (
+              <p className="text-sm text-zinc-400" role="note">
+                About: {prefillSubject}
+              </p>
+            ) : null}
+            <input name="name" required placeholder="Name" defaultValue={prefillName || undefined} className="w-full rounded-xl border border-border bg-black/40 px-4 py-2" />
             <input
               name="email"
               type="email"
@@ -63,7 +71,7 @@ export default async function ContactPage({ searchParams }: ContactPageProps) {
             <input
               name="projectType"
               placeholder="Project type (new app, linking tools, AI helper...)"
-              defaultValue={introCall ? "Short intro call" : undefined}
+              defaultValue={prefillSubject || (introCall ? "Short intro call" : undefined)}
               className="w-full rounded-xl border border-border bg-black/40 px-4 py-2"
             />
             <textarea

@@ -222,7 +222,7 @@ async function run(width) {
   await step("links", async () => {
     const l = await p.evaluate(() => [...document.querySelectorAll("[data-sup] a")].map((a) => ({ t: a.textContent, href: a.getAttribute("href"), tgt: a.target, rel: a.rel, where: a.closest(".iko-foot") ? "iko" : a.closest(".cloud-foot") ? "cloud" : a.closest("#chat") ? "chat" : "?" })));
     const fb = l.filter((x) => x.t === "Support & feedback"), xl = l.filter((x) => x.t === "Follow on X");
-    ok(fb.length === 2 && fb.every((x) => x.href === "mailto:shawn@ikosagon.com?subject=IkoLearn%20feedback"), `${tag}: "Support & feedback" opens an email with the subject IkoLearn feedback (the conversation's fine print and the cloud's footer)`, JSON.stringify(fb));
+    ok(fb.length === 2 && fb.every((x) => x.href === "https://ikosagon.com/contact?name=Johnny&subject=IkoLearn%20Feedback" && x.tgt === "_blank"), `${tag}: "Support & feedback" opens the contact form (PR 108: no email client), the learner's name and "IkoLearn Feedback" filled in (the conversation's fine print and the cloud's footer)`, JSON.stringify(fb));
     ok(xl.length === 2 && xl.every((x) => x.href === "https://x.com/IkosagonAI" && x.tgt === "_blank" && /noopener/.test(x.rel)), `${tag}: "Follow on X" goes to @IkosagonAI in a new tab`, JSON.stringify(xl));
     ok(l.length === 4 && !l.some((x) => /fund|donat/i.test(x.t)), `${tag}: no donate link (no real donation page yet)`, JSON.stringify(l.map((x) => x.t)));
     ok(!l.some((x) => x.where === "iko") && l.filter((x) => x.where === "cloud").length === 2 && l.filter((x) => x.where === "chat").length === 2, `${tag}: none in Iko's sheet (PR 106): in the footers`, JSON.stringify(l.map((x) => x.where)));
