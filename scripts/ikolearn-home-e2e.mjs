@@ -163,15 +163,15 @@ for (const width of [390, 1280]) {
       await p.click("#hub-back"); await p.waitForTimeout(400);
       const hb = await screen(p);
       ok(hb.cloud && !hb.hub && hb.card === l.t, `${tag}: card: Back returns to the cloud, on that topic`, JSON.stringify(hb));
-      /* Iko from the card, and back (Your cloud, and Escape) */
+      /* Iko from the card, and back (Back, and Escape; PR 106: no "< Your cloud" link) */
       await p.click("#p-chat"); await p.waitForTimeout(300);
       const sh = await p.evaluate(() => ({ sheet: !document.querySelector("#iko-sheet").hidden, cloud: !document.querySelector("#cloud").hidden, about: document.querySelector("#iko-about").textContent }));
       ok(sh.sheet && sh.cloud && sh.about === "On your cloud · " + l.t, `${tag}: Iko: "Talk to Iko" opens Iko over the cloud, on that topic`, JSON.stringify(sh));
       await p.click("#iko-all"); await p.waitForTimeout(300);
-      const ch = await p.evaluate(() => ({ cloud: !document.querySelector("#cloud").hidden, name: document.querySelector(".chat-name").textContent, back: document.querySelector("#to-cloud").textContent, ph: document.querySelector("#input").placeholder, focus: (document.querySelector("#focus-text") || {}).textContent }));
-      ok(!ch.cloud && ch.name === "Iko" && ch.back === "Your cloud" && ch.ph === "Ask Iko anything" && new RegExp(l.t).test(ch.focus), `${tag}: Iko: "See our whole conversation" opens the chat with Iko on that topic`, JSON.stringify(ch));
-      await p.click("#to-cloud"); await p.waitForTimeout(400);
-      ok((await screen(p)).cloud, `${tag}: Iko: "Your cloud" returns home`);
+      const ch = await p.evaluate(() => ({ cloud: !document.querySelector("#cloud").hidden, name: document.querySelector(".chat-name").textContent, back: document.querySelector("#chat-back").hidden ? "" : document.querySelector("#chat-back").textContent, old: Boolean(document.querySelector("#to-cloud")), ph: document.querySelector("#input").placeholder, focus: (document.querySelector("#focus-text") || {}).textContent }));
+      ok(!ch.cloud && ch.name === "Iko" && ch.back === "Back" && !ch.old && ch.ph === "Ask Iko anything" && new RegExp(l.t).test(ch.focus), `${tag}: Iko: "See our whole conversation" opens the chat with Iko on that topic`, JSON.stringify(ch));
+      await p.click("#chat-back"); await p.waitForTimeout(400);
+      ok((await screen(p)).cloud && (await p.isHidden("#chat-back")), `${tag}: Iko: "Back" returns to where the conversation was opened (the cloud)`);
       await p.click("#iko"); await p.click("#iko-all"); await p.waitForTimeout(250);
       await p.keyboard.press("Escape"); await p.waitForTimeout(400);
       ok((await screen(p)).cloud, `${tag}: Iko: Escape returns home too`);

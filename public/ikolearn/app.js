@@ -2716,12 +2716,13 @@
   /* the whole conversation: the chat view, with its composer */
   el.ikoAll.addEventListener("click", function () {
     /* where it was opened from: Back (and Escape) return there (PR 106) */
-    state.back = state.lessonNode ? { v: "lesson", id: state.lessonNode } : !el.deck.hidden ? { v: "deck" } : !el.hub.hidden && state.hubNode ? { v: "hub", id: state.hubNode } : { v: "cloud" };
+    var back = state.lessonNode ? { v: "lesson", id: state.lessonNode } : !el.deck.hidden ? { v: "deck" } : !el.hub.hidden && state.hubNode ? { v: "hub", id: state.hubNode } : { v: "cloud" };
     closeIko();
     if (state.lessonNode) showLesson(false);
     if (!el.deck.hidden) showDeck(false);
     if (!el.hub.hidden) { el.hub.hidden = true; state.hubNode = null; el.thread.hidden = false; el.dock.hidden = false; }
     if (!el.cloud.hidden) closeCloud(); else { renderDraw(); el.input.focus(); }
+    state.back = back; el.chatBack.hidden = false; /* set last: leaving those screens resets it */
     scrollDown();
   });
   function goBack() {
@@ -2848,7 +2849,7 @@
     var key = tipOf(c);
     if (key === iko.tipKey) return;
     iko.tipKey = key;
-    if (!el.ikoLine.hidden && (el.ikoLine.hasAttribute("data-tip") || el.ikoLine.getAttribute("data-react") === "start")) { iko.after = null; ikoLine(""); } /* past its step: the hint goes */
+    if (!el.ikoLine.hidden && el.ikoLine.hasAttribute("data-tip")) { iko.after = null; ikoLine(""); } /* past its step: the hint goes */
     clearTimeout(iko.tipT);
     if (!key) return;
     iko.tipT = setTimeout(function () { showTip(key); }, 450); /* once the new screen has settled */
@@ -2890,7 +2891,7 @@
     if (!el.ikoLine.hidden && !el.ikoLine.hasAttribute("data-tip") && !el.ikoLine.hasAttribute("data-react")) return false; /* Iko is saying something that matters (the grow question): no reaction over it */
     if (iko.open || el.ikoWrap.hidden) { iko.pendingReact = t; return true; } /* said once the pebble is back */
     var held = !el.ikoLine.hidden && el.ikoLine.getAttribute("data-tip"), was = { t: el.ikoLine.textContent, k: iko.tipKey };
-    ikoLine(t, kind === "start" ? 0 : 4500); /* the first reassurance stays until tapped or moved past (PR 106) */
+    ikoLine(t, kind === "start" ? 9000 : 4500);
     if (held) iko.after = function () { if (iko.tipKey === was.k && !iko.open) tipLine(was.t, held); }; /* the hint wasn't dismissed: it comes back */
     el.ikoLine.setAttribute("data-react", kind);
     return true;

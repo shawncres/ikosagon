@@ -122,31 +122,34 @@ for (const width of [390, 1280]) {
       ok(await p.evaluate(() => Boolean(document.querySelector(".home-nav #iko")) && document.querySelectorAll("#iko, .iko").length === 1 && !document.querySelector("#iko-cue") && /^(none|normal)$/.test(getComputedStyle(document.body, "::after").content)), `${tag}: one Iko, in the header row; no strip at the bottom`);
       const c1 = await clear(p, CLOUD_PARTS);
       ok(c1.shown === 2 && !c1.hits.length, `${tag}: cloud: Iko and its bubble clear of the Pick up row, the deck, the fine print and the controls`, JSON.stringify(c1));
-      ok(l1 && /^cloud\d$/.test(l1.tip) && /^(I like your cloud, it's growing!|I can add new topics anytime\.)/.test(l1.text), `${tag}: cloud: a short context bubble (local, the screen's own)`, JSON.stringify(l1));
+      ok(l1 && /^cloud\d$/.test(l1.tip) && /^((Click|Tap) a node to start, or pick up where you left off\.|Pick any node to begin\.|I like your cloud, it's growing!|I can add new topics anytime\.|\d+ subjects? and \d+ cards? so far\.)/.test(l1.text), `${tag}: cloud: a short context bubble (local, the screen's own)`, JSON.stringify(l1));
       const lane = await p.evaluate(() => { const f = document.querySelector(".cloud-flow:not([hidden])"), fr = f && f.getBoundingClientRect(), ft = document.querySelector(".cloud-foot").getBoundingClientRect(); return { flowB: fr ? fr.bottom : 0, footB: ft.bottom, vh: innerHeight, lane: getComputedStyle(document.documentElement).getPropertyValue("--iko-lane") }; });
       ok(lane.footB > lane.vh - 8 && lane.flowB > lane.vh - 120 && !lane.lane, `${tag}: cloud: the Pick up row and the fine print sit at the foot again (no room kept for Iko)`, JSON.stringify(lane));
       /* the hello no longer meets "Your deck" (the header's or the cloud's) */
       const dk = await p.evaluate(() => [...document.querySelectorAll("#cloud-deck, #deck-btn, .minideck")].filter((e) => e.getClientRects().length && !e.closest("[hidden]")).map((e) => { const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, r: r.right, b: r.bottom }; }));
       const lr = await rect(p, "#iko-line");
       ok(dk.length >= 1 && dk.every((d) => !hit(lr, d)), `${tag}: the hello bubble no longer overlaps "Your deck"`, JSON.stringify({ lr, dk }));
-      /* tapping the bubble opens the chat with the text field focused (the PR 98 focus) */
+      /* PR 106: tapping the bubble dismisses it; tapping Iko opens the chat with the text field focused (the PR 98 focus) */
       await p.click("#iko-line"); await p.waitForTimeout(250);
+      const gone = await p.evaluate(() => ({ line: !document.querySelector("#iko-line").hidden, sheet: !document.querySelector("#iko-sheet").hidden }));
+      ok(!gone.line && !gone.sheet, `${tag}: tapping the bubble dismisses it (the chat stays closed)`, JSON.stringify(gone));
+      await p.click("#iko"); await p.waitForTimeout(250);
       const sh = await p.evaluate(() => ({ sheet: !document.querySelector("#iko-sheet").hidden, active: document.activeElement && document.activeElement.id }));
-      ok(sh.sheet && sh.active === "iko-in", `${tag}: tapping the bubble opens Iko's chat, its field focused`, JSON.stringify(sh));
+      ok(sh.sheet && sh.active === "iko-in", `${tag}: tapping Iko opens his chat, its field focused`, JSON.stringify(sh));
       await p.keyboard.press("Escape"); await p.waitForTimeout(200);
       /* no repeats: a new visit shows another variant; once each has been shown, the screen stays quiet */
       const seen = [l1.tip];
-      for (let i = 0; i < 6; i++) { /* the cloud's own hints (PR 105: up to four on a first visit), then quiet */
+      for (let i = 0; i < 6; i++) { /* PR 106: guidance on every visit to the screen, rotating */
         await p.evaluate(() => sessionStorage.removeItem("ikolearn.v1.cues")); await p.reload({ waitUntil: "networkidle" }); await p.waitForSelector("#cloud:not([hidden])");
         const got = await waitLine(p, () => !document.querySelector("#iko-line").hidden, 2500);
         const l = got ? await line(p) : null;
         seen.push(l ? l.tip : null);
       }
       const said = seen.filter(Boolean);
-      ok(said.length >= 2 && new Set(said).size === said.length && seen.indexOf(null) > 0 && seen.slice(seen.indexOf(null)).every((x) => x === null), `${tag}: bubbles rotate and never repeat (then the screen stays quiet)`, JSON.stringify(seen));
+      ok(said.length === seen.length && seen.every((x, i) => !i || x !== seen[i - 1]) && new Set(said).size >= 3, `${tag}: a line on every visit, rotating, never the same one twice in a row`, JSON.stringify(seen));
       const mem = await p.evaluate(() => JSON.parse(localStorage.getItem("ikolearn-iko") || "{}"));
       const own = Object.values(mem)[0], cloudRaw = await p.evaluate(() => localStorage.getItem("ikolearn.v1.cloud"));
-      ok(Object.keys(mem).length === 1 && own && Object.values(own.t).every((n) => n === 1) && Object.keys(own.t).length === said.length && !/cloud0/.test(cloudRaw), `${tag}: what Iko has said lives in its own key per learner, outside the cloud`, JSON.stringify(mem));
+      ok(Object.keys(mem).length === 1 && own && Object.values(own.t).reduce((a, n) => a + n, 0) === said.length && own.last === said[said.length - 1] && !/cloud0/.test(cloudRaw), `${tag}: what Iko has said lives in its own key per learner, outside the cloud`, JSON.stringify(mem));
       ok(errs.length === 0, `${tag}: cloud: no console errors`, errs.join(" | "));
     } catch (e) { fails.push(`${tag}: bottom threw -> ${String(e.message || e).split("\n")[0]}`); }
     await ctx.close();
@@ -232,9 +235,9 @@ for (const width of [390, 1280]) {
       await waitLine(p, () => !document.querySelector("#iko-line").hidden, 2500);
       const dc = await clear(p, ["#d-title", "#d-lede", "#d-back"]);
       ok(!dc.hits.length, `${tag}: deck: Iko clear of the title and the lede`, JSON.stringify(dc));
-      /* #104: no strip at the bottom; Iko in the header beside "Your cloud"; the page has its space back */
-      const strip = await p.evaluate(() => { const a = getComputedStyle(document.body, "::after"), w = document.querySelector("#iko").getBoundingClientRect(), tc = document.querySelector("#to-cloud").getBoundingClientRect(); return { content: a.content, pad: parseFloat(getComputedStyle(document.querySelector("#chat")).paddingBottom), inBar: Boolean(document.querySelector("#chat .bar #iko")), x: w.left, y: w.top, beside: w.right <= tc.left && Math.abs((w.top + w.bottom) / 2 - (tc.top + tc.bottom) / 2) < 8, name: getComputedStyle(document.querySelector(".chat-name")).display }; });
-      ok(/^(none|normal)$/.test(strip.content) && strip.pad === 0 && strip.inBar && strip.x < 24 && strip.y < 24 && strip.beside && strip.name === "none", `${tag}: deck: no strip at the bottom; Iko top left in the header beside "Your cloud" (no second "Iko")`, JSON.stringify(strip));
+      /* #104: no strip at the bottom; Iko top left in the header (PR 106: no "< Your cloud" beside him); the page has its space back */
+      const strip = await p.evaluate(() => { const a = getComputedStyle(document.body, "::after"), w = document.querySelector("#iko").getBoundingClientRect(); return { content: a.content, pad: parseFloat(getComputedStyle(document.querySelector("#chat")).paddingBottom), inBar: Boolean(document.querySelector("#chat .bar #iko")), x: w.left, y: w.top, beside: !document.querySelector("#to-cloud"), name: getComputedStyle(document.querySelector(".chat-name")).display }; });
+      ok(/^(none|normal)$/.test(strip.content) && strip.pad === 0 && strip.inBar && strip.x < 24 && strip.y < 24 && strip.beside && strip.name === "none", `${tag}: deck: no strip at the bottom; Iko top left in the header, no "< Your cloud" link (no second "Iko")`, JSON.stringify(strip));
       const lr = await rect(p, "#iko-line"), tt = await rect(p, "#d-title");
       ok(!hit(lr, tt), `${tag}: deck: the bubble never covers "Your deck"`, JSON.stringify({ lr, tt }));
       await p.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight)); await p.waitForTimeout(250);
@@ -312,7 +315,7 @@ for (const width of [320, 390, 768, 1280]) {
     const cl = c["#iko-line"];
     ok(cl && cl.y >= c["#iko"].b - 8 && cl.x >= 0 && cl.r <= vw + 0.5 && !overl(cl, { d: c["#cloud-deck"], z: c[".zoom"], b: c[".home-brand"], w: c["#cloud-who"], f: c[".cloud-flow"] }).length, `${tag}: cloud: his bubble under him, clear of the header's controls and the Pick up row`, JSON.stringify(c));
     await p.click("#cloud-deck"); await p.waitForSelector("#deck:not([hidden])"); await p.waitForTimeout(700);
-    const HEAD = ["#to-cloud", ".bar .minideck", "#deck-btn", "#who-now"], PAGE = ["#d-back", "#d-title", "#d-lede", "#d-album", "#d-next"];
+    const HEAD = ["#thumb", ".bar .minideck", "#deck-btn", "#who-now"], PAGE = ["#d-back", "#d-title", "#d-lede", "#d-album", "#d-next"];
     const d = await boxOf(p, ["#iko", "#iko-line", ".bar", ...HEAD, ...PAGE]);
     ok(d["#iko"] && Math.abs(d["#iko"].x - c["#iko"].x) <= 1 && Math.abs(d["#iko"].y - c["#iko"].y) <= 1, `${tag}: deck: Iko in the same top-left place as on the cloud (no drift)`, JSON.stringify([c["#iko"], d["#iko"]]));
     const hd = Object.fromEntries(HEAD.map((k) => [k, d[k]]).filter(([, v]) => v)), pg = Object.fromEntries(PAGE.map((k) => [k, d[k]]).filter(([, v]) => v));
@@ -331,14 +334,14 @@ for (const width of [320, 390, 768, 1280]) {
     await p.keyboard.press("Escape"); await p.waitForTimeout(250);
     ok(await p.evaluate(() => !document.body.classList.contains("iko-side") && document.querySelector("#iko-sheet").hidden), `${tag}: closing it gives the page its room back`);
     /* the lesson: the same place; the reading's own bubble; the panel clear of the reading and the card */
-    await p.click("#to-cloud"); await p.waitForTimeout(500);
+    await p.click("#thumb"); await p.waitForTimeout(500); /* the cloud preview is the way home (PR 106) */
     if (!(await p.isHidden("#panel"))) { await p.click("#p-close"); await p.waitForTimeout(200); }
     await p.locator(".cloud-flow > .chip", { hasText: "Magma" }).first().click(); await p.waitForSelector("#l-cont:not([hidden])");
     await waitLine(p, () => !document.querySelector("#iko-line").hidden, 2500);
     const LP = ["#l-back", "#l-title", "#l-body", ".holder", "#l-phase"];
-    const l = await boxOf(p, ["#iko", "#iko-line", "#to-cloud", ".bar .minideck", ...LP]), lt = await line(p);
+    const l = await boxOf(p, ["#iko", "#iko-line", "#thumb", ".bar .minideck", ...LP]), lt = await line(p);
     ok(l["#iko"] && Math.abs(l["#iko"].x - c["#iko"].x) <= 1 && Math.abs(l["#iko"].y - c["#iko"].y) <= 1, `${tag}: lesson: Iko in the same top-left place`, JSON.stringify(l["#iko"]));
-    ok(lt && /^Read along and (click|tap) me if you have questions\.$/.test(lt.text) && !overl(l["#iko-line"], Object.fromEntries(["#to-cloud", ".bar .minideck", ...LP].map((k) => [k, l[k]]).filter(([, v]) => v))).length, `${tag}: lesson: "Read along and click me…", clear of the header and the reading`, JSON.stringify({ lt, l }));
+    ok(lt && /^Read along and (click|tap) me if you have questions\.$/.test(lt.text) && !overl(l["#iko-line"], Object.fromEntries(["#thumb", ".bar .minideck", ...LP].map((k) => [k, l[k]]).filter(([, v]) => v))).length, `${tag}: lesson: "Read along and click me…", clear of the header and the reading`, JSON.stringify({ lt, l }));
     await p.click("#iko"); await p.waitForTimeout(400);
     const ls = await boxOf(p, ["#iko-sheet", ".l-main", ".holder", "#l-body"]);
     if (width >= 1100) ok(!overl(ls["#iko-sheet"], { m: ls[".l-main"], h: ls[".holder"], b: ls["#l-body"] }).length, `${tag}: lesson: the panel sits clear of the reading and the card`, JSON.stringify(ls));
@@ -351,7 +354,7 @@ for (const width of [320, 390, 768, 1280]) {
 {
   const { ctx, p } = await seeded(390);
   try {
-    await p.evaluate(() => { const PR = window.IkoProfiles, who = (PR && PR.current(localStorage) || {}).active || "me"; localStorage.setItem("ikolearn-iko", JSON.stringify({ [who]: { t: { cloud0: 1, cloud1: 1, cloud2: 1, learn0: 1, learn1: 1, check0: 1, check1: 1 }, r: { pass: 3 }, last: "" } })); });
+    await p.evaluate(() => { const PR = window.IkoProfiles, who = (PR && PR.current(localStorage) || {}).active || "me"; localStorage.setItem("ikolearn-iko", JSON.stringify({ [who]: { t: { cloud0: 1, cloud1: 1, cloud2: 1, learn0: 1, learn1: 1, check0: 1, check1: 1 }, r: { pass: 3, earn: 9 }, last: "" } })); });
     await p.reload({ waitUntil: "networkidle" }); await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(400);
     await p.locator(".cloud-flow > .chip", { hasText: "Magma" }).first().click(); await p.waitForSelector("#l-cont:not([hidden])");
     await p.click("#l-cont"); await p.waitForTimeout(200);
@@ -359,6 +362,10 @@ for (const width of [320, 390, 768, 1280]) {
     await p.locator("#l-quiz .q").nth(1).locator("input").nth(1).check(); await p.waitForTimeout(400);
     const r = await p.evaluate(() => ({ got: !document.querySelector("#l-got").hidden, react: document.querySelector("#iko-line").hidden ? "" : document.querySelector("#iko-line").getAttribute("data-react"), n: Object.values(JSON.parse(localStorage.getItem("ikolearn-iko")))[0].r.pass }));
     ok(r.got && r.react !== "pass" && r.n === 4, "reactions: the 4th passed check passes quietly (counted, not said)", JSON.stringify(r));
+    await p.click("#l-got");
+    const e = await waitLine(p, () => document.querySelector("#iko-line").getAttribute("data-react") === "earn", 6000);
+    const en = await p.evaluate(() => Object.values(JSON.parse(localStorage.getItem("ikolearn-iko")))[0].r.earn);
+    ok(e && en === 10, "reactions: a card earned is always acknowledged, even the 10th (PR 106)", JSON.stringify({ e, en }));
   } catch (e) { fails.push(`reactions threw -> ${String(e.message || e).split("\n")[0]}`); }
   await ctx.close();
 }
