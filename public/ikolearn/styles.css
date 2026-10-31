@@ -822,3 +822,14 @@ body.intake.kbd .cs-few { display: none; } /* the keyboard up: Iko's question st
 .age-opts .age-opt.on { color: var(--ink); border-color: var(--ink); }
 .age-q { flex-basis: 100%; text-align: center; font-size: 13px; color: var(--soft); }
 .cloud-foot .age-link { font: inherit; color: inherit; padding: 0; min-height: 0; }
+/* PR 107: code in lessons, checks and clarifications: a quiet sepia monospace block (no bright syntax theme); it keeps
+   indentation and line breaks and scrolls sideways rather than wrapping; comment lines a little softer */
+pre.code { margin: 10px 0; padding: 10px 12px; max-width: 100%; box-sizing: border-box; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: pre; tab-size: 4;
+  font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 5%, var(--sheet)); border: 1px solid var(--rule); border-radius: 8px; }
+pre.code code { font: inherit; color: inherit; background: none; padding: 0; }
+pre.code .cm { color: var(--soft); font-style: italic; }
+pre.code:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+code.ic { font: .92em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding: 0 .3em; border-radius: 4px; background: color-mix(in srgb, var(--ink) 7%, transparent); overflow-wrap: anywhere; }
+fieldset.q { min-width: 0; }
+.l-steps li > pre.code { margin-top: 6px; }

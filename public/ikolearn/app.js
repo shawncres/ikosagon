@@ -164,11 +164,19 @@
   function linkBtn(text, fn, cls) { var b = mk("button", cls || "link", text); b.type = "button"; b.addEventListener("click", function (e) { e.stopPropagation(); fn(); }); return b; }
   function paragraphs(node, text) {
     node.textContent = "";
+    /* PR 107: text with code (a clarification can carry it): code blocks and inline code, never HTML */
+    if (/`/.test(text || "")) {
+      L.segments(text).forEach(function (sg) { if (sg.code != null) node.appendChild(L.codeBlock(document, sg.code, sg.lang)); else if (sg.text.trim()) textParas(node, sg.text.replace(/^\n+|\n+$/g, "")); });
+      return;
+    }
+    textParas(node, text);
+  }
+  function textParas(node, text) {
     String(text || "").split(/\n{2,}/).forEach(function (para) {
       var p = mk("p");
       para.split("\n").forEach(function (line, i) {
         if (i) p.appendChild(mk("br"));
-        p.appendChild(document.createTextNode(line));
+        L.inline(document, p, line);
       });
       node.appendChild(p);
     });
@@ -1224,7 +1232,7 @@
   function validQs(qs) {
     return (Array.isArray(qs) ? qs : []).filter(function (q) {
       return q && typeof q.q === "string" && Array.isArray(q.options) && q.options.length >= 2 && Number.isInteger(q.answer) && q.answer >= 0 && q.answer < q.options.length;
-    }).slice(0, 3);
+    }).map(function (q) { return typeof q.code === "string" && q.code.length <= 600 ? q : Object.assign({}, q, { code: undefined }); }).slice(0, 3);
   }
   /*
    * Read -> check -> earn (PR 103). A lesson opens on its reading (Learn) with Continue; Continue opens Check yourself in
@@ -1302,14 +1310,15 @@
       : (ck.r ? "A fresh set: " : "") + (q.qs.length === 1 ? "One quick question" : q.qs.length + " quick questions") + " about what you just learned. Get " + (q.qs.length === 1 ? "it" : "them all") + " right and the card is yours to grow."));
     q.qs.forEach(function (item, qi) {
       var set = mk("fieldset", "q"), done = Number.isInteger(q.ans[qi]);
-      set.appendChild(mk("legend", null, item.q));
+      set.appendChild(L.inline(document, mk("legend"), item.q));
+      if (item.code) set.appendChild(L.codeBlock(document, item.code)); /* PR 107: a question about code shows it, as code */
       item.options.forEach(function (o, oi) {
         var lab = mk("label", "opt" + (done && oi === item.answer ? " right" : "") + (done && oi === q.ans[qi] && oi !== item.answer ? " wrong" : ""));
         var inp = mk("input");
         inp.type = "radio"; inp.name = "q" + qi + "-" + q.id + "-" + (ck.r || 0); inp.value = String(oi); inp.checked = done && q.ans[qi] === oi; inp.disabled = done;
         inp.addEventListener("change", function () { answerQ(qi, oi); });
         lab.appendChild(inp);
-        lab.appendChild(mk("span", "opt-t", String.fromCharCode(65 + oi) + ". " + String(o)));
+        lab.appendChild(L.inline(document, mk("span", "opt-t"), String.fromCharCode(65 + oi) + ". " + String(o)));
         set.appendChild(lab);
       });
       if (done) set.appendChild(mk("p", "q-fb", q.ans[qi] === item.answer ? "That's it." : "Not quite. It's " + String.fromCharCode(65 + item.answer) + ": " + item.options[item.answer] + "."));
@@ -1929,16 +1938,17 @@
     wrap.appendChild(mk("h3", "phase-head", t.qs.length + " questions"));
     t.qs.forEach(function (item, qi) {
       var set = mk("fieldset", "q"), done = Number.isInteger(t.ans[qi]);
-      var lg = mk("legend", null, item.q);
+      var lg = L.inline(document, mk("legend"), item.q);
       lg.appendChild(mk("span", "q-topic", "On " + item.topic));
       set.appendChild(lg);
+      if (typeof item.code === "string" && item.code) set.appendChild(L.codeBlock(document, item.code.slice(0, 600)));
       item.options.forEach(function (o, oi) {
         var lab = mk("label", "opt" + (done && oi === item.answer ? " right" : "") + (done && oi === t.ans[qi] && oi !== item.answer ? " wrong" : ""));
         var inp = mk("input");
         inp.type = "radio"; inp.name = "t" + qi + "-" + t.pid; inp.value = String(oi); inp.checked = done && t.ans[qi] === oi; inp.disabled = done;
         inp.addEventListener("change", function () { answerTest(qi, oi); });
         lab.appendChild(inp);
-        lab.appendChild(mk("span", "opt-t", String.fromCharCode(65 + oi) + ". " + String(o)));
+        lab.appendChild(L.inline(document, mk("span", "opt-t"), String.fromCharCode(65 + oi) + ". " + String(o)));
         set.appendChild(lab);
       });
       if (done) set.appendChild(mk("p", "q-fb", t.ans[qi] === item.answer ? "That's it." : "Not quite. It's " + String.fromCharCode(65 + item.answer) + ": " + item.options[item.answer] + "."));
