@@ -815,13 +815,11 @@ body.intake.kbd .cs-few { display: none; } /* the keyboard up: Iko's question st
 .top-r .home-deck { align-self: center; opacity: .92; }
 .top-r .home-deck:hover, .top-r .home-deck:focus-visible { opacity: 1; }
 /* PR 107: the optional age range (the opening's quiet line, Iko's chooser, the footer) */
-.cs-age { margin: 6px 0 0; text-align: center; }
-.cs-age > .link { font-size: 13px; color: var(--soft); min-height: 40px; }
 .age-opts { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 6px; }
 .age-opts .age-opt { font-size: 13px; min-height: 40px; padding: 4px 12px; border-color: var(--rule); color: var(--soft); }
 .age-opts .age-opt.on { color: var(--ink); border-color: var(--ink); }
 .age-q { flex-basis: 100%; text-align: center; font-size: 13px; color: var(--soft); }
-.cloud-foot .age-link { font: inherit; color: inherit; padding: 0; min-height: 0; }
+.cloud-foot .age-link { font: inherit; color: inherit; display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; }
 /* PR 107: code in lessons, checks and clarifications: a quiet sepia monospace block (no bright syntax theme); it keeps
    indentation and line breaks and scrolls sideways rather than wrapping; comment lines a little softer */
 pre.code { margin: 10px 0; padding: 10px 12px; max-width: 100%; box-sizing: border-box; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: pre; tab-size: 4;
@@ -841,7 +839,8 @@ fieldset.q { min-width: 0; }
 .ret { max-width: min(46vw, 220px); height: 34px; padding: 0 12px; border: 1px solid var(--rule); border-radius: 17px; background: var(--sheet); color: var(--ink); font: inherit; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; opacity: .85; flex: none; }
 .ret:hover, .ret:focus-visible { opacity: 1; border-color: var(--ink); }
 .ret[hidden], .minideck[hidden] { display: none; }
-.cloud-top { padding-right: calc(16px + env(safe-area-inset-right)); padding-left: calc(16px + env(safe-area-inset-left)); }
+.cloud-top { padding-right: calc(16px + env(safe-area-inset-right)); }
+.cloud-top > .top-r { margin: -8px 0; } /* the deck is taller than the row: it never pushes Iko down */
 /* PR 107: quieter cloud controls. Desktop: the same three, smaller and fainter. A phone (coarse pointer or narrow): only a
    small round icon that recentres, with a soft nudge until drag and zoom have been tried (still under reduced motion) */
 .zoom { gap: 4px; opacity: .5; }

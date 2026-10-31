@@ -198,8 +198,18 @@ for (const width of [390, 1280]) {
       await p.evaluate(() => { document.querySelector("#iko-line").hidden = true; });
       await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" }); await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(500);
       const chip = p.locator(".cloud-flow > .chip", { hasText: "Eruptions" });
-      if (await chip.count()) {
-        await chip.first().click(); await p.waitForSelector("#l-cont:not([hidden])");
+      /* PR 107: the Pick up row's deck draw changes by the day, so Eruptions may not be offered there today: then from its node's card */
+      const openEr = async () => {
+        if (await chip.count()) { await chip.first().click(); return true; }
+        await p.evaluate(() => { const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view; v.focusNode(window.__er); });
+        await p.waitForTimeout(900);
+        const xy = await p.evaluate(() => { const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view, q = v.project(window.__er), r = document.querySelector("#cloud-canvas").getBoundingClientRect(); return { x: r.left + q.x, y: r.top + q.y }; });
+        await p.mouse.click(xy.x, xy.y); await p.waitForTimeout(900);
+        if ((await p.textContent("#p-title").catch(() => "")) !== "Eruptions") return false;
+        await p.click("#p-lesson"); return true;
+      };
+      if (await openEr()) {
+        await p.waitForSelector("#l-cont:not([hidden])");
         await p.click("#l-cont"); await p.waitForTimeout(200);
         await pick(0, 2); await p.waitForTimeout(100); await pick(1, 2); await p.waitForTimeout(300);
         await p.click("#l-quiz .q-fresh"); await p.waitForTimeout(250);

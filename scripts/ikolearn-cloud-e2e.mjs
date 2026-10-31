@@ -124,9 +124,10 @@ for (const width of (process.env.WIDTHS || "390,1280").split(",").map(Number)) {
       const key = await turn(p, 400);
       ok(key.on && key.d > 0, `${tag}: ... and a key press that is not a click`);
       /* a click on a control (zoom) pauses it; it comes back after the delay */
-      await p.click("#zin"); await p.mouse.move(1, 1);
+      /* PR 107: a phone shows only the small recentre icon; a desktop still has + */
+      await p.click((await p.isVisible("#zin")) ? "#zin" : "#zreset"); await p.mouse.move(1, 1);
       const zc = await turn(p, 600);
-      ok(!zc.on, `${tag}: a click on a control (zoom) pauses the spin`, JSON.stringify(zc.d));
+      ok(!zc.on, `${tag}: a click on a control (zoom, or the phone's recentre icon) pauses the spin`, JSON.stringify(zc.d));
       await p.waitForTimeout(3600);
       const zb = await turn(p, 800);
       ok(zb.on && zb.d > 0, `${tag}: ... and it comes back after the short delay`);
