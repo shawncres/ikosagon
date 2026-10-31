@@ -812,8 +812,8 @@ body.intake.kbd .cs-few { display: none; } /* the keyboard up: Iko's question st
 .d-collect > .fine { margin: 0 0 8px; }
 .collect-row .ap-row-head { color: var(--soft); }
 /* the cloud's deck: the same fanned icon and count as the header's */
-.home-nav .home-deck { align-self: center; opacity: .92; margin: -8px 0; }
-.home-nav .home-deck:hover, .home-nav .home-deck:focus-visible { opacity: 1; }
+.top-r .home-deck { align-self: center; opacity: .92; }
+.top-r .home-deck:hover, .top-r .home-deck:focus-visible { opacity: 1; }
 /* PR 107: the optional age range (the opening's quiet line, Iko's chooser, the footer) */
 .cs-age { margin: 6px 0 0; text-align: center; }
 .cs-age > .link { font-size: 13px; color: var(--soft); min-height: 40px; }
@@ -835,3 +835,25 @@ fieldset.q { min-width: 0; }
 .l-steps li > pre.code { margin-top: 6px; }
 /* PR 107: the cloud's fog, a picture only (under the cloud's canvas, never hit) */
 .cloud-fog { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; display: block; }
+/* PR 107: the widgets keep their places: the cloud (thumbnail) then the deck at the far right of every screen; "Return to"
+   takes the place of the screen's own widget (the cloud's on the cloud, the deck's on the deck) */
+.top-r { display: flex; align-items: center; gap: 14px; margin-left: auto; flex: none; min-width: 0; }
+.ret { max-width: min(46vw, 220px); height: 34px; padding: 0 12px; border: 1px solid var(--rule); border-radius: 17px; background: var(--sheet); color: var(--ink); font: inherit; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; opacity: .85; flex: none; }
+.ret:hover, .ret:focus-visible { opacity: 1; border-color: var(--ink); }
+.ret[hidden], .minideck[hidden] { display: none; }
+.cloud-top { padding-right: calc(16px + env(safe-area-inset-right)); padding-left: calc(16px + env(safe-area-inset-left)); }
+/* PR 107: quieter cloud controls. Desktop: the same three, smaller and fainter. A phone (coarse pointer or narrow): only a
+   small round icon that recentres, with a soft nudge until drag and zoom have been tried (still under reduced motion) */
+.zoom { gap: 4px; opacity: .5; }
+.zoom .btn.sm { min-width: 28px; min-height: 28px; height: 28px; padding: 0 8px; font-size: 12px; }
+.zoom #zin, .zoom #zout { font-size: 15px; }
+.zr-ico { display: none; width: 18px; height: 18px; }
+@media (pointer: coarse), (max-width: 699px) {
+  .zoom #zin, .zoom #zout { display: none; }
+  .zoom #zreset { width: 36px; height: 36px; min-height: 36px; min-width: 0; padding: 0; border-radius: 50%; display: grid; place-items: center; color: var(--soft); }
+  .zoom .zr-t { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .zr-ico { display: block; }
+  .zoom:not(.learnt) .zr-ico { animation: zr-nudge 5s ease-in-out 1.5s infinite; }
+}
+@keyframes zr-nudge { 0%, 64%, 100% { transform: none; } 72% { transform: translate(-2px, 0) rotate(-10deg); } 80% { transform: translate(2px, 0) scale(1.1) rotate(8deg); } 88% { transform: scale(.94); } }
+@media (prefers-reduced-motion: reduce) { .zoom .zr-ico { animation: none !important; } }

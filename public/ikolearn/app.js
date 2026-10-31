@@ -33,7 +33,7 @@
     focusChip: $("focus-chip"), focusText: $("focus-text"), focusClear: $("focus-clear"),
     lesson: $("lesson"), lBack: $("l-back"), lTrail: $("l-trail"), lTitle: $("l-title"), lBody: $("l-body"), lDone: $("l-done"),
     lGot: $("l-got"), lTricky: $("l-tricky"), lCont: $("l-cont"), phEarn: $("ph-earn"), lStatus: $("l-status"), lPath: $("l-path"), lClar: $("l-clar"), lNext: $("l-next"), lChat: $("l-chat"), lRedo: $("l-redo"),
-    cloud: $("cloud"), cloudCanvas: $("cloud-canvas"), cloudDeck: $("cloud-deck"), cloudWho: $("cloud-who"), chatBack: $("chat-back"),
+    cloud: $("cloud"), cloudCanvas: $("cloud-canvas"), cloudDeck: $("cloud-deck"), cloudRet: $("cloud-ret"), barRet: $("bar-ret"), cloudWho: $("cloud-who"), chatBack: $("chat-back"),
     csAge: $("cs-age"), csAgeB: $("cs-age-b"), ageLink: $("age-link"),
     cs: $("cloud-start"), csName: $("cs-name"), csHi: $("cs-hi"), csQ: $("cs-q"), csFew: $("cs-few"), csForm: $("cs-form"), csIn: $("cs-in"), csEx: $("cs-ex"), csStatus: $("cs-status"),
     ikoWrap: $("iko-wrap"), iko: $("iko"), ikoLine: $("iko-line"), ikoSheet: $("iko-sheet"), ikoAbout: $("iko-about"), ikoX: $("iko-x"), ikoSay: $("iko-say"), ikoActs: $("iko-acts"), ikoGot: $("iko-got"), ikoBody: $("iko-body"), ikoSlot: $("iko-slot"), ikoLog: $("iko-log"), ikoForm: $("iko-form"), ikoIn: $("iko-in"), ikoAll: $("iko-all"), zin: $("zin"), zout: $("zout"), zreset: $("zreset"),
@@ -654,10 +654,10 @@
   });
   if (el.ageLink) el.ageLink.addEventListener("click", function () { openAge(); });
   function openAge() {
+    if (!iko.open) openIko(); /* first: the sheet shows what is said from its opening on */
     push({ role: "age", local: true, text: "" });
     save();
-    if (!iko.open) openIko();
-    else renderIkoLog();
+    renderIkoLog();
   }
 
   /* the gentle word and the two buttons; done: what happened */
@@ -1106,6 +1106,7 @@
     el.lesson.hidden = !on;
     el.thread.hidden = on;
     el.dock.hidden = on;
+    renderRet();
     if (!on) { state.lessonNode = null; state.mode = "lesson"; state.test = null; renderThread(); renderDraw(); }
     else { el.draw.hidden = true; el.lBack.textContent = state.lessonFrom && nodeOf(state.lessonFrom) ? "Back to its card" : "Back to your cloud"; viewIn(el.lesson); }
   }
@@ -1498,6 +1499,7 @@
     state.lessonFrom = state.pendingFrom || null; state.pendingFrom = null; /* opened from a card's hub: Back returns there */
     state.mode = "lesson"; state.test = null;
     if (!C.isDone(state.cloud, id)) state.cloud.active = id; /* "Continue" brings the learner back here */
+    markLast(id, "lesson"); /* PR 107: "Return to" */
     C.profileOf(state.cloud).lessonVisit = C.profileOf(state.cloud).visits || 0; /* not stuck: a lesson was opened this visit */
     startClock();
     state.revealed = false;
@@ -2122,6 +2124,7 @@
   function home(id) {
     if (state.lessonNode) showLesson(false);
     el.deck.hidden = true; el.hub.hidden = true; state.hubNode = null; el.thread.hidden = false; el.dock.hidden = false;
+    renderRet();
     openCloud();
     if (id && nodeOf(id)) openPanel(id);
   }
@@ -2142,6 +2145,7 @@
     else if (state.glide && nodeOf(state.glide)) { var gl = state.glide; state.glide = null; setTimeout(function () { revealNode(gl); }, 0); } /* a new parent: the camera glides to it, its card opens */
     renderCloudFlow();
     renderHomeNav();
+    renderRet();
     renderIko();
     if (landing !== true && !el.ikoWrap.hidden) el.iko.focus();
   }
@@ -3103,13 +3107,14 @@
       el.miniDeck = mk("button", "minideck");
       el.miniDeck.type = "button";
       el.miniDeck.addEventListener("click", function () { showDeck(true); });
-      el.thumb.parentNode.insertBefore(el.miniDeck, el.thumb);
+      el.thumb.parentNode.insertBefore(el.miniDeck, el.barRet); /* PR 107: the deck is always the far-right widget */
     }
     var cards = miniDeckCards(), n = (state.cloud.deck || []).length;
     var sig = n + ":" + cards.map(function (c) { return D.evolveKey(c); }).join(",");
     var rise = miniSig !== null && sig !== miniSig && (n > Number(miniSig.split(":")[0]) || cards.reduce(function (a, c) { return a + D.evolveKey(c); }, 0) > miniSig.split(":")[1].split(",").reduce(function (a, k) { return a + (Number(k) || 0); }, 0));
     miniSig = sig;
     deckFan(el.miniDeck, cards, n);
+    renderRet();
     if (rise && motionOK() && !state.flying) pulseDeck(); /* a card in flight pulses it when it lands */
   }
   /* the fanned stack with its count: the header's mini-Deck and (PR 103) the same on the cloud */
@@ -3131,6 +3136,40 @@
     btn.appendChild(fan);
     if (n) btn.appendChild(mk("span", "md-n", String(n)));
   }
+  /*
+   * PR 107: "Return to <topic>", the way back to the last lesson or card. It takes the place of the widget for the screen
+   * you are on: on the cloud, where the cloud's thumbnail would be (left of the deck); on the deck, where the deck would
+   * be. Every other screen has the cloud and the deck in the same places. Hidden until there is a lesson or card to go
+   * back to (C.lastOf: the profile's pointer, kept in the cloud).
+   */
+  function retTarget() {
+    var l = state.cloud && C.lastOf(state.cloud), n = l && nodeOf(l.id);
+    return n && !n.ghost ? { id: l.id, card: l.kind === "card" && C.inDeck(state.cloud, l.id), label: n.label } : null;
+  }
+  function renderRet() {
+    if (!el.barRet) return;
+    var r = retTarget(), onDeck = !el.deck.hidden;
+    [el.cloudRet, el.barRet].forEach(function (b) {
+      b.textContent = r ? "Return to " + r.label : "";
+      if (r) { b.title = "Return to " + r.label; b.setAttribute("aria-label", "Return to " + r.label + (r.card ? " (its card)" : " (its lesson)")); }
+    });
+    el.cloudRet.hidden = !r;
+    el.barRet.hidden = !(r && onDeck);
+    if (el.miniDeck) el.miniDeck.hidden = onDeck;
+  }
+  function goRet() {
+    var r = retTarget();
+    if (!r) return;
+    if (r.card) openHub(r.id, null, el.deck.hidden ? "cloud" : "deck");
+    else openLesson(r.id, false);
+  }
+  function markLast(id, kind) {
+    if (!nodeOf(id) || !nodeOf(id).parent) return;
+    C.setLast(state.cloud, id, kind, Date.now());
+    save();
+  }
+  el.cloudRet.addEventListener("click", goRet);
+  el.barRet.addEventListener("click", goRet);
   function pulseDeck() { if (!el.miniDeck || !motionOK()) return; el.miniDeck.classList.remove("pulse"); void el.miniDeck.offsetWidth; el.miniDeck.classList.add("pulse"); }
   /*
    * Earned: after "I've got it", the lesson's card (in the Deck now) flies up and shrinks into the Deck in the header,
@@ -3202,7 +3241,11 @@
     m[k] = 1;
     try { localStorage.setItem("ikolearn-moves", JSON.stringify(m)); } catch { /* private mode: this visit only */ }
     if (movesDone()) renderCloudHint();
+    renderZoomHint();
   }
+  /* PR 107: on a phone the controls are one small quiet icon (it recentres); it moves softly until the gestures are known */
+  function renderZoomHint() { var z = el.zreset && el.zreset.parentNode; if (z) z.classList.toggle("learnt", movesDone()); }
+  renderZoomHint();
   el.cloudHint.addEventListener("click", function (e) { if (!el.cloudHint.classList.contains("newcomer") && !(e.target.closest && e.target.closest("button"))) moved("x"); });
   el.cloudHint.addEventListener("keydown", function (e) { if ((e.key === "Enter" || e.key === " ") && el.cloudHint.classList.contains("moves")) { e.preventDefault(); moved("x"); } });
   /* the cloud's own line: the first tip until it is dismissed (or a branch is tapped), then the controls line */
@@ -3225,6 +3268,7 @@
     el.thread.hidden = on;
     el.dock.hidden = on;
     if (on) { el.draw.hidden = true; renderDeck(!was); window.scrollTo(0, 0); } else { renderDraw(); scrollDown(); }
+    renderRet();
   }
   var motionOK = function () { return !(reduceMotion && reduceMotion.matches); };
   function viewIn(node) {
@@ -3255,6 +3299,8 @@
     state.hubNode = id; state.hubFrom = from || "deck";
     el.deck.hidden = true; el.thread.hidden = true; el.dock.hidden = true; el.draw.hidden = true;
     el.hub.hidden = false;
+    markLast(id, "card");
+    renderRet();
     renderHub(true);
     window.scrollTo(0, 0);
     viewIn(el.hub.querySelector(".hub-info"));

@@ -527,7 +527,9 @@
           var d = Math.hypot(a.x - b.x, a.y - b.y), mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
           zoomAt((gesture.zoom * d / Math.max(1, gesture.dist)) / zoom, mid);
           panX += mid.x - gesture.mid.x; panY += mid.y - gesture.mid.y; gesture.mid = mid;
-          yaw += CAM.twist(gesture.a, gesture.b, a, b); /* a two-finger twist turns the cloud */
+          var tw = CAM.twist(gesture.a, gesture.b, a, b);
+          yaw += tw; /* a two-finger twist turns the cloud */
+          gesture.tw = (gesture.tw || 0) + Math.abs(tw);
           gesture.a = { x: a.x, y: a.y }; gesture.b = { x: b.x, y: b.y };
         } else if (ids.length === 1 && gesture.type !== "pinch") {
           var p = local(e), dx = p.x - gesture.last.x, dy = p.y - gesture.last.y, t = performance.now(), dt = t - gesture.t;
@@ -542,6 +544,7 @@
         var g = gesture;
         delete pointers[e.pointerId];
         if (g && opts.onGesture && (g.type === "pinch" || (g.type === "pan" && g.moved >= 6))) opts.onGesture(g.type === "pinch" ? "zoom" : "drag"); /* the movement hint learns what's been tried */
+        if (g && opts.onGesture && ((g.type === "pinch" && g.tw > 0.15) || (g.type === "rotate" && g.moved >= 6))) opts.onGesture("turn"); /* PR 107: a twist or a turn */
         if (!Object.keys(pointers).length) {
           gesture = null;
           canvas.classList.remove("turning");
