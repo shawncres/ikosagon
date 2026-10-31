@@ -477,11 +477,14 @@
     return best;
   }
 
+  /* PR 107: the learner's age band (if they chose one) goes with the calls that write teaching (lesson, clarify, test) and
+     nowhere else; it shapes how things are explained, never which topics */
+  function withBand(cloud, ctx) { var b = C.bandOf(cloud); if (b) ctx.band = b; return ctx; }
   /* The prompt context for a lesson call: ask for child topics only when wanted; the planned next step, for the fork. */
   function lessonContext(cloud, id) {
     var ctx = { wantPath: wantChildren(cloud, id), ahead: aheadOf(cloud, id) }, pace = paceOf(cloud, id);
     if (pace) ctx.pace = pace;
-    return ctx;
+    return withBand(cloud, ctx);
   }
   /*
    * The branch's pace (PR 103), from how easily the learner has been answering its checks (C.easeOf, a running average per
@@ -841,7 +844,7 @@
     PLAN: PLAN, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, needsRepair: needsRepair, repairRequest: repairRequest,
     MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild, nextStep: nextStep,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
-    suggest: suggest, draw: draw, lessonContext: lessonContext, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, unfinished: unfinished, fresh: fresh, PACE: PACE, paceOf: paceOf, placeTopic: placeTopic, placedTopic: placedTopic, related: related, DESCRIBE: DESCRIBE, describeBatch: describeBatch, isBroad: isBroad,
+    suggest: suggest, draw: draw, lessonContext: lessonContext, withBand: withBand, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, unfinished: unfinished, fresh: fresh, PACE: PACE, paceOf: paceOf, placeTopic: placeTopic, placedTopic: placedTopic, related: related, DESCRIBE: DESCRIBE, describeBatch: describeBatch, isBroad: isBroad,
     onboarding: onboarding, openQuestion: openQuestion, examples: examples, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics, directions: directions, homeStats: homeStats,
     needsNext: needsNext, readyNext: readyNext, createRequest: createRequest, OPENING: OPENING
   };

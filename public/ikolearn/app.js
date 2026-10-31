@@ -34,6 +34,7 @@
     lesson: $("lesson"), lBack: $("l-back"), lTrail: $("l-trail"), lTitle: $("l-title"), lBody: $("l-body"), lDone: $("l-done"),
     lGot: $("l-got"), lTricky: $("l-tricky"), lCont: $("l-cont"), phEarn: $("ph-earn"), lStatus: $("l-status"), lPath: $("l-path"), lClar: $("l-clar"), lNext: $("l-next"), lChat: $("l-chat"), lRedo: $("l-redo"),
     cloud: $("cloud"), cloudCanvas: $("cloud-canvas"), cloudDeck: $("cloud-deck"), cloudWho: $("cloud-who"), chatBack: $("chat-back"),
+    csAge: $("cs-age"), csAgeB: $("cs-age-b"), ageLink: $("age-link"),
     cs: $("cloud-start"), csName: $("cs-name"), csHi: $("cs-hi"), csQ: $("cs-q"), csFew: $("cs-few"), csForm: $("cs-form"), csIn: $("cs-in"), csEx: $("cs-ex"), csStatus: $("cs-status"),
     ikoWrap: $("iko-wrap"), iko: $("iko"), ikoLine: $("iko-line"), ikoSheet: $("iko-sheet"), ikoAbout: $("iko-about"), ikoX: $("iko-x"), ikoSay: $("iko-say"), ikoActs: $("iko-acts"), ikoGot: $("iko-got"), ikoBody: $("iko-body"), ikoSlot: $("iko-slot"), ikoLog: $("iko-log"), ikoForm: $("iko-form"), ikoIn: $("iko-in"), ikoAll: $("iko-all"), zin: $("zin"), zout: $("zout"), zreset: $("zreset"),
     panel: $("panel"), cloudTop: document.querySelector(".cloud-top"), pKicker: $("p-kicker"), pTitle: $("p-title"), pDesc: $("p-desc"), pNote: $("p-note"), pLesson: $("p-lesson"), pCard: $("p-card"), pAdj: $("p-adj"),
@@ -368,6 +369,7 @@
     if (m.role === "ask") d = renderAsk(m);
     else if (m.role === "place") d = renderPlace(m);
     else if (m.role === "del") d = renderDel(m);
+    else if (m.role === "age") d = renderAge(m);
     else if (m.role === "card") {
       d = cardNode(m.card, m.card.node && nodeOf(m.card.node) ? "On " + trailOf(m.card.node) : "");
     } else if (m.role === "grow") {
@@ -554,12 +556,20 @@
         return { kind: "theme", mode: mode };
       }
     }
+    var ag = ageIntent(t);
+    if (ag) return ag;
     var d = t.match(/^(?:please\s+)?(?:(?:can|could|would) you\s+)?(?:delete|remove|get rid of|erase)\s+(?:the\s+|my\s+)?(.+?)(?:\s+(?:branch|topic|subject|node))?(?:\s+from\s+(?:my\s+|the\s+)?cloud)?(?:\s+please)?$/);
     if (d && d[1]) return { kind: "delete", name: d[1].trim() };
     return null;
   }
   function doIntent(text, it) {
     push({ role: "user", local: true, text: text });
+    if (it.kind === "age") {
+      if (it.forget) { setBand("none"); push({ role: "model", local: true, text: "Okay, I've forgotten it. Lessons go back to an everyday level for anyone." }); }
+      else if (it.n) { var b = bandFor(it.n); setBand(b); push({ role: "model", local: true, text: bandSaid(b) }); }
+      else push({ role: "age", local: true, text: "" });
+      save(); return;
+    }
     if (it.kind === "theme") {
       var already = TH && TH.mode() === it.mode && TH.saved() === it.mode;
       if (TH && !already) TH.set(it.mode);
@@ -575,6 +585,67 @@
     push({ role: "del", local: true, target: n.id, label: n.label });
     save();
   }
+  /*
+   * PR 107: the optional age band, on the device only. Asked lightly in the opening (a quiet "optional" link), or any
+   * time via Iko ("I'm 12", "change my age") or the cloud's footer. It changes how lessons are written (P.withBand), never
+   * which topics are open; it goes along only inside the teaching calls and is never kept on a server.
+   */
+  var BAND_LABEL = { u10: "Under 10", "10-13": "10\u201313", "14-17": "14\u201317", "18+": "18+", none: "Prefer not to say" };
+  function ageIntent(t) {
+    if (t.length > 60) return null;
+    var n = t.match(/^(?:hi,?\s+)?(?:i'?m|i am|im|my age is|age)\s*(\d{1,3})(?:\s*(?:years?|yrs?)(?:\s*old)?|\s*y\/?o)?$/);
+    if (n) return { kind: "age", n: Number(n[1]) };
+    if (/^(?:please\s+)?(?:forget|remove|clear|delete|erase)\s+my\s+age$/.test(t)) return { kind: "age", forget: true };
+    if (/^(?:(?:can|could) (?:i|you)\s+)?(?:please\s+)?(?:change|set|update|edit|fix|add|enter)\s+my\s+age(?:\s+(?:band|range))?(?:\s+please)?$|^(?:my\s+)?age(?:\s+(?:band|range))?$/.test(t)) return { kind: "age" };
+    return null;
+  }
+  function bandFor(n) { return n < 10 ? "u10" : n <= 13 ? "10-13" : n <= 17 ? "14-17" : "18+"; }
+  function bandSaid(b) {
+    return b === "none" ? "That's fine. Lessons stay at an everyday level for anyone."
+      : "Thanks. I'll write your lessons for " + (b === "u10" ? "under 10" : b === "18+" ? "a grown-up reader" : BAND_LABEL[b].replace("\u2013", " to ")) + ". Every topic stays open to you, and you can change this any time.";
+  }
+  function setBand(b) { C.setProfile(state.cloud, { band: b }); save(); renderAgeBits(); }
+  function bandRow(onPick) {
+    var cur = C.profileOf(state.cloud).band, row = mk("div", "place-opts age-opts");
+    row.setAttribute("role", "group"); row.setAttribute("aria-label", "Your age range");
+    C.BANDS.forEach(function (b) {
+      var x = linkBtn(BAND_LABEL[b], function () { onPick(b); }, "btn sm age-opt");
+      x.setAttribute("data-band", b); x.setAttribute("aria-pressed", String(cur === b)); if (cur === b) x.classList.add("on");
+      row.appendChild(x);
+    });
+    return row;
+  }
+  function renderAge(m) {
+    var d = mk("div", "place age");
+    if (m.done) { d.appendChild(mk("p", "grow", m.done)); return d; }
+    d.appendChild(mk("p", "place-q", "If you like, pick your age range. It changes how lessons are written, never which topics you can learn, and it stays on this device."));
+    d.appendChild(bandRow(function (b) { setBand(b); m.done = bandSaid(b); upsert(m); save(); if (iko.open) renderIkoLog(); }));
+    return d;
+  }
+  /* the opening's quiet line and the cloud footer's link show the choice (or that it's optional) */
+  function renderAgeBits() {
+    var b = state.cloud ? C.profileOf(state.cloud).band : "";
+    if (el.ageLink) { el.ageLink.textContent = b ? "Age: " + BAND_LABEL[b] : "Your age (optional)"; }
+    if (el.csAge && !el.csAge.querySelector(".age-opts")) { el.csAgeB.textContent = b ? "Age: " + BAND_LABEL[b] + " \u00b7 change" : "Your age, if you'd like (optional)"; }
+  }
+  el.csAgeB.addEventListener("click", function () {
+    /* the opening: Iko's optional question, one quiet line that opens into the five choices (and closes on a pick) */
+    if (el.csAge.querySelector(".age-opts")) return;
+    el.csAgeB.hidden = true;
+    var row = bandRow(function (b) { setBand(b); row.remove(); el.csAgeB.hidden = false; renderAgeBits(); placeStart(); try { el.csAgeB.focus({ preventScroll: true }); } catch { el.csAgeB.focus(); } });
+    row.insertBefore(mk("span", "age-q", "How old are you? It only changes how lessons are written."), row.firstChild);
+    el.csAge.appendChild(row);
+    placeStart();
+    var f = row.querySelector("button"); if (f) try { f.focus({ preventScroll: true }); } catch { f.focus(); }
+  });
+  if (el.ageLink) el.ageLink.addEventListener("click", function () { openAge(); });
+  function openAge() {
+    push({ role: "age", local: true, text: "" });
+    save();
+    if (!iko.open) openIko();
+    else renderIkoLog();
+  }
+
   /* the gentle word and the two buttons; done: what happened */
   function renderDel(m) {
     var d = mk("div", "place del");
@@ -637,7 +708,7 @@
   /* text: the learner's message, so subjects it names are among those the prompt sees (C.promptView: a bounded set) */
   function basePayload(focusId, text) {
     var n = nodeOf(focusId), pv = C.promptView(state.cloud, n ? n.id : null, text || "");
-    var p = n && n.parent ? nodeOf(n.parent) : null; /* no age, no region: nothing about who or where the learner is goes along */
+    var p = n && n.parent ? nodeOf(n.parent) : null; /* nothing about where the learner is goes along; the optional age band joins only the teaching calls (P.withBand) */
     return {
       name: state.name, focus: n ? n.label : "", focusId: n ? n.id : "", focusParent: p ? p.label : "", trail: n ? C.trail(state.cloud, n.id) : "",
       known: n ? C.knownUnder(state.cloud, n.id) : [], cloud: pv.cloud, parents: pv.parents
@@ -1638,7 +1709,7 @@
     var ui = clarBox(style, ""), text = "";
     ui.body.className = "clar-body streaming";
     focusClar(style);
-    var body = Object.assign(basePayload(id), { mode: "clarify", clarify: style, lesson: les ? String(les.text).slice(0, 1500) : "", messages: [] });
+    var body = P.withBand(state.cloud, Object.assign(basePayload(id), { mode: "clarify", clarify: style, lesson: les ? String(les.text).slice(0, 1500) : "", messages: [] }));
     stream("/chat", body, {
       delta: function (t) { text += t; paragraphs(ui.body, text); }
     }, callSignal("clarify")).then(function (r) {
@@ -1836,7 +1907,7 @@
     }
     lock(true);
     el.lQuiz.appendChild(mk("p", "fine streaming", "Writing your questions..."));
-    postJson("/test", Object.assign(basePayload(pid), { material: req.material })).then(function (j) {
+    postJson("/test", P.withBand(state.cloud, Object.assign(basePayload(pid), { material: req.material }))).then(function (j) {
       if (state.lessonNode !== pid || state.mode !== "test") return;
       var qs = j && j.ok ? validTestQs(j.questions, labels) : [];
       if (qs.length >= 2) {
@@ -2066,6 +2137,8 @@
     /* the ideas can be picked together; Begin sends them with whatever was typed, as one answer (the same one start call) */
     if (!csEx) { csEx = exRow(addIdea, function () { return !el.cs.hidden && !state.busy; }, "", true, true); el.csEx.appendChild(csEx); }
     else refreshEx();
+    el.csAge.hidden = building;
+    renderAgeBits();
     el.csStatus.textContent = building ? "Growing your cloud…" : failed ? "That didn't work just now. Try again in a moment, or talk it over with Iko." : "";
     el.cs.classList.toggle("busy", building);
     placeStart();
@@ -2694,6 +2767,7 @@
       /* where a new topic should go (two quiet buttons) and what grew: here too, not only in the whole conversation */
       if (m.role === "place") { var pl = renderPlace(m); pl.classList.add("iko-msg"); el.ikoLog.appendChild(pl); return; }
       if (m.role === "del") { var dl = renderDel(m); dl.classList.add("iko-msg"); el.ikoLog.appendChild(dl); return; }
+      if (m.role === "age") { var ag = renderAge(m); ag.classList.add("iko-msg"); el.ikoLog.appendChild(ag); return; }
       if (m.role === "grow") { el.ikoLog.appendChild(mk("p", "iko-msg grow", m.text)); return; }
       if (m.role !== "user" && m.role !== "model") return;
       var d = mk("div", "iko-msg " + m.role + (m.streaming ? " streaming" : ""));

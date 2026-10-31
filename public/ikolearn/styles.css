@@ -814,3 +814,11 @@ body.intake.kbd .cs-few { display: none; } /* the keyboard up: Iko's question st
 /* the cloud's deck: the same fanned icon and count as the header's */
 .home-nav .home-deck { align-self: center; opacity: .92; margin: -8px 0; }
 .home-nav .home-deck:hover, .home-nav .home-deck:focus-visible { opacity: 1; }
+/* PR 107: the optional age range (the opening's quiet line, Iko's chooser, the footer) */
+.cs-age { margin: 6px 0 0; text-align: center; }
+.cs-age > .link { font-size: 13px; color: var(--soft); min-height: 40px; }
+.age-opts { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 6px; }
+.age-opts .age-opt { font-size: 13px; min-height: 40px; padding: 4px 12px; border-color: var(--rule); color: var(--soft); }
+.age-opts .age-opt.on { color: var(--ink); border-color: var(--ink); }
+.age-q { flex-basis: 100%; text-align: center; font-size: 13px; color: var(--soft); }
+.cloud-foot .age-link { font: inherit; color: inherit; padding: 0; min-height: 0; }
