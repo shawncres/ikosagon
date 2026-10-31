@@ -857,3 +857,18 @@ fieldset.q { min-width: 0; }
 @keyframes zr-nudge { 0%, 64%, 100% { transform: none; } 72% { transform: translate(-2px, 0) rotate(-10deg); } 80% { transform: translate(2px, 0) scale(1.1) rotate(8deg); } 88% { transform: scale(.94); } }
 @media (prefers-reduced-motion: reduce) { .zoom .zr-ico { animation: none !important; } }
 @media (max-width: 399px) { body.intake .cloud-foot .age-bit { display: none; } } /* the smallest phones: the fine print stays one line on the opening (Iko asks later) */
+/* PR 108: the age range as Iko's first, skippable step at the opening (in his speech, where the question goes) */
+.cs-ages .age-opts { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 6px; margin: 8px 0 0; }
+.cs-ages .cs-age-skip { min-height: 34px; padding: 0 8px; font-size: 13px; color: var(--soft); }
+/* PR 108: the reading or the check, never both on screen */
+.l-main[data-phase="check"] #l-body, .l-main[data-phase="missed"] #l-body, .l-main[data-phase="check"] .l-read, .l-main[data-phase="missed"] .l-read { display: none; }
+/* PR 108: an earned card is a little more vivid (still sepia) */
+.gcard.earned { filter: saturate(1.22) contrast(1.04); }
+html[data-theme="dark"] .gcard.earned { filter: saturate(1.3) brightness(1.06); }
+/* PR 108: Iko's lines are easier to read on a computer (a phone keeps its size) */
+@media (min-width: 900px), (pointer: fine) {
+  .iko-line { font-size: 16px; line-height: 1.45; max-width: min(480px, 100%); padding: 8px 13px; }
+  .cloud-top > .iko-line { max-width: min(440px, calc(100vw - 32px)); }
+}
+.iko-line .iko-yes { font: inherit; font-size: .9em; color: var(--ink); background: transparent; border: 1px solid var(--rule); border-radius: 999px; padding: 1px 10px; margin-left: 2px; cursor: pointer; min-height: 26px; }
+.iko-line .iko-yes:hover { border-color: var(--ink); }

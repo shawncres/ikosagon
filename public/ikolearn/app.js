@@ -35,7 +35,7 @@
     lGot: $("l-got"), lTricky: $("l-tricky"), lCont: $("l-cont"), phEarn: $("ph-earn"), lStatus: $("l-status"), lPath: $("l-path"), lClar: $("l-clar"), lNext: $("l-next"), lChat: $("l-chat"), lRedo: $("l-redo"),
     cloud: $("cloud"), cloudCanvas: $("cloud-canvas"), cloudDeck: $("cloud-deck"), cloudRet: $("cloud-ret"), barRet: $("bar-ret"), cloudWho: $("cloud-who"), chatBack: $("chat-back"),
     ageLink: $("age-link"),
-    cs: $("cloud-start"), csName: $("cs-name"), csHi: $("cs-hi"), csQ: $("cs-q"), csFew: $("cs-few"), csForm: $("cs-form"), csIn: $("cs-in"), csEx: $("cs-ex"), csStatus: $("cs-status"),
+    cs: $("cloud-start"), csName: $("cs-name"), csAges: $("cs-ages"), csHi: $("cs-hi"), csQ: $("cs-q"), csFew: $("cs-few"), csForm: $("cs-form"), csIn: $("cs-in"), csEx: $("cs-ex"), csStatus: $("cs-status"),
     ikoWrap: $("iko-wrap"), iko: $("iko"), ikoLine: $("iko-line"), ikoSheet: $("iko-sheet"), ikoAbout: $("iko-about"), ikoX: $("iko-x"), ikoSay: $("iko-say"), ikoActs: $("iko-acts"), ikoGot: $("iko-got"), ikoBody: $("iko-body"), ikoSlot: $("iko-slot"), ikoLog: $("iko-log"), ikoForm: $("iko-form"), ikoIn: $("iko-in"), ikoAll: $("iko-all"), zin: $("zin"), zout: $("zout"), zreset: $("zreset"),
     panel: $("panel"), cloudTop: document.querySelector(".cloud-top"), pKicker: $("p-kicker"), pTitle: $("p-title"), pDesc: $("p-desc"), pNote: $("p-note"), pLesson: $("p-lesson"), pCard: $("p-card"), pAdj: $("p-adj"),
     pChat: $("p-chat"), pPath: $("p-path"), pClose: $("p-close"),
@@ -1142,6 +1142,7 @@
       old.classList.remove("grew"); void old.offsetWidth; old.classList.add("grew"); /* restart the pulse */
     }
     el.hNote.textContent = sp.level ? "Merged " + C.roman(sp.level) + ". It holds " + sp.corpus.length + " cards and rises a level with each new batch you finish."
+      : sp.inDeck && takeawayOf(state.lessonNode) ? "You learned: " + takeawayOf(state.lessonNode) + (sp.achieved ? " Achieved: it stays in your deck for good." : "") /* PR 108: the key idea, not a generic line */
       : sp.achieved ? "Achieved. This card stays in your deck for good. Finish a few of its branches and they merge into it."
       : sp.after.length ? "Best after " + D.listOf(sp.after) + ". You can explore it now; it completes once " + (sp.after.length === 1 ? "that's" : "those are") + " done."
       : (sp.inDeck ? "In your deck. " : "") + (sp.tier < 2 && coreLeftNote(state.lessonNode) || ["Its first right answer inks it in.", "Finish it (\u201cI've got it\u201d or two right answers) to tint it.", "Three right answers and it's Achieved, in full colour."][sp.tier]);
@@ -1271,7 +1272,7 @@
     if (!nodeOf(id) || state.mode !== "lesson") return;
     var ph = lessonPhase(id), qs = hasQs(id);
     setPhase(ph === "learn" ? "learn" : ph === "passed" ? (qs ? "earn" : "learn") : "check");
-    el.lQuiz.hidden = ph === "learn";
+    el.lQuiz.hidden = ph === "learn" || ph === "passed"; /* PR 108: the reading or the check, never both; passed: the check is put away */
     el.lQuiz.classList.toggle("l-pane-on", ph !== "learn" && qs);
     el.lDone.hidden = !(ph === "learn" || ph === "passed");
     el.lCont.hidden = ph !== "learn";
@@ -1368,7 +1369,7 @@
   /* a second miss: the lesson written again, clearer and gentler, with its own fresh questions (1 call) */
   function retell(id) { openLesson(id, true, null, { again: true }); }
   /* "That's it." is said once: a right quiz answer already says it, so the status line doesn't repeat it */
-  function quizSaidIt() { return [].some.call(el.lQuiz.querySelectorAll(".q-fb"), function (x) { return x.textContent === "That's it."; }); }
+  function quizSaidIt() { return !el.lQuiz.hidden && [].some.call(el.lQuiz.querySelectorAll(".q-fb"), function (x) { return x.textContent === "That's it."; }); }
   function answerQ(qi, oi) {
     var q = state.quiz, id = q && q.id;
     if (!q || id !== state.lessonNode || Number.isInteger(q.ans[qi]) || !q.qs[qi] || lessonPhase(id) !== "check") return;
@@ -1561,7 +1562,9 @@
       calls.lessonFor = null;
       var parsed = L.parse(text);
       if (r.ok && L.usable(parsed)) {
+        var prevL = state.lessons[id];
         state.lessons[id] = { text: text.trim(), at: Date.now(), qs: state.quiz && state.quiz.id === id ? state.quiz.qs : [], ans: [] };
+        if (prevL && prevL.earned) { state.lessons[id].earned = prevL.earned; if (prevL.take) state.lessons[id].take = prevL.take; } /* PR 108: earned once, for good */
         if (retry.length >= 2) state.lessons[id].rq = retry;
         if (prevCk && (prevCk.r || prevCk.p)) state.lessons[id].ck = { r: prevCk.r || 0, p: prevCk.p || 0, miss: prevCk.miss || 0, c: 0, set: 0, again: opts.again ? 1 : 0 };
         if (reading.length) state.lessons[id].rd = reading;
@@ -1611,16 +1614,35 @@
    * prepared (0 calls), or, for a lesson saved before that, one call that writes it. The worked example and a targeted
    * question stay one tap away (one call each, kept), and chat is one tap away with the topic in focus.
    */
+  /*
+   * PR 108: what the learner actually learned, in one line, from the lesson they read (no call): its first explanation's
+   * first sentence (or the intro's). Kept with the lesson (state.lessons[id].take, additive) and shown on the earned card.
+   */
+  function takeawayOf(id) {
+    var les = state.lessons[id];
+    if (!les) return "";
+    if (les.take) return les.take;
+    var lp = les.text ? L.parse(les.text) : null;
+    if (!lp) return "";
+    var first = function (list) { for (var i = 0; i < (list || []).length; i++) if (typeof list[i] === "string" && list[i].trim()) return list[i]; return ""; };
+    var t = first(lp.explain) || (typeof lp.intro === "string" ? lp.intro : first(lp.intro)) || first(lp.steps);
+    t = String(t || "").replace(/`([^`]*)`/g, "$1").replace(/\s+/g, " ").trim();
+    var m = t.match(/^.{12,}?[.!?](?=\s|$)/);
+    t = (m ? m[0] : t).trim();
+    if (t.length > 160) t = t.slice(0, 157).replace(/\s+\S*$/, "") + "\u2026";
+    return t.length >= 8 ? t : "";
+  }
   function finishLesson(kind) {
     var id = state.lessonNode, n = nodeOf(id);
     if (!n) return;
     if (kind === "got" && lessonPhase(id) !== "passed") return; /* earned only once the check is passed (PR 103) */
     var keep = kind === "got" ? holdScroll() : null; /* PR 107: the earn never moves the page (it used to jump to the top on a phone) */
+    var les0 = state.lessons[id], wasEarned = Boolean(les0 && (les0.earned || les0.got)); /* PR 108: the card's flight plays only the first time it is earned */
     var before = C.growthOf(state.cloud, id);
     var r = C.engage(state.cloud, id, kind);
     var kids = kind === "got" ? growChildren(id) : [];
     var note = growthNote(id, before);
-    if (state.lessons[id]) { if (kind === "got") state.lessons[id].got = Date.now(); else delete state.lessons[id].got; } /* kept with the lesson: shown again on return */
+    if (state.lessons[id]) { if (kind === "got") { state.lessons[id].got = Date.now(); var tk = takeawayOf(id); if (tk) state.lessons[id].take = tk; } else delete state.lessons[id].got; } /* kept with the lesson: shown again on return; PR 108: its one-line takeaway too */
     if (C.isDone(state.cloud, id) && state.cloud.active === id) state.cloud.active = null;
     save();
     settleMerges();
@@ -1646,8 +1668,8 @@
       /* the pressed button is gone now: the focus moves to the result line, without scrolling */
       el.lStatus.tabIndex = -1; try { el.lStatus.focus({ preventScroll: true }); } catch { /* old browsers: leave it */ }
       if (keep) keep();
-      flyToDeck(id);
-      if (C.inDeck(state.cloud, id)) ikoReact("earn");
+      if (!wasEarned && C.inDeck(state.cloud, id)) { flyToDeck(id); ikoReact("earn"); if (state.lessons[id]) { state.lessons[id].earned = Date.now(); save(); } } /* kept (additive): "Still tricky" never clears it */
+      else renderDeckButton();
       if (keep) { keep(); requestAnimationFrame(keep); setTimeout(keep, 1000); } /* after the redraws and the card's flight too */
     }
   }
@@ -2139,8 +2161,15 @@
     renderIko();
     if (landing !== true && !el.ikoWrap.hidden) el.iko.focus();
   }
+  /* PR 108: "Support & feedback" opens the site's contact form (no email client), the learner's first name filled in */
+  function feedbackHref(name) {
+    var n = String(name || "").replace(/[\u0000-\u001f\u007f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
+    return "https://ikosagon.com/contact?" + (n ? "name=" + encodeURIComponent(n) + "&" : "") + "subject=IkoLearn%20Feedback";
+  }
+  function renderFeedback() { [].forEach.call(document.querySelectorAll("a.fb-link"), function (a) { a.href = feedbackHref(state.name); }); }
   /* the cloud's own quiet links: Talk to Iko, the deck (once there is a card), and the learner switch when guiding */
   function renderHomeNav() {
+    renderFeedback();
     var n = (state.cloud && state.cloud.deck || []).length;
     el.cloudDeck.hidden = !n;
     if (n) deckFan(el.cloudDeck, miniDeckCards(), n); /* the Deck's own icon and count, as in the header (PR 103) */
@@ -2164,9 +2193,21 @@
     var building = state.busy, last = state.thread.filter(function (m) { return m.role === "model"; }).pop(), failed = !building && last && last.retry && last.retry.kind === "start";
     /* one calm step: a short hello, the one question, the field and Begin; a few light ideas (from the API, cycling with More) */
     el.csHi.textContent = building ? "" : "Hi " + state.name + ". Let's begin your learning cloud together.";
+    /* PR 108: before the first question, Iko asks the optional age range in the same place (band chips and Skip), once */
+    var ageStep = !building && !hintSeen("ageAsked") && !C.profileOf(state.cloud).band;
+    el.csQ.textContent = ageStep ? "First, if you like: how old are you? It only changes how lessons are written." : CS_Q;
     el.csQ.hidden = building;
-    el.csFew.hidden = building;
-    el.csForm.hidden = building;
+    el.csFew.hidden = building || ageStep;
+    el.csForm.hidden = building || ageStep;
+    el.csEx.hidden = ageStep;
+    el.csAges.hidden = !ageStep;
+    if (ageStep && !el.csAges.firstChild) {
+      var row = bandRow(function (b) { setBand(b); ageDone(); });
+      var skip = linkBtn("Skip", ageDone, "link cs-age-skip"); skip.id = "cs-age-skip";
+      row.appendChild(skip);
+      el.csAges.appendChild(row);
+    }
+    if (!ageStep) el.csAges.textContent = "";
     /* the ideas can be picked together; Begin sends them with whatever was typed, as one answer (the same one start call) */
     if (!csEx) { csEx = exRow(addIdea, function () { return !el.cs.hidden && !state.busy; }, "", true, true); el.csEx.appendChild(csEx); }
     else refreshEx();
@@ -2176,7 +2217,12 @@
     placeStart();
     placeIkoSoon();
   }
-  var csEx = null;
+  var csEx = null, CS_Q = el.csQ.textContent;
+  function ageDone() {
+    dismissHint("ageAsked");
+    intakeAt = null; need0 = 1; /* the column is placed afresh for the question (the age step was shorter); its ideas are already in, so no extra room is kept for them */
+    renderStart(); /* no focus jump into the field (as when the opening first shows) */
+  }
   /*
    * The opening question (#100, reworked in #101 after QA on an iPhone in WhatsApp's in-app browser). A still column in
    * the room between Iko and the fine print, a little above the middle, its name on a plate above the question that can be
@@ -2688,7 +2734,7 @@
    * for a few seconds on the first two visits only, and later just the pebble. Markup has a face group (eyes, mouth) so
    * a light blink or an occasional tip can be added later; reduced motion keeps it still.
    */
-  var iko = { open: false, ctx: null, from: 0, lineT: 0, tipKey: "", tipT: 0, pendingReact: null };
+  var iko = { open: false, ctx: null, from: 0, lineT: 0, tipKey: "", tipT: 0, pendingReact: null, quietAt: Date.now(), poolT: 0, poolN: 0, poolLast: "" };
   function openAsk() { return state.thread.filter(function (m) { return m.role === "ask" && !m.done && m.open && askHandlers[m.id]; })[0] || null; }
   /* what is on screen: { view, step?, topic?, id? } */
   function screenCtx() {
@@ -2853,21 +2899,17 @@
     el.ikoLine.textContent = t || "";
     el.ikoLine.hidden = !t;
     if (t) el.ikoLine.setAttribute("aria-label", "Dismiss hint: " + t);
-    el.ikoLine.removeAttribute("data-tip"); el.ikoLine.removeAttribute("data-react"); el.ikoLine.removeAttribute("data-say");
+    el.ikoLine.removeAttribute("data-tip"); el.ikoLine.removeAttribute("data-react"); el.ikoLine.removeAttribute("data-say"); el.ikoLine.removeAttribute("data-pool");
+    iko.quietAt = Date.now(); poolLater(); /* PR 108: a silence starts (or is reset) here */
     if (t) clearTimeout(iko.tipT);
-    if (t && ms !== 0) iko.lineT = setTimeout(function () { el.ikoLine.hidden = true; placeIko(); var nx = iko.after; iko.after = null; if (nx) nx(); else tipAgain(); }, ms || readMs(t)); /* 0: it stays (a hint) */
+    if (t && ms !== 0) iko.lineT = setTimeout(function () { el.ikoLine.hidden = true; iko.quietAt = Date.now(); placeIko(); var nx = iko.after; iko.after = null; if (nx) nx(); else tipAgain(); }, ms || readMs(t)); /* 0: it stays (a hint) */
     placeIko();
   }
   /* PR 107: long enough to read, by length: about 65 ms a character, 7 to 20 s (a line that guides stays until tapped) */
   function readMs(t) { return Math.min(20000, Math.max(7000, 3500 + 65 * String(t || "").length)); }
   /* PR 106: tapping the bubble dismisses it (Enter or Space too); tapping Iko himself opens the chat. PR 107: whatever
      was waiting behind it (the grow question after the first reassurance) comes next */
-  function dismissLine() {
-    var age = el.ikoLine.getAttribute("data-tip") === "askAge";
-    var nx = iko.after; iko.after = null; ikoLine("");
-    if (age) { openAge(); return; } /* Iko's optional age question: the tap opens the five choices (prefer not to say among them) */
-    if (nx) nx(); else tipAgain();
-  }
+  function dismissLine() { var nx = iko.after; iko.after = null; ikoLine(""); if (nx) nx(); else tipAgain(); }
   el.ikoLine.addEventListener("click", dismissLine);
   el.ikoLine.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); dismissLine(); if (!el.ikoWrap.hidden) el.iko.focus(); } });
   /* shown on the cloud (and its opening question), a lesson or test, a card and the deck; hidden in the whole conversation and on the welcome */
@@ -3003,20 +3045,56 @@
       tipLine(tipWords(ab.t), ab.k);
       return;
     }
-    /* PR 107: in the onboarding (after the grow question), once and lightly: the optional age range. A tap opens it */
-    if (/^(cloud|home)$/.test(key) && !hintSeen("askAge") && hintSeen("growSaid") && C.subjects(state.cloud).length && !C.profileOf(state.cloud).band) {
-      dismissHint("askAge");
-      var d1 = tipsShown(); d1[key] = Date.now();
-      try { sessionStorage.setItem(CUES, JSON.stringify(d1)); } catch { /* ignore */ }
-      tipLine(tipWords("One small thing, only if you like: {tap} here to tell me your age range, and I'll pitch lessons to fit. Every topic stays open."), "askAge");
-      return;
-    }
     var tip = pickTip(key);
     if (!tip) return;
     var d = tipsShown(); d[key] = Date.now(); if (tip.nudge) d.n = 1;
     try { sessionStorage.setItem(CUES, JSON.stringify(d)); } catch { /* ignore */ }
     tip.m.t[tip.id] = (tip.m.t[tip.id] || 0) + 1; tip.m.last = tip.id; ikoKeep(tip.m);
     tipLine(tip.text, tip.id);
+  }
+  /*
+   * PR 108: fewer long silences. After POOL.gapMs with nothing said on a screen Iko is on (not mid-check, not while his
+   * sheet is open), one short line from a local pool: a deck reminder, how to find or add topics, an idea right beside
+   * something already learned or a popular starter for the learner's age band and coarse area (both taken with a tap on
+   * "Yes"), or what this screen is for. Never the same line twice in a row, at most POOL.max a visit, tap to dismiss.
+   * 0 calls: all from local templates and what is already on the device (a "Yes" asks Iko, like typing it would).
+   */
+  var POOL = { gapMs: Number(window.__IKO_POOL_MS) || 45000, max: 8 }; /* (the e2e shortens the wait) */
+  function poolLines(key) {
+    var out = [], n = deckN(), k = C.subjects(state.cloud).length, cloudish = /^(cloud|home|topic)$/.test(key);
+    if (n >= 1) out.push({ id: "deck", t: n + (n === 1 ? " card" : " cards") + " in your deck. Each one keeps growing when you go back to it." });
+    if (n >= 3) out.push({ id: "deck2", t: "Look at that deck go. Nice steady work." });
+    out.push({ id: "tell", t: "Into something new lately? {Tap} me and say it, and I'll grow a branch for it." });
+    if (cloudish) out.push({ id: "find", t: "The faint nodes are ideas waiting. {Tap} one to start it." });
+    if (cloudish && k >= 1) {
+      var nb = topIds().map(nodeOf).filter(function (x) { return x && x.parent && nodeOf(x.parent) && !C.inDeck(state.cloud, x.id); })[0];
+      if (nb) out.push({ id: "near:" + nb.id, t: "Maybe " + nb.label + " next? It's right beside " + nodeOf(nb.parent).label + ".", yes: function () { openPanel(nb.id); } });
+    }
+    var pop = (P.mixStarters ? P.mixStarters(state.cloud, [], coarseArea()) : []).filter(function (x) { return typeof x === "string" && x; });
+    if (pop.length) { var pt = pop[Math.floor(Math.random() * Math.min(4, pop.length))]; out.push({ id: "pop:" + pt, t: "Lots of learners" + (C.bandOf(state.cloud) ? " your age" : " near you") + " enjoy " + pt + ". Want it in your cloud?", yes: function () { openIko(); el.ikoIn.value = "I'm curious about " + pt; ikoSubmit(); } }); }
+    var ab = ABOUT[cloudish ? "cloud" : key === "deck" ? "deck" : /^(learn|next)$/.test(key) ? "lesson" : ""];
+    if (ab) out.push({ id: "about:" + key, t: ab.t });
+    if (key === "learn") out.push({ id: "learn", t: "Take your time with this one. Continue when it clicks." });
+    if (key === "next") out.push({ id: "next", t: "Good going. Another topic is waiting just below." });
+    return out;
+  }
+  function poolLater() { if (!POOL) return; clearTimeout(iko.poolT); iko.poolT = setTimeout(poolSay, Math.max(1000, POOL.gapMs - (Date.now() - iko.quietAt))); } /* (not before the pool exists) */
+  function poolSay() {
+    var key = iko.tipKey;
+    if (!el.ikoLine.hidden || Date.now() - iko.quietAt < POOL.gapMs - 50) { poolLater(); return; }
+    if (iko.poolN >= POOL.max || iko.open || el.ikoWrap.hidden || intakeOn || !state.cloud || state.busy || !key || /^(check|missed|test)$/.test(key) || (document.hidden)) { iko.quietAt = Date.now(); poolLater(); return; }
+    var m = ikoMem(), list = poolLines(key).filter(function (x) { return x.id !== iko.poolLast && x.id !== m.last; });
+    if (!list.length) { iko.quietAt = Date.now(); poolLater(); return; }
+    var pick = list[Math.floor(Math.random() * list.length)];
+    iko.poolN += 1; iko.poolLast = pick.id; m.last = pick.id; ikoKeep(m);
+    ikoLine(tipWords(pick.t));
+    el.ikoLine.setAttribute("data-pool", pick.id);
+    if (pick.yes) {
+      var y = mk("button", "iko-yes", "Yes");
+      y.type = "button"; y.setAttribute("aria-label", "Yes: " + pick.t);
+      y.addEventListener("click", function (e) { e.stopPropagation(); ikoLine(""); pick.yes(); });
+      el.ikoLine.appendChild(document.createTextNode(" ")); el.ikoLine.appendChild(y);
+    }
   }
   /*
    * Short reactions to real moments (PR 103): the cloud grows, a card is earned, a check is passed. Every time at first, then
@@ -3089,7 +3167,7 @@
   function topIds() { return R ? R.top(state.cloud).map(function (r) { return r.id; }) : []; }
   function renderDeckButton() {
     var n = (state.cloud.deck || []).length;
-    el.deckBtn.hidden = !n;
+    el.deckBtn.hidden = true; /* PR 108: the mini-Deck's icon and count say it (with its aria-label); no "Your deck · n" beside it */
     el.deckBtn.textContent = "Your deck · " + n;
     if (el.cloudDeck) renderHomeNav();
     renderMiniDeck();
@@ -3345,7 +3423,8 @@
     el.hubState.appendChild(mk("span", null, sp.tierName + (sp.inDeck ? " · in your deck" : " · not in your deck yet")));
     if (sp.after.length) el.hubState.appendChild(mk("span", "after", "Best after " + D.listOf(sp.after)));
     if (sp.absorbedInto && nodeOf(sp.absorbedInto)) { var mi = mk("span", null, "Merged into "); mi.appendChild(linkBtn(nodeOf(sp.absorbedInto).label, function () { openHub(sp.absorbedInto, null, id); })); el.hubState.appendChild(mi); }
-    el.hubNote.textContent = sp.blurb || (n && n.ghost ? "A suggested branch you haven't opened yet." : "");
+    var took = sp.inDeck && takeawayOf(id);
+    el.hubNote.textContent = took ? "You learned: " + took : sp.blurb || (n && n.ghost ? "A suggested branch you haven't opened yet." : ""); /* PR 108: the key idea, not a generic line */
     el.hubLesson.hidden = !n;
     el.hubLesson.textContent = state.lessons[id] ? (cv.state === "covered" ? "Review the lesson" : "Continue the lesson") : "Start the lesson";
     var tst = n && P.testState(state.cloud, id);
@@ -3660,6 +3739,7 @@
     if (!el.who || !PR) { el.nameForm.hidden = false; el.nameIn.focus(); }
   }
   function showWho() {
+    renderFeedback();
     var ix = PR && PR.current(localStorage);
     if (!el.whoNow || !ix || ix.mode !== "guide") return;
     el.whoNow.textContent = state.name + " · switch";
@@ -3692,7 +3772,7 @@
     try { state.lessons = JSON.parse(load(LS.lessons) || "{}") || {}; } catch { state.lessons = {}; }
     try { state.tests = JSON.parse(load(LS.tests) || "{}") || {}; } catch { state.tests = {}; }
     try { var v = JSON.parse(load(LS.view) || "null"); state.view = v && Number.isFinite(v.z) ? v : null; } catch { state.view = null; }
-    try { var sn = JSON.parse(load(LS.seen) || "null"); if (sn && sn.c && typeof sn.c === "object") state.seen = { c: sn.c, ev: Number(sn.ev) || 0, h: sn.h && typeof sn.h === "object" ? { cloud: sn.h.cloud ? 1 : 0, card: sn.h.card ? 1 : 0, deck: sn.h.deck ? 1 : 0, iko: sn.h.iko ? 1 : 0, grow: sn.h.grow ? 1 : 0, aboutCloud: sn.h.aboutCloud ? 1 : 0, aboutLesson: sn.h.aboutLesson ? 1 : 0, aboutDeck: sn.h.aboutDeck ? 1 : 0, askAge: sn.h.askAge ? 1 : 0 } : {} }; } catch { /* keep the empty default */ }
+    try { var sn = JSON.parse(load(LS.seen) || "null"); if (sn && sn.c && typeof sn.c === "object") state.seen = { c: sn.c, ev: Number(sn.ev) || 0, h: sn.h && typeof sn.h === "object" ? { cloud: sn.h.cloud ? 1 : 0, card: sn.h.card ? 1 : 0, deck: sn.h.deck ? 1 : 0, iko: sn.h.iko ? 1 : 0, grow: sn.h.grow ? 1 : 0, aboutCloud: sn.h.aboutCloud ? 1 : 0, aboutLesson: sn.h.aboutLesson ? 1 : 0, aboutDeck: sn.h.aboutDeck ? 1 : 0, askAge: sn.h.askAge ? 1 : 0, ageAsked: sn.h.ageAsked ? 1 : 0 } : {} }; } catch { /* keep the empty default */ }
     save(); /* writes a migrated (older -> v9) cloud back in the compact format, with the deck backfilled */
     startChat();
     settleMerges(); /* existing completion data can already form parent cards (0 calls) */

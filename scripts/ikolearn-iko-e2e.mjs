@@ -28,6 +28,8 @@ const BASE = process.env.LIVE_BASE || `http://127.0.0.1:${server.address().port}
 let pass = 0;
 const fails = [];
 const ok = (c, name, d = "") => (c ? (pass += 1) : fails.push(`${name}${d ? ` -> ${d}` : ""}`));
+/* PR 108: Iko's first step at the opening asks the optional age range; most checks skip it (the adapt suite covers it) */
+const skipAge = async (p) => { try { await p.waitForSelector("#cs-age-skip", { timeout: 4000 }); await p.click("#cs-age-skip"); await p.waitForTimeout(150); } catch { /* no age step here */ } };
 const browser = await (process.env.IKOLEARN_BROWSER ? PW[process.env.IKOLEARN_BROWSER].launch() : chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" }));
 const HOOK = () => { let real; Object.defineProperty(window, "IkoCloudView", { configurable: true, get: () => real, set: (v) => { real = Object.assign({}, v, { create: (c, o) => { const view = v.create(c, o); (window.__views = window.__views || []).push({ id: c.id, view }); return view; } }); } }); };
 
@@ -82,7 +84,7 @@ const overlap = (p, sels) => p.evaluate((sels) => {
 }, sels);
 const CLOUD_PARTS = [".cloud-flow > *", "#cloud-start", "#panel", ".cloud-foot a", ".cloud-top button", ".cloud-top a", ".cloud-caption"];
 const ikoState = (p) => p.evaluate(() => { const b = document.querySelector("#iko"), r = b.getBoundingClientRect(), w = document.querySelector("#iko-wrap"); return { shown: !w.hidden && getComputedStyle(w).visibility !== "hidden", label: b.getAttribute("aria-label"), w: r.width, h: r.height, line: document.querySelector("#iko-line").hidden ? "" : document.querySelector("#iko-line").textContent, sheet: !document.querySelector("#iko-sheet").hidden, about: document.querySelector("#iko-about").textContent, say: document.querySelector("#iko-say").textContent, svg: Boolean(b.querySelector("svg .iko-face")), img: Boolean(b.querySelector("img")), anim: getComputedStyle(b.querySelector(".iko-pebble")).animationName, active: document.activeElement ? document.activeElement.id || document.activeElement.className : "" }; });
-async function name(p, who, n) { await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" }); await p.click(`.who-opt[data-who="${who}"]`); await p.fill("#name-in", n); await p.press("#name-in", "Enter"); await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(500); }
+async function name(p, who, n) { await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" }); await p.click(`.who-opt[data-who="${who}"]`); await p.fill("#name-in", n); await p.press("#name-in", "Enter"); await skipAge(p); await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(500); }
 async function ikoSend(p, t) { await p.fill("#iko-in", t); await p.press("#iko-in", "Enter"); await p.waitForFunction(() => /one small step/.test(document.querySelector("#iko-log").innerText), null, { timeout: 5000 }); }
 
 const SEED = () => {

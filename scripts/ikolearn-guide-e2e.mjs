@@ -33,6 +33,8 @@ const BASE = `http://127.0.0.1:${server.address().port}`;
 let pass = 0;
 const fails = [];
 const ok = (c, name, d = "") => (c ? (pass += 1) : fails.push(`${name}${d ? ` -> ${d}` : ""}`));
+/* PR 108: Iko's first step at the opening asks the optional age range; most checks skip it (the adapt suite covers it) */
+const skipAge = async (p) => { try { await p.waitForSelector("#cs-age-skip", { timeout: 4000 }); await p.click("#cs-age-skip"); await p.waitForTimeout(150); } catch { /* no age step here */ } };
 if (SHOTS) fs.mkdirSync(SHOTS, { recursive: true });
 
 /* Robin's learning (the neutral seed, renamed), and Sam's v9 save from before learners existed */
@@ -73,7 +75,7 @@ for (const w of [390, 1280]) {
     const f = await p.evaluate(() => ({ label: document.querySelector("#name-label").textContent, hint: document.querySelector("#name-hint").hidden, form: document.querySelector("#name-form").hidden, focus: document.activeElement.id }));
     ok(f.label === "What's your first name?" && f.hint && !f.form && f.focus === "name-in", `${tag}: yourself: the usual name question`, JSON.stringify(f));
     await p.fill("#name-in", "Ari");
-    await p.click("#name-form button[type=submit]");
+    await p.click("#name-form button[type=submit]"); await skipAge(p);
     await p.waitForSelector("#chat:not([hidden])");
     const s = await p.evaluate(() => ({ who: document.querySelector("#who-now").hidden, first: (document.querySelector("#thread") || {}).innerText || "" }));
     const i = await ix(p);
@@ -93,7 +95,7 @@ for (const w of [390, 1280]) {
     ok(f.label === "Your learners' first names" && !f.hint && /commas/.test(f.text), `${tag}: guide: names their learners (several at once, with commas)`, JSON.stringify(f));
     await shot(p, `${w}-guide-name`);
     await p.fill("#name-in", "Robin");
-    await p.click("#name-form button[type=submit]");
+    await p.click("#name-form button[type=submit]"); await skipAge(p);
     await p.waitForSelector("#chat:not([hidden])");
     ok((await p.textContent("#who-now")) === "Robin · switch" && await p.isVisible("#who-now"), `${tag}: guide: a quiet switcher by the brand`);
     /* home: the guide lands on the active learner's cloud, with the learner's name in the centre and the switcher on it */

@@ -29,6 +29,10 @@
     var cloud = null, pos = {}, depth = {}, pathRank = {}, highlight = {}, kids = {}, raf = 0, w = 0, h = 0, dpr = 1;
     var yaw = HOME.yaw, pitch = HOME.pitch, zoom = HOME.zoom, panX = HOME.panX, panY = mini ? 0 : HOME.panY, pivot = CAM.ORIGIN; /* the header's small cloud: its name (the root) at the centre of the circle, PR 104 */
     var pointers = {}, gesture = null, idleSpin = mini && !reduce, tween = null, glideV = null;
+    /* PR 108: a pointer resting near a node (or a finger just down by one) slows the drift, so a node is easy to tap */
+    var hoverAt = null, nearUntil = 0, NEAR = { px: 34, spin: 0.2, glide: 0.82, holdMs: 700 };
+    function nearAt(x, y) { for (var i = 0; i < projected.length; i++) { var q = projected[i].p; if (Math.abs(q.x - x) < NEAR.px && Math.abs(q.y - y) < NEAR.px && Math.hypot(q.x - x, q.y - y) < NEAR.px) return true; } return false; }
+    function slowNow(now) { return !mini && (now < nearUntil || Boolean(hoverAt && !gesture && nearAt(hoverAt.x, hoverAt.y))); }
     var focusId = null, focusSet = {}, selectAt = 0; /* selectAt: when the focused node was picked (its ring eases in) */
     /* the big cloud's idle spin (camera.js spinState): on only while the overlay is open (spinOn) and nothing covers it (spinHeld) */
     var spinOn = false, spinHeld = false, lastInput = 0, lastFrame = 0, spinning = false, spinFrom = 0, resumeTimer = 0;
@@ -354,7 +358,7 @@
         if (tween) lastInput = now; /* a focus glide (it follows a click) is waited out; a drag, pan, pinch or glide keeps the spin going */
         sp = CAM.spinState({ reduce: reduce, hidden: Boolean(doc && doc.hidden), active: spinOn, paused: spinHeld, busy: Boolean(tween), now: now, lastInput: lastInput });
         if (sp.on && !spinning) spinFrom = now; /* eases in from here */
-        if (sp.on) yaw += CAM.spinStep(spinning ? now - lastFrame : 16, now - spinFrom);
+        if (sp.on) yaw += CAM.spinStep(spinning ? now - lastFrame : 16, now - spinFrom) * (slowNow(now) ? NEAR.spin : 1);
       }
       spinning = sp.on; lastFrame = now;
       drawMs = performance.now() - t0;
@@ -417,6 +421,7 @@
         fogKey = key; fogAt = now;
         var t = reduce ? 0 : now, grow = Math.min(1, nTopics / 60), base = 0.09 + 0.09 * grow, dark = Boolean(TH && TH.dark && TH.dark());
         if (dark) base *= 0.8;
+        else base *= 1.5; /* PR 108: clearer on paper (dark mode as it was) */
         fogX.setTransform(1, 0, 0, 1, 0, 0);
         fogX.clearRect(0, 0, fw, fh);
         var blob = function (x, y, r, col, a) {
@@ -434,6 +439,24 @@
           var k = (fadeK[sj.id] == null ? 1 : fadeK[sj.id]) * (focusId && !focusSet[sj.id] ? 0.6 : 1);
           blob(p.x / sc, p.y / sc, r, col, base * k);
           blob((p.x / sc) + dx, (p.y / sc) + dy, r * 0.8, next, base * 0.55 * k * (0.6 + 0.4 * Math.sin(t / 5000 + i))); /* the shimmer: a neighbour's colour drifting through */
+        });
+        /*
+         * PR 108: finished topics of a like colour (hue within one band) gather into one larger soft cloud of that hue,
+         * centred among them and growing with how many there are: their haze joins as they fill in.
+         */
+        var bands = {};
+        for (var u = 0; u < items.length; u++) {
+          var iu = items[u]; if (!iu.n.parent || iu.n.ghost || !done[iu.n.id]) continue;
+          var hm = /^hsla?\(([\d.]+)/.exec(colorOf(iu.n)); if (!hm) continue;
+          var hk = Math.round(+hm[1] / 24) % 15;
+          (bands[hk] = bands[hk] || []).push(iu);
+        }
+        Object.keys(bands).forEach(function (hk) {
+          var g = bands[hk]; if (g.length < 2) return;
+          var cx = 0, cy = 0; g.forEach(function (it) { cx += it.p.x; cy += it.p.y; }); cx /= g.length; cy /= g.length;
+          var spread = 0; g.forEach(function (it) { spread = Math.max(spread, Math.hypot(it.p.x - cx, it.p.y - cy)); });
+          var rr = Math.min(Math.min(w, h) * 0.4, spread + (22 + 7 * Math.min(g.length, 12)) * Math.max(0.6, zoom));
+          blob(cx / sc, cy / sc, rr / sc, colorOf(g[0].n), base * Math.min(0.9, 0.35 + 0.08 * g.length));
         });
         /* along the branches: a thinner haze over the topics, every other one on a big cloud */
         var step = Math.max(1, Math.ceil(items.length / 40));
@@ -487,6 +510,7 @@
       var dt = Math.min(64, now - glideV.t);
       var gx = CAM.glide(glideV.x, dt), gy = CAM.glide(glideV.y, dt);
       panX += gx.d; panY += gy.d; glideV.x = gx.v; glideV.y = gy.v; glideV.t = now;
+      if (slowNow(now)) { glideV.x *= NEAR.glide; glideV.y *= NEAR.glide; } /* near a node: the glide settles sooner */
       if (Math.hypot(glideV.x, glideV.y) < CAM.CAM.glideStop) { glideV = null; changed(); }
     }
     /* Tells the app the view settled (it stores it, so the focus and camera come back next time). */
@@ -505,10 +529,12 @@
       canvas.addEventListener("click", function () { if (opts.onOpen) opts.onOpen(); });
     } else {
       canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+      canvas.addEventListener("pointerleave", function () { hoverAt = null; });
       canvas.addEventListener("pointerdown", function (e) {
         tween = null; glideV = null;
         canvas.setPointerCapture(e.pointerId);
         pointers[e.pointerId] = local(e);
+        if (e.pointerType !== "mouse") { var lp0 = local(e); if (nearAt(lp0.x, lp0.y)) nearUntil = performance.now() + NEAR.holdMs; }
         var ids = Object.keys(pointers);
         if (ids.length === 1) gesture = { type: CAM.gestureFor({ pointers: 1, button: e.button, shift: e.shiftKey, alt: e.altKey }), start: local(e), last: local(e), t: performance.now(), vx: 0, vy: 0, moved: 0 };
         else if (ids.length === 2) {
@@ -519,6 +545,7 @@
         request();
       });
       canvas.addEventListener("pointermove", function (e) {
+        if (e.pointerType === "mouse" && !gesture) hoverAt = local(e);
         if (!pointers[e.pointerId] || !gesture) return;
         pointers[e.pointerId] = local(e);
         var ids = Object.keys(pointers);
@@ -587,7 +614,7 @@
       reset: function () { apply(Object.assign({ pivot: CAM.ORIGIN }, home)); tween = null; glideV = null; setFocus(null); request(); changed(); },
       /* Recentre: ease back to the whole cloud, the pivot back to the origin, and let go of the focus */
       recentre: function () { setFocus(null); animateTo(Object.assign({ pivot: CAM.ORIGIN }, home), CAM.CAM.focusMs); },
-      state: function () { return { yaw: yaw, pitch: pitch, zoom: zoom, panX: panX, panY: panY, pivot: { x: pivot.x, y: pivot.y, z: pivot.z }, focus: focusId, drawn: projected.length, drawMs: drawMs, moving: Boolean(tween || glideV), spinning: spinning, held: spinHeld, vivid: vivid, fill: Object.assign({}, fill), fade: Object.assign({}, fadeK) }; },
+      state: function () { return { yaw: yaw, pitch: pitch, zoom: zoom, panX: panX, panY: panY, pivot: { x: pivot.x, y: pivot.y, z: pivot.z }, focus: focusId, drawn: projected.length, drawMs: drawMs, moving: Boolean(tween || glideV), spinning: spinning, near: slowNow(performance.now()), held: spinHeld, vivid: vivid, fill: Object.assign({}, fill), fade: Object.assign({}, fadeK) }; },
       setView: function (v) { if (v.zoom) setZoom(v.zoom); if (v.yaw != null) yaw = v.yaw; if (v.pitch != null) pitch = v.pitch; if (v.panX != null) panX = v.panX; if (v.panY != null) panY = v.panY; if (v.pivot && isFinite(v.pivot.x) && isFinite(v.pivot.y) && isFinite(v.pivot.z)) pivot = { x: v.pivot.x, y: v.pivot.y, z: v.pivot.z }; if (v.focus !== undefined) setFocus(v.focus); request(); },
       project: function (id) { return pos[id] ? project(pos[id]) : null; },
       focusNode: focusNode,

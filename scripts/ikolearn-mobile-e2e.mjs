@@ -28,6 +28,8 @@ const BASE = `http://127.0.0.1:${server.address().port}`;
 let pass = 0;
 const fails = [];
 const ok = (c, name, d = "") => (c ? (pass += 1) : fails.push(`${name}${d ? ` -> ${d}` : ""}`));
+/* PR 108: Iko's first step at the opening asks the optional age range; most checks skip it (the adapt suite covers it) */
+const skipAge = async (p) => { try { await p.waitForSelector("#cs-age-skip", { timeout: 4000 }); await p.click("#cs-age-skip"); await p.waitForTimeout(150); } catch { /* no age step here */ } };
 const browser = await (process.env.IKOLEARN_BROWSER ? PW[process.env.IKOLEARN_BROWSER].launch() : chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" }));
 /* a visualViewport the test can shrink, as an on-screen keyboard would */
 const HOOK = () => {
@@ -218,7 +220,7 @@ const MIXED = { act: { "Coral Reefs": { ago: 3, done: true }, Shapes: { ago: 2, 
   try {
     await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
     ok(!(await p.$("[autofocus]")), "WhatsApp iOS: nothing on the page has autofocus");
-    await p.tap('.who-opt[data-who="self"]'); await p.fill("#name-in", "Shawn"); await p.press("#name-in", "Enter");
+    await p.tap('.who-opt[data-who="self"]'); await p.fill("#name-in", "Shawn"); await p.press("#name-in", "Enter"); await skipAge(p);
     await p.waitForSelector("#cloud-start:not([hidden])"); await p.waitForTimeout(1800);
     const geo = () => p.evaluate(() => { const r = (s) => { const e = document.querySelector(s); if (!e || e.hidden || !e.getClientRects().length || getComputedStyle(e).visibility === "hidden") return null; const b = e.getBoundingClientRect(); return { x: b.left, y: b.top, r: b.right, b: b.bottom }; };
       /* what shows of the name: the column scrolls on a short screen (the keyboard up), and clips what's scrolled past */

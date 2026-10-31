@@ -32,6 +32,8 @@ const BASE = process.env.LIVE_BASE || `http://127.0.0.1:${server.address().port}
 let pass = 0;
 const fails = [];
 const ok = (c, name, d = "") => (c ? (pass += 1) : fails.push(`${name}${d ? ` -> ${d}` : ""}`));
+/* PR 108: Iko's first step at the opening asks the optional age range; most checks skip it (the adapt suite covers it) */
+const skipAge = async (p) => { try { await p.waitForSelector("#cs-age-skip", { timeout: 4000 }); await p.click("#cs-age-skip"); await p.waitForTimeout(150); } catch { /* no age step here */ } };
 const browser = await (process.env.IKOLEARN_BROWSER ? PW[process.env.IKOLEARN_BROWSER].launch() : chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" }));
 const HOOK = () => { let real; Object.defineProperty(window, "IkoCloudView", { configurable: true, get: () => real, set: (v) => { real = Object.assign({}, v, { create: (c, o) => { const view = v.create(c, o); (window.__views = window.__views || []).push({ id: c.id, view }); return view; } }); } }); };
 const nd = (rows) => rows.map((r) => JSON.stringify(r)).join("\n") + "\n";
@@ -257,7 +259,7 @@ for (const width of [390, 1280]) {
   {
     const { ctx, p, errs } = await open(width);
     await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
-    await p.click('.who-opt[data-who="self"]'); await p.fill("#name-in", "Maya"); await p.press("#name-in", "Enter");
+    await p.click('.who-opt[data-who="self"]'); await p.fill("#name-in", "Maya"); await p.press("#name-in", "Enter"); await skipAge(p);
     await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(900);
     /* PR 104: Iko asks the opening question himself (his speech beside him; no separate bubble) */
     ok((await p.isHidden("#iko-line")) && await p.evaluate(() => Boolean(document.querySelector("#cloud-start .cs-ask #iko"))), `${tag}: Iko welcomes and asks from the start`);
