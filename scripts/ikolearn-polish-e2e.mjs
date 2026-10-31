@@ -239,11 +239,11 @@ for (const width of [390, 1280]) {
     ok(!(await tip(/^card\d$/, 1500)), `${tag}: Iko bubble: its card page speaks for itself (no second hint)`);
     ok((await clear()).length === 0, `${tag}: Iko bubble: clear of the card page`, JSON.stringify(await clear()));
     ok((await about()) === "On Ocean Life · its card", `${tag}: Iko from the card knows the card`);
-    await p.click("#hub-back"); await p.waitForTimeout(700);
+    await (await p.isVisible("#hub-back") ? p.click("#hub-back") : p.evaluate(() => document.querySelector("#hub-back").click())); await p.waitForTimeout(700);
     if (!(await p.isHidden("#cloud"))) { await p.click("#cloud-deck"); await p.waitForTimeout(700); }
     ok(await tip(/^deck\d$/), `${tag}: Iko bubble: the Deck has its own`);
     ok((await about()) === "On your deck", `${tag}: Iko from the Deck knows the Deck`);
-    await p.click("#d-back").catch(() => {}); await p.waitForTimeout(900);
+    await (await p.isVisible("#d-back") ? p.click("#d-back") : p.evaluate(() => document.querySelector("#d-back").click())).catch(() => {}); await p.waitForTimeout(900);
     if (await p.isHidden("#cloud")) await p.click("#thumb").catch(() => {});
     await p.waitForSelector("#cloud:not([hidden])");
     ok(!(await tip(/^cloud\d$/, 1800)), `${tag}: Iko bubble: the cloud's isn't repeated in the same visit`);

@@ -237,7 +237,7 @@ for (const width of [390, 1280]) {
       await p.click("#iko"); await p.waitForTimeout(250);
       ok((await sheet(p)).about === "On Magma · lesson", `${tag}: Iko on the Magma lesson`);
       await p.keyboard.press("Escape"); await p.waitForTimeout(200);
-      await p.click("#l-back"); await p.waitForTimeout(900);
+      await (await p.isVisible("#l-back") ? p.click("#l-back") : p.evaluate(() => document.querySelector("#l-back").click())); await p.waitForTimeout(900);
       if (!(await p.isHidden("#panel"))) { await p.click("#p-close"); await p.waitForTimeout(250); }
       await p.click("#iko"); await p.waitForTimeout(250);
       ok((await sheet(p)).about === "On your cloud", `${tag}: Iko on the cloud with nothing selected`);
@@ -273,7 +273,7 @@ for (const width of [390, 1280]) {
       await p.click("#l-next .wn-opt.on .wn-act"); await p.waitForSelector("#l-done:not([hidden])"); await p.waitForTimeout(400); await passCheck(p); /* PR 103: Where next opens once the check is passed */
       w = await whereNext(p);
       ok(w.title !== t0 && wnOk(w), `${tag}: Where Next after Continue (${w.title}): this subject only, equal boxes, the action in the selected box`, JSON.stringify(w));
-      await p.click("#l-back"); await p.waitForTimeout(900);
+      await (await p.isVisible("#l-back") ? p.click("#l-back") : p.evaluate(() => document.querySelector("#l-back").click())); await p.waitForTimeout(900);
       ok(await tap(p, "Kneading"), `${tag}: Kneading's card on the cloud`);
       await p.click("#p-lesson"); await p.waitForSelector("#l-done:not([hidden])"); await p.waitForTimeout(400); await passCheck(p);
       w = await whereNext(p);

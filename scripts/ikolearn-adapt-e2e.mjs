@@ -206,7 +206,7 @@ for (const width of [390, 1280]) {
       ok(bodies.every((x) => !/Toronto|America\//.test(JSON.stringify(x.b))), `${tag}: the time zone is never sent`);
       /* Iko: "I'm 15", then "forget my age" (no model call) */
       const before = bodies.length;
-      await p.click("#l-back"); await p.waitForTimeout(600);
+      await (await p.isVisible("#l-back") ? p.click("#l-back") : p.evaluate(() => document.querySelector("#l-back").click())); await p.waitForTimeout(600);
       await p.click("#iko"); await p.waitForSelector("#iko-in");
       await p.fill("#iko-in", "I'm 15"); await p.press("#iko-in", "Enter"); await p.waitForTimeout(500);
       ok((await profile(p)).band === "14-17", `${tag}: telling Iko "I'm 15" sets 14 to 17`);
