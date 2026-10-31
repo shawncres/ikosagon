@@ -291,7 +291,7 @@
     opts = opts || {};
     var size = opts.size || "tile";
     var d = doc.createElement(opts.onOpen ? "button" : "div");
-    d.className = "gcard size-" + size + " stage-" + spec.stage + " tier-" + spec.tierKey + (spec.achieved ? " achieved" : "") + (spec.level ? " lv-" + Math.min(4, spec.level) : "");
+    d.className = "gcard size-" + size + " stage-" + spec.stage + " tier-" + spec.tierKey + (spec.achieved ? " achieved" : "") + (spec.inDeck ? " earned" : "") + (spec.level ? " lv-" + Math.min(4, spec.level) : "");
     d.dataset.tier = spec.tierKey;
     if (opts.onOpen) {
       d.type = "button";

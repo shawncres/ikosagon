@@ -1144,6 +1144,7 @@
     el.hNote.textContent = sp.level ? "Merged " + C.roman(sp.level) + ". It holds " + sp.corpus.length + " cards and rises a level with each new batch you finish."
       : sp.achieved ? "Achieved. This card stays in your deck for good. Finish a few of its branches and they merge into it."
       : sp.after.length ? "Best after " + D.listOf(sp.after) + ". You can explore it now; it completes once " + (sp.after.length === 1 ? "that's" : "those are") + " done."
+      : sp.inDeck && takeawayOf(state.lessonNode) ? "You learned: " + takeawayOf(state.lessonNode)
       : (sp.inDeck ? "In your deck. " : "") + (sp.tier < 2 && coreLeftNote(state.lessonNode) || ["Its first right answer inks it in.", "Finish it (\u201cI've got it\u201d or two right answers) to tint it.", "Three right answers and it's Achieved, in full colour."][sp.tier]);
     renderKids();
   }
@@ -1271,7 +1272,7 @@
     if (!nodeOf(id) || state.mode !== "lesson") return;
     var ph = lessonPhase(id), qs = hasQs(id);
     setPhase(ph === "learn" ? "learn" : ph === "passed" ? (qs ? "earn" : "learn") : "check");
-    el.lQuiz.hidden = ph === "learn";
+    el.lQuiz.hidden = ph === "learn" || ph === "passed"; /* PR 108: the reading or the check, never both; passed: the check is put away */
     el.lQuiz.classList.toggle("l-pane-on", ph !== "learn" && qs);
     el.lDone.hidden = !(ph === "learn" || ph === "passed");
     el.lCont.hidden = ph !== "learn";
@@ -1611,16 +1612,35 @@
    * prepared (0 calls), or, for a lesson saved before that, one call that writes it. The worked example and a targeted
    * question stay one tap away (one call each, kept), and chat is one tap away with the topic in focus.
    */
+  /*
+   * PR 108: what the learner actually learned, in one line, from the lesson they read (no call): its first explanation's
+   * first sentence (or the intro's). Kept with the lesson (state.lessons[id].take, additive) and shown on the earned card.
+   */
+  function takeawayOf(id) {
+    var les = state.lessons[id];
+    if (!les) return "";
+    if (les.take) return les.take;
+    var lp = les.text ? L.parse(les.text) : null;
+    if (!lp) return "";
+    var first = function (list) { for (var i = 0; i < (list || []).length; i++) if (typeof list[i] === "string" && list[i].trim()) return list[i]; return ""; };
+    var t = first(lp.explain) || (typeof lp.intro === "string" ? lp.intro : first(lp.intro)) || first(lp.steps);
+    t = String(t || "").replace(/`([^`]*)`/g, "$1").replace(/\s+/g, " ").trim();
+    var m = t.match(/^.{12,}?[.!?](?=\s|$)/);
+    t = (m ? m[0] : t).trim();
+    if (t.length > 160) t = t.slice(0, 157).replace(/\s+\S*$/, "") + "\u2026";
+    return t.length >= 8 ? t : "";
+  }
   function finishLesson(kind) {
     var id = state.lessonNode, n = nodeOf(id);
     if (!n) return;
     if (kind === "got" && lessonPhase(id) !== "passed") return; /* earned only once the check is passed (PR 103) */
     var keep = kind === "got" ? holdScroll() : null; /* PR 107: the earn never moves the page (it used to jump to the top on a phone) */
+    var wasIn = C.inDeck(state.cloud, id); /* PR 108: the card's flight plays only when it is first earned */
     var before = C.growthOf(state.cloud, id);
     var r = C.engage(state.cloud, id, kind);
     var kids = kind === "got" ? growChildren(id) : [];
     var note = growthNote(id, before);
-    if (state.lessons[id]) { if (kind === "got") state.lessons[id].got = Date.now(); else delete state.lessons[id].got; } /* kept with the lesson: shown again on return */
+    if (state.lessons[id]) { if (kind === "got") { state.lessons[id].got = Date.now(); var tk = takeawayOf(id); if (tk) state.lessons[id].take = tk; } else delete state.lessons[id].got; } /* kept with the lesson: shown again on return; PR 108: its one-line takeaway too */
     if (C.isDone(state.cloud, id) && state.cloud.active === id) state.cloud.active = null;
     save();
     settleMerges();
@@ -1646,8 +1666,8 @@
       /* the pressed button is gone now: the focus moves to the result line, without scrolling */
       el.lStatus.tabIndex = -1; try { el.lStatus.focus({ preventScroll: true }); } catch { /* old browsers: leave it */ }
       if (keep) keep();
-      flyToDeck(id);
-      if (C.inDeck(state.cloud, id)) ikoReact("earn");
+      if (!wasIn && C.inDeck(state.cloud, id)) { flyToDeck(id); ikoReact("earn"); }
+      else renderDeckButton();
       if (keep) { keep(); requestAnimationFrame(keep); setTimeout(keep, 1000); } /* after the redraws and the card's flight too */
     }
   }
@@ -3100,7 +3120,7 @@
   function topIds() { return R ? R.top(state.cloud).map(function (r) { return r.id; }) : []; }
   function renderDeckButton() {
     var n = (state.cloud.deck || []).length;
-    el.deckBtn.hidden = !n;
+    el.deckBtn.hidden = true; /* PR 108: the mini-Deck's icon and count say it (with its aria-label); no "Your deck · n" beside it */
     el.deckBtn.textContent = "Your deck · " + n;
     if (el.cloudDeck) renderHomeNav();
     renderMiniDeck();
@@ -3356,7 +3376,8 @@
     el.hubState.appendChild(mk("span", null, sp.tierName + (sp.inDeck ? " · in your deck" : " · not in your deck yet")));
     if (sp.after.length) el.hubState.appendChild(mk("span", "after", "Best after " + D.listOf(sp.after)));
     if (sp.absorbedInto && nodeOf(sp.absorbedInto)) { var mi = mk("span", null, "Merged into "); mi.appendChild(linkBtn(nodeOf(sp.absorbedInto).label, function () { openHub(sp.absorbedInto, null, id); })); el.hubState.appendChild(mi); }
-    el.hubNote.textContent = sp.blurb || (n && n.ghost ? "A suggested branch you haven't opened yet." : "");
+    var took = sp.inDeck && takeawayOf(id);
+    el.hubNote.textContent = took ? "You learned: " + took : sp.blurb || (n && n.ghost ? "A suggested branch you haven't opened yet." : ""); /* PR 108: the key idea, not a generic line */
     el.hubLesson.hidden = !n;
     el.hubLesson.textContent = state.lessons[id] ? (cv.state === "covered" ? "Review the lesson" : "Continue the lesson") : "Start the lesson";
     var tst = n && P.testState(state.cloud, id);

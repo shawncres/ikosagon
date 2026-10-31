@@ -860,3 +860,8 @@ fieldset.q { min-width: 0; }
 /* PR 108: the age range as Iko's first, skippable step at the opening (in his speech, where the question goes) */
 .cs-ages .age-opts { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 6px; margin: 8px 0 0; }
 .cs-ages .cs-age-skip { min-height: 34px; padding: 0 8px; font-size: 13px; color: var(--soft); }
+/* PR 108: the reading or the check, never both on screen */
+.l-main[data-phase="check"] #l-body, .l-main[data-phase="missed"] #l-body, .l-main[data-phase="check"] .l-read, .l-main[data-phase="missed"] .l-read { display: none; }
+/* PR 108: an earned card is a little more vivid (still sepia) */
+.gcard.earned { filter: saturate(1.22) contrast(1.04); }
+html[data-theme="dark"] .gcard.earned { filter: saturate(1.3) brightness(1.06); }
