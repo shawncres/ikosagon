@@ -882,3 +882,17 @@ html[data-theme="dark"] .gcard.earned { filter: saturate(1.3) brightness(1.06); 
 .q-again { margin: 0 0 14px; }
 /* PR 109: in light mode the fog is multiplied into the parchment, so its colour reads on paper (dark mode as it was) */
 html:not([data-theme="dark"]) .cloud-fog { mix-blend-mode: multiply; }
+
+/* PR 109 (t297u): the age step on a desktop: room to breathe, centred under the name; the question, then the bands on one
+   row, then Skip as a quiet link. Phones keep their layout. */
+@media (min-width: 700px) and (pointer: fine) {
+  .cloud-start.age-step { width: min(580px, calc(100% - 48px)); }
+  .cloud-start.age-step .cs-ask { padding-right: 56px; } /* as wide as Iko on the left: the bubble sits centred under the name */
+  .cloud-start.age-step .cs-ask .say { flex: 1 1 auto; padding: 14px 24px 12px; text-align: center; }
+  .cloud-start.age-step .cs-hi { margin: 0 0 6px; }
+  .cloud-start.age-step .cs-q { line-height: 1.4; text-wrap: balance; }
+  .cloud-start.age-step .cs-ages .age-opts { display: grid; grid-template-columns: repeat(5, auto); justify-content: center; gap: 12px 10px; margin: 18px 0 0; }
+  .cloud-start.age-step .cs-ages .age-opt { padding: 4px 14px; }
+  .cloud-start.age-step .cs-ages .cs-age-skip { grid-column: 1 / -1; justify-self: center; min-height: 30px; padding: 0 10px; font-size: 13.5px; color: var(--soft); text-decoration-color: rgba(var(--ink-rgb), .3); }
+  .cloud-start.age-step .cs-ages .cs-age-skip:hover { color: var(--ink); text-decoration-color: currentColor; }
+}
