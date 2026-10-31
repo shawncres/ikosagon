@@ -1046,7 +1046,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     const home = fs.readFileSync("app/page.tsx", "utf8"), projTs = fs.readFileSync("lib/projects.ts", "utf8");
     ok(/FEATURED_LEAD_SLUG = "ikolearn"/.test(projTs) && /featured:\s*true/.test(fs.readFileSync("content/projects/ikoagent.mdx", "utf8")), "homepage: IkoLearn is the featured lead; IkoAgent stays featured in the grid");
     ok(/Featured app/.test(home) && /<h2[^>]*>IkoLearn<\/h2>/.test(home) && /href="\/ikolearn"/.test(home) && /href="\/projects\/ikolearn"/.test(home) && /src="\/projects\/ikolearn\/cover\.png"/.test(home), "homepage: the featured section links to /ikolearn and the project page, with the cover");
-    ok(/A thoughtful learning harness for anyone curious, at any age\. We at Ikosagon/.test(home) && !/Lead product/.test(home) && !/\b(kids?|children|age \d)/i.test(home.slice(home.indexOf("Featured app"), home.indexOf("Featured Projects"))), "homepage: the universal wording, in the we-at-Ikosagon voice");
+    ok(/A thoughtful learning harness for anyone curious, at any age\. IkoLearn is a place where you can\s+start learning/.test(home) && !/We at Ikosagon/.test(home.slice(home.indexOf("Featured app"), home.indexOf("Featured Projects"))) && !/Lead product/.test(home) && !/\b(kids?|children|age \d)/i.test(home.slice(home.indexOf("Featured app"), home.indexOf("Featured Projects"))), "homepage: the universal wording, in a softer voice (PR 107: no \"We at Ikosagon\" in IkoLearn's copy)");
     ok(!/Maya|Minecraft|Redstone/.test(mdx), "project page copy names no sample learner or niche topic");
     const imgs = [...mdx.matchAll(/!\[([^\]]*)\]\((\/projects\/ikolearn\/[^)]+)\)/g)];
     ok(imgs.length >= 4 && imgs.every(([, alt, src]) => alt.length > 30 && fs.existsSync("public" + src)), "gallery images exist with descriptive alt text");
@@ -1079,7 +1079,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(!/We at Ikosagon/.test(html + fs.readFileSync("public/ikolearn/privacy.html", "utf8")) && /IkoLearn is a place where you can start learning about as many or as few things as you want\. Iko will help you/.test(html), "softer onboarding words (no 'We at Ikosagon' inside IkoLearn)");
   ok(!/iko-foot[^\n]*data-sup/.test(html) && /class="cloud-foot fine"[^\n]*data-sup/.test(html) && /\.cloud-foot \.sup \{ display: none; \}/.test(css), "support links: out of Iko's sheet, in the cloud's footer (wide screens) and the conversation's fine print");
   ok(/onGesture: moved/.test(app) && /opts\.onGesture\(g\.type === "pinch" \? "zoom" : "drag"\)/.test(fs.readFileSync("public/ikolearn/cloud-view.js", "utf8")) && /localStorage\.setItem\("ikolearn-moves"/.test(app) && /m\.x \|\| \(m\.drag && m\.zoom\)/.test(app), "the movement line: tap to hide, or gone once a drag and a zoom were tried (ikolearn-moves, this device)");
-  ok(/\.zoom \{ position: absolute;[^}]*right: calc\(12px \+ env\(safe-area-inset-right\)\)/.test(css) && /<\/nav>\s*<\/div>\s*<span class="zoom">/.test(html), "zoom and Recentre: low on the right of the cloud, out of the header");
+  ok(/\.zoom \{ position: absolute;[^}]*right: calc\(12px \+ env\(safe-area-inset-right\)\)/.test(css) && /<\/nav>\s*<span class="top-r">[\s\S]*?<\/span>\s*<\/div>\s*<span class="zoom">/.test(html), "zoom and Recentre: low on the right of the cloud, out of the header");
   ok(/kind === "earn" \|\| reactWanted\(n\)/.test(app) && /var GAP = 90000;/.test(app) && /x\.n && \(n >= NUDGE_MAX \|\| nudged\)/.test(app), "guidance on every stage (a pause between repeats, never the same line twice), every card earned acknowledged, nudges still light");
   /* PR 105 */
   ok(/var it = localIntent\(text\);\s*if \(it\) \{ doIntent\(text, it\); return; \}/.test(app) && /TH\.set\(it\.mode\)/.test(app) && /role: "del", local: true/.test(app), "Iko's controls: light/dark and delete are recognised on the device before any call");
@@ -1518,7 +1518,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     ok(again.v === 9 && again.pr.length === raw.pr.length && again.pr[0] === "" && again.pr[1] === "" && again.pr[2] === 0 && again.pr[8] === 0 && !/Ontario|10-12/.test(C.serialize(loaded)), "it saves back (v9) with the v8 profile shape with the age and region slots empty");
     ok(C.serialize(C.deserialize(C.serialize(loaded))) === C.serialize(loaded), "and round-trips stably after that");
     const app2 = fs.readFileSync("public/ikolearn/app.js", "utf8"), orch2 = fs.readFileSync("public/ikolearn/orchestrator.js", "utf8"), rank2 = fs.readFileSync("public/ikolearn/rank.js", "utf8");
-    ok(!/\.age\b|\.region\b|regionAuto|deviceRegion|regionFrom|AGE_BANDS|AGE_LABELS|changedAt/.test(app2 + orch2 + rank2), "no age or region code left in the app, orchestrator or ranking");
+    ok(!/\.age\b(?!-)|\.region\b|regionAuto|deviceRegion|regionFrom|AGE_BANDS|AGE_LABELS|changedAt/.test(app2 + orch2 + rank2), "no old age or region profile code left in the app, orchestrator or ranking (PR 107's optional band is its own, checked below)");
   }
 
   // no age or region in ANY prompt or payload, even when an older client still sends them
@@ -1710,7 +1710,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   // UI wiring for the procedural flow
   const priv = fs.readFileSync("public/ikolearn/privacy.html", "utf8");
   ok(!/id="you"|you-age|you-region|you-link|About you/.test(html), "no About-you age or region fields remain");
-  ok(/No age, no location/.test(priv) && /never asks how old you are or where you live/.test(priv) && !/age band like|Ontario-ish|About you/.test(priv), "privacy page: no age, no location, and old values are cleared");
+  ok(/Your age range, if you choose\./.test(priv) && /prefer not to say/.test(priv) && /No location\./.test(priv) && /never asks where you live/.test(priv) && /never sent/.test(priv) && !/age band like|Ontario-ish|About you/.test(priv), "privacy page (PR 107): the optional age range and what it is for; no location (the time zone and language stay on the device)");
   ok(/"\/create"/.test(app) && /P\.createRequest\(/.test(app) && /C\.applyCreate\(/.test(app) && /cloudBuilder/.test(app) && /mode: "notice"/.test(app), "the app builds from one creation call, visibly");
   ok(/P\.onboarding\(/.test(app) && /askTile/.test(app) && /answerReask/.test(app), "onboarding questions and a light re-ask");
   {
@@ -1728,7 +1728,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     ok(/C\.setProfile\(state\.cloud, \{ interests: names\.slice\(0, 5\) \}\)/.test(bc), "the first parents the model made become the profile's interests (procedural, not a list)");
     // the scan: no hardcoded interest/topic list feeds discovery (onboarding, re-ask, suggestions, Draw, creation)
     const disc = { "orchestrator.js": fs.readFileSync("public/ikolearn/orchestrator.js", "utf8"), "app.js": app, "deck.js": fs.readFileSync("public/ikolearn/deck.js", "utf8"), "rank.js": fs.readFileSync("public/ikolearn/rank.js", "utf8") };
-    const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
+    const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1").replace(/var (AREA|BAND)_IDEAS = \{[\s\S]*?\n  \};/g, ""); /* PR 107: the starter table, Shawn's ask (checked on its own below) */
     const lists = [];
     for (const [f, src] of Object.entries(disc)) for (const m of strip(src).matchAll(/\[\s*("[^"\n]{2,30}"\s*,\s*){2,}"[^"\n]{2,30}"\s*\]/g)) if (/"[A-Z][a-z]+( [&A-Za-z]+)*"\s*,\s*"[A-Z][a-z]+/.test(m[0]) && !/"(Sketch|New|Warming up|Its first)/.test(m[0])) lists.push(f + ": " + m[0].slice(0, 60));
     ok(lists.length === 0, "scan: no hardcoded topic list in discovery code (orchestrator, app, deck, rank)" + (lists.length ? " -> " + lists.join(" | ") : ""));
@@ -2620,7 +2620,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     const a = await examplesFor(ENV, st, ef), b = await examplesFor(ENV, st, ef);
     ok(ef.calls.length === 1 && a.body.growth.join() === GROW.join() && b.body.growth.join() === GROW.join() && a.headers === EXAMPLES_CACHE, "examplesFor: one call serves both lists, cached the same way (0 extra calls)");
   }
-  ok(/var list = state\.ex\.status !== "ok" \? \[\] : grow \? state\.ex\.growth : P\.examples\(/.test(app) && /state\.ex\.growth = list\.length \? clean\(j\.growth, 12\) : \[\];/.test(app) && /m\.ex === "growth" \? "growth" : ""/.test(app), "app: the second question shows the growth set (no list of its own), More cycles it on the device");
+  ok(/var list = state\.ex\.status !== "ok" \? \[\] : grow \? state\.ex\.growth : P\.mixStarters\(state\.cloud, P\.examples\(/.test(app) && /state\.ex\.growth = list\.length \? clean\(j\.growth, 12\) : \[\];/.test(app) && /m\.ex === "growth" \? "growth" : ""/.test(app), "app: the second question shows the growth set (no list of its own), More cycles it on the device");
 }
 
 /* ================= flow: "I've got it", "Still tricky", Where Next, cancel on navigation, the hedged fallback ================= */
@@ -3820,6 +3820,54 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/function reactWanted\(n\) \{ return n <= REACT_EVERY\[0\] \|\| \(n <= REACT_EVERY\[1\] \? n % 3 === 0 : n % 8 === 0\); \}/.test(app), "Iko: reactions come less often over time");
   ok(/var IKO_MEM = "ikolearn-iko"/.test(app) && !/ikolearn\.v1\.iko/.test(app), "Iko: what it has said is kept on this device under its own key (outside the cloud)");
   ok(/@keyframes iko-blink/.test(css) && !/body\.iko-on #chat \{[^}]*padding-bottom/.test(css) && !/body\.iko-on::after/.test(css) && /id="thumb" class="thumb"/.test(html), "Iko: blinks; no strip or room at the bottom of the pages; the header keeps its cloud circle (PR 104)");
+}
+
+// PR 107: the optional age band, code blocks, starter ideas, Iko's lines, the earn scroll, the fog, the widgets, the controls
+{
+  const appS = fs.readFileSync("public/ikolearn/app.js", "utf8"), cssS = fs.readFileSync("public/ikolearn/styles.css", "utf8"), htmlS = fs.readFileSync("public/ikolearn/index.html", "utf8"), cvS = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8"), prS = fs.readFileSync("lib/ikolearn/prompts.ts", "utf8"), svS = fs.readFileSync("lib/ikolearn/service.ts", "utf8");
+  /* 1. the band: optional, kept in the profile (v9, additive), sent only with teaching calls, never gating a topic */
+  const cb = C.create("Ada", T0);
+  ok(C.bandOf(cb) === "" && C.serialize(cb) === C.serialize(C.deserialize(C.serialize(cb))) && JSON.parse(C.serialize(cb)).pr.length === 10, "band: none by default; the profile row keeps its old length until one is set (additive)");
+  C.setProfile(cb, { band: "10-13" }, T0);
+  const cbr = C.deserialize(C.serialize(cb));
+  ok(C.bandOf(cbr) === "10-13" && JSON.parse(C.serialize(cb)).v === 9, "band: kept with the learner's cloud and read back (storage stays v9)");
+  C.setProfile(cb, { band: "none" }, T0); ok(C.bandOf(cb) === "", "band: \"prefer not to say\" is the same as none to the prompts");
+  C.setProfile(cb, { band: "<b>12" }, T0); ok(C.BANDS.indexOf(C.profileOf(cb).band) >= 0 || C.profileOf(cb).band === "", "band: only the five known values are kept");
+  const B0 = parseLearnInput({ mode: "notice", name: "Sam", focus: "Fractions", messages: [], band: "10-13" }), Bx = parseLearnInput({ mode: "notice", name: "Sam", focus: "Fractions", messages: [], band: "Ontario" });
+  ok(B0.band === "10-13" && !Bx.band, "band: the API keeps a known band only");
+  const lsB = lessonSystem(B0), lsN = lessonSystem({ ...B0, band: undefined });
+  ok(/teach the topic fully, whatever it is, and never mention their age/.test(lsB) && !/never mention their age/.test(lsN) && /never mention their age/.test(clarifySystem({ ...B0, mode: "clarify", clarify: "simpler" })) && /never mention their age/.test(testSystem({ ...B0, material: [{ label: "Sets", line: "One of each." }] })), "band: it shapes the lesson, clarify and test prompts only (never which topics)");
+  ok(!/never mention their age/.test(companionSystem(B0)) && !/never mention their age/.test(createSystem({ ...B0, kind: "start", about: "volcanoes" })) && !/never mention their age/.test(noticeSystem(B0)), "band: the chat, notice and creation prompts never see it");
+  ok(/function withBand\(cloud, ctx\)/.test(fs.readFileSync("public/ikolearn/orchestrator.js", "utf8")) && /P\.withBand\(state\.cloud,/.test(appS) && !/band:/.test(appS.slice(appS.indexOf("function basePayload("), appS.indexOf("function basePayload(") + 1200)), "band: added by the lesson context, clarify and the test (not the base payload every call shares)");
+  ok(/function ageIntent\(t\)/.test(appS) && /id="age-link"/.test(htmlS) && /id="cs-age-b"/.test(htmlS), "band: asked lightly at the start, changed through Iko or the quiet link");
+  /* 2. code: fenced blocks parse to code items; rendered as text (no innerHTML); prompts and parsers carry it */
+  const lc = L.parse("INTRO: A loop.\nEXPLAIN: Look:\n```python\nfor i in range(3):\n    print(i)\n```\nSTEP: Run `loop()` once.");
+  const item = [].concat(lc.explain, lc.steps, lc.example || []).find((x) => x && typeof x === "object" && "code" in x);
+  ok(item && item.lang === "python" && item.code === "for i in range(3):\n    print(i)", "code: a fenced block parses whole, indentation kept", JSON.stringify(lc));
+  ok(!/innerHTML/.test(fs.readFileSync("public/ikolearn/lesson.js", "utf8")) && /function codeBlock\(doc, code, lang\)/.test(fs.readFileSync("public/ikolearn/lesson.js", "utf8")), "code: built with text nodes only (no innerHTML)");
+  ok(/pre\.code \{[^}]*white-space: pre[^}]*\}/.test(cssS) || (/pre\.code \{/.test(cssS) && /white-space: pre/.test(cssS) && /overflow-x: auto/.test(cssS)), "code: a quiet block that keeps its lines and scrolls sideways");
+  const pq = parseQuestions([{ q: "What prints?", code: "print(1)\n  print(2)", options: ["1", "2", "3"], answer: 0 }, { q: "Plain?", options: ["a", "b", "c"], answer: 1 }]);
+  ok(pq.length === 2 && pq[0].code === "print(1)\n  print(2)" && !("code" in pq[1]), "code: a question may carry a code field (kept as written)");
+  ok(/keepCode/.test(svS) && /CODE_RULE/.test(prS) && /MAX_CODE = \{ chars: 600, lines: 14 \}/.test(prS), "code: the lesson stream keeps its backticks; capped in size");
+  /* 3. starters: the time zone and language only, mixed in while the cloud is small */
+  ok(P.areaOf("America/Toronto", "en-CA") === "na" && P.areaOf("Asia/Tokyo", "ja-JP") === "eastasia" && P.areaOf("Europe/Paris", "fr-FR") === "europe" && P.areaOf("", "") === "", "starters: a coarse area from the time zone and language");
+  const small = C.create("Ada", T0), mixed = P.mixStarters(small, ["Birdsong", "Rain"], "na");
+  ok(mixed[0] === "Birdsong" && mixed.includes("Northern lights") && mixed.length > 2, "starters: a few local ideas mixed between the usual ones", JSON.stringify(mixed));
+  ok(!/geolocation/.test(appS) && /function coarseArea\(\)/.test(appS) && /Intl\.DateTimeFormat\(\)\.resolvedOptions\(\)\.timeZone/.test(appS), "starters: no geolocation; the area is worked out on the device and not kept");
+  /* 4. Iko's lines last by length; the reassurance's follow-up waits for its dismissal */
+  ok(/function readMs\(t\)/.test(appS) && /iko\.after/.test(appS), "Iko: lines stay by length; the follow-up comes after the tap");
+  /* 5. earning: no scrollIntoView on the card's flight; the position is held */
+  const fly = appS.slice(appS.indexOf("function flyToDeck("), appS.indexOf("function flyToDeck(") + 1500);
+  ok(!/scrollIntoView/.test(fly) && /function holdScroll\(\)/.test(appS) && /Scroll down to pick another topic\./.test(appS), "earn: the flight never scrolls; the page is held; Iko points down when needed");
+  /* 6. the fog: its own small canvas under the cloud's, never hit, throttled, still with reduced motion */
+  ok(/function drawFog\(/.test(cvS) && /className = "cloud-fog"/.test(cvS) && /\.cloud-fog \{[^}]*pointer-events: none/.test(cssS) && /FOG = \{ scale: 6, every: 110/.test(cvS), "fog: a small canvas under the cloud's, not a target, redrawn at most ~9 times a second");
+  /* 7. widgets; 8. controls */
+  ok(/id="cloud-ret"/.test(htmlS) && /id="bar-ret"/.test(htmlS) && /function renderRet\(\)/.test(appS) && /C\.setLast\(state\.cloud, id, kind/.test(appS), "widgets: Return to <topic>, from the last lesson or card (kept in the profile)");
+  const cl = C.create("Ada", T0); C.applyTopics(cl, [{ name: "Magma", parent: "Volcanoes", signal: "explored", chain: ["Volcanoes"] }], T0);
+  const mid = cl.order.find((x) => cl.nodes[x].label === "Magma"); C.setLast(cl, mid, "card", T0 + 5);
+  const clr = C.deserialize(C.serialize(cl));
+  ok(C.lastOf(clr) && C.lastOf(clr).id === mid && C.lastOf(clr).kind === "card" && JSON.parse(C.serialize(cl)).v === 9, "widgets: the last-lesson pointer round-trips (v9, additive)");
+  ok(/@media \(pointer: coarse\), \(max-width: 699px\) \{[\s\S]*?\.zoom #zin, \.zoom #zout \{ display: none; \}/.test(cssS) && /class="zr-ico"/.test(htmlS) && /opts\.onGesture\("turn"\)/.test(cvS), "controls: a phone gets one small icon (it recentres); a twist counts as a gesture tried");
 }
 
 if (fails.length) {
