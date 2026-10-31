@@ -2732,7 +2732,7 @@
    * for a few seconds on the first two visits only, and later just the pebble. Markup has a face group (eyes, mouth) so
    * a light blink or an occasional tip can be added later; reduced motion keeps it still.
    */
-  var iko = { open: false, ctx: null, from: 0, lineT: 0, tipKey: "", tipT: 0, pendingReact: null };
+  var iko = { open: false, ctx: null, from: 0, lineT: 0, tipKey: "", tipT: 0, pendingReact: null, quietAt: Date.now(), poolT: 0, poolN: 0, poolLast: "" };
   function openAsk() { return state.thread.filter(function (m) { return m.role === "ask" && !m.done && m.open && askHandlers[m.id]; })[0] || null; }
   /* what is on screen: { view, step?, topic?, id? } */
   function screenCtx() {
@@ -2897,9 +2897,10 @@
     el.ikoLine.textContent = t || "";
     el.ikoLine.hidden = !t;
     if (t) el.ikoLine.setAttribute("aria-label", "Dismiss hint: " + t);
-    el.ikoLine.removeAttribute("data-tip"); el.ikoLine.removeAttribute("data-react"); el.ikoLine.removeAttribute("data-say");
+    el.ikoLine.removeAttribute("data-tip"); el.ikoLine.removeAttribute("data-react"); el.ikoLine.removeAttribute("data-say"); el.ikoLine.removeAttribute("data-pool");
+    iko.quietAt = Date.now(); poolLater(); /* PR 108: a silence starts (or is reset) here */
     if (t) clearTimeout(iko.tipT);
-    if (t && ms !== 0) iko.lineT = setTimeout(function () { el.ikoLine.hidden = true; placeIko(); var nx = iko.after; iko.after = null; if (nx) nx(); else tipAgain(); }, ms || readMs(t)); /* 0: it stays (a hint) */
+    if (t && ms !== 0) iko.lineT = setTimeout(function () { el.ikoLine.hidden = true; iko.quietAt = Date.now(); placeIko(); var nx = iko.after; iko.after = null; if (nx) nx(); else tipAgain(); }, ms || readMs(t)); /* 0: it stays (a hint) */
     placeIko();
   }
   /* PR 107: long enough to read, by length: about 65 ms a character, 7 to 20 s (a line that guides stays until tapped) */
@@ -3048,6 +3049,50 @@
     try { sessionStorage.setItem(CUES, JSON.stringify(d)); } catch { /* ignore */ }
     tip.m.t[tip.id] = (tip.m.t[tip.id] || 0) + 1; tip.m.last = tip.id; ikoKeep(tip.m);
     tipLine(tip.text, tip.id);
+  }
+  /*
+   * PR 108: fewer long silences. After POOL.gapMs with nothing said on a screen Iko is on (not mid-check, not while his
+   * sheet is open), one short line from a local pool: a deck reminder, how to find or add topics, an idea right beside
+   * something already learned or a popular starter for the learner's age band and coarse area (both taken with a tap on
+   * "Yes"), or what this screen is for. Never the same line twice in a row, at most POOL.max a visit, tap to dismiss.
+   * 0 calls: all from local templates and what is already on the device (a "Yes" asks Iko, like typing it would).
+   */
+  var POOL = { gapMs: 45000, max: 8 };
+  function poolLines(key) {
+    var out = [], n = deckN(), k = C.subjects(state.cloud).length, cloudish = /^(cloud|home|topic)$/.test(key);
+    if (n >= 1) out.push({ id: "deck", t: n + (n === 1 ? " card" : " cards") + " in your deck. Each one keeps growing when you go back to it." });
+    if (n >= 3) out.push({ id: "deck2", t: "Look at that deck go. Nice steady work." });
+    out.push({ id: "tell", t: "Into something new lately? {Tap} me and say it, and I'll grow a branch for it." });
+    if (cloudish) out.push({ id: "find", t: "The faint nodes are ideas waiting. {Tap} one to start it." });
+    if (cloudish && k >= 1) {
+      var nb = topIds().map(nodeOf).filter(function (x) { return x && x.parent && nodeOf(x.parent) && !C.inDeck(state.cloud, x.id); })[0];
+      if (nb) out.push({ id: "near:" + nb.id, t: "Maybe " + nb.label + " next? It's right beside " + nodeOf(nb.parent).label + ".", yes: function () { openPanel(nb.id); } });
+    }
+    var pop = (P.mixStarters ? P.mixStarters(state.cloud, [], coarseArea()) : []).filter(function (x) { return typeof x === "string" && x; });
+    if (pop.length) { var pt = pop[Math.floor(Math.random() * Math.min(4, pop.length))]; out.push({ id: "pop:" + pt, t: "Lots of learners" + (C.bandOf(state.cloud) ? " your age" : " near you") + " enjoy " + pt + ". Want it in your cloud?", yes: function () { openIko(); el.ikoIn.value = "I'm curious about " + pt; ikoSubmit(); } }); }
+    var ab = ABOUT[cloudish ? "cloud" : key === "deck" ? "deck" : /^(learn|next)$/.test(key) ? "lesson" : ""];
+    if (ab) out.push({ id: "about:" + key, t: ab.t });
+    if (key === "learn") out.push({ id: "learn", t: "Take your time with this one. Continue when it clicks." });
+    if (key === "next") out.push({ id: "next", t: "Good going. Another topic is waiting just below." });
+    return out;
+  }
+  function poolLater() { if (!POOL) return; clearTimeout(iko.poolT); iko.poolT = setTimeout(poolSay, Math.max(1000, POOL.gapMs - (Date.now() - iko.quietAt))); } /* (not before the pool exists) */
+  function poolSay() {
+    var key = iko.tipKey;
+    if (!el.ikoLine.hidden || Date.now() - iko.quietAt < POOL.gapMs - 50) { poolLater(); return; }
+    if (iko.poolN >= POOL.max || iko.open || el.ikoWrap.hidden || intakeOn || !state.cloud || state.busy || !key || /^(check|missed|test)$/.test(key) || (document.hidden)) { iko.quietAt = Date.now(); poolLater(); return; }
+    var m = ikoMem(), list = poolLines(key).filter(function (x) { return x.id !== iko.poolLast && x.id !== m.last; });
+    if (!list.length) { iko.quietAt = Date.now(); poolLater(); return; }
+    var pick = list[Math.floor(Math.random() * list.length)];
+    iko.poolN += 1; iko.poolLast = pick.id; m.last = pick.id; ikoKeep(m);
+    ikoLine(tipWords(pick.t));
+    el.ikoLine.setAttribute("data-pool", pick.id);
+    if (pick.yes) {
+      var y = mk("button", "iko-yes", "Yes");
+      y.type = "button"; y.setAttribute("aria-label", "Yes: " + pick.t);
+      y.addEventListener("click", function (e) { e.stopPropagation(); ikoLine(""); pick.yes(); });
+      el.ikoLine.appendChild(document.createTextNode(" ")); el.ikoLine.appendChild(y);
+    }
   }
   /*
    * Short reactions to real moments (PR 103): the cloud grows, a card is earned, a check is passed. Every time at first, then
