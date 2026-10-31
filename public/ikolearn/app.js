@@ -1623,6 +1623,7 @@
     var id = state.lessonNode, n = nodeOf(id);
     if (!n) return;
     if (kind === "got" && lessonPhase(id) !== "passed") return; /* earned only once the check is passed (PR 103) */
+    var keep = kind === "got" ? holdScroll() : null; /* PR 107: the earn never moves the page (it used to jump to the top on a phone) */
     var before = C.growthOf(state.cloud, id);
     var r = C.engage(state.cloud, id, kind);
     var kids = kind === "got" ? growChildren(id) : [];
@@ -1649,7 +1650,28 @@
     offerTest(id);
     ikoActs();
     applyPhase();
-    if (kind === "got") { flyToDeck(id); if (C.inDeck(state.cloud, id)) ikoReact("earn"); } /* saved above: the flight is only a picture of it */
+    if (kind === "got") {
+      /* the pressed button is gone now: the focus moves to the result line, without scrolling */
+      el.lStatus.tabIndex = -1; try { el.lStatus.focus({ preventScroll: true }); } catch { /* old browsers: leave it */ }
+      if (keep) keep();
+      flyToDeck(id);
+      if (C.inDeck(state.cloud, id)) ikoReact("earn");
+      if (keep) { keep(); requestAnimationFrame(keep); setTimeout(keep, 1000); } /* after the redraws and the card's flight too */
+    }
+  }
+  /*
+   * PR 107: the page's scroll position, put back if anything moved it. The cause of the jump on phones: the card flew from
+   * its tray at the top of the lesson, and an off-screen card was scrolled into view first (scrollIntoView), which took
+   * the page back to the top. Now the flight starts from where the learner is, and the position is kept regardless.
+   */
+  function holdScroll() {
+    var se = document.scrollingElement || document.documentElement, y = se.scrollTop, at = Date.now();
+    return function () { if (Date.now() - at < 2500 && Math.abs(se.scrollTop - y) > 2) se.scrollTop = y; };
+  }
+  /* the next step (the fork, Where next) is below the fold: Iko says so with the earn */
+  function nextBelow() {
+    var t = [el.lFork, el.lNext].filter(function (x) { return x && x.firstElementChild && x.getClientRects().length; })[0];
+    return Boolean(t) && t.getBoundingClientRect().top > window.innerHeight - 40;
   }
 
   /* ---------- "Still tricky": prepared clarifications, inline ---------- */
@@ -3008,6 +3030,7 @@
     var list = REACT[kind] || [];
     if (!list.length || !(kind === "earn" || reactWanted(n)) || (kind === "start" && n > 1)) return false; /* a card earned: always a light word (PR 106) */
     var t = list[(n - 1) % list.length];
+    if (kind === "earn" && nextBelow()) t += " Scroll down to pick another topic.";
     if (!el.ikoLine.hidden && !el.ikoLine.hasAttribute("data-tip") && !el.ikoLine.hasAttribute("data-react")) return false; /* Iko is saying something that matters (the grow question): no reaction over it */
     if (iko.open || el.ikoWrap.hidden) { iko.pendingReact = t; return true; } /* said once the pebble is back */
     var held = !el.ikoLine.hidden && el.ikoLine.getAttribute("data-tip"), was = { t: el.ikoLine.textContent, k: iko.tipKey };
@@ -3121,14 +3144,17 @@
     var to = el.miniDeck && el.miniDeck.getClientRects().length ? el.miniDeck : null;
     if (!state.flying) return;
     var a = card.getBoundingClientRect();
-    /* earned at the end of a check, the card can be scrolled out of view: bring it back so its flight is seen (PR 103) */
-    if (a.bottom < 0 || a.top > window.innerHeight) { card.scrollIntoView({ block: "nearest" }); a = card.getBoundingClientRect(); }
+    /* PR 107: never scroll for it (that was the jump to the top on phones): off screen, it flies in from the button instead */
+    if (a.bottom < 0 || a.top > window.innerHeight) {
+      var g = el.lStatus.getBoundingClientRect(), cw = Math.min(a.width, 120), ch = a.height * cw / (a.width || 1);
+      a = { left: Math.max(8, g.left), top: Math.max(8, Math.min(window.innerHeight - ch - 8, g.top - ch / 2)), width: cw, height: ch, bottom: g.top + ch / 2 };
+    }
     var b = to ? to.getBoundingClientRect() : null;
     if (!b || !a.width || !b.width || a.bottom < 0 || a.top > window.innerHeight) { state.flying = false; pulseDeck(); return; }
     var ghost = card.cloneNode(true);
     ghost.removeAttribute("id"); [].forEach.call(ghost.querySelectorAll("[id]"), function (x) { x.removeAttribute("id"); });
     ghost.classList.add("fly-card"); ghost.setAttribute("aria-hidden", "true");
-    ghost.style.cssText = "position:fixed;left:" + a.left + "px;top:" + a.top + "px;width:" + a.width + "px;height:" + a.height + "px;margin:0;z-index:40;pointer-events:none;transform-origin:0 0";
+    ghost.style.cssText = "position:fixed;left:" + a.left + "px;top:" + a.top + "px;width:" + a.width + "px;height:" + a.height + "px;margin:0;z-index:40;pointer-events:none;transform-origin:0 0;overflow:hidden";
     document.body.appendChild(ghost);
     var k = Math.min(b.width / a.width, b.height / a.height) * 0.9, dx = b.left + b.width / 2 - (a.left + (a.width * k) / 2), dy = b.top + b.height / 2 - (a.top + (a.height * k) / 2);
     state.flying = true;
