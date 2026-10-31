@@ -78,7 +78,7 @@ async function run(width) {
     return done(503, JSON.stringify({ ok: false, reason: "off" }), "application/json");
   });
   const cloud = () => p.evaluate(() => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), o = {}; Object.values(c.nodes).forEach((n) => { o[n.label] = n.parent ? c.nodes[n.parent].label : null; }); return { nodes: o, deck: (c.deck || []).map((e) => c.nodes[e.id] ? c.nodes[e.id].label : e.id) }; });
-  const line = () => p.evaluate(() => { const l = document.querySelector("#iko-line"); return { shown: !l.hidden && l.getClientRects().length > 0, text: l.textContent, tip: l.getAttribute("data-tip") || "", x: Boolean(l.querySelector(".tip-x")) }; });
+  const line = () => p.evaluate(() => { const l = document.querySelector("#iko-line"); return { shown: !l.hidden && l.getClientRects().length > 0, text: l.textContent, tip: l.getAttribute("data-tip") || "", role: l.getAttribute("role"), label: l.getAttribute("aria-label") || "" }; });
   const fresh = async (o) => { await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" }); await p.evaluate(seed, o || {}); await p.reload({ waitUntil: "networkidle" }); await p.waitForTimeout(700); };
   const ask = async (text) => {
     if (await p.locator("#iko-sheet").isHidden()) { await p.click("#iko"); await p.waitForSelector("#iko-sheet:not([hidden])"); await p.waitForTimeout(250); }
@@ -94,13 +94,13 @@ async function run(width) {
     await fresh({});
     await p.waitForFunction(() => { const l = document.querySelector("#iko-line"); return !l.hidden && l.hasAttribute("data-tip"); }, null, { timeout: 4000 });
     const a = await line();
-    ok(a.shown && /^cloud/.test(a.tip) && a.x, `${tag}: the cloud's hint shows, with a small ×`, JSON.stringify(a));
+    ok(a.shown && /^cloud/.test(a.tip) && a.role === "button" && a.label === "Dismiss hint: " + a.text && !(await p.locator("#iko-line .tip-x").count()), `${tag}: the cloud's hint shows: a button to dismiss it, no × of its own (PR 106)`, JSON.stringify(a));
     await p.waitForTimeout(10500);
     const b = await line();
     ok(b.shown && b.text === a.text, `${tag}: the hint is still there after 10 s (no quick timeout)`, JSON.stringify(b));
-    await p.click("#iko-line .tip-x"); await p.waitForTimeout(200);
+    await p.click("#iko-line"); await p.waitForTimeout(200);
     const c = await line();
-    ok(!c.shown && (await p.locator("#iko-sheet").isHidden()), `${tag}: the × dismisses it (and doesn't open the chat)`, JSON.stringify(c));
+    ok(!c.shown && (await p.locator("#iko-sheet").isHidden()), `${tag}: tapping the bubble dismisses it (and doesn't open the chat)`, JSON.stringify(c));
     /* a lesson: its reading hint goes once the learner moves on to the check */
     await lesson("Games");
     await p.waitForFunction(() => /^learn/.test(document.querySelector("#iko-line").getAttribute("data-tip") || ""), null, { timeout: 4000 });
@@ -114,15 +114,21 @@ async function run(width) {
 
   /* 2) a light nudge on a return visit, once the cloud's own hints have had their turn */
   await step("nudge", async () => {
-    await fresh({ visits: 3, mem: { t: { cloud0: 1, cloud1: 1, cloud2: 1 }, r: {}, last: "" } });
+    await fresh({ visits: 3, mem: { t: { cloud0: 5, cloud1: 5, cloud2: 5, cloud3: 5, cloud4: 5 }, r: {}, last: "" } });
     await p.waitForFunction(() => { const l = document.querySelector("#iko-line"); return !l.hidden && l.hasAttribute("data-tip"); }, null, { timeout: 4000 });
     const a = await line();
-    ok(/^cloud(4|5)$/.test(a.tip) && (/^Maybe .+ next\? It's right beside .+\.$/.test(a.text) || a.text === "Anything new you'd like to explore?"), `${tag}: a light nudge from the cloud itself (an adjacent topic, or something new)`, JSON.stringify(a));
+    ok(/^cloud(6|7)$/.test(a.tip) && (/^Maybe .+ next\? It's right beside .+\.$/.test(a.text) || a.text === "Anything new you'd like to explore?"), `${tag}: a light nudge from the cloud itself (an adjacent topic, or something new)`, JSON.stringify(a));
     const mem = await p.evaluate(() => Object.values(JSON.parse(localStorage.getItem("ikolearn-iko")))[0]);
     ok(mem.t[a.tip] === 1 && mem.last === a.tip, `${tag}: counted in the ikolearn-iko rotation (never twice in a row)`, JSON.stringify(mem));
     await p.reload({ waitUntil: "networkidle" }); await p.waitForTimeout(1200);
     const b = await line();
-    ok(!b.shown, `${tag}: one hint a screen a visit (a reload in the same visit shows none)`, JSON.stringify(b));
+    ok(!b.shown, `${tag}: not again a moment later (a quick reload shows none)`, JSON.stringify(b));
+    /* PR 106: back on the screen after a pause, a guidance line again (not the nudge: one nudge a visit), never the same line */
+    await p.evaluate(() => { const d = JSON.parse(sessionStorage.getItem("ikolearn.v1.cues") || "{}"); d.cloud = Date.now() - 120000; sessionStorage.setItem("ikolearn.v1.cues", JSON.stringify(d)); });
+    await p.reload({ waitUntil: "networkidle" });
+    await p.waitForFunction(() => { const l = document.querySelector("#iko-line"); return !l.hidden && l.hasAttribute("data-tip"); }, null, { timeout: 4000 });
+    const g = await line();
+    ok(/^cloud[0-4]$/.test(g.tip) && g.tip !== a.tip, `${tag}: after a pause the screen guides again (a guidance line; nudges stay once a visit)`, JSON.stringify(g));
   });
 
   /* 3) placement: Games is in focus; the model points the new topic at another branch (Aviation) */
@@ -170,14 +176,59 @@ async function run(width) {
     ok(!errs.length, `${tag}: no console errors (controls)`, errs.join(" | "));
   });
 
+  /* 6) PR 106: no "< Your cloud"; Back from the whole conversation; the controls low on the right; the movement line learns */
+  await step("pr106", async () => {
+    await fresh({});
+    ok(!(await p.locator("#to-cloud").count()) && /IkoLearn is a place where you can start learning about as many or as few things as you want\. Iko will help you/.test(await p.textContent("#welcome .lede")) && !/We at Ikosagon/.test(await p.content()), `${tag}: no "< Your cloud" link; softer welcome words`);
+    const z = await p.evaluate(() => { const r = (s) => { const e = document.querySelector(s); if (!e || !e.getClientRects().length) return null; const b = e.getBoundingClientRect(); return { x: b.left, y: b.top, r: b.right, b: b.bottom }; }; return { zoom: r(".zoom"), top: r(".cloud-top"), deck: r("#cloud-deck"), iko: r("#iko"), flow: [...document.querySelectorAll(".cloud-flow:not([hidden]) > *")].filter((e) => e.getClientRects().length).map((e) => { const b = e.getBoundingClientRect(); return { x: b.left, y: b.top, r: b.right, b: b.bottom }; }), vw: innerWidth, vh: innerHeight, inTop: Boolean(document.querySelector(".cloud-top .zoom")) }; });
+    ok(z.zoom && !z.inTop && z.zoom.y > z.top.b && z.zoom.r <= z.vw - 8 && z.zoom.r > z.vw - 60 && z.flow.every((f) => f.r <= z.zoom.x || f.x >= z.zoom.r || f.b <= z.zoom.y || f.y >= z.zoom.b) && z.zoom.b <= z.vh - 100 && z.iko.x < 24 && z.iko.y < 24, `${tag}: zoom and Recentre at the bottom right, out of the header (Iko and the deck stay put), clear of the Pick up row`, JSON.stringify(z));
+    /* the movement line: hidden while Iko talks; tapping it hides it for good */
+    await p.waitForFunction(() => !document.querySelector("#iko-line").hidden, null, { timeout: 4000 }).catch(() => {});
+    const kb = await p.evaluate(() => { const l = document.querySelector("#iko-line"); return l.hidden ? "" : l.textContent; });
+    await p.focus("#iko-line"); await p.keyboard.press("Enter"); await p.waitForTimeout(150);
+    ok(kb && (await p.isHidden("#iko-line")) && (await p.isHidden("#iko-sheet")), `${tag}: the bubble goes with Enter too (keyboard)`, kb);
+    const h1 = await p.evaluate(() => { const h = document.querySelector(".cloud-hint"); return { text: h.textContent, vis: getComputedStyle(h).visibility, role: h.getAttribute("role") }; });
+    ok(/Drag to move/.test(h1.text) && h1.vis === "visible" && h1.role === "button", `${tag}: the movement line shows (a button to hide it)`, JSON.stringify(h1));
+    await p.click(".cloud-hint"); await p.waitForTimeout(150);
+    const h2 = await p.evaluate(() => ({ text: document.querySelector(".cloud-hint").textContent, saved: JSON.parse(localStorage.getItem("ikolearn-moves") || "{}") }));
+    ok(!h2.text && h2.saved.x === 1, `${tag}: tapped, it's gone and remembered on this device`, JSON.stringify(h2));
+    await p.reload({ waitUntil: "networkidle" }); await p.waitForTimeout(500);
+    ok(!(await p.textContent(".cloud-hint")), `${tag}: still gone after a reload`);
+    /* or once both gestures were tried: a drag, then a zoom */
+    await p.evaluate(() => localStorage.removeItem("ikolearn-moves")); await p.reload({ waitUntil: "networkidle" }); await p.waitForTimeout(500);
+    const cv = await p.evaluate(() => { const r = document.querySelector("#cloud-canvas").getBoundingClientRect(); return { x: r.left + r.width * 0.8, y: r.top + r.height * 0.3 }; });
+    await p.mouse.move(cv.x, cv.y); await p.mouse.down(); await p.mouse.move(cv.x - 60, cv.y + 20, { steps: 6 }); await p.mouse.up(); await p.waitForTimeout(200);
+    const m1 = await p.evaluate(() => ({ text: document.querySelector(".cloud-hint").textContent, saved: JSON.parse(localStorage.getItem("ikolearn-moves") || "{}") }));
+    ok(/Drag to move/.test(m1.text) && m1.saved.drag === 1 && !m1.saved.zoom, `${tag}: a drag alone: the line stays (zoom not tried yet)`, JSON.stringify(m1));
+    await p.mouse.wheel(0, -120); await p.waitForTimeout(300);
+    const m2 = await p.evaluate(() => ({ text: document.querySelector(".cloud-hint").textContent, saved: JSON.parse(localStorage.getItem("ikolearn-moves") || "{}") }));
+    ok(!m2.text && m2.saved.drag === 1 && m2.saved.zoom === 1, `${tag}: a drag and a zoom: the line is gone for good`, JSON.stringify(m2));
+    /* the whole conversation from a lesson: Back returns to it; Escape too */
+    await lesson("Games");
+    await p.click("#iko"); await p.click("#iko-all"); await p.waitForTimeout(300);
+    const b1 = await p.evaluate(() => ({ lesson: !document.querySelector("#lesson").hidden, back: document.querySelector("#chat-back").hidden ? "" : document.querySelector("#chat-back").textContent }));
+    ok(!b1.lesson && b1.back === "Back", `${tag}: the whole conversation shows Back`, JSON.stringify(b1));
+    await p.click("#chat-back"); await p.waitForTimeout(400);
+    ok(await p.evaluate(() => !document.querySelector("#lesson").hidden && /Games/.test(document.querySelector("#l-title").textContent) && document.querySelector("#chat-back").hidden), `${tag}: Back returns to the lesson it was opened from`);
+    await p.click("#iko"); await p.click("#iko-all"); await p.waitForTimeout(300);
+    await p.keyboard.press("Escape"); await p.waitForTimeout(400);
+    ok(await p.evaluate(() => !document.querySelector("#lesson").hidden), `${tag}: Escape does the same`);
+    /* the deck: a line for the deck; the bubble also goes with Enter */
+    await p.click("#thumb"); await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(300);
+    ok(!errs.length, `${tag}: no console errors (PR 106)`, errs.join(" | "));
+  });
+
   /* 5) the quiet support and follow links */
   await step("links", async () => {
-    const l = await p.evaluate(() => [...document.querySelectorAll("[data-sup] a")].map((a) => ({ t: a.textContent, href: a.getAttribute("href"), tgt: a.target, rel: a.rel, where: a.closest(".iko-foot") ? "iko" : a.closest("#chat") ? "chat" : "?" })));
+    const l = await p.evaluate(() => [...document.querySelectorAll("[data-sup] a")].map((a) => ({ t: a.textContent, href: a.getAttribute("href"), tgt: a.target, rel: a.rel, where: a.closest(".iko-foot") ? "iko" : a.closest(".cloud-foot") ? "cloud" : a.closest("#chat") ? "chat" : "?" })));
     const fb = l.filter((x) => x.t === "Support & feedback"), xl = l.filter((x) => x.t === "Follow on X");
-    ok(fb.length === 2 && fb.every((x) => x.href === "mailto:shawn@ikosagon.com?subject=IkoLearn%20feedback"), `${tag}: "Support & feedback" opens an email with the subject IkoLearn feedback (chat fine print and Iko's sheet)`, JSON.stringify(fb));
+    ok(fb.length === 2 && fb.every((x) => x.href === "mailto:shawn@ikosagon.com?subject=IkoLearn%20feedback"), `${tag}: "Support & feedback" opens an email with the subject IkoLearn feedback (the conversation's fine print and the cloud's footer)`, JSON.stringify(fb));
     ok(xl.length === 2 && xl.every((x) => x.href === "https://x.com/IkosagonAI" && x.tgt === "_blank" && /noopener/.test(x.rel)), `${tag}: "Follow on X" goes to @IkosagonAI in a new tab`, JSON.stringify(xl));
     ok(l.length === 4 && !l.some((x) => /fund|donat/i.test(x.t)), `${tag}: no donate link (no real donation page yet)`, JSON.stringify(l.map((x) => x.t)));
-    const sz = await p.evaluate(() => { const a = document.querySelector(".iko-foot [data-sup] a"), b = document.querySelector("#iko-all"); return [parseFloat(getComputedStyle(a).fontSize), parseFloat(getComputedStyle(b).fontSize)]; });
+    ok(!l.some((x) => x.where === "iko") && l.filter((x) => x.where === "cloud").length === 2 && l.filter((x) => x.where === "chat").length === 2, `${tag}: none in Iko's sheet (PR 106): in the footers`, JSON.stringify(l.map((x) => x.where)));
+    const wide = await p.evaluate(() => getComputedStyle(document.querySelector(".cloud-foot .sup")).display !== "none");
+    ok(wide === (width >= 700), `${tag}: on the cloud's footer on wide screens (a phone keeps them in the conversation's fine print)`, String(wide));
+    const sz = await p.evaluate(() => { const a = document.querySelector("#chat [data-sup] a"), b = document.querySelector("#family-link"); return [parseFloat(getComputedStyle(a).fontSize), parseFloat(getComputedStyle(b).fontSize)]; });
     ok(sz[0] <= sz[1] + 0.5, `${tag}: the links are no louder than the fine print beside them`, JSON.stringify(sz));
   });
   await ctx.close();

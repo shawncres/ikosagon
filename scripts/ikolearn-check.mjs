@@ -1075,10 +1075,16 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/id="holder"/.test(html) && /class="tray"/.test(html) && /id="l-quiz"/.test(html) && /id="top"/.test(html) && /id="t-list"/.test(html), "holder, tray, question area and top 10 present");
   ok(html.indexOf("cloud-model.js") < html.indexOf("rank.js") && html.indexOf("rank.js") < html.indexOf("deck.js"), "rank.js loads after the model and before deck.js");
   ok(/type = "radio"/.test(app) && /mk\("fieldset"/.test(app) && /C\.confirm\(/.test(app), "questions are real radio groups; answers confirm learning in the model");
+  /* PR 106 */
+  ok(!/We at Ikosagon/.test(html + fs.readFileSync("public/ikolearn/privacy.html", "utf8")) && /IkoLearn is a place where you can start learning about as many or as few things as you want\. Iko will help you/.test(html), "softer onboarding words (no 'We at Ikosagon' inside IkoLearn)");
+  ok(!/iko-foot[^\n]*data-sup/.test(html) && /class="cloud-foot fine"[^\n]*data-sup/.test(html) && /\.cloud-foot \.sup \{ display: none; \}/.test(css), "support links: out of Iko's sheet, in the cloud's footer (wide screens) and the conversation's fine print");
+  ok(/onGesture: moved/.test(app) && /opts\.onGesture\(g\.type === "pinch" \? "zoom" : "drag"\)/.test(fs.readFileSync("public/ikolearn/cloud-view.js", "utf8")) && /localStorage\.setItem\("ikolearn-moves"/.test(app) && /m\.x \|\| \(m\.drag && m\.zoom\)/.test(app), "the movement line: tap to hide, or gone once a drag and a zoom were tried (ikolearn-moves, this device)");
+  ok(/\.zoom \{ position: absolute;[^}]*right: calc\(12px \+ env\(safe-area-inset-right\)\)/.test(css) && /<\/nav>\s*<\/div>\s*<span class="zoom">/.test(html), "zoom and Recentre: low on the right of the cloud, out of the header");
+  ok(/kind === "earn" \|\| reactWanted\(n\)/.test(app) && /var GAP = 90000;/.test(app) && /x\.n && \(n >= NUDGE_MAX \|\| nudged\)/.test(app), "guidance on every stage (a pause between repeats, never the same line twice), every card earned acknowledged, nudges still light");
   /* PR 105 */
   ok(/var it = localIntent\(text\);\s*if \(it\) \{ doIntent\(text, it\); return; \}/.test(app) && /TH\.set\(it\.mode\)/.test(app) && /role: "del", local: true/.test(app), "Iko's controls: light/dark and delete are recognised on the device before any call");
   ok(/linkBtn\("Keep it"/.test(app) && /linkBtn\("Delete " \+ n\.label, function \(\) \{ deleteBranch\(m\); \}/.test(app) && /C\.removeBranch\(state\.cloud, n\.id\)/.test(app) && (app.match(/C\.removeBranch\(/g) || []).length === 1, "delete: a gentle word first; the branch goes only from the Delete button");
-  ok(/if \(t && ms !== 0\) iko\.lineT = setTimeout/.test(app) && /tipLine\(tip\.text, tip\.id\)/.test(app) && /past its step: the hint goes/.test(app) && /\.tip-x::before \{ content: "×"/.test(css), "hints stay until dismissed (×) or moved past; reactions and notes still fold away");
+  ok(/if \(t && ms !== 0\) iko\.lineT = setTimeout/.test(app) && /tipLine\(tip\.text, tip\.id\)/.test(app) && /past its step: the hint goes/.test(app) && !/tip-x/.test(css + app) && /el\.ikoLine\.addEventListener\("click", dismissLine\)/.test(app) && /id="iko-line" class="iko-line" role="button" tabindex="0"/.test(html) && /"Dismiss hint: " \+ t/.test(app), "hints stay until tapped away (no × of their own; Enter/Space too) or moved past; reactions still fold away");
   ok((html.match(/href="mailto:shawn@ikosagon\.com\?subject=IkoLearn%20feedback"/g) || []).length === 2 && (html.match(/href="https:\/\/x\.com\/IkosagonAI" class="sup-link" target="_blank" rel="noopener"/g) || []).length === 2 && !/donat|ko-fi|patreon|buymeacoffee/i.test(html), "support and follow links (no donate link until a real page exists)");
   {
     const bc = C.create("Sam", 1);
@@ -1094,14 +1100,15 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
    * Page weight, measured on what is served: the build minifies every .js and .css (scripts/ikolearn-minify.mjs, the
    * same function here), index.html and the icon go as they are. Budget 330 KB raw / 106 KB gzip (PR 103 raised it from
    * 100 KB for the companion at the bottom and the read, check, earn loop: about 4 KB gzip; PR 105 by 1 KB for Iko's
-   * light/dark and careful delete, the lasting hints and nudges, and the support links: about 1.7 KB gzip).
+   * light/dark and careful delete, the lasting hints and nudges, and the support links: about 1.7 KB gzip; PR 106 by 1 KB
+   * for Iko's guidance on every stage, Back from the whole conversation and the movement line that learns: about 0.7 KB).
    */
   const files = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js", "rank.js", "orchestrator.js", "camera.js", "profiles.js", "icon.svg"];
   const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
   const bytes = files.reduce((n, f) => n + served(f).length, 0);
   const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
   ok(bytes < 330_000, "app weight under 330 KB uncompressed (served, minified)", String(bytes));
-  ok(gz < 106_000, "app weight under 106 KB gzipped (served, minified)", String(gz));
+  ok(gz < 107_000, "app weight under 107 KB gzipped (served, minified)", String(gz));
 }
 
 /* ================= the flow pass: chains, Computer Science, orchestrator, children, tests ================= */
@@ -3330,7 +3337,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/function home\(id\) \{\s*if \(state\.lessonNode\) showLesson\(false\);[\s\S]{0,200}openCloud\(\);\s*if \(id && nodeOf\(id\)\) openPanel\(id\);/.test(app), "home(): closes the lesson, deck or card view and returns to the cloud, on the topic when there is one");
   ok(/if \(back && nodeOf\(back\)\) \{ showLesson\(false\); openHub\(back, null, "deck"\); return; \}\s*home\(id\);/.test(app) && /"Back to its card" : "Back to your cloud"/.test(app), "lesson: Back returns to the card it came from, else to the cloud on its topic");
   ok(/el\.dBack\.addEventListener\("click", function \(\) \{ home\(\); \}\)/.test(app) && /id="d-back" class="link back">Back to your cloud</.test(html), "deck: Back returns to the cloud");
-  ok(/el\.toCloud\.addEventListener\("click", function \(\) \{ home\(\); \}\)/.test(app) && /id="to-cloud"[^>]*>Your cloud</.test(html) && /class="chat-name" aria-hidden="true">Iko</.test(html), "Iko (the chat): a quiet way back to the cloud in its header");
+  ok(!/to-cloud|toCloud/.test(app + html + css) && /id="chat-back" class="link chat-back" hidden>Back</.test(html) && /el\.chatBack\.addEventListener\("click", goBack\)/.test(app) && /else if \(state\.back\) goBack\(\);/.test(app) && /class="chat-name" aria-hidden="true">Iko</.test(html), "PR 106: no '< Your cloud' link (the cloud preview covers it); the whole conversation has Back (and Escape) to where it was opened");
   ok(!/id="cloud-close"/.test(html) && /id="iko" class="iko" aria-label="Talk to Iko"/.test(html) && /id="p-chat" class="btn sm">Talk to Iko</.test(html) && /id="l-chat" class="link">Ask Iko about this</.test(html) && /placeholder="Ask Iko anything"/.test(html) && !/>Talk in chat<|>Back to chat<|in chat</.test(html), "wording: Talk to Iko, Ask Iko about this, Ask Iko anything (no \"chat\" left in the visible labels)");
   ok(/You are Iko, the warm, calm learning companion in IkoLearn/.test(SYSTEM_BASE), "Iko: the companion knows its name (prompt wording only, no extra call)");
   ok(/<nav class="home-nav" aria-label="IkoLearn">/.test(html) && /id="cloud-deck" class="minideck home-deck" hidden>/.test(html) && /id="cloud-who" class="who-now" href="\/ikolearn\/learners" hidden>/.test(html) && /el\.cloudWho\.hidden = !\(ix && ix\.mode === "guide"\);/.test(app), "home nav: the deck (the same fanned icon and count, once there are cards) and the learner switch for guides, in one labelled nav");

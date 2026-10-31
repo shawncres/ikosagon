@@ -151,7 +151,7 @@ for (const width of [390, 1280]) {
     /* 2) Iko -> the whole conversation -> the cloud -> Magma's card -> the lesson */
     await p.click("#iko"); await p.waitForTimeout(200); await p.click("#iko-all"); await p.waitForTimeout(500);
     ok(await p.isHidden("#lesson"), `${tag}: Iko's whole conversation leaves the lesson`);
-    await p.click("#to-cloud"); await p.waitForTimeout(900);
+    await p.click("#thumb"); await p.waitForTimeout(900);
     const viaC = await viaCloud(p);
     if (!viaC) { if (!(await p.isHidden("#panel"))) await p.click("#p-close"); await p.click("#cloud-deck"); await p.waitForTimeout(400); await viaDeck(p); }
     const b = await look(p);

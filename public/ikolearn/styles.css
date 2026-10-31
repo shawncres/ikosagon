@@ -392,7 +392,7 @@ button.gcard:hover { border-color: var(--soft); }
 #cloud-canvas:active { cursor: grabbing; }
 #cloud-canvas.turning { cursor: move; }
 .cloud-top { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: calc(14px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right)) 14px calc(20px + env(safe-area-inset-left)); }
-.zoom { display: flex; gap: 6px; }
+.zoom { position: absolute; z-index: 3; right: calc(12px + env(safe-area-inset-right)); bottom: calc(max(128px, 62px + var(--flow-h, 0px)) + env(safe-area-inset-bottom)); top: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; } /* PR 106: bottom-right, clear of the header (Iko, the deck), above the Pick up row, outside the sphere */
 .zoom .btn { background: var(--paper); min-width: 34px; }
 .zoom #zin, .zoom #zout { font-size: 18px; line-height: 1; }
 .cloud-hint { position: absolute; left: 0; right: 0; top: 58px; width: fit-content; max-width: calc(100% - 32px); margin: 0 auto; box-sizing: border-box; padding: 3px 12px; border-radius: 999px; background: color-mix(in srgb, var(--paper) 90%, transparent); z-index: 2; text-align: center; font-size: 12px; line-height: 1.4; color: var(--soft); opacity: .6; pointer-events: none; } /* the input map, one faint line under the controls */
@@ -418,8 +418,8 @@ button.gcard:hover { border-color: var(--soft); }
 .note.streaming p:last-child::after { content: ""; display: inline-block; width: .5em; height: 1em; margin-left: 2px; vertical-align: -2px; background: var(--ink); opacity: .55; animation: blink 1s steps(1) infinite; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
 /* the cloud's controls stay visible but quiet */
-.cloud-top .zoom, .home-nav > :is(button, a) { opacity: .62; transition: opacity .2s; }
-.cloud-top .zoom:hover, .cloud-top .zoom:focus-within, .home-nav > :is(button, a):hover, .home-nav > :is(button, a):focus-visible { opacity: 1; }
+.zoom, .home-nav > :is(button, a) { opacity: .62; transition: opacity .2s; }
+.zoom:hover, .zoom:focus-within, .home-nav > :is(button, a):hover, .home-nav > :is(button, a):focus-visible { opacity: 1; }
 /* home: the cloud's own quiet navigation (Talk to Iko, the deck, the learner switch) and its fine print */
 .home-nav { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; min-width: 0; }
 .home-brand { font-size: 14px; letter-spacing: .04em; color: var(--soft); opacity: .7; }
@@ -449,7 +449,7 @@ button.gcard:hover { border-color: var(--soft); }
 /* the opening question (body.intake, placed by app.js placeStart): a still column; the name on its plate above the question */
 .cs-name { display: none; }
 body.intake .cs-name { display: block; width: fit-content; margin: 4px auto 14px; padding: 4px 15px; font-size: 20px; font-weight: 600; line-height: 28px; letter-spacing: 0; color: var(--ink); background: var(--paper); border: 1.3px solid rgba(var(--ink-rgb), .62); border-radius: 999px; box-shadow: 0 0 0 3px var(--paper), 0 0 0 4px rgba(var(--ink-rgb), .2); }
-body.intake .cloud-top, body.intake .cloud-hint { display: none; } /* nothing to zoom or turn yet */
+body.intake .cloud-top, body.intake .cloud-hint, body.intake .zoom { display: none; } /* nothing to zoom or turn yet */
 body.intake #cloud-canvas { pointer-events: none; }
 body.intake .cloud-start { top: 50%; max-width: calc(100% - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)); overflow: visible; }
 body.intake .cloud-start.tight .cs-few { display: none; } /* a short room: the one-line hint steps aside (never a scroll box: nothing in the column is ever clipped) */
@@ -461,8 +461,8 @@ body.kbd .cloud-foot { visibility: hidden; } /* the keyboard is up: the fine pri
 body.intake.kbd .cs-name { display: none; } /* the keyboard leaves a short column: the name steps out rather than half-showing under Iko */
 /* the keyboard is up: Iko steps away (its room at the bottom with it), so the field and Begin sit just above the keyboard */
 /* the chat with Iko: a quiet way back to the cloud, and its name */
-.to-cloud { font-size: 14px; letter-spacing: 0; color: var(--soft); margin-right: 14px; }
-.to-cloud::before { content: "\2039\00a0"; }
+.chat-back { font-size: 14px; letter-spacing: 0; color: var(--soft); margin-right: 14px; }
+.chat-back::before { content: "\2039\00a0"; }
 .chat-name { letter-spacing: .04em; }
 
 @media (min-width: 900px) {
@@ -706,10 +706,7 @@ button.gcard:active, button.gslot:active { transform: translateY(-1px) scale(.97
 /* his bubble: just under him (a small tail up to him); on a wide page header, beside "Your cloud" (its tail to the left) */
 .iko-line { pointer-events: auto; cursor: pointer; position: relative; margin: 0; max-width: min(420px, 100%); width: fit-content; font-size: 14px; line-height: 1.4; color: var(--soft); background: var(--sheet); border: 1px solid var(--rule); border-radius: 12px; padding: 7px 11px; box-shadow: 0 4px 14px rgba(var(--shadow-rgb), .08); animation: iko-line-in .4s ease; }
 .iko-line:hover { color: var(--ink); }
-.iko-line[data-tip] { padding-right: 30px; }
-.tip-x { position: absolute; top: 50%; right: 4px; width: 24px; height: 24px; margin-top: -12px; padding: 0; border: 0; border-radius: 50%; background: none; color: inherit; opacity: .55; cursor: pointer; font: inherit; }
-.tip-x::before { content: "×"; font-size: 16px; line-height: 24px; }
-.tip-x:hover, .tip-x:focus-visible { opacity: 1; }
+.iko-line:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 .iko-line::before { content: ""; position: absolute; left: 16px; top: -6px; width: 10px; height: 10px; background: var(--sheet); border-left: 1px solid var(--rule); border-top: 1px solid var(--rule); transform: rotate(45deg); }
 body > .iko-line { display: none; } /* parked: not on this screen */
 #chat > .bar { max-width: none; padding-top: 6px; flex-wrap: wrap; column-gap: 12px; padding-left: calc(16px + env(safe-area-inset-left)); padding-right: calc(16px + env(safe-area-inset-right)); }
@@ -805,7 +802,8 @@ body.intake.kbd .cs-few { display: none; } /* the keyboard up: Iko's question st
 .ikc-text { margin: 0 0 14px; font-size: 16px; line-height: 1.5; }
 .ikc-box .btn { min-height: 44px; }
 .fly-card { box-shadow: 0 12px 24px rgba(var(--shadow-rgb), .22); border-radius: 4px; will-change: transform, opacity; }
-@media (max-width: 699px) { .cloud-hint { top: 66px; } }
+@media (max-width: 699px) { .cloud-hint { top: 66px; } .cloud-foot .sup { display: none; } } /* a phone: the support links stay in the conversation's fine print */
+.cloud-hint.moves { pointer-events: auto; cursor: pointer; }
 
 /* ---------- PR 103: the deck keeps the earned cards; what to pick up and what is still to collect sit apart ---------- */
 .d-sec { font-weight: normal; font-size: 19px; margin: 30px 0 6px; padding-top: 18px; border-top: 1px solid var(--rule); }

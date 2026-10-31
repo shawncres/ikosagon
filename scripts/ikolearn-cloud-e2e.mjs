@@ -160,6 +160,9 @@ for (const width of (process.env.WIDTHS || "390,1280").split(",").map(Number)) {
       ok(card && card.l >= 0 && card.r <= view.iw && card.t >= 0 && card.b <= view.ih && view.sw <= view.iw, `${tag}: the card is inside the viewport (no overflow)`, JSON.stringify({ card, view }));
       ok(view.side === (width >= 900 ? "right" : "below") && parseFloat(view.radius) >= 10, `${tag}: a rounded card ${width >= 900 ? "to the right of" : "under"} the node`, JSON.stringify(view));
       ok(view.title === "Volcanoes" && view.desc === "Mountains that let out melted rock." && !/What do you notice here\?/.test(view.note) && JSON.stringify(view.acts.slice(0, 3)) === JSON.stringify(["Start a lesson", "Open its card", "Talk to Iko"]) && view.path >= 3, `${tag}: the card: title, its description (instead of "What do you notice here?"), the three actions and the path`, JSON.stringify(view));
+      /* PR 106: with a node selected, Iko's line turns to starting a lesson (the cloud's own line was about tapping a node) */
+      const tl = await p.waitForFunction(() => { const l = document.querySelector("#iko-line"); return !l.hidden && /^topic/.test(l.getAttribute("data-tip") || "") ? l.textContent : false; }, null, { timeout: 4000 }).then((h) => h.jsonValue()).catch(() => "");
+      ok(/^(Start a lesson when you're ready\.|Curious about this one\? (Click|Tap) me and ask anything\.|Want to go another way\? (Click|Tap) me to add another direction\.)$/.test(tl), `${tag}: a node selected: Iko's line is about this topic`, tl);
       ok(calls.length === 0, `${tag}: a described node's card: the description shows at once, 0 calls`, calls.join());
       await shot(p, `nodes-card-${TAG}-${width}-card.png`);
       /* while the card is open the spin comes back after the short delay; it turns about the selected node, so the node and its card stay put */

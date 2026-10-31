@@ -33,7 +33,7 @@
     focusChip: $("focus-chip"), focusText: $("focus-text"), focusClear: $("focus-clear"),
     lesson: $("lesson"), lBack: $("l-back"), lTrail: $("l-trail"), lTitle: $("l-title"), lBody: $("l-body"), lDone: $("l-done"),
     lGot: $("l-got"), lTricky: $("l-tricky"), lCont: $("l-cont"), phEarn: $("ph-earn"), lStatus: $("l-status"), lPath: $("l-path"), lClar: $("l-clar"), lNext: $("l-next"), lChat: $("l-chat"), lRedo: $("l-redo"),
-    cloud: $("cloud"), cloudCanvas: $("cloud-canvas"), cloudDeck: $("cloud-deck"), cloudWho: $("cloud-who"), toCloud: $("to-cloud"),
+    cloud: $("cloud"), cloudCanvas: $("cloud-canvas"), cloudDeck: $("cloud-deck"), cloudWho: $("cloud-who"), chatBack: $("chat-back"),
     cs: $("cloud-start"), csName: $("cs-name"), csHi: $("cs-hi"), csQ: $("cs-q"), csFew: $("cs-few"), csForm: $("cs-form"), csIn: $("cs-in"), csEx: $("cs-ex"), csStatus: $("cs-status"),
     ikoWrap: $("iko-wrap"), iko: $("iko"), ikoLine: $("iko-line"), ikoSheet: $("iko-sheet"), ikoAbout: $("iko-about"), ikoX: $("iko-x"), ikoSay: $("iko-say"), ikoActs: $("iko-acts"), ikoGot: $("iko-got"), ikoBody: $("iko-body"), ikoSlot: $("iko-slot"), ikoLog: $("iko-log"), ikoForm: $("iko-form"), ikoIn: $("iko-in"), ikoAll: $("iko-all"), zin: $("zin"), zout: $("zout"), zreset: $("zreset"),
     panel: $("panel"), cloudTop: document.querySelector(".cloud-top"), pKicker: $("p-kicker"), pTitle: $("p-title"), pDesc: $("p-desc"), pNote: $("p-note"), pLesson: $("p-lesson"), pCard: $("p-card"), pAdj: $("p-adj"),
@@ -2019,7 +2019,7 @@
   function openCloud(landing) {
     el.cloud.hidden = false;
     var fresh = !big;
-    if (!big) big = V.create(el.cloudCanvas, { onPick: pick, onView: saveView, onDraw: placeCard, onEmpty: closeCard });
+    if (!big) big = V.create(el.cloudCanvas, { onPick: pick, onView: saveView, onDraw: placeCard, onEmpty: closeCard, onGesture: moved });
     big.resize();
     big.setCloud(state.cloud);
     /* every load (a visit, a learner switched in, a cloud opened from a file, after Start over) begins at home: the name in
@@ -2208,12 +2208,15 @@
     if (!t || state.busy) return;
     startFromCloud(t);
   });
-  el.toCloud.addEventListener("click", function () { home(); });
   el.cloudDeck.addEventListener("click", function () { closeCloud(true); showDeck(true); });
   /* Back on the cloud: a slim row of the suggested cards and Draw along the bottom (hidden while a panel is open). */
   var cloudFlow = null;
   function renderCloudFlow() {
-    if (!cloudFlow) { cloudFlow = mk("div", "cloud-flow"); el.cloud.appendChild(cloudFlow); }
+    if (!cloudFlow) {
+      cloudFlow = mk("div", "cloud-flow"); el.cloud.appendChild(cloudFlow);
+      /* the zoom controls sit just above whatever the Pick up row holds (a note can wrap to a few lines) */
+      if (window.ResizeObserver) new ResizeObserver(function () { el.cloud.style.setProperty("--flow-h", (cloudFlow.hidden ? 0 : cloudFlow.offsetHeight) + "px"); }).observe(cloudFlow);
+    }
     var had = document.activeElement && cloudFlow.contains(document.activeElement) && document.activeElement.classList.contains("dir-in");
     cloudFlow.textContent = "";
     cloudFlow.hidden = !el.panel.hidden || Boolean(cloudCaption && !cloudCaption.hidden);
@@ -2553,8 +2556,8 @@
   el.pClose.addEventListener("click", closeCard);
   /* a click on any control over the cloud (zoom, Recentre, the card's actions, the suggestions) pauses the spin a moment */
   el.cloud.addEventListener("click", function (e) { if (big && e.target.closest && e.target.closest("button, a")) big.pause(); });
-  el.zin.addEventListener("click", function () { big.zoomBy(1.35); });
-  el.zout.addEventListener("click", function () { big.zoomBy(1 / 1.35); });
+  el.zin.addEventListener("click", function () { big.zoomBy(1.35); moved("zoom"); });
+  el.zout.addEventListener("click", function () { big.zoomBy(1 / 1.35); moved("zoom"); });
   el.zreset.addEventListener("click", function () { big.recentre(); });
   /* one faint line documents the input map, for touch or for a mouse */
   renderCloudHint();
@@ -2566,6 +2569,7 @@
     if (state.lessonNode) el.lBack.click();
     else if (!el.hub.hidden) hubBack();
     else if (!el.deck.hidden) el.dBack.click();
+    else if (state.back) goBack(); /* the whole conversation, opened from Iko: back where it was opened */
     else home(); /* the chat with Iko: back to the cloud */
   });
 
@@ -2715,13 +2719,25 @@
   el.ikoX.addEventListener("click", function () { closeIko(); if (!el.ikoWrap.hidden) el.iko.focus(); });
   /* the whole conversation: the chat view, with its composer */
   el.ikoAll.addEventListener("click", function () {
+    /* where it was opened from: Back (and Escape) return there (PR 106) */
+    var back = state.lessonNode ? { v: "lesson", id: state.lessonNode } : !el.deck.hidden ? { v: "deck" } : !el.hub.hidden && state.hubNode ? { v: "hub", id: state.hubNode } : { v: "cloud" };
     closeIko();
     if (state.lessonNode) showLesson(false);
     if (!el.deck.hidden) showDeck(false);
     if (!el.hub.hidden) { el.hub.hidden = true; state.hubNode = null; el.thread.hidden = false; el.dock.hidden = false; }
     if (!el.cloud.hidden) closeCloud(); else { renderDraw(); el.input.focus(); }
+    state.back = back; el.chatBack.hidden = false; /* set last: leaving those screens resets it */
     scrollDown();
   });
+  function goBack() {
+    var b = state.back; state.back = null;
+    el.chatBack.hidden = true;
+    if (!b || b.v === "cloud" || (b.id && !nodeOf(b.id))) openCloud();
+    else if (b.v === "lesson") openLesson(b.id);
+    else if (b.v === "hub") openHub(b.id);
+    else showDeck(true);
+  }
+  el.chatBack.addEventListener("click", goBack);
   /*
    * Iko's bubble beside the pebble ("" hides it); it folds away on its own. Tapping it opens the full chat, like the pebble.
    * One thing at a time: a reaction or a note replaces the screen's tip, and a tip held back gets its turn afterwards.
@@ -2730,19 +2746,22 @@
     clearTimeout(iko.lineT);
     el.ikoLine.textContent = t || "";
     el.ikoLine.hidden = !t;
+    if (t) el.ikoLine.setAttribute("aria-label", "Dismiss hint: " + t);
     el.ikoLine.removeAttribute("data-tip"); el.ikoLine.removeAttribute("data-react");
     if (t) clearTimeout(iko.tipT);
     if (t && ms !== 0) iko.lineT = setTimeout(function () { el.ikoLine.hidden = true; placeIko(); var nx = iko.after; iko.after = null; if (nx) nx(); else tipAgain(); }, ms || 9000); /* 0: it stays (a hint) */
     placeIko();
   }
-  el.ikoLine.addEventListener("click", function (e) {
-    if (e.target.closest && e.target.closest(".tip-x")) { iko.after = null; ikoLine(""); return; } /* dismissed: it has done its job */
-    if (!iko.open) openIko();
-  });
+  /* PR 106: tapping the bubble dismisses it (Enter or Space too); tapping Iko himself opens the chat */
+  function dismissLine() { iko.after = null; ikoLine(""); tipAgain(); }
+  el.ikoLine.addEventListener("click", dismissLine);
+  el.ikoLine.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); dismissLine(); if (!el.ikoWrap.hidden) el.iko.focus(); } });
   /* shown on the cloud (and its opening question), a lesson or test, a card and the deck; hidden in the whole conversation and on the welcome */
   function ikoScreen() { return el.welcome.hidden && !el.chat.hidden && (!el.cloud.hidden || !el.lesson.hidden || !el.deck.hidden || !el.hub.hidden); }
   function renderIko() {
     var on = ikoScreen();
+    if (on) state.back = null; /* left the whole conversation some other way */
+    el.chatBack.hidden = !state.back;
     if (iko.open && (!on || (screenCtx().id || "") !== (iko.ctx.id || "") || (screenCtx().view === "chat"))) closeIko(); /* the screen changed under it */
     dockIko(on);
     el.ikoWrap.hidden = !on;
@@ -2774,30 +2793,35 @@
     document.body.classList.toggle("iko-asks", asking);
   }
   /*
-   * A short bubble for each screen (PR 103): light context and what to do next, from local templates (0 calls). Each screen
-   * has a few variants; one shows when the screen opens (at most once a visit per screen, sessionStorage CUES), the least
-   * shown first, never the one shown last, and each variant at most TIP_MAX times for this learner (ikolearn-iko): so the
-   * guidance never repeats across pages and grows quiet as the learner gets comfortable.
+   * Iko's guidance (PR 103, more of it in PR 106): a short line on each screen and stage about what to do next, or light
+   * feedback, from local templates (0 calls). A screen's line shows when it opens, again on a later visit to it after a
+   * pause (GAP, sessionStorage CUES), the least shown first and never the line shown last (ikolearn-iko), so it guides
+   * every stage without repeating. Nudges (n) stay light: once a visit, a few times each, on return visits.
    */
+  var deckN = function () { return (state.cloud.deck || []).length; }, quiet = function () { return !el.cloudHint.classList.contains("newcomer"); };
   var TIPS = {
     /* the opening question is Iko's own speech (PR 104): no bubble there. Lines that would repeat a page's own words are gone. */
-    cloud: [{ t: "I like your cloud, it's growing!", ok: function () { return C.subjects(state.cloud).length >= 2 || (state.cloud.deck || []).length >= 1; } }, "I can add new topics anytime. Just {tap} me and tell me what you're curious about.",
-      { t: "{Tap} any node to open it.", ok: function () { return !el.cloudHint.classList.contains("newcomer"); } }, /* not beside the newcomer line that says so */
+    cloud: [{ t: "{Tap} a node to start, or pick up where you left off.", ok: quiet }, /* not beside the newcomer line that says so */
+      { t: "Pick any node to begin. {Tap} me if you'd like ideas.", ok: quiet },
+      { t: "I like your cloud, it's growing!", ok: function () { return C.subjects(state.cloud).length >= 2 || deckN() >= 1; } }, "I can add new topics anytime. Just {tap} me and tell me what you're curious about.",
+      { t: function () { var k = C.subjects(state.cloud).length, n = deckN(); return k + (k === 1 ? " subject" : " subjects") + " and " + n + (n === 1 ? " card" : " cards") + " so far. Your deck is up top."; }, ok: function () { return deckN() >= 1; } },
       /* light nudges (PR 105): not tied to a step, a few times each, on return visits */
-      { t: "Want to check your deck? It's up top.", max: 3, ok: function () { return (state.cloud.deck || []).length >= 1; } },
-      { t: nearIdea, max: 3, ok: function () { return back() && Boolean(nearIdea()); } },
-      { t: "Anything new you'd like to explore?", max: 3, ok: back }],
-    home: ["That's you, in the middle. Your subjects grow around you."],
-    topic: ["Curious about this one? {Tap} me and ask anything.", "Want to go another way? {Tap} me to add another direction."],
+      { t: "Want to check your deck? It's up top.", n: 1, ok: function () { return deckN() >= 1; } },
+      { t: nearIdea, n: 1, ok: function () { return back() && Boolean(nearIdea()); } },
+      { t: "Anything new you'd like to explore?", n: 1, ok: back }],
+    home: ["That's you, in the middle. Your subjects grow around you.", "Everything you learn grows out from here."],
+    topic: ["Start a lesson when you're ready.", "Curious about this one? {Tap} me and ask anything.", "Want to go another way? {Tap} me to add another direction."],
     learn: ["Read along and {click} me if you have questions.", "Read the lesson first, then start the check. No rush."],
-    next: ["Nicely done! Scroll down to pick your next topic."],
+    next: ["Nicely done! Scroll down to pick your next topic.", "Pick a path below when you're ready."],
     check: ["Get them all right and the card is yours to grow.", "No rush. Each question is about what you just read."],
-    missed: ["Take it slowly. You've got this."],
-    test: ["An optional test on what you've finished. No pressure."],
-    deck: [{ t: "Wow, your deck is coming along.", ok: function () { return (state.cloud.deck || []).length >= 2; } }, "{Tap} any card to keep it growing."]
+    missed: ["Take it slowly. You've got this.", "Here's a fresh look. Then try the new questions."],
+    test: ["An optional test on what you've finished. No pressure.", "Take your time. It's just for you."],
+    deck: [{ t: "Wow, your deck is coming along.", ok: function () { return deckN() >= 2; } }, "{Tap} any card to keep it growing.",
+      { t: function () { var n = deckN(); return n + (n === 1 ? " card" : " cards") + " so far. {Tap} me for ideas on the next."; }, ok: function () { return deckN() >= 1; } }]
   };
+  var GAP = 90000; /* a screen's line comes back on a later visit to it, not on every quick hop */
   function tipWords(t) { var c = coarse(); return t.replace("{tap}", c ? "tap" : "click").replace("{Tap}", c ? "Tap" : "Click").replace("{click}", c ? "tap" : "click"); }
-  var TIP_MAX = 1;
+  var NUDGE_MAX = 3;
   function ikoMem() {
     var who = (PR && PR.current(localStorage) || {}).active || "me", all = {};
     try { all = JSON.parse(localStorage.getItem(IKO_MEM) || "{}") || {}; } catch { all = {}; }
@@ -2820,9 +2844,10 @@
   function tipsShown() { try { return JSON.parse(sessionStorage.getItem(CUES) || "{}") || {}; } catch { return {}; } }
   function pickTip(key) {
     var m = ikoMem(), list = TIPS[key] || [], best = -1;
-    list.forEach(function (x, i) { var id = key + i, n = m.t[id] || 0; if (n >= (x.max || TIP_MAX) || id === m.last || (x.ok && !x.ok())) return; if (best < 0 || n < (m.t[key + best] || 0)) best = i; });
+    var nudged = tipsShown().n;
+    list.forEach(function (x, i) { var id = key + i, n = m.t[id] || 0; if ((x.n && (n >= NUDGE_MAX || nudged)) || id === m.last || (x.ok && !x.ok())) return; if (best < 0 || n < (m.t[key + best] || 0)) best = i; });
     var b = list[best];
-    return best < 0 ? null : { id: key + best, text: tipWords(String(typeof b.t === "function" ? b.t() : b.t || b).replace("{name}", state.name || "there")), m: m };
+    return best < 0 ? null : { id: key + best, nudge: Boolean(b.n), text: tipWords(String(typeof b.t === "function" ? b.t() : b.t || b).replace("{name}", state.name || "there")), m: m };
   }
   function ikoTip(c) {
     var key = tipOf(c);
@@ -2833,19 +2858,18 @@
     if (!key) return;
     iko.tipT = setTimeout(function () { showTip(key); }, 450); /* once the new screen has settled */
   }
-  function tipAgain() { var k = iko.tipKey; if (k && !iko.open && !tipsShown()[k]) { clearTimeout(iko.tipT); iko.tipT = setTimeout(function () { showTip(k); }, 700); } }
-  /* a hint stays until it is dismissed (its small ×) or the learner moves past its step (PR 105) */
+  function tipFresh(k) { return Date.now() - (Number(tipsShown()[k]) || 0) >= GAP; }
+  function tipAgain() { var k = iko.tipKey; if (k && !iko.open && tipFresh(k)) { clearTimeout(iko.tipT); iko.tipT = setTimeout(function () { showTip(k); }, 700); } }
+  /* a hint stays until it is tapped away or the learner moves past its step (PR 105, PR 106) */
   function tipLine(t, id) {
     ikoLine(t, 0);
     el.ikoLine.setAttribute("data-tip", id);
-    var x = mk("button", "tip-x"); x.type = "button"; x.setAttribute("aria-label", "Hide this hint");
-    el.ikoLine.appendChild(x);
   }
   function showTip(key) {
-    if (key !== iko.tipKey || iko.open || el.ikoWrap.hidden || !el.ikoLine.hidden || !state.cloud || tipsShown()[key]) return; /* Iko is speaking (or gone), or this screen had its tip this visit */
+    if (key !== iko.tipKey || iko.open || el.ikoWrap.hidden || !el.ikoLine.hidden || !state.cloud || !tipFresh(key)) return; /* Iko is speaking (or gone), or this screen had its line a moment ago */
     var tip = pickTip(key);
     if (!tip) return;
-    var d = tipsShown(); d[key] = 1;
+    var d = tipsShown(); d[key] = Date.now(); if (tip.nudge) d.n = 1;
     try { sessionStorage.setItem(CUES, JSON.stringify(d)); } catch { /* ignore */ }
     tip.m.t[tip.id] = (tip.m.t[tip.id] || 0) + 1; tip.m.last = tip.id; ikoKeep(tip.m);
     tipLine(tip.text, tip.id);
@@ -2866,7 +2890,7 @@
     var m = ikoMem(), n = (m.r[kind] = (m.r[kind] || 0) + 1);
     ikoKeep(m);
     var list = REACT[kind] || [];
-    if (!list.length || !reactWanted(n) || (kind === "start" && n > 1)) return false;
+    if (!list.length || !(kind === "earn" || reactWanted(n)) || (kind === "start" && n > 1)) return false; /* a card earned: always a light word (PR 106) */
     var t = list[(n - 1) % list.length];
     if (!el.ikoLine.hidden && !el.ikoLine.hasAttribute("data-tip") && !el.ikoLine.hasAttribute("data-react")) return false; /* Iko is saying something that matters (the grow question): no reaction over it */
     if (iko.open || el.ikoWrap.hidden) { iko.pendingReact = t; return true; } /* said once the pebble is back */
@@ -3024,6 +3048,21 @@
     p.appendChild(x);
     return p;
   }
+  /*
+   * The movement line (PR 106): a tap hides it for good, and so does trying both gestures (a drag, and a zoom by
+   * pinch, wheel or the buttons). Kept on this device (ikolearn-moves), outside every learner's data.
+   */
+  function moves() { try { return JSON.parse(localStorage.getItem("ikolearn-moves") || "{}") || {}; } catch { return {}; } }
+  function movesDone() { var m = moves(); return Boolean(m.x || (m.drag && m.zoom)); }
+  function moved(k) {
+    var m = moves();
+    if (m[k]) return;
+    m[k] = 1;
+    try { localStorage.setItem("ikolearn-moves", JSON.stringify(m)); } catch { /* private mode: this visit only */ }
+    if (movesDone()) renderCloudHint();
+  }
+  el.cloudHint.addEventListener("click", function (e) { if (!el.cloudHint.classList.contains("newcomer") && !(e.target.closest && e.target.closest("button"))) moved("x"); });
+  el.cloudHint.addEventListener("keydown", function (e) { if ((e.key === "Enter" || e.key === " ") && el.cloudHint.classList.contains("moves")) { e.preventDefault(); moved("x"); } });
   /* the cloud's own line: the first tip until it is dismissed (or a branch is tapped), then the controls line */
   function renderCloudHint() {
     if (!el.cloudHint) return;
@@ -3031,7 +3070,10 @@
     var h = state.cloud && C.subjects(state.cloud).length ? hintEl("cloud", renderCloudHint) : null; /* (at load there is no cloud yet) */
     el.cloudHint.classList.toggle("newcomer", Boolean(h));
     if (h) { while (h.firstChild) el.cloudHint.appendChild(h.firstChild); return; }
-    el.cloudHint.textContent = CAM ? CAM.hint(Boolean(window.matchMedia && window.matchMedia("(pointer: coarse)").matches)) : "";
+    el.cloudHint.textContent = CAM && !movesDone() ? CAM.hint(Boolean(window.matchMedia && window.matchMedia("(pointer: coarse)").matches)) : "";
+    el.cloudHint.classList.toggle("moves", Boolean(el.cloudHint.textContent));
+    if (el.cloudHint.textContent) { el.cloudHint.title = "Tap to hide"; el.cloudHint.setAttribute("role", "button"); el.cloudHint.tabIndex = 0; el.cloudHint.setAttribute("aria-label", el.cloudHint.textContent + ". Dismiss"); }
+    else { el.cloudHint.removeAttribute("title"); el.cloudHint.removeAttribute("role"); el.cloudHint.removeAttribute("tabindex"); el.cloudHint.removeAttribute("aria-label"); }
   }
   function showDeck(on) {
     if (on && state.lessonNode) showLesson(false);

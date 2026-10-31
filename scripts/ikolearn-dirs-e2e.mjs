@@ -197,6 +197,8 @@ for (const width of [390, 1280]) {
       ok(!(await growLine(o.p)), `${tag}: the grow line waits while those are offered`);
       await shot(o.p, tag, "later");
       const c0 = o.calls.length;
+      const zc = await o.p.evaluate(() => { const n = document.querySelector(".cf-note").getBoundingClientRect(), z = document.querySelector(".zoom").getBoundingClientRect(); return { clear: z.bottom <= n.top || z.top >= n.bottom || z.right <= n.left || z.left >= n.right, n: [n.top, n.bottom], z: [z.top, z.bottom] }; });
+      ok(zc.clear, `${tag}: the zoom controls sit above the note, never over it (PR 106)`, JSON.stringify(zc));
       await o.p.click('.cf-note .dir-chip:text-is("Rain")');
       await built(o.p, 5); await o.p.waitForTimeout(1300);
       const b2 = o.bodies.filter((x) => x.at === "/create").pop().b, cl2 = await cloudNow(o.p);

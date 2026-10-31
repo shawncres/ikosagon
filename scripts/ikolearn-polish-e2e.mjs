@@ -243,7 +243,7 @@ for (const width of [390, 1280]) {
     ok(await tip(/^deck\d$/), `${tag}: Iko bubble: the Deck has its own`);
     ok((await about()) === "On your deck", `${tag}: Iko from the Deck knows the Deck`);
     await p.click("#d-back").catch(() => {}); await p.waitForTimeout(900);
-    if (await p.isHidden("#cloud")) await p.click("#to-cloud").catch(() => {});
+    if (await p.isHidden("#cloud")) await p.click("#thumb").catch(() => {});
     await p.waitForSelector("#cloud:not([hidden])");
     ok(!(await tip(/^cloud\d$/, 1800)), `${tag}: Iko bubble: the cloud's isn't repeated in the same visit`);
     await tap(p, "Tides"); await p.click("#p-lesson"); await p.waitForSelector("#l-cont:not([hidden])");
