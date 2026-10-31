@@ -483,6 +483,7 @@
       var end = function (e) {
         var g = gesture;
         delete pointers[e.pointerId];
+        if (g && opts.onGesture && (g.type === "pinch" || (g.type === "pan" && g.moved >= 6))) opts.onGesture(g.type === "pinch" ? "zoom" : "drag"); /* the movement hint learns what's been tried */
         if (!Object.keys(pointers).length) {
           gesture = null;
           canvas.classList.remove("turning");
@@ -498,7 +499,7 @@
       };
       canvas.addEventListener("pointerup", end);
       canvas.addEventListener("pointercancel", end);
-      canvas.addEventListener("wheel", function (e) { e.preventDefault(); tween = null; glideV = null; zoomAt(CAM.wheelFactor(e.deltaY, e.ctrlKey), local(e)); changed(); }, { passive: false });
+      canvas.addEventListener("wheel", function (e) { e.preventDefault(); tween = null; glideV = null; zoomAt(CAM.wheelFactor(e.deltaY, e.ctrlKey), local(e)); changed(); if (opts.onGesture) opts.onGesture("zoom"); }, { passive: false });
     }
 
     if (!mini) {

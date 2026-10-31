@@ -16,7 +16,7 @@
   <main id="app">
     <section id="welcome" class="col" hidden>
       <h1 class="brand-lg">IkoLearn</h1>
-      <p class="lede">A quiet place to learn, with a map that grows as you do. We at Ikosagon keep it simple: you talk, it helps, and your learning cloud fills in around your name.</p>
+      <p class="lede">IkoLearn is a place where you can start learning about as many or as few things as you want. Iko will help you, and your learning cloud grows around your name.</p>
       <div id="who" class="who" role="group" aria-labelledby="who-q">
         <div class="iko-ask"><span class="iko-still" aria-hidden="true"><svg class="iko-pebble" viewBox="0 0 64 56" width="44" height="39" aria-hidden="true" focusable="false"><path class="iko-body" d="M32 4C49 4 60 14 60 29C60 44 48 52 31 52C15 52 4 44 4 30C4 15 16 4 32 4Z"/><path class="iko-shine" d="M17 15C21 11 26 10 30 10"/><g class="iko-face"><circle class="iko-eye" cx="24" cy="28" r="2.4"/><circle class="iko-eye" cx="40" cy="28" r="2.4"/><path class="iko-mouth" d="M28 36Q32 39 36 36"/></g></svg></span><p id="who-q" class="who-q say">Who's learning?</p></div>
         <div class="who-opts">
@@ -37,7 +37,7 @@
 
     <section id="chat" hidden>
       <header class="bar col">
-        <span class="brand"><span id="bar-iko" class="iko-dock"></span><button type="button" id="to-cloud" class="link to-cloud" aria-label="Back to your cloud">Your cloud</button><span class="chat-name" aria-hidden="true">Iko</span><a id="who-now" class="who-now" href="/ikolearn/learners" hidden></a></span>
+        <span class="brand"><span id="bar-iko" class="iko-dock"></span><button type="button" id="chat-back" class="link chat-back" hidden>Back</button><span class="chat-name" aria-hidden="true">Iko</span><a id="who-now" class="who-now" href="/ikolearn/learners" hidden></a></span>
         <span class="bar-r">
           <button type="button" id="deck-btn" class="link deck-link" hidden>Your deck</button>
           <button type="button" id="thumb" class="thumb" aria-label="Open your learning cloud"><canvas id="thumb-canvas" width="72" height="72"></canvas></button>
@@ -125,8 +125,8 @@
           <button type="button" id="cloud-deck" class="minideck home-deck" hidden>Your deck</button>
           <a id="cloud-who" class="who-now" href="/ikolearn/learners" hidden></a>
         </nav>
-        <span class="zoom"><button type="button" id="zin" class="btn sm" aria-label="Zoom in">+</button><button type="button" id="zout" class="btn sm" aria-label="Zoom out">&minus;</button><button type="button" id="zreset" class="btn sm" title="Ease back to the whole cloud">Recentre</button></span>
       </div>
+      <span class="zoom"><button type="button" id="zin" class="btn sm" aria-label="Zoom in">+</button><button type="button" id="zout" class="btn sm" aria-label="Zoom out">&minus;</button><button type="button" id="zreset" class="btn sm" title="Ease back to the whole cloud">Recentre</button></span>
       <p class="cloud-hint">Drag to move · Scroll to zoom · Right-drag or Shift-drag to turn · Click a point to bring it close</p>
       <div id="cloud-start" class="cloud-start" hidden>
         <p id="cs-name" class="cs-name" aria-hidden="true"></p>
@@ -137,7 +137,7 @@
         <div id="cs-ex" class="cs-ex" aria-label="A few ideas"></div>
         <p id="cs-status" class="cs-status" aria-live="polite"></p>
       </div>
-      <p class="cloud-foot fine" data-theme-slot><a href="/ikolearn/learners">Learners</a> · <a href="/ikolearn/family">For parents &amp; teachers</a> · <a href="/ikolearn/privacy">Privacy</a></p>
+      <p class="cloud-foot fine" data-theme-slot><a href="/ikolearn/learners">Learners</a> · <a href="/ikolearn/family">For parents &amp; teachers</a> · <a href="/ikolearn/privacy">Privacy</a><span class="sup" data-sup> · <a href="mailto:shawn@ikosagon.com?subject=IkoLearn%20feedback" class="sup-link">Support &amp; feedback</a> · <a href="https://x.com/IkosagonAI" class="sup-link" target="_blank" rel="noopener">Follow on X</a></span></p>
       <aside id="panel" class="node-card" hidden aria-labelledby="p-title">
         <div class="panel-in">
           <button type="button" id="p-close" class="card-x" aria-label="Close">&times;</button>
@@ -158,7 +158,7 @@
     </section>
   </main>
 
-  <p id="iko-line" class="iko-line" role="status" hidden></p>
+  <p id="iko-line" class="iko-line" role="button" tabindex="0" aria-live="polite" hidden></p>
   <div id="iko-wrap" class="iko-wrap" hidden>
     <button type="button" id="iko" class="iko" aria-label="Talk to Iko" aria-haspopup="dialog" aria-expanded="false" aria-controls="iko-sheet">
       <svg class="iko-pebble" viewBox="0 0 64 56" width="44" height="39" aria-hidden="true" focusable="false"><path class="iko-body" d="M32 4C49 4 60 14 60 29C60 44 48 52 31 52C15 52 4 44 4 30C4 15 16 4 32 4Z"/><path class="iko-shine" d="M17 15C21 11 26 10 30 10"/><g class="iko-face"><circle class="iko-eye" cx="24" cy="28" r="2.4"/><circle class="iko-eye" cx="40" cy="28" r="2.4"/><path class="iko-mouth" d="M28 36Q32 39 36 36"/></g></svg>
@@ -181,7 +181,7 @@
       <textarea id="iko-in" rows="1" maxlength="1500" placeholder="Ask Iko anything" aria-label="Message to Iko"></textarea>
       <button type="submit" id="iko-send" class="btn sm">Send</button>
     </form>
-    <p class="iko-foot fine"><button type="button" id="iko-all" class="link">See our whole conversation</button><span class="sup" data-sup> · <a href="mailto:shawn@ikosagon.com?subject=IkoLearn%20feedback" class="sup-link">Support &amp; feedback</a> · <a href="https://x.com/IkosagonAI" class="sup-link" target="_blank" rel="noopener">Follow on X</a></span></p>
+    <p class="iko-foot fine"><button type="button" id="iko-all" class="link">See our whole conversation</button></p>
   </section>
   <input type="file" id="ct-file" accept=".ikocloud,.ikolearn,.json,application/json,application/octet-stream,text/plain" hidden aria-hidden="true" tabindex="-1">
   <div id="ik-confirm" class="ik-confirm" role="alertdialog" aria-modal="true" aria-labelledby="ikc-text" hidden>
