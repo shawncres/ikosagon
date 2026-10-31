@@ -880,3 +880,5 @@ html[data-theme="dark"] .gcard.earned { filter: saturate(1.3) brightness(1.06); 
 .l-conf .fine { margin: 6px 0 0; }
 .l-conf:focus { outline: none; }
 .q-again { margin: 0 0 14px; }
+/* PR 109: in light mode the fog is multiplied into the parchment, so its colour reads on paper (dark mode as it was) */
+html:not([data-theme="dark"]) .cloud-fog { mix-blend-mode: multiply; }

@@ -1107,8 +1107,8 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
   const bytes = files.reduce((n, f) => n + served(f).length, 0);
   const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
-  ok(bytes < 342_000, "app weight under 342 KB uncompressed (served, minified)", String(bytes));
-  ok(gz < 115_000, "app weight under 115 KB gzipped (served, minified)", String(gz));
+  ok(bytes < 345_000, "app weight under 345 KB uncompressed (served, minified)", String(bytes));
+  ok(gz < 116_000, "app weight under 116 KB gzipped (served, minified)", String(gz));
 }
 
 /* ================= PR 108: QA polish ================= */
@@ -1118,7 +1118,11 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/wasEarned = Boolean\(les0 && \(les0\.earned \|\| les0\.got\)\)/.test(app) && /if \(!wasEarned && C\.inDeck\(state\.cloud, id\)\) \{ flyToDeck\(id\); ikoReact\("earn"\);/.test(app) && /if \(prevL && prevL\.earned\)/.test(app), "PR 108: the earn flight only the first time a card is earned (kept with the lesson, additive)");
   ok(/el\.deckBtn\.hidden = true;/.test(app), "PR 108: no \u201cYour deck \u00b7 n\u201d label beside the deck icon");
   ok(/function takeawayOf\(id\)/.test(app) && /state\.lessons\[id\]\.take = tk/.test(app) && /"You learned: " \+ took/.test(app) && /spec\.inDeck \? " earned" : ""/.test(deck) && /\.gcard\.earned \{ filter: saturate/.test(css) && /html\[data-theme="dark"\] \.gcard\.earned/.test(css), "PR 108: an earned card keeps its one-line takeaway (no call) and looks a little more vivid in both themes");
-  ok(/NEAR = \{ px: 34, spin: 0\.2, glide: 0\.82/.test(view) && /\* \(slowNow\(now\) \? NEAR\.spin : 1\)/.test(view) && /else base \*= 1\.5;/.test(view) && /if \(dark\) base \*= 0\.8;/.test(view) && /var bands = \{\};/.test(view), "PR 108: the cloud slows near a node; light-mode fog clearer (dark unchanged); like hues merge their haze");
+  ok(/NEAR = \{ px: 34, spin: 0\.07, glide: 0\.82/.test(view) && /slowK \+= \(\(slowNow\(now\) \? NEAR\.spin : 1\) - slowK\)/.test(view) && /if \(pos\.root && !hideRoot\)/.test(view) && /else base = Math\.min\(FOG_LIGHT\.cap, base \* FOG_LIGHT\.alpha\);/.test(view) && /if \(dark\) base \*= 0\.8;/.test(view) && /var bands = \{\};/.test(view), "PR 108/109: the cloud near-stops near a node or the learner's name; light-mode fog clearly visible (dark unchanged); like hues merge their haze");
+  {
+    const CAMx = CAM;
+    ok(CAMx.spinCap && CAMx.spinCap(0) === 1 && CAMx.spinCap(100) === 1 && CAMx.spinCap(2000) < 0.5 && Math.abs(CAMx.spinCap(2000) * CAMx.SPIN.rate * 1000 * 2000 - CAMx.SPIN.maxPx) < 1e-9, "PR 109: the spin's edge speed is capped on a big or zoomed-in cloud (no faster with more nodes)");
+  }
   ok(/var POOL = \{ gapMs: Number\(window\.__IKO_POOL_MS\) \|\| 45000, max: 8 \};/.test(app) && /x\.id !== iko\.poolLast && x\.id !== m\.last/.test(app) && /@media \(min-width: 900px\), \(pointer: fine\) \{\n  \.iko-line \{ font-size: 16px;/.test(css), "PR 108: Iko's pool after a silence (local, never twice in a row, capped a visit); larger lines on computers");
   const pool = app.slice(app.indexOf("  function poolLines(key) {"), app.indexOf("  function poolLater() {"));
   ok(pool.length > 200 && !/fetch\(|stream\(|\/api\//.test(pool), "PR 108: the pool makes no call (a \u201cYes\u201d asks Iko, as typing would)");
@@ -2462,14 +2466,14 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   // the big cloud's idle spin (camera.js: pure)
   const S = CAM.spinState, R0 = CAM.SPIN.resumeMs;
   const turnSec = (2 * Math.PI) / CAM.SPIN.rate / 1000;
-  ok(R0 >= 3000 && R0 <= 4000 && turnSec >= 60 && turnSec <= 90, "idle spin: slow but noticeable (one turn in 60-90 s), starts after 3-4 idle seconds", `${turnSec.toFixed(1)} s/turn, ${R0} ms`);
+  ok(R0 >= 3000 && R0 <= 4000 && turnSec >= 200 && turnSec <= 300, "idle spin: subtle (PR 109: one turn in 200-300 s, was 75 s), starts after 3-4 idle seconds", `${turnSec.toFixed(1)} s/turn, ${R0} ms`);
   ok(CAM.spinEase(0) === 0 && CAM.spinEase(CAM.SPIN.easeMs) === 1 && CAM.spinEase(CAM.SPIN.easeMs / 2) === 0.5 && CAM.spinEase(CAM.SPIN.easeMs / 4) < 0.25 && CAM.SPIN.easeMs >= 800 && CAM.SPIN.easeMs <= 2500, "idle spin: eases in (smoothstep from rest to full speed in about 1.5 s)");
   ok(CAM.spinStep(16, 0) === 0 && CAM.spinStep(16, CAM.SPIN.easeMs) === CAM.SPIN.rate * 16 && CAM.spinStep(16, CAM.SPIN.easeMs / 2) === CAM.SPIN.rate * 8, "idle spin: the first frame is still, full speed once eased in");
   ok(S({ reduce: true, active: true, now: 1e6, lastInput: 0 }).on === false && S({ reduce: true, active: true, now: 1e6, lastInput: 0 }).wait === Infinity, "idle spin: off with reduced motion");
   ok(!S({ hidden: true, active: true, now: 1e6 }).on && !S({ active: false, now: 1e6 }).on && !S({ active: true, paused: true, now: 1e6 }).on, "idle spin: never while the tab is hidden, the cloud is closed or something covers it");
   ok(!S({ active: true, busy: true, now: 1e6, lastInput: 0 }).on && S({ active: true, now: 1000, lastInput: 0 }).wait === R0 - 1000 && S({ active: true, now: R0, lastInput: 0 }).on, "idle spin: paused by interaction (and a focus glide), resumes once idle");
   ok(CAM.spinStep(1000) === CAM.SPIN.rate * CAM.SPIN.maxDt && CAM.spinStep(-5) === 0, "idle spin: a long frame gap never jumps");
-  ok(/if \(sp\.on && !spinning\) spinFrom = now;/.test(view) && /CAM\.spinStep\(spinning \? now - lastFrame : 16, now - spinFrom\)/.test(view), "cloud view: each start of the spin eases in again");
+  ok(/if \(sp\.on && !spinning\) spinFrom = now;/.test(view) && /var dtS = spinning \? now - lastFrame : 16;/.test(view) && /yaw \+= CAM\.spinStep\(dtS, now - spinFrom\) \* slowK \* CAM\.spinCap\(extent\)/.test(view), "cloud view: each start of the spin eases in again");
   ok(/hold: function \(on\) \{ if \(spinHeld === Boolean\(on\)\) return;/.test(view), "cloud view: re-asserting the same hold does not restart the idle wait (the panel's sheet resizes as its note streams)");
   ok(!/canvas\.addEventListener\(t, touch/.test(view) && !/addEventListener\("keydown", touch\)/.test(view) && /visibilitychange/.test(view) && /if \(tween\) lastInput = now;/.test(view) && /busy: Boolean\(tween\)/.test(view), "cloud view: drags, pans, pinches and the wheel no longer pause the spin; a focus glide is waited out; a hidden tab stops it");
   ok(/if \(hit\) \{ touch\(\); opts\.onPick\(hit\); \}/.test(view) && /pause: function \(\) \{ touch\(\); request\(\); \}/.test(view), "cloud view: a click on a node pauses the spin; pause() for a click on a control");

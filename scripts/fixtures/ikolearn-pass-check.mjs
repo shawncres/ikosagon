@@ -1,6 +1,7 @@
 // PR 103: a lesson's questions sit in their own pane after the reading (Continue), and the card is earned only once a
 // whole round is right. passCheck(page) taps Continue and answers every question right, reading the answers from the
-// lesson store on the device (any learner's lessons key), so a suite can go on to "I've got it" and Where next.
+// lesson store on the device (any learner's lessons key). PR 109: the pass itself earns the card (no "I've got it"), so a
+// suite goes straight on to the confirmation and Where next. o.noWait: return right after the last answer.
 export async function passCheck(p, o = {}) {
   if (await p.isVisible("#l-cont")) { await p.click("#l-cont"); await p.waitForTimeout(150); }
   const ans = await p.evaluate((wrong) => {
@@ -23,6 +24,6 @@ export async function passCheck(p, o = {}) {
     await q.locator("input").nth(ans[i]).check();
     await p.waitForTimeout(80);
   }
-  await p.waitForTimeout(200);
+  if (!o.noWait) await p.waitForTimeout(200);
   return true;
 }

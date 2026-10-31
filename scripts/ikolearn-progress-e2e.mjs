@@ -1,6 +1,6 @@
 // Regression e2e for lesson progress (no model calls; every /api/ikolearn call mocked): in a lesson with 3 questions,
-// each answer and "I've got it" are kept the moment they happen. Leaving the lesson (its card, Iko, the deck, the
-// cloud) and coming back, or reloading, shows every answer and the done state; "I've got it" never moves on by itself;
+// each answer and the earn (by passing the check, PR 109) are kept the moment they happen. Leaving the lesson (its card, Iko, the deck, the
+// cloud) and coming back, or reloading, shows every answer and the done state; the earn never moves on by itself;
 // the family view and Where Next show the progress without tapping Continue. Storage stays v9.
 // Run: IKOLEARN_PW=<path to node_modules/playwright-core> node scripts/ikolearn-progress-e2e.mjs [--shots DIR] [--tag after] [--root public]
 import http from "node:http";
@@ -87,7 +87,7 @@ const SEED = () => {
 const look = (p) => p.evaluate(() => {
   const q = document.querySelector("#l-quiz"), C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), id = c.order.find((x) => c.nodes[x].label === "Magma"), L = JSON.parse(localStorage.getItem("ikolearn.v1.lessons") || "{}")[id] || {};
   return { lesson: !document.querySelector("#lesson").hidden, title: document.querySelector("#l-title").textContent, lede: (q.querySelector(".q-lede") || {}).textContent || "", answered: q.querySelectorAll(".q-fb").length, open: [...q.querySelectorAll("fieldset.q")].filter((f) => !f.querySelector(".q-fb")).length,
-    checked: [...q.querySelectorAll("fieldset.q")].map((f) => { const i = [...f.querySelectorAll("input")].findIndex((x) => x.checked); return i; }), status: document.querySelector("#l-status").innerText, next: document.querySelector("#l-next").innerText.replace(/\s+/g, " ").trim(),
+    checked: [...q.querySelectorAll("fieldset.q")].map((f) => { const i = [...f.querySelectorAll("input")].findIndex((x) => x.checked); return i; }), status: document.querySelector("#l-status").innerText, conf: document.querySelector("#l-conf").hidden ? "" : document.querySelector("#l-conf").innerText, body: Boolean(document.querySelector("#l-body").getClientRects().length), next: document.querySelector("#l-next").innerText.replace(/\s+/g, " ").trim(),
     stored: L.ans || [], got: Boolean(L.got), done: C.isDone(c, id), correct: c.nodes[id].correct || 0, v: JSON.parse(localStorage.getItem("ikolearn.v1.cloud")).v };
 });
 const answer = async (p, i) => { await p.locator("#l-quiz fieldset.q").nth(i).locator("label.opt").nth(QS[i].answer).click(); await p.waitForTimeout(150); };
@@ -108,7 +108,7 @@ const viaDeck = async (p) => {
   await p.locator("#d-album .gcard", { hasText: "Magma" }).first().click(); await p.waitForTimeout(700);
   await p.click("#hub-lesson"); await p.waitForTimeout(700);
 };
-const full = (k) => k.lesson && k.title === "Magma" && k.answered === 3 && k.open === 0 && /^All done/.test(k.lede) && JSON.stringify(k.checked) === "[0,1,2]" && /marked this one as done/.test(k.status) && JSON.stringify(k.stored) === "[0,1,2]" && k.got && k.done && k.correct === 3 && k.v === 9;
+const full = (k) => k.lesson && k.title === "Magma" && k.answered === 3 && k.open === 0 && /^All done/.test(k.lede) && JSON.stringify(k.checked) === "[0,1,2]" && /Card earned/i.test(k.conf) && /You learned/.test(k.conf) && !k.body && JSON.stringify(k.stored) === "[0,1,2]" && k.got && k.done && k.correct === 3 && k.v === 9;
 
 for (const width of [390, 1280]) {
   const tag = String(width);
@@ -131,11 +131,11 @@ for (const width of [390, 1280]) {
     ok(k1.lesson && k1.answered === 2 && k1.open === 1 && JSON.stringify(k1.checked) === "[0,1,-1]", `${tag}: partway: out to the card and back, the two answers are there and the third is still open`, JSON.stringify(k1));
     await answer(p, 2);
     const kp = await look(p);
-    ok(kp.correct === 3 && !(await p.isHidden("#l-got")), `${tag}: the round passed: the three right answers count, and the card can be earned`, JSON.stringify(kp));
+    ok(kp.correct === 3 && await p.isHidden("#l-got"), `${tag}: the round passed: the three right answers count, and the card is earned by the pass (no "I've got it")`, JSON.stringify(kp));
     const nextBefore = kp.next;
-    await p.click("#l-got"); await p.waitForTimeout(400);
+    await p.waitForTimeout(400);
     const k2 = await look(p);
-    ok(k2.lesson && k2.title === "Magma" && JSON.stringify(k2.stored) === "[0,1,2]" && k2.got && k2.done && k2.v === 9, `${tag}: "I've got it": saved at once with all 3 answers; no auto-advance (still on Magma); storage v9`, JSON.stringify(k2));
+    ok(k2.lesson && k2.title === "Magma" && JSON.stringify(k2.stored) === "[0,1,2]" && k2.got && k2.done && k2.v === 9, `${tag}: the pass: earned and saved at once with all 3 answers; no auto-advance (still on Magma); storage v9`, JSON.stringify(k2));
     ok(k2.next && /Eruptions|Lava Types/.test(k2.next), `${tag}: Where Next shows the next step straight away (no Continue needed)`, k2.next + " | before: " + nextBefore);
     await shot(p, width, "1-got");
     const c0 = calls.length;

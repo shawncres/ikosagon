@@ -3,7 +3,7 @@
 // card, the current path's next unfinished step comes first, and when everything is finished the cloud offers a new
 // topic or direction instead (no lesson re-opened). Iko on touch (390x844, a visualViewport the test shrinks like an
 // on-screen keyboard): opening the sheet doesn't take the focus (no keyboard covering it), and with the keyboard up the
-// field and the latest message stay inside the visible part of the screen; "Still tricky" still opens its clarification.
+// field and the latest message stay inside the visible part of the screen; a lesson with no check has one "I've got it" (PR 109).
 // Run: IKOLEARN_PW=<path to node_modules/playwright-core> node scripts/ikolearn-mobile-e2e.mjs [--root public] [--shots dir]
 import http from "node:http";
 import fs from "node:fs";
@@ -184,12 +184,16 @@ const MIXED = { act: { "Coral Reefs": { ago: 3, done: true }, Shapes: { ago: 2, 
     const k3 = await p.evaluate(() => { const s = document.querySelector("#iko-sheet"), r = s.getBoundingClientRect(); return { bottom: s.style.bottom, b: r.bottom, ih: innerHeight }; });
     ok(k3.bottom === "" && k3.b <= k3.ih && k3.b > k3.ih - 40, "Iko: with the keyboard gone the sheet settles back at the bottom", JSON.stringify(k3));
     await p.tap("#iko-x"); await p.waitForTimeout(200);
-    /* Still tricky, on touch: Iko opens with the clarification ready */
+    /* PR 109: on touch, a lesson with no check: one "I've got it" (no "Still tricky"); tapping it shows the confirmation */
     await p.locator(".cloud-flow .draw-btn").tap(); await p.waitForSelector("#l-done:not([hidden])"); await p.waitForTimeout(300);
-    await p.evaluate(() => document.querySelector("#l-tricky").scrollIntoView({ block: "center" }));
-    await p.tap("#l-tricky"); await p.waitForTimeout(500);
-    const tr = await p.evaluate(() => { const r = document.querySelector("#iko-sheet").getBoundingClientRect(); return { sheet: !document.querySelector("#iko-sheet").hidden, inSheet: Boolean(document.querySelector("#iko-slot #l-clar")), text: (document.querySelector("#iko-slot") || {}).innerText || "", notField: document.activeElement !== document.querySelector("#iko-in"), fits: r.top >= 0 && r.bottom <= innerHeight }; });
-    ok(tr.sheet && tr.inSheet && tr.text.length > 20 && tr.notField && tr.fits, "Still tricky on touch: Iko opens with the clarification ready (no keyboard)", JSON.stringify(tr));
+    const hasQ = await p.evaluate(() => document.querySelectorAll("#l-quiz fieldset.q").length > 0 || !document.querySelector("#l-cont").hidden);
+    ok(!(await p.$("#l-tricky")), "no Still tricky on touch either");
+    if (!hasQ) {
+      await p.evaluate(() => document.querySelector("#l-got").scrollIntoView({ block: "center" }));
+      await p.tap("#l-got"); await p.waitForTimeout(500);
+      const tr = await p.evaluate(() => { const c = document.querySelector("#l-conf"), r = c.getBoundingClientRect(); return { conf: !c.hidden, top: r.top, ih: innerHeight, sheet: !document.querySelector("#iko-sheet").hidden }; });
+      ok(tr.conf && !tr.sheet && tr.top < tr.ih, "I've got it on touch: the confirmation, on screen (no sheet, no keyboard)", JSON.stringify(tr));
+    } else ok(await p.isHidden("#l-got"), "a lesson with a check has no \u201cI've got it\u201d (the pass earns it)");
     ok(!errs.length, "Iko on touch: no page errors", errs.join(" | "));
   } finally { await ctx.close(); }
 }
