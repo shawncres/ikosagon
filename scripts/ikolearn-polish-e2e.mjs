@@ -53,7 +53,7 @@ const SEED = ({ now, hello, fresh, visits }) => {
   Object.assign(C.dirOf(c), { off: now });
   C.joinDeck(c, now);
   localStorage.setItem("ikolearn.v1.name", "Maya"); localStorage.setItem("ikolearn.v1.cloud", C.serialize(c));
-  localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { cloud: 1, card: 1, deck: 1, iko: hello || fresh ? 0 : 1, grow: 1 } }));
+  localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { aboutCloud: 1, aboutLesson: 1, aboutDeck: 1, cloud: 1, card: 1, deck: 1, iko: hello || fresh ? 0 : 1, grow: 1 } }));
   localStorage.setItem("ikolearn.v1.thread", JSON.stringify([{ id: "m1", at: T, role: "model", local: true, text: "Welcome back, Maya." }]));
 };
 async function open(width, opts = {}) {

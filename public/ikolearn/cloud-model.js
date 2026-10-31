@@ -782,7 +782,17 @@
    * changedAt in the first slots of the profile row: they are ignored on read and written back empty (the row keeps its
    * v8 shape, so no version bump).
    */
-  function newProfile() { return { interests: [], onboarded: 0, askedAt: 0, visits: 0, lessonVisit: 0, dir: newDir() }; }
+  function newProfile() { return { interests: [], onboarded: 0, askedAt: 0, visits: 0, lessonVisit: 0, dir: newDir(), band: "", last: null }; }
+  /*
+   * PR 107, both optional and on the device only (additive v9 slots in the profile row: [10] band, [11] last):
+   * band: the learner's age band, if they chose to say ("" = not asked or skipped, "none" = prefer not to say). It only
+   *   changes how a lesson is written (reading level, sentence length, examples, concrete vs abstract); it never gates a
+   *   topic. It is sent inside the lesson request so the model can write for it, and never kept on a server.
+   * last: the most recent lesson or card, { id, kind: "lesson" | "card", t }, for the "Return to ..." control.
+   * Older saves' age slot [0] is a different, retired value and is never read back.
+   */
+  var BANDS = ["u10", "10-13", "14-17", "18+", "none"];
+  function cleanBand(v) { return BANDS.indexOf(v) >= 0 ? v : ""; }
   /*
    * Directions (an additive v9 slot, profile row [9]; older readers ignore it, older saves read as all zero):
    * off: when the "another direction" invite was dismissed (never shown again); n: directions added from it;
@@ -809,8 +819,13 @@
     }
     if (patch && patch.onboarded) p.onboarded = p.onboarded || t;
     if (patch && patch.askedAt) p.askedAt = t;
+    if (patch && "band" in patch) p.band = cleanBand(patch.band);
     return p;
   }
+  /* the band to write lessons for: "" when not given (or "prefer not to say") */
+  function bandOf(cloud) { var b = profileOf(cloud).band; return b && b !== "none" ? b : ""; }
+  function setLast(cloud, id, kind, t) { if (!cloud.nodes[id]) return; profileOf(cloud).last = { id: id, kind: kind === "card" ? "card" : "lesson", t: now_(t) }; }
+  function lastOf(cloud) { var l = profileOf(cloud).last; return l && cloud.nodes[l.id] && cloud.nodes[l.id].parent ? l : null; }
   /* Topics the learner has (explored, below a subject). */
   function topicCount(cloud) { return all(cloud).filter(function (n) { return n.parent && !n.ghost; }).length; }
 
@@ -1622,7 +1637,8 @@
     /* v8 row shape; slots 0-2 and 8 (the old age band, region, region-guess flag and changedAt) are always written empty */
     var d = p.dir || newDir();
     return ["", "", 0, p.interests || [], s(p.onboarded), s(p.askedAt), p.visits || 0, p.lessonVisit || 0, 0,
-      [s(d.off), d.n || 0, s(d.seen), s(d.prev), s(d.quiet), (d.hide || []).slice(-24), (d.later || []).slice(0, 4)]];
+      [s(d.off), d.n || 0, s(d.seen), s(d.prev), s(d.quiet), (d.hide || []).slice(-24), (d.later || []).slice(0, 4)]]
+      .concat(p.band || p.last ? [p.band || "", p.last ? [p.last.id, p.last.kind === "card" ? 1 : 0, s(p.last.t)] : 0] : []); /* PR 107's slots only when set */
   }
   function profileFrom(a) {
     var p = newProfile();
@@ -1635,6 +1651,9 @@
     p.dir = { off: ms(d[0]), n: Math.max(0, Math.min(9, Math.floor(Number(d[1]) || 0))), seen: ms(d[2]), prev: ms(d[3]), quiet: ms(d[4]),
       hide: (Array.isArray(d[5]) ? d[5] : []).filter(function (k) { return typeof k === "string" && k.length <= 80; }).slice(-24),
       later: (Array.isArray(d[6]) ? d[6] : []).map(cleanLabel).filter(Boolean).slice(0, 4) };
+    p.band = cleanBand(a[10]);
+    var l = Array.isArray(a[11]) ? a[11] : null;
+    p.last = l && typeof l[0] === "string" && /^n\d{1,7}$/.test(l[0]) ? { id: l[0], kind: l[1] ? "card" : "lesson", t: ms(l[2]) } : null;
     return p;
   }
 
@@ -1796,7 +1815,7 @@
 
   var api = {
     VERSION: VERSION, LIMITS: LIMITS, STORE: STORE, subjectSlot: subjectSlot, promptSubjects: promptSubjects, promptView: promptView, prune: prune, removeBranch: removeBranch, MASTERED: MASTERED, OLD_SEEDS: OLD_SEEDS, HUES: HUES, subjectHue: subjectHue, plant: plant,
-    newProfile: newProfile, profileOf: profileOf, dirOf: dirOf, setLater: setLater, setProfile: setProfile, topicCount: topicCount,
+    newProfile: newProfile, profileOf: profileOf, BANDS: BANDS, bandOf: bandOf, setLast: setLast, lastOf: lastOf, dirOf: dirOf, setLater: setLater, setProfile: setProfile, topicCount: topicCount,
     TIERS: TIERS, TIER_NAMES: TIER_NAMES, TIER_STAGE: TIER_STAGE, ACHIEVE_RIGHT: ACHIEVE_RIGHT, roman: roman, tierOf: tierOf, mergeLevel: mergeLevel, mergeInto: mergeInto, corpusOf: corpusOf, absorbedInto: absorbedInto,
     GATE: GATE, needOf: needOf, gateCore: gateCore, coreProgress: coreProgress, prereqs: prereqs, lockedBy: lockedBy, completable: completable, addPrereqs: addPrereqs, PRE_MAX: PRE_MAX,
     checkChain: checkChain, applyRepair: applyRepair, moveUnder: moveUnder, EVENTS_MAX: EVENTS_MAX,

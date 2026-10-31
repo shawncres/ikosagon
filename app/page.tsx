@@ -46,8 +46,8 @@ export default async function Home() {
               <p className="mb-2 font-mono text-sm text-accent">Featured app</p>
               <h2 className="mb-3 text-3xl font-semibold">IkoLearn</h2>
               <p className="mb-4 max-w-3xl text-zinc-300">
-                A thoughtful learning harness for anyone curious, at any age. We at Ikosagon built it so
-                curiosity turns into real foundations: say what you enjoy, and IkoLearn grows a learning
+                A thoughtful learning harness for anyone curious, at any age. IkoLearn is a place where you can
+                start learning about as many or as few things as you want, and Iko will help you: say what you enjoy, and it grows a learning
                 cloud of subjects and topics in a sensible order, with short lessons that teach, then check.
               </p>
               <p className="mb-5 max-w-3xl text-sm text-zinc-400">

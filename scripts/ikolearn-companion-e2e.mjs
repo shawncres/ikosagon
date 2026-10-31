@@ -82,7 +82,7 @@ const SEED = () => {
   C.joinDeck(c, T + 4000);
   c.active = id("Magma");
   localStorage.setItem("ikolearn.v1.name", "Maya"); localStorage.setItem("ikolearn.v1.cloud", C.serialize(c));
-  localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { cloud: 1, card: 1, chat: 1, draw: 1, iko: 1 } }));
+  localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { aboutCloud: 1, aboutLesson: 1, aboutDeck: 1, cloud: 1, card: 1, chat: 1, draw: 1, iko: 1 } }));
   localStorage.setItem("ikolearn.v1.thread", JSON.stringify([{ id: "m1", at: T, role: "model", local: true, text: "Welcome back, Maya." }]));
 };
 const rect = (p, sel) => p.evaluate((s) => { const e = document.querySelector(s); if (!e || e.closest("[hidden]") || !e.getClientRects().length) return null; const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height }; }, sel);
@@ -198,8 +198,19 @@ for (const width of [390, 1280]) {
       await p.evaluate(() => { document.querySelector("#iko-line").hidden = true; });
       await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" }); await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(500);
       const chip = p.locator(".cloud-flow > .chip", { hasText: "Eruptions" });
-      if (await chip.count()) {
-        await chip.first().click(); await p.waitForSelector("#l-cont:not([hidden])");
+      /* PR 107: the Pick up row's deck draw changes by the day, so Eruptions may not be offered there today: then from its node's card */
+      const openEr = async () => {
+        if (await chip.count()) { await chip.first().click(); return true; }
+        await p.evaluate(() => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")); window.__er = c.order.find((x) => c.nodes[x].label === "Eruptions"); }); /* the reload cleared it */
+        await p.evaluate(() => { const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view; v.focusNode(window.__er); });
+        await p.waitForTimeout(900);
+        const xy = await p.evaluate(() => { const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view, q = v.project(window.__er), r = document.querySelector("#cloud-canvas").getBoundingClientRect(); return { x: r.left + q.x, y: r.top + q.y }; });
+        await p.mouse.click(xy.x, xy.y); await p.waitForTimeout(900);
+        if ((await p.textContent("#p-title").catch(() => "")) !== "Eruptions") return false;
+        await p.click("#p-lesson"); return true;
+      };
+      if (await openEr()) {
+        await p.waitForSelector("#l-cont:not([hidden])");
         await p.click("#l-cont"); await p.waitForTimeout(200);
         await pick(0, 2); await p.waitForTimeout(100); await pick(1, 2); await p.waitForTimeout(300);
         await p.click("#l-quiz .q-fresh"); await p.waitForTimeout(250);

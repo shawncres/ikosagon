@@ -60,7 +60,7 @@ const SEED = ({ name, now, guide, other }) => {
     localStorage.setItem("ikolearn.v1.lessons", JSON.stringify({ [any]: { text: "INTRO: " + who + "'s cached lesson.", at: now, qs: [{ q: "Q?", options: ["a", "b"], answer: 0 }], ans: [0], got: now } }));
     localStorage.setItem("ikolearn.v1.tests", JSON.stringify({}));
     localStorage.setItem("ikolearn.v1.notes", JSON.stringify({ [any + ":0"]: "A short note " + who + " already has." }));
-    localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: { [any]: 1001 }, ev: 0, h: { cloud: 1, card: 1, deck: 1, iko: 1, grow: 1 } }));
+    localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: { [any]: 1001 }, ev: 0, h: { aboutCloud: 1, aboutLesson: 1, aboutDeck: 1, cloud: 1, card: 1, deck: 1, iko: 1, grow: 1 } }));
     localStorage.setItem("ikolearn.v1.thread", JSON.stringify([{ id: "m1", at: T, role: "model", local: true, text: "A private chat line for " + who + "." }]));
     localStorage.setItem("ikolearn.v1.view", JSON.stringify({ y: 1.2, p: 0.4, z: 2.5, x: 120, q: -80, f: 0 }));
   };

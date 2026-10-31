@@ -178,6 +178,8 @@ type StreamSpec = {
   maxTokens?: number;
   /** the route name in failure log lines */
   route: string;
+  /** PR 107: keep backticks (a lesson's or clarification's code); the device renders them as code, never as HTML */
+  keepCode?: boolean;
   /** Turns the hidden trailing block into the event sent before "done" (or null for none). */
   tail: (block: string, found: boolean) => ChatEvent | null;
 };
@@ -206,7 +208,7 @@ async function* replyEvents(spec: StreamSpec, pieces: AsyncGenerator<string>): A
     for await (const piece of started.pieces) {
       const visible = split.push(piece);
       if (visible) {
-        const text = visible.replace(/\*\*|__|`+/g, "");
+        const text = spec.keepCode ? visible.replace(/\*\*|__/g, "") : visible.replace(/\*\*|__|`+/g, "");
         shown += text.length;
         if (shown > spec.maxChars) break;
         yield { t: "delta", text };
@@ -237,6 +239,7 @@ export function chatEvents(input: LearnInput, env: Env, fetchImpl: typeof fetch 
       contents: buildContents(input),
       route: input.mode,
       maxChars: LEARN_LIMITS.replyChars,
+      keepCode: input.mode === "clarify",
       tail: (block) => {
         if (input.mode === "clarify") return null; /* inline help only: nothing lands on the cloud */
         const b = parseCloudBlock(block, input.name, input.mode === "chat" ? { focusId: input.focusId, cloud: input.cloud, parents: input.parents } : undefined);
@@ -259,6 +262,7 @@ export function lessonEvents(input: LearnInput, env: Env, fetchImpl: typeof fetc
       close: PATH_CLOSE,
       route: "lesson",
       maxChars: LEARN_LIMITS.lessonChars,
+      keepCode: true,
       maxTokens: MODEL_LIMITS.lessonMaxTokens,
       tail: (block, found) => {
         if (!found) return null;

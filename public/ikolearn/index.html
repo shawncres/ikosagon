@@ -41,6 +41,7 @@
         <span class="bar-r">
           <button type="button" id="deck-btn" class="link deck-link" hidden>Your deck</button>
           <button type="button" id="thumb" class="thumb" aria-label="Open your learning cloud"><canvas id="thumb-canvas" width="72" height="72"></canvas></button>
+          <button type="button" id="bar-ret" class="ret" hidden></button>
         </span>
       </header>
       <section id="draw" class="col flow" hidden aria-label="Pick up a card"></section>
@@ -122,11 +123,11 @@
       <div class="cloud-top">
         <nav class="home-nav" aria-label="IkoLearn">
           <span id="home-iko" class="iko-dock"></span><span class="home-brand" aria-hidden="true">IkoLearn</span>
-          <button type="button" id="cloud-deck" class="minideck home-deck" hidden>Your deck</button>
           <a id="cloud-who" class="who-now" href="/ikolearn/learners" hidden></a>
         </nav>
+        <span class="top-r"><button type="button" id="cloud-ret" class="ret" hidden></button><button type="button" id="cloud-deck" class="minideck home-deck" hidden>Your deck</button></span>
       </div>
-      <span class="zoom"><button type="button" id="zin" class="btn sm" aria-label="Zoom in">+</button><button type="button" id="zout" class="btn sm" aria-label="Zoom out">&minus;</button><button type="button" id="zreset" class="btn sm" title="Ease back to the whole cloud">Recentre</button></span>
+      <span class="zoom"><button type="button" id="zin" class="btn sm" aria-label="Zoom in">+</button><button type="button" id="zout" class="btn sm" aria-label="Zoom out">&minus;</button><button type="button" id="zreset" class="btn sm" title="Ease back to the whole cloud" aria-label="Recentre: drag to move, pinch to zoom, twist to turn"><svg class="zr-ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 3v5M12 16v5M3 12h5M16 12h5M9.5 5.5 12 3l2.5 2.5M9.5 18.5 12 21l2.5-2.5M5.5 9.5 3 12l2.5 2.5M18.5 9.5 21 12l-2.5 2.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg><span class="zr-t">Recentre</span></button></span>
       <p class="cloud-hint">Drag to move · Scroll to zoom · Right-drag or Shift-drag to turn · Click a point to bring it close</p>
       <div id="cloud-start" class="cloud-start" hidden>
         <p id="cs-name" class="cs-name" aria-hidden="true"></p>
@@ -135,9 +136,10 @@
         <p id="cs-few" class="cs-few">One thing or a few, whatever's on your mind.</p>
         <form id="cs-form" class="cs-row" autocomplete="off"><input id="cs-in" maxlength="300" placeholder="In your own words" aria-labelledby="cs-q"><button type="submit" class="btn sm">Begin</button></form>
         <div id="cs-ex" class="cs-ex" aria-label="A few ideas"></div>
+        
         <p id="cs-status" class="cs-status" aria-live="polite"></p>
       </div>
-      <p class="cloud-foot fine" data-theme-slot><a href="/ikolearn/learners">Learners</a> · <a href="/ikolearn/family">For parents &amp; teachers</a> · <a href="/ikolearn/privacy">Privacy</a><span class="sup" data-sup> · <a href="mailto:shawn@ikosagon.com?subject=IkoLearn%20feedback" class="sup-link">Support &amp; feedback</a> · <a href="https://x.com/IkosagonAI" class="sup-link" target="_blank" rel="noopener">Follow on X</a></span></p>
+      <p class="cloud-foot fine" data-theme-slot><a href="/ikolearn/learners">Learners</a> · <a href="/ikolearn/family">For parents &amp; teachers</a> · <a href="/ikolearn/privacy">Privacy</a><span class="age-bit"> · <button type="button" id="age-link" class="link age-link">Your age (optional)</button></span><span class="sup" data-sup> · <a href="mailto:shawn@ikosagon.com?subject=IkoLearn%20feedback" class="sup-link">Support &amp; feedback</a> · <a href="https://x.com/IkosagonAI" class="sup-link" target="_blank" rel="noopener">Follow on X</a></span></p>
       <aside id="panel" class="node-card" hidden aria-labelledby="p-title">
         <div class="panel-in">
           <button type="button" id="p-close" class="card-x" aria-label="Close">&times;</button>

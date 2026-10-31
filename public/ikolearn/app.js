@@ -33,7 +33,8 @@
     focusChip: $("focus-chip"), focusText: $("focus-text"), focusClear: $("focus-clear"),
     lesson: $("lesson"), lBack: $("l-back"), lTrail: $("l-trail"), lTitle: $("l-title"), lBody: $("l-body"), lDone: $("l-done"),
     lGot: $("l-got"), lTricky: $("l-tricky"), lCont: $("l-cont"), phEarn: $("ph-earn"), lStatus: $("l-status"), lPath: $("l-path"), lClar: $("l-clar"), lNext: $("l-next"), lChat: $("l-chat"), lRedo: $("l-redo"),
-    cloud: $("cloud"), cloudCanvas: $("cloud-canvas"), cloudDeck: $("cloud-deck"), cloudWho: $("cloud-who"), chatBack: $("chat-back"),
+    cloud: $("cloud"), cloudCanvas: $("cloud-canvas"), cloudDeck: $("cloud-deck"), cloudRet: $("cloud-ret"), barRet: $("bar-ret"), cloudWho: $("cloud-who"), chatBack: $("chat-back"),
+    ageLink: $("age-link"),
     cs: $("cloud-start"), csName: $("cs-name"), csHi: $("cs-hi"), csQ: $("cs-q"), csFew: $("cs-few"), csForm: $("cs-form"), csIn: $("cs-in"), csEx: $("cs-ex"), csStatus: $("cs-status"),
     ikoWrap: $("iko-wrap"), iko: $("iko"), ikoLine: $("iko-line"), ikoSheet: $("iko-sheet"), ikoAbout: $("iko-about"), ikoX: $("iko-x"), ikoSay: $("iko-say"), ikoActs: $("iko-acts"), ikoGot: $("iko-got"), ikoBody: $("iko-body"), ikoSlot: $("iko-slot"), ikoLog: $("iko-log"), ikoForm: $("iko-form"), ikoIn: $("iko-in"), ikoAll: $("iko-all"), zin: $("zin"), zout: $("zout"), zreset: $("zreset"),
     panel: $("panel"), cloudTop: document.querySelector(".cloud-top"), pKicker: $("p-kicker"), pTitle: $("p-title"), pDesc: $("p-desc"), pNote: $("p-note"), pLesson: $("p-lesson"), pCard: $("p-card"), pAdj: $("p-adj"),
@@ -163,11 +164,19 @@
   function linkBtn(text, fn, cls) { var b = mk("button", cls || "link", text); b.type = "button"; b.addEventListener("click", function (e) { e.stopPropagation(); fn(); }); return b; }
   function paragraphs(node, text) {
     node.textContent = "";
+    /* PR 107: text with code (a clarification can carry it): code blocks and inline code, never HTML */
+    if (/`/.test(text || "")) {
+      L.segments(text).forEach(function (sg) { if (sg.code != null) node.appendChild(L.codeBlock(document, sg.code, sg.lang)); else if (sg.text.trim()) textParas(node, sg.text.replace(/^\n+|\n+$/g, "")); });
+      return;
+    }
+    textParas(node, text);
+  }
+  function textParas(node, text) {
     String(text || "").split(/\n{2,}/).forEach(function (para) {
       var p = mk("p");
       para.split("\n").forEach(function (line, i) {
         if (i) p.appendChild(mk("br"));
-        p.appendChild(document.createTextNode(line));
+        L.inline(document, p, line);
       });
       node.appendChild(p);
     });
@@ -299,7 +308,7 @@
       return;
     }
     var grow = r.set === "growth", key = grow ? "gat" : "at";
-    var list = state.ex.status !== "ok" ? [] : grow ? state.ex.growth : P.examples(state.cloud, state.ex.list, Date.now());
+    var list = state.ex.status !== "ok" ? [] : grow ? state.ex.growth : P.mixStarters(state.cloud, P.examples(state.cloud, state.ex.list, Date.now()), coarseArea());
     if (!list.length) return;
     var at = state.ex[key] % list.length;
     if (r.multi) {
@@ -322,6 +331,12 @@
       (function (t) { box.appendChild(linkBtn(t, function () { if (!state.busy && r.live()) r.pick(t); }, "btn ex-chip")); })(list[(at + k) % list.length]);
     }
     if (list.length > EX_SHOW) box.appendChild(linkBtn("More", function () { state.ex[key] = (at + EX_SHOW) % list.length; refreshEx(); }, "link ex-more"));
+  }
+  /* PR 107: a coarse area for starter ideas only, from the browser's own settings each time (never stored, sent or shown) */
+  function coarseArea() {
+    var tz = "";
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { tz = ""; }
+    return P.areaOf(tz, navigator.language || "");
   }
   function refreshEx() {
     exRows = exRows.filter(function (r) { return r.node.isConnected; });
@@ -368,6 +383,7 @@
     if (m.role === "ask") d = renderAsk(m);
     else if (m.role === "place") d = renderPlace(m);
     else if (m.role === "del") d = renderDel(m);
+    else if (m.role === "age") d = renderAge(m);
     else if (m.role === "card") {
       d = cardNode(m.card, m.card.node && nodeOf(m.card.node) ? "On " + trailOf(m.card.node) : "");
     } else if (m.role === "grow") {
@@ -554,12 +570,20 @@
         return { kind: "theme", mode: mode };
       }
     }
+    var ag = ageIntent(t);
+    if (ag) return ag;
     var d = t.match(/^(?:please\s+)?(?:(?:can|could|would) you\s+)?(?:delete|remove|get rid of|erase)\s+(?:the\s+|my\s+)?(.+?)(?:\s+(?:branch|topic|subject|node))?(?:\s+from\s+(?:my\s+|the\s+)?cloud)?(?:\s+please)?$/);
     if (d && d[1]) return { kind: "delete", name: d[1].trim() };
     return null;
   }
   function doIntent(text, it) {
     push({ role: "user", local: true, text: text });
+    if (it.kind === "age") {
+      if (it.forget) { setBand("none"); push({ role: "model", local: true, text: "Okay, I've forgotten it. Lessons go back to an everyday level for anyone." }); }
+      else if (it.n) { var b = bandFor(it.n); setBand(b); push({ role: "model", local: true, text: bandSaid(b) }); }
+      else push({ role: "age", local: true, text: "" });
+      save(); return;
+    }
     if (it.kind === "theme") {
       var already = TH && TH.mode() === it.mode && TH.saved() === it.mode;
       if (TH && !already) TH.set(it.mode);
@@ -575,6 +599,57 @@
     push({ role: "del", local: true, target: n.id, label: n.label });
     save();
   }
+  /*
+   * PR 107: the optional age band, on the device only. Asked lightly in the opening (a quiet "optional" link), or any
+   * time via Iko ("I'm 12", "change my age") or the cloud's footer. It changes how lessons are written (P.withBand), never
+   * which topics are open; it goes along only inside the teaching calls and is never kept on a server.
+   */
+  var BAND_LABEL = { u10: "Under 10", "10-13": "10\u201313", "14-17": "14\u201317", "18+": "18+", none: "Prefer not to say" };
+  function ageIntent(t) {
+    if (t.length > 60) return null;
+    var n = t.match(/^(?:hi,?\s+)?(?:i'?m|i am|im|my age is|age)\s*(\d{1,3})(?:\s*(?:years?|yrs?)(?:\s*old)?|\s*y\/?o)?$/);
+    if (n) return { kind: "age", n: Number(n[1]) };
+    if (/^(?:please\s+)?(?:forget|remove|clear|delete|erase)\s+my\s+age$/.test(t)) return { kind: "age", forget: true };
+    if (/^(?:(?:can|could) (?:i|you)\s+)?(?:please\s+)?(?:change|set|update|edit|fix|add|enter)\s+my\s+age(?:\s+(?:band|range))?(?:\s+please)?$|^(?:my\s+)?age(?:\s+(?:band|range))?$/.test(t)) return { kind: "age" };
+    return null;
+  }
+  function bandFor(n) { return n < 10 ? "u10" : n <= 13 ? "10-13" : n <= 17 ? "14-17" : "18+"; }
+  function bandSaid(b) {
+    return b === "none" ? "That's fine. Lessons stay at an everyday level for anyone."
+      : "Thanks. I'll write your lessons for " + (b === "u10" ? "under 10" : b === "18+" ? "a grown-up reader" : BAND_LABEL[b].replace("\u2013", " to ")) + ". Every topic stays open to you, and you can change this any time.";
+  }
+  function setBand(b) { C.setProfile(state.cloud, { band: b }); save(); renderAgeBits(); }
+  function bandRow(onPick) {
+    var cur = C.profileOf(state.cloud).band, row = mk("div", "place-opts age-opts");
+    row.setAttribute("role", "group"); row.setAttribute("aria-label", "Your age range");
+    C.BANDS.forEach(function (b) {
+      var x = linkBtn(BAND_LABEL[b], function () { onPick(b); }, "btn sm age-opt");
+      x.setAttribute("data-band", b); x.setAttribute("aria-pressed", String(cur === b)); if (cur === b) x.classList.add("on");
+      row.appendChild(x);
+    });
+    return row;
+  }
+  function renderAge(m) {
+    var d = mk("div", "place age");
+    if (m.done) { d.appendChild(mk("p", "grow", m.done)); return d; }
+    d.appendChild(mk("p", "place-q", "If you like, pick your age range. It changes how lessons are written, never which topics you can learn, and it stays on this device."));
+    d.appendChild(bandRow(function (b) { setBand(b); m.done = bandSaid(b); upsert(m); save(); if (iko.open) renderIkoLog(); }));
+    return d;
+  }
+  /* the opening's quiet line and the cloud footer's link show the choice (or that it's optional) */
+  function renderAgeBits() {
+    var b = state.cloud ? C.profileOf(state.cloud).band : "";
+    if (el.ageLink) { el.ageLink.textContent = b ? "Age: " + BAND_LABEL[b] : "Your age (optional)"; }
+  }
+
+  if (el.ageLink) el.ageLink.addEventListener("click", function () { openAge(); });
+  function openAge() {
+    if (!iko.open) openIko(); /* first: the sheet shows what is said from its opening on */
+    push({ role: "age", local: true, text: "" });
+    save();
+    renderIkoLog();
+  }
+
   /* the gentle word and the two buttons; done: what happened */
   function renderDel(m) {
     var d = mk("div", "place del");
@@ -637,7 +712,7 @@
   /* text: the learner's message, so subjects it names are among those the prompt sees (C.promptView: a bounded set) */
   function basePayload(focusId, text) {
     var n = nodeOf(focusId), pv = C.promptView(state.cloud, n ? n.id : null, text || "");
-    var p = n && n.parent ? nodeOf(n.parent) : null; /* no age, no region: nothing about who or where the learner is goes along */
+    var p = n && n.parent ? nodeOf(n.parent) : null; /* nothing about where the learner is goes along; the optional age band joins only the teaching calls (P.withBand) */
     return {
       name: state.name, focus: n ? n.label : "", focusId: n ? n.id : "", focusParent: p ? p.label : "", trail: n ? C.trail(state.cloud, n.id) : "",
       known: n ? C.knownUnder(state.cloud, n.id) : [], cloud: pv.cloud, parents: pv.parents
@@ -929,7 +1004,7 @@
     if (hintSeen("grow")) return;
     dismissHint("grow");
     var q = P.openQuestion(state.cloud, "grow");
-    ask(q, function (v) { dismissHint("growSaid"); if (v) buildCloud("more", [], cleanAbout("Something I'd like to grow in myself: " + v)); });
+    ask(q, function (v) { dismissHint("growSaid"); if (el.ikoLine.getAttribute("data-say") === "grow") ikoLine(""); /* answered or skipped: its line goes */ if (v) buildCloud("more", [], cleanAbout("Something I'd like to grow in myself: " + v)); });
     save();
     /* never beside the "another direction" invite: while one is on the cloud, Iko's line waits until it is gone
        (used, closed, or the cloud has its 3 subjects), this visit or a later one. The question is in the conversation already. */
@@ -939,7 +1014,8 @@
   function sayGrow() {
     if (!el.ikoLine.hidden && el.ikoLine.getAttribute("data-react") === "start") { iko.after = sayGrow; return; } /* after Iko's reassurance */
     dismissHint("growSaid");
-    ikoLine("Your path has begun. When you like, tell me something you'd like to grow in yourself too.", 12000);
+    ikoLine("Your path has begun. When you like, tell me something you'd like to grow in yourself too.", 0); /* PR 107: stays until tapped or answered */
+    el.ikoLine.setAttribute("data-say", "grow");
   }
   function dirInviting() { return Boolean(state.cloud && (P.directions(state.cloud).invite || (C.dirOf(state.cloud).later || []).length)); }
   function maybeGrowLine() {
@@ -1020,6 +1096,7 @@
     el.lesson.hidden = !on;
     el.thread.hidden = on;
     el.dock.hidden = on;
+    renderRet();
     if (!on) { state.lessonNode = null; state.mode = "lesson"; state.test = null; renderThread(); renderDraw(); }
     else { el.draw.hidden = true; el.lBack.textContent = state.lessonFrom && nodeOf(state.lessonFrom) ? "Back to its card" : "Back to your cloud"; viewIn(el.lesson); }
   }
@@ -1153,7 +1230,7 @@
   function validQs(qs) {
     return (Array.isArray(qs) ? qs : []).filter(function (q) {
       return q && typeof q.q === "string" && Array.isArray(q.options) && q.options.length >= 2 && Number.isInteger(q.answer) && q.answer >= 0 && q.answer < q.options.length;
-    }).slice(0, 3);
+    }).map(function (q) { return typeof q.code === "string" && q.code.length <= 600 ? q : Object.assign({}, q, { code: undefined }); }).slice(0, 3);
   }
   /*
    * Read -> check -> earn (PR 103). A lesson opens on its reading (Learn) with Continue; Continue opens Check yourself in
@@ -1231,14 +1308,15 @@
       : (ck.r ? "A fresh set: " : "") + (q.qs.length === 1 ? "One quick question" : q.qs.length + " quick questions") + " about what you just learned. Get " + (q.qs.length === 1 ? "it" : "them all") + " right and the card is yours to grow."));
     q.qs.forEach(function (item, qi) {
       var set = mk("fieldset", "q"), done = Number.isInteger(q.ans[qi]);
-      set.appendChild(mk("legend", null, item.q));
+      set.appendChild(L.inline(document, mk("legend"), item.q));
+      if (item.code) set.appendChild(L.codeBlock(document, item.code)); /* PR 107: a question about code shows it, as code */
       item.options.forEach(function (o, oi) {
         var lab = mk("label", "opt" + (done && oi === item.answer ? " right" : "") + (done && oi === q.ans[qi] && oi !== item.answer ? " wrong" : ""));
         var inp = mk("input");
         inp.type = "radio"; inp.name = "q" + qi + "-" + q.id + "-" + (ck.r || 0); inp.value = String(oi); inp.checked = done && q.ans[qi] === oi; inp.disabled = done;
         inp.addEventListener("change", function () { answerQ(qi, oi); });
         lab.appendChild(inp);
-        lab.appendChild(mk("span", "opt-t", String.fromCharCode(65 + oi) + ". " + String(o)));
+        lab.appendChild(L.inline(document, mk("span", "opt-t"), String.fromCharCode(65 + oi) + ". " + String(o)));
         set.appendChild(lab);
       });
       if (done) set.appendChild(mk("p", "q-fb", q.ans[qi] === item.answer ? "That's it." : "Not quite. It's " + String.fromCharCode(65 + item.answer) + ": " + item.options[item.answer] + "."));
@@ -1411,6 +1489,7 @@
     state.lessonFrom = state.pendingFrom || null; state.pendingFrom = null; /* opened from a card's hub: Back returns there */
     state.mode = "lesson"; state.test = null;
     if (!C.isDone(state.cloud, id)) state.cloud.active = id; /* "Continue" brings the learner back here */
+    markLast(id, "lesson"); /* PR 107: "Return to" */
     C.profileOf(state.cloud).lessonVisit = C.profileOf(state.cloud).visits || 0; /* not stuck: a lesson was opened this visit */
     startClock();
     state.revealed = false;
@@ -1536,6 +1615,7 @@
     var id = state.lessonNode, n = nodeOf(id);
     if (!n) return;
     if (kind === "got" && lessonPhase(id) !== "passed") return; /* earned only once the check is passed (PR 103) */
+    var keep = kind === "got" ? holdScroll() : null; /* PR 107: the earn never moves the page (it used to jump to the top on a phone) */
     var before = C.growthOf(state.cloud, id);
     var r = C.engage(state.cloud, id, kind);
     var kids = kind === "got" ? growChildren(id) : [];
@@ -1562,7 +1642,28 @@
     offerTest(id);
     ikoActs();
     applyPhase();
-    if (kind === "got") { flyToDeck(id); if (C.inDeck(state.cloud, id)) ikoReact("earn"); } /* saved above: the flight is only a picture of it */
+    if (kind === "got") {
+      /* the pressed button is gone now: the focus moves to the result line, without scrolling */
+      el.lStatus.tabIndex = -1; try { el.lStatus.focus({ preventScroll: true }); } catch { /* old browsers: leave it */ }
+      if (keep) keep();
+      flyToDeck(id);
+      if (C.inDeck(state.cloud, id)) ikoReact("earn");
+      if (keep) { keep(); requestAnimationFrame(keep); setTimeout(keep, 1000); } /* after the redraws and the card's flight too */
+    }
+  }
+  /*
+   * PR 107: the page's scroll position, put back if anything moved it. The cause of the jump on phones: the card flew from
+   * its tray at the top of the lesson, and an off-screen card was scrolled into view first (scrollIntoView), which took
+   * the page back to the top. Now the flight starts from where the learner is, and the position is kept regardless.
+   */
+  function holdScroll() {
+    var se = document.scrollingElement || document.documentElement, y = se.scrollTop, at = Date.now();
+    return function () { if (Date.now() - at < 2500 && Math.abs(se.scrollTop - y) > 2) se.scrollTop = y; };
+  }
+  /* the next step (the fork, Where next) is below the fold: Iko says so with the earn */
+  function nextBelow() {
+    var t = [el.lFork, el.lNext].filter(function (x) { return x && x.firstElementChild && x.getClientRects().length; })[0];
+    return Boolean(t) && t.getBoundingClientRect().top > window.innerHeight - 40;
   }
 
   /* ---------- "Still tricky": prepared clarifications, inline ---------- */
@@ -1638,7 +1739,7 @@
     var ui = clarBox(style, ""), text = "";
     ui.body.className = "clar-body streaming";
     focusClar(style);
-    var body = Object.assign(basePayload(id), { mode: "clarify", clarify: style, lesson: les ? String(les.text).slice(0, 1500) : "", messages: [] });
+    var body = P.withBand(state.cloud, Object.assign(basePayload(id), { mode: "clarify", clarify: style, lesson: les ? String(les.text).slice(0, 1500) : "", messages: [] }));
     stream("/chat", body, {
       delta: function (t) { text += t; paragraphs(ui.body, text); }
     }, callSignal("clarify")).then(function (r) {
@@ -1836,7 +1937,7 @@
     }
     lock(true);
     el.lQuiz.appendChild(mk("p", "fine streaming", "Writing your questions..."));
-    postJson("/test", Object.assign(basePayload(pid), { material: req.material })).then(function (j) {
+    postJson("/test", P.withBand(state.cloud, Object.assign(basePayload(pid), { material: req.material }))).then(function (j) {
       if (state.lessonNode !== pid || state.mode !== "test") return;
       var qs = j && j.ok ? validTestQs(j.questions, labels) : [];
       if (qs.length >= 2) {
@@ -1858,16 +1959,17 @@
     wrap.appendChild(mk("h3", "phase-head", t.qs.length + " questions"));
     t.qs.forEach(function (item, qi) {
       var set = mk("fieldset", "q"), done = Number.isInteger(t.ans[qi]);
-      var lg = mk("legend", null, item.q);
+      var lg = L.inline(document, mk("legend"), item.q);
       lg.appendChild(mk("span", "q-topic", "On " + item.topic));
       set.appendChild(lg);
+      if (typeof item.code === "string" && item.code) set.appendChild(L.codeBlock(document, item.code.slice(0, 600)));
       item.options.forEach(function (o, oi) {
         var lab = mk("label", "opt" + (done && oi === item.answer ? " right" : "") + (done && oi === t.ans[qi] && oi !== item.answer ? " wrong" : ""));
         var inp = mk("input");
         inp.type = "radio"; inp.name = "t" + qi + "-" + t.pid; inp.value = String(oi); inp.checked = done && t.ans[qi] === oi; inp.disabled = done;
         inp.addEventListener("change", function () { answerTest(qi, oi); });
         lab.appendChild(inp);
-        lab.appendChild(mk("span", "opt-t", String.fromCharCode(65 + oi) + ". " + String(o)));
+        lab.appendChild(L.inline(document, mk("span", "opt-t"), String.fromCharCode(65 + oi) + ". " + String(o)));
         set.appendChild(lab);
       });
       if (done) set.appendChild(mk("p", "q-fb", t.ans[qi] === item.answer ? "That's it." : "Not quite. It's " + String.fromCharCode(65 + item.answer) + ": " + item.options[item.answer] + "."));
@@ -2012,6 +2114,7 @@
   function home(id) {
     if (state.lessonNode) showLesson(false);
     el.deck.hidden = true; el.hub.hidden = true; state.hubNode = null; el.thread.hidden = false; el.dock.hidden = false;
+    renderRet();
     openCloud();
     if (id && nodeOf(id)) openPanel(id);
   }
@@ -2032,6 +2135,7 @@
     else if (state.glide && nodeOf(state.glide)) { var gl = state.glide; state.glide = null; setTimeout(function () { revealNode(gl); }, 0); } /* a new parent: the camera glides to it, its card opens */
     renderCloudFlow();
     renderHomeNav();
+    renderRet();
     renderIko();
     if (landing !== true && !el.ikoWrap.hidden) el.iko.focus();
   }
@@ -2066,6 +2170,7 @@
     /* the ideas can be picked together; Begin sends them with whatever was typed, as one answer (the same one start call) */
     if (!csEx) { csEx = exRow(addIdea, function () { return !el.cs.hidden && !state.busy; }, "", true, true); el.csEx.appendChild(csEx); }
     else refreshEx();
+    renderAgeBits();
     el.csStatus.textContent = building ? "Growing your cloud…" : failed ? "That didn't work just now. Try again in a moment, or talk it over with Iko." : "";
     el.cs.classList.toggle("busy", building);
     placeStart();
@@ -2694,6 +2799,7 @@
       /* where a new topic should go (two quiet buttons) and what grew: here too, not only in the whole conversation */
       if (m.role === "place") { var pl = renderPlace(m); pl.classList.add("iko-msg"); el.ikoLog.appendChild(pl); return; }
       if (m.role === "del") { var dl = renderDel(m); dl.classList.add("iko-msg"); el.ikoLog.appendChild(dl); return; }
+      if (m.role === "age") { var ag = renderAge(m); ag.classList.add("iko-msg"); el.ikoLog.appendChild(ag); return; }
       if (m.role === "grow") { el.ikoLog.appendChild(mk("p", "iko-msg grow", m.text)); return; }
       if (m.role !== "user" && m.role !== "model") return;
       var d = mk("div", "iko-msg " + m.role + (m.streaming ? " streaming" : ""));
@@ -2747,13 +2853,21 @@
     el.ikoLine.textContent = t || "";
     el.ikoLine.hidden = !t;
     if (t) el.ikoLine.setAttribute("aria-label", "Dismiss hint: " + t);
-    el.ikoLine.removeAttribute("data-tip"); el.ikoLine.removeAttribute("data-react");
+    el.ikoLine.removeAttribute("data-tip"); el.ikoLine.removeAttribute("data-react"); el.ikoLine.removeAttribute("data-say");
     if (t) clearTimeout(iko.tipT);
-    if (t && ms !== 0) iko.lineT = setTimeout(function () { el.ikoLine.hidden = true; placeIko(); var nx = iko.after; iko.after = null; if (nx) nx(); else tipAgain(); }, ms || 9000); /* 0: it stays (a hint) */
+    if (t && ms !== 0) iko.lineT = setTimeout(function () { el.ikoLine.hidden = true; placeIko(); var nx = iko.after; iko.after = null; if (nx) nx(); else tipAgain(); }, ms || readMs(t)); /* 0: it stays (a hint) */
     placeIko();
   }
-  /* PR 106: tapping the bubble dismisses it (Enter or Space too); tapping Iko himself opens the chat */
-  function dismissLine() { iko.after = null; ikoLine(""); tipAgain(); }
+  /* PR 107: long enough to read, by length: about 65 ms a character, 7 to 20 s (a line that guides stays until tapped) */
+  function readMs(t) { return Math.min(20000, Math.max(7000, 3500 + 65 * String(t || "").length)); }
+  /* PR 106: tapping the bubble dismisses it (Enter or Space too); tapping Iko himself opens the chat. PR 107: whatever
+     was waiting behind it (the grow question after the first reassurance) comes next */
+  function dismissLine() {
+    var age = el.ikoLine.getAttribute("data-tip") === "askAge";
+    var nx = iko.after; iko.after = null; ikoLine("");
+    if (age) { openAge(); return; } /* Iko's optional age question: the tap opens the five choices (prefer not to say among them) */
+    if (nx) nx(); else tipAgain();
+  }
   el.ikoLine.addEventListener("click", dismissLine);
   el.ikoLine.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); dismissLine(); if (!el.ikoWrap.hidden) el.iko.focus(); } });
   /* shown on the cloud (and its opening question), a lesson or test, a card and the deck; hidden in the whole conversation and on the welcome */
@@ -2808,7 +2922,9 @@
       /* light nudges (PR 105): not tied to a step, a few times each, on return visits */
       { t: "Want to check your deck? It's up top.", n: 1, ok: function () { return deckN() >= 1; } },
       { t: nearIdea, n: 1, ok: function () { return back() && Boolean(nearIdea()); } },
-      { t: "Anything new you'd like to explore?", n: 1, ok: back }],
+      { t: "Anything new you'd like to explore?", n: 1, ok: back },
+      /* PR 107: while the cloud is small, an idea from the starter set (coarse area and age band, made on the device) */
+      { t: starterLine, n: 1, ok: function () { return Boolean(starterLine()); } }],
     home: ["That's you, in the middle. Your subjects grow around you.", "Everything you learn grows out from here."],
     topic: ["Start a lesson when you're ready.", "Curious about this one? {Tap} me and ask anything.", "Want to go another way? {Tap} me to add another direction."],
     learn: ["Read along and {click} me if you have questions.", "Read the lesson first, then start the check. No rush."],
@@ -2831,6 +2947,11 @@
   function ikoKeep(m) { m.all[m.who] = { t: m.t, r: m.r, last: m.last }; try { localStorage.setItem(IKO_MEM, JSON.stringify(m.all)); } catch { /* full: Iko just repeats less carefully */ } }
   function back() { return (C.profileOf(state.cloud).visits || 0) >= 2; } /* a return visit */
   /* a quiet idea from the cloud itself: the top unfinished topic next to something already there */
+  function starterLine() {
+    if (C.subjects(state.cloud).length >= P.STARTER.maxSubjects) return "";
+    var t = P.mixStarters(state.cloud, [], coarseArea())[0];
+    return t ? "Curious about " + t + "? {Tap} me and tell me, and I'll add it." : "";
+  }
   function nearIdea() {
     var n = topIds().map(nodeOf).filter(function (x) { return x && x.parent && nodeOf(x.parent) && !C.inDeck(state.cloud, x.id); })[0];
     return n ? "Maybe " + n.label + " next? It's right beside " + nodeOf(n.parent).label + "." : "";
@@ -2854,10 +2975,16 @@
     if (key === iko.tipKey) return;
     iko.tipKey = key;
     if (!el.ikoLine.hidden && el.ikoLine.hasAttribute("data-tip")) { iko.after = null; ikoLine(""); } /* past its step: the hint goes */
+    else if (!el.ikoLine.hidden && el.ikoLine.getAttribute("data-react") === "start" && key && !/^(cloud|home)$/.test(key)) { var nx = iko.after; iko.after = null; ikoLine(""); if (nx) nx(); } /* the first reassurance: until tapped or the learner starts */
     clearTimeout(iko.tipT);
     if (!key) return;
     iko.tipT = setTimeout(function () { showTip(key); }, 450); /* once the new screen has settled */
   }
+  var ABOUT = {
+    cloud: { k: "aboutCloud", t: "This is your cloud: everything you learn grows here, around your name. {Tap} a node to start." },
+    lesson: { k: "aboutLesson", t: "This is a lesson: read it, check yourself with a few questions, then earn its card." },
+    deck: { k: "aboutDeck", t: "This is your deck: every card you earn lives here, and it keeps growing as you learn." }
+  };
   function tipFresh(k) { return Date.now() - (Number(tipsShown()[k]) || 0) >= GAP; }
   function tipAgain() { var k = iko.tipKey; if (k && !iko.open && tipFresh(k)) { clearTimeout(iko.tipT); iko.tipT = setTimeout(function () { showTip(k); }, 700); } }
   /* a hint stays until it is tapped away or the learner moves past its step (PR 105, PR 106) */
@@ -2867,6 +2994,23 @@
   }
   function showTip(key) {
     if (key !== iko.tipKey || iko.open || el.ikoWrap.hidden || !el.ikoLine.hidden || !state.cloud || !tipFresh(key)) return; /* Iko is speaking (or gone), or this screen had its line a moment ago */
+    /* PR 107: the first visit to the cloud, a lesson or the deck: one short line on what that screen is for (once each, seen.h) */
+    var ab = ABOUT[/^(cloud|home|topic)$/.test(key) ? "cloud" : key === "deck" ? "deck" : /^(learn|check|missed|next|test)$/.test(key) ? "lesson" : ""];
+    if (ab && !hintSeen(ab.k)) {
+      dismissHint(ab.k);
+      var d0 = tipsShown(); d0[key] = Date.now();
+      try { sessionStorage.setItem(CUES, JSON.stringify(d0)); } catch { /* ignore */ }
+      tipLine(tipWords(ab.t), ab.k);
+      return;
+    }
+    /* PR 107: in the onboarding (after the grow question), once and lightly: the optional age range. A tap opens it */
+    if (/^(cloud|home)$/.test(key) && !hintSeen("askAge") && hintSeen("growSaid") && C.subjects(state.cloud).length && !C.profileOf(state.cloud).band) {
+      dismissHint("askAge");
+      var d1 = tipsShown(); d1[key] = Date.now();
+      try { sessionStorage.setItem(CUES, JSON.stringify(d1)); } catch { /* ignore */ }
+      tipLine(tipWords("One small thing, only if you like: {tap} here to tell me your age range, and I'll pitch lessons to fit. Every topic stays open."), "askAge");
+      return;
+    }
     var tip = pickTip(key);
     if (!tip) return;
     var d = tipsShown(); d[key] = Date.now(); if (tip.nudge) d.n = 1;
@@ -2892,10 +3036,11 @@
     var list = REACT[kind] || [];
     if (!list.length || !(kind === "earn" || reactWanted(n)) || (kind === "start" && n > 1)) return false; /* a card earned: always a light word (PR 106) */
     var t = list[(n - 1) % list.length];
+    if (kind === "earn" && nextBelow()) t += " Scroll down to pick another topic.";
     if (!el.ikoLine.hidden && !el.ikoLine.hasAttribute("data-tip") && !el.ikoLine.hasAttribute("data-react")) return false; /* Iko is saying something that matters (the grow question): no reaction over it */
     if (iko.open || el.ikoWrap.hidden) { iko.pendingReact = t; return true; } /* said once the pebble is back */
     var held = !el.ikoLine.hidden && el.ikoLine.getAttribute("data-tip"), was = { t: el.ikoLine.textContent, k: iko.tipKey };
-    ikoLine(t, kind === "start" ? 9000 : 4500);
+    ikoLine(t, kind === "start" ? 0 : Math.max(6500, Math.min(14000, 3000 + 60 * t.length))); /* PR 107: the first reassurance stays until tapped (or the learner starts); others fold, a little later */
     if (held) iko.after = function () { if (iko.tipKey === was.k && !iko.open) tipLine(was.t, held); }; /* the hint wasn't dismissed: it comes back */
     el.ikoLine.setAttribute("data-react", kind);
     return true;
@@ -2964,13 +3109,14 @@
       el.miniDeck = mk("button", "minideck");
       el.miniDeck.type = "button";
       el.miniDeck.addEventListener("click", function () { showDeck(true); });
-      el.thumb.parentNode.insertBefore(el.miniDeck, el.thumb);
+      el.thumb.parentNode.insertBefore(el.miniDeck, el.barRet); /* PR 107: the deck is always the far-right widget */
     }
     var cards = miniDeckCards(), n = (state.cloud.deck || []).length;
     var sig = n + ":" + cards.map(function (c) { return D.evolveKey(c); }).join(",");
     var rise = miniSig !== null && sig !== miniSig && (n > Number(miniSig.split(":")[0]) || cards.reduce(function (a, c) { return a + D.evolveKey(c); }, 0) > miniSig.split(":")[1].split(",").reduce(function (a, k) { return a + (Number(k) || 0); }, 0));
     miniSig = sig;
     deckFan(el.miniDeck, cards, n);
+    renderRet();
     if (rise && motionOK() && !state.flying) pulseDeck(); /* a card in flight pulses it when it lands */
   }
   /* the fanned stack with its count: the header's mini-Deck and (PR 103) the same on the cloud */
@@ -2992,6 +3138,40 @@
     btn.appendChild(fan);
     if (n) btn.appendChild(mk("span", "md-n", String(n)));
   }
+  /*
+   * PR 107: "Return to <topic>", the way back to the last lesson or card. It takes the place of the widget for the screen
+   * you are on: on the cloud, where the cloud's thumbnail would be (left of the deck); on the deck, where the deck would
+   * be. Every other screen has the cloud and the deck in the same places. Hidden until there is a lesson or card to go
+   * back to (C.lastOf: the profile's pointer, kept in the cloud).
+   */
+  function retTarget() {
+    var l = state.cloud && C.lastOf(state.cloud), n = l && nodeOf(l.id);
+    return n && !n.ghost ? { id: l.id, card: l.kind === "card" && C.inDeck(state.cloud, l.id), label: n.label } : null;
+  }
+  function renderRet() {
+    if (!el.barRet) return;
+    var r = retTarget(), onDeck = !el.deck.hidden;
+    [el.cloudRet, el.barRet].forEach(function (b) {
+      b.textContent = r ? "Return to " + r.label : "";
+      if (r) { b.title = "Return to " + r.label; b.setAttribute("aria-label", "Return to " + r.label + (r.card ? " (its card)" : " (its lesson)")); }
+    });
+    el.cloudRet.hidden = !r;
+    el.barRet.hidden = !(r && onDeck);
+    if (el.miniDeck) el.miniDeck.hidden = onDeck;
+  }
+  function goRet() {
+    var r = retTarget();
+    if (!r) return;
+    if (r.card) openHub(r.id, null, el.deck.hidden ? "cloud" : "deck");
+    else openLesson(r.id, false);
+  }
+  function markLast(id, kind) {
+    if (!nodeOf(id) || !nodeOf(id).parent) return;
+    C.setLast(state.cloud, id, kind, Date.now());
+    save();
+  }
+  el.cloudRet.addEventListener("click", goRet);
+  el.barRet.addEventListener("click", goRet);
   function pulseDeck() { if (!el.miniDeck || !motionOK()) return; el.miniDeck.classList.remove("pulse"); void el.miniDeck.offsetWidth; el.miniDeck.classList.add("pulse"); }
   /*
    * Earned: after "I've got it", the lesson's card (in the Deck now) flies up and shrinks into the Deck in the header,
@@ -3005,14 +3185,17 @@
     var to = el.miniDeck && el.miniDeck.getClientRects().length ? el.miniDeck : null;
     if (!state.flying) return;
     var a = card.getBoundingClientRect();
-    /* earned at the end of a check, the card can be scrolled out of view: bring it back so its flight is seen (PR 103) */
-    if (a.bottom < 0 || a.top > window.innerHeight) { card.scrollIntoView({ block: "nearest" }); a = card.getBoundingClientRect(); }
+    /* PR 107: never scroll for it (that was the jump to the top on phones): off screen, it flies in from the button instead */
+    if (a.bottom < 0 || a.top > window.innerHeight) {
+      var g = el.lStatus.getBoundingClientRect(), cw = Math.min(a.width, 120), ch = a.height * cw / (a.width || 1);
+      a = { left: Math.max(8, g.left), top: Math.max(8, Math.min(window.innerHeight - ch - 8, g.top - ch / 2)), width: cw, height: ch, bottom: g.top + ch / 2 };
+    }
     var b = to ? to.getBoundingClientRect() : null;
     if (!b || !a.width || !b.width || a.bottom < 0 || a.top > window.innerHeight) { state.flying = false; pulseDeck(); return; }
     var ghost = card.cloneNode(true);
     ghost.removeAttribute("id"); [].forEach.call(ghost.querySelectorAll("[id]"), function (x) { x.removeAttribute("id"); });
     ghost.classList.add("fly-card"); ghost.setAttribute("aria-hidden", "true");
-    ghost.style.cssText = "position:fixed;left:" + a.left + "px;top:" + a.top + "px;width:" + a.width + "px;height:" + a.height + "px;margin:0;z-index:40;pointer-events:none;transform-origin:0 0";
+    ghost.style.cssText = "position:fixed;left:" + a.left + "px;top:" + a.top + "px;width:" + a.width + "px;height:" + a.height + "px;margin:0;z-index:40;pointer-events:none;transform-origin:0 0;overflow:hidden";
     document.body.appendChild(ghost);
     var k = Math.min(b.width / a.width, b.height / a.height) * 0.9, dx = b.left + b.width / 2 - (a.left + (a.width * k) / 2), dy = b.top + b.height / 2 - (a.top + (a.height * k) / 2);
     state.flying = true;
@@ -3060,7 +3243,11 @@
     m[k] = 1;
     try { localStorage.setItem("ikolearn-moves", JSON.stringify(m)); } catch { /* private mode: this visit only */ }
     if (movesDone()) renderCloudHint();
+    renderZoomHint();
   }
+  /* PR 107: on a phone the controls are one small quiet icon (it recentres); it moves softly until the gestures are known */
+  function renderZoomHint() { var z = el.zreset && el.zreset.parentNode; if (z) z.classList.toggle("learnt", movesDone()); }
+  renderZoomHint();
   el.cloudHint.addEventListener("click", function (e) { if (!el.cloudHint.classList.contains("newcomer") && !(e.target.closest && e.target.closest("button"))) moved("x"); });
   el.cloudHint.addEventListener("keydown", function (e) { if ((e.key === "Enter" || e.key === " ") && el.cloudHint.classList.contains("moves")) { e.preventDefault(); moved("x"); } });
   /* the cloud's own line: the first tip until it is dismissed (or a branch is tapped), then the controls line */
@@ -3083,6 +3270,7 @@
     el.thread.hidden = on;
     el.dock.hidden = on;
     if (on) { el.draw.hidden = true; renderDeck(!was); window.scrollTo(0, 0); } else { renderDraw(); scrollDown(); }
+    renderRet();
   }
   var motionOK = function () { return !(reduceMotion && reduceMotion.matches); };
   function viewIn(node) {
@@ -3113,6 +3301,8 @@
     state.hubNode = id; state.hubFrom = from || "deck";
     el.deck.hidden = true; el.thread.hidden = true; el.dock.hidden = true; el.draw.hidden = true;
     el.hub.hidden = false;
+    markLast(id, "card");
+    renderRet();
     renderHub(true);
     window.scrollTo(0, 0);
     viewIn(el.hub.querySelector(".hub-info"));
@@ -3502,7 +3692,7 @@
     try { state.lessons = JSON.parse(load(LS.lessons) || "{}") || {}; } catch { state.lessons = {}; }
     try { state.tests = JSON.parse(load(LS.tests) || "{}") || {}; } catch { state.tests = {}; }
     try { var v = JSON.parse(load(LS.view) || "null"); state.view = v && Number.isFinite(v.z) ? v : null; } catch { state.view = null; }
-    try { var sn = JSON.parse(load(LS.seen) || "null"); if (sn && sn.c && typeof sn.c === "object") state.seen = { c: sn.c, ev: Number(sn.ev) || 0, h: sn.h && typeof sn.h === "object" ? { cloud: sn.h.cloud ? 1 : 0, card: sn.h.card ? 1 : 0, deck: sn.h.deck ? 1 : 0, iko: sn.h.iko ? 1 : 0, grow: sn.h.grow ? 1 : 0 } : {} }; } catch { /* keep the empty default */ }
+    try { var sn = JSON.parse(load(LS.seen) || "null"); if (sn && sn.c && typeof sn.c === "object") state.seen = { c: sn.c, ev: Number(sn.ev) || 0, h: sn.h && typeof sn.h === "object" ? { cloud: sn.h.cloud ? 1 : 0, card: sn.h.card ? 1 : 0, deck: sn.h.deck ? 1 : 0, iko: sn.h.iko ? 1 : 0, grow: sn.h.grow ? 1 : 0, aboutCloud: sn.h.aboutCloud ? 1 : 0, aboutLesson: sn.h.aboutLesson ? 1 : 0, aboutDeck: sn.h.aboutDeck ? 1 : 0, askAge: sn.h.askAge ? 1 : 0 } : {} }; } catch { /* keep the empty default */ }
     save(); /* writes a migrated (older -> v9) cloud back in the compact format, with the deck backfilled */
     startChat();
     settleMerges(); /* existing completion data can already form parent cards (0 calls) */

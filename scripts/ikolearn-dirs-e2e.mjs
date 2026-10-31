@@ -68,7 +68,7 @@ const SEED = ({ subs, act, visits, active, guide, now, dir }) => {
   if (dir) Object.assign(C.dirOf(c), dir);
   localStorage.setItem("ikolearn.v1.name", "Maya"); localStorage.setItem("ikolearn.v1.cloud", C.serialize(c));
   if (guide) window.IkoProfiles.begin(localStorage, "guide", "Maya");
-  localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { cloud: 1, card: 1, chat: 1, draw: 1, iko: 1, grow: 1 } }));
+  localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { aboutCloud: 1, aboutLesson: 1, aboutDeck: 1, cloud: 1, card: 1, chat: 1, draw: 1, iko: 1, grow: 1 } }));
   localStorage.setItem("ikolearn.v1.thread", JSON.stringify([{ id: "m1", at: T, role: "model", local: true, text: "Welcome back, Maya." }]));
 };
 async function open(width, ctx0) {
@@ -121,7 +121,9 @@ const note = (p) => p.evaluate(() => {
     x: [...n.querySelectorAll(".cf-x")].map((b) => b.getAttribute("aria-label")), xWithLast: (() => { const x = n.querySelector(".cf-x"); if (!x) return true; const a = x.getBoundingClientRect(), prev = x.previousElementSibling; if (prev) { const b = prev.getBoundingClientRect(); return Math.abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2) < 8; } const r = document.createRange(), t = x.parentNode.firstChild; r.setStart(t, 0); r.setEnd(t, Math.max(1, t.textContent.trim().length)); const b = r.getBoundingClientRect(); return Math.abs((a.top + a.bottom) / 2 - (b.top + b.bottom) / 2) < 10; })() };
 });
 /* PR 103: Iko's reassurance after the first interests has its say first; the grow line follows it */
-const growSoon = (p) => p.waitForFunction(() => { const l = document.querySelector("#iko-line"); return Boolean(l && !l.hidden && /grow in yourself/.test(l.textContent)); }, null, { timeout: 12000 }).then(() => true, () => false);
+/* PR 107: Iko's first reassurance stays until it is tapped (the grow line follows it); tap it away if it shows */
+const growSoon = async (p) => { await p.waitForTimeout(400); await p.evaluate(() => { const l = document.querySelector("#iko-line"); if (l && !l.hidden && l.getAttribute("data-react") === "start") l.click(); }); return growWait(p); };
+const growWait = (p) => p.waitForFunction(() => { const l = document.querySelector("#iko-line"); return Boolean(l && !l.hidden && /grow in yourself/.test(l.textContent)); }, null, { timeout: 12000 }).then(() => true, () => false);
 const growLine = (p) => p.evaluate(() => { const l = document.querySelector("#iko-line"); return Boolean(l && !l.hidden && /grow in yourself/.test(l.textContent)); });
 const inviteOn = (p) => p.evaluate(() => Boolean(document.querySelector(".cloud-flow:not([hidden]) .cf-note.dir-invite")));
 /* name, then the intake on the cloud */
@@ -143,7 +145,10 @@ for (const width of [390, 1280]) {
       await toIntake(p, guide);
       const few = await p.evaluate(() => { const f = document.querySelector("#cs-few"), q = document.querySelector("#cs-q"); return { text: f && !f.hidden ? f.textContent : "", below: f && q && f.getBoundingClientRect().top >= q.getBoundingClientRect().bottom - 1, qs: (document.querySelector("#cloud-start").innerText.match(/\?/g) || []).length }; });
       ok(few.text === "One thing or a few, whatever's on your mind." && few.below && few.qs === 1, `${tag}: intake: one question, with a quiet "one thing or a few" under it`, JSON.stringify(few));
-      ok(JSON.stringify(await chipState(p)) === JSON.stringify(["Stars", "Rain", "Games"]), `${tag}: intake: a few plain idea chips (nothing toggled)`, JSON.stringify(await chipState(p)));
+      /* PR 107: a starter idea (from the device's time zone and language) may sit between the API's while the cloud is small */
+      const cs0 = await chipState(p), starters = await p.evaluate(() => { const P = window.IkoPlan; return P.starterIdeas(P.areaOf(Intl.DateTimeFormat().resolvedOptions().timeZone, navigator.language), ""); });
+      const apiOnly = cs0.filter((c) => !starters.includes(c));
+      ok(cs0.length === 3 && JSON.stringify(apiOnly) === JSON.stringify(["Stars", "Rain", "Games"].slice(0, apiOnly.length)) && apiOnly.length >= 2 && cs0.every((c) => typeof c === "string"), `${tag}: intake: a few plain idea chips (nothing toggled)`, JSON.stringify(cs0));
       /* PR 103: a tap adds the idea to the field and that chip moves on to an idea not yet used (they never pile up) */
       await p.fill("#cs-in", "the ocean");
       await p.click('#cs-ex .ex-chip:text-is("Stars")'); await p.waitForTimeout(100);

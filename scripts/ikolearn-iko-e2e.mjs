@@ -98,10 +98,12 @@ const SEED = () => {
   C.joinDeck(c, T + 4000);
   c.active = id("Magma");
   localStorage.setItem("ikolearn.v1.name", "Maya"); localStorage.setItem("ikolearn.v1.cloud", C.serialize(c));
-  localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { cloud: 1, card: 1, chat: 1, draw: 1 } }));
+  localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { aboutCloud: 1, aboutLesson: 1, aboutDeck: 1, cloud: 1, card: 1, chat: 1, draw: 1 } }));
   localStorage.setItem("ikolearn.v1.thread", JSON.stringify([{ id: "m1", at: T, role: "model", local: true, text: "Welcome back, Maya." }]));
 };
 
+/* PR 107: while the cloud is small, a few starter ideas (from the device's time zone and language) sit between the API's */
+const MIX = (p, ex) => p.evaluate((ex) => { const P = window.IkoPlan; return P.mixStarters(null, ex, P.areaOf(Intl.DateTimeFormat().resolvedOptions().timeZone, navigator.language)); }, ex);
 for (const width of [390, 1280]) {
   const tag = String(width);
   /* 1. the intake: one calm step under the name; free text first; light ideas from the API (More cycles them); Iko at hand */
@@ -111,12 +113,13 @@ for (const width of [390, 1280]) {
       await name(p, "self", "Maya");
       const st = await p.evaluate(() => { const cs = document.querySelector("#cloud-start"), b = cs.getBoundingClientRect(); return { text: cs.innerText, q: document.querySelector("#cs-q").textContent, hi: document.querySelector("#cs-hi").textContent, ph: document.querySelector("#cs-in").placeholder, inType: document.querySelector("#cs-in").tagName, chips: [...cs.querySelectorAll(".ex-chip")].map((c) => c.textContent), more: Boolean(cs.querySelector(".ex-more")), top: b.top, bottom: b.bottom, vh: innerHeight, thread: document.querySelector("#thread").innerText }; });
       ok(st.q === "What are you curious about, or what do you enjoy?" && (st.text.match(/\?/g) || []).length === 1 && !/grow in yourself/.test(st.text) && !/grow in yourself/.test(st.thread), `${tag}: intake: one question at a time (the grow question isn't asked yet)`, JSON.stringify(st));
-      ok(st.hi === "Hi Maya. Let's begin your learning cloud together." && st.inType === "INPUT" && st.ph.split(", ").length >= 2 && st.ph.split(", ").every((x) => EX_A.map((e) => e.toLowerCase()).includes(x)) && !/\b(age|years? old|kids?|child|student|grade)\b/i.test(st.text), `${tag}: intake: a short hello and free text first (no age wording); the placeholder shows a few of the API's ideas`, JSON.stringify(st));
-      ok(JSON.stringify(st.chips) === JSON.stringify(EX_A.slice(0, 3)) && st.more, `${tag}: intake: a few light ideas, straight from the API's list, with More`, JSON.stringify(st.chips));
+      ok(st.hi === "Hi Maya. Let's begin your learning cloud together." && st.inType === "INPUT" && st.ph.split(", ").length >= 2 && st.ph.split(", ").every((x) => EX_A.map((e) => e.toLowerCase()).includes(x)) && !/\b(age|years? old|kids?|child|student|grade)\b/i.test(st.text.replace(/Your age \(optional\)/, "")), `${tag}: intake: a short hello and free text first (no age wording); the placeholder shows a few of the API's ideas`, JSON.stringify(st));
+      const mixA = await MIX(p, EX_A);
+      ok(JSON.stringify(st.chips) === JSON.stringify(mixA.slice(0, 3)) && st.chips[0] === EX_A[0] && st.more, `${tag}: intake: a few light ideas, from the API's list (a starter idea between, PR 107), with More`, JSON.stringify(st.chips));
       ok(st.top > st.vh * 0.15 && st.top < st.vh * 0.5 && st.bottom < st.vh - 60, `${tag}: intake: near the optical centre, the name on top (not at the bottom)`, JSON.stringify({ top: st.top, bottom: st.bottom, vh: st.vh }));
       await p.click("#cs-ex .ex-more"); await p.waitForTimeout(100);
       const more = await p.evaluate(() => [...document.querySelectorAll("#cs-ex .ex-chip")].map((c) => c.textContent));
-      ok(JSON.stringify(more) === JSON.stringify(EX_A.slice(3, 6)) && calls.filter((c) => c === "/examples").length === 1, `${tag}: intake: More cycles the ideas on the device (no new call)`, JSON.stringify(more));
+      ok(JSON.stringify(more) === JSON.stringify(mixA.slice(3, 6)) && calls.filter((c) => c === "/examples").length === 1, `${tag}: intake: More cycles the ideas on the device (no new call)`, JSON.stringify(more));
       const k = await ikoState(p), ov = await overlap(p, CLOUD_PARTS);
       ok(k.shown && k.label === "Talk to Iko" && k.w >= 44 && k.h >= 44 && k.svg && !k.img && k.line === "" && k.active !== "iko" && (await p.evaluate(() => Boolean(document.querySelector("#cloud-start .cs-ask #iko") && document.querySelector(".cs-ask .say #cs-q") && document.querySelector(".cs-ask .say #cs-hi")))), `${tag}: Iko: a pebble (SVG, no image), a labelled button; he asks the opening question himself (it is his speech); no focus jump`, JSON.stringify(k));
       ok(!ov.hits.length && ov.right <= ov.iw, `${tag}: Iko: clear of the start, the fine print and the top`, JSON.stringify(ov));
@@ -143,7 +146,9 @@ for (const width of [390, 1280]) {
       const inv = await p.evaluate(() => Boolean(document.querySelector(".cloud-flow:not([hidden]) .cf-note.dir-invite")));
       ok(inv && !/grow in yourself/.test(g0.line || ""), `${tag}: the grow line waits while the direction invite is on the cloud`, JSON.stringify({ inv, line: g0.line }));
       await p.click('.cf-note.dir-invite .cf-x'); await p.waitForTimeout(300);
-      /* PR 103: Iko's start reassurance has its say first; the grow line follows it */
+      /* PR 103: Iko's start reassurance has its say first; the grow line follows it (PR 107: the reassurance stays until tapped) */
+      await p.waitForTimeout(400);
+      await p.evaluate(() => { const l = document.querySelector("#iko-line"); if (l && !l.hidden && l.getAttribute("data-react") === "start") l.click(); });
       await p.waitForFunction(() => /grow in yourself too/.test(document.querySelector("#iko-line").hidden ? "" : document.querySelector("#iko-line").textContent), null, { timeout: 15000 });
       const g = await ikoState(p);
       const grow = await p.evaluate(() => [...document.querySelectorAll("#thread .ask")].map((e) => e.innerText).join(" | "));
@@ -171,7 +176,7 @@ for (const width of [390, 1280]) {
       await name(p, "guide", "Robin");
       const chips = await p.evaluate(() => [...document.querySelectorAll("#cs-ex .ex-chip")].map((c) => c.textContent));
       const who = await p.evaluate(() => ({ t: document.querySelector("#cloud-who").textContent, hi: document.querySelector("#cs-hi").textContent }));
-      ok(JSON.stringify(chips) === JSON.stringify(EX_B.slice(0, 3)) && who.t === "Robin · switch" && /^Hi Robin\./.test(who.hi), `${tag}: guide: the learner's intake; the ideas follow the API (no static list)`, JSON.stringify({ chips, who }));
+      ok(JSON.stringify(chips) === JSON.stringify((await MIX(p, EX_B)).slice(0, 3)) && chips[0] === EX_B[0] && who.t === "Robin · switch" && /^Hi Robin\./.test(who.hi), `${tag}: guide: the learner's intake; the ideas follow the API (no static list)`, JSON.stringify({ chips, who }));
       const ov = await overlap(p, CLOUD_PARTS);
       ok(!ov.hits.length, `${tag}: guide: Iko clear of the switcher and the rest`, JSON.stringify(ov));
       ok(errs.length === 0, `${tag}: guide: no console errors`, errs.join(" | "));

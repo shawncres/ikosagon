@@ -44,7 +44,7 @@ function seed(o) {
   c.active = id(o.active || "Games");
   if (o.visits) C.profileOf(c).visits = o.visits;
   localStorage.setItem("ikolearn.v1.name", "Johnny"); localStorage.setItem("ikolearn.v1.cloud", C.serialize(c));
-  localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { cloud: 1, card: 1, chat: 1, draw: 1, iko: 1 } }));
+  localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { aboutCloud: 1, aboutLesson: 1, aboutDeck: 1, cloud: 1, card: 1, chat: 1, draw: 1, iko: 1 } }));
   localStorage.setItem("ikolearn.v1.thread", JSON.stringify([]));
   const who = ((window.IkoProfiles && window.IkoProfiles.current(localStorage)) || {}).active || "me";
   if (o.mem) localStorage.setItem("ikolearn-iko", JSON.stringify({ [who]: o.mem })); else localStorage.removeItem("ikolearn-iko");

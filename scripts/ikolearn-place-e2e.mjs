@@ -103,7 +103,7 @@ async function run(width) {
       const id = (l) => c.order.find((x) => c.nodes[x].label === l);
       c.active = id("Games"); c.nodes[id("Games")].blurb = "Playing and understanding games, from board games to video games and puzzles.";
       localStorage.setItem("ikolearn.v1.name", "Johnny"); localStorage.setItem("ikolearn.v1.cloud", C.serialize(c));
-      localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { cloud: 1, card: 1, chat: 1, draw: 1 } }));
+      localStorage.setItem("ikolearn.v1.seen", JSON.stringify({ c: {}, ev: 0, h: { aboutCloud: 1, aboutLesson: 1, aboutDeck: 1, cloud: 1, card: 1, chat: 1, draw: 1 } }));
       localStorage.setItem("ikolearn.v1.thread", JSON.stringify([{ id: "m1", at: T, role: "model", local: true, text: "Welcome back, Johnny." }]));
     });
     await p.reload({ waitUntil: "networkidle" });
