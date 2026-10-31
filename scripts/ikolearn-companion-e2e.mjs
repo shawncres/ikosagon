@@ -408,7 +408,7 @@ for (const width of [320, 390, 768, 1280]) {
       const lum = ([r, g, b]) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
       const bgOf = (e) => { for (let x = e; x; x = x.parentElement) { const c = rgb(getComputedStyle(x).backgroundColor); if (c.length >= 3 && (c.length < 4 || c[3] > 0.5)) return c; } return rgb(getComputedStyle(document.body).backgroundColor); };
       const out = {};
-      for (const s of ["#iko-line", "#l-cont", "#l-quiz .q-lede", "#l-quiz legend", "#l-quiz .q-miss .l-head", "#l-quiz .q-miss .clar", ".d-sec", "#d-collect .fine", "#cloud-deck .md-n"]) {
+      for (const s of ["#iko-line", "#l-cont", "#l-quiz .q-lede", "#l-quiz legend", "#l-quiz .q-miss .l-head", "#l-quiz .q-miss p:not(.l-head)", ".d-sec", "#d-collect .fine", "#cloud-deck .md-n"]) {
         const e = document.querySelector(s); if (!e || !e.getClientRects().length) continue;
         const a = lum(rgb(getComputedStyle(e).color)), b = lum(bgOf(e));
         out[s] = Math.round(((Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)) * 100) / 100;
@@ -428,7 +428,7 @@ for (const width of [320, 390, 768, 1280]) {
     const th = await thumbInk(p);
     ok(th.round && th.ink > 80 && Math.abs(th.c[0] - th.W / 2) <= 4 && Math.abs(th.c[1] - th.H / 2) <= 4, "dark mode: the header's cloud circle shows the name at its centre", JSON.stringify(th));
     const all = Object.assign({}, a.out, b.out, c.out, d.out);
-    const need = ["#iko-line", "#l-cont", "#l-quiz .q-miss .l-head", "#l-quiz .q-miss .clar", ".d-sec", "#d-collect .fine"];
+    const need = ["#iko-line", "#l-cont", "#l-quiz .q-miss .l-head", "#l-quiz .q-miss p:not(.l-head)", ".d-sec", "#d-collect .fine"];
     ok(a.theme === "dark" && need.every((k) => all[k] >= 4.5) && Object.values(all).every((v) => v >= 4.5), "dark mode: Iko's bubble, Continue, the missed-check box and the deck's sections read at AA", JSON.stringify(all));
   } catch (e) { fails.push(`dark threw -> ${String(e.message || e).split("\n")[0]}`); }
   await ctx.close();

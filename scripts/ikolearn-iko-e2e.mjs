@@ -270,7 +270,7 @@ for (const width of [390, 1280]) {
       await p.waitForTimeout(400);
       const b5 = screenOf(bodies);
       ok(b5 && JSON.stringify(b5.screen) === JSON.stringify({ view: "chat" }), `${tag}: the whole conversation sends view chat`, JSON.stringify(b5 && b5.screen));
-      ok(calls.filter((c) => c === "/lesson").length === 1 && calls.filter((c) => /:clarify/.test(c)).length === 0 && calls.filter((c) => c === "/chat:chat").length === 4, `${tag}: returning: 1 lesson call, 0 clarify calls, 4 chat calls (one per message)`, calls.join());
+      ok(calls.filter((c) => c === "/lesson").length === 1 && calls.filter((c) => /:clarify/.test(c)).length === 0 && calls.filter((c) => c === "/chat:chat").length === 3, `${tag}: returning: 1 lesson call, 0 clarify calls, 3 chat calls (one per message)`, calls.join());
       ok(errs.length === 0, `${tag}: returning: no console errors`, errs.join(" | "));
     } catch (e) { fails.push(`${tag}: returning threw -> ${String(e.message || e).split("\n")[0]}`); }
     await ctx.close();

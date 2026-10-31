@@ -319,7 +319,9 @@ for (const width of [390, 1280]) {
         /* PR 109: the learner's name (the home node) slows it too, almost to a stop */
         const view = () => p.evaluate(() => window.__views.filter((x) => x.id === "cloud-canvas").pop().view.state());
         const rp = await p.evaluate(() => { const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view, q = v.project("root"), r = document.querySelector("#cloud-canvas").getBoundingClientRect(); return { x: r.left + q.x, y: r.top + q.y }; });
-        await p.mouse.move(rp.x + 6, rp.y + 2); await p.waitForTimeout(600);
+        await p.mouse.move(rp.x + 6, rp.y + 2);
+        await p.waitForFunction(() => window.__views.filter((x) => x.id === "cloud-canvas").pop().view.state().spinning, null, { timeout: 10000 }).catch(() => {}); /* the pointer's move waits the spin out first */
+        await p.waitForTimeout(600);
         const onName = await view();
         ok(onName.near === true && onName.slow <= 0.1, `${tag}: over the learner's name the cloud slows almost to a stop (<= 10%)`, JSON.stringify({ near: onName.near, slow: onName.slow }));
         await p.mouse.move(xy.l + 6, xy.t + xy.h - 6);
