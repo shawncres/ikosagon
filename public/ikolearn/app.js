@@ -2220,7 +2220,7 @@
   var csEx = null, CS_Q = el.csQ.textContent;
   function ageDone() {
     dismissHint("ageAsked");
-    intakeAt = null; need0 = 0; /* the column is placed afresh for the question (the age step was shorter) */
+    intakeAt = null; need0 = 1; /* the column is placed afresh for the question (the age step was shorter); its ideas are already in, so no extra room is kept for them */
     renderStart();
     if (!coarse()) { try { el.csIn.focus({ preventScroll: true }); } catch { el.csIn.focus(); } }
   }
