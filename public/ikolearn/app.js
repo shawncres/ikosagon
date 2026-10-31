@@ -35,7 +35,7 @@
     lGot: $("l-got"), lTricky: $("l-tricky"), lCont: $("l-cont"), phEarn: $("ph-earn"), lStatus: $("l-status"), lPath: $("l-path"), lClar: $("l-clar"), lNext: $("l-next"), lChat: $("l-chat"), lRedo: $("l-redo"),
     cloud: $("cloud"), cloudCanvas: $("cloud-canvas"), cloudDeck: $("cloud-deck"), cloudRet: $("cloud-ret"), barRet: $("bar-ret"), cloudWho: $("cloud-who"), chatBack: $("chat-back"),
     ageLink: $("age-link"),
-    cs: $("cloud-start"), csName: $("cs-name"), csHi: $("cs-hi"), csQ: $("cs-q"), csFew: $("cs-few"), csForm: $("cs-form"), csIn: $("cs-in"), csEx: $("cs-ex"), csStatus: $("cs-status"),
+    cs: $("cloud-start"), csName: $("cs-name"), csAges: $("cs-ages"), csHi: $("cs-hi"), csQ: $("cs-q"), csFew: $("cs-few"), csForm: $("cs-form"), csIn: $("cs-in"), csEx: $("cs-ex"), csStatus: $("cs-status"),
     ikoWrap: $("iko-wrap"), iko: $("iko"), ikoLine: $("iko-line"), ikoSheet: $("iko-sheet"), ikoAbout: $("iko-about"), ikoX: $("iko-x"), ikoSay: $("iko-say"), ikoActs: $("iko-acts"), ikoGot: $("iko-got"), ikoBody: $("iko-body"), ikoSlot: $("iko-slot"), ikoLog: $("iko-log"), ikoForm: $("iko-form"), ikoIn: $("iko-in"), ikoAll: $("iko-all"), zin: $("zin"), zout: $("zout"), zreset: $("zreset"),
     panel: $("panel"), cloudTop: document.querySelector(".cloud-top"), pKicker: $("p-kicker"), pTitle: $("p-title"), pDesc: $("p-desc"), pNote: $("p-note"), pLesson: $("p-lesson"), pCard: $("p-card"), pAdj: $("p-adj"),
     pChat: $("p-chat"), pPath: $("p-path"), pClose: $("p-close"),
@@ -2171,9 +2171,21 @@
     var building = state.busy, last = state.thread.filter(function (m) { return m.role === "model"; }).pop(), failed = !building && last && last.retry && last.retry.kind === "start";
     /* one calm step: a short hello, the one question, the field and Begin; a few light ideas (from the API, cycling with More) */
     el.csHi.textContent = building ? "" : "Hi " + state.name + ". Let's begin your learning cloud together.";
+    /* PR 108: before the first question, Iko asks the optional age range in the same place (band chips and Skip), once */
+    var ageStep = !building && !hintSeen("ageAsked") && !C.profileOf(state.cloud).band;
+    el.csQ.textContent = ageStep ? "First, if you like: how old are you? It only changes how lessons are written." : CS_Q;
     el.csQ.hidden = building;
-    el.csFew.hidden = building;
-    el.csForm.hidden = building;
+    el.csFew.hidden = building || ageStep;
+    el.csForm.hidden = building || ageStep;
+    el.csEx.hidden = ageStep;
+    el.csAges.hidden = !ageStep;
+    if (ageStep && !el.csAges.firstChild) {
+      var row = bandRow(function (b) { setBand(b); ageDone(); });
+      var skip = linkBtn("Skip", ageDone, "link cs-age-skip"); skip.id = "cs-age-skip";
+      row.appendChild(skip);
+      el.csAges.appendChild(row);
+    }
+    if (!ageStep) el.csAges.textContent = "";
     /* the ideas can be picked together; Begin sends them with whatever was typed, as one answer (the same one start call) */
     if (!csEx) { csEx = exRow(addIdea, function () { return !el.cs.hidden && !state.busy; }, "", true, true); el.csEx.appendChild(csEx); }
     else refreshEx();
@@ -2183,7 +2195,12 @@
     placeStart();
     placeIkoSoon();
   }
-  var csEx = null;
+  var csEx = null, CS_Q = el.csQ.textContent;
+  function ageDone() {
+    dismissHint("ageAsked");
+    renderStart();
+    if (!coarse()) { try { el.csIn.focus({ preventScroll: true }); } catch { el.csIn.focus(); } }
+  }
   /*
    * The opening question (#100, reworked in #101 after QA on an iPhone in WhatsApp's in-app browser). A still column in
    * the room between Iko and the fine print, a little above the middle, its name on a plate above the question that can be
@@ -2869,12 +2886,7 @@
   function readMs(t) { return Math.min(20000, Math.max(7000, 3500 + 65 * String(t || "").length)); }
   /* PR 106: tapping the bubble dismisses it (Enter or Space too); tapping Iko himself opens the chat. PR 107: whatever
      was waiting behind it (the grow question after the first reassurance) comes next */
-  function dismissLine() {
-    var age = el.ikoLine.getAttribute("data-tip") === "askAge";
-    var nx = iko.after; iko.after = null; ikoLine("");
-    if (age) { openAge(); return; } /* Iko's optional age question: the tap opens the five choices (prefer not to say among them) */
-    if (nx) nx(); else tipAgain();
-  }
+  function dismissLine() { var nx = iko.after; iko.after = null; ikoLine(""); if (nx) nx(); else tipAgain(); }
   el.ikoLine.addEventListener("click", dismissLine);
   el.ikoLine.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); dismissLine(); if (!el.ikoWrap.hidden) el.iko.focus(); } });
   /* shown on the cloud (and its opening question), a lesson or test, a card and the deck; hidden in the whole conversation and on the welcome */
@@ -3008,14 +3020,6 @@
       var d0 = tipsShown(); d0[key] = Date.now();
       try { sessionStorage.setItem(CUES, JSON.stringify(d0)); } catch { /* ignore */ }
       tipLine(tipWords(ab.t), ab.k);
-      return;
-    }
-    /* PR 107: in the onboarding (after the grow question), once and lightly: the optional age range. A tap opens it */
-    if (/^(cloud|home)$/.test(key) && !hintSeen("askAge") && hintSeen("growSaid") && C.subjects(state.cloud).length && !C.profileOf(state.cloud).band) {
-      dismissHint("askAge");
-      var d1 = tipsShown(); d1[key] = Date.now();
-      try { sessionStorage.setItem(CUES, JSON.stringify(d1)); } catch { /* ignore */ }
-      tipLine(tipWords("One small thing, only if you like: {tap} here to tell me your age range, and I'll pitch lessons to fit. Every topic stays open."), "askAge");
       return;
     }
     var tip = pickTip(key);
@@ -3700,7 +3704,7 @@
     try { state.lessons = JSON.parse(load(LS.lessons) || "{}") || {}; } catch { state.lessons = {}; }
     try { state.tests = JSON.parse(load(LS.tests) || "{}") || {}; } catch { state.tests = {}; }
     try { var v = JSON.parse(load(LS.view) || "null"); state.view = v && Number.isFinite(v.z) ? v : null; } catch { state.view = null; }
-    try { var sn = JSON.parse(load(LS.seen) || "null"); if (sn && sn.c && typeof sn.c === "object") state.seen = { c: sn.c, ev: Number(sn.ev) || 0, h: sn.h && typeof sn.h === "object" ? { cloud: sn.h.cloud ? 1 : 0, card: sn.h.card ? 1 : 0, deck: sn.h.deck ? 1 : 0, iko: sn.h.iko ? 1 : 0, grow: sn.h.grow ? 1 : 0, aboutCloud: sn.h.aboutCloud ? 1 : 0, aboutLesson: sn.h.aboutLesson ? 1 : 0, aboutDeck: sn.h.aboutDeck ? 1 : 0, askAge: sn.h.askAge ? 1 : 0 } : {} }; } catch { /* keep the empty default */ }
+    try { var sn = JSON.parse(load(LS.seen) || "null"); if (sn && sn.c && typeof sn.c === "object") state.seen = { c: sn.c, ev: Number(sn.ev) || 0, h: sn.h && typeof sn.h === "object" ? { cloud: sn.h.cloud ? 1 : 0, card: sn.h.card ? 1 : 0, deck: sn.h.deck ? 1 : 0, iko: sn.h.iko ? 1 : 0, grow: sn.h.grow ? 1 : 0, aboutCloud: sn.h.aboutCloud ? 1 : 0, aboutLesson: sn.h.aboutLesson ? 1 : 0, aboutDeck: sn.h.aboutDeck ? 1 : 0, askAge: sn.h.askAge ? 1 : 0, ageAsked: sn.h.ageAsked ? 1 : 0 } : {} }; } catch { /* keep the empty default */ }
     save(); /* writes a migrated (older -> v9) cloud back in the compact format, with the deck backfilled */
     startChat();
     settleMerges(); /* existing completion data can already form parent cards (0 calls) */

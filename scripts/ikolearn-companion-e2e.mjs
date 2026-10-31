@@ -30,6 +30,8 @@ const BASE = process.env.LIVE_BASE || `http://127.0.0.1:${server.address().port}
 let pass = 0;
 const fails = [];
 const ok = (c, name, d = "") => (c ? (pass += 1) : fails.push(`${name}${d ? ` -> ${d}` : ""}`));
+/* PR 108: Iko's first step at the opening asks the optional age range; most checks skip it (the adapt suite covers it) */
+const skipAge = async (p) => { try { await p.waitForSelector("#cs-age-skip", { timeout: 4000 }); await p.click("#cs-age-skip"); await p.waitForTimeout(150); } catch { /* no age step here */ } };
 const browser = await (process.env.IKOLEARN_BROWSER ? PW[process.env.IKOLEARN_BROWSER].launch() : chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" }));
 const HOOK = () => { let real; Object.defineProperty(window, "IkoCloudView", { configurable: true, get: () => real, set: (v) => { real = Object.assign({}, v, { create: (c, o) => { const view = v.create(c, o); (window.__views = window.__views || []).push({ id: c.id, view }); return view; } }); } }); };
 
@@ -283,7 +285,7 @@ for (const width of [390, 1280]) {
       ok(await p.evaluate(() => getComputedStyle(document.querySelector("#name-form .iko-still")).visibility === "hidden" && document.querySelector("#name-label").classList.contains("say")), `${tag}: the next question follows as his speech (one Iko on screen)`);
       const lab = await p.evaluate(() => ({ t: document.querySelector("label[for=name-in]") ? document.querySelector("label[for=name-in]").textContent : "", max: document.querySelector("#name-in").maxLength }));
       ok(/first names/.test(lab.t) && lab.max >= 100, `${tag}: a guide can name several learners at once`, JSON.stringify(lab));
-      await p.fill("#name-in", "Maya, Leo and Sam"); await p.press("#name-in", "Enter");
+      await p.fill("#name-in", "Maya, Leo and Sam"); await p.press("#name-in", "Enter"); await skipAge(p);
       await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(400);
       const ix = await p.evaluate(() => { const PR = window.IkoProfiles, x = PR.current(localStorage); return { names: x.list.map((l) => l.name), active: x.list.find((l) => l.id === x.active).name, who: document.querySelector("#cloud-who").textContent }; });
       ok(JSON.stringify(ix.names) === JSON.stringify(["Maya", "Leo", "Sam"]) && ix.active === "Maya" && /^Maya/.test(ix.who), `${tag}: three learners added; the first starts, the others wait`, JSON.stringify(ix));

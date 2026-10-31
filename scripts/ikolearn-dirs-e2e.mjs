@@ -30,6 +30,8 @@ const BASE = process.env.LIVE_BASE || `http://127.0.0.1:${server.address().port}
 let pass = 0;
 const fails = [];
 const ok = (c, name, d = "") => (c ? (pass += 1) : fails.push(`${name}${d ? ` -> ${d}` : ""}`));
+/* PR 108: Iko's first step at the opening asks the optional age range; most checks skip it (the adapt suite covers it) */
+const skipAge = async (p) => { try { await p.waitForSelector("#cs-age-skip", { timeout: 4000 }); await p.click("#cs-age-skip"); await p.waitForTimeout(150); } catch { /* no age step here */ } };
 const browser = await (process.env.IKOLEARN_BROWSER ? PW[process.env.IKOLEARN_BROWSER].launch() : chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" }));
 const HOOK = () => { let real; Object.defineProperty(window, "IkoCloudView", { configurable: true, get: () => real, set: (v) => { real = Object.assign({}, v, { create: (c, o) => { const view = v.create(c, o); (window.__views = window.__views || []).push({ id: c.id, view }); return view; } }); } }); };
 
@@ -129,7 +131,7 @@ const inviteOn = (p) => p.evaluate(() => Boolean(document.querySelector(".cloud-
 /* name, then the intake on the cloud */
 async function toIntake(p, guide) {
   await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
-  await p.click(`.who-opt[data-who="${guide ? "guide" : "self"}"]`); await p.fill("#name-in", "Maya"); await p.press("#name-in", "Enter");
+  await p.click(`.who-opt[data-who="${guide ? "guide" : "self"}"]`); await p.fill("#name-in", "Maya"); await p.press("#name-in", "Enter"); await skipAge(p);
   await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(500);
 }
 const built = (p, n) => p.waitForFunction((k) => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")); return c && C.subjects(c).length >= k && !document.querySelector(".cloud-caption:not([hidden])"); }, n, { timeout: 15000 });
@@ -219,8 +221,8 @@ for (const width of [390, 1280]) {
     const { ctx, p, errs, calls, bodies } = await open(width);
     try {
       await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
-      if (guide) { await p.click('.who-opt[data-who="guide"]'); await p.fill("#name-in", "Maya"); await p.press("#name-in", "Enter"); }
-      else { await p.click('.who-opt[data-who="self"]'); await p.fill("#name-in", "Maya"); await p.press("#name-in", "Enter"); }
+      if (guide) { await p.click('.who-opt[data-who="guide"]'); await p.fill("#name-in", "Maya"); await p.press("#name-in", "Enter"); await skipAge(p); }
+      else { await p.click('.who-opt[data-who="self"]'); await p.fill("#name-in", "Maya"); await p.press("#name-in", "Enter"); await skipAge(p); }
       await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(400);
       ok(!(await note(p)), `${tag}: no invite on an empty cloud (the opening question is there instead)`);
       await p.fill("#cs-in", "the ocean"); await p.click("#cs-form button[type=submit]");

@@ -30,6 +30,8 @@ const BASE = process.env.LIVE_BASE || `http://127.0.0.1:${server.address().port}
 let pass = 0;
 const fails = [];
 const ok = (c, name, d = "") => (c ? (pass += 1) : fails.push(`${name}${d ? ` -> ${d}` : ""}`));
+/* PR 108: Iko's first step at the opening asks the optional age range; most checks skip it (the adapt suite covers it) */
+const skipAge = async (p) => { try { await p.waitForSelector("#cs-age-skip", { timeout: 4000 }); await p.click("#cs-age-skip"); await p.waitForTimeout(150); } catch { /* no age step here */ } };
 const browser = await (process.env.IKOLEARN_BROWSER ? PW[process.env.IKOLEARN_BROWSER].launch() : chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" }));
 /* the cloud view (to read the canvas), and the theme the page had when <body> first appeared (before any paint) */
 const HOOK = () => {
@@ -117,7 +119,7 @@ for (const width of [390, 1280]) for (const scheme of ["light", "dark"]) {
     ok(a.first === scheme && a.theme === scheme, `${tag}: follows the device, set before the first paint (no flash)`, JSON.stringify(a));
     ok(a.bg === want.bg && a.ink === want.ink && a.meta === want.meta && a.scheme === scheme && a.saved === null, `${tag}: paper, ink, the browser's theme-color and color-scheme`, JSON.stringify(a));
     aa(tag, "welcome", await contrast(p, [".brand-lg", ".lede", ".who-q", ".who-opt", "#welcome .fine"]));
-    await p.click('.who-opt[data-who="self"]'); await p.fill("#name-in", "Maya"); await p.press("#name-in", "Enter");
+    await p.click('.who-opt[data-who="self"]'); await p.fill("#name-in", "Maya"); await p.press("#name-in", "Enter"); await skipAge(p);
     await p.waitForSelector("#cloud-start:not([hidden])").catch(async (e) => { if (SHOTS) await p.screenshot({ path: path.join(SHOTS, `dark-debug-${scheme}-${width}.png`) }); throw e; }); await p.waitForTimeout(1200);
     aa(tag, "the opening question", await contrast(p, ["#cs-name", "#cs-hi", "#cs-q", "#cs-few", "#cs-ex .ex-chip", "#cs-form .btn", "#iko-line"]));
     const tg = await p.evaluate(() => { const b = document.querySelector(".cloud-foot .theme-tg"), r = b && b.getBoundingClientRect(); return b ? { w: r.width, h: r.height, label: b.getAttribute("aria-label"), pressed: b.getAttribute("aria-pressed") } : null; });

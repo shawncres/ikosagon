@@ -35,6 +35,8 @@ const BASE = process.env.LIVE_BASE || `http://127.0.0.1:${server.address().port}
 let pass = 0;
 const fails = [];
 const ok = (c, name, d = "") => (c ? (pass += 1) : fails.push(`${name}${d ? ` -> ${d}` : ""}`));
+/* PR 108: Iko's first step at the opening asks the optional age range; most checks skip it (the adapt suite covers it) */
+const skipAge = async (p) => { try { await p.waitForSelector("#cs-age-skip", { timeout: 4000 }); await p.click("#cs-age-skip"); await p.waitForTimeout(150); } catch { /* no age step here */ } };
 const browser = await (process.env.IKOLEARN_BROWSER ? PW[process.env.IKOLEARN_BROWSER].launch() : chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" }));
 /* the cloud view (to read the canvas) and a visualViewport the test can shrink, as an on-screen keyboard would */
 const HOOK = () => {
@@ -74,7 +76,7 @@ async function intake(s) {
     return r.fulfill({ status: 503, contentType: "application/json", body: '{"ok":false,"reason":"off"}' });
   });
   await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
-  await p.tap('.who-opt[data-who="self"]'); await p.fill("#name-in", "Maya"); await p.press("#name-in", "Enter");
+  await p.tap('.who-opt[data-who="self"]'); await p.fill("#name-in", "Maya"); await p.press("#name-in", "Enter"); await skipAge(p);
   await p.waitForSelector("#cloud:not([hidden]) #cloud-start:not([hidden])"); await p.waitForTimeout(1200);
   return { ctx, p, errs };
 }

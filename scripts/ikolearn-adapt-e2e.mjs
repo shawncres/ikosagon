@@ -28,6 +28,8 @@ const BASE = process.env.LIVE_BASE || `http://127.0.0.1:${server.address().port}
 let pass = 0;
 const fails = [];
 const ok = (c, name, d = "") => (c ? (pass += 1) : fails.push(`${name}${d ? ` -> ${d}` : ""}`));
+/* PR 108: Iko's first step at the opening asks the optional age range; most checks skip it (the adapt suite covers it) */
+const skipAge = async (p) => { try { await p.waitForSelector("#cs-age-skip", { timeout: 4000 }); await p.click("#cs-age-skip"); await p.waitForTimeout(150); } catch { /* no age step here */ } };
 const browser = await (process.env.IKOLEARN_BROWSER ? PW[process.env.IKOLEARN_BROWSER].launch() : chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" }));
 const HOOK = () => { let real; Object.defineProperty(window, "IkoCloudView", { configurable: true, get: () => real, set: (v) => { real = Object.assign({}, v, { create: (c, o) => { const view = v.create(c, o); (window.__views = window.__views || []).push({ id: c.id, view }); return view; } }); } }); };
 
@@ -185,7 +187,9 @@ for (const width of [390, 1280]) {
     try {
       await boot(p);
       ok((await profile(p)).band === "", `${tag}: no age band unless the learner gives one`);
-      await p.click("#age-link"); await p.waitForTimeout(500);
+      /* PR 108: no footer link any more; Iko changes it ("change my age") */
+      await p.click("#iko"); await p.waitForSelector("#iko-in");
+      await p.fill("#iko-in", "change my age"); await p.press("#iko-in", "Enter"); await p.waitForTimeout(500);
       const opts = await p.locator("#iko-log .age-opt").allTextContents();
       ok(opts.length === 5 && opts.some((t) => /prefer not/i.test(t)), `${tag}: the quiet link offers the five bands (prefer not to say among them)`, JSON.stringify(opts));
       await p.locator('#iko-log .age-opt[data-band="10-13"]').click(); await p.waitForTimeout(400);
@@ -231,11 +235,31 @@ for (const width of [390, 1280]) {
   }
 
   /* ---- 3. starter ideas lean on the time zone and language (never sent or shown); 4. first-visit lines ---- */
+  /* ---- PR 108: the age range is Iko's first, skippable step at the opening (in his speech; the layout holds) ---- */
+  for (const w of phone ? [320, 390] : [width]) {
+    const { ctx, p, errs, bodies } = await open(w, { tz: "America/Toronto", locale: "en-CA" });
+    try {
+      await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
+      await p.click('.who-opt[data-who="self"]'); await p.fill("#name-in", "Maya"); await p.press("#name-in", "Enter");
+      await p.waitForSelector("#cs-age-skip"); await p.waitForTimeout(600);
+      const a = await p.evaluate(() => { const vis = (e) => e && !e.hidden && e.getClientRects().length; const r = (e) => { const b = e.getBoundingClientRect(); return { x: b.left, y: b.top, r: b.right, b: b.bottom }; }; const opts = [...document.querySelectorAll("#cs-ages .age-opt, #cs-age-skip")]; const foot = document.querySelector("#cloud .cloud-foot"); return { q: document.querySelector("#cs-q").textContent, inSay: Boolean(document.querySelector(".cs-ask .say #cs-ages .age-opt")), n: opts.length, labels: opts.map((o) => o.textContent), boxes: opts.map(r), form: vis(document.querySelector("#cs-form")), ex: vis(document.querySelector("#cs-ex")), foot: foot && vis(foot) ? r(foot) : null, footAge: Boolean(document.querySelector("#age-link")), vw: innerWidth, vh: innerHeight }; });
+      ok(/how old are you/i.test(a.q) && a.inSay && a.n === 6 && a.labels.includes("Skip") && a.labels.some((t) => /prefer not/i.test(t)) && !a.form && !a.ex && !a.footAge, `${w}: after the name, Iko asks the optional age range in his speech (five bands and Skip); the question waits; no footer link`, JSON.stringify(a));
+      ok(a.boxes.every((b) => b.x >= 0 && b.r <= a.vw + 0.5 && b.y >= 0 && b.b <= (a.foot ? a.foot.y + 0.5 : a.vh)), `${w}: the band chips are whole and on screen, above the fine print`, JSON.stringify({ boxes: a.boxes, foot: a.foot, vw: a.vw }));
+      await p.click('#cs-ages .age-opt[data-band="14-17"]'); await p.waitForTimeout(400);
+      const b = await p.evaluate(() => ({ q: document.querySelector("#cs-q").textContent, form: !document.querySelector("#cs-form").hidden, ages: !document.querySelector("#cs-ages").hidden, band: window.IkoCloud.bandOf(window.IkoCloud.deserialize(localStorage.getItem("ikolearn.v1.cloud"))) }));
+      ok(b.q === "What are you curious about, or what do you enjoy?" && b.form && !b.ages && b.band === "14-17", `${w}: a band picked: kept on the device, and the first interest question follows`, JSON.stringify(b));
+      await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" }); await p.waitForTimeout(800);
+      ok(await p.isHidden("#cs-ages") && !(await p.isHidden("#cs-form")), `${w}: asked once (not again after a reload)`);
+      ok(bodies.every((x) => !("band" in x.b)), `${w}: no call carries the band at the opening`);
+      ok(errs.length === 0, `${w}: age step: no page errors`, errs.join(" | "));
+    } finally { await ctx.close(); }
+  }
+
   for (const [tz, locale, want] of [["America/Toronto", "en-CA", "Northern lights|Great Lakes|Bison and prairies|Maple trees"], ["Asia/Tokyo", "ja-JP", "Origami|Earthquakes|Rice farming|Paper and printing"]]) {
     const { ctx, p, errs, bodies } = await open(width, { tz, locale });
     try {
       await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" });
-      await p.click('.who-opt[data-who="self"]'); await p.fill("#name-in", "Maya"); await p.press("#name-in", "Enter");
+      await p.click('.who-opt[data-who="self"]'); await p.fill("#name-in", "Maya"); await p.press("#name-in", "Enter"); await skipAge(p);
       await p.waitForSelector("#cloud:not([hidden]) #cloud-start:not([hidden])"); await p.waitForTimeout(1000);
       const chips = [];
       for (let i = 0; i < 4; i += 1) { chips.push(...await p.locator("#cs-ex .ex-chip").allTextContents()); if (await p.isVisible("#cs-ex .ex-more")) { await p.click("#cs-ex .ex-more"); await p.waitForTimeout(250); } }
