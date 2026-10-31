@@ -328,11 +328,17 @@ const MIXED = { act: { "Coral Reefs": { ago: 3, done: true }, Shapes: { ago: 2, 
     ok(dk.fb && dk.x && /name=Maya&subject=IkoLearn%20Feedback$/.test(dk.href), "deck: the page ends with Support & feedback and Follow on X", JSON.stringify(dk));
     /* 8. the deck's tiles: titles wrap between words, the chain has its own whole line, the tier row fits */
     await p.evaluate(() => window.scrollTo(0, 0));
-    const tiles = await p.evaluate(() => [...document.querySelectorAll("#d-album .ap-grid > .gcard.size-tile")].map((c) => {
+    const measureTiles = () => p.evaluate(() => [...document.querySelectorAll("#d-album .ap-grid > .gcard.size-tile")].map((c) => {
       const R = (e) => e.getBoundingClientRect(), cr = R(c), cs = getComputedStyle(c), padR = parseFloat(cs.paddingRight), t = c.querySelector(".gc-title"), ch = c.querySelector(".gc-chain"), pips = c.querySelector(".gc-pips"), mark = c.querySelector(".gc-mark");
       const words = []; const tn = t.firstChild; let i = 0; for (const w of t.textContent.split(" ")) { const rg = document.createRange(); rg.setStart(tn, i); rg.setEnd(tn, i + w.length); words.push([w, rg.getClientRects().length]); i += w.length + 1; }
       return { title: t.textContent, words, chain: ch ? [Math.round(R(ch).height), ch.scrollHeight, Math.round(R(ch).bottom - cr.top)] : null, foot: [Math.round(R(pips).right - cr.left), Math.round(cr.width - padR), Math.round(R(mark).right - cr.left), Math.round(R(pips).left - cr.left)], h: Math.round(cr.height), footB: Math.round(R(c.querySelector(".gc-foot")).bottom - cr.top) };
     }));
+    const tiles = await measureTiles();
+    await p.setViewportSize({ width: 320, height: 640 }); await p.waitForTimeout(500);
+    const small = await measureTiles();
+    await p.setViewportSize({ width: 390, height: 844 }); await p.waitForTimeout(500);
+    const bad320 = small.filter((x) => x.words.some(([w, n]) => w === "Woodworking" && n !== 1) || !x.chain || x.chain[0] + 0.5 < x.chain[1] || x.foot[0] > x.foot[1] + 0.5 || x.footB > x.h);
+    ok(small.length >= 4 && !bad320.length, "deck tiles at 320 wide: whole words, the chain's own line, the tier row inside", JSON.stringify(bad320));
     const wb = tiles.filter((x) => x.words.some(([w, n]) => w === "Woodworking" && n !== 1));
     ok(tiles.length >= 4 && !wb.length, "deck tiles: \"Woodworking Basics\" wraps between words (never Woodworkin / g)", JSON.stringify(tiles.map((x) => x.words)));
     const clip = tiles.filter((x) => !x.chain || x.chain[0] + 0.5 < x.chain[1]);

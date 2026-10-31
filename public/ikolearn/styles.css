@@ -856,7 +856,8 @@ fieldset.q { min-width: 0; }
 }
 @keyframes zr-nudge { 0%, 64%, 100% { transform: none; } 72% { transform: translate(-2px, 0) rotate(-10deg); } 80% { transform: translate(2px, 0) scale(1.1) rotate(8deg); } 88% { transform: scale(.94); } }
 @media (prefers-reduced-motion: reduce) { .zoom .zr-ico { animation: none !important; } }
-@media (max-width: 399px) { body.intake .cloud-foot .age-bit { display: none; } } /* the smallest phones: the fine print stays one line on the opening (Iko asks later) */
+@media (max-width: 399px) { body.intake .cloud-foot .age-bit { display: none; } }
+@media (max-width: 699px) { body.intake .cloud-foot :is(.ft-more, .age-bit) { display: none; } } /* PR 110: the opening on a phone keeps one line of fine print (Privacy, Support & feedback, Follow on X): Iko asks the age there, and Learners and For parents & teachers come with the cloud */ /* the smallest phones: the fine print stays one line on the opening (Iko asks later) */
 /* PR 108: the age range as Iko's first, skippable step at the opening (in his speech, where the question goes) */
 .cs-ages .age-opts { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 6px; margin: 8px 0 0; }
 .cs-ages .cs-age-skip { min-height: 34px; padding: 0 8px; font-size: 13px; color: var(--soft); }
@@ -915,3 +916,4 @@ html:not([data-theme="dark"]) .cloud-fog { mix-blend-mode: multiply; }
 .gc-pips { flex: none; }
 .gcard.size-tile .gc-foot { gap: 4px; padding-top: 2px; }
 .gcard.size-tile .gc-mark { letter-spacing: .04em; font-size: clamp(8.5px, 7.6cqi, 10.5px); }
+@media (max-width: 359px) { .ap-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } } /* PR 110: the smallest phones: two cards a row, so a title and its tier fit */

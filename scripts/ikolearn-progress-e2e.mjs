@@ -91,7 +91,7 @@ const look = (p) => p.evaluate(() => {
     stored: L.ans || [], got: Boolean(L.got), done: C.isDone(c, id), correct: c.nodes[id].correct || 0, v: JSON.parse(localStorage.getItem("ikolearn.v1.cloud")).v };
 });
 const answer = async (p, i) => { await p.locator("#l-quiz fieldset.q").nth(i).locator("label.opt").nth(QS[i].answer).click(); await p.waitForTimeout(150); };
-const toCloud = async (p) => { if (await p.isVisible("#l-back")) { await (await p.isVisible("#l-back") ? p.click("#l-back") : p.evaluate(() => document.querySelector("#l-back").click())); await p.waitForTimeout(700); } };
+const toCloud = async (p) => { if (!(await p.isHidden("#lesson"))) { await (await p.isVisible("#l-back") ? p.click("#l-back") : p.evaluate(() => document.querySelector("#l-back").click())); await p.waitForTimeout(700); } };
 /* the lesson, back from somewhere: the cloud's card for Magma (tap its node) -> "Lesson" */
 const viaCloud = async (p) => {
   const pt = await p.evaluate(() => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), id = c.order.find((x) => c.nodes[x].label === "Magma"); return id; });
