@@ -43,7 +43,7 @@
     /* PR 103: a little more life as the cloud grows: vivid (0..1, from how many topics are finished), each subject's fill (its
        finished share: a soft halo of its own colour that warms as the branch fills in), and fadeK, a branch left alone
        for weeks drawn a little quieter (C.fadeOf; never removed, back at once with any activity) */
-    var vivid = 0, fill = {}, fadeK = {}, subOf = {};
+    var vivid = 0, fill = {}, fadeK = {}, subOf = {}, subN = {}, nTopics = 0;
 
     function resize() {
       var r = canvas.getBoundingClientRect();
@@ -58,7 +58,7 @@
       var first = !cloud;
       cloud = c;
       pos = c ? C.layout(c) : {};
-      depth = {}; pathRank = {}; kids = {}; colors = {}; done = {}; fill = {}; fadeK = {}; subOf = {}; vivid = 0;
+      depth = {}; pathRank = {}; kids = {}; colors = {}; done = {}; fill = {}; fadeK = {}; subOf = {}; subN = {}; nTopics = 0; vivid = 0;
       var ext = 1;
       if (c) C.subjects(c).forEach(function (s) { var p = pos[s.id]; if (p) ext = Math.max(ext, Math.hypot(p.x, p.y, p.z)); });
       camD = Math.max(3.2, ext * 1.7);
@@ -85,7 +85,8 @@
         /* one pass for every branch's last activity (the same rule as C.fadeOf) */
         Object.keys(last).forEach(function (sid) { fadeK[sid] = 1 - (C.fadeAfter ? C.fadeAfter(last[sid], now) : 0); });
         Object.keys(subOf).forEach(function (id) { if (fadeK[id] == null) fadeK[id] = fadeK[subOf[id]] == null ? 1 : fadeK[subOf[id]]; });
-        Object.keys(tally).forEach(function (sid) { fill[sid] = tally[sid].all ? tally[sid].done / tally[sid].all : 0; });
+        Object.keys(tally).forEach(function (sid) { fill[sid] = tally[sid].all ? tally[sid].done / tally[sid].all : 0; subN[sid] = tally[sid].all; nTopics += tally[sid].all; });
+        fogKey = "";
         vivid = Math.min(1, nDone / 12);
         c.order.forEach(function (id) {
           var n = c.nodes[id];
@@ -182,6 +183,8 @@
       items.sort(function (a, b) { return b.p.z - a.p.z; });
       projected = items;
       var pulsing = false;
+
+      drawFog(now, at, items);
 
       /* edges: a line leading to a finished topic takes that topic's colour; an open or unfinished path is drawn in dark
          sepia ink so it reads clearly; dotted lines (a side path, a suggested branch) stay dotted */
@@ -385,6 +388,61 @@
 
     function setZoom(z) { zoom = Math.max(zfloor, Math.min(ZMAX, z)); request(); }
     /* colours only change with the cloud (setCloud): worked out once per node, not three times a frame */
+    /*
+     * PR 107: the fog. A soft, low haze behind the branches in the subjects' own colours (each subject's patch drifts
+     * slowly and leans toward its neighbour's colour, an iridescent shimmer), thicker as the cloud grows. Painted at a
+     * sixth of the size on its own canvas under the cloud's, at most ~9 times a second (or only when the view changes,
+     * with reduced motion: then it is still). Only a picture: hit-testing never sees it.
+     */
+    var fogC = null, fogX = null, fogAt = 0, fogKey = "", fogLate = 0, FOG = { scale: 6, every: 110, cap: 32 };
+    function hsla(c, a) { var m = /^hsla?\(([^,]+),\s*([^,]+),\s*([^,)]+)/.exec(c || ""); return m ? "hsla(" + m[1] + ", " + m[2] + ", " + m[3] + ", " + a.toFixed(3) + ")" : "rgba(120, 100, 80, " + a.toFixed(3) + ")"; }
+    function drawFog(now, at, items) {
+      if (mini || !doc || !cloud) return;
+      var subs = C.subjects(cloud);
+      if (!subs.length) return;
+      var sc = FOG.scale, fw = Math.max(1, Math.ceil(w / sc)), fh = Math.max(1, Math.ceil(h / sc));
+      if (!fogC) {
+        /* its own small canvas just under the cloud's, scaled up by the browser (nothing to copy per frame), never hit */
+        if (!canvas.parentNode) return;
+        fogC = doc.createElement("canvas"); fogX = fogC.getContext("2d");
+        if (!fogX) return;
+        fogC.className = "cloud-fog"; fogC.setAttribute("aria-hidden", "true");
+        canvas.parentNode.insertBefore(fogC, canvas);
+      }
+      if (fogC.width !== fw || fogC.height !== fh) { fogC.width = fw; fogC.height = fh; fogKey = ""; }
+      var key = [yaw, pitch, zoom, panX, panY, w, h, INK].map(function (v) { return typeof v === "number" ? Math.round(v * 100) : v; }).join(",");
+      var due = !fogKey || ((key !== fogKey || !reduce) && now - fogAt > FOG.every);
+      if (!due && key !== fogKey && !fogLate) fogLate = setTimeout(function () { fogLate = 0; request(); }, FOG.every); /* the last view of a drag still gets its fog */
+      if (due) {
+        fogKey = key; fogAt = now;
+        var t = reduce ? 0 : now, grow = Math.min(1, nTopics / 60), base = 0.09 + 0.09 * grow, dark = Boolean(TH && TH.dark && TH.dark());
+        if (dark) base *= 0.8;
+        fogX.setTransform(1, 0, 0, 1, 0, 0);
+        fogX.clearRect(0, 0, fw, fh);
+        var blob = function (x, y, r, col, a) {
+          if (r <= 0.5 || a <= 0.004) return;
+          var g = fogX.createRadialGradient(x, y, 0, x, y, r);
+          g.addColorStop(0, hsla(col, a)); g.addColorStop(0.55, hsla(col, a * 0.45)); g.addColorStop(1, hsla(col, 0));
+          fogX.fillStyle = g; fogX.fillRect(x - r, y - r, r * 2, r * 2);
+        };
+        var shown = subs.slice(0, FOG.cap), n = shown.length;
+        shown.forEach(function (sj, i) {
+          var p = at[sj.id] || project(pos[sj.id] || CAM.ORIGIN);
+          var col = colorOf(sj), next = colorOf(shown[(i + 1) % n]);
+          var r = Math.min(Math.min(w, h) * 0.42, (34 + 13 * Math.sqrt(subN[sj.id] || 0)) * Math.max(0.5, zoom) * p.f) / sc;
+          var dx = Math.sin(t / 7000 + i * 1.7) * r * 0.28, dy = Math.cos(t / 9000 + i * 2.3) * r * 0.22;
+          var k = (fadeK[sj.id] == null ? 1 : fadeK[sj.id]) * (focusId && !focusSet[sj.id] ? 0.6 : 1);
+          blob(p.x / sc, p.y / sc, r, col, base * k);
+          blob((p.x / sc) + dx, (p.y / sc) + dy, r * 0.8, next, base * 0.55 * k * (0.6 + 0.4 * Math.sin(t / 5000 + i))); /* the shimmer: a neighbour's colour drifting through */
+        });
+        /* along the branches: a thinner haze over the topics, every other one on a big cloud */
+        var step = Math.max(1, Math.ceil(items.length / 40));
+        for (var j = 0; j < items.length; j += step) {
+          var it = items[j]; if (!it.n.parent || it.n.ghost) continue;
+          blob(it.p.x / sc, it.p.y / sc, (16 + 10 * grow) * Math.max(0.6, zoom) * it.p.f / sc, colorOf(it.n), base * 0.45);
+        }
+      }
+    }
     function colorOf(n) { var c = colors[n.id]; if (!c) c = colors[n.id] = TH ? TH.tone(C.colorOf(cloud, n)) : C.colorOf(cloud, n); return c; }
     if (TH && root.addEventListener) root.addEventListener("ikotheme", function () { colors = {}; request(); });
 
