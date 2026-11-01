@@ -907,10 +907,10 @@
     [/math|number|algebra|geometr|fraction|statist/i, "step-by-step problem solving", "solving problems one step at a time"],
     [/cod(e|ing)|program|computer|python|robot|software/i, "breaking a big task into small, testable parts", "breaking big tasks into small steps"],
     [/scien|physic|chemi|biolog|space|planet|volcan|weather|earth|ocean|animal|nature|plant|insect|ecolog/i, "careful observation and asking testable questions", "noticing things and asking good questions"],
-    [/draw|paint|art\b|sketch|design|photo/i, "patient practice and looking closely", "looking closely and practising"],
-    [/music|song|piano|guitar|sing|drum/i, "steady practice and careful listening", "practising and listening carefully"],
+    [/draw|paint|\bart\b|sketch|design|photograph/i, "patient practice and looking closely", "looking closely and practising"],
+    [/music|song|piano|guitar|\bsing|drum/i, "steady practice and careful listening", "practising and listening carefully"],
     [/histor|ancient|empire|civili/i, "reading sources carefully and comparing points of view", "telling what happened and why"],
-    [/languag|spanish|french|writ|poet|stor(y|ies)|read/i, "clear communication", "sharing ideas clearly"],
+    [/languag|spanish|french|writ|poet|stor(y|ies)|\bread/i, "clear communication", "sharing ideas clearly"],
     [/craft|wood|sew|knit|build|cook|bak|recipe/i, "planning, measuring and working carefully", "planning and measuring carefully"],
     [/sport|soccer|football|basketball|chess|game/i, "practice, strategy and learning from mistakes", "practising and learning from mistakes"]
   ];
@@ -947,7 +947,10 @@
       lines.push(kid ? name + " seems to really enjoy " + top.label + (second && second.score > 0 ? ", and " + second.label + " too." : ".")
         : pick(["Early signs point to a real interest in " + top.label, top.label + " is where " + name + " has done the most so far"]) + (second && second.score > 0 ? (pick([", with " + second.label + " close behind.", ", and " + second.label + " is growing too."], 1)) : "."));
     }
-    var nx = draw(cloud, { now: now, seed: seed }), nn = nx && cloud.nodes[nx], nsub = nn && per[subOf(nx)];
+    /* the next step, read without drawing (draw() logs a draw: opening the card changes nothing) */
+    var open = function (x) { return Boolean(x) && unfinished(cloud, x) && !cloud.nodes[x].end; };
+    var nx = [cloud.active, lastTouched(cloud), cloud.next].filter(function (x) { return x && nodeOf(cloud, x); }).map(function (x) { var k = pathNext(cloud, x); return open(k) ? k : open(x) ? x : null; }).filter(Boolean)[0] || null;
+    var nn = nx && cloud.nodes[nx], nsub = nn && per[subOf(nx)];
     if (nn) lines.push(pick(["A good next step: ", "Iko suggests next: "], 2) + nn.label + (nsub && nsub.id !== nx ? " in " + nsub.label : "") + ". It builds on what " + name + " already knows.");
     var basis = top && top.score > 0 ? top : null;
     if (basis) {

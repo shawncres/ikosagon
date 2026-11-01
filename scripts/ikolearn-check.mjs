@@ -3742,6 +3742,8 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(new Set([0, 1, 2, 3, 4, 5].map((k) => pk({ seed: k }))).size > 1 && pk({ seed: 7 }) === pk({ seed: 7 }), "home story: phrasing varies by day, steady within one");
   const ns = P.homeStory(none, { name: "Zed", now: NOW });
   ok(ns.empty && /^Zed (and Iko are just getting started|has just met Iko)\. The IkoCloud is ready to grow/.test(ns.lines[0]) && ns.lines.length === 2 && /Deck/.test(ns.lines[1]), "home story: an empty cloud gets a gentle start", JSON.stringify(ns.lines));
+  const cb = C.serialize(cloud); P.homeStory(cloud, { name: "Maya", now: NOW, lessons: 3 });
+  ok(C.serialize(cloud) === cb, "home story: reading it changes nothing (no draw logged)");
   const kidL = P.homeStory(cloud, { name: "Maya", now: NOW, band: "u10", lessons: 1 }).lines.join(" ");
   ok(/Maya has finished 1 lesson\b/.test(kidL) && /seems to really enjoy/.test(kidL) && !/Early signs|builds .* which helps/.test(kidL), "home story: simpler words for under-10s", kidL);
   const sk = P.SKILLS.filter((x) => x[0].test("Volcanoes and Weather"))[0];
