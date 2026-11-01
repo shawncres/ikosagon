@@ -887,6 +887,7 @@
     });
     (cloud.deck || []).forEach(function (e) { var t = C.tierOf(cloud, e.id); var k = t ? t.key : "sketch"; out.tiers[k] = (out.tiers[k] || 0) + 1; });
     for (var i = 0; i < 7; i++) if (days[day(now - i * DAY)]) out.week += 1;
+    out.active = Object.keys(days).length; /* PR 111: days with any learning on them */
     /* a run of days ending today (or yesterday, so it isn't lost before today's first lesson) */
     var k0 = days[day(now)] ? 0 : 1;
     while (days[day(now - (k0 + out.streak) * DAY)] && out.streak < 366) out.streak += 1;
@@ -894,12 +895,75 @@
     return out;
   }
 
+  /*
+   * PR 111: the name's card tells the learner's story in the third person ("Maya and Iko have been building..."), made
+   * here from what is on the device (0 calls): the cloud's subjects and topics, the Deck, lessons finished, the branch
+   * with the most going on, a realistic next step beside it and, when the subject is a familiar one, the kind of useful
+   * skill it grows (plain and grounded, no promises). Phrasing varies by day; simpler sentences for under-10s. Every
+   * name and label comes from the learner's own cloud. o: { name, now, band, lessons (finished lessons), seed }
+   * -> { lines: [string], empty: bool, strongest, next }
+   */
+  var SKILLS = [
+    [/math|number|algebra|geometr|fraction|statist/i, "step-by-step problem solving", "solving problems one step at a time"],
+    [/cod(e|ing)|program|computer|python|robot|software/i, "breaking a big task into small, testable parts", "breaking big tasks into small steps"],
+    [/scien|physic|chemi|biolog|space|planet|volcan|weather|earth|ocean|animal|nature|plant|insect|ecolog/i, "careful observation and asking testable questions", "noticing things and asking good questions"],
+    [/draw|paint|art\b|sketch|design|photo/i, "patient practice and looking closely", "looking closely and practising"],
+    [/music|song|piano|guitar|sing|drum/i, "steady practice and careful listening", "practising and listening carefully"],
+    [/histor|ancient|empire|civili/i, "reading sources carefully and comparing points of view", "telling what happened and why"],
+    [/languag|spanish|french|writ|poet|stor(y|ies)|read/i, "clear communication", "sharing ideas clearly"],
+    [/craft|wood|sew|knit|build|cook|bak|recipe/i, "planning, measuring and working carefully", "planning and measuring carefully"],
+    [/sport|soccer|football|basketball|chess|game/i, "practice, strategy and learning from mistakes", "practising and learning from mistakes"]
+  ];
+  function homeStory(cloud, o) {
+    o = o || {};
+    var name = String(o.name || cloud.name || "This learner"), now = o.now || Date.now(), kid = o.band === "u10", lessons = Math.max(0, o.lessons || 0);
+    var seed = (o.seed != null ? o.seed : Math.floor(now / DAY)) + name.length;
+    var pick = function (arr, k) { return arr[Math.abs(seed + (k || 0)) % arr.length]; };
+    var subs = C.subjects(cloud).map(function (n) { return n.id; }), cards = (cloud.deck || []).length;
+    var per = {}, topics = 0, done = 0, subOf = function (id) { var n = cloud.nodes[id]; while (n && n.parent) n = cloud.nodes[n.parent]; return n ? n.id : null; };
+    subs.forEach(function (id) { per[id] = { id: id, label: cloud.nodes[id].label, score: 0, done: 0, topics: 0, cards: 0 }; });
+    cloud.order.forEach(function (id) {
+      var n = cloud.nodes[id]; if (!n || !n.parent || n.ghost) return;
+      var s = per[subOf(id)]; if (!s) return;
+      topics += 1; s.topics += 1;
+      var d = C.isDone(cloud, id); if (d) { done += 1; s.done += 1; }
+      s.score += (n.engaged || 0) + 2 * (n.correct || 0) + (d ? 3 : 0) + (n.opened ? 1 : 0);
+    });
+    (cloud.deck || []).forEach(function (e) { var s = per[subOf(e.id)]; if (s) { s.cards += 1; s.score += 1; } });
+    var ranked = subs.map(function (id) { return per[id]; }).sort(function (a, b) { return b.score - a.score || b.done - a.done; });
+    var lines = [];
+    if (!subs.length) {
+      lines.push(pick([name + " and Iko are just getting started. ", name + " has just met Iko. "]) + (kid ? "The IkoCloud is ready to grow from the first thing " + name + " wants to know about." : "The IkoCloud is ready to grow from the first thing " + name + " is curious about."));
+      lines.push("Each lesson " + name + " finishes adds a card to the Deck, and the cloud grows new branches along the way.");
+      return { lines: lines, empty: true, strongest: null, next: null };
+    }
+    var subTxt = subs.length === 1 ? "one subject" : subs.length + " subjects", topTxt = topics === 1 ? "1 topic" : topics + " topics";
+    lines.push(pick([name + " and Iko have been building " + name + "'s IkoCloud together: ", "Together, " + name + " and Iko have grown an IkoCloud of "]) + subTxt + " and " + topTxt + " so far.");
+    var ls = lessons === 1 ? "1 lesson" : lessons + " lessons", cs = cards === 1 ? "1 card" : cards + " cards";
+    lines.push(lessons || cards ? (lessons ? name + " has finished " + ls : name + " has started learning") + (cards ? " and has " + cs + " in the Deck" : ", and the Deck is waiting for its first card") + (done ? ", with " + (done === 1 ? "1 topic" : done + " topics") + " finished." : ".")
+      : "No lessons finished yet. The first one " + name + " finishes adds a card to the Deck.");
+    var top = ranked[0], second = ranked[1];
+    if (top && top.score > 0) {
+      lines.push(kid ? name + " seems to really enjoy " + top.label + (second && second.score > 0 ? ", and " + second.label + " too." : ".")
+        : pick(["Early signs point to a real interest in " + top.label, top.label + " is where " + name + " has done the most so far"]) + (second && second.score > 0 ? (pick([", with " + second.label + " close behind.", ", and " + second.label + " is growing too."], 1)) : "."));
+    }
+    var nx = draw(cloud, { now: now, seed: seed }), nn = nx && cloud.nodes[nx], nsub = nn && per[subOf(nx)];
+    if (nn) lines.push(pick(["A good next step: ", "Iko suggests next: "], 2) + nn.label + (nsub && nsub.id !== nx ? " in " + nsub.label : "") + ". It builds on what " + name + " already knows.");
+    var basis = top && top.score > 0 ? top : null;
+    if (basis) {
+      var words = basis.label + " " + cloud.order.filter(function (id) { return subOf(id) === basis.id; }).slice(0, 10).map(function (id) { return cloud.nodes[id].label; }).join(" ");
+      var sk = SKILLS.filter(function (x) { return x[0].test(words); })[0];
+      if (sk) lines.push(kid ? "Learning about " + basis.label + " helps with " + sk[2] + "." : "Over time, " + basis.label + " builds " + sk[1] + ", which helps in many other subjects too.");
+    }
+    return { lines: lines.slice(0, 5), empty: false, strongest: basis ? basis.id : null, next: nn ? nx : null };
+  }
+
   var api = {
     PLAN: PLAN, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, needsRepair: needsRepair, repairRequest: repairRequest,
     MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild, nextStep: nextStep,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
     suggest: suggest, draw: draw, lessonContext: lessonContext, withBand: withBand, areaOf: areaOf, starterIdeas: starterIdeas, mixStarters: mixStarters, STARTER: STARTER, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, unfinished: unfinished, fresh: fresh, PACE: PACE, paceOf: paceOf, placeTopic: placeTopic, placedTopic: placedTopic, related: related, DESCRIBE: DESCRIBE, describeBatch: describeBatch, isBroad: isBroad,
-    onboarding: onboarding, openQuestion: openQuestion, examples: examples, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics, directions: directions, homeStats: homeStats,
+    onboarding: onboarding, openQuestion: openQuestion, examples: examples, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics, directions: directions, homeStats: homeStats, homeStory: homeStory, SKILLS: SKILLS,
     needsNext: needsNext, readyNext: readyNext, createRequest: createRequest, OPENING: OPENING
   };
   if (node_) module.exports = api;
