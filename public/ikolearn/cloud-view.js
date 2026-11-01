@@ -51,7 +51,7 @@
     var tests = {}, testMarks = [];
     /* a cloud of any size: the camera stands further back (camD) and Recentre frames the whole cloud (home) once
        subjects reach the outer shells; a cloud of up to 12 subjects is exactly as before (camD 3.2, zoom 1) */
-    var camD = 3.2, home = mini ? Object.assign({}, HOME, { panY: 0 }) : HOME, zfloor = ZMIN, colors = {}, done = {}, rootBox = null, hideRoot = false;
+    var camD = 3.2, home = mini ? Object.assign({}, HOME, { panY: 0 }) : HOME, zfloor = ZMIN, colors = {}, done = {}, rootBox = null, hideRoot = false, rootLit = false; /* PR 111: rootLit while the name's card is open */
     /* PR 103: a little more life as the cloud grows: vivid (0..1, from how many topics are finished), each subject's fill (its
        finished share: a soft halo of its own colour that warms as the branch fills in), and fadeK, a branch left alone
        for weeks drawn a little quieter (C.fadeOf; never removed, back at once with any activity) */
@@ -335,7 +335,7 @@
       });
       ctx.restore();
 
-      /* the learner's name, always on top: the root of the cloud, on a paper plate with a fine double ink ring, so it reads
+      /* the learner's name, always on top: the root of the cloud, on a softly glowing paper plate with a fine ink rim, so it reads
          as the node everything grows from (not drawn while the page shows it itself: the opening question) */
       ctx.save();
       if (!hideRoot) {
@@ -348,14 +348,25 @@
         }
         var bw = tw + 2 * px;
         rootBox = { hw: bw / 2, hh: ph };
+        if (!mini) {
+          /* PR 111: a calm sepia glow under a soft glass-like plate (a light edge on top, a fine ink rim), a little
+             warmer while its card is open: the pane it opens is made of the same stuff. One gradient, no canvas blur. */
+          var dk = Boolean(TH && TH.dark && TH.dark()), gr = bw / 2 + 30, glow = ctx.createRadialGradient(rootP.x, rootP.y, ph * 0.6, rootP.x, rootP.y, gr);
+          var gc = dk ? "214, 176, 120" : "176, 128, 72", ga = (rootLit ? 0.3 : 0.17) * (dk ? 0.8 : 1);
+          glow.addColorStop(0, "rgba(" + gc + "," + ga + ")"); glow.addColorStop(1, "rgba(" + gc + ",0)");
+          ctx.globalAlpha = 1; ctx.fillStyle = glow;
+          ctx.beginPath(); ctx.ellipse(rootP.x, rootP.y, gr, ph + 26, 0, 0, Math.PI * 2); ctx.fill();
+        }
         ctx.globalAlpha = 0.94; ctx.fillStyle = PAPER;
         pill(rootP.x - bw / 2, rootP.y - ph, bw, 2 * ph); ctx.fill();
-        ctx.globalAlpha = 0.62; ctx.strokeStyle = INK; ctx.lineWidth = mini ? 0.8 : 1.3;
-        pill(rootP.x - bw / 2, rootP.y - ph, bw, 2 * ph); ctx.stroke();
         if (!mini) {
-          ctx.globalAlpha = 0.2; ctx.lineWidth = 1;
-          pill(rootP.x - bw / 2 - 4, rootP.y - ph - 4, bw + 8, 2 * ph + 8); ctx.stroke();
+          var sheen = ctx.createLinearGradient(0, rootP.y - ph, 0, rootP.y + ph);
+          sheen.addColorStop(0, "rgba(255, 250, 238, 0.42)"); sheen.addColorStop(0.5, "rgba(255, 250, 238, 0)");
+          ctx.globalAlpha = TH && TH.dark && TH.dark() ? 0.35 : 1; ctx.fillStyle = sheen;
+          pill(rootP.x - bw / 2, rootP.y - ph, bw, 2 * ph); ctx.fill();
         }
+        ctx.globalAlpha = mini ? 0.62 : rootLit ? 0.55 : 0.42; ctx.strokeStyle = INK; ctx.lineWidth = mini ? 0.8 : 1.1;
+        pill(rootP.x - bw / 2, rootP.y - ph, bw, 2 * ph); ctx.stroke();
         ctx.globalAlpha = 1; ctx.fillStyle = INK;
         ctx.fillText(label, rootP.x, rootP.y + (mini ? 0 : 1));
       }
@@ -641,6 +652,7 @@
       hold: function (on) { if (spinHeld === Boolean(on)) return; spinHeld = Boolean(on); touch(); request(); },
       flash: flash,
       resize: resize,
+      lightRoot: function (on) { if (rootLit === Boolean(on)) return; rootLit = Boolean(on); request(); },
       /* the zoom buttons: a short eased zoom about the centre */
       zoomBy: function (k) { var v = view(), z = CAM.zoomAbout(v, k, null, w, h); animateTo({ zoom: z.zoom, panX: v.panX * (z.zoom / v.zoom), panY: v.panY * (z.zoom / v.zoom), yaw: v.yaw, pitch: v.pitch }, CAM.CAM.zoomMs); },
       reset: function () { apply(Object.assign({ pivot: CAM.ORIGIN }, home)); tween = null; glideV = null; setFocus(null); request(); changed(); },

@@ -2540,7 +2540,7 @@
     return null;
   }
   function closeCloud(keepView) {
-    el.cloud.hidden = true; el.panel.hidden = true; state.panelNode = null; cardSig = "";
+    el.cloud.hidden = true; el.panel.hidden = true; state.panelNode = null; cardSig = ""; if (big && big.lightRoot) big.lightRoot(false);
     if (big) { big.spin(false); big.hold(false); }
     if (!keepView && !state.lessonNode) { renderDraw(); el.input.focus(); }
   }
@@ -2555,6 +2555,7 @@
   /* keepNote: leave the note as is; keepView: don't move the camera. The note is never written by opening a panel (see below). */
   function openPanel(id, keepNote, keepView) {
     if (state.panelNode !== id) cancelCall("notice");
+    if (state.panelNode !== id) homeTab = "story"; /* the name's card opens on its story */
     state.panelNode = id;
     var isRoot = id === "root";
     var n = isRoot ? null : nodeOf(id);
@@ -2577,6 +2578,7 @@
     el.pTest.disabled = state.busy || !(tst && tst.ready);
     el.pPath.textContent = "";
     el.panel.classList.toggle("is-root", isRoot);
+    if (big && big.lightRoot) big.lightRoot(isRoot); /* PR 111: the name glows a little warmer while its card is open */
     if (isRoot) renderStats();
     /* compact: the title, its description, the main actions and a short path (no cards, no long lists: its card has those) */
     else el.pPath.appendChild(pathBlock(id, { offer: true, short: true, onStep: function (sid) { openPanel(sid); } }));
@@ -2593,28 +2595,81 @@
     focusInView(isRoot ? "root" : id, isRoot); /* the name too: the camera eases it into view, its card beside it */
   }
   /*
-   * The name's card: a compact look at the whole cloud (0 calls). Achievements (the cards in the Deck, by tier), a
-   * progress summary (subjects, topics finished, right answers), recent activity when there is some, one soft insight
-   * (#98's notes, only once their threshold is met), what's next, and Save IkoCloud / Open IkoCloud.
+   * PR 111: the name's card, a quiet glass pane in three parts (0 calls, all from what is on the device). Story (first):
+   * a short third-person account of what the learner and Iko have built (P.homeStory). Stats: days visited, the streak,
+   * cards earned, topics finished, lessons completed. Preferences (the small gear): the age range and light or dark.
+   * Save IkoCloud / Open IkoCloud stay underneath every part, quietly.
    */
+  var homeTab = "story";
+  function lessonsDone() { return Object.keys(state.lessons || {}).filter(function (id) { var l = state.lessons[id]; return Boolean(l && (l.earned || passed(id))); }).length; }
+  function homeNumbers(now) {
+    var st = P.homeStats(state.cloud, now || Date.now()), pr = C.profileOf(state.cloud);
+    return { st: st, days: Math.max(pr.days || 0, st.active || 0, st.last || st.cards ? 1 : 0), streak: st.streak, cards: st.cards, topics: st.done, lessons: lessonsDone() };
+  }
   function renderStats() {
-    var st = P.homeStats(state.cloud, Date.now()), box = mk("div", "stats");
-    var row = function (head, text, extra) { var r = mk("div", "st-row"); r.appendChild(mk("p", "st-head", head)); var t = mk("p", "st-text", text); if (extra) { t.appendChild(document.createTextNode(" ")); t.appendChild(extra); } r.appendChild(t); box.appendChild(r); return r; };
+    var now = Date.now(), num = homeNumbers(now), st = num.st, box = mk("div", "stats home-card");
+    var tabs = mk("div", "hc-tabs"), panes = {};
+    tabs.setAttribute("role", "tablist"); tabs.setAttribute("aria-label", "About " + state.cloud.name + "'s IkoCloud");
+    var show = function (k, focus) {
+      homeTab = k;
+      Object.keys(panes).forEach(function (x) { panes[x].hidden = x !== k; var t = tabs.querySelector('[data-tab="' + x + '"]'); t.setAttribute("aria-selected", String(x === k)); t.tabIndex = x === k ? 0 : -1; t.classList.toggle("on", x === k); if (x === k && focus) t.focus(); });
+    };
+    [["story", "Story"], ["stats", "Stats"], ["prefs", "Preferences"]].forEach(function (x) {
+      var t = mk("button", "hc-tab" + (x[0] === "prefs" ? " hc-gear" : ""), x[0] === "prefs" ? "" : x[1]);
+      t.type = "button"; t.id = "hc-t-" + x[0]; t.setAttribute("role", "tab"); t.setAttribute("data-tab", x[0]); t.setAttribute("aria-controls", "hc-" + x[0]);
+      if (x[0] === "prefs") { t.setAttribute("aria-label", "Preferences"); t.title = "Preferences"; }
+      t.addEventListener("click", function (e) { e.stopPropagation(); show(x[0]); });
+      tabs.appendChild(t);
+      var pane = mk("div", "hc-pane hc-" + x[0]); pane.id = "hc-" + x[0]; pane.setAttribute("role", "tabpanel"); pane.setAttribute("aria-labelledby", t.id);
+      panes[x[0]] = pane;
+    });
+    tabs.addEventListener("keydown", function (e) { /* arrow keys move between the tabs */
+      var keys = ["story", "stats", "prefs"], k = keys.indexOf(homeTab), d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+      if (d) { e.preventDefault(); show(keys[(k + d + 3) % 3], true); }
+    });
+    box.appendChild(tabs);
+    /* Story */
+    var story = P.homeStory(state.cloud, { name: state.cloud.name, band: C.profileOf(state.cloud).band, now: now, lessons: num.lessons });
+    var nn = story.next && nodeOf(story.next);
+    story.lines.forEach(function (line) {
+      var pl = mk("p", "hc-line"), at = nn ? line.indexOf(nn.label) : -1;
+      if (at >= 0 && !box.querySelector(".hc-next")) { /* the suggested next step is a link to it */
+        pl.appendChild(document.createTextNode(line.slice(0, at)));
+        pl.appendChild(linkBtn(nn.label, function () { openPanel(nn.id); }, "link hc-next"));
+        pl.appendChild(document.createTextNode(line.slice(at + nn.label.length)));
+      } else pl.textContent = line;
+      panes.story.appendChild(pl);
+    });
+    if (story.empty) panes.story.classList.add("is-empty");
+    /* Stats */
+    var dl = mk("dl", "hc-nums");
+    [["days", "Days visited", num.days], ["streak", "Day streak", num.streak], ["cards", "Cards earned", num.cards], ["topics", "Topics finished", num.topics], ["lessons", "Lessons completed", num.lessons]].forEach(function (x) {
+      var d = mk("div", "hc-num"); d.setAttribute("data-k", x[0]);
+      d.appendChild(mk("dt", "hc-k", x[1])); d.appendChild(mk("dd", "hc-n", String(x[2]))); /* the number shows above its label */
+      dl.appendChild(d);
+    });
+    panes.stats.appendChild(dl);
     var tiers = [["merged", "Merged"], ["achieved", "Achieved"], ["tinted", "Tinted"], ["inked", "Inked"], ["sketch", "Sketch"]].filter(function (x) { return st.tiers[x[0]]; }).map(function (x) { return st.tiers[x[0]] + " " + x[1]; });
-    var deck = st.cards ? linkBtn("Open your Deck", function () { closeCloud(true); showDeck(true); }, "link st-link") : null;
-    row("Achievements", st.cards ? (st.cards === 1 ? "1 card" : st.cards + " cards") + " in your Deck" + (tiers.length ? " · " + tiers.slice(0, 3).join(", ") : "") + "." : "No cards yet. Open a lesson and its card joins your Deck.", deck);
-    row("Progress", (st.subjects === 1 ? "1 subject" : st.subjects + " subjects") + " · " + st.done + " of " + st.topics + (st.topics === 1 ? " topic" : " topics") + " finished · " + (st.right === 1 ? "1 right answer" : st.right + " right answers") + ".");
-    var act = st.streak >= 2 ? st.streak + " days in a row, and " + st.week + " of the last 7." : st.week ? "Learning on " + st.week + (st.week === 1 ? " day" : " days") + " of the last 7." : st.last ? "Last time you learned was " + agoText(st.last) + "." : "";
-    if (act) row("Lately", act);
-    if (st.insight) box.appendChild(mk("p", "st-insight", st.insight.text));
-    var nx = nodeOf(state.cloud.next);
-    if (nx && !P.unfinished(state.cloud, nx.id)) nx = nodeOf(P.pathNext(state.cloud, nx.id)); /* finished since: the next unfinished step after it */
-    if (nx) {
-      var pnx = mk("p", "next-up", "Next up: ");
-      pnx.appendChild(linkBtn(nx.label, function () { openPanel(nx.id); }));
-      pnx.appendChild(document.createTextNode(" in " + trailOf(nx.parent)));
-      box.appendChild(pnx);
+    var sub = mk("p", "hc-sub", (st.subjects === 1 ? "1 subject" : st.subjects + " subjects") + " · " + st.done + " of " + st.topics + (st.topics === 1 ? " topic" : " topics") + " finished" + (tiers.length ? " · " + tiers.slice(0, 3).join(", ") : "") + ".");
+    panes.stats.appendChild(sub);
+    if (st.cards) { var od = mk("p", "hc-sub"); od.appendChild(linkBtn("Open your Deck", function () { closeCloud(true); showDeck(true); }, "link st-link")); panes.stats.appendChild(od); }
+    if (st.insight) panes.stats.appendChild(mk("p", "st-insight", st.insight.text));
+    /* Preferences */
+    panes.prefs.appendChild(mk("p", "hc-ph", "Age range"));
+    panes.prefs.appendChild(mk("p", "hc-hint fine", "Only changes how lessons are written. Kept on this device."));
+    var paintBands = function () { var r = bandRow(function (b) { setBand(b); var nr = paintBands(); old.replaceWith(nr); old = nr; }); return r; }, old = paintBands();
+    panes.prefs.appendChild(old);
+    if (TH) {
+      panes.prefs.appendChild(mk("p", "hc-ph", "Appearance"));
+      var tr = mk("div", "place-opts hc-theme"); tr.setAttribute("role", "group"); tr.setAttribute("aria-label", "Appearance");
+      var paintTheme = function () { tr.querySelectorAll("button").forEach(function (b) { var on = (TH.saved() || "") === b.getAttribute("data-mode"); b.setAttribute("aria-pressed", String(on)); b.classList.toggle("on", on); }); };
+      [["light", "Light"], ["dark", "Dark"], ["", "Match device"]].forEach(function (x) {
+        var b = linkBtn(x[1], function () { TH.set(x[0] || null); paintTheme(); }, "btn sm age-opt"); b.setAttribute("data-mode", x[0]); tr.appendChild(b);
+      });
+      paintTheme(); panes.prefs.appendChild(tr);
     }
+    Object.keys(panes).forEach(function (k) { box.appendChild(panes[k]); });
+    show(homeTab);
     box.appendChild(cloudTools());
     el.pPath.appendChild(box);
   }
@@ -2653,7 +2708,7 @@
   function closeCard() {
     if (el.panel.hidden) return;
     cancelCall("notice");
-    el.panel.hidden = true; state.panelNode = null; cardSig = "";
+    el.panel.hidden = true; state.panelNode = null; cardSig = ""; if (big && big.lightRoot) big.lightRoot(false);
     if (big) big.clearFocus();
     renderCloudFlow();
   }
@@ -3771,6 +3826,8 @@
   /* Once per browser session: for "seems stuck" (visits without a lesson). */
   function countVisit() {
     var pr = C.profileOf(state.cloud);
+    var t = new Date(), today = t.getFullYear() * 1e4 + (t.getMonth() + 1) * 100 + t.getDate(); /* PR 111: days visited */
+    if (pr.vday !== today) { pr.vday = today; pr.days = (pr.days || 0) + 1; }
     try { if (!sessionStorage.getItem(VISIT)) { sessionStorage.setItem(VISIT, "1"); pr.visits = (pr.visits || 0) + 1; var d = C.dirOf(state.cloud); d.prev = d.seen || 0; d.seen = Date.now(); } } catch { /* ignore */ }
     save();
   }

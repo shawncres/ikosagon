@@ -782,9 +782,10 @@
    * changedAt in the first slots of the profile row: they are ignored on read and written back empty (the row keeps its
    * v8 shape, so no version bump).
    */
-  function newProfile() { return { interests: [], onboarded: 0, askedAt: 0, visits: 0, lessonVisit: 0, dir: newDir(), band: "", last: null }; }
+  function newProfile() { return { interests: [], onboarded: 0, askedAt: 0, visits: 0, lessonVisit: 0, dir: newDir(), band: "", last: null, days: 0, vday: 0 }; }
   /*
    * PR 107, both optional and on the device only (additive v9 slots in the profile row: [10] band, [11] last):
+   * PR 111 adds [12] [days, vday]: how many different days the learner has opened IkoLearn, and the last one counted.
    * band: the learner's age band, if they chose to say ("" = not asked or skipped, "none" = prefer not to say). It only
    *   changes how a lesson is written (reading level, sentence length, examples, concrete vs abstract); it never gates a
    *   topic. It is sent inside the lesson request so the model can write for it, and never kept on a server.
@@ -1638,7 +1639,8 @@
     var d = p.dir || newDir();
     return ["", "", 0, p.interests || [], s(p.onboarded), s(p.askedAt), p.visits || 0, p.lessonVisit || 0, 0,
       [s(d.off), d.n || 0, s(d.seen), s(d.prev), s(d.quiet), (d.hide || []).slice(-24), (d.later || []).slice(0, 4)]]
-      .concat(p.band || p.last ? [p.band || "", p.last ? [p.last.id, p.last.kind === "card" ? 1 : 0, s(p.last.t)] : 0] : []); /* PR 107's slots only when set */
+      .concat(p.band || p.last || p.days ? [p.band || "", p.last ? [p.last.id, p.last.kind === "card" ? 1 : 0, s(p.last.t)] : 0] : []) /* PR 107's slots only when set */
+      .concat(p.days ? [[p.days, p.vday || 0]] : []); /* PR 111: [12] days visited, and the last day counted (yyyymmdd, local) */
   }
   function profileFrom(a) {
     var p = newProfile();
@@ -1654,6 +1656,8 @@
     p.band = cleanBand(a[10]);
     var l = Array.isArray(a[11]) ? a[11] : null;
     p.last = l && typeof l[0] === "string" && /^n\d{1,7}$/.test(l[0]) ? { id: l[0], kind: l[1] ? "card" : "lesson", t: ms(l[2]) } : null;
+    var v = Array.isArray(a[12]) ? a[12] : [];
+    p.days = Math.max(0, Math.min(1e5, Math.floor(Number(v[0]) || 0))); p.vday = Math.max(0, Math.floor(Number(v[1]) || 0));
     return p;
   }
 
