@@ -33,6 +33,7 @@ const skipAge = async (p) => { try { await p.waitForSelector("#cs-age-skip", { t
 const browser = await (process.env.IKOLEARN_BROWSER ? PW[process.env.IKOLEARN_BROWSER].launch() : chromium.launch({ executablePath: process.env.IKOLEARN_CHROME || "/usr/bin/google-chrome" }));
 /* a visualViewport the test can shrink, as an on-screen keyboard would */
 const HOOK = () => {
+  let real; Object.defineProperty(window, "IkoCloudView", { configurable: true, get: () => real, set: (v) => { real = Object.assign({}, v, { create: (c, o) => { const view = v.create(c, o); (window.__views = window.__views || []).push({ id: c.id, view }); return view; } }); } }); /* PR 110: the cloud view, to find a node on screen */
   const vv = new EventTarget(); let kb = 0;
   Object.defineProperties(vv, { height: { get: () => window.innerHeight - kb }, width: { get: () => window.innerWidth }, offsetTop: { get: () => 0 }, offsetLeft: { get: () => 0 }, scale: { get: () => 1 } });
   window.__keyboard = (h) => { kb = h; vv.dispatchEvent(new Event("resize")); };
@@ -122,7 +123,7 @@ const MIXED = { act: { "Coral Reefs": { ago: 3, done: true }, Shapes: { ago: 2, 
       const t = await p.evaluate(() => { const C = window.IkoCloud, P = window.IkoPlan, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), id = c.active || null; return { title: document.querySelector("#l-title") ? document.querySelector("#l-title").textContent : "", fin: id ? P.finished(c, id) : null }; });
       seen.push(t);
       if (i === 0) await shot(p, "draw");
-      if (i < 4) { await p.locator("#l-back").tap(); await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(400); if (await p.isVisible("#p-close")) { await p.tap("#p-close"); await p.waitForTimeout(250); } } /* back on the cloud, its card beside it: closed */
+      if (i < 4) { await (await p.isVisible("#l-back") ? p.tap("#l-back") : p.evaluate(() => document.querySelector("#l-back").click())); await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(400); if (await p.isVisible("#p-close")) { await p.tap("#p-close"); await p.waitForTimeout(250); } } /* back on the cloud, its card beside it: closed */
     }
     ok(seen.every((t) => t.title && !DONE.includes(t.title) && t.fin === false), "draw: tapping Draw a card five times opens only unfinished cards", JSON.stringify(seen));
     ok(seen[0].title === "Tides", "draw: the first tap opens the current path's next step", JSON.stringify(seen[0]));
@@ -249,6 +250,110 @@ const MIXED = { act: { "Coral Reefs": { ago: 3, done: true }, Shapes: { ago: 2, 
     ok(k.coarse && k.active !== "iko-in" && !k.calls.length && k.fits, "WhatsApp iOS: tapping Iko opens its sheet without focusing the field (no keyboard), not even after the transition", JSON.stringify(k));
     if (SHOTS) { await p.waitForTimeout(300); await p.screenshot({ path: path.join(SHOTS, "pr100-after-whatsapp-ios-iko-open.png") }); }
     ok(!errs.length, "WhatsApp iOS: no page errors", errs.join(" | "));
+  } finally { await ctx.close(); }
+}
+
+/* PR 110 (Shawn on an iPhone: "tapping nodes do not work", "the gesture also turns things weirdly", no Support link,
+   deck tiles breaking mid-word, "Back to your cloud" beside the cloud widget). Real touch (hasTouch, isMobile, tap())
+   in Chromium and WebKit, and a finger's tap as an iPhone reports it: a few pixels of wobble between down and up. */
+{
+  const LONG = { subs: [["Crafts", "Woodworking", ["Woodworking Basics", "Clearing The Workspace", "Tool Safety", "Sharpening Chisels Properly"]], ["Nature", "Ocean Life", ["Coral Reefs", "Tides"]]], act: { "Woodworking Basics": { ago: 2, done: true }, "Clearing The Workspace": { ago: 1, done: true }, "Tool Safety": { ago: 0.5 }, "Sharpening Chisels Properly": { ago: 0.2 } } };
+  const { ctx, p, errs } = await boot(LONG, true);
+  const V = () => p.evaluate(() => { const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view.state(); return { yaw: v.yaw, zoom: v.zoom, panX: v.panX, panY: v.panY }; });
+  const at = (label) => p.evaluate((l) => { const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view, C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), id = l === "root" ? "root" : c.order.find((x) => c.nodes[x].label === l), q = v.project(id), r = document.querySelector("#cloud-canvas").getBoundingClientRect(); return q && { x: r.left + q.x, y: r.top + q.y, on: document.elementFromPoint(r.left + q.x, r.top + q.y) === document.querySelector("#cloud-canvas") }; }, label);
+  /* touch pointers as a phone sends them: steps of [dx, dy] from the start for each finger */
+  const fingers = (paths) => p.evaluate(async (paths) => {
+    const cv = document.querySelector("#cloud-canvas");
+    const send = (t, id, x, y) => cv.dispatchEvent(new PointerEvent(t, { pointerId: id, pointerType: "touch", isPrimary: id === 61, bubbles: true, cancelable: true, button: 0, buttons: t === "pointerup" ? 0 : 1, clientX: x, clientY: y }));
+    paths.forEach((f, i) => send("pointerdown", 61 + i, f.x, f.y));
+    const n = Math.max(...paths.map((f) => f.steps.length));
+    for (let k = 0; k < n; k++) { await new Promise((r) => setTimeout(r, 16)); paths.forEach((f, i) => { const s = f.steps[Math.min(k, f.steps.length - 1)]; send("pointermove", 61 + i, f.x + s[0], f.y + s[1]); }); } /* about a frame apart, as a finger's moves come */
+    await new Promise((r) => setTimeout(r, 120)); /* held still a moment before lifting: no fling */
+    paths.forEach((f, i) => { const s = f.steps[f.steps.length - 1]; send("pointerup", 61 + i, f.x + s[0], f.y + s[1]); });
+  }, paths);
+  const card = () => p.evaluate(() => ({ open: !document.querySelector("#panel").hidden, title: document.querySelector("#p-title").textContent }));
+  const shut = async () => { if (await p.isVisible("#p-close")) { await p.tap("#p-close"); await p.waitForTimeout(450); } };
+  try {
+    /* 1. tap(): the learner's name, then a node, each opens its card */
+    const rp = await at("root");
+    await p.touchscreen.tap(rp.x, rp.y); await p.waitForTimeout(500);
+    const rc = await card();
+    ok(rp.on && rc.open && rc.title === "Maya", "touch: a tap on the learner's name opens its card", JSON.stringify({ rp, rc }));
+    await shut();
+    const rp2 = await at("root");
+    await fingers([{ x: rp2.x, y: rp2.y, steps: [[1, 2], [-2, 1], [2, 3]] }]); await p.waitForTimeout(500);
+    const rc2 = await card();
+    ok(rc2.open && rc2.title === "Maya", "touch: a wobbly tap on the learner's name opens its card", JSON.stringify(rc2));
+    await shut();
+    for (const l of ["Ocean Life", "Woodworking"]) {
+      const a = await at(l);
+      await p.touchscreen.tap(a.x, a.y); await p.waitForTimeout(500);
+      const c = await card();
+      ok(a.on && c.open && c.title === l, `touch: a tap on ${l} opens its card`, JSON.stringify({ a, c }));
+      await shut();
+    }
+    /* 2. a finger's real tap: it wobbles 2-3 px between down and up (summed, well over 6 px: read as a drag before) */
+    for (const l of ["Ocean Life", "Woodworking"]) {
+      const a = await at(l);
+      await fingers([{ x: a.x, y: a.y, steps: [[2, 1], [3, -1], [1, 2], [-1, 1], [2, 2], [3, 1]] }]); await p.waitForTimeout(500);
+      const c = await card();
+      ok(c.open && c.title === l, `touch: a wobbly tap (a few px, as an iPhone reports it) on ${l} still opens its card`, JSON.stringify(c));
+      await shut();
+    }
+    /* 3. one finger drags: the cloud pans under it by the whole way (no card; nothing turns beyond the slow drift) */
+    const sky = await p.evaluate(() => { const r = document.querySelector("#cloud-canvas").getBoundingClientRect(); return { x: r.left + r.width * 0.5, y: r.top + r.height * 0.3 }; });
+    const v0 = await V();
+    await fingers([{ x: sky.x, y: sky.y, steps: [[4, 0], [10, 2], [20, 4], [30, 6], [40, 8]] }]); await p.waitForTimeout(80);
+    const v1 = await V(), c3 = await card();
+    ok(!c3.open && Math.abs(v1.panX - v0.panX - 40) < 1.5 && Math.abs(v1.panY - v0.panY - 8) < 1.5 && Math.abs(v1.yaw - v0.yaw) < 0.03, "touch: a one-finger drag pans by exactly the finger's way, no card, no turn", JSON.stringify({ dx: v1.panX - v0.panX, dy: v1.panY - v0.panY, yaw: v1.yaw - v0.yaw, c3 }));
+    await p.waitForTimeout(1200); /* any glide settles */
+    /* 4. a pinch (fingers spreading, their angle wobbling a little as real fingers do): it zooms, it does not turn */
+    const z0 = await V();
+    await fingers([{ x: sky.x - 40, y: sky.y + 60, steps: [[-6, 2], [-14, -3], [-22, 4], [-30, -2], [-38, 5]] }, { x: sky.x + 40, y: sky.y + 60, steps: [[6, 3], [14, -4], [22, 5], [30, -3], [38, 4]] }]); await p.waitForTimeout(80);
+    const z1 = await V();
+    ok(z1.zoom > z0.zoom * 1.3 && Math.abs(z1.yaw - z0.yaw) < 0.03, "touch: a pinch zooms cleanly; its small angle wobble does not turn the cloud", JSON.stringify({ zoom: [z0.zoom, z1.zoom], yaw: z1.yaw - z0.yaw }));
+    /* 5. a clear twist (fingers circling at the same spread) still turns it */
+    const t0 = await V(), R = 60, ang = [0, 0.15, 0.3, 0.45, 0.6, 0.75];
+    await fingers([{ x: sky.x - R, y: sky.y + 60, steps: ang.map((q) => [R - R * Math.cos(q), -R * Math.sin(q)]) }, { x: sky.x + R, y: sky.y + 60, steps: ang.map((q) => [-(R - R * Math.cos(q)), R * Math.sin(q)]) }]); await p.waitForTimeout(80);
+    const t1 = await V();
+    ok(Math.abs(t1.yaw - t0.yaw) > 0.3 && Math.abs(t1.zoom / t0.zoom - 1) < 0.1, "touch: a clear two-finger twist turns the cloud (and doesn't zoom)", JSON.stringify({ yaw: t1.yaw - t0.yaw, zoom: t1.zoom / t0.zoom }));
+    /* 6. Support & feedback and Follow on X on the cloud, in the fine print, on screen and clear of the Pick up row */
+    const foot = await p.evaluate(() => { const r = (e) => e && e.getBoundingClientRect(); const fb = document.querySelector("#cloud .cloud-foot .fb-link"), x = document.querySelector('#cloud .cloud-foot a[href="https://x.com/IkosagonAI"]'), flow = document.querySelector(".cloud-flow:not([hidden])"); return { fb: fb && fb.getClientRects().length ? [r(fb).top, r(fb).bottom, r(fb).left, r(fb).right] : null, href: fb && fb.href, x: Boolean(x && x.getClientRects().length && r(x).bottom <= innerHeight), flowB: flow ? r(flow).bottom : 0, footT: r(document.querySelector("#cloud .cloud-foot")).top, h: innerHeight, w: innerWidth }; });
+    ok(foot.fb && foot.fb[1] <= foot.h && foot.fb[0] >= 0 && foot.fb[3] <= foot.w && foot.x && /contact\?name=Maya&subject=IkoLearn%20Feedback$/.test(foot.href), "phone: Support & feedback (with the name) and Follow on X are on the cloud's screen", JSON.stringify(foot));
+    ok(!foot.flowB || foot.flowB <= foot.footT + 0.5, "phone: the Pick up row sits above the two-line fine print", JSON.stringify(foot));
+    /* 7. the deck: no "Back to your cloud" beside the cloud widget; the page ends with the support links */
+    await p.tap("#cloud-deck"); await p.waitForSelector("#deck:not([hidden])"); await p.waitForTimeout(900);
+    const dk = await p.evaluate(() => { const vis = (e) => Boolean(e && e.getClientRects().length); window.scrollTo(0, document.documentElement.scrollHeight); return { back: vis(document.querySelector("#d-back")), thumb: vis(document.querySelector("#thumb")), fb: vis(document.querySelector("#page-foot .fb-link")), x: vis(document.querySelector('#page-foot a[href="https://x.com/IkosagonAI"]')), href: (document.querySelector("#page-foot .fb-link") || {}).href }; });
+    ok(!dk.back && dk.thumb, "deck: no \"Back to your cloud\" link beside the cloud widget", JSON.stringify(dk));
+    ok(dk.fb && dk.x && /name=Maya&subject=IkoLearn%20Feedback$/.test(dk.href), "deck: the page ends with Support & feedback and Follow on X", JSON.stringify(dk));
+    /* 8. the deck's tiles: titles wrap between words, the chain has its own whole line, the tier row fits */
+    await p.evaluate(() => window.scrollTo(0, 0));
+    const measureTiles = () => p.evaluate(() => [...document.querySelectorAll("#d-album .ap-grid > .gcard.size-tile")].map((c) => {
+      const R = (e) => e.getBoundingClientRect(), cr = R(c), cs = getComputedStyle(c), padR = parseFloat(cs.paddingRight), t = c.querySelector(".gc-title"), ch = c.querySelector(".gc-chain"), pips = c.querySelector(".gc-pips"), mark = c.querySelector(".gc-mark");
+      const words = []; const tn = t.firstChild; let i = 0; for (const w of t.textContent.split(" ")) { const rg = document.createRange(); rg.setStart(tn, i); rg.setEnd(tn, i + w.length); words.push([w, rg.getClientRects().length]); i += w.length + 1; }
+      return { title: t.textContent, words, chain: ch ? [Math.round(R(ch).height), ch.scrollHeight, Math.round(R(ch).bottom - cr.top)] : null, foot: [Math.round(R(pips).right - cr.left), Math.round(cr.width - padR), Math.round(R(mark).right - cr.left), Math.round(R(pips).left - cr.left)], h: Math.round(cr.height), footB: Math.round(R(c.querySelector(".gc-foot")).bottom - cr.top) };
+    }));
+    const tiles = await measureTiles();
+    await p.setViewportSize({ width: 320, height: 640 }); await p.waitForTimeout(500);
+    const small = await measureTiles();
+    await p.setViewportSize({ width: 390, height: 844 }); await p.waitForTimeout(500);
+    const bad320 = small.filter((x) => x.words.some(([w, n]) => w === "Woodworking" && n !== 1) || !x.chain || x.chain[0] + 0.5 < x.chain[1] || x.foot[0] > x.foot[1] + 0.5 || x.footB > x.h);
+    ok(small.length >= 4 && !bad320.length, "deck tiles at 320 wide: whole words, the chain's own line, the tier row inside", JSON.stringify(bad320));
+    const wb = tiles.filter((x) => x.words.some(([w, n]) => w === "Woodworking" && n !== 1));
+    ok(tiles.length >= 4 && !wb.length, "deck tiles: \"Woodworking Basics\" wraps between words (never Woodworkin / g)", JSON.stringify(tiles.map((x) => x.words)));
+    const clip = tiles.filter((x) => !x.chain || x.chain[0] + 0.5 < x.chain[1]);
+    ok(!clip.length, "deck tiles: the chain (Crafts › …) keeps its own whole line, not cut in height", JSON.stringify(clip));
+    const over = tiles.filter((x) => x.foot[0] > x.foot[1] + 0.5 || x.foot[2] > x.foot[3] + 0.5 || x.footB > x.h);
+    ok(!over.length, "deck tiles: the tier and its pips (Achieved ●●●) fit inside the card", JSON.stringify(over.map((x) => [x.title, x.foot, x.footB, x.h])));
+    /* 9. a lesson opened from the cloud: no "Back to your cloud" (the widget is right there); its card's way back stays */
+    await p.tap("#thumb"); await p.waitForSelector("#cloud:not([hidden])"); await p.waitForTimeout(600);
+    await shut();
+    await p.locator(".cloud-flow .draw-btn").tap(); await p.waitForSelector("#lesson:not([hidden])"); await p.waitForTimeout(400);
+    const ls = await p.evaluate(() => { const b = document.querySelector("#l-back"); window.scrollTo(0, document.documentElement.scrollHeight); return { text: b.textContent, shown: Boolean(b.getClientRects().length), thumb: Boolean(document.querySelector("#thumb").getClientRects().length), fb: Boolean(document.querySelector("#page-foot .fb-link")?.getClientRects().length) }; });
+    ok(ls.thumb && (ls.text === "Back to your cloud" ? !ls.shown : ls.shown), "lesson: a \"Back to your cloud\" link hides beside the cloud widget (\"Back to its card\" stays)", JSON.stringify(ls));
+    ok(ls.fb, "lesson: the page ends with Support & feedback", JSON.stringify(ls));
+    await p.tap("#thumb"); await p.waitForSelector("#cloud:not([hidden])");
+    ok(errs.length === 0, "PR 110 phone checks: no page errors", errs.join(" | "));
   } finally { await ctx.close(); }
 }
 await browser.close(); server.close();

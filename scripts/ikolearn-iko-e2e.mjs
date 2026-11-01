@@ -252,7 +252,7 @@ for (const width of [390, 1280]) {
       await p.click("#l-got"); await p.waitForTimeout(400);
       const fin = await p.evaluate(() => ({ conf: document.querySelector("#l-conf").hidden ? "" : document.querySelector("#l-conf").innerText, got: Boolean(document.querySelector("#l-got").getClientRects().length), lesson: !document.querySelector("#lesson").hidden, next: document.querySelector("#l-next").childElementCount }));
       ok(fin.conf && !fin.got && fin.lesson && fin.next > 0 && calls.length === c0, `${tag}: "I've got it" earns it: the confirmation and Where next, 0 calls`, JSON.stringify(fin) + calls.slice(c0).join());
-      await p.click("#l-back"); await p.waitForTimeout(900);
+      await (await p.isVisible("#l-back") ? p.click("#l-back") : p.evaluate(() => document.querySelector("#l-back").click())); await p.waitForTimeout(900);
       if (!(await p.isHidden("#panel"))) { await p.click("#p-close"); await p.waitForTimeout(200); }
       /* the deck */
       await p.click("#cloud-deck"); await p.waitForTimeout(300);

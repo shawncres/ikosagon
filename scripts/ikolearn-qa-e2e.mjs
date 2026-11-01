@@ -220,14 +220,14 @@ async function run(width) {
 
   /* 5) the quiet support and follow links */
   await step("links", async () => {
-    const l = await p.evaluate(() => [...document.querySelectorAll("[data-sup] a")].map((a) => ({ t: a.textContent, href: a.getAttribute("href"), tgt: a.target, rel: a.rel, where: a.closest(".iko-foot") ? "iko" : a.closest(".cloud-foot") ? "cloud" : a.closest("#chat") ? "chat" : "?" })));
+    const l = await p.evaluate(() => [...document.querySelectorAll("[data-sup] a")].map((a) => ({ t: a.textContent, href: a.getAttribute("href"), tgt: a.target, rel: a.rel, where: a.closest(".iko-foot") ? "iko" : a.closest(".cloud-foot") ? "cloud" : a.closest("#page-foot") ? "page" : a.closest("#chat") ? "chat" : a.closest("#welcome") ? "welcome" : "?" })));
     const fb = l.filter((x) => x.t === "Support & feedback"), xl = l.filter((x) => x.t === "Follow on X");
-    ok(fb.length === 2 && fb.every((x) => x.href === "https://ikosagon.com/contact?name=Johnny&subject=IkoLearn%20Feedback" && x.tgt === "_blank"), `${tag}: "Support & feedback" opens the contact form (PR 108: no email client), the learner's name and "IkoLearn Feedback" filled in (the conversation's fine print and the cloud's footer)`, JSON.stringify(fb));
-    ok(xl.length === 2 && xl.every((x) => x.href === "https://x.com/IkosagonAI" && x.tgt === "_blank" && /noopener/.test(x.rel)), `${tag}: "Follow on X" goes to @IkosagonAI in a new tab`, JSON.stringify(xl));
-    ok(l.length === 4 && !l.some((x) => /fund|donat/i.test(x.t)), `${tag}: no donate link (no real donation page yet)`, JSON.stringify(l.map((x) => x.t)));
-    ok(!l.some((x) => x.where === "iko") && l.filter((x) => x.where === "cloud").length === 2 && l.filter((x) => x.where === "chat").length === 2, `${tag}: none in Iko's sheet (PR 106): in the footers`, JSON.stringify(l.map((x) => x.where)));
+    ok(fb.length === 4 && fb.every((x) => x.href === "https://ikosagon.com/contact?name=Johnny&subject=IkoLearn%20Feedback" && x.tgt === "_blank"), `${tag}: "Support & feedback" opens the contact form (PR 108: no email client), the learner's name and "IkoLearn Feedback" filled in (PR 110: the welcome, the conversation's fine print, the cloud's footer and the page foot)`, JSON.stringify(fb));
+    ok(xl.length === 4 && xl.every((x) => x.href === "https://x.com/IkosagonAI" && x.tgt === "_blank" && /noopener/.test(x.rel)), `${tag}: "Follow on X" goes to @IkosagonAI in a new tab`, JSON.stringify(xl));
+    ok(l.length === 8 && !l.some((x) => /fund|donat/i.test(x.t)), `${tag}: no donate link (no real donation page yet)`, JSON.stringify(l.map((x) => x.t)));
+    ok(!l.some((x) => x.where === "iko") && ["cloud", "chat", "page", "welcome"].every((w) => l.filter((x) => x.where === w).length === 2), `${tag}: none in Iko's sheet (PR 106): in the footers (PR 110: the welcome and the page foot too)`, JSON.stringify(l.map((x) => x.where)));
     const wide = await p.evaluate(() => getComputedStyle(document.querySelector(".cloud-foot .sup")).display !== "none");
-    ok(wide === (width >= 700), `${tag}: on the cloud's footer on wide screens (a phone keeps them in the conversation's fine print)`, String(wide));
+    ok(wide, `${tag}: on the cloud's footer at every width (PR 110: a phone too)`, String(wide));
     const sz = await p.evaluate(() => { const a = document.querySelector("#chat [data-sup] a"), b = document.querySelector("#family-link"); return [parseFloat(getComputedStyle(a).fontSize), parseFloat(getComputedStyle(b).fontSize)]; });
     ok(sz[0] <= sz[1] + 0.5, `${tag}: the links are no louder than the fine print beside them`, JSON.stringify(sz));
   });

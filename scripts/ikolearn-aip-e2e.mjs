@@ -219,7 +219,7 @@ for (const width of [390, 1280]) {
       const tot2 = (await p.evaluate(() => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), lid = c.order.find((x) => c.nodes[x].label === document.querySelector("#l-title").textContent); return window.IkoPlan.whereNext(c, lid, null).allOthers.length; }));
       await check(p, tag, "after Continue", calls, { total: tot2, act: true });
       /* from a card on the cloud */
-      await p.click("#l-back"); await p.waitForTimeout(900);
+      await (await p.isVisible("#l-back") ? p.click("#l-back") : p.evaluate(() => document.querySelector("#l-back").click())); await p.waitForTimeout(900);
       ok(await tap(p, "Kayaking"), `${tag}: Kayaking's card on the cloud`);
       await p.click("#p-lesson"); await p.waitForSelector("#l-done:not([hidden])"); await p.waitForTimeout(400); await passCheck(p);
       const tot3 = (await p.evaluate(() => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), lid = c.order.find((x) => c.nodes[x].label === document.querySelector("#l-title").textContent); return window.IkoPlan.whereNext(c, lid, null).allOthers.length; }));

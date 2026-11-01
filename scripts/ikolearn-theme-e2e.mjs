@@ -136,7 +136,7 @@ for (const width of [390, 1280]) for (const scheme of ["light", "dark"]) {
     await p.locator(".cloud-flow > .chip", { hasText: "Magma" }).first().click(); await p.waitForSelector("#l-done:not([hidden])"); await p.waitForTimeout(300);
     aa(tag, "a lesson", await contrast(p, ["#l-title", "#l-body p", "#l-body li", "#ph-learn", "#l-got", "#l-back"]));
     await shot(p, name("lesson"));
-    await p.click("#l-back"); await p.waitForSelector("#panel:not([hidden])"); await p.waitForTimeout(900);
+    await (await p.isVisible("#l-back") ? p.click("#l-back") : p.evaluate(() => document.querySelector("#l-back").click())); await p.waitForSelector("#panel:not([hidden])"); await p.waitForTimeout(900);
     aa(tag, "a node's card", await contrast(p, ["#p-title", "#p-kicker", "#p-note", "#panel .actions .btn"]));
     await shot(p, name("selection-card"));
     await p.click("#p-close"); await p.waitForTimeout(200);
@@ -145,7 +145,7 @@ for (const width of [390, 1280]) for (const scheme of ["light", "dark"]) {
     aa(tag, "the deck", await contrast(p, ["#d-title", "#d-lede", ".gcard .gc-title", ".gslot .gs-title", "#d-back"]));
     aa(tag, "the cards' marks", await contrast(p, [".gcard .gc-mark", ".gcard .gc-chain"]), 3);
     await shot(p, name("deck"));
-    await p.click("#d-back"); await p.waitForTimeout(400);
+    await (await p.isVisible("#d-back") ? p.click("#d-back") : p.evaluate(() => document.querySelector("#d-back").click())); await p.waitForTimeout(400);
     /* Iko open */
     await p.click("#iko"); await p.waitForSelector("#iko-sheet:not([hidden])"); await p.waitForTimeout(400);
     aa(tag, "Iko open", await contrast(p, ["#iko-name", "#iko-say", "#iko-about", "#iko-all", "#iko-in"]));

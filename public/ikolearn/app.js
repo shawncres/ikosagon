@@ -1090,6 +1090,9 @@
   document.addEventListener("visibilitychange", function () { if (document.hidden) stopClock(); else if (!el.lesson.hidden) startClock(); });
   window.addEventListener("pagehide", stopClock);
 
+  /* PR 110: the cloud widget is always in the header here, so a "Back to your cloud" link beside it is only noise: hidden
+     (Escape and the widget still go back); a way back anywhere else (its card, the deck, Iko) stays */
+  function cloudBack(b) { b.hidden = b.textContent === "Back to your cloud" && Boolean(el.thumb); }
   function showLesson(on) {
     if (!on) { stopClock(); cancelNav(); }
     if (on) { el.deck.hidden = true; el.hub.hidden = true; }
@@ -1098,7 +1101,7 @@
     el.dock.hidden = on;
     renderRet();
     if (!on) { state.lessonNode = null; state.mode = "lesson"; state.test = null; renderThread(); renderDraw(); }
-    else { el.draw.hidden = true; el.lBack.textContent = state.lessonFrom && nodeOf(state.lessonFrom) ? "Back to its card" : "Back to your cloud"; viewIn(el.lesson); }
+    else { el.draw.hidden = true; el.lBack.textContent = state.lessonFrom && nodeOf(state.lessonFrom) ? "Back to its card" : "Back to your cloud"; cloudBack(el.lBack); viewIn(el.lesson); }
   }
 
   /* "Further reading & viewing" under the lesson: collapsed, allowlisted search links only (lesson.js) */
@@ -2656,6 +2659,8 @@
   }
   if (window.ResizeObserver) new ResizeObserver(function () { cardSig = ""; placeCard(); }).observe(el.panel);
   window.addEventListener("resize", function () { cardSig = ""; placeCard(); });
+  /* PR 110: the cloud's fine print is two lines on a phone (Support & feedback is there too): the Pick up row and the zoom keep above it */
+  (function () { var f = el.cloud.querySelector(".cloud-foot"); if (f && window.ResizeObserver) new ResizeObserver(function () { if (f.offsetHeight) el.cloud.style.setProperty("--foot-h", f.offsetHeight + "px"); }).observe(f); })();
 
   /*
    * The node's description under the card's title: its blurb, written in the same call that made the node (0 extra
@@ -3461,6 +3466,7 @@
     var id = state.hubNode, n = nodeOf(id), sp = D.cardSpec(state.cloud, id);
     if (!sp) return;
     el.hubBack.textContent = state.hubFrom === "cloud" ? "Back to your cloud" : state.hubFrom === "chat" ? "Back to Iko" : state.hubFrom && state.hubFrom !== "deck" && nodeOf(state.hubFrom) ? "Back to " + nodeOf(state.hubFrom).label : "Back to your deck";
+    cloudBack(el.hubBack);
     el.hubCrumb.textContent = "";
     var anc = n ? C.ancestry(state.cloud, id).slice(0, -1) : [];
     el.hubCrumb.appendChild(linkBtn("Deck", function () { el.hub.hidden = true; state.hubNode = null; showDeck(true); }));

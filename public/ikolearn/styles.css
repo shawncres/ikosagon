@@ -231,7 +231,7 @@ button.gcard:hover { border-color: var(--soft); }
 .gcard.test-tile .gc-chain { font-style: italic; }
 .gcard.test-tile > .gc-chain, .gcard.grow-tile > .gc-chain { flex-shrink: 0; min-height: 1.4em; font-size: 11px; line-height: 1.4; font-variant: normal; letter-spacing: .02em; } /* the tile's label never shrinks to a clipped sliver at phone width */
 .gcard.test-tile .gc-desc { display: block; font-size: 12.5px; color: var(--soft); margin-top: 4px; }
-.cloud-flow { position: absolute; left: 0; right: 0; bottom: 50px; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; padding: 0 16px; }
+.cloud-flow { position: absolute; left: 0; right: 0; bottom: calc(6px + var(--foot-h, 44px) + env(safe-area-inset-bottom)); display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; padding: 0 16px; }
 .cloud-flow .kicker { margin-right: 2px; }
 /* directions: one quiet line above Pick up (an invite, branches waiting on a return visit, or a soft note) */
 .cf-note { flex: 0 0 100%; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px 8px; margin: 0 0 2px; font-size: 14px; color: var(--soft); }
@@ -392,7 +392,7 @@ button.gcard:hover { border-color: var(--soft); }
 #cloud-canvas:active { cursor: grabbing; }
 #cloud-canvas.turning { cursor: move; }
 .cloud-top { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: calc(14px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right)) 14px calc(20px + env(safe-area-inset-left)); }
-.zoom { position: absolute; z-index: 3; right: calc(12px + env(safe-area-inset-right)); bottom: calc(max(128px, 62px + var(--flow-h, 0px)) + env(safe-area-inset-bottom)); top: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; } /* PR 106: bottom-right, clear of the header (Iko, the deck), above the Pick up row, outside the sphere */
+.zoom { position: absolute; z-index: 3; right: calc(12px + env(safe-area-inset-right)); bottom: calc(max(128px, 18px + var(--foot-h, 44px) + var(--flow-h, 0px)) + env(safe-area-inset-bottom)); top: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; } /* PR 106: bottom-right, clear of the header (Iko, the deck), above the Pick up row, outside the sphere */
 .zoom .btn { background: var(--paper); min-width: 34px; }
 .zoom #zin, .zoom #zout { font-size: 18px; line-height: 1; }
 .cloud-hint { position: absolute; left: 0; right: 0; top: 58px; width: fit-content; max-width: calc(100% - 32px); margin: 0 auto; box-sizing: border-box; padding: 3px 12px; border-radius: 999px; background: color-mix(in srgb, var(--paper) 90%, transparent); z-index: 2; text-align: center; font-size: 12px; line-height: 1.4; color: var(--soft); opacity: .6; pointer-events: none; } /* the input map, one faint line under the controls */
@@ -802,7 +802,7 @@ body.intake.kbd .cs-few { display: none; } /* the keyboard up: Iko's question st
 .ikc-text { margin: 0 0 14px; font-size: 16px; line-height: 1.5; }
 .ikc-box .btn { min-height: 44px; }
 .fly-card { box-shadow: 0 12px 24px rgba(var(--shadow-rgb), .22); border-radius: 4px; will-change: transform, opacity; }
-@media (max-width: 699px) { .cloud-hint { top: 66px; } .cloud-foot .sup { display: none; } } /* a phone: the support links stay in the conversation's fine print */
+@media (max-width: 699px) { .cloud-hint { top: 66px; } } /* PR 110: a phone keeps Support & feedback and Follow on X in the cloud's fine print (two lines; the Pick up row sits above them) */
 .cloud-hint.moves { pointer-events: auto; cursor: pointer; }
 
 /* ---------- PR 103: the deck keeps the earned cards; what to pick up and what is still to collect sit apart ---------- */
@@ -856,7 +856,8 @@ fieldset.q { min-width: 0; }
 }
 @keyframes zr-nudge { 0%, 64%, 100% { transform: none; } 72% { transform: translate(-2px, 0) rotate(-10deg); } 80% { transform: translate(2px, 0) scale(1.1) rotate(8deg); } 88% { transform: scale(.94); } }
 @media (prefers-reduced-motion: reduce) { .zoom .zr-ico { animation: none !important; } }
-@media (max-width: 399px) { body.intake .cloud-foot .age-bit { display: none; } } /* the smallest phones: the fine print stays one line on the opening (Iko asks later) */
+@media (max-width: 399px) { body.intake .cloud-foot .age-bit { display: none; } }
+@media (max-width: 699px) { body.intake .cloud-foot :is(.ft-more, .age-bit) { display: none; } } /* PR 110: the opening on a phone keeps one line of fine print (Privacy, Support & feedback, Follow on X): Iko asks the age there, and Learners and For parents & teachers come with the cloud */ /* the smallest phones: the fine print stays one line on the opening (Iko asks later) */
 /* PR 108: the age range as Iko's first, skippable step at the opening (in his speech, where the question goes) */
 .cs-ages .age-opts { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 6px; margin: 8px 0 0; }
 .cs-ages .cs-age-skip { min-height: 34px; padding: 0 8px; font-size: 13px; color: var(--soft); }
@@ -896,3 +897,23 @@ html:not([data-theme="dark"]) .cloud-fog { mix-blend-mode: multiply; }
   .cloud-start.band-step .cs-ages .cs-age-skip { grid-column: 1 / -1; justify-self: center; min-height: 30px; padding: 0 10px; font-size: 13.5px; color: var(--soft); text-decoration-color: rgba(var(--ink-rgb), .3); }
   .cloud-start.band-step .cs-ages .cs-age-skip:hover { color: var(--ink); text-decoration-color: currentColor; }
 }
+
+/* PR 110: the lesson, the deck and a card's page (no chat dock there) end with the same quiet fine print: Privacy,
+   Support & feedback and Follow on X, so they are reachable on every screen */
+.page-foot { display: none; margin: 28px auto calc(12px + env(safe-area-inset-bottom)); padding: 0 16px; text-align: center; font-size: 12px; opacity: .6; }
+#dock[hidden] + .page-foot { display: block; }
+.page-foot a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; color: inherit; }
+
+/* PR 110: a card's title wraps between words (a long word is hyphenated, never split bare), a touch smaller on a small
+   tile; the chain keeps its own whole line (an ellipsis, never cut in height): the plate gives way a little instead;
+   the tier and its pips always fit inside the card */
+.gc-title { overflow-wrap: break-word; word-break: normal; -webkit-hyphens: auto; hyphens: auto; }
+.gcard.size-tile .gc-title { font-size: clamp(11.5px, 10.5cqi, 15px); margin-top: 4px; }
+.gcard > .gc-chain { flex-shrink: 0; min-height: calc(1.35em + 1px); }
+.gcard > .gc-art { flex-shrink: 1; min-height: 24px; }
+.gc-foot { min-width: 0; }
+.gc-mark { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.gc-pips { flex: none; }
+.gcard.size-tile .gc-foot { gap: 4px; padding-top: 2px; }
+.gcard.size-tile .gc-mark { letter-spacing: .04em; font-size: clamp(8.5px, 7.6cqi, 10.5px); }
+@media (max-width: 359px) { .ap-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } } /* PR 110: the smallest phones: two cards a row, so a title and its tier fit */

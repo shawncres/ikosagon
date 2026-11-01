@@ -197,7 +197,7 @@ for (const width of [390, 1280]) {
       ok(e1.inDeck && e1.deck === deck0 + 1 && e1.mini === String(deck0 + 1), `${tag}: earned: the card joins the deck (the count follows)`, JSON.stringify(e1));
       ok(errs.length === 0, `${tag}: lesson: no console errors`, errs.join(" | "));
       /* two misses on another lesson: a clearer version is written (1 call, gentle, "again"), with its own fresh questions */
-      await p.click("#l-back"); await p.waitForTimeout(800);
+      await (await p.isVisible("#l-back") ? p.click("#l-back") : p.evaluate(() => document.querySelector("#l-back").click())); await p.waitForTimeout(800);
       if (!(await p.isHidden("#panel"))) { await p.click("#p-close"); await p.waitForTimeout(200); }
       await p.evaluate(() => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")); window.__er = c.order.find((x) => c.nodes[x].label === "Eruptions"); });
       await p.evaluate(() => { document.querySelector("#iko-line").hidden = true; });
@@ -422,7 +422,7 @@ for (const width of [320, 390, 768, 1280]) {
     await p.locator("#l-quiz .q").nth(0).locator("input").nth(1).check(); await p.waitForTimeout(100);
     await p.locator("#l-quiz .q").nth(1).locator("input").nth(0).check(); await p.waitForTimeout(300);
     const c = await contrast();
-    await p.click("#l-back"); await p.waitForTimeout(700); if (!(await p.isHidden("#panel"))) { await p.click("#p-close"); await p.waitForTimeout(200); }
+    await (await p.isVisible("#l-back") ? p.click("#l-back") : p.evaluate(() => document.querySelector("#l-back").click())); await p.waitForTimeout(700); if (!(await p.isHidden("#panel"))) { await p.click("#p-close"); await p.waitForTimeout(200); }
     await p.click("#cloud-deck"); await p.waitForSelector("#deck:not([hidden])"); await p.waitForTimeout(200);
     const d = await contrast();
     const th = await thumbInk(p);

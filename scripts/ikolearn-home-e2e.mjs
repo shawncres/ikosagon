@@ -155,14 +155,14 @@ for (const width of [390, 1280]) {
       const l = await p.evaluate(() => ({ t: document.querySelector("#l-title").textContent, back: document.querySelector("#l-back").textContent, chat: document.querySelector("#l-chat").textContent }));
       ok(!(await screen(p)).cloud && l.back === "Back to your cloud" && l.chat === "Ask Iko about this", `${tag}: lesson: opens from the cloud; "Back to your cloud", "Ask Iko about this"`, JSON.stringify(l));
       await shot(p, width, "3-lesson");
-      await p.click("#l-back"); await p.waitForTimeout(1600);
+      await (await p.isVisible("#l-back") ? p.click("#l-back") : p.evaluate(() => document.querySelector("#l-back").click())); await p.waitForTimeout(1600);
       const b = await screen(p);
       ok(b.cloud && !b.lesson && b.card === l.t && chipText.includes(l.t), `${tag}: lesson: Back returns to the cloud with its topic's card open`, JSON.stringify({ b, l }));
       await shot(p, width, "4-back-from-lesson");
       /* its card (hub) from the cloud card, and back */
       await p.click("#p-card"); await p.waitForTimeout(300);
       ok((await screen(p)).hub && (await p.textContent("#hub-back")) === "Back to your cloud", `${tag}: card: "Open its card" opens the hub; its Back says "Back to your cloud"`);
-      await p.click("#hub-back"); await p.waitForTimeout(400);
+      await (await p.isVisible("#hub-back") ? p.click("#hub-back") : p.evaluate(() => document.querySelector("#hub-back").click())); await p.waitForTimeout(400);
       const hb = await screen(p);
       ok(hb.cloud && !hb.hub && hb.card === l.t, `${tag}: card: Back returns to the cloud, on that topic`, JSON.stringify(hb));
       /* Iko from the card, and back (Back, and Escape; PR 106: no "< Your cloud" link) */
@@ -182,7 +182,7 @@ for (const width of [390, 1280]) {
       const v1 = await view(p);
       await p.click("#cloud-deck"); await p.waitForTimeout(300);
       ok((await screen(p)).deck && (await p.textContent("#d-back")) === "Back to your cloud", `${tag}: deck: opens from the cloud; Back says "Back to your cloud"`);
-      await p.click("#d-back"); await p.waitForTimeout(400);
+      await (await p.isVisible("#d-back") ? p.click("#d-back") : p.evaluate(() => document.querySelector("#d-back").click())); await p.waitForTimeout(400);
       const v2 = await view(p);
       ok((await screen(p)).cloud && Math.abs(v2.zoom - v1.zoom) < 1e-6 && Math.abs(v2.panX - v1.panX) < 1 && Math.abs(v2.panY - v1.panY) < 1, `${tag}: deck: Back returns to the cloud, the camera where it was`, JSON.stringify({ v1: [v1.zoom, v1.panX, v1.panY], v2: [v2.zoom, v2.panX, v2.panY] }));
       /* Escape on the cloud never leaves home */
