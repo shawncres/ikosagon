@@ -3729,23 +3729,26 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const none = C.create("Zed", NOW);
   ok(JSON.stringify(P.homeStats(none, NOW)) === JSON.stringify({ subjects: 0, topics: 0, done: 0, right: 0, cards: 0, tiers: {}, week: 0, streak: 0, last: 0, insight: P.directions(none, NOW).insight, active: 0 }), "home stats: an empty cloud is all zeros");
 
-  // PR 111: the name's card story (third person, on the device, 0 calls) and days visited
+  // PR 111 / 112: the name's card story (spoken to the learner, "you"; on the device, 0 calls) and days visited
   eq([q0.active, P.homeStats(none, NOW).active], [4, 0], "home stats (PR 111): distinct active days counted");
   const story = P.homeStory(cloud, { name: "Maya", now: NOW, lessons: 3 });
   const st1 = story.lines.join(" ");
-  ok(!story.empty && /^(Maya and Iko have been building Maya's IkoCloud together|Together, Maya and Iko have grown an IkoCloud)/.test(story.lines[0]) && /\d+ subjects? and \d+ topics? so far\.$/.test(story.lines[0]), "home story: opens in the third person with the learner's name, Iko and the IkoCloud", story.lines[0]);
-  ok(/Maya has finished 3 lessons/.test(st1) && /in the Deck/.test(st1) && !/\b(you|your|I|we|We at Ikosagon)\b/.test(st1), "home story: lessons and the Deck; never second or first person", st1);
+  ok(!story.empty && /^(You've grown an IkoCloud of|Your IkoCloud has grown to) \d+ subjects? and \d+ topics? so far\.$/.test(story.lines[0]), "home story (PR 112): opens in the second person, with the IkoCloud", story.lines[0]);
+  ok(/You've finished 3 lessons and have \d+ cards? in your Deck/.test(st1) && !/\bMaya\b|and Iko have|Together,|\b(I|we|We at Ikosagon)\b|\b(has|is|seems)\b.*\b(learner|she|he|they)\b/.test(st1), "home story (PR 112): lessons and your Deck; no name, no \"and Iko have\", no third or first person", st1);
+  const homeAll = [0, 1, 2, 3, 4, 5].flatMap((k) => ["", "u10"].flatMap((b) => [P.homeStory(cloud, { name: "Maya", now: NOW, band: b, lessons: 2, seed: k }), P.homeStory(none, { name: "Zed", now: NOW, band: b, seed: k })])).flatMap((x) => x.lines).join(" ");
+  ok(!/\b(Maya|Zed)\b|and Iko (have|are)|has just met|Iko suggests|Together,/.test(homeAll) && /\byou\b|\byour\b/i.test(homeAll), "home story (PR 112): every variant (seeds, under-10s, empty) speaks to you, never in the third person", homeAll.slice(0, 300));
   ok(story.strongest && C.subjects(cloud).some((n) => n.id === story.strongest) && st1.includes(cloud.nodes[story.strongest].label), "home story: names the branch with the most going on", st1);
   ok(!story.next || st1.includes(cloud.nodes[story.next].label), "home story: a realistic next step from the cloud itself", st1);
   ok(story.lines.length >= 3 && story.lines.length <= 5 && story.lines.every((l) => l.length < 200), "home story: short (3 to 5 short lines)", JSON.stringify(story.lines));
   const pk = (o) => P.homeStory(cloud, Object.assign({ name: "Maya", now: NOW, lessons: 3 }, o)).lines.join(" ");
   ok(new Set([0, 1, 2, 3, 4, 5].map((k) => pk({ seed: k }))).size > 1 && pk({ seed: 7 }) === pk({ seed: 7 }), "home story: phrasing varies by day, steady within one");
   const ns = P.homeStory(none, { name: "Zed", now: NOW });
-  ok(ns.empty && /^Zed (and Iko are just getting started|has just met Iko)\. The IkoCloud is ready to grow/.test(ns.lines[0]) && ns.lines.length === 2 && /Deck/.test(ns.lines[1]), "home story: an empty cloud gets a gentle start", JSON.stringify(ns.lines));
+  ok(ns.empty && /^(You're just getting started|Here's where it begins)\. Your IkoCloud is ready to grow from the first thing you're curious about\.$/.test(ns.lines[0]) && ns.lines.length === 2 && /^Each lesson you finish adds a card to your Deck/.test(ns.lines[1]), "home story: an empty cloud gets a gentle start, spoken to you", JSON.stringify(ns.lines));
   const cb = C.serialize(cloud); P.homeStory(cloud, { name: "Maya", now: NOW, lessons: 3 });
   ok(C.serialize(cloud) === cb, "home story: reading it changes nothing (no draw logged)");
   const kidL = P.homeStory(cloud, { name: "Maya", now: NOW, band: "u10", lessons: 1 }).lines.join(" ");
-  ok(/Maya has finished 1 lesson\b/.test(kidL) && /seems to really enjoy/.test(kidL) && !/Early signs|builds .* which helps/.test(kidL), "home story: simpler words for under-10s", kidL);
+  ok(/You've finished 1 lesson\b/.test(kidL) && /You seem to really enjoy/.test(kidL) && !/strongest branch|which is useful/.test(kidL), "home story: simpler words for under-10s, spoken to you", kidL);
+  ok(/(You might try|A good next step for you:) .+\. It builds on what you already know\./.test(st1) || !story.next, "home story (PR 112): the next step is offered to you", st1);
   const sk = P.SKILLS.filter((x) => x[0].test("Volcanoes and Weather"))[0];
   ok(sk && /observation/.test(sk[1]) && P.SKILLS.every((x) => !/career|job|genius|guarantee|best/i.test(x[1] + x[2])), "home story: grounded skills, no hype or career promises");
   const pdc = C.create("Zed", NOW), pd0 = C.serialize(pdc), pdz = C.deserialize(pd0);

@@ -896,7 +896,7 @@
   }
 
   /*
-   * PR 111: the name's card tells the learner's story in the third person ("Maya and Iko have been building..."), made
+   * PR 111 / PR 112: the name's card tells the learner's story, spoken to them ("You've grown an IkoCloud of..."), made
    * here from what is on the device (0 calls): the cloud's subjects and topics, the Deck, lessons finished, the branch
    * with the most going on, a realistic next step beside it and, when the subject is a familiar one, the kind of useful
    * skill it grows (plain and grounded, no promises). Phrasing varies by day; simpler sentences for under-10s. Every
@@ -933,30 +933,30 @@
     var ranked = subs.map(function (id) { return per[id]; }).sort(function (a, b) { return b.score - a.score || b.done - a.done; });
     var lines = [];
     if (!subs.length) {
-      lines.push(pick([name + " and Iko are just getting started. ", name + " has just met Iko. "]) + (kid ? "The IkoCloud is ready to grow from the first thing " + name + " wants to know about." : "The IkoCloud is ready to grow from the first thing " + name + " is curious about."));
-      lines.push("Each lesson " + name + " finishes adds a card to the Deck, and the cloud grows new branches along the way.");
+      lines.push(pick(["You're just getting started. ", "Here's where it begins. "]) + (kid ? "Your IkoCloud is ready to grow from the first thing you want to know about." : "Your IkoCloud is ready to grow from the first thing you're curious about."));
+      lines.push("Each lesson you finish adds a card to your Deck, and your cloud grows new branches along the way.");
       return { lines: lines, empty: true, strongest: null, next: null };
     }
     var subTxt = subs.length === 1 ? "one subject" : subs.length + " subjects", topTxt = topics === 1 ? "1 topic" : topics + " topics";
-    lines.push(pick([name + " and Iko have been building " + name + "'s IkoCloud together: ", "Together, " + name + " and Iko have grown an IkoCloud of "]) + subTxt + " and " + topTxt + " so far.");
+    lines.push(pick(["You've grown an IkoCloud of ", "Your IkoCloud has grown to "]) + subTxt + " and " + topTxt + " so far.");
     var ls = lessons === 1 ? "1 lesson" : lessons + " lessons", cs = cards === 1 ? "1 card" : cards + " cards";
-    lines.push(lessons || cards ? (lessons ? name + " has finished " + ls : name + " has started learning") + (cards ? " and has " + cs + " in the Deck" : ", and the Deck is waiting for its first card") + (done ? ", with " + (done === 1 ? "1 topic" : done + " topics") + " finished." : ".")
-      : "No lessons finished yet. The first one " + name + " finishes adds a card to the Deck.");
+    lines.push(lessons || cards ? (lessons ? "You've finished " + ls : "You've started learning") + (cards ? " and have " + cs + " in your Deck" : ", and your Deck is waiting for its first card") + (done ? ", with " + (done === 1 ? "1 topic" : done + " topics") + " finished." : ".")
+      : "No lessons finished yet. The first one you finish adds a card to your Deck.");
     var top = ranked[0], second = ranked[1];
     if (top && top.score > 0) {
-      lines.push(kid ? name + " seems to really enjoy " + top.label + (second && second.score > 0 ? ", and " + second.label + " too." : ".")
-        : pick(["Early signs point to a real interest in " + top.label, top.label + " is where " + name + " has done the most so far"]) + (second && second.score > 0 ? (pick([", with " + second.label + " close behind.", ", and " + second.label + " is growing too."], 1)) : "."));
+      lines.push(kid ? "You seem to really enjoy " + top.label + (second && second.score > 0 ? ", and " + second.label + " too." : ".")
+        : pick(["Your strongest branch so far is " + top.label, "You've done the most in " + top.label]) + (second && second.score > 0 ? (pick([", with " + second.label + " close behind.", ", and " + second.label + " is growing too."], 1)) : "."));
     }
     /* the next step, read without drawing (draw() logs a draw: opening the card changes nothing) */
     var open = function (x) { return Boolean(x) && unfinished(cloud, x) && !cloud.nodes[x].end; };
     var nx = [cloud.active, lastTouched(cloud), cloud.next].filter(function (x) { return x && nodeOf(cloud, x); }).map(function (x) { var k = pathNext(cloud, x); return open(k) ? k : open(x) ? x : null; }).filter(Boolean)[0] || null;
     var nn = nx && cloud.nodes[nx], nsub = nn && per[subOf(nx)];
-    if (nn) lines.push(pick(["A good next step: ", "Iko suggests next: "], 2) + nn.label + (nsub && nsub.id !== nx ? " in " + nsub.label : "") + ". It builds on what " + name + " already knows.");
+    if (nn) lines.push(pick(["You might try ", "A good next step for you: "], 2) + nn.label + (nsub && nsub.id !== nx ? " in " + nsub.label : "") + (kid ? ". It follows on from what you know." : ". It builds on what you already know."));
     var basis = top && top.score > 0 ? top : null;
     if (basis) {
       var words = basis.label + " " + cloud.order.filter(function (id) { return subOf(id) === basis.id; }).slice(0, 10).map(function (id) { return cloud.nodes[id].label; }).join(" ");
       var sk = SKILLS.filter(function (x) { return x[0].test(words); })[0];
-      if (sk) lines.push(kid ? "Learning about " + basis.label + " helps with " + sk[2] + "." : "Over time, " + basis.label + " builds " + sk[1] + ", which helps in many other subjects too.");
+      if (sk) lines.push(kid ? "Learning about " + basis.label + " helps you with " + sk[2] + "." : "Over time, " + basis.label + " helps you build " + sk[1] + ", which is useful in many other subjects too.");
     }
     return { lines: lines.slice(0, 5), empty: false, strongest: basis ? basis.id : null, next: nn ? nx : null };
   }

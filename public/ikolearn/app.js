@@ -2596,7 +2596,7 @@
   }
   /*
    * PR 111: the name's card, a quiet glass pane in three parts (0 calls, all from what is on the device). Story (first):
-   * a short third-person account of what the learner and Iko have built (P.homeStory). Stats: days visited, the streak,
+   * a short account, spoken to the learner, of what they have built (P.homeStory, PR 112). Stats: days visited, the streak,
    * cards earned, topics finished, lessons completed. Preferences (the small gear): the age range and light or dark.
    * Save IkoCloud / Open IkoCloud stay underneath every part, quietly.
    */
@@ -2609,7 +2609,7 @@
   function renderStats() {
     var now = Date.now(), num = homeNumbers(now), st = num.st, box = mk("div", "stats home-card");
     var tabs = mk("div", "hc-tabs"), panes = {};
-    tabs.setAttribute("role", "tablist"); tabs.setAttribute("aria-label", "About " + state.cloud.name + "'s IkoCloud");
+    tabs.setAttribute("role", "tablist"); tabs.setAttribute("aria-label", "About your IkoCloud");
     var show = function (k, focus) {
       homeTab = k;
       Object.keys(panes).forEach(function (x) { panes[x].hidden = x !== k; var t = tabs.querySelector('[data-tab="' + x + '"]'); t.setAttribute("aria-selected", String(x === k)); t.tabIndex = x === k ? 0 : -1; t.classList.toggle("on", x === k); if (x === k && focus) t.focus(); });
