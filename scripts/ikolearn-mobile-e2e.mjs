@@ -281,7 +281,7 @@ const MIXED = { act: { "Coral Reefs": { ago: 3, done: true }, Shapes: { ago: 2, 
     ok(rp.on && rc.open && rc.title === "Maya", "touch: a tap on the learner's name opens its card", JSON.stringify({ rp, rc }));
     /* PR 111: on a phone the name's card opens on its third-person story, and a finger's tap switches to Stats */
     const story = await p.evaluate(() => { const e = document.querySelector("#hc-story"); return e && !e.hidden && e.getClientRects().length ? e.textContent : ""; });
-    ok(/(Maya and Iko have been building|Together, Maya and Iko)/.test(story), "touch (PR 111): the name's card opens on its story, in the third person", story.slice(0, 160));
+    ok(/^(You've grown an IkoCloud of|Your IkoCloud has grown to) /.test(story) && !/and Iko have|\bMaya\b/.test(story), "touch (PR 111/112): the name's card opens on its story, spoken to you", story.slice(0, 160));
     const tb = await p.evaluate(() => { const r = document.querySelector("#hc-t-stats").getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, h: r.height }; });
     await p.touchscreen.tap(tb.x, tb.y); await p.waitForTimeout(250);
     const sv = await p.evaluate(() => [!document.querySelector("#hc-stats").hidden, document.querySelector("#hc-t-stats").getAttribute("aria-selected"), !document.querySelector("#panel").hidden]);
