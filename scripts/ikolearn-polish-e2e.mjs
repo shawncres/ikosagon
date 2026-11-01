@@ -145,6 +145,12 @@ for (const width of [390, 1280]) {
   /* D, G. the home node: centred on load and after Recentre, a distinct root; tapping it opens the stats card */
   {
     const { ctx, p, errs } = await boot(width);
+    /* PR 111: seeded for the Stats pane: 3 finished lessons (a pass, an earn, an "I've got it") and 6 days visited before today */
+    await p.evaluate(() => { const C = window.IkoCloud, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), ids = c.order.filter((x) => c.nodes[x].parent && !c.nodes[x].ghost).slice(0, 4), t = Date.now(), ls = JSON.parse(localStorage.getItem("ikolearn.v1.lessons") || "{}");
+      ls[ids[0]] = Object.assign(ls[ids[0]] || {}, { got: t }); ls[ids[1]] = Object.assign(ls[ids[1]] || {}, { ck: { r: 1, p: t, miss: 0, c: 1, set: 0 } }); ls[ids[2]] = Object.assign(ls[ids[2]] || {}, { earned: t }); ls[ids[3]] = Object.assign(ls[ids[3]] || {}, { ck: { r: 1, p: 0, miss: 1, c: 0, set: 0 } });
+      Object.keys(ls).forEach((k) => { if (!ids.includes(k)) delete ls[k]; });
+      localStorage.setItem("ikolearn.v1.lessons", JSON.stringify(ls)); Object.assign(C.profileOf(c), { days: 6, vday: 20000101 }); localStorage.setItem("ikolearn.v1.cloud", C.serialize(c)); sessionStorage.clear(); });
+    await p.reload({ waitUntil: "networkidle" }); await p.waitForTimeout(1300);
     const h0 = await homeAt(p);
     ok(Math.abs(h0.dx) <= 2 && h0.dy >= 0 && h0.dy <= 60 && !h0.focus, `${tag}: home: the name is centred on load`, JSON.stringify(h0));
     const c = await box(p, "#cloud-canvas");
@@ -156,12 +162,39 @@ for (const width of [390, 1280]) {
     const plate = await p.evaluate(() => { const v = window.__views.filter((x) => x.id === "cloud-canvas").pop().view, q = v.project("root"), cv = document.querySelector("#cloud-canvas"), k = cv.width / cv.clientWidth, g = cv.getContext("2d"); let ring = 0; for (let dx = 20; dx < 140; dx++) { const d = g.getImageData(Math.round((q.x + dx) * k), Math.round(q.y * k), 1, 1).data; if (d[0] + d[1] + d[2] < 560) ring++; } return ring; });
     ok(plate >= 1, `${tag}: home: the name sits on a ringed plate (a distinct root)`, String(plate));
     await tap(p, "root");
-    const st = await p.evaluate(() => { const pn = document.querySelector("#panel"); return { open: !pn.hidden, title: pn.querySelector("#p-title").textContent, heads: [...pn.querySelectorAll(".st-head")].map((x) => x.textContent), text: pn.textContent, save: Boolean(pn.querySelector(".ct-save")), open2: Boolean(pn.querySelector(".ct-open")), lesson: !pn.querySelector("#p-lesson").hidden, deck: window.IkoCloud.deserialize(localStorage.getItem("ikolearn.v1.cloud")).deck.length }; });
-    ok(st.open && st.title === "Maya" && st.heads.includes("Achievements") && st.heads.includes("Progress"), `${tag}: home: tapping the name opens its stats card`, JSON.stringify(st.heads));
-    ok(new RegExp(st.deck + " cards in your Deck").test(st.text) && /3 subjects/.test(st.text) && /3 of \d+ topics finished/.test(st.text) && /\d+ right answers/.test(st.text), `${tag}: home: achievements (Deck cards) and progress (subjects, topics finished, right answers)`, st.text.slice(0, 300));
-    ok(/days in a row|of the last 7|Last time you learned/.test(st.text), `${tag}: home: recent activity or a streak`, st.text.slice(0, 300));
+    /* PR 111: the name's card: Story first (third person), a Stats tab, a Preferences gear; Save / Open underneath */
+    const card = () => p.evaluate(() => { const pn = document.querySelector("#panel"), vis = (s) => { const e = pn.querySelector(s); return Boolean(e && !e.hidden && e.getClientRects().length); };
+      return { open: !pn.hidden, root: pn.classList.contains("is-root"), title: pn.querySelector("#p-title").textContent, story: [...pn.querySelectorAll("#hc-story .hc-line")].map((x) => x.textContent), tabs: [...pn.querySelectorAll('[role="tab"]')].map((t) => [t.getAttribute("data-tab"), t.getAttribute("aria-selected"), t.getAttribute("aria-label") || t.textContent]),
+        panes: { story: vis("#hc-story"), stats: vis("#hc-stats"), prefs: vis("#hc-prefs") }, nums: Object.fromEntries([...pn.querySelectorAll(".hc-num")].map((d) => [d.getAttribute("data-k"), Number(d.querySelector(".hc-n").textContent)])), labels: [...pn.querySelectorAll(".hc-k")].map((x) => x.textContent),
+        text: pn.textContent, save: vis(".ct-save"), open2: vis(".ct-open"), bands: pn.querySelectorAll("#hc-prefs .age-opt[data-band]").length, modes: [...pn.querySelectorAll("#hc-prefs [data-mode]")].map((b) => b.textContent),
+        glass: (() => { const cs = getComputedStyle(pn); return { bf: cs.backdropFilter || cs.webkitBackdropFilter || "", bg: cs.backgroundImage + " " + cs.backgroundColor, r: parseFloat(cs.borderTopLeftRadius) }; })() }; });
+    const st = await card();
+    ok(st.open && st.root && st.title === "Maya" && st.panes.story && !st.panes.stats && !st.panes.prefs, `${tag}: home: tapping the name opens its card on the story`, JSON.stringify([st.open, st.panes]));
+    ok(st.story.length >= 3 && /^(Maya and Iko have been building Maya's IkoCloud|Together, Maya and Iko have grown an IkoCloud)/.test(st.story[0]) && /Maya has finished 3 lessons/.test(st.story.join(" ")) && /Deck/.test(st.story.join(" ")) && !/\b(you|your|We at Ikosagon)\b/i.test(st.story.join(" ")), `${tag}: home: the story is in the third person, with the name, the IkoCloud, lessons and the Deck`, JSON.stringify(st.story));
+    ok(JSON.stringify(st.tabs) === JSON.stringify([["story", "true", "Story"], ["stats", "false", "Stats"], ["prefs", "false", "Preferences"]]), `${tag}: home: Story, Stats and a Preferences gear as tabs`, JSON.stringify(st.tabs));
+    ok(st.save && st.open2 && /Save IkoCloud · Open IkoCloud/.test(st.text), `${tag}: home: Save IkoCloud and Open IkoCloud stay under the card`);
     ok(!/What do you notice/.test(st.text), `${tag}: home: no "What do you notice here?"`);
-    ok(st.save && st.open2 && /Save IkoCloud · Open IkoCloud/.test(st.text), `${tag}: home: Save IkoCloud and Open IkoCloud on the stats card`);
+    ok(st.glass.r >= 16 && (/blur\(/.test(st.glass.bf) ? /rgba\(/.test(st.glass.bg) : true), `${tag}: home: a rounded glass pane (a light blur over a see-through sepia, where supported)`, JSON.stringify(st.glass));
+    await p.click("#hc-t-stats"); await p.waitForTimeout(150);
+    const ss = await card();
+    const want = await p.evaluate(() => { const C = window.IkoCloud, P = window.IkoOrchestrator || window.IkoPlan, c = C.deserialize(localStorage.getItem("ikolearn.v1.cloud")), ts = c.order.filter((x) => c.nodes[x].parent && !c.nodes[x].ghost);
+      return { cards: c.deck.length, topics: ts.filter((x) => C.isDone(c, x)).length, days: C.profileOf(c).days, vday: C.profileOf(c).vday }; });
+    const td = new Date(), today = td.getFullYear() * 1e4 + (td.getMonth() + 1) * 100 + td.getDate();
+    ok(ss.panes.stats && !ss.panes.story && ss.tabs[1][1] === "true", `${tag}: home: the Stats tab shows the stats`, JSON.stringify(ss.panes));
+    ok(JSON.stringify(ss.labels) === JSON.stringify(["Days visited", "Day streak", "Cards earned", "Topics finished", "Lessons completed"]) && ss.nums.lessons === 3 && ss.nums.cards === want.cards && ss.nums.topics === want.topics && want.days === 7 && want.vday === today && ss.nums.days === 7 && ss.nums.streak >= 1, `${tag}: home: stats from the seeded data (7 days visited, 3 lessons, the Deck's cards, topics finished)`, JSON.stringify([ss.nums, want]));
+    await p.click("#hc-t-prefs"); await p.waitForTimeout(150);
+    const sp = await card();
+    ok(sp.panes.prefs && !sp.panes.stats && sp.bands === 5 && JSON.stringify(sp.modes) === JSON.stringify(["Light", "Dark", "Match device"]), `${tag}: home: the gear opens Preferences (age range, appearance)`, JSON.stringify([sp.panes, sp.bands, sp.modes]));
+    await p.click('#hc-prefs [data-band="14-17"]'); await p.waitForTimeout(150);
+    const band = await p.evaluate(() => [window.IkoCloud.profileOf(window.IkoCloud.deserialize(localStorage.getItem("ikolearn.v1.cloud"))).band, document.querySelector('#hc-prefs [data-band="14-17"]').getAttribute("aria-pressed"), !document.querySelector("#panel").hidden]);
+    ok(band[0] === "14-17" && band[1] === "true" && band[2], `${tag}: home: picking an age range in Preferences saves it, the card stays open`, JSON.stringify(band));
+    await p.click('#hc-prefs [data-mode="dark"]'); await p.waitForTimeout(250);
+    const dk = await p.evaluate(() => [document.documentElement.classList.contains("theme-dark") || window.IkoTheme.mode(), localStorage.getItem(window.IkoTheme.KEY)]);
+    await p.click('#hc-prefs [data-mode=""]'); await p.waitForTimeout(250);
+    const dk2 = await p.evaluate(() => localStorage.getItem(window.IkoTheme.KEY));
+    ok(dk[1] === "dark" && dk2 === null, `${tag}: home: appearance from Preferences (dark, then back to the device's)`, JSON.stringify([dk, dk2]));
+    await p.click("#p-close"); await p.waitForTimeout(300); await tap(p, "root");
+    ok((await card()).panes.story, `${tag}: home: opened again, the card starts on its story`);
     const h2 = await homeAt(p), pan = await box(p, "#panel"), q = await nodeAt(p, "root");
     /* centred in the room the card leaves: on a phone across the middle with the card under it, wide in the middle height with the card beside it */
     ok(width < 500 ? Math.abs(h2.dx) <= 4 && pan.y > q.y : Math.abs(h2.dy) <= 60 && pan.x > q.x, `${tag}: home: the camera centres on the name, its card beside it`, JSON.stringify([h2, pan]));

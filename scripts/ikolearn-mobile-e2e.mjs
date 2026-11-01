@@ -279,6 +279,13 @@ const MIXED = { act: { "Coral Reefs": { ago: 3, done: true }, Shapes: { ago: 2, 
     await p.touchscreen.tap(rp.x, rp.y); await p.waitForTimeout(500);
     const rc = await card();
     ok(rp.on && rc.open && rc.title === "Maya", "touch: a tap on the learner's name opens its card", JSON.stringify({ rp, rc }));
+    /* PR 111: on a phone the name's card opens on its third-person story, and a finger's tap switches to Stats */
+    const story = await p.evaluate(() => { const e = document.querySelector("#hc-story"); return e && !e.hidden && e.getClientRects().length ? e.textContent : ""; });
+    ok(/(Maya and Iko have been building|Together, Maya and Iko)/.test(story), "touch (PR 111): the name's card opens on its story, in the third person", story.slice(0, 160));
+    const tb = await p.evaluate(() => { const r = document.querySelector("#hc-t-stats").getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, h: r.height }; });
+    await p.touchscreen.tap(tb.x, tb.y); await p.waitForTimeout(250);
+    const sv = await p.evaluate(() => [!document.querySelector("#hc-stats").hidden, document.querySelector("#hc-t-stats").getAttribute("aria-selected"), !document.querySelector("#panel").hidden]);
+    ok(sv[0] && sv[1] === "true" && sv[2] && tb.h >= 34, "touch (PR 111): a tap on Stats shows the stats; the card stays open", JSON.stringify([sv, tb]));
     await shut();
     const rp2 = await at("root");
     await fingers([{ x: rp2.x, y: rp2.y, steps: [[1, 2], [-2, 1], [2, 3]] }]); await p.waitForTimeout(500);
