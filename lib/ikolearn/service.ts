@@ -37,6 +37,10 @@ import {
   lessonSystem,
   parsePath,
   parseLessonBlock,
+  checkSystem,
+  CHECK_SCHEMA,
+  parseCheck,
+  type CheckBlock,
   pathSystem,
   type LearnPath,
   type LessonBlock,
@@ -492,4 +496,12 @@ export async function examplesFor(env: Env, state: LearnState, fetchImpl: typeof
 /** Worth one more try: a provider 5xx or a network error. Never a 4xx (refused), a 429 (busy), a timeout or an unusable reply. */
 export function retryable(f: { code: FailCode; status?: number }): boolean {
   return f.code === "upstream" && (f.status === undefined || f.status >= 500);
+}
+
+/** PR 118: the check alone (recall, apply, mistake), for a lesson whose hidden block was missing or unusable. One call (+1 stricter retry). */
+export async function checkFor(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): Promise<Out> {
+  if (!input.lesson || input.lesson.length < 80) return json(422, { ok: false, reason: "lesson" });
+  const r = await callModel<CheckBlock>(() => ({ system: checkSystem(input), user: `Write my check on ${input.focus}.` }), CHECK_SCHEMA, (t) => parseCheck(t, input.name), env, fetchImpl, { route: "check", maxTokens: 1_800 });
+  if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
+  return json(200, { ok: true, ...r.value });
 }

@@ -1107,7 +1107,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
   const bytes = files.reduce((n, f) => n + served(f).length, 0);
   const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
-  ok(bytes < 363_500, "app weight under 363.5 KB uncompressed (served, minified)", String(bytes));
+  ok(bytes < 366_000, "app weight under 366 KB uncompressed (served, minified)", String(bytes));
   ok(gz < 122_000, "app weight under 122 KB gzipped (served, minified)", String(gz));
 }
 

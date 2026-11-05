@@ -59,7 +59,6 @@
       host.appendChild(sec);
       var add = el("section", "fam-sec"); add.appendChild(addForm("Add a learner", "First name only. They start with their own first questions.")); host.appendChild(add);
       var more = el("section", "fam-sec");
-      var p1 = el("p"), dash = el("a", "", "See everyone's progress"); dash.href = "/ikolearn/family"; p1.appendChild(dash); more.appendChild(p1);
       var p2 = el("p", "fine"), solo = el("button", "link", "Switch to learning for yourself" + (now ? " (as " + now.name + ")" : "")); solo.type = "button"; solo.id = "lrn-self";
       solo.addEventListener("click", function () { PR.setMode(S, "self"); go(); });
       p2.appendChild(solo); p2.appendChild(doc.createTextNode(". Other learners stay saved on this device and come back if you switch again."));

@@ -1305,6 +1305,13 @@
     if (state.mode !== "lesson") return;
     var wrap = mk("section", "quiz");
     wrap.appendChild(mk("h3", "phase-head", "Check yourself"));
+    if (q && q.id === state.lessonNode && !q.qs.length && (q.wait || q.fail)) {
+      var cl = mk("p", "fine calm-fail", q.wait ? "Writing a few quick questions for this lesson…" : "Iko is still writing this one. Try another card while you wait. ");
+      if (q.fail) cl.appendChild(linkBtn("Retry", function () { q.fail = false; ensureCheck(q.id); }, "link calm-retry"));
+      wrap.appendChild(cl);
+      el.lQuiz.appendChild(wrap);
+      return;
+    }
     if (!q || q.id !== state.lessonNode || !q.qs.length) {
       wrap.appendChild(mk("p", "fine", streaming ? "A few quick questions come once the lesson is written." : "No questions this time. Tell me how it went with the buttons below."));
       el.lQuiz.appendChild(wrap);
@@ -1649,6 +1656,7 @@
         if (tricky) state.lessons[id].tk = tricky;
         if (key) state.lessons[id].key = key; /* PR 113: the lesson's own key idea, for "You learned:" */
         if (state.lessonNode === id) { renderLessonBody(text, false); lessonReady(id, true); showReading(reading); }
+        if (needCheck(state.lessons[id].qs)) ensureCheck(id); /* PR 118: the hidden block was missing or partial */
       } else if (r.reason === "aborted") {
         /* cancelled because the learner moved on: not a failure; it is written next time it's opened */
       } else if (state.lessonNode === id) {
@@ -1680,21 +1688,40 @@
     var wk = Date.now() - 7 * 864e5, ids = Object.keys(state.lessons || {}).filter(function (id) { var l = state.lessons[id]; return l && (l.at || 0) >= wk && nodeOf(id); });
     if (!ids.length) return "";
     ids.sort(function (a, b) { return (state.lessons[b].at || 0) - (state.lessons[a].at || 0); });
-    var names = ids.slice(0, 3).map(function (id) { return nodeOf(id).label; });
-    var list = names.length === 1 ? names[0] : names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
-    var ok = ids.filter(function (id) { return passed(id) || state.lessons[id].earned; })[0];
-    var s1 = "This week you explored " + list + ".";
-    var tk = ok ? takeawayOf(ok) : "";
-    var s2 = ok ? "You passed the check on " + nodeOf(ok).label + (tk ? ", which was about this idea: " + tk.replace(/[.!?]$/, "") : "") + "."
-      : "You read about " + names[0] + " and can take its check whenever you're ready.";
-    var s3 = "A question to think about: how would you explain " + nodeOf(ok || ids[0]).label + " to a friend in one or two sentences?";
-    var nx = P.pathNext(state.cloud, ok || ids[0]), nn = nx && nodeOf(nx);
-    var s4 = nn ? "A good next step is " + nn.label + "." : "A good next step is to open one more card on your cloud.";
-    var t = [s1, s2, s3, s4].join(" ");
+    var items = ids.map(function (id) { return { label: nodeOf(id).label, passed: Boolean(passed(id) || state.lessons[id].earned), key: takeawayOf(id) }; });
+    var first = ids.filter(function (id) { return passed(id) || state.lessons[id].earned; })[0] || ids[0];
+    var nx = P.pathNext(state.cloud, first), nn = nx && nodeOf(nx);
+    var t = P.weekRecap(items, nn ? nn.label : "");
     store(RECAP, JSON.stringify({ day: day, who: key, t: t }));
     return t;
   }
   var pre = {};
+  /* PR 118: a check is usable when it has a valid question; a new-style one (kinds) only when it is the full three */
+  function needCheck(qs) {
+    var v = validQs(qs);
+    if (!v.length) return true;
+    var kinds = v.filter(function (q) { return q.kind; }).length;
+    return kinds > 0 && !(v.length === 3 && ["recall", "apply", "mistake"].every(function (k) { return v.some(function (q) { return q.kind === k; }); }));
+  }
+  /* the check written on its own from the lesson text (one call, the server retries once); the calm line only if that fails */
+  function ensureCheck(id) {
+    var les = state.lessons[id];
+    if (!les || !les.text || les.ckWait) return;
+    les.ckWait = 1;
+    if (state.quiz && state.quiz.id === id) { state.quiz.qs = []; state.quiz.wait = true; renderQuiz(true); }
+    postJson("/check", Object.assign(basePayload(id), P.withBand(state.cloud, {}), { mode: "notice", messages: [], lesson: String(les.text).slice(0, 1500) })).then(function (j) {
+      delete les.ckWait;
+      var qs = j && j.ok ? validQs(j.questions) : [];
+      if (qs.length === 3) {
+        les.qs = mixQs(qs); les.ans = [];
+        var rq = validQs(j.retry); if (rq.length >= 2) les.rq = mixQs(rq);
+        if (typeof j.key === "string" && j.key.trim()) les.key = j.key.trim().slice(0, 220);
+        if (state.quiz && state.quiz.id === id) { state.quiz.qs = les.qs; state.quiz.ans = []; state.quiz.wait = false; }
+      } else if (state.quiz && state.quiz.id === id) { state.quiz.wait = false; state.quiz.fail = true; }
+      save();
+      if (state.lessonNode === id && state.mode === "lesson") renderQuiz();
+    }, function () { delete les.ckWait; if (state.quiz && state.quiz.id === id) { state.quiz.wait = false; state.quiz.fail = true; renderQuiz(); } });
+  }
   function lessonStream(id, body, on, signal) {
     var p = pre[id];
     if (p && p.ok) {
@@ -2743,10 +2770,12 @@
       rb.appendChild(mk("p", "hc-recap-t", rc));
       var cp = linkBtn("Copy", function () { try { navigator.clipboard.writeText(rc); cp.textContent = "Copied"; } catch (x) { /* no clipboard: the text can still be selected */ } }, "link hc-copy");
       rb.appendChild(cp);
+      rb.appendChild(document.createTextNode(" \u00b7 "));
+      rb.appendChild(linkBtn("Print", function () { document.body.classList.add("print-recap"); window.print(); setTimeout(function () { document.body.classList.remove("print-recap"); }, 500); }, "link hc-print"));
       panes.stats.appendChild(rb);
     }
     var dl = mk("dl", "hc-nums");
-    [["days", "Days visited", num.days], ["streak", "Day streak", num.streak], ["cards", "Cards earned", num.cards], ["topics", "Topics finished", num.topics], ["lessons", "Lessons completed", num.lessons]].forEach(function (x) {
+    [["days", "Days visited", num.days], ["cards", "Cards earned", num.cards], ["topics", "Topics finished", num.topics], ["lessons", "Lessons completed", num.lessons]].forEach(function (x) {
       var d = mk("div", "hc-num"); d.setAttribute("data-k", x[0]);
       d.appendChild(mk("dt", "hc-k", x[1])); d.appendChild(mk("dd", "hc-n", String(x[2]))); /* the number shows above its label */
       dl.appendChild(d);
