@@ -40,8 +40,9 @@ export type ProjectMeta = {
   repo?: string;
   live?: string;
   /**
-   * Optional standalone demo URL (e.g. a static page in public/). When set, the card's main link opens it
-   * and the case study stays reachable from a secondary "Read the notes" link.
+   * Optional standalone demo URL (a static page in public/, or https://ikolearn.com for IkoLearn's
+   * friendly share domain). When set, the card's main link opens it and the case study stays
+   * reachable from a secondary "Read the notes" link.
    */
   demo?: string;
   status: string;
@@ -118,7 +119,14 @@ export async function getAllProjects(): Promise<Project[]> {
         unlisted: data.unlisted === true ? true : undefined,
         repo: data.repo ? String(data.repo) : undefined,
         live: data.live ? String(data.live) : undefined,
-        demo: typeof data.demo === "string" && data.demo.startsWith("/") ? data.demo : undefined,
+        demo: (() => {
+          if (typeof data.demo !== "string") return undefined;
+          const d = data.demo.trim();
+          // Same-host static demos, or the IkoLearn friendly share domain (redirects to /ikolearn).
+          if (d.startsWith("/")) return d;
+          if (d === "https://ikolearn.com" || d === "https://ikolearn.com/") return "https://ikolearn.com";
+          return undefined;
+        })(),
         status: String(data.status ?? "In progress"),
         linkLabel: data.linkLabel ? String(data.linkLabel) : undefined,
         tracks: parseTracks(data.tracks),
