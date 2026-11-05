@@ -19,7 +19,7 @@ export type Fail = { ok: false; code: FailCode; status?: number; detail?: string
  * returns false when none is left (then no hedge: the primary keeps its full time, the usual fallback after it).
  */
 export type StreamOptions = { maxTokens?: number; route?: string; attempt?: number; timeoutMs?: number; spend?: () => boolean };
-export type StreamStart = { ok: true; model: string; pieces: AsyncGenerator<string>; abort: () => void } | Fail;
+export type StreamStart = { ok: true; model: string; pieces: AsyncGenerator<string>; abort: () => void; finishReason: () => string } | Fail;
 export type JsonResult<T> = { ok: true; value: T; model: string } | Fail;
 
 /** Resolved settings for one provider (see llmConfig in llm.ts). */
@@ -42,6 +42,7 @@ export const MODEL_LIMITS = {
   streamTimeoutMs: 38_000,
   chatMaxTokens: 2_000, /* PR chat-complete: reply + CLOUD block were cutting mid-sentence at 900 */
   lessonMaxTokens: 5_600, /* fuller lessons still need the hidden check (6 questions, why lines, key idea) after the text */
+  lessonRetryTokens: 8_400, /* a cut lesson is tried again with room for the worked example and the check */
   jsonMaxTokens: 600,
   /** the creation call: up to 5 parents, each with a card and up to 6 children */
   createMaxTokens: 2_000,
@@ -163,8 +164,8 @@ export async function timedFetch(fetchImpl: typeof fetch, url: string, init: Req
   }
 }
 
-/** Reads an SSE body ("data: {json}" lines) and yields the text `pick` finds in each event (empty ones skipped). */
-export async function* readSseWith(body: ReadableStream<Uint8Array>, pick: (data: any) => string): AsyncGenerator<string> {
+/** Reads an SSE body ("data: {json}" lines) and yields the text `pick` finds in each event (empty ones skipped). `note` sees every parsed event, including ones with no text (a finish reason). */
+export async function* readSseWith(body: ReadableStream<Uint8Array>, pick: (data: any) => string, note?: (data: any) => void): AsyncGenerator<string> {
   const reader = body.getReader();
   const dec = new TextDecoder();
   let buf = "";
@@ -173,7 +174,9 @@ export async function* readSseWith(body: ReadableStream<Uint8Array>, pick: (data
     const payload = line.slice(5).trim();
     if (!payload || payload === "[DONE]") return "";
     try {
-      return pick(JSON.parse(payload)) || "";
+      const data = JSON.parse(payload);
+      if (note) note(data);
+      return pick(data) || "";
     } catch {
       return ""; /* partial or non-JSON line: skip */
     }

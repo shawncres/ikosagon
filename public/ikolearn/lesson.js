@@ -98,8 +98,23 @@
     return el;
   }
 
-  /* A lesson is usable once it has an intro and some teaching: an explanation or a step (used to decide whether to cache it). */
+  /* A lesson is usable once it has an intro and some teaching: an explanation or a step (enough to draw while it streams). */
   function usable(p) { return Boolean(p && p.intro.length && (p.steps.length || (p.explain && p.explain.length))); }
+  /* A section tag at the start of a line (INTRO, EXAMPLE, ...), the same shape the parser accepts. */
+  function sectionTag(text, tag) { return new RegExp("(?:^|\\n)\\s*(?:[-*•]\\s*)?(?:\\d+[.)]\\s*)?" + tag + "\\s*(?:\\d+)?\\s*[:.-]", "i").test(String(text || "")); }
+  function fencesBalanced(text) {
+    var n = 0;
+    String(text || "").replace(/\r/g, "").split("\n").forEach(function (l) { if (/^\s*```/.test(l)) n += 1; });
+    return n % 2 === 0;
+  }
+  /* opts.check: the hidden block already supplied the check questions. Otherwise a CHECK section in the text counts. */
+  function complete(text, opts) {
+    opts = opts || {};
+    var src = String(text || "");
+    var end = src.replace(/\s+$/, "").replace(/\n```[A-Za-z0-9+#._-]*\s*$/i, "").trim();
+    var check = Boolean(opts.check) || sectionTag(src, "check");
+    return sectionTag(src, "intro") && (sectionTag(src, "explain") || sectionTag(src, "step")) && sectionTag(src, "example") && sectionTag(src, "next") && check && fencesBalanced(src) && /[.!?…]["')\]]*$/.test(end);
+  }
 
   /* Renders into `el`. opts: { streaming, revealed, onReveal } */
   function render(el, p, opts) {
@@ -217,7 +232,7 @@
     return d;
   }
 
-  var api = { parse: parse, usable: usable, render: render, segments: segments, inline: inline, codeBlock: codeBlock, richText: richText, FENCE: FENCE, SEARCH: SEARCH, SEARCH_HOSTS: SEARCH_HOSTS, cleanReading: cleanReading, searchLinks: searchLinks, allowedHref: allowedHref, renderReading: renderReading };
+  var api = { parse: parse, usable: usable, complete: complete, render: render, segments: segments, inline: inline, codeBlock: codeBlock, richText: richText, FENCE: FENCE, SEARCH: SEARCH, SEARCH_HOSTS: SEARCH_HOSTS, cleanReading: cleanReading, searchLinks: searchLinks, allowedHref: allowedHref, renderReading: renderReading };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.IkoLesson = api;
 })(typeof window !== "undefined" ? window : this);

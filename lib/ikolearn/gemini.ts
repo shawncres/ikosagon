@@ -49,14 +49,18 @@ async function openStream(cfg: LlmConfig, model: string, body: unknown, fetchImp
       done();
       return logFail(cfg, model, opts, res.ok ? { ...statusFail(502), detail: "empty stream body" } : await failFromResponse(res), which);
     }
+    let finish = "";
     const pieces = (async function* () {
       try {
-        yield* readSse(res.body as ReadableStream<Uint8Array>);
+        yield* readSseWith(res.body as ReadableStream<Uint8Array>, textOf, (data) => {
+          const fr = data?.candidates?.[0]?.finishReason;
+          if (typeof fr === "string" && fr) finish = fr;
+        });
       } finally {
         done();
       }
     })();
-    return { ok: true, model, pieces, abort: () => { abort(); done(); } };
+    return { ok: true, model, pieces, abort: () => { abort(); done(); }, finishReason: () => finish };
   } catch (e) {
     if (cancel?.aborted) return { ok: false, code: "timeout", detail: "cancelled: the other model started first" }; /* the hedge's loser: not a failure */
     return logFail(cfg, model, opts, errorFail(e), which);

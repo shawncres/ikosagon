@@ -2,7 +2,7 @@ import { budgetSpend, eventStream, lessonEvents, NO_STORE, prepare } from "@/lib
 import { reply, reqMeta, state } from "../_shared";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 /**
  * POST { name, focus, trail?, known?, wantPath?, ahead?, cloud, parents } -> NDJSON stream (one model call):
