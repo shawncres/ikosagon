@@ -757,7 +757,6 @@ body.intake.kbd .cs-few { display: none; } /* the keyboard up: Iko's question st
 .iko { position: relative; }
 .iko.glow::before { content: ""; position: absolute; inset: 4px 1px 6px; border-radius: 50%; pointer-events: none; box-shadow: 0 0 0 2px rgba(var(--glow-a), .4), 0 0 10px 4px rgba(var(--glow-b), .26); animation: iko-glow 4.8s ease-in-out infinite; }
 @keyframes iko-glow { 0%, 100% { box-shadow: 0 0 0 2px rgba(var(--glow-a), .36), 0 0 9px 3px rgba(var(--glow-b), .22); } 50% { box-shadow: 0 0 0 3px rgba(var(--glow-a), .58), 0 0 18px 8px rgba(var(--glow-b), .38); } }
-@keyframes iko-line-in { from { opacity: 0; } to { opacity: 1; } }
 /* the chat: on a phone or tablet a sheet rising from below; on a wide screen a panel hanging from Iko at the top left,
    and the page steps right to make room for it (body.iko-side, app.js sideIko) */
 .iko-sheet { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; max-height: min(72vh, 600px); display: flex; flex-direction: column; background: var(--sheet); border: 1px solid var(--rule); border-bottom: 0; border-radius: 16px 16px 0 0; box-shadow: 0 -6px 24px rgba(var(--shadow-rgb), .14); padding: 10px 16px calc(8px + env(safe-area-inset-bottom)); animation: iko-rise .26s ease-out; }
@@ -790,7 +789,20 @@ body.intake.kbd .cs-few { display: none; } /* the keyboard up: Iko's question st
 .iko-acts[hidden] { display: none; }
 #l-done, #l-status { scroll-margin-top: 96px; scroll-margin-bottom: 16px; } /* clear of the sticky header */
 .iko-foot { margin: 6px 0 0; text-align: center; font-size: 12.5px; }
-@media (prefers-reduced-motion: reduce) { .iko .iko-pebble, .iko .iko-eye, .iko-still .iko-pebble, .iko-still .iko-eye, .iko-line, .iko-sheet { animation: none; } .iko.glow::before { animation: none; box-shadow: 0 0 0 2.5px rgba(var(--glow-a), .48), 0 0 12px 5px rgba(var(--glow-b), .28); } }
+/* PR 126: a small bounce when a new hint lands, and a quiet nod when a card is earned or a subject grows */
+@keyframes iko-line-in { from { opacity: 0; transform: translateY(4px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes iko-pop { 0% { transform: scale(1); } 35% { transform: scale(1.08); } 100% { transform: scale(1); } }
+@keyframes iko-react-earn { 0% { transform: scale(1) rotate(0); } 30% { transform: scale(1.1) rotate(-4deg); } 60% { transform: scale(1.04) rotate(3deg); } 100% { transform: scale(1) rotate(0); } }
+@keyframes iko-react-grow { 0% { transform: scale(1); } 40% { transform: scale(1.07) translateY(-2px); } 100% { transform: scale(1); } }
+.iko.pop .iko-pebble { animation: iko-pop .38s var(--ease, cubic-bezier(.2, .7, .3, 1)); }
+.iko.react-earn .iko-pebble { animation: iko-react-earn .55s var(--ease, cubic-bezier(.2, .7, .3, 1)); }
+.iko.react-grow .iko-pebble { animation: iko-react-grow .48s var(--ease, cubic-bezier(.2, .7, .3, 1)); }
+.iko-line[data-tip], .iko-line[data-react], .iko-line[data-pool] { animation: iko-line-in .4s var(--ease, cubic-bezier(.2, .7, .3, 1)); }
+@media (prefers-reduced-motion: reduce) {
+  .iko .iko-pebble, .iko .iko-eye, .iko-still .iko-pebble, .iko-still .iko-eye, .iko-line, .iko-sheet,
+  .iko.pop .iko-pebble, .iko.react-earn .iko-pebble, .iko.react-grow .iko-pebble { animation: none !important; }
+  .iko.glow::before { animation: none; box-shadow: 0 0 0 2.5px rgba(var(--glow-a), .48), 0 0 12px 5px rgba(var(--glow-b), .28); }
+}
 
 /* ---------- PR 99: the name's card (stats), cloud files, the earned flight ---------- */
 #panel.is-root .actions { margin-bottom: 8px; }

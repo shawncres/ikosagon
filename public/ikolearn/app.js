@@ -570,8 +570,10 @@
         return { kind: "theme", mode: mode };
       }
     }
-    var sn = t.length <= 60 && t.match(/\b(?:turn|switch|put|set)?\s*(?:the\s+)?(?:sounds?|audio)\s*(on|off)\b|\b(mute|unmute)\b|\b(?:turn|switch)\s+(on|off)\s+(?:the\s+)?(?:sounds?|audio)\b/);
-    if (sn) return { kind: "sound", on: (sn[1] || sn[3]) === "on" || sn[2] === "unmute" };
+    var sn = t.length <= 60 && t.match(/\b(?:turn|switch|put|set)?\s*(?:the\s+)?(?:sounds?|audio)\s*(on|off)\b|\b(mute|unmute)\s+(?:the\s+)?(?:sounds?|audio)\b|\b(?:turn|switch)\s+(on|off)\s+(?:the\s+)?(?:sounds?|audio)\b/);
+    if (sn) return { kind: "sound", on: /\bon\b|unmute/.test(sn[0]) && !/\boff\b/.test(sn[0].replace("unmute", "")) || sn[2] === "unmute" || (sn[1] || sn[3]) === "on" };
+    var hn = t.length <= 70 && t.match(/\b(?:be quiet|quiet mode|stop (?:the )?hints?|mute (?:the )?hints?|hide (?:the )?hints?|minimize (?:yourself|iko)|turn hints? off)\b|\b(?:talk more|unmute hints?|turn hints? on|show hints?)\b/);
+    if (hn) return { kind: "hints", on: /\b(talk more|unmute|turn hints? on|show hints?)\b/.test(t) };
     var ag = ageIntent(t);
     if (ag) return ag;
     var d = t.match(/^(?:please\s+)?(?:(?:can|could|would) you\s+)?(?:delete|remove|get rid of|erase)\s+(?:the\s+|my\s+)?(.+?)(?:\s+(?:branch|topic|subject|node))?(?:\s+from\s+(?:my\s+|the\s+)?cloud)?(?:\s+please)?$/);
@@ -584,6 +586,11 @@
       if (it.forget) { setBand("none"); push({ role: "model", local: true, text: "Okay, I've forgotten it. Lessons go back to an everyday level for anyone." }); }
       else if (it.n) { var b = bandFor(it.n); setBand(b); push({ role: "model", local: true, text: bandSaid(b) }); }
       else push({ role: "age", local: true, text: "" });
+      save(); return;
+    }
+    if (it.kind === "hints") {
+      setHints(it.on);
+      push({ role: "model", local: true, text: it.on ? "I'll chime in with short tips again. Ask me to be quiet any time." : "Okay, I'll stay quiet unless you tap me. Ask me to talk more any time." });
       save(); return;
     }
     if (it.kind === "sound") {
@@ -2903,6 +2910,12 @@
       [["on", "Quiet sounds"], ["off", "Off"]].forEach(function (x) { var b = linkBtn(x[1], function () { IkoSound.set(x[0] === "on"); if (x[0] === "on" && !el.cloud.hidden) IkoSound.ambient(true); paintSnd(); }, "btn sm age-opt"); b.setAttribute("data-snd-v", x[0]); sr.appendChild(b); });
       paintSnd(); panes.prefs.appendChild(sr);
     }
+    panes.prefs.appendChild(mk("p", "hc-ph", "Iko"));
+    panes.prefs.appendChild(mk("p", "hc-hint fine", "Short tips beside Iko. You can also say \"be quiet\" or \"talk more\"."));
+    var hr = mk("div", "place-opts hc-hints"); hr.setAttribute("role", "group"); hr.setAttribute("aria-label", "Iko hints");
+    var paintHints = function () { hr.querySelectorAll("button").forEach(function (b) { var v = b.getAttribute("data-hints-v") === "on", p = v === hintsOn(); b.setAttribute("aria-pressed", String(p)); b.classList.toggle("on", p); }); };
+    [["on", "Tips on"], ["off", "Quiet"]].forEach(function (x) { var b = linkBtn(x[1], function () { setHints(x[0] === "on"); paintHints(); }, "btn sm age-opt"); b.setAttribute("data-hints-v", x[0]); hr.appendChild(b); });
+    paintHints(); panes.prefs.appendChild(hr);
     Object.keys(panes).forEach(function (k) { box.appendChild(panes[k]); });
     show(homeTab);
     box.appendChild(cloudTools());
@@ -3088,6 +3101,19 @@
    * a light blink or an occasional tip can be added later; reduced motion keeps it still.
    */
   var iko = { open: false, ctx: null, from: 0, lineT: 0, tipKey: "", tipT: 0, pendingReact: null, quietAt: Date.now(), poolT: 0, poolN: 0, poolLast: "" };
+  /* PR 126: mute Iko's proactive hints (pebble and chat stay). Preferences or "be quiet" / "mute hints". */
+  var IKO_HINTS = "ikolearn-iko-hints";
+  function hintsOn() { try { return localStorage.getItem(IKO_HINTS) !== "off"; } catch (e) { return true; } }
+  function setHints(on) { try { localStorage.setItem(IKO_HINTS, on ? "on" : "off"); } catch (e) {} if (!on) { clearTimeout(iko.tipT); clearTimeout(iko.poolT); if (!el.ikoLine.hidden) ikoLine(""); } }
+  function ikoPop(kind) {
+    if (!motionOK() || el.ikoWrap.hidden) return;
+    var cls = kind === "earn" ? "react-earn" : kind === "grow" ? "react-grow" : "pop";
+    el.iko.classList.remove("pop", "react-earn", "react-grow");
+    void el.iko.offsetWidth;
+    el.iko.classList.add(cls);
+    clearTimeout(iko.popT);
+    iko.popT = setTimeout(function () { el.iko.classList.remove("pop", "react-earn", "react-grow"); }, 700);
+  }
   function openAsk() { return state.thread.filter(function (m) { return m.role === "ask" && !m.done && m.open && askHandlers[m.id]; })[0] || null; }
   /* what is on screen: { view, step?, topic?, id? } */
   function screenCtx() {
@@ -3309,25 +3335,29 @@
    */
   var deckN = function () { return (state.cloud.deck || []).length; }, quiet = function () { return !el.cloudHint.classList.contains("newcomer"); };
   var TIPS = {
-    /* the opening question is Iko's own speech (PR 104): no bubble there. Lines that would repeat a page's own words are gone. */
-    cloud: [{ t: "{Tap} a node to start, or pick up where you left off.", ok: quiet }, /* not beside the newcomer line that says so */
+    /* the opening question is Iko's own speech (PR 104): no bubble there. PR 126: lines know the screen, the selected node, progress, level and interests (local only). */
+    cloud: [{ t: "{Tap} a node to start, or pick up where you left off.", ok: quiet },
       { t: "Pick any node to begin. {Tap} me if you'd like ideas.", ok: quiet },
       { t: "I like your cloud, it's growing!", ok: function () { return C.subjects(state.cloud).length >= 2 || deckN() >= 1; } }, "I can add new topics anytime. Just {tap} me and tell me what you're curious about.",
       { t: function () { var k = C.subjects(state.cloud).length, n = deckN(); return k + (k === 1 ? " subject" : " subjects") + " and " + n + (n === 1 ? " card" : " cards") + " so far. Your deck is up top."; }, ok: function () { return deckN() >= 1; } },
-      /* light nudges (PR 105): not tied to a step, a few times each, on return visits */
       { t: "Want to check your deck? It's up top.", n: 1, ok: function () { return deckN() >= 1; } },
       { t: nearIdea, n: 1, ok: function () { return back() && Boolean(nearIdea()); } },
-      { t: "Anything new you'd like to explore?", n: 1, ok: back },
-      /* PR 107: while the cloud is small, an idea from the starter set (coarse area and age band, made on the device) */
-      { t: starterLine, n: 1, ok: function () { return Boolean(starterLine()); } }],
+      { t: function () { var ints = (C.profileOf(state.cloud).interests || []).slice(0, 2); return ints.length ? "I see " + ints.join(" and ") + " in your cloud. {Tap} me to add something beside them." : "Anything new you'd like to explore?"; }, n: 1, ok: back },
+      { t: starterLine, n: 1, ok: function () { return Boolean(starterLine()); } },
+      { t: function () { var lv = C.levelOf(state.cloud); return lv === "simple" ? "Lessons are kept simple for now. Change that any time in Preferences." : lv === "deeper" ? "You're on the deeper level. Say if you'd like things lighter." : ""; }, n: 1, ok: function () { return back() && C.levelOf(state.cloud) !== "standard"; } }],
     home: ["That's you, in the middle. Your subjects grow around you.", "Everything you learn grows out from here."],
-    topic: ["Start a lesson when you're ready.", "Curious about this one? {Tap} me and ask anything.", "Want to go another way? {Tap} me to add another direction."],
-    learn: ["Read along and {click} me if you have questions.", "Read the lesson first, then start the check. No rush."],
-    next: ["Nicely done! Scroll down to pick your next topic.", "Pick a path below when you're ready."],
+    topic: [{ t: function () { var n = nodeOf(state.panelNode); return n && n.id !== "root" ? "Ready to open " + n.label + ", or want to look at something else?" : "Start a lesson when you're ready."; } },
+      "Curious about this one? {Tap} me and ask anything.", "Want to go another way? {Tap} me to add another direction."],
+    learn: [{ t: function () { var n = nodeOf(state.lessonNode); return n ? "Take your time with " + n.label + ". {Tap} me if a part feels unclear." : "Read along and {click} me if you have questions."; } },
+      "Read the lesson first, then start the check. No rush."],
+    next: [{ t: function () { var n = nodeOf(state.lessonNode); return n && C.inDeck(state.cloud, n.id) ? "That one's in your Deck now. Want to keep going on this path?" : "Nicely done! Scroll down to pick your next topic."; } },
+      "Pick a path below when you're ready."],
     check: ["Get them all right and the card is yours to grow.", "No rush. Each question is about what you just read."],
     missed: ["Take it slowly. You've got this.", "Here's a fresh look. Then try the new questions."],
     test: ["An optional test on what you've finished. No pressure.", "Take your time. It's just for you."],
-    deck: [{ t: "Wow, your deck is coming along.", ok: function () { return deckN() >= 2; } }, "{Tap} any card to keep it growing.",
+    deck: [{ t: "Wow, your deck is coming along.", ok: function () { return deckN() >= 2; } },
+      { t: "You've got a few cards here. Any of these you want to revisit?", ok: function () { return deckN() >= 4; } },
+      "{Tap} any card to keep it growing.",
       { t: function () { var n = deckN(); return n + (n === 1 ? " card" : " cards") + " so far. {Tap} me for ideas on the next."; }, ok: function () { return deckN() >= 1; } }]
   };
   var GAP = 90000; /* a screen's line comes back on a later visit to it, not on every quick hop */
@@ -3384,10 +3414,13 @@
   function tipAgain() { var k = iko.tipKey; if (k && !iko.open && tipFresh(k)) { clearTimeout(iko.tipT); iko.tipT = setTimeout(function () { showTip(k); }, 700); } }
   /* a hint stays until it is tapped away or the learner moves past its step (PR 105, PR 106) */
   function tipLine(t, id) {
+    if (!hintsOn()) return;
     ikoLine(t, 0);
     el.ikoLine.setAttribute("data-tip", id);
+    ikoPop("hint");
   }
   function showTip(key) {
+    if (!hintsOn()) return;
     if (key !== iko.tipKey || iko.open || el.ikoWrap.hidden || !el.ikoLine.hidden || !state.cloud || !tipFresh(key)) return; /* Iko is speaking (or gone), or this screen had its line a moment ago */
     /* PR 107: the first visit to the cloud, a lesson or the deck: one short line on what that screen is for (once each, seen.h) */
     var ab = ABOUT[/^(cloud|home|topic)$/.test(key) ? "cloud" : key === "deck" ? "deck" : /^(learn|check|missed|next|test)$/.test(key) ? "lesson" : ""];
@@ -3424,7 +3457,7 @@
       if (nb) out.push({ id: "near:" + nb.id, t: "Maybe " + nb.label + " next? It's right beside " + nodeOf(nb.parent).label + ".", yes: function () { openPanel(nb.id); } });
     }
     var pop = (P.mixStarters ? P.mixStarters(state.cloud, [], coarseArea()) : []).filter(function (x) { return typeof x === "string" && x; });
-    if (pop.length) { var pt = pop[Math.floor(Math.random() * Math.min(4, pop.length))]; out.push({ id: "pop:" + pt, t: "Lots of learners" + (C.bandOf(state.cloud) ? " your age" : " near you") + " enjoy " + pt + ". Want it in your cloud?", yes: function () { openIko(); el.ikoIn.value = "I'm curious about " + pt; ikoSubmit(); } }); }
+    if (pop.length) { var pt = pop[Math.floor(Math.random() * Math.min(4, pop.length))]; out.push({ id: "pop:" + pt, t: "Lots of learners enjoy " + pt + ". Want it in your cloud?", yes: function () { openIko(); el.ikoIn.value = "I'm curious about " + pt; ikoSubmit(); } }); }
     var ab = ABOUT[cloudish ? "cloud" : key === "deck" ? "deck" : /^(learn|next)$/.test(key) ? "lesson" : ""];
     if (ab) out.push({ id: "about:" + key, t: ab.t });
     if (key === "learn") out.push({ id: "learn", t: "Take your time with this one. Continue when it clicks." });
@@ -3434,6 +3467,7 @@
   function poolLater() { if (!POOL) return; clearTimeout(iko.poolT); iko.poolT = setTimeout(poolSay, Math.max(1000, POOL.gapMs - (Date.now() - iko.quietAt))); } /* (not before the pool exists) */
   function poolSay() {
     var key = iko.tipKey;
+    if (!hintsOn()) { iko.quietAt = Date.now(); poolLater(); return; }
     if (!el.ikoLine.hidden || Date.now() - iko.quietAt < POOL.gapMs - 50) { poolLater(); return; }
     if (iko.poolN >= POOL.max || iko.open || el.ikoWrap.hidden || intakeOn || !state.cloud || state.busy || !key || /^(check|missed|test)$/.test(key) || (document.hidden)) { iko.quietAt = Date.now(); poolLater(); return; }
     var m = ikoMem(), list = poolLines(key).filter(function (x) { return x.id !== iko.poolLast && x.id !== m.last; });
@@ -3442,6 +3476,7 @@
     iko.poolN += 1; iko.poolLast = pick.id; m.last = pick.id; ikoKeep(m);
     ikoLine(tipWords(pick.t));
     el.ikoLine.setAttribute("data-pool", pick.id);
+    ikoPop("hint");
     if (pick.yes) {
       var y = mk("button", "iko-yes", "Yes");
       y.type = "button"; y.setAttribute("aria-label", "Yes: " + pick.t);
@@ -3466,6 +3501,7 @@
     ikoKeep(m);
     var list = REACT[kind] || [];
     if (!list.length || !(kind === "earn" || reactWanted(n)) || (kind === "start" && n > 1)) return false; /* a card earned: always a light word (PR 106) */
+    if (!hintsOn() && kind !== "start") { ikoPop(kind === "earn" || kind === "grow" ? kind : "hint"); return false; } /* muted: still a quiet nod on earn/grow */
     var t = list[(n - 1) % list.length];
     if (kind === "earn" && nextBelow()) t += " Scroll down to pick another topic.";
     if (!el.ikoLine.hidden && !el.ikoLine.hasAttribute("data-tip") && !el.ikoLine.hasAttribute("data-react")) return false; /* Iko is saying something that matters (the grow question): no reaction over it */
@@ -3474,6 +3510,7 @@
     ikoLine(t, kind === "start" ? 0 : Math.max(6500, Math.min(14000, 3000 + 60 * t.length))); /* PR 107: the first reassurance stays until tapped (or the learner starts); others fold, a little later */
     if (held) iko.after = function () { if (iko.tipKey === was.k && !iko.open) tipLine(was.t, held); }; /* the hint wasn't dismissed: it comes back */
     el.ikoLine.setAttribute("data-react", kind);
+    ikoPop(kind === "earn" || kind === "grow" ? kind : "hint");
     return true;
   }
 

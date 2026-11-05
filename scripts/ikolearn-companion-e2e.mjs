@@ -357,7 +357,7 @@ for (const width of [320, 390, 768, 1280]) {
     const LP = ["#l-back", "#l-title", "#l-body", ".holder", "#l-phase"];
     const l = await boxOf(p, ["#iko", "#iko-line", "#thumb", ".bar .minideck", ...LP]), lt = await line(p);
     ok(l["#iko"] && Math.abs(l["#iko"].x - c["#iko"].x) <= 1 && Math.abs(l["#iko"].y - c["#iko"].y) <= 1, `${tag}: lesson: Iko in the same top-left place`, JSON.stringify(l["#iko"]));
-    ok(lt && /^Read along and (click|tap) me if you have questions\.$/.test(lt.text) && !overl(l["#iko-line"], Object.fromEntries(["#thumb", ".bar .minideck", ...LP].map((k) => [k, l[k]]).filter(([, v]) => v))).length, `${tag}: lesson: "Read along and click me…", clear of the header and the reading`, JSON.stringify({ lt, l }));
+    ok(lt && (/^Read along and (click|tap) me if you have questions\.$/.test(lt.text) || /^Take your time with .+\. (Click|Tap) me if a part feels unclear\.$/.test(lt.text)) && !overl(l["#iko-line"], Object.fromEntries(["#thumb", ".bar .minideck", ...LP].map((k) => [k, l[k]]).filter(([, v]) => v))).length, `${tag}: lesson: a short local tip about the reading, clear of the header and the reading`, JSON.stringify({ lt, l }));
     await p.click("#iko"); await p.waitForTimeout(400);
     const ls = await boxOf(p, ["#iko-sheet", ".l-main", ".holder", "#l-body"]);
     if (width >= 1100) ok(!overl(ls["#iko-sheet"], { m: ls[".l-main"], h: ls[".holder"], b: ls["#l-body"] }).length, `${tag}: lesson: the panel sits clear of the reading and the card`, JSON.stringify(ls));
