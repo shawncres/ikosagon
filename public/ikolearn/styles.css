@@ -828,7 +828,7 @@ body.intake.kbd .cs-few { display: none; } /* the keyboard up: Iko's question st
 .ikc-text { margin: 0 0 14px; font-size: 16px; line-height: 1.5; }
 .ikc-box .btn { min-height: 44px; }
 .fly-card { box-shadow: 0 12px 24px rgba(var(--shadow-rgb), .22); border-radius: 4px; will-change: transform, opacity; }
-@media (max-width: 699px) { .cloud-hint { top: 66px; } } /* PR 110: a phone keeps Support & feedback and Follow on X in the cloud's fine print (two lines; the Pick up row sits above them) */
+@media (max-width: 699px) { .cloud-hint { top: 66px; } } /* PR 110: a phone keeps Support & feedback in the cloud's fine print (two lines; the Pick up row sits above them) */
 .cloud-hint.moves { pointer-events: auto; cursor: pointer; }
 
 /* ---------- PR 103: the deck keeps the earned cards; what to pick up and what is still to collect sit apart ---------- */
@@ -883,7 +883,7 @@ fieldset.q { min-width: 0; }
 @keyframes zr-nudge { 0%, 64%, 100% { transform: none; } 72% { transform: translate(-2px, 0) rotate(-10deg); } 80% { transform: translate(2px, 0) scale(1.1) rotate(8deg); } 88% { transform: scale(.94); } }
 @media (prefers-reduced-motion: reduce) { .zoom .zr-ico { animation: none !important; } }
 @media (max-width: 399px) { body.intake .cloud-foot .age-bit { display: none; } }
-@media (max-width: 699px) { body.intake .cloud-foot :is(.ft-more, .age-bit) { display: none; } } /* PR 110: the opening on a phone keeps one line of fine print (Privacy, Support & feedback, Follow on X): Iko asks the age there, and Learners and For parents & teachers come with the cloud */ /* the smallest phones: the fine print stays one line on the opening (Iko asks later) */
+@media (max-width: 699px) { body.intake .cloud-foot :is(.ft-more, .age-bit) { display: none; } } /* PR 110: the opening on a phone keeps one line of fine print (Privacy, Support & feedback): Iko asks the age there, and Learners and For parents & teachers come with the cloud */ /* the smallest phones: the fine print stays one line on the opening (Iko asks later) */
 /* PR 108: the age range as Iko's first, skippable step at the opening (in his speech, where the question goes) */
 .cs-ages .age-opts { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 6px; margin: 8px 0 0; }
 .cs-ages .cs-age-skip { min-height: 34px; padding: 0 8px; font-size: 13px; color: var(--soft); }
@@ -925,7 +925,7 @@ html:not([data-theme="dark"]) .cloud-fog { mix-blend-mode: multiply; }
 }
 
 /* PR 110: the lesson, the deck and a card's page (no chat dock there) end with the same quiet fine print: Privacy,
-   Support & feedback and Follow on X, so they are reachable on every screen */
+   Support & feedback, so they are reachable on every screen */
 .page-foot { display: none; margin: 28px auto calc(12px + env(safe-area-inset-bottom)); padding: 0 16px; text-align: center; font-size: 12px; opacity: .6; }
 #dock[hidden] + .page-foot { display: block; }
 .page-foot a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; color: inherit; }
