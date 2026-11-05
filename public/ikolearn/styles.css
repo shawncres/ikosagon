@@ -998,7 +998,10 @@ html:not([data-theme="dark"]) .cloud-fog { mix-blend-mode: multiply; }
    ============================================================================================================ */
 /* type: the interface in the sans, reading in the serif; headings in full ink, secondary labels a step quieter */
 body, .btn, .link, input, textarea, select, .kicker, .l-head, .hc-ph, .fine, .tabs, nav { font-family: var(--ui-sans); }
-.l-body, .clar, .q legend, .q label, .conf-take, .hc-story, .iko-msg { font-family: var(--read-serif); }
+#l-body, .l-body, .lesson, .clar, .q legend, .q label, .conf-take, .hc-story, .iko-msg { font-family: var(--read-serif); }
+/* lesson reading: Bauhaus put UI on sans but the serif rule targeted .l-body (class) while markup is #l-body.lesson — restore serif + a step larger than body chrome */
+#l-body.lesson, #l-body { font-size: 18px; line-height: 1.65; }
+@media (min-width: 900px) { #l-body.lesson, #l-body { font-size: 19px; } }
 h1 { font-size: var(--t-2xl); font-weight: 600; letter-spacing: -.01em; line-height: 1.15; }
 h2 { font-size: var(--t-xl); font-weight: 600; letter-spacing: -.005em; line-height: 1.2; }
 .kicker, .fine, .q-topic, .q-why, .q-fb { color: var(--soft); }
@@ -1023,7 +1026,7 @@ button.gcard:active { transform: scale(.985); }
 .gcard.tier-tinted .gc-mark { color: var(--state-tinted); }
 .art .geo circle, .art .geo rect, .art .geo path { vector-effect: non-scaling-stroke; }
 /* lesson & check: clear section breaks, a weighted "You learned", the questions in one quiet pane */
-.l-body > * + .l-head, .l-body .kicker + * { margin-top: var(--s-2); }
+#l-body > * + .l-head, .l-body > * + .l-head, #l-body .kicker + *, .l-body .kicker + * { margin-top: var(--s-2); }
 .l-head { border-top: var(--line); padding-top: var(--s-4); }
 .conf-take { font-size: var(--t-lg); line-height: 1.45; font-weight: 600; color: var(--ink); border-left: 3px solid var(--accent); padding: var(--s-3) var(--s-4); background: rgba(var(--sheet-rgb), .7); border-radius: 0 var(--radius) var(--radius) 0; }
 .q { border-left: 0; border: var(--line); border-radius: var(--radius); padding: var(--s-4) var(--s-4) var(--s-3); margin: var(--s-3) 0; background: rgba(var(--sheet-rgb), .55); }
