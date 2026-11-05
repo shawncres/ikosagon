@@ -988,7 +988,6 @@
   function scoreOf(n) { return n ? (n.spent || 0) / 60 + 2 * (n.engaged || 0) + 3 * (n.correct || 0) + 4 * (n.mastery || 0) + Math.min((n.cards || []).length, 3) : 0; }
   function stageFor(score) { var st = 0; for (var i = 1; i < GROWTH.stages.length; i++) if (score >= GROWTH.stages[i]) st = i; return st; }
   function confirmedOf(n) { return n ? (n.correct || 0) + (n.mastery >= MASTERED ? 2 : 0) : 0; }
-  function tintFor(n) { var c = confirmedOf(n), st = 0; for (var i = 1; i < GROWTH.confirm.length; i++) if (c >= GROWTH.confirm[i]) st = i; return st; }
   function deckEntry(cloud, id) { var d = cloud.deck || []; for (var i = 0; i < d.length; i++) if (d[i].id === id) return d[i]; return null; }
   function inDeck(cloud, id) { return Boolean(deckEntry(cloud, id)); }
   /* The chain shown on a card: the labels from the subject down to the topic (stored on deck entries too). */
@@ -1004,9 +1003,10 @@
    *   2 Tinted    the topic is completed (isDone: mastered, or 2 right answers)
    *   3 Achieved  completed and confirmed: 3+ right answers, or its whole branch has ended
    *   4 Merged    a parent that has absorbed completed subtopic cards; its level (I, II, III ...) rises with each batch
-   * The colour stage (0-4, how far the ink has moved from sepia to the chain's hue) is at least TIER_STAGE[tier], so a
-   * card's colour is earned on the card itself as its tier rises. A deck entry keeps the best tier (tb), so a card never
-   * goes back down, even after its topic is gone.
+   * The colour stage (0-4, how far the ink has moved from sepia to the chain's hue) matches the tier the card shows
+   * (TIER_STAGE). Confirmations cannot paint past that tier, so a topic the gate still calls Inked does not look more
+   * coloured than Inked. A deck entry keeps the best tier (tb) and the best colour (best), so a card never goes back
+   * down, even after its topic is gone.
    */
   var TIERS = ["sketch", "inked", "tinted", "achieved", "merged"], TIER_NAMES = ["Sketch", "Inked", "Tinted", "Achieved", "Merged"];
   var TIER_STAGE = [0, 1, 2, 4, 4], ACHIEVE_RIGHT = 3;
@@ -1029,7 +1029,8 @@
     if (!n && !e) return null;
     var ended = Boolean((n && (n.achievedAt || (!n.ghost && isTerminal(cloud, id) && completable(cloud, id)))) || (e && e.ach));
     var tier = tierRank(cloud, id, n, e, ended), ml = mergeLevel(cloud, id);
-    var stage = Math.max(TIER_STAGE[tier], n ? tintFor(n) : 0, e ? Math.min(e.best || 0, 4) : 0);
+    /* Colour stays with the tier on the mark. A stored best can only hold a colour the card already earned. */
+    var stage = Math.max(TIER_STAGE[tier], e ? Math.min(e.best || 0, 4) : 0);
     var score = n ? scoreOf(n) : 0, c = n ? confirmedOf(n) : 0, want = GROWTH.confirm[stage + 1];
     return {
       score: Math.round(score * 10) / 10, stage: stage, detail: Math.max(stageFor(score), stage), name: GROWTH.names[stage],

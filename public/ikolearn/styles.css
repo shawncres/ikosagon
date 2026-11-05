@@ -999,7 +999,7 @@ html:not([data-theme="dark"]) .cloud-fog { mix-blend-mode: multiply; }
 /* type: the interface in the sans, reading in the serif; headings in full ink, secondary labels a step quieter */
 body, .btn, .link, input, textarea, select, .kicker, .l-head, .hc-ph, .fine, .tabs, nav { font-family: var(--ui-sans); }
 #l-body, .l-body, .lesson, .clar, .q legend, .q label, .conf-take, .hc-story, .iko-msg { font-family: var(--read-serif); }
-/* lesson reading: #l-body.lesson keeps Georgia/--read-serif. "Small content" meant lesson length, so stay at the post-134 size (18px, 19px from 900px). */
+/* lesson reading: #l-body.lesson keeps Georgia/--read-serif. "Small content" meant lesson length, so stay at the post PR 134 size (18px, 19px from 900px). */
 #l-body.lesson, #l-body { font-size: 18px; line-height: 1.65; }
 @media (min-width: 900px) { #l-body.lesson, #l-body { font-size: 19px; } }
 h1 { font-size: var(--t-2xl); font-weight: 600; letter-spacing: -.01em; line-height: 1.15; }
@@ -1013,6 +1013,15 @@ h2 { font-size: var(--t-xl); font-weight: 600; letter-spacing: -.005em; line-hei
 .btn.draw, .btn.draw-btn, .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .btn.draw:hover:not(:disabled), .btn.draw-btn:hover:not(:disabled), .btn.primary:hover:not(:disabled) { background: var(--accent); opacity: .92; }
 .btn.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+/* Selected pills keep the ink fill on hover. A wash used to replace it and, in dark mode, left paper text on paper. */
+.btn.on:hover:not(:disabled),
+.who-opt.on:hover,
+.btn.on:focus-visible,
+.who-opt.on:focus-visible {
+  background-color: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* cards: one consistent plate, title, short text, state; flat with a barely-lifted edge */
 .gcard { border-radius: var(--radius); transition: transform var(--t-med) var(--ease), box-shadow var(--t-med) var(--ease), border-color var(--t-med) var(--ease); }

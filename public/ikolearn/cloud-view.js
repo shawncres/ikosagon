@@ -299,7 +299,13 @@
         if (la < 0.03) return;
         var size = !n.parent ? 14 + Math.min(3, n.weight * 0.2) : 12.5;
         var text = (pathRank[n.id] && reads(n.id) >= 0.8 ? pathRank[n.id] + ". " : "") + n.label + (ml ? " " + C.roman(n.ml) : "");
-        labels.push({ n: n, text: text, x: p.x, y: p.y - r - 5, a: la, fresh: age < 6000,
+        /* Sit beside the branch line (perpendicular to the link from the parent), not on top of it. */
+        var from = n.parent && at[n.parent] ? at[n.parent] : rootP;
+        var vx = p.x - from.x, vy = p.y - from.y, vl = Math.hypot(vx, vy) || 1;
+        var sx = -vy / vl, sy = vx / vl;
+        if (sy > 0) { sx = -sx; sy = -sy; }
+        var gap = r + 14;
+        labels.push({ n: n, text: text, x: p.x + sx * gap, y: p.y + sy * gap, a: la, fresh: age < 6000,
           font: (n.ghost ? "italic " : "") + (n.parent && n.id !== focusId ? "" : "600 ") + Math.round(size * Math.max(0.85, Math.min(1.35, p.f))) + "px " + FONT });
       });
 
@@ -340,10 +346,13 @@
           if (box.x0 < q.x1 && box.x1 > q.x0 && box.y0 < q.y1 && box.y1 > q.y0) return;
         }
         placed.push(box);
-        /* a paper halo keeps labels readable over edges at every zoom */
-        ctx.globalAlpha = l.a * 0.95; ctx.strokeStyle = PAPER; ctx.lineWidth = fs > 14 ? 4 : 3.2; /* PR 120: a fuller halo when zoomed */ ctx.lineJoin = "round";
+        /* A paper plate behind the words, plus a halo, so a branch line cannot show through the letters. */
+        var plateW = tw + 12, plateH = fs + 8;
+        ctx.globalAlpha = Math.max(0.94, l.a); ctx.fillStyle = PAPER;
+        pill(l.x - plateW / 2, l.y - fs - 1, plateW, plateH); ctx.fill();
+        ctx.globalAlpha = Math.max(0.94, l.a); ctx.strokeStyle = PAPER; ctx.lineWidth = fs > 14 ? 5 : 4; ctx.lineJoin = "round";
         ctx.strokeText(l.text, l.x, l.y);
-        ctx.globalAlpha = l.a;
+        ctx.globalAlpha = l.a; ctx.fillStyle = INK;
         ctx.fillText(l.text, l.x, l.y);
       });
       ctx.restore();

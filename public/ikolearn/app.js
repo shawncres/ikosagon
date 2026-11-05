@@ -1082,6 +1082,7 @@
           var r = C.applyCreate(state.cloud, { items: [it] });
           refreshViews(r.children);
           save();
+          prefetchFirstLesson(); /* the first suggested card's lesson, while the rest of the cloud is still being written */
           return wait(BUILD_BEAT);
         });
       },
@@ -1146,7 +1147,7 @@
       m.text = reasonLead(j && (j.reason || j.error)) + (kind === "start" ? " So I couldn't build your first topics yet. Try again in a moment, or type something you'd like to learn about below." : " Let's try that again a little later.");
       m.retry = { kind: kind, about: about || "", grow: grow || "" };
       upsert(m);
-    }).then(function () { save(); lock(false); refreshEx(); renderDraw(); if (!el.cloud.hidden && !el.cloud.querySelector(".cloud-caption:not([hidden])")) renderCloudFlow(); if (state.offerGrow) { state.offerGrow = false; offerGrow(); } });
+    }).then(function () { prefetchFirstLesson(); save(); lock(false); refreshEx(); renderDraw(); if (!el.cloud.hidden && !el.cloud.querySelector(".cloud-caption:not([hidden])")) renderCloudFlow(); if (state.offerGrow) { state.offerGrow = false; offerGrow(); } });
   }
   /*
    * The second, optional question ("something you'd like to grow in yourself"): no longer part of the opening. Once the
@@ -1356,8 +1357,10 @@
     } else if (grew && !old.classList.contains("evolve")) {
       old.classList.remove("grew"); void old.offsetWidth; old.classList.add("grew"); /* restart the pulse */
     }
+    var take = takeawayOf(state.lessonNode), confSays = lessonDone(state.lessonNode) && take; /* Earn already says "You learned" once */
     el.hNote.textContent = sp.level ? "Merged " + C.roman(sp.level) + ". It holds " + sp.corpus.length + " cards and rises a level with each new batch you finish."
-      : sp.inDeck && takeawayOf(state.lessonNode) ? "You learned: " + takeawayOf(state.lessonNode) + (sp.achieved ? " Achieved: it stays in your deck for good." : "") /* PR 108: the key idea, not a generic line */
+      : confSays ? (sp.achieved ? "Achieved: it stays in your deck for good." : (sp.inDeck ? "In your deck." : ""))
+      : sp.inDeck && take ? "You learned: " + take + (sp.achieved ? " Achieved: it stays in your deck for good." : "") /* PR 108: the key idea, not a generic line */
       : sp.achieved ? "Achieved. This card stays in your deck for good. Finish a few of its branches and they merge into it."
       : sp.after.length ? "Best after " + D.listOf(sp.after) + ". You can explore it now; it completes once " + (sp.after.length === 1 ? "that's" : "those are") + " done."
       : (sp.inDeck ? "In your deck. " : "") + (sp.tier < 2 && coreLeftNote(state.lessonNode) || ["Its first right answer inks it in.", "Finish it (\u201cI've got it\u201d or two right answers) to tint it.", "Three right answers and it's Achieved, in full colour."][sp.tier]);
@@ -1432,13 +1435,14 @@
       ], { duration: 520, easing: "cubic-bezier(.2,.7,.2,1)" });
     } else card.animate([{ transform: "translateY(-18px)", opacity: 0 }, { transform: "none", opacity: 1 }], { duration: 380, easing: "ease-out" });
   }
-  /* What changed on this topic's card after an action: achieved, joined the deck, or picked up colour. */
+  /* What changed on this topic's card after an action: achieved, joined the deck, or moved up a tier. */
   function growthNote(id, before) {
     var joined = C.joinDeck(state.cloud).indexOf(id) >= 0, after = C.growthOf(state.cloud, id), n = nodeOf(id);
     if (!after || !n) return "";
-    if (after.achieved && !(before && before.achieved)) return "You've completed " + n.label + ". Its card is in full colour now, marked achieved, and kept in your deck for good.";
+    if (after.achieved && !(before && before.achieved)) return "You've completed " + n.label + ". Its card is in full colour now, marked Achieved, and kept in your deck for good.";
     if (joined) return n.label + " joined your deck. It stays there for good, and its colour comes in as you show what you've learned.";
-    if (before && after.stage > before.stage) return "Your " + n.label + " card picked up more colour.";
+    /* The mark on the card is the tier name. Name that tier when it changes, so the line matches the status. */
+    if (before && after.tier > before.tier && after.tierName && after.tierName !== before.tierName) return "Your " + n.label + " card is " + after.tierName + " now.";
     return "";
   }
 
@@ -2010,45 +2014,62 @@
       } else { save(); markCheckFail(id); }
     }, function () { delete les.ckWait; save(); markCheckFail(id); });
   }
-  function lessonStream(id, body, on, signal) {
+  function lessonHasCheck(ev) { return Boolean(ev && Array.isArray(ev.questions) && ev.questions.length); }
+  /* A lesson written ahead (finished, or still arriving) plays instead of a second call. A cut-off lesson is not kept. */
+  function playPrepared(id, on) {
     var p = pre[id];
-    if (p && p.ok) {
+    if (!p) return null;
+    var done = function () {
+      if (!p.ok) return null;
       delete pre[id];
       if (on.reset) on.reset();
-      on.delta(p.text);
+      if (on.delta) on.delta(p.text);
       if (p.ev && on.path) on.path(p.ev);
-      return Promise.resolve({ ok: true });
-    }
+      return { ok: true };
+    };
+    return p.ok ? Promise.resolve(done()) : p.p ? p.p.then(done) : null;
+  }
+  function lessonStream(id, body, on, signal) {
+    var again = function () { if (on.reset) on.reset(); return stream("/lesson", Object.assign({}, body, { strict: true }), on, signal); };
+    var ready = playPrepared(id, on);
+    if (ready) return ready.then(function (r) { return r && r.ok ? r : again(); }).catch(function () { return { ok: false, reason: "error" }; });
     var got = "", sawCheck = false;
     var wrap = {
       delta: function (t) { got += t; on.delta(t); },
-      path: function (ev) { if (ev && Array.isArray(ev.questions) && ev.questions.length) sawCheck = true; if (on.path) on.path(ev); },
+      path: function (ev) { if (lessonHasCheck(ev)) sawCheck = true; if (on.path) on.path(ev); },
       reset: function () { got = ""; sawCheck = false; if (on.reset) on.reset(); }
     };
     return stream("/lesson", body, wrap, signal).then(function (r) {
       if (r.reason === "aborted") return r;
       if (r.ok && L.complete(got, { check: sawCheck })) return r;
       if (["busy", "ip_rate", "budget", "offline", "off", "no_key", "429", "503", "incomplete"].indexOf(String(r.reason)) >= 0) return r;
-      if (on.reset) on.reset();
-      return stream("/lesson", Object.assign({}, body, { strict: true }), on, signal);
+      return again();
     }).catch(function () { return { ok: false, reason: "error" }; });
   }
-  function prefetchNext(id) {
-    var next = P.pathNext(state.cloud, id);
-    if (!next || !nodeOf(next) || lessonBodyOk(state.lessons[next]) || pre[next] || state.busy || document.hidden) return;
-    var slot = pre[next] = { ok: false, text: "", ev: null };
-    var body = Object.assign(basePayload(next), P.lessonContext(state.cloud, next), { pre: true });
-    stream("/lesson", body, {
+  /* One lesson kept in memory. plant: put its steps on the cloud when it arrives (the next card on a path). */
+  function prepareAhead(id, plant) {
+    if (!id || !nodeOf(id) || lessonBodyOk(state.lessons[id]) || pre[id]) return;
+    var slot = pre[id] = { ok: false, text: "", ev: null };
+    slot.p = stream("/lesson", Object.assign(basePayload(id), P.lessonContext(state.cloud, id), { pre: true }), {
       delta: function (t) { slot.text += t; },
       path: function (ev) { slot.ev = ev; },
       reset: function () { slot.text = ""; slot.ev = null; }
     }).then(function (r) {
-      if (r.ok && L.complete(slot.text, { check: Boolean(slot.ev && slot.ev.questions && slot.ev.questions.length) })) {
-        slot.ok = true;
-        var added = slot.ev ? plantBlock(next, slot.ev) : [];
-        if (added.length) { save(); refreshViews(added); if (state.mode === "lesson") renderLessonPath(); if (state.mode === "test") renderTestNext(state.lessonNode); }
-      } else delete pre[next];
-    }, function () { delete pre[next]; });
+      slot.ok = Boolean(r && r.ok && L.complete(slot.text, { check: lessonHasCheck(slot.ev) }));
+      if (slot.ok && plant && slot.ev) {
+        var a = plantBlock(id, slot.ev);
+        if (a.length) { save(); refreshViews(a); if (state.mode === "lesson") renderLessonPath(); if (state.mode === "test") renderTestNext(state.lessonNode); }
+      } else if (!slot.ok) delete pre[id];
+      return slot.ok;
+    }, function () { delete pre[id]; return false; });
+  }
+  function prefetchNext(id) { if (!state.busy && !document.hidden) prepareAhead(P.pathNext(state.cloud, id), true); }
+  /* The first Pick up card, written while the cloud is built and again when the build finishes. */
+  function prefetchFirstLesson() {
+    if (document.hidden || !state.cloud) return;
+    var items; try { items = P.suggest(state.cloud, { noAsk: true }); } catch (e) { return; }
+    var it = (items || []).filter(function (x) { return x && x.id && x.kind !== "test" && x.kind !== "grow" && x.kind !== "ask" && nodeOf(x.id) && !lessonBodyOk(state.lessons[x.id]) && P.unfinished(state.cloud, x.id); })[0];
+    if (it) prepareAhead(it.id);
   }
 
   /* Reading a lesson counts a little toward mastery; the learner says how it went with the two buttons. */
