@@ -78,3 +78,37 @@ export async function streamJson(system: string, user: string, schema: unknown, 
   if (!r.ok) return r;
   return { ok: true, model: r.model, pieces: (async function* () { yield r.value; })(), abort: () => {} };
 }
+
+/* ---------- PR 113: one wrapper for every structured call ---------- */
+
+/** Cuts stray markdown fences and any words around the one JSON value, so the parser sees JSON only. */
+export function stripFences(t: string): string {
+  let s = String(t ?? "").trim().replace(/^```[a-z]*\s*/i, "").replace(/\s*```\s*$/, "").trim();
+  const a = s.search(/[[{]/);
+  if (a > 0) s = s.slice(a);
+  const b = Math.max(s.lastIndexOf("}"), s.lastIndexOf("]"));
+  if (b >= 0 && b < s.length - 1) s = s.slice(0, b + 1);
+  return s;
+}
+
+export const CALL_MODEL = { timeoutMs: 20_000, strictRule: "Answer with the JSON object only: no words before or after it, no markdown fences. Keep every text field short. Fill every required field." };
+
+/** The prompt for one attempt; strict is the shorter, stricter retry. */
+export type PromptBuilder = (strict: boolean) => { system: string; user: string };
+
+/**
+ * Every structured IkoLearn call goes through here: JSON only (fences stripped), validated by `validate` (null = unusable:
+ * a missing or empty field, or a field over its limit), ~20 s per attempt, and on a parse, validation or timeout
+ * failure one automatic retry with a shorter, stricter prompt. A busy or unconfigured provider is not retried here.
+ */
+export async function callModel<T>(build: PromptBuilder, schema: unknown, validate: (t: string) => T | null, env: Env, fetchImpl: typeof fetch = fetch, opts: StreamOptions = {}): Promise<JsonResult<T>> {
+  const parse = (t: string) => { try { return validate(stripFences(t)); } catch { return null; } };
+  const timeoutMs = Math.min(opts.timeoutMs || CALL_MODEL.timeoutMs, CALL_MODEL.timeoutMs);
+  const p1 = build(false), t0 = Date.now();
+  const first = await generateJson<T>(p1.system, p1.user, schema, parse, env, fetchImpl, { ...opts, timeoutMs, attempt: opts.attempt || 1 });
+  if (first.ok || !(first.code === "empty" || first.code === "timeout")) return first;
+  /* the routes end at 60 s: a timeout that already used the provider's own fallback is not tried a third time */
+  if (first.code === "timeout" && Date.now() - t0 >= 1.5 * timeoutMs) return first;
+  const p2 = build(true);
+  return generateJson<T>(`${p2.system}\n\n${CALL_MODEL.strictRule}`, p2.user, schema, parse, env, fetchImpl, { ...opts, timeoutMs, attempt: (opts.attempt || 1) + 1 });
+}

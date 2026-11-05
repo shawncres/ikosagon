@@ -815,7 +815,7 @@
   function send(text) {
     text = String(text || "").replace(/\s+$/, "").trim().slice(0, 1500);
     if (!text || state.busy) return;
-    if (waitingForStart()) { var about = cleanAbout(text); push({ role: "user", text: text }); buildCloud("start", [], about); return; }
+    if (waitingForStart()) { var about = cleanAbout(text); push({ role: "user", text: text }); buildCloud("start", splitInterests(text), about); return; }
     var it = localIntent(text);
     if (it) { doIntent(text, it); return; } /* light or dark, or deleting a branch: done here (0 calls) */
     lock(true);
@@ -1052,7 +1052,7 @@
       if (i >= qs.length) {
         C.setProfile(state.cloud, { onboarded: true, askedAt: true });
         save();
-        if (about) buildCloud("start", [], about, grow);
+        if (about) buildCloud("start", splitInterests(about), about, grow);
         else { push({ role: "model", local: true, text: waitingText(), ex: "start" }); save(); renderDraw(); }
         return;
       }
@@ -1328,6 +1328,8 @@
         set.appendChild(lab);
       });
       if (done) set.appendChild(mk("p", "q-fb", q.ans[qi] === item.answer ? "That's it." : "Not quite. It's " + String.fromCharCode(65 + item.answer) + ": " + item.options[item.answer] + "."));
+      /* PR 113: after a wrong pick, why that option was tempting (one short line) */
+      if (done && q.ans[qi] !== item.answer && item.why && item.why[q.ans[qi]]) set.appendChild(mk("p", "q-why", "Why it's tempting: " + item.why[q.ans[qi]]));
       wrap.appendChild(set);
     });
     if (q.missed) wrap.appendChild(missBox(q.id));
@@ -1352,9 +1354,11 @@
     return qs.map(function (q, qi) {
       var idx = q.options.map(function (_, i) { return i; }).sort(function (a, b) { return r(qi * 10 + a) - r(qi * 10 + b); });
       if (idx[q.answer] === q.answer && idx.length > 1) idx.push(idx.shift());
-      return { q: q.q, options: idx.map(function (i) { return q.options[i]; }), answer: idx.indexOf(q.answer) };
+      return { q: q.q, options: idx.map(function (i) { return q.options[i]; }), answer: idx.indexOf(q.answer), code: q.code, kind: q.kind, why: Array.isArray(q.why) ? idx.map(function (i) { return q.why[i] || ""; }) : undefined };
     }).sort(function (a, b) { return r(a.q.length) - r(b.q.length); });
   }
+  /* PR 113: checks of the new kind (recall / apply / spot-the-mistake) get a fresh random option order */
+  function mixQs(qs) { return qs.length && qs.every(function (q) { return q.kind; }) ? shuffled(qs, String(Math.random())) : qs; }
   /* the next set: the lesson's spare set (written with it, 0 calls), else the questions once more in a new order */
   function freshCheck(id) {
     var les = state.lessons[id], ck = ckOf(id), q = state.quiz;
@@ -1421,6 +1425,19 @@
       p.appendChild(linkBtn(re ? "Hide the lesson" : "Reread the lesson", function () { el.lMain.classList.toggle("reread"); renderConf(id); }, "link conf-reread"));
       el.lConf.appendChild(p);
     }
+    dedupeStatus();
+  }
+  /* PR 113: each sentence once per earn: the status line drops repeats and anything the confirmation already says */
+  function dedupeStatus() {
+    var t = el.lStatus.textContent || "";
+    if (!t || el.lStatus.children.length) return;
+    var said = (el.lConf.hidden ? "" : el.lConf.textContent || "").toLowerCase(), seen = {};
+    var parts = t.match(/[^.!?]+[.!?]*/g) || [];
+    var kept = parts.map(function (x) { return x.trim(); }).filter(function (x) {
+      var k = x.toLowerCase(); if (!k || seen[k] || (said && said.indexOf(k) >= 0)) return false; seen[k] = 1; return true;
+    });
+    var nt = kept.join(" ");
+    if (nt !== t.trim()) el.lStatus.textContent = nt;
   }
   /* "That's it." is said once: a right quiz answer already says it, so the status line doesn't repeat it */
   function quizSaidIt() { return !el.lQuiz.hidden && [].some.call(el.lQuiz.querySelectorAll(".q-fb"), function (x) { return x.textContent === "That's it."; }); }
@@ -1439,6 +1456,7 @@
   /* every question answered: a pass confirms the right answers (colour, children, the deck); a miss earns nothing */
   function endRound(id) {
     var q = state.quiz, ck = ckOf(id), right = q.qs.filter(function (it, i) { return q.ans[i] === it.answer; }).length, all = right === q.qs.length;
+    if (all) setTimeout(function () { prefetchNext(id); }, 4000); /* PR 113: the next lesson on the path, written ahead once this one is passed */
     var before = C.growthOf(state.cloud, id), kids = [];
     ck.r = (ck.r || 0) + 1; ck.c = 0;
     /* how easily it went: a first-time pass is easy, a pass after misses less so, a miss by how many were right */
@@ -1589,13 +1607,15 @@
     lock(true);
     calls.lessonFor = id;
     /* the orchestrator builds the context: child topics only when wanted, and the planned next step for the fork */
-    var ctx = P.lessonContext(state.cloud, id), text = "", wantPath = ctx.wantPath, reading = [], tricky = "", retry = [];
+    var ctx = P.lessonContext(state.cloud, id), text = "", wantPath = ctx.wantPath, reading = [], tricky = "", retry = [], key = "";
     var prevCk = state.lessons[id] && state.lessons[id].ck; /* a fresh version keeps the lesson's check rounds (never a free pass) */
     if (opts.again) { ctx.again = true; ctx.pace = "gentle"; }
     el.lBody.textContent = "";
     renderLessonBody("", true);
     renderQuiz(true);
-    stream("/lesson", Object.assign(basePayload(id), ctx), {
+    var lessonBody = Object.assign(basePayload(id), ctx);
+    lessonStream(id, lessonBody, {
+      reset: function () { text = ""; },
       delta: function (t) { text += t; if (state.lessonNode === id) renderLessonBody(text, true); },
       /* the hidden block: check questions, the card's line, path steps (only when asked), the fork, and whether this branch ends here */
       path: function (ev) {
@@ -1603,8 +1623,9 @@
         if (ev.blurb) C.setBlurb(state.cloud, id, ev.blurb);
         reading = L.cleanReading(ev.reading); /* titles and search phrases only; links are built on the device (allowlist) */
         tricky = typeof ev.tricky === "string" ? ev.tricky.trim().slice(0, 600) : ""; /* "Still tricky", prepared in this same call: shown only if asked */
-        if (state.quiz && state.quiz.id === id) state.quiz.qs = validQs(ev.questions);
-        retry = validQs(ev.retry); /* the spare set for a second try (0 calls) */
+        if (state.quiz && state.quiz.id === id) state.quiz.qs = mixQs(validQs(ev.questions)); /* PR 113: a new option order each time */
+        retry = mixQs(validQs(ev.retry));
+        key = typeof ev.key === "string" ? ev.key.trim().slice(0, 220) : ""; /* the spare set for a second try (0 calls) */
         if (ev.end) C.markEnd(state.cloud, id);
         if (wantPath && ev.steps && ev.steps.length) {
           /* child topics: straight onto the cloud if the topic is already engaged, else they wait for a right answer or "I've got it" */
@@ -1626,19 +1647,55 @@
         if (prevCk && (prevCk.r || prevCk.p)) state.lessons[id].ck = { r: prevCk.r || 0, p: prevCk.p || 0, miss: prevCk.miss || 0, c: 0, set: 0, again: opts.again ? 1 : 0 };
         if (reading.length) state.lessons[id].rd = reading;
         if (tricky) state.lessons[id].tk = tricky;
+        if (key) state.lessons[id].key = key; /* PR 113: the lesson's own key idea, for "You learned:" */
         if (state.lessonNode === id) { renderLessonBody(text, false); lessonReady(id, true); showReading(reading); }
       } else if (r.reason === "aborted") {
         /* cancelled because the learner moved on: not a failure; it is written next time it's opened */
       } else if (state.lessonNode === id) {
         if (text && L.usable(parsed)) { renderLessonBody(text, false); lessonReady(id, true); }
         else {
+          /* PR 113: one calm line, never the raw reason; the rest of the screen stays as it was */
           el.lBody.textContent = "";
-          el.lBody.appendChild(mk("p", "l-intro", reasonLead(r.reason) + " Your path below still works, and I'll write this lesson when you come back."));
-          el.lBody.appendChild(linkBtn("Try again", function () { openLesson(id, true); }));
+          var calm = mk("p", "l-intro calm-fail", "Iko is still writing this one. Try another card while you wait. ");
+          calm.appendChild(linkBtn("Retry", function () { openLesson(id, true); }, "link calm-retry"));
+          el.lBody.appendChild(calm);
         }
       }
       save(); lock(false);
     });
+  }
+
+  /*
+   * PR 113: a lesson stream with one automatic, stricter retry when the first try gives nothing usable, and the
+   * "Next on this path" lesson written ahead in the background (kept in memory on this device) so it opens at once.
+   */
+  var pre = {};
+  function lessonStream(id, body, on, signal) {
+    var p = pre[id];
+    if (p && p.ok) {
+      delete pre[id];
+      if (on.reset) on.reset();
+      on.delta(p.text);
+      if (p.ev && on.path) on.path(p.ev);
+      return Promise.resolve({ ok: true });
+    }
+    var got = "";
+    var wrap = { delta: function (t) { got += t; on.delta(t); }, path: on.path };
+    return stream("/lesson", body, wrap, signal).then(function (r) {
+      if (r.reason === "aborted" || (r.ok && got.trim())) return r;
+      if (["busy", "ip_rate", "budget", "offline", "off", "no_key", "429", "503"].indexOf(String(r.reason)) >= 0) return r;
+      if (on.reset) on.reset();
+      return stream("/lesson", Object.assign({}, body, { strict: true }), on, signal);
+    }).catch(function () { return { ok: false, reason: "error" }; });
+  }
+  function prefetchNext(id) {
+    var next = P.pathNext(state.cloud, id);
+    if (!next || !nodeOf(next) || state.lessons[next] || pre[next] || state.busy || document.hidden) return;
+    var slot = pre[next] = { ok: false, text: "", ev: null };
+    var body = Object.assign(basePayload(next), P.lessonContext(state.cloud, next), { pre: true });
+    stream("/lesson", body, { delta: function (t) { slot.text += t; }, path: function (ev) { slot.ev = ev; } }).then(function (r) {
+      if (r.ok && L.usable(L.parse(slot.text))) slot.ok = true; else delete pre[next];
+    }, function () { delete pre[next]; });
   }
 
   /* Reading a lesson counts a little toward mastery; the learner says how it went with the two buttons. */
@@ -1679,6 +1736,7 @@
   function takeawayOf(id) {
     var les = state.lessons[id];
     if (!les) return "";
+    if (les.key) return les.key;
     if (les.take) return les.take;
     var lp = les.text ? L.parse(les.text) : null;
     if (!lp) return "";
@@ -2245,7 +2303,9 @@
   function renderStart() {
     if (!el.cs) return;
     var empty = Boolean(state.cloud) && !C.subjects(state.cloud).length;
+    var wasStart = !el.cs.hidden;
     el.cs.hidden = !empty || el.cloud.hidden;
+    if (wasStart && el.cs.hidden && big && big.rearm) { big.rearm(); setTimeout(function () { if (big) big.rearm(); }, 450); } /* PR 113: taps work right after intake */
     if (el.cloudHint) el.cloudHint.hidden = empty; /* nothing to drag yet: no input tips over the start */
     intakeMode(!el.cs.hidden);
     if (el.cs.hidden) return;
@@ -2273,7 +2333,7 @@
     if (!csEx) { csEx = exRow(addIdea, function () { return !el.cs.hidden && !state.busy; }, "", true, true); el.csEx.appendChild(csEx); }
     else refreshEx();
     renderAgeBits();
-    el.csStatus.textContent = building ? "Growing your cloud…" : failed ? "That didn't work just now. Try again in a moment, or talk it over with Iko." : "";
+    el.csStatus.textContent = building ? "Growing your cloud…" : failed ? "Iko is still writing this one. Try again in a moment, or talk it over with Iko." : "";
     el.cs.classList.toggle("busy", building);
     placeStart();
     placeIkoSoon();
@@ -2391,6 +2451,15 @@
     renderStart();
   }
   /* one intake: the typed words first, then the picked ideas ("the ocean, Rain, Stars") */
+  /* PR 113: several interests at once ("octopuses, music, and how volcanoes work"): split on commas and "and", trimmed, de-duplicated, up to 5 */
+  function splitInterests(text) {
+    var out = [];
+    String(text || "").split(/\s*(?:,|;|\/|\band\b|&|\+)\s*/i).forEach(function (x) {
+      x = x.replace(/^(i like|i love|i enjoy|about|also)\s+/i, "").replace(/[.!?]+$/, "").trim().slice(0, 40);
+      if (x.length >= 2 && !out.some(function (y) { return y.toLowerCase() === x.toLowerCase(); })) out.push(x);
+    });
+    return out.length > 1 ? out.slice(0, 5) : [];
+  }
   function intakeText() { return cleanAbout(el.csIn.value.replace(/[,\s]+$/, "")); }
   /* an idea chip tapped (PR 103): it goes into the field, in the learner's own list, and the chip moves on to another idea */
   function addIdea(t) {

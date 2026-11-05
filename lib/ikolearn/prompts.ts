@@ -139,6 +139,8 @@ export type LearnInput = {
    * which topics are taught. Used in this one prompt and never stored or logged here.
    */
   band: (typeof AGE_BANDS)[number] | "";
+  /** PR 113: the device's one automatic retry of a lesson: a shorter, stricter prompt. */
+  strict?: boolean;
 };
 export const AGE_BANDS = ["u10", "10-13", "14-17", "18+"] as const;
 /** chain: broader topics from the subject down to the parent (only for a new topic that sits deeper), e.g. ["Computer Science","Programming","Python"]. */
@@ -194,11 +196,13 @@ export type LearnPath = { steps: string[]; next: string; end?: boolean };
 export const CHOICE_KINDS = ["next", "deeper", "side"] as const;
 export type Choice = { name: string; kind: (typeof CHOICE_KINDS)[number]; why: string; blurb?: string };
 /** A multiple-choice check question: 2-4 options, answer is the index of the right one. */
-export type Question = { q: string; options: string[]; answer: number; code?: string };
+export const QUESTION_KINDS = ["recall", "apply", "mistake"] as const;
+/** PR 113: kind (recall / apply / spot-the-mistake) and why: per option, why a wrong one is tempting ("" for the right one). */
+export type Question = { q: string; options: string[]; answer: number; code?: string; kind?: (typeof QUESTION_KINDS)[number]; why?: string[] };
 /** The hidden block at the end of a lesson: path steps (only when asked), fork choices, check questions, the card line, and whether the branch ends here. */
 /** Further reading and viewing: only a title and a search phrase (never a link); the app builds allowlisted search links. */
 export type Reading = { title: string; q: string; kind: "read" | "watch" };
-export type LessonBlock = { steps: string[]; next: string; choices: Choice[]; questions: Question[]; retry?: Question[]; blurb?: string; end?: boolean; reading?: Reading[]; tricky?: string };
+export type LessonBlock = { steps: string[]; next: string; choices: Choice[]; questions: Question[]; retry?: Question[]; blurb?: string; end?: boolean; reading?: Reading[]; tricky?: string; key?: string };
 
 /* ---------- input cleaning (everything from the browser is untrusted) ---------- */
 
@@ -277,6 +281,7 @@ export function parseLearnInput(raw: unknown): LearnInput | { error: string } {
     kind: (CREATE_KINDS as readonly string[]).includes(String(b.kind)) ? (b.kind as LearnInput["kind"]) : "start",
     favorites: (Array.isArray(b.favorites) ? b.favorites : []).map(cleanLabel).filter(Boolean).slice(0, LEARN_LIMITS.favorites),
     ...(mode === "chat" ? cleanScreen(b.screen) : {}),
+    ...(b.strict === true ? { strict: true } : {}),
   };
 }
 
@@ -510,7 +515,8 @@ export function lessonSystem(i: LearnInput): string {
     CODE_RULE + "\n\n" +
     bandLine(i) +
     lessonPace(i) +
-    `${profile(i)}\n\n${lessonBlockRules(i)}`
+    `${profile(i)}\n\n${lessonBlockRules(i)}` +
+    (i.strict ? `\n\nThis is a second try: keep the lesson under 180 words, follow the tags exactly, and make the ${PATH_OPEN} block valid JSON with every field filled.` : "")
   );
 }
 
@@ -524,9 +530,10 @@ const lessonPace = (i: LearnInput) =>
 /** One hidden block after every lesson (no extra call): check questions, the fork of 2 or 3 choices, the card line, and the path when asked. */
 const lessonBlockRules = (i: LearnInput) =>
   `After the lesson, on a new line, write ${PATH_OPEN} then one JSON object then ${PATH_CLOSE}, and nothing after it. The learner never sees this block as text. ` +
-  'The JSON is {"questions":[{"q":"...","options":["...","...","..."],"answer":0}],"retry":[{"q":"...","options":["...","...","..."],"answer":0}],"blurb":"...","steps":["..."],"next":"...","choices":[{"name":"...","kind":"next|deeper|side","why":"...","blurb":"..."}],"reading":[{"title":"...","q":"...","kind":"read|watch"}],"tricky":"...","end":false}. ' +
-  `questions: 2 or 3 multiple-choice questions that check understanding of what this lesson explained (not new facts, not trick questions), each with 3 short options (one clearly right, the others believable), and answer = the position of the right option counting from 0. Short and kind, at the learner's level. ${QUESTION_CODE} ` +
-  `retry: a second, different set of 2 or 3 questions on the same key ideas (asked another way, never the same wording or the same right option position), kept for a second try if the first check is missed. ` +
+  'The JSON is {"questions":[{"kind":"recall|apply|mistake","q":"...","options":["...","...","..."],"answer":0,"why":["","...","..."]}],"key_idea":"...","retry":[{"q":"...","options":["...","...","..."],"answer":0}],"blurb":"...","steps":["..."],"next":"...","choices":[{"name":"...","kind":"next|deeper|side","why":"...","blurb":"..."}],"reading":[{"title":"...","q":"...","kind":"read|watch"}],"tricky":"...","end":false}. ' +
+  `questions: exactly 3 multiple-choice questions that check real understanding of what this lesson explained, in this order: kind "recall" (remember the key idea), kind "apply" (use the idea in a new situation that does not appear anywhere in the lesson text), kind "mistake" (someone made a mistake using the idea; spot what went wrong). Each has 3 short options: one clearly right; every wrong option is a believable misconception a learner at this level really might hold, never a joke or an absurd option. answer = the position of the right option counting from 0. why: one entry per option, in the same order: for each wrong option a short line (under 15 words) on why it is tempting; "" for the right one. Short and kind, at the learner's level. ${QUESTION_CODE} ` +
+  'key_idea: the one key idea of this lesson as one plain sentence (at most 25 words), a statement of the concept itself, never an example, analogy or story. ' +
+  `retry: a second, different set of 3 questions (recall, apply, mistake, with why as above) on the same key ideas (asked another way, never the same wording or the same right option position), kept for a second try if the first check is missed. ` +
   `blurb: one line under 12 words that says what "${i.focus}" is, for its card, without the learner's name. ` +
   (i.wantPath ? `steps and next: the child topics of "${i.focus}". ${pathRules(i)} ` : 'steps: [] and next: "" (no child topics wanted this time). ') +
   `Each choice has a ${DESC_RULE}` +
@@ -1061,18 +1068,22 @@ export function parseQuestions(raw: unknown, max: number = LEARN_LIMITS.question
     const all = Array.isArray(o.options) ? o.options : [];
     if (q.length < 6 || !Number.isInteger(ans) || ans < 0 || ans >= all.length) continue;
     const right = cleanText(plainReply(all[ans]), LEARN_LIMITS.optionChars);
-    const opts: string[] = [];
-    for (const v of all) {
+    const opts: string[] = [], whyOf: Record<string, string> = {};
+    const whyRaw = Array.isArray(o.why) ? o.why : Array.isArray(o.why_tempting) ? o.why_tempting : [];
+    all.forEach((v, vi) => {
       const t = cleanText(plainReply(v), LEARN_LIMITS.optionChars);
-      if (t && !opts.some((x) => sameLabel(x, t))) opts.push(t);
-    }
+      if (t && !opts.some((x) => sameLabel(x, t))) { opts.push(t); whyOf[t] = cleanText(plainReply(whyRaw[vi]), LEARN_LIMITS.whyChars + 40).replace(/[<>{}[\]`*_#|\\]/g, " ").trim(); }
+    });
     if (!right || opts.length < 2) continue;
     const kept = opts.slice(0, LEARN_LIMITS.options);
     if (!kept.some((x) => sameLabel(x, right))) kept[kept.length - 1] = right;
     const rot = strHash(q) % kept.length;
     const options = kept.slice(rot).concat(kept.slice(0, rot));
     const code = cleanCode(o.code);
-    out.push({ q, options, answer: options.findIndex((x) => sameLabel(x, right)), ...(code ? { code } : {}) });
+    const answer = options.findIndex((x) => sameLabel(x, right));
+    const why = options.map((x, xi) => (xi === answer ? "" : whyOf[x] || ""));
+    const kind = (QUESTION_KINDS as readonly string[]).includes(String(o.kind)) ? (o.kind as Question["kind"]) : undefined;
+    out.push({ q, options, answer, ...(code ? { code } : {}), ...(kind ? { kind } : {}), ...(why.some(Boolean) ? { why } : {}) });
     if (out.length >= max) break;
   }
   return out;
@@ -1146,6 +1157,7 @@ export function parseLessonBlock(raw: unknown, learnerName = "", focus = "", wan
   const end = obj.end === true;
   const reading = parseReading(obj.reading);
   const tricky = parseTricky(obj.tricky);
+  const key = parseKeyIdea(obj.key_idea ?? obj.key, learnerName);
   const steps = p ? p.steps : [];
   if (!steps.length && !choices.length && !questions.length && !end) return null;
   const out: LessonBlock = { steps, next: p ? p.next : "", choices, questions };
@@ -1154,6 +1166,7 @@ export function parseLessonBlock(raw: unknown, learnerName = "", focus = "", wan
   if (end) out.end = true;
   if (reading.length) out.reading = reading;
   if (tricky) out.tricky = tricky;
+  if (key) out.key = key;
   return out;
 }
 
@@ -1243,4 +1256,17 @@ export function createBlockSplitter(open = CLOUD_OPEN, close = CLOUD_CLOSE) {
       return { tail, block: b.trim(), found: inBlock };
     },
   };
+}
+
+/** PR 113: the lesson's key idea for "You learned:": one plain sentence, at most 25 words, never an example or analogy. */
+export function parseKeyIdea(raw: unknown, learnerName = ""): string {
+  let t = cleanText(plainReply(raw), 220).replace(/[<>{}[\]`*_#|\\]/g, " ").replace(/\s+/g, " ").trim();
+  if (!t) return "";
+  t = t.replace(/^(you learned:?|key idea:?)\s*/i, "");
+  const words = t.split(" ").filter(Boolean);
+  if (words.length < 4 || words.length > 25) return "";
+  if (/^(for example|for instance|imagine|like when|think of|picture|e\.g\.)/i.test(t) || /\b(is like|it's like|just like)\b/i.test(t)) return "";
+  if (learnerName && new RegExp(`\\b${learnerName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(t)) return "";
+  t = t.charAt(0).toUpperCase() + t.slice(1);
+  return /[.!?]$/.test(t) ? t : t + ".";
 }

@@ -348,6 +348,8 @@ button.gcard:hover { border-color: var(--soft); }
 .opt input:disabled { cursor: default; }
 .opt.right .opt-t { text-decoration: underline; text-decoration-color: var(--ink); text-underline-offset: 4px; }
 .opt.wrong { color: var(--soft); }
+.q-why { font-size: 14px; font-style: italic; color: var(--soft); margin: 2px 0 0 !important; }
+.calm-fail { color: var(--soft); }
 .q-fb { font-size: 15px; color: var(--soft); margin: 4px 0 0 !important; }
 .lesson .caret::after { content: ""; display: inline-block; width: .5em; height: 1em; margin-left: 2px; vertical-align: -2px; background: var(--ink); opacity: .55; animation: blink 1s steps(1) infinite; }
 #l-done { margin-top: 18px; }

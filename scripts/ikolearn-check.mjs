@@ -391,7 +391,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(parseLearnInput({ mode: "notice", name: "Sam", focus: "x", messages: [], known: Array.from({ length: 40 }, (_, i) => "K" + i) }).known.length === LEARN_LIMITS.known, "input: known capped");
   const ls = lessonSystem(LI), lsNo = lessonSystem({ ...LI, wantPath: false }), ps = pathSystem(LI);
   ok(ls.includes("Role: lesson") && /INTRO:/.test(ls) && /STEP:/.test(ls) && /EXAMPLE:/.test(ls) && /NEXT:/.test(ls) && !/\nCHECK:/.test(ls) && !/\nANSWER:/.test(ls), "lesson prompt: intro, steps, example, next (questions moved to the hidden block)");
-  ok(/questions: 2 or 3 multiple-choice questions that check understanding of what this lesson explained/.test(ls) && /answer = the position of the right option/.test(ls) && /"questions":\[\{"q"/.test(ls) && /questions/.test(lsNo), "every lesson block asks for 2-3 multiple-choice questions on what it taught, with the answer index");
+  ok(/questions: exactly 3 multiple-choice questions that check real understanding of what this lesson explained/.test(ls) && /answer = the position of the right option/.test(ls) && /"questions":\[\{"kind":"recall\|apply\|mistake","q"/.test(ls) && /questions/.test(lsNo), "every lesson block asks for 2-3 multiple-choice questions on what it taught, with the answer index");
   ok(/blurb: one line under 12 words/.test(ls) && /without the learner's name/.test(ls), "lesson block asks for the card's one-line description");
   ok(ls.includes("Math > Addition > Number Bonds") && /Anyone reading along should be able to follow it/.test(ls) && !/parent reading along/.test(ls), "lesson prompt: knows where the topic sits, readable by anyone reading along");
   ok(ls.includes(PATH_OPEN) && ls.includes(PATH_CLOSE) && lsNo.includes(PATH_OPEN), "every lesson ends with the hidden block (fork choices, no extra call)");
@@ -950,8 +950,8 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     f = fakeFetch([hang, hang]);
     const t0 = Date.now(), ev = await collect(chatEvents(IN, env, f));
     ok(ev[0].reason === "timeout" && f.calls.length === n && Date.now() - t0 < 1000, `${name}: a request that never answers times out quickly (${n} call${n > 1 ? "s" : ""})`);
-    f = fakeFetch([hang, hang]);
-    ok((await cardFor(IN, env, f)).body.reason === "timeout" && f.calls.length === n, `${name}: JSON calls time out too`);
+    f = fakeFetch([hang, hang, hang, hang]);
+    ok((await cardFor(IN, env, f)).body.reason === "timeout" && f.calls.length === 2, `${name}: JSON calls time out too (one stricter retry, PR 113)`);
   }
   f = fakeFetch([hang, () => res(200, sse(["Fractions are parts."]))]);
   const ft = await collect(chatEvents(IN, ENV, f));
@@ -1107,8 +1107,8 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
   const bytes = files.reduce((n, f) => n + served(f).length, 0);
   const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
-  ok(bytes < 358_500, "app weight under 358.5 KB uncompressed (served, minified)", String(bytes));
-  ok(gz < 120_200, "app weight under 120.2 KB gzipped (served, minified)", String(gz));
+  ok(bytes < 363_500, "app weight under 363.5 KB uncompressed (served, minified)", String(bytes));
+  ok(gz < 122_000, "app weight under 122 KB gzipped (served, minified)", String(gz));
 }
 
 /* ================= PR 108: QA polish ================= */
@@ -1556,9 +1556,9 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   {
     const app4 = fs.readFileSync("public/ikolearn/app.js", "utf8");
     const ro = app4.slice(app4.indexOf("function runOnboarding("), app4.indexOf("function answerReask("));
-    ok(/if \(about\) buildCloud\("start", \[\], about, grow\)/.test(ro) && /else \{ push\(\{ role: "model", local: true, text: waitingText\(\), ex: "start" \}\)/.test(ro), "Skip makes no creation call: a gentle message (with the API's examples) leaves the question open");
+    ok(/if \(about\) buildCloud\("start", splitInterests\(about\), about, grow\)/.test(ro) && /else \{ push\(\{ role: "model", local: true, text: waitingText\(\), ex: "start" \}\)/.test(ro), "Skip makes no creation call: a gentle message (with the API's examples) leaves the question open");
     ok(!/a couple of quick questions|Roughly how old/.test(app4) && /There's no rush/.test(app4) && /we'll begin your path from there/.test(app4), "no age question or old welcome; the waiting message is soft and joint");
-    ok(/if \(waitingForStart\(\)\) \{ var about = cleanAbout\(text\);[\s\S]{0,120}?buildCloud\("start", \[\], about\)/.test(app4) && /function waitingForStart\(\) \{ return Boolean\(state\.cloud\) && !C\.subjects\(state\.cloud\)\.length && !P\.needsOnboarding\(state\.cloud\); \}/.test(app4), "after a Skip, the first thing typed (while the cloud is empty) is the one start call, in their own words");
+    ok(/if \(waitingForStart\(\)\) \{ var about = cleanAbout\(text\);[\s\S]{0,120}?buildCloud\("start", splitInterests\(text\), about\)/.test(app4) && /function waitingForStart\(\) \{ return Boolean\(state\.cloud\) && !C\.subjects\(state\.cloud\)\.length && !P\.needsOnboarding\(state\.cloud\); \}/.test(app4), "after a Skip, the first thing typed (while the cloud is empty) is the one start call, in their own words");
     ok(/if \(kind === "start" && !about && !interests\.length\) return;/.test(app4), "buildCloud never makes an empty start call");
     ok(/linkBtn\("Begin", runOnboarding/.test(app4) && !/few quick questions", runOnboarding|build your cloud, " \+ state/.test(app4), "an empty cloud offers a soft Begin (the same no-call opening), not a quiz");
     ok(/Hi " \+ state\.name \+ ", welcome back\. " \+ P\.OPENING/.test(app4), "returning to an empty cloud: the opening line again, no call");
@@ -1709,7 +1709,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     // the onboarding call budget: examples (1 GET, shared) + the start call (1) = at most 2; the second question adds none
     const ro2 = appx.slice(appx.indexOf("function runOnboarding("), appx.indexOf("function waitingText("));
     const askF = appx.slice(appx.indexOf("function ask(q, cb)"), appx.indexOf("function renderMsg("));
-    ok((ro2.match(/buildCloud\(/g) || []).length === 1 && !/postJson|stream\(|getJson|fetch/.test(ro2 + askF) && /if \(about\) buildCloud\("start", \[\], about, grow\)/.test(ro2), "onboarding call budget: questions make no calls; one start call carries both answers (examples are the only other call): at most 2");
+    ok((ro2.match(/buildCloud\(/g) || []).length === 1 && !/postJson|stream\(|getJson|fetch/.test(ro2 + askF) && /if \(about\) buildCloud\("start", splitInterests\(about\), about, grow\)/.test(ro2), "onboarding call budget: questions make no calls; one start call carries both answers (examples are the only other call): at most 2");
     // the server reads the personal-development answer in the same start call
     const it4 = (n, c) => ({ node: { name: n, chain: [c] }, card: { title: n, blurb: "About " + n + ".", goal: "Explain " + n + "." }, children: [{ name: n + " Basics", order: 1, score: 0.9, role: "core" }, { name: n + " Next", order: 2, score: 0.7, role: "core" }, { name: n + " Later", order: 3, score: 0.5, role: "core" }] });
     const GR = parseLearnInput({ mode: "notice", name: "Mia", messages: [], kind: "start", about: "volcanoes", grow: "Being more patient <b>" });
@@ -1734,7 +1734,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     // no seeded topics anywhere in discovery: a failed creation call offers Try again instead
     const bc = app.slice(app.indexOf("function buildCloud("), app.indexOf("function createNext("));
     ok(!/fallbackParents|C\.plant\(|PALETTE/.test(app) && /m\.retry = \{ kind: kind, about: about \|\| "", grow: grow \|\| "" \}/.test(bc) && /Try again/.test(app) && /type something you'd like to learn about below/.test(bc), "offline / failed build: the reason, Try again and the chat box; nothing seeded on the device");
-    ok(/textarea/.test(app) && /function openField\(/.test(app) && /if \(q\.open && v\) about = v;/.test(app) && !/qs\.push\(P\.openQuestion/.test(app) && /buildCloud\("start", \[\], about, grow\)/.test(app), "onboarding: an open answer (a textarea), then ONE start call at once (no second question first)");
+    ok(/textarea/.test(app) && /function openField\(/.test(app) && /if \(q\.open && v\) about = v;/.test(app) && !/qs\.push\(P\.openQuestion/.test(app) && /buildCloud\("start", splitInterests\(about\), about, grow\)/.test(app), "onboarding: an open answer (a textarea), then ONE start call at once (no second question first)");
     {
       const og = app.slice(app.indexOf("function offerGrow()"), app.indexOf("/* \"What comes next\" for a parent"));
       ok(/if \(hintSeen\("grow"\)\) return;\s*dismissHint\("grow"\);/.test(og) && /P\.openQuestion\(state\.cloud, "grow"\)/.test(og) && /if \(v\) buildCloud\("more", \[\], cleanAbout\("Something I'd like to grow in myself: " \+ v\)\)/.test(og) && /ikoLine\(/.test(og) && /if \(kind === "start"\) state\.offerGrow = true;/.test(app), "the grow question: offered once by Iko after the first path begins; one \"more\" call only if answered, none for Skip");

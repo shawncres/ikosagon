@@ -55,7 +55,7 @@ async function open(width, o = {}) {
   await p.route("**/api/ikolearn/**", async (r) => {
     const at = new URL(r.request().url()).pathname.replace("/api/ikolearn", "");
     let b = {}; try { b = JSON.parse(r.request().postData() || "{}"); } catch { b = {}; }
-    calls.push(at + (at === "/chat" ? ":" + b.mode : "")); bodies.push({ at, b });
+    if (!b.pre) calls.push(at + (at === "/chat" ? ":" + b.mode : "")); /* PR 113: the background "next on this path" lesson is not counted */ bodies.push({ at, b });
     if (at === "/examples") return ex ? r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, examples: ex, growth: ["Patience", "Listening", "Courage", "Focus"] }) }) : r.fulfill({ status: 503, contentType: "application/json", body: '{"ok":false,"reason":"off"}' });
     if (at === "/lesson") return r.fulfill({ status: 200, contentType: "application/x-ndjson", body: LESSON });
     if (at === "/chat") return r.fulfill({ status: 200, contentType: "application/x-ndjson", body: nd([{ t: "start", model: "m" }, { t: "delta", text: "Happy to help with that. " }, { t: "delta", text: "Let's take it one small step at a time." }, { t: "cloud", topics: [], ghosts: [] }, { t: "done" }]) });
