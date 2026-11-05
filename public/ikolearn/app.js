@@ -570,6 +570,8 @@
         return { kind: "theme", mode: mode };
       }
     }
+    var sn = t.length <= 60 && t.match(/\b(?:turn|switch|put|set)?\s*(?:the\s+)?(?:sounds?|audio)\s*(on|off)\b|\b(mute|unmute)\b|\b(?:turn|switch)\s+(on|off)\s+(?:the\s+)?(?:sounds?|audio)\b/);
+    if (sn) return { kind: "sound", on: (sn[1] || sn[3]) === "on" || sn[2] === "unmute" };
     var ag = ageIntent(t);
     if (ag) return ag;
     var d = t.match(/^(?:please\s+)?(?:(?:can|could|would) you\s+)?(?:delete|remove|get rid of|erase)\s+(?:the\s+|my\s+)?(.+?)(?:\s+(?:branch|topic|subject|node))?(?:\s+from\s+(?:my\s+|the\s+)?cloud)?(?:\s+please)?$/);
@@ -582,6 +584,11 @@
       if (it.forget) { setBand("none"); push({ role: "model", local: true, text: "Okay, I've forgotten it. Lessons go back to an everyday level for anyone." }); }
       else if (it.n) { var b = bandFor(it.n); setBand(b); push({ role: "model", local: true, text: bandSaid(b) }); }
       else push({ role: "age", local: true, text: "" });
+      save(); return;
+    }
+    if (it.kind === "sound") {
+      if (window.IkoSound) { IkoSound.set(it.on); if (it.on && !el.cloud.hidden) IkoSound.ambient(true); }
+      push({ role: "model", local: true, text: it.on ? "Sounds are back on, kept quiet." : "Sounds are off. Ask me any time to turn them back on." });
       save(); return;
     }
     if (it.kind === "theme") {
@@ -1912,7 +1919,7 @@
     el.lConf.tabIndex = -1; try { el.lConf.focus({ preventScroll: true }); } catch { /* old browsers: leave it */ }
     if (keep) keep();
     if (o.auto && !o.quiet) showConf();
-    if (!wasEarned && C.inDeck(state.cloud, id)) { flyToDeck(id); ikoReact("earn"); if (state.lessons[id]) { state.lessons[id].earned = Date.now(); save(); } } /* kept (additive) */
+    if (!wasEarned && C.inDeck(state.cloud, id)) { flyToDeck(id); ikoReact("earn"); if (window.IkoSound) IkoSound.earn(); if (state.lessons[id]) { state.lessons[id].earned = Date.now(); save(); } } /* kept (additive) */
     else renderDeckButton();
     if (keep) { keep(); requestAnimationFrame(keep); setTimeout(keep, 1000); } /* after the redraws and the card's flight too */
   }
@@ -2391,7 +2398,7 @@
   }
   /* landing: the first view after the name, or a returning visit (no focus moves, so no keyboard pops up on phones) */
   function openCloud(landing) {
-    el.cloud.hidden = false;
+    el.cloud.hidden = false; if (window.IkoSound) IkoSound.ambient(true);
     var fresh = !big;
     if (!big) big = V.create(el.cloudCanvas, { onPick: pick, onView: saveView, onDraw: placeCard, onEmpty: closeCard, onGesture: moved });
     big.resize();
@@ -2740,6 +2747,7 @@
     return null;
   }
   function closeCloud(keepView) {
+    if (window.IkoSound) IkoSound.ambient(false);
     el.cloud.hidden = true; el.panel.hidden = true; state.panelNode = null; cardSig = ""; if (big && big.lightRoot) big.lightRoot(false);
     if (big) { big.spin(false); big.hold(false); }
     if (!keepView && !state.lessonNode) { renderDraw(); el.input.focus(); }
@@ -2888,6 +2896,13 @@
       tidyCloud(true, function (ok, why) { tb.disabled = false; var ts = document.querySelector(".tidy-status") || tst; ts.textContent = ok ? "Done. Related topics now sit together." : why === "small" ? "Your cloud is still small and neat." : why === "neat" ? "Your cloud is already tidy." : "Your cloud stays as it is for now."; });
     }, "btn sm tidy-btn");
     panes.prefs.appendChild(tb); panes.prefs.appendChild(tst);
+    if (window.IkoSound) {
+      panes.prefs.appendChild(mk("p", "hc-ph", "Sound"));
+      var sr = mk("div", "place-opts hc-sound"); sr.setAttribute("role", "group"); sr.setAttribute("aria-label", "Sound");
+      var paintSnd = function () { sr.querySelectorAll("button").forEach(function (b) { var v = b.getAttribute("data-snd-v") === "on", p = v === IkoSound.on(); b.setAttribute("aria-pressed", String(p)); b.classList.toggle("on", p); }); };
+      [["on", "Quiet sounds"], ["off", "Off"]].forEach(function (x) { var b = linkBtn(x[1], function () { IkoSound.set(x[0] === "on"); if (x[0] === "on" && !el.cloud.hidden) IkoSound.ambient(true); paintSnd(); }, "btn sm age-opt"); b.setAttribute("data-snd-v", x[0]); sr.appendChild(b); });
+      paintSnd(); panes.prefs.appendChild(sr);
+    }
     Object.keys(panes).forEach(function (k) { box.appendChild(panes[k]); });
     show(homeTab);
     box.appendChild(cloudTools());

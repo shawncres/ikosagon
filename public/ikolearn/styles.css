@@ -20,6 +20,16 @@
   --art-turn: opacity(1); /* a card's art as drawn */
   color-scheme: light;
   --col: 680px;
+  --ui-sans: "Avenir Next", Avenir, Futura, "Century Gothic", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --read-serif: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 24px; --s-6: 32px; --s-7: 48px; /* the 4/8 grid */
+  --t-xs: 12px; --t-sm: 13.5px; --t-md: 15px; --t-lg: 19px; --t-xl: 24px; --t-2xl: 30px; /* modular scale ~1.25 */
+  --line: 1px solid rgba(var(--ink-rgb), .14);
+  --lift: 0 1px 2px rgba(var(--shadow-rgb), .06), 0 4px 14px rgba(var(--shadow-rgb), .05);
+  --radius: 10px;
+  --accent: #9a5a2a; --accent-ink: #fffaf0; /* the one accent: primary actions only (AA on paper and as a fill) */
+  --state-sketch: #8a7a66; --state-inked: #3b2e22; --state-tinted: #a86b3c; --state-achieved: #7a4a22;
+  --ease: cubic-bezier(.2, .7, .3, 1); --t-fast: 120ms; --t-med: 160ms;
   font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
 }
 /* dark: deep warm brown paper (never black), soft cream ink, the same quiet sepia; text pairs pass WCAG AA */
@@ -42,6 +52,7 @@ html[data-theme="dark"] {
   --scrim: rgba(0, 0, 0, .5);
   --art-paper: #f3ead8; /* a card's art is drawn on paper and turned for the dark page */
   --art-turn: invert(.86) hue-rotate(180deg) saturate(.85);
+  --accent: #e0a36a; --accent-ink: #1e1712; --state-sketch: #a8957a; --state-inked: #eee2cb; --state-tinted: #d89a62;
   color-scheme: dark;
 }
 /* a change of theme eases (the first paint never does: the theme is set before it) */
@@ -965,3 +976,48 @@ html:not([data-theme="dark"]) .cloud-fog { mix-blend-mode: multiply; }
   body.print-recap .hc-recap { position: absolute; left: 0; top: 0; width: 100%; font-size: 14pt; }
   body.print-recap .hc-copy, body.print-recap .hc-print { display: none !important; }
 }
+
+/* ============================================================================================================
+   Bauhaus pass (PR 120): one system of tokens for type, space, line and motion. Clear hierarchy, geometric restraint,
+   colour only where it means something (subject branches, the four card states, one accent for primary actions),
+   warm neutrals everywhere else. System fonts only (no webfonts): a geometric sans for the interface, the serif kept
+   for reading. Every value below is a custom property so the whole system is tuned in one place.
+   ============================================================================================================ */
+/* type: the interface in the sans, reading in the serif; headings in full ink, secondary labels a step quieter */
+body, .btn, .link, input, textarea, select, .kicker, .l-head, .hc-ph, .fine, .tabs, nav { font-family: var(--ui-sans); }
+.l-body, .clar, .q legend, .q label, .conf-take, .hc-story, .iko-msg { font-family: var(--read-serif); }
+h1 { font-size: var(--t-2xl); font-weight: 600; letter-spacing: -.01em; line-height: 1.15; }
+h2 { font-size: var(--t-xl); font-weight: 600; letter-spacing: -.005em; line-height: 1.2; }
+.kicker, .fine, .q-topic, .q-why, .q-fb { color: var(--soft); }
+.l-head { font-family: var(--ui-sans); font-size: var(--t-xs); font-weight: 600; letter-spacing: .12em; color: var(--soft); }
+/* buttons: thin geometric pills, one accent for the primary action, a quiet response that eases out fast */
+.btn { font-weight: 500; letter-spacing: .01em; transition: transform var(--t-fast) var(--ease), opacity var(--t-fast) var(--ease), background-color var(--t-med) var(--ease), border-color var(--t-med) var(--ease), color var(--t-med) var(--ease); }
+.btn:hover:not(:disabled) { background: rgba(var(--ink-rgb), .05); }
+.btn:active:not(:disabled) { transform: scale(.97); opacity: .9; }
+.btn.draw, .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.draw:hover:not(:disabled), .btn.primary:hover:not(:disabled) { background: var(--accent); opacity: .92; }
+.btn.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* cards: one consistent plate, title, short text, state; flat with a barely-lifted edge */
+.gcard { border-radius: var(--radius); transition: transform var(--t-med) var(--ease), box-shadow var(--t-med) var(--ease), border-color var(--t-med) var(--ease); }
+button.gcard:hover { transform: translateY(-2px); box-shadow: var(--lift); }
+button.gcard:active { transform: scale(.985); }
+.gc-art { border-radius: calc(var(--radius) - 4px); box-shadow: none; overflow: hidden; }
+.gc-title { color: var(--ink); font-family: var(--read-serif); }
+.gc-mark { font-family: var(--ui-sans); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; }
+.gcard.tier-sketch .gc-mark { color: var(--state-sketch); }
+.gcard.tier-inked .gc-mark { color: var(--state-inked); }
+.gcard.tier-tinted .gc-mark { color: var(--state-tinted); }
+.art .geo circle, .art .geo rect, .art .geo path { vector-effect: non-scaling-stroke; }
+/* lesson & check: clear section breaks, a weighted "You learned", the questions in one quiet pane */
+.l-body > * + .l-head, .l-body .kicker + * { margin-top: var(--s-2); }
+.l-head { border-top: var(--line); padding-top: var(--s-4); }
+.conf-take { font-size: var(--t-lg); line-height: 1.45; font-weight: 600; color: var(--ink); border-left: 3px solid var(--accent); padding: var(--s-3) var(--s-4); background: rgba(var(--sheet-rgb), .7); border-radius: 0 var(--radius) var(--radius) 0; }
+.q { border-left: 0; border: var(--line); border-radius: var(--radius); padding: var(--s-4) var(--s-4) var(--s-3); margin: var(--s-3) 0; background: rgba(var(--sheet-rgb), .55); }
+.q label { transition: background-color var(--t-fast) var(--ease); border-radius: 6px; }
+.q label:hover { background: rgba(var(--ink-rgb), .04); }
+/* Deck & album: a clean gallery with equal tiles; quiet empty states */
+.ap-grid { gap: var(--s-4); align-items: stretch; }
+.album { gap: var(--s-5); }
+.album-empty { font-style: normal; font-size: var(--t-md); }
+@media (prefers-reduced-motion: reduce) { .btn, .gcard, .q label { transition: none !important; } button.gcard:hover, .btn:active { transform: none !important; } }

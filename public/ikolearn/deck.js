@@ -240,7 +240,32 @@
   function hsla(c, a, dl) { return "hsla(" + c.hue + ", " + c.sat + "%, " + Math.max(10, Math.min(92, c.light + (dl || 0))) + "%, " + a.toFixed(2) + ")"; }
   function tint(c, a, l) { return "hsla(" + c.base + ", 50%, " + l + "%, " + a.toFixed(2) + ")"; }
   /* The landscape as SVG: pale far ridges, darker near ones, pen lines over light fills; the chain's hue arrives as a wash. */
+  /* Bauhaus pass (PR 120): the plate is a quiet geometric composition (one circle, one bar, one triangle on a faint
+     grid) over the far ridges; the busy pen hatching, trees and birds are left out so a card reads at Deck size. If the
+     drawing can't be made, a clean geometric placeholder stands in (never a broken plate). */
+  function geoLayer(doc, spec, a, c, t) {
+    var R = rng(seedOf("geo:" + spec.id)), w = a.w, h = a.h, g = svgEl(doc, "g", { class: "geo", fill: "none", "stroke-linecap": "square" });
+    for (var i = 1; i < 4; i++) g.appendChild(svgEl(doc, "line", { x1: r1(w * i / 4), y1: 0, x2: r1(w * i / 4), y2: h, stroke: hsla(c, 0.08, 0), "stroke-width": 0.3 }));
+    var cx = r1(w * (0.25 + R() * 0.5)), cy = r1(h * (0.3 + R() * 0.25)), r = r1(Math.min(w, h) * (0.16 + R() * 0.08));
+    var ink = hsla(c, 0.55 + 0.35 * Math.min(1, t + (spec.tier || 0) / 3), -10);
+    g.appendChild(svgEl(doc, "circle", { cx: cx, cy: cy, r: r, fill: t ? tint(c, 0.22 + 0.5 * t, 58) : "none", stroke: ink, "stroke-width": 0.8 }));
+    var bx = r1(w * (R() < 0.5 ? 0.1 : 0.55)), by = r1(h * (0.62 + R() * 0.12));
+    g.appendChild(svgEl(doc, "rect", { x: bx, y: by, width: r1(w * 0.35), height: r1(h * 0.06), fill: (spec.tier || 0) >= 2 ? hsla(c, 0.5 + 0.3 * t, -6) : "none", stroke: ink, "stroke-width": 0.6 }));
+    var tx = r1(w * (0.6 + R() * 0.25)), ty = r1(h * 0.2);
+    g.appendChild(svgEl(doc, "path", { d: "M" + tx + " " + ty + " L" + r1(tx + w * 0.1) + " " + r1(ty + h * 0.22) + " L" + r1(tx - w * 0.1) + " " + r1(ty + h * 0.22) + " Z", stroke: ink, "stroke-width": 0.6, fill: (spec.tier || 0) >= 3 ? tint(c, 0.6, 50) : "none" }));
+    return g;
+  }
+  function placeholderSvg(doc) {
+    var svg = svgEl(doc, "svg", { viewBox: "0 0 120 80", preserveAspectRatio: "xMidYMid slice", "aria-hidden": "true", focusable: "false", class: "art art-ph" });
+    svg.appendChild(svgEl(doc, "rect", { x: 0, y: 0, width: 120, height: 80, fill: "rgba(120,90,60,.06)" }));
+    svg.appendChild(svgEl(doc, "circle", { cx: 46, cy: 36, r: 16, fill: "none", stroke: "rgba(90,70,50,.55)", "stroke-width": 1 }));
+    svg.appendChild(svgEl(doc, "rect", { x: 58, y: 44, width: 36, height: 6, fill: "none", stroke: "rgba(90,70,50,.55)", "stroke-width": 1 }));
+    return svg;
+  }
   function artSvg(doc, spec) {
+    try { return artSvgInner(doc, spec); } catch (e) { return placeholderSvg(doc); }
+  }
+  function artSvgInner(doc, spec) {
     var a = spec.art, c = spec.color, t = c.mix || 0;
     var svg = svgEl(doc, "svg", { viewBox: "0 0 " + a.w + " " + a.h, preserveAspectRatio: "xMidYMid slice", "aria-hidden": "true", focusable: "false", class: "art" });
     svg.appendChild(svgEl(doc, "rect", { x: 0, y: 0, width: a.w, height: a.h, fill: hsla(c, 0.06, 40) }));
@@ -250,8 +275,9 @@
       svg.appendChild(svgEl(doc, "path", { d: l.fill, fill: hsla(c, 0.07 + 0.2 * l.depth + 0.06 * t, 26 - 16 * l.depth), stroke: "none" }));
       svg.appendChild(svgEl(doc, "path", { d: l.line, fill: "none", stroke: hsla(c, 0.3 + 0.55 * l.depth, 12 - 14 * l.depth), "stroke-width": 0.45 + 0.4 * l.depth, "stroke-linejoin": "round" }));
     });
-    var g = svgEl(doc, "g", { stroke: c.ink, fill: "none", "stroke-width": 0.45, "stroke-linecap": "round" });
-    a.hatch.forEach(function (h) { g.appendChild(svgEl(doc, "line", { x1: h.x1, y1: h.y1, x2: h.x2, y2: h.y2, opacity: (0.3 + 0.5 * h.depth).toFixed(2) })); });
+    svg.appendChild(geoLayer(doc, spec, a, c, t));
+    var g = svgEl(doc, "g", { stroke: c.ink, fill: "none", "stroke-width": 0.45, "stroke-linecap": "round", opacity: 0.25 });
+    a.hatch.slice(0, 6).forEach(function (h) { g.appendChild(svgEl(doc, "line", { x1: h.x1, y1: h.y1, x2: h.x2, y2: h.y2, opacity: (0.3 + 0.5 * h.depth).toFixed(2) })); });
     svg.appendChild(g);
     if (a.water) {
       svg.appendChild(svgEl(doc, "rect", { x: 0, y: a.water.y, width: a.w, height: a.h - a.water.y, fill: t ? tint(c, 0.12 + 0.26 * t, 62) : hsla(c, 0.1, 34), stroke: "none" }));
@@ -261,8 +287,7 @@
       svg.appendChild(w);
     }
     var tr = svgEl(doc, "g", { stroke: hsla(c, 0.9, -8), fill: "none", "stroke-width": 0.7, "stroke-linecap": "round" });
-    a.trees.forEach(function (x) { tr.appendChild(svgEl(doc, "path", { d: x.d })); });
-    a.birds.forEach(function (b) { tr.appendChild(svgEl(doc, "path", { d: b.d, "stroke-width": 0.45 })); });
+    a.trees.slice(0, 2).forEach(function (x) { tr.appendChild(svgEl(doc, "path", { d: x.d })); }); /* Bauhaus: a hint, not a forest; no birds */
     svg.appendChild(tr);
     if (a.motif && MOTIF_ART[a.motif.name]) svg.appendChild(motifSvg(doc, a.motif, c, t));
     return svg;
