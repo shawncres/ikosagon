@@ -1317,6 +1317,12 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   // B3 lessons teach first, then check
   const ls = lessonSystem(parseLearnInput({ mode: "notice", name: "Sam", focus: "Sets", messages: [], wantPath: true }));
   ok(/Teach first: really explain the idea/.test(ls) && /EXPLAIN: a short paragraph/.test(ls) && /EXAMPLE: optional/.test(ls) && /only ask about what you explained/.test(ls) && /child topics of "Sets"/.test(ls), "lesson prompt: explain first (EXPLAIN), optional worked example, questions only on what was taught");
+  ok(/Level standard/.test(ls) && /520 to 760 words/.test(ls) && /3 EXPLAIN lines/.test(ls) && /one worked EXAMPLE/.test(ls) && !/260 words/.test(ls) && !/under 180 words/.test(ls), "lesson prompt: standard is a full lesson with clear sections, not the old 260-word cap");
+  ok(/```text/.test(ls) && /At most one/.test(ls) && /No points, streaks, badges/.test(ls) && /right answer needs the idea/.test(ls) && /specific plausible wrong step/.test(ls), "lesson prompt: one optional text diagram, a calm tone, and a check that needs the idea");
+  const simpleLesson = lessonSystem({ ...parseLearnInput({ mode: "notice", name: "Sam", focus: "Sets", messages: [], wantPath: true }), band: "simple" });
+  const deeperLesson = lessonSystem({ ...parseLearnInput({ mode: "notice", name: "Sam", focus: "Sets", messages: [], wantPath: true }), band: "deeper" });
+  ok(/Level simple/.test(simpleLesson) && /340 to 480 words/.test(simpleLesson) && /2 EXPLAIN lines/.test(simpleLesson) && /keep it simple/.test(simpleLesson) && !/second EXAMPLE/.test(simpleLesson), "lesson prompt: simple stays shorter, with one example");
+  ok(/Level deeper/.test(deeperLesson) && /700 to 960 words/.test(deeperLesson) && /4 EXPLAIN lines/.test(deeperLesson) && /second EXAMPLE/.test(deeperLesson) && /go deeper/.test(deeperLesson) && !/Level standard/.test(deeperLesson), "lesson prompt: deeper adds the why and a second example");
   const lp = L.parse("INTRO: A set is a group, Sam.\nEXPLAIN: Think of a sticker book.\nEach sticker once.\nEXPLAIN: Adding a repeat changes nothing.\nSTEP: Write {1, 2}.\nNEXT: Try one.");
   ok(lp.explain.length === 3 && lp.explain[0] === "Think of a sticker book." && lp.steps.length === 1 && L.usable(lp), "lesson.js: EXPLAIN paragraphs parse; usable with them");
   ok(L.usable(L.parse("INTRO: Hi.\nEXPLAIN: Only an explanation.")) && !L.usable(L.parse("INTRO: Hi.")), "lesson.js: an explanation alone is enough teaching to keep");
@@ -1719,7 +1725,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     const fill = appx.slice(appx.indexOf("function fillEx("), appx.indexOf("function refreshEx("));
     const moreH = fill.slice(fill.indexOf('linkBtn("More"'), fill.indexOf('"link ex-more"'));
     ok(moreH.length > 20 && /state\.ex\[key\] = \(at \+ EX_SHOW\) % list\.length; refreshEx\(\);/.test(moreH) && !/getJson|postJson|stream\(|loadExamples|fetch/.test(moreH), "More cycles through the cached set on the device: no call per tap");
-    ok(/if \(state\.ex\.status === "off"\) \{[\s\S]{0,260}Try again[\s\S]{0,80}ex-retry"\)\);\s*return;\s*\}/.test(fill) && /state\.ex\.status = list\.length \? "ok" : "off"/.test(appx), "offline (or a failed set): Try again and no list at all");
+    ok(/if \(state\.ex\.status === "off"\) \{[\s\S]{0,260}Try again[\s\S]{0,160}ex-retry"\)\);\s*return;\s*\}/.test(fill) && /state\.ex\.status = list\.length \? "ok" : "off"/.test(appx), "offline (or a failed set): Try again and no list at all");
     ok(/if \(state\.ex\.status === "idle" && r\.live\(\)\) \{ state\.ex\.status = "wait"; setTimeout\(loadExamples, 0\); \}/.test(appx) && /if \(state\.ex\.status === "loading"\) return;/.test(appx) && (appx.match(/loadExamples\(\)/g) || []).length === 2, "examples load once per page (when a row first shows), again only on Try again");
     ok(/if \(m\.ex\) d\.appendChild\(exRow\(function \(t\) \{ go\(m\.open \? cleanAbout\(t\) : C\.cleanLabel\(t\), t\); \}/.test(appx) && /exRow\(function \(t\) \{ send\(t\); \}/.test(appx) && /exRow\(function \(t\) \{ answerReask\(t\); \}\)/.test(appx), "tapping an example acts exactly like typing it: the open question's answer, the chat box, or the re-ask");
     ok(/ex: "start" \}\); save\(\); renderDraw\(\);/.test(appx) && /local: true, ex: "start", text: "Hi "/.test(appx) && /ex: "chat"/.test(appx), "examples show on the opening question, the Skip message, the welcome back and the re-ask");
@@ -2257,7 +2263,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(pkg.scripts.prebuild === "node scripts/ikolearn-minify.mjs" && /^\^?0\.\d+/.test(pkg.devDependencies.esbuild || ""), "minify: runs before next build (prebuild), esbuild is a dev dependency");
   const mjs = fs.readFileSync("scripts/ikolearn-minify.mjs", "utf8");
   ok(/process\.env\.VERCEL === "1" \|\| process\.env\.IKOLEARN_MINIFY === "1"/.test(mjs) && !/mangleProps|keepNames: false|bundle: true/.test(mjs) && /sourcesContent: true/.test(mjs), "minify: in place only on Vercel's build (or when asked), no property mangling, no bundling, readable source in the maps");
-  eq(minTargets(), ["app.js", "camera.js", "cloud-model.js", "cloud-view.js", "deck.js", "family.css", "family.js", "learners.js", "lesson.js", "orchestrator.js", "profiles.js", "rank.js", "sound.js", "styles.css", "theme.js", "transfer.js"], "minify: every app script and stylesheet (the parents & teachers view and learners too)");
+  eq(minTargets(), ["app.js", "camera.js", "cloud-model.js", "cloud-view.js", "deck.js", "family.css", "family.js", "learners.js", "lesson.js", "orchestrator.js", "profiles.js", "rank.js", "sound.js", "styles.css", "theme.js", "transfer.js", "usage.js"], "minify: every app script and stylesheet (the parents & teachers view and learners too)");
   const min = {}, src = {};
   minTargets().forEach((f) => { src[f] = fs.readFileSync("public/ikolearn/" + f, "utf8"); min[f] = minifyFile(f, src[f]); });
   ok(Object.keys(min).every((f) => min[f].code.length < src[f].length * 0.85 && min[f].code.endsWith(`sourceMappingURL=${f}.map${f.endsWith(".css") ? " */" : ""}\n`)), "minify: every file is smaller and links its source map");
@@ -3948,6 +3954,16 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const lc = L.parse("INTRO: A loop.\nEXPLAIN: Look:\n```python\nfor i in range(3):\n    print(i)\n```\nSTEP: Run `loop()` once.");
   const item = [].concat(lc.explain, lc.steps, lc.example || []).find((x) => x && typeof x === "object" && "code" in x);
   ok(item && item.lang === "python" && item.code === "for i in range(3):\n    print(i)", "code: a fenced block parses whole, indentation kept", JSON.stringify(lc));
+  const dg = L.parse("INTRO: Heat moves.\nEXPLAIN: A simple picture:\n```text\nrock → melt\n```\nSTEP: Watch the change.\n");
+  const figItem = [].concat(dg.explain, dg.steps, dg.example).find((x) => x && x.code);
+  ok(figItem && figItem.lang === "text" && figItem.code === "rock → melt", "diagram: a text fence stays with its section", JSON.stringify(dg));
+  const fkD = (tag) => ({ tag, kids: [], attrs: {}, className: "", textContent: "", appendChild(k) { this.kids.push(k); return k; }, setAttribute(k, v) { this.attrs[k] = v; } });
+  const fdocD = { createElement: fkD, createTextNode: (t) => ({ tag: "#text", textContent: t, kids: [] }) };
+  const figEl = L.codeBlock(fdocD, "rock → melt", "text"), codeEl = L.codeBlock(fdocD, "print(1)", "python");
+  ok(figEl.className === "code fig" && figEl.attrs["aria-label"] === "diagram" && !figEl.attrs["data-lang"], "diagram: a text fence is announced as a diagram");
+  ok(codeEl.className === "code" && codeEl.attrs["aria-label"] === "python code" && codeEl.attrs["data-lang"] === "python", "code: a language fence stays a code block");
+  ok(LEARN_LIMITS.lessonChars >= 12_000 && LEARN_LIMITS.lessonExcerptChars === 5_000 && MODEL_LIMITS.lessonMaxTokens >= 5_600, "lesson budget: room for a fuller lesson and its check block");
+  ok(/slice\(0, LESSON_EXCERPT\)/.test(appS) && /var LESSON_EXCERPT = 5000/.test(appS), "lesson excerpt: the check and a clarification send enough of the lesson to include the example");
   ok(!/innerHTML/.test(fs.readFileSync("public/ikolearn/lesson.js", "utf8")) && /function codeBlock\(doc, code, lang\)/.test(fs.readFileSync("public/ikolearn/lesson.js", "utf8")), "code: built with text nodes only (no innerHTML)");
   ok(/pre\.code \{[^}]*white-space: pre[^}]*\}/.test(cssS) || (/pre\.code \{/.test(cssS) && /white-space: pre/.test(cssS) && /overflow-x: auto/.test(cssS)), "code: a quiet block that keeps its lines and scrolls sideways");
   const pq = parseQuestions([{ q: "What prints?", code: "print(1)\n  print(2)", options: ["1", "2", "3"], answer: 0 }, { q: "Plain?", options: ["a", "b", "c"], answer: 1 }]);
