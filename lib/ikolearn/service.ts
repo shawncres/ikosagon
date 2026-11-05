@@ -6,7 +6,7 @@
  */
 import { createRateLimiter } from "../ikoreadtube/service";
 import { originOk } from "../ikoreadtube/summarize";
-import { MODEL_LIMITS, generateJson, llmReady, streamJson, streamText, type Content, type Env, type FailCode } from "./llm";
+import { MODEL_LIMITS, callModel, generateJson, llmReady, streamJson, streamText, type Content, type Env, type FailCode } from "./llm";
 import {
   ADJACENT_SCHEMA,
   CARD_SCHEMA,
@@ -301,14 +301,14 @@ const reasonStatus = (code: FailCode) => (code === "busy" ? 429 : code === "no_k
 export async function cardFor(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): Promise<Out> {
   const recent = input.messages.map((m) => `${m.role === "user" ? input.name : "IkoLearn"}: ${m.text}`).join("\n");
   const user = `Focus topic: ${input.focus}${input.focusParent ? ` (in ${input.focusParent})` : ""}\nRecent conversation:\n${recent || "(none)"}`;
-  const r = await generateJson<Card>(cardSystem(input), user, CARD_SCHEMA, parseCard, env, fetchImpl, { route: "card" });
+  const r = await callModel<Card>(() => ({ system: cardSystem(input), user: user }), CARD_SCHEMA, parseCard, env, fetchImpl, { route: "card" });
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
   return json(200, { ok: true, card: r.value });
 }
 
 export async function adjacentFor(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): Promise<Out> {
   const user = `Focus topic: ${input.focus}${input.focusParent ? ` (in ${input.focusParent})` : ""}`;
-  const r = await generateJson<Ghost[]>(adjacentSystem(input), user, ADJACENT_SCHEMA, (t) => {
+  const r = await callModel<Ghost[]>(() => ({ system: adjacentSystem(input), user: user }), ADJACENT_SCHEMA, (t) => {
     const g = parseAdjacent(t, input.name);
     return g.length ? g : null;
   }, env, fetchImpl, { route: "adjacent" });
@@ -324,7 +324,7 @@ export async function describeFor(input: LearnInput, env: Env, fetchImpl: typeof
   const asked = input.material.map((m) => m.label);
   if (!asked.length) return json(422, { ok: false, reason: "nothing_to_describe" });
   const user = `Describe these ${asked.length} topics: ${asked.join("; ")}`;
-  const r = await generateJson<{ name: string; blurb: string }[]>(describeSystem(input), user, DESCRIBE_SCHEMA, (t) => {
+  const r = await callModel<{ name: string; blurb: string }[]>(() => ({ system: describeSystem(input), user: user }), DESCRIBE_SCHEMA, (t) => {
     const d = parseDescribe(t, asked, input.name);
     return d.length ? d : null;
   }, env, fetchImpl, { route: "describe" });
@@ -334,7 +334,7 @@ export async function describeFor(input: LearnInput, env: Env, fetchImpl: typeof
 
 export async function pathFor(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): Promise<Out> {
   const user = `Map the learning path for: ${input.focus}${input.trail ? ` (${input.trail})` : ""}`;
-  const r = await generateJson<LearnPath>(pathSystem(input), user, PATH_SCHEMA, (t) => parsePath(t, input.name, input.focus), env, fetchImpl, { route: "path" });
+  const r = await callModel<LearnPath>(() => ({ system: pathSystem(input), user: user }), PATH_SCHEMA, (t) => parsePath(t, input.name, input.focus), env, fetchImpl, { route: "path" });
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
   return json(200, { ok: true, path: r.value });
 }
@@ -377,7 +377,7 @@ export async function createFor(input: LearnInput, env: Env, fetchImpl: typeof f
   const bad = createCheck(input);
   if (bad) return bad;
   const user = createUser(input);
-  const r = await generateJson<CreateResult>(createSystem(input), user, CREATE_SCHEMA, (t) => parseCreate(t, input.kind, input.name, input.focus, input.known), env, fetchImpl, { maxTokens: MODEL_LIMITS.createMaxTokens, route: "create" });
+  const r = await callModel<CreateResult>(() => ({ system: createSystem(input), user: user }), CREATE_SCHEMA, (t) => parseCreate(t, input.kind, input.name, input.focus, input.known), env, fetchImpl, { maxTokens: MODEL_LIMITS.createMaxTokens, route: "create" });
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
   return json(200, { ok: true, kind: input.kind, items: r.value.items, ...(r.value.later ? { later: r.value.later } : {}) });
 }
@@ -434,7 +434,7 @@ export async function testFor(input: LearnInput, env: Env, fetchImpl: typeof fet
   const allowed = input.material.map((m) => m.label);
   if (allowed.length < 2) return json(422, { ok: false, reason: "material" });
   const user = `Make my test on ${input.focus}. Topics I have finished: ${allowed.join(", ")}.`;
-  const r = await generateJson<TestQuestion[]>(testSystem(input), user, TEST_SCHEMA, (t) => parseTest(t, allowed), env, fetchImpl, { route: "test" });
+  const r = await callModel<TestQuestion[]>(() => ({ system: testSystem(input), user: user }), TEST_SCHEMA, (t) => parseTest(t, allowed), env, fetchImpl, { route: "test" });
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
   return json(200, { ok: true, questions: r.value });
 }

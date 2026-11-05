@@ -640,6 +640,7 @@
       if (doc) doc.addEventListener("visibilitychange", function () { if (!doc.hidden) { touch(); request(); } });
     }
     root.addEventListener("resize", resize);
+    if (root.visualViewport) root.visualViewport.addEventListener("resize", resize); /* PR 113: iOS keyboard close */
     resize();
 
     return {
@@ -652,6 +653,8 @@
       hold: function (on) { if (spinHeld === Boolean(on)) return; spinHeld = Boolean(on); touch(); request(); },
       flash: flash,
       resize: resize,
+      /* PR 113: after the intake closes (keyboard gone, layout changed): fresh size, no stuck pointers or gesture */
+      rearm: function () { for (var k in pointers) delete pointers[k]; gesture = null; resize(); request(); },
       lightRoot: function (on) { if (rootLit === Boolean(on)) return; rootLit = Boolean(on); request(); },
       /* the zoom buttons: a short eased zoom about the centre */
       zoomBy: function (k) { var v = view(), z = CAM.zoomAbout(v, k, null, w, h); animateTo({ zoom: z.zoom, panX: v.panX * (z.zoom / v.zoom), panY: v.panY * (z.zoom / v.zoom), yaw: v.yaw, pitch: v.pitch }, CAM.CAM.zoomMs); },
