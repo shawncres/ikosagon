@@ -23,7 +23,7 @@
   var CUES = "ikolearn.v1.cues"; /* sessionStorage: the screens whose Iko bubble was shown this visit (each once a visit) */
   var IKO_MEM = "ikolearn-iko"; /* localStorage, this device only (beside the theme, outside every learner's cloud and IkoCloud file): the tips and reactions Iko has shown, per learner */
   var SESSION = "ikolearn.v1.session"; /* sessionStorage: the old once-a-visit draw (no longer written; cleared on reset) */
-  var HISTORY = 10, TIMEOUT_MS = 60000, MAX_LESSONS = 30;
+  var HISTORY = 10, TIMEOUT_MS = 60000, CREATE_TIMEOUT_MS = 95000, MAX_LESSONS = 30;
 
   var $ = function (id) { return document.getElementById(id); };
   var el = {
@@ -838,9 +838,9 @@
   }
   function cancelCall(name) { var c = calls[name]; calls[name] = null; if (c) c.abort(); }
   function cancelNav() { cancelCall("notice"); cancelCall("bridge"); }
-  function post(path, body, signal) {
+  function post(path, body, signal, timeoutMs) {
     var ctl = window.AbortController ? new AbortController() : null;
-    var timer = setTimeout(function () { if (ctl) ctl.abort(); }, TIMEOUT_MS);
+    var timer = setTimeout(function () { if (ctl) ctl.abort(); }, timeoutMs || TIMEOUT_MS);
     if (signal && ctl) { if (signal.aborted) ctl.abort(); else signal.addEventListener("abort", function () { ctl.abort(); }); }
     return fetch(API + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: ctl ? ctl.signal : undefined })
       .finally(function () { clearTimeout(timer); });
@@ -860,8 +860,8 @@
   }
 
   /* Reads an NDJSON event stream. on: { delta(text), cloud(ev), path(ev) }. Resolves { ok, reason }. */
-  function stream(path, body, on, signal) {
-    return post(path, body, signal).then(function (res) {
+  function stream(path, body, on, signal, timeoutMs) {
+    return post(path, body, signal, timeoutMs).then(function (res) {
       if (!res.ok || !res.body) {
         return res.json().catch(function () { return {}; }).then(function (j) { return { ok: false, reason: j.reason || j.error || String(res.status) }; });
       }
@@ -870,6 +870,7 @@
         if (!line.trim()) return;
         var ev; try { ev = JSON.parse(line); } catch { return; }
         if (ev.t === "delta" && typeof ev.text === "string") { got = true; on.delta(ev.text); }
+        else if (ev.t === "reset") { got = false; if (on.reset) on.reset(); }
         else if (ev.t === "cloud" && on.cloud) on.cloud(ev);
         else if (ev.t === "path" && on.path) on.path(ev);
         else if (ev.t === "item" && on.item && ev.item) { got = true; on.item(ev.item); }
@@ -1112,11 +1113,18 @@
     var take = function (it) { if (!it || !it.node) return; seen += 1; m.got.push(C.cleanLabel(it.node.name)); upsert(m); build.add(it); };
     /* streamed: each parent goes on the cloud as soon as it is written; a plain JSON answer arrives all at once */
     var laterOf = null;
-    stream("/create", Object.assign(basePayload(null), { mode: "notice", stream: true }, req), { delta: function () {}, item: take }).then(function (r) {
-      if (r.ok && Array.isArray(r.items)) r.items.slice(seen).forEach(take);
-      if (r.ok && Array.isArray(r.later)) laterOf = r.later;
-      return r.ok && seen ? { ok: true } : { ok: false, reason: r.reason };
-    }).then(function (j) {
+    /* a first cloud (several interests) can outlast one try: wait longer, then retry twice with backoff before the calm line */
+    var CREATE_BACKOFF = [1500, 3500];
+    var attemptCreate = function (n) {
+      return stream("/create", Object.assign(basePayload(null), { mode: "notice", stream: true }, req), { delta: function () {}, item: take }, undefined, CREATE_TIMEOUT_MS).then(function (r) {
+        if (r.ok && Array.isArray(r.items)) r.items.slice(seen).forEach(take);
+        if (r.ok && Array.isArray(r.later)) laterOf = r.later;
+        if (seen) return { ok: true };
+        if (r.reason === "aborted" || r.reason === "budget" || r.reason === "busy" || r.reason === "ip_rate" || n + 1 >= 3) return { ok: false, reason: r.reason || "offline" };
+        return new Promise(function (res) { setTimeout(res, CREATE_BACKOFF[n] || 3500); }).then(function () { return attemptCreate(n + 1); });
+      });
+    };
+    attemptCreate(0).then(function (j) {
       m.pending = 0;
       if (j && j.ok) {
         return build.done().then(function (ids) {
@@ -1437,8 +1445,14 @@
   /* Check questions from the lesson's hidden block: radio-style options; the first answer to each counts. */
   function validQs(qs) {
     return (Array.isArray(qs) ? qs : []).filter(function (q) {
-      return q && typeof q.q === "string" && Array.isArray(q.options) && q.options.length >= 2 && Number.isInteger(q.answer) && q.answer >= 0 && q.answer < q.options.length;
+      var minOpts = q && q.kind === "mistake" ? 3 : 2;
+      return q && typeof q.q === "string" && Array.isArray(q.options) && q.options.length >= minOpts && Number.isInteger(q.answer) && q.answer >= 0 && q.answer < q.options.length;
     }).map(function (q) { return typeof q.code === "string" && q.code.length <= 600 ? q : Object.assign({}, q, { code: undefined }); }).slice(0, 3);
+  }
+  /* A saved lesson is kept only when it is whole: worked example, check, a finished sentence, balanced fences. */
+  function lessonBodyOk(les) {
+    if (!les || typeof les.text !== "string" || !les.text.trim()) return false;
+    return L.complete(les.text, { check: validQs(les.qs).length > 0 || validQs(les.cur).length > 0 });
   }
   /*
    * Read -> check -> earn (PR 103). A lesson opens on its reading (Learn) with Continue; Continue opens Check yourself in
@@ -1680,6 +1694,7 @@
     var q = state.quiz, id = q && q.id;
     if (!q || id !== state.lessonNode || Number.isInteger(q.ans[qi]) || !q.qs[qi] || lessonPhase(id) !== "check") return;
     q.ans[qi] = oi;
+    if (oi === q.qs[qi].answer) { C.markInk(state.cloud, id); renderLessonCard(true); } /* the first right answer inks it, even if the round is later missed */
     if (state.lessons[id]) state.lessons[id].ans = q.ans.slice();
     var all = q.qs.every(function (_, i) { return Number.isInteger(q.ans[i]); });
     if (all) { endRound(id); return; }
@@ -1819,7 +1834,7 @@
     showReading(null);
     renderLessonPath();
     animateIn(from);
-    var cached = !fresh && state.lessons[id];
+    var cached = !fresh && lessonBodyOk(state.lessons[id]) ? state.lessons[id] : null;
     if (cached) {
       /* every saved answer comes back (one per question: 2 or 3) */
       var qs = validQs(cached.cur).length ? validQs(cached.cur) : validQs(cached.qs), ck = cached.ck || {};
@@ -1840,7 +1855,7 @@
       /* something else is still being written: this lesson waits its turn and starts by itself (no "try again") */
       el.lBody.textContent = "";
       el.lBody.appendChild(mk("p", "l-intro wait", "Getting this lesson ready. It starts as soon as the last answer is finished."));
-      state.queued = function () { if (state.lessonNode === id && state.mode === "lesson" && (!state.lessons[id] || opts.again)) openLesson(id, fresh, null, opts); };
+      state.queued = function () { if (state.lessonNode === id && state.mode === "lesson" && (!lessonBodyOk(state.lessons[id]) || opts.again)) openLesson(id, fresh, null, opts); };
       return;
     }
     lock(true);
@@ -1855,7 +1870,7 @@
     var lessonBody = Object.assign(basePayload(id), ctx);
     var nst = neoGet(); if (P.neoTaken(nst, nodeOf(id).label)) neoPut(nst); /* PR 119: a suggestion opened is a suggestion taken */
     lessonStream(id, lessonBody, {
-      reset: function () { text = ""; },
+      reset: function () { text = ""; if (state.lessonNode === id) renderLessonBody("", true); },
       delta: function (t) { text += t; if (state.lessonNode === id) renderLessonBody(text, true); },
       /* the hidden block: check questions, the card's line, path steps (only when asked), the fork, and whether this branch ends here */
       path: function (ev) {
@@ -1878,8 +1893,8 @@
       }
     }, callSignal("lesson")).then(function (r) {
       calls.lessonFor = null;
-      var parsed = L.parse(text);
-      if (r.ok && L.usable(parsed)) {
+      var keepLesson = L.complete(text, { check: Boolean((state.quiz && validQs(state.quiz.qs).length) || /\n?\s*CHECK\s*[:.-]/i.test(text)) });
+      if (r.ok && keepLesson) {
         var prevL = state.lessons[id];
         state.lessons[id] = { text: text.trim(), at: Date.now(), qs: state.quiz && state.quiz.id === id ? state.quiz.qs : [], ans: [] };
         if (prevL && prevL.earned) { state.lessons[id].earned = prevL.earned; if (prevL.take) state.lessons[id].take = prevL.take; } /* PR 108: earned once, for good */
@@ -1898,14 +1913,11 @@
       } else if (r.reason === "aborted") {
         /* cancelled because the learner moved on: not a failure; it is written next time it's opened */
       } else if (state.lessonNode === id) {
-        if (text && L.usable(parsed)) { renderLessonBody(text, false); lessonReady(id, true); }
-        else {
-          /* PR 113: one calm line, never the raw reason; the rest of the screen stays as it was */
-          el.lBody.textContent = "";
-          var calm = mk("p", "l-intro calm-fail", "Iko is still writing this one. Try another card while you wait. ");
-          calm.appendChild(linkBtn("Retry", function () { if (window.IkoUsage) window.IkoUsage.bump("generation_retries"); openLesson(id, true); }, "link calm-retry"));
-          el.lBody.appendChild(calm);
-        }
+        /* a cut-off lesson is not shown as finished and is not saved; it is written again next time */
+        el.lBody.textContent = "";
+        var calm = mk("p", "l-intro calm-fail", "Iko is still writing this one. Try another card while you wait. ");
+        calm.appendChild(linkBtn("Retry", function () { if (window.IkoUsage) window.IkoUsage.bump("generation_retries"); openLesson(id, true); }, "link calm-retry"));
+        el.lBody.appendChild(calm);
       }
       save(); lock(false);
     });
@@ -2007,22 +2019,31 @@
       if (p.ev && on.path) on.path(p.ev);
       return Promise.resolve({ ok: true });
     }
-    var got = "";
-    var wrap = { delta: function (t) { got += t; on.delta(t); }, path: on.path };
+    var got = "", sawCheck = false;
+    var wrap = {
+      delta: function (t) { got += t; on.delta(t); },
+      path: function (ev) { if (ev && Array.isArray(ev.questions) && ev.questions.length) sawCheck = true; if (on.path) on.path(ev); },
+      reset: function () { got = ""; sawCheck = false; if (on.reset) on.reset(); }
+    };
     return stream("/lesson", body, wrap, signal).then(function (r) {
-      if (r.reason === "aborted" || (r.ok && got.trim())) return r;
-      if (["busy", "ip_rate", "budget", "offline", "off", "no_key", "429", "503"].indexOf(String(r.reason)) >= 0) return r;
+      if (r.reason === "aborted") return r;
+      if (r.ok && L.complete(got, { check: sawCheck })) return r;
+      if (["busy", "ip_rate", "budget", "offline", "off", "no_key", "429", "503", "incomplete"].indexOf(String(r.reason)) >= 0) return r;
       if (on.reset) on.reset();
       return stream("/lesson", Object.assign({}, body, { strict: true }), on, signal);
     }).catch(function () { return { ok: false, reason: "error" }; });
   }
   function prefetchNext(id) {
     var next = P.pathNext(state.cloud, id);
-    if (!next || !nodeOf(next) || state.lessons[next] || pre[next] || state.busy || document.hidden) return;
+    if (!next || !nodeOf(next) || lessonBodyOk(state.lessons[next]) || pre[next] || state.busy || document.hidden) return;
     var slot = pre[next] = { ok: false, text: "", ev: null };
     var body = Object.assign(basePayload(next), P.lessonContext(state.cloud, next), { pre: true });
-    stream("/lesson", body, { delta: function (t) { slot.text += t; }, path: function (ev) { slot.ev = ev; } }).then(function (r) {
-      if (r.ok && L.usable(L.parse(slot.text))) {
+    stream("/lesson", body, {
+      delta: function (t) { slot.text += t; },
+      path: function (ev) { slot.ev = ev; },
+      reset: function () { slot.text = ""; slot.ev = null; }
+    }).then(function (r) {
+      if (r.ok && L.complete(slot.text, { check: Boolean(slot.ev && slot.ev.questions && slot.ev.questions.length) })) {
         slot.ok = true;
         var added = slot.ev ? plantBlock(next, slot.ev) : [];
         if (added.length) { save(); refreshViews(added); if (state.mode === "lesson") renderLessonPath(); if (state.mode === "test") renderTestNext(state.lessonNode); }
@@ -2641,12 +2662,11 @@
     renderIko();
     if (landing !== true && !el.ikoWrap.hidden) el.iko.focus();
   }
-  /* PR 108: "Support & feedback" opens the site's contact form (no email client), the learner's first name filled in */
-  function feedbackHref(name) {
-    var n = String(name || "").replace(/[\u0000-\u001f\u007f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, 60);
-    return "https://ikosagon.com/contact?" + (n ? "name=" + encodeURIComponent(n) + "&" : "") + "subject=IkoLearn%20Feedback";
+  /* Support & feedback opens the contact form with the subject filled in. The name stays on this device. */
+  function feedbackHref() {
+    return "https://ikosagon.com/contact?subject=IkoLearn%20Feedback";
   }
-  function renderFeedback() { [].forEach.call(document.querySelectorAll("a.fb-link"), function (a) { a.href = feedbackHref(state.name); }); }
+  function renderFeedback() { [].forEach.call(document.querySelectorAll("a.fb-link"), function (a) { a.href = feedbackHref(); }); }
   /* the cloud's own quiet links: Talk to Iko, the deck (once there is a card), and the learner switch when guiding */
   function renderHomeNav() {
     renderFeedback();
@@ -4385,6 +4405,10 @@
     try { state.thread = C.trimThread(JSON.parse(load(LS.thread) || "[]")); } catch { state.thread = []; }
     try { state.notes = JSON.parse(load(LS.notes) || "{}") || {}; } catch { state.notes = {}; }
     try { state.lessons = JSON.parse(load(LS.lessons) || "{}") || {}; } catch { state.lessons = {}; }
+    Object.keys(state.lessons).forEach(function (id) {
+      var les = state.lessons[id];
+      if (les && les.text && !lessonBodyOk(les)) { delete les.text; delete les.qs; delete les.cur; les.ans = []; } /* a cut-off lesson is written again when opened */
+    });
     try { state.tests = JSON.parse(load(LS.tests) || "{}") || {}; } catch { state.tests = {}; }
     try { var v = JSON.parse(load(LS.view) || "null"); state.view = v && Number.isFinite(v.z) ? v : null; } catch { state.view = null; }
     try { var sn = JSON.parse(load(LS.seen) || "null"); if (sn && sn.c && typeof sn.c === "object") state.seen = { c: sn.c, ev: Number(sn.ev) || 0, h: sn.h && typeof sn.h === "object" ? { cloud: sn.h.cloud ? 1 : 0, card: sn.h.card ? 1 : 0, deck: sn.h.deck ? 1 : 0, iko: sn.h.iko ? 1 : 0, grow: sn.h.grow ? 1 : 0, aboutCloud: sn.h.aboutCloud ? 1 : 0, aboutLesson: sn.h.aboutLesson ? 1 : 0, aboutDeck: sn.h.aboutDeck ? 1 : 0, askAge: sn.h.askAge ? 1 : 0, ageAsked: sn.h.ageAsked ? 1 : 0 } : {} }; } catch { /* keep the empty default */ }

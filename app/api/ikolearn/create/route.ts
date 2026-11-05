@@ -2,7 +2,7 @@ import { budgetSpend, createCheck, createEvents, createFor, eventStream, NO_STOR
 import { reply, reqMeta, state } from "../_shared";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 90;
 
 /**
  * POST { name, mode: "notice", kind: "start"|"more"|"next"|"bridge", repair? (bridge: the one-time re-ask), interests?, about? (start/more: the learner's own words; required unless interests are given), focus? (next), trail?, known?, favorites?, cloud, parents, stream? }

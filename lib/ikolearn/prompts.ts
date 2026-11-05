@@ -442,6 +442,31 @@ export function replyLooksComplete(text: string): boolean {
   return Boolean(t) && /[.!?…]["')\]]*$/.test(t);
 }
 
+const LESSON_SECTION = (tag: string) => new RegExp("(?:^|\\n)\\s*(?:[-*•]\\s*)?(?:\\d+[.)]\\s*)?" + tag + "\\s*(?:\\d+)?\\s*[:.-]", "i");
+
+/** A fenced block is balanced when opening and closing ``` lines come in pairs. */
+export function fencesBalanced(text: string): boolean {
+  const n = String(text || "").replace(/\r/g, "").split("\n").filter((l) => /^\s*```/.test(l)).length;
+  return n % 2 === 0;
+}
+
+/**
+ * A lesson is complete when it was not cut by the token cap, the required sections are present (including a worked
+ * example and a check), the visible text ends on sentence punctuation, and code fences are balanced.
+ * hasCheck: the hidden block parsed at least one question (the check lives there, not in the lesson text).
+ * allowCapped: the last try may keep a lesson that already has every section even if the model hit the token cap.
+ */
+export function lessonLooksComplete(text: string, opts: { finishReason?: string; hasCheck?: boolean; allowCapped?: boolean } = {}): boolean {
+  const src = String(text || "");
+  const has = (tag: string) => LESSON_SECTION(tag).test(src);
+  const check = Boolean(opts.hasCheck) || has("CHECK");
+  const structural = has("INTRO") && (has("EXPLAIN") || has("STEP")) && has("EXAMPLE") && has("NEXT") && check && replyLooksComplete(src.replace(/\n```[A-Za-z0-9+#._-]*\s*$/i, "")) && fencesBalanced(src);
+  if (!structural) return false;
+  const fr = String(opts.finishReason || "").toUpperCase();
+  if ((fr === "MAX_TOKENS" || fr === "LENGTH") && !opts.allowCapped) return false;
+  return true;
+}
+
 /** Pull a topic phrase from clear "I want to learn X" / "add X" / "teach me X" lines. "" when unclear. */
 export function learnTopicFrom(text: string): string {
   let t = String(text || "").replace(/\s+/g, " ").trim();
@@ -649,7 +674,7 @@ const lessonPace = (i: LearnInput) =>
 const lessonBlockRules = (i: LearnInput) =>
   `After the lesson, on a new line, write ${PATH_OPEN} then one JSON object then ${PATH_CLOSE}, and nothing after it. The learner never sees this block as text. ` +
   'The JSON is {"questions":[{"kind":"recall|apply|mistake","q":"...","options":["...","...","..."],"answer":0,"why":["","...","..."]}],"key_idea":"...","retry":[{"q":"...","options":["...","...","..."],"answer":0}],"blurb":"...","steps":["..."],"next":"...","choices":[{"name":"...","kind":"next|deeper|side","why":"...","blurb":"..."}],"reading":[{"title":"...","q":"...","kind":"read|watch"}],"tricky":"...","end":false}. ' +
-  `questions: exactly 3 multiple-choice questions that check real understanding of what this lesson explained, in this order: kind "recall" (the key idea, asked so it cannot be answered by spotting one repeated phrase), kind "apply" (use the idea in a new situation that does not appear anywhere in the lesson text; the right answer needs the idea), kind "mistake" (someone took one specific plausible wrong step with the idea; the question asks what went wrong). Each has 3 short options (each under 12 words): one clearly right; every wrong option is a plausible misconception for the chosen level. ${DISTRACTOR_RULE} answer = the position of the right option counting from 0. why: one entry per option, in the same order: for each wrong option a short line (under 15 words) on why it is tempting; "" for the right one. Short and kind, at the learner's level. Do not ask anything the lesson never taught. ${QUESTION_CODE} ` +
+  `questions: exactly 3 multiple-choice questions that check real understanding of what this lesson explained, in this order: kind "recall" (the key idea, asked so it cannot be answered by spotting one repeated phrase), kind "apply" (use the idea in a new situation that does not appear anywhere in the lesson text; the right answer needs the idea), kind "mistake" (someone took one specific plausible wrong step with the idea; the question asks what went wrong). Each has 3 short options (each under 12 words): one clearly right; every wrong option is a plausible misconception for the chosen level. The mistake question always has exactly 3 options, never 2. ${DISTRACTOR_RULE} answer = the position of the right option counting from 0. why: one entry per option, in the same order: for each wrong option a short line (under 15 words) on why it is tempting; "" for the right one. Short and kind, at the learner's level. Do not ask anything the lesson never taught. ${QUESTION_CODE} ` +
   'key_idea: the one key idea of this lesson as one plain sentence (at most 25 words), a statement of the concept itself, never an example, analogy or story. ' +
   `retry: a second, different set of 3 questions (recall, apply, mistake, with why as above) on the same key ideas (asked another way, never the same wording or the same right option position), kept for a second try if the first check is missed. ` +
   `blurb: one line under 12 words that says what "${i.focus}" is, for its card, without the learner's name. ` +
@@ -663,8 +688,13 @@ const lessonBlockRules = (i: LearnInput) =>
   "reading: 2 or 3 good ways to read or watch more about it: title (what to look for, under 8 words) and q (a plain search phrase, 2 to 6 words), kind read or watch. Never a link, web address, website or channel name. " +
   `tricky: kept ready in case the learner says "${i.focus}" is still tricky (shown only then): 2 or 3 short sentences that explain the key idea more simply, with one everyday comparison, then one short question that checks that key point. Plain text, under 70 words, no greeting, no "great question".`;
 
-export function lessonContents(i: LearnInput) {
-  return [{ role: "user" as const, parts: [{ text: `Please teach me "${i.focus}".` }] }];
+export function lessonContents(i: LearnInput, draft = "") {
+  let text = `Please teach me "${i.focus}".`;
+  const d = draft.trim();
+  if (d.length >= 40) {
+    text += `\n\nThe last draft stopped early. Write the whole lesson again, including the worked example, NEXT, and the hidden block. You may reuse good lines. Do not stop mid-sentence. Draft so far:\n${d.slice(0, 3500)}`;
+  }
+  return [{ role: "user" as const, parts: [{ text }] }];
 }
 
 export function pathSystem(i: LearnInput): string {
@@ -1240,8 +1270,18 @@ export function parseQuestions(raw: unknown, max: number = LEARN_LIMITS.question
       options.length = 0; options.push(...keptOpts);
       answer = options.findIndex((x) => sameLabel(x, right));
     }
-    const why = options.map((x, xi) => (xi === answer ? "" : whyOf[x] || ""));
     const kind = (QUESTION_KINDS as readonly string[]).includes(String(o.kind)) ? (o.kind as Question["kind"]) : undefined;
+    /* Spot-the-mistake is specified as exactly 3 options. Fewer than 3 is dropped (the check is regenerated);
+       more than 3 is trimmed, keeping the right answer. */
+    if (kind === "mistake") {
+      if (options.length < 3) continue;
+      while (options.length > 3) {
+        const drop = options.length - 1 === answer ? options.length - 2 : options.length - 1;
+        options.splice(drop, 1);
+        if (drop < answer) answer -= 1;
+      }
+    }
+    const why = options.map((x, xi) => (xi === answer ? "" : whyOf[x] || ""));
     out.push({ q, options, answer, ...(code ? { code } : {}), ...(kind ? { kind } : {}), ...(why.some(Boolean) ? { why } : {}) });
     if (out.length >= max) break;
   }
@@ -1437,7 +1477,7 @@ export function checkSystem(i: LearnInput, strict = false): string {
     `${SYSTEM_BASE}\n\nRole: check. The learner just read the lesson below on "${i.focus}". ` +
     'Answer {"key_idea":"...","questions":[{"kind":"recall|apply|mistake","q":"...","options":["...","...","..."],"answer":0,"why":["","...","..."]}],"retry":[...same shape...]}. ' +
     "questions: exactly 3, in this order: recall (the key idea, not a hunt for one repeated phrase), apply (a new situation that is not in the lesson text, where the right answer needs the idea), mistake (one specific plausible wrong step; the question asks what went wrong). " +
-    "3 options each, under 12 words; one clearly right, every wrong option a plausible near-miss for the chosen level. " + DISTRACTOR_RULE + " answer = position of the right option from 0. " +
+    "3 options each, under 12 words; one clearly right, every wrong option a plausible near-miss for the chosen level. The mistake question always has exactly 3 options, never 2. " + DISTRACTOR_RULE + " answer = position of the right option from 0. " +
     "Only ask what the lesson taught. " +
     'why: per option, a short line on why a wrong one is tempting, "" for the right one. retry: a different set of 3 of the same kinds. ' +
     (strict ? "Second try: every wrong option must be a plausible near-miss a learner might actually choose. No jokes, no nonsense, no obviously impossible claims, no filler. Keep exactly 3 questions, one recall, one apply, one mistake, 3 options each. " : "") +

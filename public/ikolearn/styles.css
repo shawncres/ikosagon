@@ -999,7 +999,7 @@ html:not([data-theme="dark"]) .cloud-fog { mix-blend-mode: multiply; }
 /* type: the interface in the sans, reading in the serif; headings in full ink, secondary labels a step quieter */
 body, .btn, .link, input, textarea, select, .kicker, .l-head, .hc-ph, .fine, .tabs, nav { font-family: var(--ui-sans); }
 #l-body, .l-body, .lesson, .clar, .q legend, .q label, .conf-take, .hc-story, .iko-msg { font-family: var(--read-serif); }
-/* lesson reading: #l-body.lesson keeps Georgia/--read-serif. "Small content" meant lesson length, so stay at the post-#134 size (18px, 19px from 900px). */
+/* lesson reading: #l-body.lesson keeps Georgia/--read-serif. "Small content" meant lesson length, so stay at the post-134 size (18px, 19px from 900px). */
 #l-body.lesson, #l-body { font-size: 18px; line-height: 1.65; }
 @media (min-width: 900px) { #l-body.lesson, #l-body { font-size: 19px; } }
 h1 { font-size: var(--t-2xl); font-weight: 600; letter-spacing: -.01em; line-height: 1.15; }

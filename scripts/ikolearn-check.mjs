@@ -5,7 +5,7 @@ import fs from "node:fs";
 import zlib from "node:zlib";
 import { createRequire } from "node:module";
 import {
-  LEARN_LIMITS, CLOUD_OPEN, CLOUD_CLOSE, cleanName, cleanLabel, cleanMessages, parseLearnInput, SYSTEM_BASE, companionSystem, noticeSystem, replyLooksComplete, learnTopicFrom,
+  LEARN_LIMITS, CLOUD_OPEN, CLOUD_CLOSE, cleanName, cleanLabel, cleanMessages, parseLearnInput, SYSTEM_BASE, companionSystem, noticeSystem, replyLooksComplete, lessonLooksComplete, learnTopicFrom,
   buildContents, cardSystem, adjacentSystem, plainReply, parseCloudBlock, parseCard, parseAdjacent, createBlockSplitter,
   PATH_OPEN, PATH_CLOSE, lessonSystem, lessonContents, pathSystem, PATH_SCHEMA, CARD_SCHEMA, parsePath, parseChoices, parseLessonBlock, parseQuestions, parseBlurb, parseChain, checkSystem,
   parseTest, testSystem, TEST_SCHEMA, createSystem, parseCreate, CREATE_SCHEMA, examplesSystem, parseExamples, EXAMPLES_SCHEMA, EXAMPLE_LIMITS, SIGNALS, parseReading,
@@ -290,8 +290,9 @@ eq(parseAdjacent('{"ghosts":[{"name":"Decimals","parent":"Math"},{"name":"Sam","
 }
 
 /* ================= mocked Gemini ================= */
-const sse = (pieces, { thought = false } = {}) => {
+const sse = (pieces, { thought = false, finish = "" } = {}) => {
   const lines = pieces.map((t) => `data: ${JSON.stringify({ candidates: [{ content: { parts: thought ? [{ text: "thinking...", thought: true }, { text: t }] : [{ text: t }] } }] })}\n\n`);
+  if (finish) lines.push(`data: ${JSON.stringify({ candidates: [{ finishReason: finish, content: { parts: [{ text: "" }] } }] })}\n\n`);
   const enc = new TextEncoder();
   return new ReadableStream({ start(c) { for (const l of lines) { c.enqueue(enc.encode(l.slice(0, 9))); c.enqueue(enc.encode(l.slice(9))); } c.close(); } });
 };
@@ -457,20 +458,33 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   f = fakeFetch([() => res(200, sse(lesson))]);
   ev = await collect(lessonEvents({ ...LI, wantPath: false }, ENV, f));
   ok(!ev.some((e) => e.t === "path") && !ev.filter((e) => e.t === "delta").map((e) => e.text).join("").includes("<<<"), "lessonEvents: no path event without wantPath (block still hidden)");
-  f = fakeFetch([() => res(200, sse(["INTRO: Hi.\nSTEP: One.\n", `${PATH_OPEN}{"steps":[],"end":true}${PATH_CLOSE}`]))]);
+  const taught = "INTRO: Here is the idea, Sam.\nEXPLAIN: It works in one step.\nSTEP: Do the first part.\nEXAMPLE: Two and two make four.\nCHECK: What is two and two?\nNEXT: Try it on your own.\n";
+  f = fakeFetch([() => res(200, sse([taught, `${PATH_OPEN}{"steps":[],"end":true}${PATH_CLOSE}`]))]);
   ev = await collect(lessonEvents(LI, ENV, f));
   eq(ev.find((e) => e.t === "path"), { t: "path", steps: [], next: "", choices: [], questions: [], end: true }, "lessonEvents: branch end passes through");
-  f = fakeFetch([() => res(200, sse(["INTRO: Hi.\nSTEP: One.\n", `${PATH_OPEN}{"steps":["Ignored"],"next":"","choices":[{"name":"Making 20","kind":"next","why":"Your next step"},{"name":"Doubles","kind":"deeper","why":"A quick trick"}]}${PATH_CLOSE}`]))]);
+  f = fakeFetch([() => res(200, sse([taught, `${PATH_OPEN}{"steps":["Ignored"],"next":"","choices":[{"name":"Making 20","kind":"next","why":"Your next step"},{"name":"Doubles","kind":"deeper","why":"A quick trick"}]}${PATH_CLOSE}`]))]);
   ev = await collect(lessonEvents({ ...LI, wantPath: false, ahead: "Making 20" }, ENV, f));
   const fe = ev.find((e) => e.t === "path");
   ok(fe && fe.steps.length === 0 && fe.choices.length === 2 && fe.choices[0].kind === "next" && f.calls.length === 1, "lessonEvents: fork choices arrive in the same call (no path steps without wantPath)");
   ok(JSON.parse(f.calls[0].init.body).systemInstruction.parts[0].text.includes('"Making 20"'), "lesson request carries the planned next step");
-  f = fakeFetch([() => res(200, sse(["INTRO: Hi.\nSTEP: One.\n", `${PATH_OPEN}nonsense${PATH_CLOSE}`]))]);
+  f = fakeFetch([() => res(200, sse([taught, `${PATH_OPEN}nonsense${PATH_CLOSE}`]))]);
   ev = await collect(lessonEvents(LI, ENV, f));
   ok(!ev.some((e) => e.t === "path") && ev.at(-1).t === "done", "lessonEvents: bad path block is ignored");
-  f = fakeFetch([() => res(503, null), () => res(200, sse(["INTRO: Hi.\nSTEP: One."]))]);
+  f = fakeFetch([() => res(503, null), () => res(200, sse([taught]))]);
   ev = await collect(lessonEvents(LI, ENV, f));
   ok(f.calls.length === 2 && ev[0].model === FALLBACK_MODEL, "lessonEvents: fallback model on 5xx");
+  const cut = "INTRO: Bonds pair numbers.\nEXPLAIN: They add up.\nSTEP: Take";
+  const whole = taught + `${PATH_OPEN}{"questions":[{"q":"What is two and two?","options":["Three","Four","Five"],"answer":1}],"blurb":"Pairs that add up."}${PATH_CLOSE}`;
+  f = fakeFetch([() => res(200, sse([cut], { finish: "MAX_TOKENS" })), () => res(200, sse([whole]))]);
+  ev = await collect(lessonEvents(LI, ENV, f));
+  const resetAt = ev.findIndex((e) => e.t === "reset");
+  const after = resetAt >= 0 ? ev.slice(resetAt + 1).filter((e) => e.t === "delta").map((e) => e.text).join("") : "";
+  ok(f.calls.length === 2 && resetAt > 0 && ev.at(-1).t === "done" && after.includes("EXAMPLE:") && after.includes("NEXT:") && !after.endsWith("Take") && JSON.parse(f.calls[1].init.body).generationConfig.maxOutputTokens === MODEL_LIMITS.lessonRetryTokens && /second try/.test(JSON.parse(f.calls[1].init.body).systemInstruction.parts[0].text), "lessonEvents: a cut lesson (max tokens, stops at Take) is retried once with a higher cap and not finished incomplete");
+  f = fakeFetch([() => res(200, sse([cut], { finish: "MAX_TOKENS" }))]);
+  ev = await collect(lessonEvents(LI, ENV, f));
+  ok(f.calls.length === 3 && ev.at(-1).t === "error" && ev.at(-1).reason === "incomplete" && !ev.some((e) => e.t === "done"), "lessonEvents: two retries, then incomplete (nothing for the device to cache)");
+  ok(!lessonLooksComplete(cut, { finishReason: "MAX_TOKENS" }) && !lessonLooksComplete(cut) && !lessonLooksComplete("INTRO: Hi.\nEXPLAIN: A.\nSTEP: B.\nEXAMPLE: C.\nNEXT: D") && lessonLooksComplete(taught) && !lessonLooksComplete(taught + "\n```python\nprint(1)\n") && lessonLooksComplete("INTRO: Hi.\nEXPLAIN: A.\nSTEP: B.\nNEXT: Done.\n", { hasCheck: false }) === false && lessonLooksComplete("INTRO: Hi.\nEXPLAIN: A.\nSTEP: B.\nEXAMPLE: Two.\nNEXT: Done.", { hasCheck: true }), "lesson complete: sections, worked example, check, punctuation, fences, token cap");
+  ok(L.complete(taught) && !L.complete(cut) && !L.complete(taught + "\n```\nprint(1)\n") && L.complete("INTRO: Hi.\nEXPLAIN: A.\nSTEP: B.\nEXAMPLE: Two.\nNEXT: Done.", { check: true }) && !L.complete("INTRO: Hi.\nEXPLAIN: A.\nSTEP: B.\nEXAMPLE: Two.\nNEXT: Done."), "lesson.js: the same completeness check on the device");
 
   const gj = (obj) => () => res(200, { candidates: [{ content: { parts: [{ text: JSON.stringify(obj) }] } }] });
   f = fakeFetch([gj({ steps: ["Pairs To 10", "Making 20"], next: "Making 20" })]);
@@ -801,6 +815,12 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(coldDrop.length === 1 && coldDrop[0].options.length === 2 && !/ice|cold/i.test(coldDrop[0].options.join(" ")), "parseQuestions: cold-ice cave distractor is stripped, plausible options kept");
   eq(parseQuestions([{ q: "What is lava made of?", options: ["Melted rock", "Always cold ice", "Made of cold ice"], answer: 0 }]), [], "parseQuestions: only-absurd ice-lava set is dropped (falls through to /check)");
   ok(parseQuestions([{ q: "Where is magma found before it reaches the surface?", options: ["Deep underground", "In rivers of water", "In open air"], answer: 0 }]).length === 1, "parseQuestions: plausible science mix-ups are kept");
+  eq(parseQuestions([{ kind: "mistake", q: "Sam says two plus two is five. What went wrong?", options: ["One was counted twice", "The sum is four"], answer: 0 }]), [], "mistake: fewer than 3 options is rejected");
+  const mk3 = parseQuestions([{ kind: "mistake", q: "Sam says two plus two is five. What went wrong?", options: ["One was counted twice", "The sum is four", "Addition does not apply"], answer: 0 }]);
+  ok(mk3.length === 1 && mk3[0].kind === "mistake" && mk3[0].options.length === 3 && mk3[0].options[mk3[0].answer] === "One was counted twice", "mistake: exactly 3 options kept");
+  const mk4 = parseQuestions([{ kind: "mistake", q: "Sam says two plus two is five. What went wrong?", options: ["One was counted twice", "The sum is four", "Addition does not apply", "A fourth extra option here"], answer: 0 }]);
+  ok(mk4.length === 1 && mk4[0].options.length === 3 && mk4[0].options[mk4[0].answer] === "One was counted twice", "mistake: extra options trimmed to 3, the right one kept");
+  ok(/exactly 3 options, never 2/.test(lessonSystem(parseLearnInput({ mode: "notice", name: "Sam", focus: "Sets", messages: [] }))) && /exactly 3 options, never 2/.test(checkSystem(parseLearnInput({ mode: "notice", name: "Sam", focus: "Sets", messages: [], lesson: "INTRO: A set keeps one of each." }))), "mistake prompt: exactly 3 options, never 2");
   const cheese = parseQuestions([{ q: "What is the moon made of?", options: ["Rock and dust", "It is made of cheese", "Mostly iron"], answer: 0 }]);
   ok(cheese.length === 1 && cheese[0].options.length === 2 && !/cheese/i.test(cheese[0].options.join(" ")), "parseQuestions: a cheese-moon joke is stripped, the near-miss stays");
   eq(parseQuestions([{ q: "What is magma?", options: ["Melted rock", "A kind of ice cream", "Cold candy"], answer: 0 }]), [], "parseQuestions: joke-food distractors on magma drop the question");
@@ -813,7 +833,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
 
   // lessonEvents: the questions ride in the same call, hidden from the streamed text
   const LI = parseLearnInput({ mode: "notice", name: "Sam", focus: "Sets", trail: "Making & Coding > Programming > Python > Sets", wantPath: false, messages: [] });
-  const f = fakeFetch([() => res(200, sse(["INTRO: A set keeps one of each, Sam.\nSTEP: Make one.\n", `${PATH_OPEN}{"steps":[],"choices":[],"questions":[{"q":"Which of these could be a set?","options":["cat, cat","cat, dog"],"answer":1}],`, `"blurb":"A set keeps one of each thing."}${PATH_CLOSE}`]))]);
+  const f = fakeFetch([() => res(200, sse(["INTRO: A set keeps one of each, Sam.\nEXPLAIN: Repeats drop out.\nSTEP: Make one.\nEXAMPLE: Cat and cat and dog becomes cat and dog.\nNEXT: Try another set.\n", `${PATH_OPEN}{"steps":[],"choices":[],"questions":[{"q":"Which of these could be a set?","options":["cat, cat","cat, dog"],"answer":1}],`, `"blurb":"A set keeps one of each thing."}${PATH_CLOSE}`]))]);
   const ev = await collect(lessonEvents(LI, ENV, f));
   const pe = ev.find((e) => e.t === "path"), shown = ev.filter((e) => e.t === "delta").map((e) => e.text).join("");
   ok(pe && pe.questions.length === 1 && pe.questions[0].options[pe.questions[0].answer] === "cat, dog" && pe.blurb === "A set keeps one of each thing." && f.calls.length === 1, "lessonEvents: questions and the card line arrive in the one lesson call");
@@ -937,7 +957,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   eq(toMessages("sys", [{ role: "user", parts: [{ text: "a" }] }, { role: "model", parts: [{ text: "b" }, { text: "c" }] }]), [{ role: "system", content: "sys" }, { role: "user", content: "a" }, { role: "assistant", content: "bc" }], "toMessages: model -> assistant, parts joined");
   eq(evO.filter((e) => e.t !== "start"), evG.filter((e) => e.t !== "start"), "the same reply gives the same events from either provider (text, hidden cloud block, done)");
   ok(evO[0].t === "start" && evO[0].model === "some-model" && !JSON.stringify(evO).includes("ok-key") && !JSON.stringify(evO).includes("thinking"), "openai-compatible: names its model, never the key, reasoning text skipped");
-  const lessonText = ["INTRO: Sets keep one of each, Sam.\nSTEP: Make one.\n", `${PATH_OPEN}{"steps":["Lists"],"next":"Lists","choices":[],"questions":[{"q":"Which of these could be a set?","options":["a, a","a, b"],"answer":1}],"blurb":"A set keeps one of each thing."}${PATH_CLOSE}`];
+  const lessonText = ["INTRO: Sets keep one of each, Sam.\nEXPLAIN: Repeats drop out.\nSTEP: Make one.\nEXAMPLE: Cat and cat and dog becomes cat and dog.\nNEXT: Try another set.\n", `${PATH_OPEN}{"steps":["Lists"],"next":"Lists","choices":[],"questions":[{"q":"Which of these could be a set?","options":["a, a","a, b"],"answer":1}],"blurb":"A set keeps one of each thing."}${PATH_CLOSE}`];
   const LI = parseLearnInput({ mode: "notice", name: "Sam", focus: "Sets", trail: "Making & Coding > Python > Sets", wantPath: true, messages: [] });
   const lO = await collect(lessonEvents(LI, OA, fakeFetch([() => res(200, oaiSse(lessonText))])));
   const lG = await collect(lessonEvents(LI, ENV, fakeFetch([() => res(200, sse(lessonText))])));
@@ -1124,13 +1144,14 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
    * same function here), index.html and the icon go as they are. Budget 330 KB raw / 106 KB gzip (PR 103 raised it from
    * 100 KB for the companion at the bottom and the read, check, earn loop: about 4 KB gzip; PR 105 by 1 KB for Iko's
    * light/dark and careful delete, the lasting hints and nudges, and the support links: about 1.7 KB gzip; PR 106 by 1 KB
-   * for Iko's guidance on every stage, Back from the whole conversation and the movement line that learns: about 0.7 KB).
+   * for Iko's guidance on every stage, Back from the whole conversation and the movement line that learns: about 0.7 KB;
+   * then a little more for a cut lesson's retries, the first-cloud retry, and inking a card on its first right answer).
    */
   const files = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js", "rank.js", "orchestrator.js", "camera.js", "profiles.js", "icon.svg"];
   const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
   const bytes = files.reduce((n, f) => n + served(f).length, 0);
   const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
-  ok(bytes < 392_000, "app weight under 392 KB uncompressed (served, minified)", String(bytes));
+  ok(bytes < 394_000, "app weight under 394 KB uncompressed (served, minified)", String(bytes));
   ok(gz < 132_000, "app weight under 132 KB gzipped (served, minified)", String(gz));
 }
 
@@ -1456,7 +1477,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const co3 = await createFor(CI, ENV, cf3);
   ok(co3.status >= 500 && !co3.body.ok, "createFor: an unusable answer is an error (the app falls back on the device)");
   const croute = fs.readFileSync("app/api/ikolearn/create/route.ts", "utf8");
-  ok(/prepare\(/.test(croute) && /createFor\(/.test(croute) && /maxDuration = 60/.test(croute) && !/requireFocus/.test(croute), "create route: same guards (origin, rate limits, daily budget)");
+  ok(/prepare\(/.test(croute) && /createFor\(/.test(croute) && /maxDuration = 90/.test(croute) && !/requireFocus/.test(croute), "create route: same guards (origin, rate limits, daily budget); a first cloud may take longer than 60 s");
   ok(!fs.existsSync("lib/ikolearn/chains.ts") && !/from "\.\/chains"/.test(fs.readFileSync("lib/ikolearn/prompts.ts", "utf8")), "the hardcoded chain table is gone");
 
   // no subject renaming: the model named "Engineering" and "Language" as subjects on an empty map, and they stay so
@@ -1913,6 +1934,11 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     right(c, f.id, 1, T0 + 20); tiers.push(C.tierOf(c, f.id).key);
     right(c, f.id, 1, T0 + 30); tiers.push(C.tierOf(c, f.id).key);
     eq(tiers, ["sketch", "inked", "tinted", "achieved"], "tiers: 0 right Sketch, 1 Inked, 2 (done) Tinted, 3 Achieved");
+    const ink = C.create("Sam", T0);
+    C.applyTopics(ink, [{ name: "Fossils", parent: "Science", signal: "explored", chain: ["Science"] }], T0);
+    const fid = C.findTopic(ink, "Fossils").id;
+    ok(C.tierOf(ink, fid).key === "sketch" && C.markInk(ink, fid, T0 + 1) && C.tierOf(ink, fid).key === "inked" && (ink.nodes[fid].correct || 0) === 0 && !C.inDeck(ink, fid), "first right answer inks the card; a missed round still earns no credit and does not join the deck");
+    ok(C.deserialize(C.serialize(ink)).nodes[fid].inked === true && C.tierOf(C.deserialize(C.serialize(ink)), fid).key === "inked", "inked survives a reload (flag bit, storage stays v9)");
     const g = C.growthOf(c, f.id);
     ok(g.stage === 4 && g.achieved && !g.ended && g.tierName === "Achieved", "an Achieved card is in full colour (the colour is earned on the card as its tier rises)");
     ok(C.TIER_STAGE.every((st, i) => i === 0 || st >= C.TIER_STAGE[i - 1]), "colour stage never falls as the tier rises");
@@ -2486,7 +2512,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(fold.tag === "details" && !fold.attrs.open && all(fold).some((n) => n.tag === "summary" && n.textContent === "Further reading & viewing"), "further reading: a collapsed fold, \u201cFurther reading & viewing\u201d");
   ok(anchors.length === 8 && anchors.every((a) => L.allowedHref(a.href) && a.rel === "noopener noreferrer nofollow" && /^Search /.test(a.textContent)) && !all(fold).some((n) => /evil/.test(n.href || "") || /evil/.test(n.textContent || "")), "no model URL is ever rendered: every link is an allowlisted search", String(anchors.length));
   ok(L.renderReading(fdoc, []) === null && L.renderReading(fdoc, [{ title: "x", q: "https://a.b" }]) === null, "nothing to show: no fold");
-  ok((app.match(/\.href\s*=/g) || []).length === 2 && /a\.href = feedbackHref\(state\.name\);/.test(app) && /return "https:\/\/ikosagon\.com\/contact\?"/.test(app) && /var url = URL\.createObjectURL\(new Blob\(\[f\.text\], \{ type: "application\/json" \}\)\), a = mk\("a"\);\s*a\.href = url;/.test(app) && (lessonJs.match(/\.href\s*=/g) || []).length === 1 && /if \(!allowedHref\(l\.href\)\) return;/.test(lessonJs), "only lesson.js sets a link, after the allowlist check; the app's only one is the cloud file's own download (a blob made on the device)");
+  ok((app.match(/\.href\s*=/g) || []).length === 2 && /a\.href = feedbackHref\(\);/.test(app) && /return "https:\/\/ikosagon\.com\/contact\?subject=IkoLearn%20Feedback";/.test(app) && !/name=/.test(app.slice(app.indexOf("function feedbackHref"), app.indexOf("function renderHomeNav"))) && /var url = URL\.createObjectURL\(new Blob\(\[f\.text\], \{ type: "application\/json" \}\)\), a = mk\("a"\);\s*a\.href = url;/.test(app) && (lessonJs.match(/\.href\s*=/g) || []).length === 1 && /if \(!allowedHref\(l\.href\)\) return;/.test(lessonJs), "only lesson.js sets a link, after the allowlist check; the app's only one is the cloud file's own download (a blob made on the device). Support & feedback keeps the subject and does not add the name");
   ok(/reading = L\.cleanReading\(ev\.reading\)/.test(app) && /state\.lessons\[id\]\.rd = reading/.test(app) && /showReading\(cached\.rd\)/.test(app), "the reading list is cached with the lesson (no new call to show it again)");
 
   // newcomer hints: three, exact copy, remembered in ikolearn.v1.seen
@@ -2650,7 +2676,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(os.ok && otext === text && of.calls.length === 1, "streamJson: an OpenAI-compatible provider answers in one piece");
 
   // the app: streams the build, adds each parent as it arrives, placeholders while waiting
-  ok(/stream\("\/create", Object\.assign\(basePayload\(null\), \{ mode: "notice", stream: true \}, req\), \{ delta: function \(\) \{\}, item: take \}\)/.test(app) && /function cloudBuilder\(\)/.test(app) && /build\.add\(it\)/.test(app), "app: the first build streams and each parent goes on the cloud as it arrives");
+  ok(/stream\("\/create", Object\.assign\(basePayload\(null\), \{ mode: "notice", stream: true \}, req\), \{ delta: function \(\) \{\}, item: take \}, undefined, CREATE_TIMEOUT_MS\)/.test(app) && /CREATE_BACKOFF = \[1500, 3500\]/.test(app) && /function cloudBuilder\(\)/.test(app) && /build\.add\(it\)/.test(app), "app: the first build streams and each parent goes on the cloud as it arrives; a slow try waits longer and retries before the calm line");
   ok(/else if \(ev\.t === "item" && on\.item && ev\.item\)/.test(app) && /else if \(ev\.ok === true && Array\.isArray\(ev\.items\)\) result = \{ ok: true, items: ev\.items, later: ev\.later \}/.test(app), "app: the reader takes items (and the intake's later ideas), and a plain JSON answer still works");
   ok(/var BUILD_BEAT = 380;/.test(app) && !/wait\(700\)/.test(app), "app: the build beat is 380 ms per step (was 700)");
   ok(/m\.streaming && \(m\.pending \|\| \(m\.got && m\.got\.length\)\)/.test(app) && /"gen-ph"/.test(app) && /\.gen-ph \{/.test(css) && /@media \(prefers-reduced-motion: reduce\) \{ \.gen-ph, \.gen-got \{ animation: none; \} \}/.test(css), "app: quiet placeholders while the build is written (still with reduced motion)");
