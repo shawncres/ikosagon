@@ -40,7 +40,7 @@ export const MODEL_LIMITS = {
   jsonTimeoutMs: 20_000,
   /** hard cap on a whole streamed reply; a timed-out request plus one fallback stays inside the routes' 60 s */
   streamTimeoutMs: 38_000,
-  chatMaxTokens: 900,
+  chatMaxTokens: 2_000, /* PR chat-complete: reply + CLOUD block were cutting mid-sentence at 900 */
   lessonMaxTokens: 3_400, /* PR 118: the hidden block (6 questions with why lines, key idea) was cut off at 2,100 */
   jsonMaxTokens: 600,
   /** the creation call: up to 5 parents, each with a card and up to 6 children */
