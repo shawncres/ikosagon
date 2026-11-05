@@ -531,6 +531,24 @@
     return best;
   }
 
+  /*
+   * PR 114/118: the weekly recap, to the learner, exactly four sentences: what was explored, one check passed (its key
+   * idea), a question to think about, and a next step. items: [{ label, passed, key }] newest first. "" when nothing yet.
+   */
+  function weekRecap(items, next) {
+    items = (items || []).filter(function (x) { return x && x.label; });
+    if (!items.length) return "";
+    var clean = function (t) { return String(t || "").replace(/[.!?]+$/, "").replace(/[.!?]\s+/g, ", ").replace(/\s+/g, " ").trim(); };
+    var names = items.slice(0, 3).map(function (x) { return x.label; });
+    var list = names.length === 1 ? names[0] : names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
+    var ok = items.filter(function (x) { return x.passed; })[0];
+    var s2 = ok ? "You passed the check on " + ok.label + (ok.key ? ", about this idea: " + clean(ok.key).replace(/^./, function (c) { return c.toLowerCase(); }) : "") + "."
+      : "You read about " + names[0] + " and can take its check whenever you're ready.";
+    return ["This week you explored " + list + ".", s2,
+      "A question to think about: how would you explain " + (ok || items[0]).label + " to a friend in one or two sentences?",
+      next ? "A good next step is " + next + "." : "A good next step is to open one more card on your cloud."].join(" ");
+  }
+
   /* PR 107: the learner's age band (if they chose one) goes with the calls that write teaching (lesson, clarify, test) and
      nowhere else; it shapes how things are explained, never which topics */
   function withBand(cloud, ctx) { var b = C.bandOf(cloud); if (b) ctx.level = b; return ctx; } /* PR 114: the lesson level (simple / deeper; standard sends nothing) */
@@ -968,7 +986,7 @@
     PLAN: PLAN, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, needsRepair: needsRepair, repairRequest: repairRequest,
     MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild, nextStep: nextStep,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
-    suggest: suggest, draw: draw, lessonContext: lessonContext, withBand: withBand, areaOf: areaOf, starterIdeas: starterIdeas, mixStarters: mixStarters, STARTER: STARTER, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, unfinished: unfinished, fresh: fresh, PACE: PACE, paceOf: paceOf, placeTopic: placeTopic, placedTopic: placedTopic, related: related, DESCRIBE: DESCRIBE, describeBatch: describeBatch, isBroad: isBroad,
+    weekRecap: weekRecap, suggest: suggest, draw: draw, lessonContext: lessonContext, withBand: withBand, areaOf: areaOf, starterIdeas: starterIdeas, mixStarters: mixStarters, STARTER: STARTER, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, unfinished: unfinished, fresh: fresh, PACE: PACE, paceOf: paceOf, placeTopic: placeTopic, placedTopic: placedTopic, related: related, DESCRIBE: DESCRIBE, describeBatch: describeBatch, isBroad: isBroad,
     onboarding: onboarding, openQuestion: openQuestion, examples: examples, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics, directions: directions, homeStats: homeStats, homeStory: homeStory, SKILLS: SKILLS,
     needsNext: needsNext, readyNext: readyNext, createRequest: createRequest, OPENING: OPENING
   };

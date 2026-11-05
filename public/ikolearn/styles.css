@@ -959,3 +959,9 @@ html:not([data-theme="dark"]) .cloud-fog { mix-blend-mode: multiply; }
 /* PR 114: the weekly recap in the name card */
 .hc-recap { margin: 0 0 14px; }
 .hc-recap-t { margin: 4px 0 6px; line-height: 1.5; }
+@media print {
+  body.print-recap * { visibility: hidden !important; }
+  body.print-recap .hc-recap, body.print-recap .hc-recap * { visibility: visible !important; }
+  body.print-recap .hc-recap { position: absolute; left: 0; top: 0; width: 100%; font-size: 14pt; }
+  body.print-recap .hc-copy, body.print-recap .hc-print { display: none !important; }
+}

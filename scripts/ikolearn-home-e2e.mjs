@@ -188,7 +188,7 @@ for (const width of [390, 1280]) {
       /* Escape on the cloud never leaves home */
       await p.keyboard.press("Escape"); await p.waitForTimeout(200);
       ok((await screen(p)).cloud, `${tag}: Escape on the cloud stays home`);
-      ok(calls.filter((c) => c !== "/lesson").length === 0 && calls.filter((c) => c === "/lesson").length <= 1, `${tag}: returning: only the one (mocked) lesson call`, calls.join());
+      ok(calls.filter((c) => c !== "/lesson" && c !== "/check").length === 0 /* PR 118: a lesson with no check gets one written */ && calls.filter((c) => c === "/lesson").length <= 1, `${tag}: returning: only the one (mocked) lesson call`, calls.join());
       ok(errs.length === 0, `${tag}: returning: no console errors`, errs.join(" | "));
       if (v0 && v2) ok(Number.isFinite(v2.zoom), `${tag}: the cloud's view survived the round trips`);
     } catch (e) { fails.push(`${tag}: returning threw -> ${String(e.message || e).split("\n")[0]}`); }
