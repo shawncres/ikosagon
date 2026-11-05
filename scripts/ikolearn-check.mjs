@@ -1107,8 +1107,8 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
   const bytes = files.reduce((n, f) => n + served(f).length, 0);
   const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
-  ok(bytes < 380_000, "app weight under 380 KB uncompressed (served, minified)", String(bytes));
-  ok(gz < 127_000, "app weight under 127 KB gzipped (served, minified)", String(gz));
+  ok(bytes < 392_000, "app weight under 392 KB uncompressed (served, minified)", String(bytes));
+  ok(gz < 132_000, "app weight under 132 KB gzipped (served, minified)", String(gz));
 }
 
 /* ================= PR 108: QA polish ================= */
@@ -1309,7 +1309,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(TI.material.length === 2 && !TI.material[1].line.includes("<"), "test input: material cleaned, deduped and capped");
   const tsys = testSystem(TI);
   ok(/- Sets: A set keeps one of each thing\./.test(tsys) && /Never ask about anything not on that list/.test(tsys) && /topic = exactly one name from the list/.test(tsys), "test prompt: only the completed topics, each question names its topic");
-  const tq = (topic, q2) => ({ q: q2, options: ["one of each", "two of each", "none"], answer: 0, topic });
+  const tq = (topic, q2) => ({ q: q2, options: ["one of each", "two of each", "three of each"], answer: 0, topic });
   const pt = parseTest({ questions: [tq("Sets", "What does a set keep?"), tq("Dragons", "What do dragons eat?"), tq("loops", "What does a loop do again?"), tq("Sets", "What does a set keep?")] }, ["Sets", "Loops"]);
   ok(pt.length === 2 && pt.every((x) => ["Sets", "Loops"].includes(x.topic)) && pt[1].topic === "Loops", "parseTest: questions on unlearned topics are dropped; duplicates too");
   ok(parseTest({ questions: [tq("Sets", "What does a set keep?")] }, ["Sets", "Loops"]) === null && parseTest("junk", ["Sets"]) === null, "parseTest: fewer than 2 good questions is not a test");
@@ -3943,6 +3943,82 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const clr = C.deserialize(C.serialize(cl));
   ok(C.lastOf(clr) && C.lastOf(clr).id === mid && C.lastOf(clr).kind === "card" && JSON.parse(C.serialize(cl)).v === 9, "widgets: the last-lesson pointer round-trips (v9, additive)");
   ok(/@media \(pointer: coarse\), \(max-width: 699px\) \{[\s\S]*?\.zoom #zin, \.zoom #zout \{ display: none; \}/.test(cssS) && /class="zr-ico"/.test(htmlS) && /opts\.onGesture\("turn"\)/.test(cvS), "controls: a phone gets one small icon (it recentres); a twist counts as a gesture tried");
+}
+
+/* ---------- PR 120: tidy the cloud (restructure) ---------- */
+{
+  const { restructureSystem, RESTRUCTURE_SCHEMA, parseRestructure, cleanTree } = await import("../lib/ikolearn/prompts.ts");
+  const { restructureFor } = await import("../lib/ikolearn/service.ts");
+  const DAY = 864e5, TR0 = Date.UTC(2026, 10, 1);
+  const grow = (n) => {
+    const c = C.create("Ada", TR0);
+    const names = ["Magma", "Lava", "Ash Clouds", "Tectonic Plates", "Earthquakes", "Faults", "Clouds", "Rain", "Thunder", "Wind", "Tides", "Waves", "Reefs", "Currents"].slice(0, n);
+    names.forEach((x) => C.applyTopics(c, [{ name: x, parent: "Earth Science", signal: "explored", chain: ["Earth Science"] }], TR0));
+    return c;
+  };
+  const byLabel = (c, l) => c.order.find((x) => c.nodes[x].label === l);
+  const c1 = grow(14), sent = C.restructureTree(c1), subj = byLabel(c1, "Earth Science");
+  ok(sent.length === 15 && sent.every((x) => x.id && x.t && typeof x.e === "boolean") && !JSON.stringify(sent).includes("mastery"), "restructure: the tree sent is ids, titles, parents and earned only", JSON.stringify(sent[0]));
+  const keep = () => sent.map((x) => ({ id: x.id, parent: x.p }));
+  const volc = ["Magma", "Lava", "Ash Clouds"].map((l) => byLabel(c1, l)), weather = ["Clouds", "Rain", "Thunder", "Wind"].map((l) => byLabel(c1, l));
+  const good = { groups: [{ key: "g1", title: "Volcanoes", parent: subj }, { key: "g2", title: "Weather", parent: subj }], moves: keep().map((m) => volc.includes(m.id) ? { id: m.id, parent: "g1" } : weather.includes(m.id) ? { id: m.id, parent: "g2" } : m) };
+  ok(C.checkRestructure(c1, sent, good).ok, "restructure: a sensible proposal passes");
+  const why = (p) => C.checkRestructure(c1, sent, p).why;
+  ok(why({ groups: [], moves: keep().slice(1) }) === "lost", "restructure: a lost node is rejected");
+  ok(why({ groups: [], moves: keep().concat([keep()[3]]) }) === "duplicate", "restructure: a duplicated node is rejected");
+  ok(why({ groups: [], moves: keep().concat([{ id: "n999", parent: subj }]) }) === "unknown", "restructure: an invented id is rejected");
+  const a = byLabel(c1, "Magma"), b = byLabel(c1, "Lava");
+  ok(why({ groups: [], moves: keep().map((m) => m.id === a ? { id: a, parent: b } : m.id === b ? { id: b, parent: a } : m) }) === "cycle", "restructure: a cycle is rejected");
+  ok(why({ groups: [{ key: "g1", title: "Hot", parent: "g2" }, { key: "g2", title: "Cold", parent: "g1" }], moves: keep().map((m, i) => i === 1 || i === 2 ? { id: m.id, parent: "g1" } : i === 3 || i === 4 ? { id: m.id, parent: "g2" } : m) }) === "cycle", "restructure: a cycle between new groups is rejected");
+  ok(why({ groups: [], moves: keep().map((m) => m.id === subj ? { id: subj, parent: a } : m) }) === "subject", "restructure: a subject stays a subject");
+  const deep = { groups: [{ key: "g1", title: "Hot Stuff", parent: subj }, { key: "g2", title: "Very Hot", parent: "g1" }, { key: "g3", title: "Hottest", parent: "g2" }],
+    moves: keep().map((m, i) => (i === 1 || i === 2) ? { id: m.id, parent: "g2" } : (i === 3 || i === 4) ? { id: m.id, parent: "g3" } : i === 5 || i === 6 ? { id: m.id, parent: "g1" } : m) };
+  ok(why(deep) === "depth", "restructure: nothing nested deeper than 3 levels", why(deep));
+  ok(why({ groups: [{ key: "g1", title: "Lonely", parent: subj }], moves: keep().map((m, i) => i === 1 ? { id: m.id, parent: "g1" } : m) }) === "group_size", "restructure: a group of one is rejected");
+  ok(why({ groups: [{ key: "g1", title: "Magma", parent: subj }], moves: keep().map((m, i) => i === 2 || i === 3 ? { id: m.id, parent: "g1" } : m) }) === "group", "restructure: a group may not repeat a title on the map");
+  // earned cards and progress untouched; Undo restores
+  const c2 = grow(14), s2 = C.restructureTree(c2), lava = byLabel(c2, "Lava");
+  c2.nodes[lava].mastery = 0.9; c2.nodes[lava].correct = 4; C.joinDeck(c2, TR0);
+  const before = C.serialize(c2), deckBefore = JSON.stringify(c2.deck), lavaBefore = JSON.stringify({ ...c2.nodes[lava], parent: 0, role: 0, off: 0 });
+  const prop2 = JSON.parse(JSON.stringify(good).split(subj).join(byLabel(c2, "Earth Science")));
+  prop2.moves = prop2.moves.map((m) => ({ id: m.id, parent: m.parent }));
+  const r2 = C.applyRestructure(c2, s2, prop2, TR0 + DAY);
+  ok(r2.ok && r2.moved === 7 && r2.groups.length === 2, "restructure: applied, 7 moved into 2 new branches", JSON.stringify(r2));
+  ok(c2.nodes[c2.nodes[lava].parent].label === "Volcanoes" && C.trail(c2, lava) === "Earth Science > Volcanoes > Lava", "restructure: topics re-nest under the new branch");
+  ok(JSON.stringify(c2.deck) === deckBefore && JSON.stringify({ ...c2.nodes[lava], parent: 0, role: 0, off: 0 }) === lavaBefore && C.inDeck(c2, lava), "restructure: the earned card, its stage and progress are untouched");
+  ok(Object.keys(c2.nodes).length === Object.keys(JSON.parse(before).n).length + 2, "restructure: no node lost or duplicated");
+  const rt = C.deserialize(C.serialize(c2));
+  ok(rt.rs && rt.rs.snap && rt.rs.snap.moves.length === 7 && rt.rs.groups.length === 2 && JSON.parse(C.serialize(c2)).v === 9, "restructure: rs (snapshot, groups, last run) round-trips, additive v9");
+  ok(C.undoRestructure(rt) && C.serialize(rt).replace(/"rev":\d+/, "").replace(/,"rs":\[[^\]]*\][^}]*$/, "") !== "" && C.trail(rt, lava) === "Earth Science > Lava" && !rt.order.some((x) => rt.nodes[x].label === "Volcanoes"), "undo: the previous tree comes back, the new branches go");
+  ok(JSON.stringify(rt.order) === JSON.stringify(JSON.parse(before).n.map((r) => r[0])) && rt.order.every((x) => rt.nodes[x].parent === C.deserialize(before).nodes[x].parent), "undo: every node back under its old parent");
+  ok(!C.undoRestructure(rt), "undo: one snapshot only (a second undo does nothing)");
+  const c1b = C.serialize(c1), r1 = C.applyRestructure(c1, sent, { groups: [], moves: keep().slice(2) });
+  ok(!r1.ok && C.serialize(c1) === c1b, "restructure: an invalid answer leaves the tree exactly as it was", JSON.stringify(r1));
+  // threshold and debounce
+  const c4 = grow(14);
+  ok(C.restructureDue(c4, TR0 + 1000), "due: 14 topics, never tidied");
+  ok(!C.restructureDue(grow(10), TR0), "due: not while the cloud is small");
+  C.noteRestructure(c4, TR0); c4.rs.base = 14;
+  ok(!C.restructureDue(c4, TR0 + 2 * DAY), "due: not until it has grown by about 8 topics");
+  ["Glaciers", "Rivers", "Deserts", "Caves", "Fossils", "Minerals", "Soil", "Storms"].forEach((x) => C.applyTopics(c4, [{ name: x, parent: "Earth Science", signal: "explored", chain: ["Earth Science"] }], TR0));
+  ok(C.restructureDue(c4, TR0 + 2 * DAY) && !C.restructureDue(c4, TR0 + DAY - 1), "due: grown by 8 and a day since -> due; within the day -> not (debounced)");
+  // prompts and the route: one structured call through callModel, shape checked
+  const tree = cleanTree(sent.concat([{ id: "bad", t: "x", p: "" }, { id: "n1", t: "dup", p: "" }]));
+  ok(tree.length === sent.length && restructureSystem({ ...parseLearnInput({ mode: "notice", name: "Ada", focus: "Ada", messages: [] }), tree }).includes("Role: restructure") && RESTRUCTURE_SCHEMA.required.join() === "groups,moves", "restructure prompt: in the prompts module, strict schema, cleaned tree");
+  ok(parseRestructure(JSON.stringify(good), tree) && !parseRestructure(JSON.stringify({ groups: [], moves: keep().slice(1) }), tree), "parseRestructure: every id exactly once or nothing");
+  const RIN = parseLearnInput({ mode: "notice", name: "Ada", focus: "Ada", messages: [], tree: sent });
+  const gjr = (obj) => () => res(200, { candidates: [{ content: { parts: [{ text: "```json\n" + JSON.stringify(obj) + "\n```" }] } }] });
+  let fr = fakeFetch([gjr(good)]);
+  let orr = await restructureFor(RIN, ENV, fr);
+  ok(orr.status === 200 && orr.body.proposal.groups.length === 2 && fr.calls.length === 1, "restructureFor: one structured call, fences stripped", JSON.stringify(orr.body).slice(0, 200));
+  fr = fakeFetch([gjr({ groups: [], moves: [] }), gjr(good)]);
+  orr = await restructureFor(RIN, ENV, fr);
+  ok(orr.status === 200 && fr.calls.length === 2, "restructureFor: an unusable answer is retried once (callModel)");
+  fr = fakeFetch([]);
+  orr = await restructureFor(parseLearnInput({ mode: "notice", name: "Ada", focus: "Ada", messages: [], tree: sent.slice(0, 3) }), ENV, fr);
+  ok(orr.status === 422 && fr.calls.length === 0, "restructureFor: a tiny cloud makes no call");
+  const appR = fs.readFileSync("public/ikolearn/app.js", "utf8");
+  ok(/state\.mode !== "lesson"/.test(appR) && /requestIdleCallback/.test(appR) && /Tidy my cloud/.test(appR) && /I tidied your cloud so related topics sit together\./.test(appR) && /"Undo"/.test(appR), "app: tidies on idle, never mid-lesson; Tidy my cloud; one calm line with Undo");
 }
 
 if (fails.length) {

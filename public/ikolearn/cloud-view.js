@@ -66,10 +66,22 @@
       request();
     }
 
-    function setCloud(c) {
-      var first = !cloud;
+    /* PR 120: after a restructure, nodes glide from where they were to their new places (smoothstep; instant with reduced motion) */
+    var morph = null;
+    function stepMorph(now) {
+      var k = Math.min(1, (now - morph.t0) / morph.ms), e = k * k * (3 - 2 * k), to = morph.to, from = morph.from;
+      Object.keys(to).forEach(function (id) {
+        var b = to[id], a = from[id] || (cloud && cloud.nodes[id] && from[cloud.nodes[id].parent]) || b;
+        pos[id] = Object.assign({}, b, { x: a.x + (b.x - a.x) * e, y: a.y + (b.y - a.y) * e, z: a.z + (b.z - a.z) * e });
+      });
+      if (k >= 1) { pos = to; morph = null; }
+    }
+    function setCloud(c, o) {
+      var first = !cloud, was = pos;
       cloud = c;
       pos = c ? C.layout(c) : {};
+      morph = null;
+      if (o && o.morph && c && !first && !reduce) { morph = { t0: performance.now(), ms: o.morph, from: was, to: pos }; pos = Object.assign({}, pos); stepMorph(morph.t0); }
       depth = {}; pathRank = {}; kids = {}; colors = {}; done = {}; fill = {}; fadeK = {}; subOf = {}; subN = {}; nTopics = 0; vivid = 0;
       var ext = 1;
       if (c) C.subjects(c).forEach(function (s) { var p = pos[s.id]; if (p) ext = Math.max(ext, Math.hypot(p.x, p.y, p.z)); });
@@ -187,6 +199,7 @@
       if (!cloud) return;
       var t0 = performance.now();
       if (tween) stepTween(now);
+      if (morph) stepMorph(now);
       if (glideV) stepGlide(now);
       ctx.clearRect(0, 0, w, h);
       var rootP = project(pos.root);
@@ -385,7 +398,7 @@
       spinning = sp.on; lastFrame = now;
       drawMs = performance.now() - t0;
       if (opts.onDraw) opts.onDraw(); /* the app keeps the selection card attached to its node */
-      if (pulsing || idleSpin || sp.on || gesture || tween || glideV) request();
+      if (pulsing || idleSpin || sp.on || gesture || tween || glideV || morph) request();
       else if (sp.wait !== Infinity && !resumeTimer) resumeTimer = setTimeout(function () { resumeTimer = 0; request(); }, sp.wait + 30);
     }
 
