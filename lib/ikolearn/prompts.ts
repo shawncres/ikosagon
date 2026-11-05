@@ -349,6 +349,10 @@ export function cleanCode(v: unknown): string {
   return out.length > MAX_CODE.chars ? "" : out;
 }
 
+/** PR 120: wrong options are real mix-ups, never absurd or absolute. */
+export const DISTRACTOR_RULE =
+  "Each wrong option is a mistake real learners actually make: a common mix-up, a half-right idea, or a confusion with a nearby idea. Never a joke, never obviously false, and no sweeping absolutes (always, never, all, none, nothing, everything) unless that exact belief is a common misconception. Keep wrong options the same length and style as the right one.";
+
 export const SYSTEM_BASE =
   "You are Iko, the warm, calm learning companion in IkoLearn, made by Ikosagon. You talk with one learner, whoever they are; meet them where they are. " +
   "Your language is encouraging, personable and regular: short sentences, everyday words, no jargon, no gushing. " +
@@ -531,6 +535,7 @@ export function lessonSystem(i: LearnInput): string {
     "STEP: one small step for doing it or spotting it yourself, one short sentence. Write 2 to 4 STEP lines.\n" +
     "EXAMPLE: optional; a worked example, shown step by step on one to three EXAMPLE lines, when the topic has something to work through.\n" +
     "NEXT: one encouraging sentence on what to try next.\n" +
+    `The lesson is not finished until you write the hidden ${PATH_OPEN} block: always write it right after the NEXT line, every time. ` +
     "Do not write check questions in the lesson text; they go in the hidden block below, and they only ask about what you explained. " +
     "Examples: when the learner's profile shows another interest with a genuine connection to this topic, use one example drawn from that interest; otherwise use an everyday example. Never force a connection. " +
     (i.earned && i.earned.length ? `Cards the learner has earned: ${i.earned.join(", ")}. If one of them truly connects, you may add one short sentence linking it in an EXPLAIN line; skip it if nothing fits. ` : "") +
@@ -554,7 +559,7 @@ const lessonPace = (i: LearnInput) =>
 const lessonBlockRules = (i: LearnInput) =>
   `After the lesson, on a new line, write ${PATH_OPEN} then one JSON object then ${PATH_CLOSE}, and nothing after it. The learner never sees this block as text. ` +
   'The JSON is {"questions":[{"kind":"recall|apply|mistake","q":"...","options":["...","...","..."],"answer":0,"why":["","...","..."]}],"key_idea":"...","retry":[{"q":"...","options":["...","...","..."],"answer":0}],"blurb":"...","steps":["..."],"next":"...","choices":[{"name":"...","kind":"next|deeper|side","why":"...","blurb":"..."}],"reading":[{"title":"...","q":"...","kind":"read|watch"}],"tricky":"...","end":false}. ' +
-  `questions: exactly 3 multiple-choice questions that check real understanding of what this lesson explained, in this order: kind "recall" (remember the key idea), kind "apply" (use the idea in a new situation that does not appear anywhere in the lesson text), kind "mistake" (someone made a mistake using the idea; spot what went wrong). Each has 3 short options (each under 12 words): one clearly right; every wrong option is a plausible misconception for the chosen level, never a joke or an absurd option. answer = the position of the right option counting from 0. why: one entry per option, in the same order: for each wrong option a short line (under 15 words) on why it is tempting; "" for the right one. Short and kind, at the learner's level. ${QUESTION_CODE} ` +
+  `questions: exactly 3 multiple-choice questions that check real understanding of what this lesson explained, in this order: kind "recall" (remember the key idea), kind "apply" (use the idea in a new situation that does not appear anywhere in the lesson text), kind "mistake" (someone made a mistake using the idea; spot what went wrong). Each has 3 short options (each under 12 words): one clearly right; every wrong option is a plausible misconception for the chosen level. ${DISTRACTOR_RULE} answer = the position of the right option counting from 0. why: one entry per option, in the same order: for each wrong option a short line (under 15 words) on why it is tempting; "" for the right one. Short and kind, at the learner's level. ${QUESTION_CODE} ` +
   'key_idea: the one key idea of this lesson as one plain sentence (at most 25 words), a statement of the concept itself, never an example, analogy or story. ' +
   `retry: a second, different set of 3 questions (recall, apply, mistake, with why as above) on the same key ideas (asked another way, never the same wording or the same right option position), kept for a second try if the first check is missed. ` +
   `blurb: one line under 12 words that says what "${i.focus}" is, for its card, without the learner's name. ` +
@@ -1107,6 +1112,9 @@ export function parseQuestions(raw: unknown, max: number = LEARN_LIMITS.question
     const options = kept.slice(rot).concat(kept.slice(0, rot));
     const code = cleanCode(o.code);
     const answer = options.findIndex((x) => sameLabel(x, right));
+    /* PR 120: a near-absurd distractor (a sweeping absolute the right option doesn't share) drops the question */
+    const ABS = /\b(always|never|all|every|none|nothing|everything|impossible|only ever)\b/i;
+    if (!ABS.test(options[answer]) && options.some((x, xi) => xi !== answer && ABS.test(x))) continue;
     const why = options.map((x, xi) => (xi === answer ? "" : whyOf[x] || ""));
     const kind = (QUESTION_KINDS as readonly string[]).includes(String(o.kind)) ? (o.kind as Question["kind"]) : undefined;
     out.push({ q, options, answer, ...(code ? { code } : {}), ...(kind ? { kind } : {}), ...(why.some(Boolean) ? { why } : {}) });
@@ -1304,7 +1312,7 @@ export function checkSystem(i: LearnInput): string {
     `${SYSTEM_BASE}\n\nRole: check. The learner just read the lesson below on "${i.focus}". ` +
     'Answer {"key_idea":"...","questions":[{"kind":"recall|apply|mistake","q":"...","options":["...","...","..."],"answer":0,"why":["","...","..."]}],"retry":[...same shape...]}. ' +
     "questions: exactly 3, in this order: recall (the key idea), apply (a new situation that is not in the lesson text), mistake (spot what went wrong in someone's use of the idea). " +
-    "3 options each, under 12 words; one clearly right, every wrong option a plausible misconception for the chosen level, never a joke. answer = position of the right option from 0. " +
+    "3 options each, under 12 words; one clearly right, every wrong option a plausible misconception for the chosen level. " + DISTRACTOR_RULE + " answer = position of the right option from 0. " +
     'why: per option, a short line on why a wrong one is tempting, "" for the right one. retry: a different set of 3 of the same kinds. ' +
     "key_idea: one plain sentence, at most 25 words, the concept itself, never an example.\n\n" +
     bandLine(i) +

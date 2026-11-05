@@ -1309,7 +1309,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(TI.material.length === 2 && !TI.material[1].line.includes("<"), "test input: material cleaned, deduped and capped");
   const tsys = testSystem(TI);
   ok(/- Sets: A set keeps one of each thing\./.test(tsys) && /Never ask about anything not on that list/.test(tsys) && /topic = exactly one name from the list/.test(tsys), "test prompt: only the completed topics, each question names its topic");
-  const tq = (topic, q2) => ({ q: q2, options: ["one of each", "two of each", "none"], answer: 0, topic });
+  const tq = (topic, q2) => ({ q: q2, options: ["one of each", "two of each", "three of each"], answer: 0, topic });
   const pt = parseTest({ questions: [tq("Sets", "What does a set keep?"), tq("Dragons", "What do dragons eat?"), tq("loops", "What does a loop do again?"), tq("Sets", "What does a set keep?")] }, ["Sets", "Loops"]);
   ok(pt.length === 2 && pt.every((x) => ["Sets", "Loops"].includes(x.topic)) && pt[1].topic === "Loops", "parseTest: questions on unlearned topics are dropped; duplicates too");
   ok(parseTest({ questions: [tq("Sets", "What does a set keep?")] }, ["Sets", "Loops"]) === null && parseTest("junk", ["Sets"]) === null, "parseTest: fewer than 2 good questions is not a test");
