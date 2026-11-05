@@ -1,13 +1,18 @@
+import { pageOpenGraph } from "@/lib/site";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { INTRO_CALL_HREF, StartSmall } from "@/components/StartSmall";
 import { WhatWeBuilt } from "@/components/WhatWeBuilt";
 
+const TITLE = "Work with us";
+const DESCRIPTION =
+  "Start small with a process check-in: we learn one workflow, show where time is lost and what we'd fix first. Fixed scope, quoted up front, for owner-led businesses of about 5 to 100 people.";
+
 export const metadata: Metadata = {
   alternates: { canonical: "/work-with-us" },
-  title: "Work with us",
-  description:
-    "Start small with a process check-in: we learn one workflow, show where time is lost and what we'd fix first. Fixed scope, quoted up front, for owner-led businesses of about 5 to 100 people.",
+  title: TITLE,
+  description: DESCRIPTION,
+  openGraph: pageOpenGraph("/work-with-us", TITLE, DESCRIPTION),
 };
 
 const STEPS = [

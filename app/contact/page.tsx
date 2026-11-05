@@ -1,11 +1,16 @@
+import { pageOpenGraph } from "@/lib/site";
 import type { Metadata } from "next";
 import { cleanPrefill } from "@/lib/contact-prefill";
 
+const TITLE = "Contact";
+const DESCRIPTION =
+  "Start a project with Ikosagon, or get in touch about a role (contract or selected full-time, Toronto hybrid or remote).";
+
 export const metadata: Metadata = {
   alternates: { canonical: "/contact" },
-  title: "Contact",
-  description:
-    "Start a project with Ikosagon, or get in touch about a role (contract or selected full-time, Toronto hybrid or remote).",
+  title: TITLE,
+  description: DESCRIPTION,
+  openGraph: pageOpenGraph("/contact", TITLE, DESCRIPTION),
 };
 
 type ContactPageProps = {

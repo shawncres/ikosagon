@@ -1,11 +1,17 @@
+import { pageOpenGraph } from "@/lib/site";
 import type { Metadata } from "next";
 import { ProjectGrid } from "@/components/ProjectGrid";
 import { getProjects } from "@/lib/projects";
 
+const TITLE = "Projects";
+const DESCRIPTION =
+  "Project archive of shipped software and in-progress builds.";
+
 export const metadata: Metadata = {
   alternates: { canonical: "/projects" },
-  title: "Projects",
-  description: "Project archive of shipped software and in-progress builds.",
+  title: TITLE,
+  description: DESCRIPTION,
+  openGraph: pageOpenGraph("/projects", TITLE, DESCRIPTION),
 };
 
 export default async function ProjectsPage() {
