@@ -314,6 +314,7 @@ export async function adjacentFor(input: LearnInput, env: Env, fetchImpl: typeof
   const user = `Focus topic: ${input.focus}${input.focusParent ? ` (in ${input.focusParent})` : ""}`;
   const r = await callModel<Ghost[]>(() => ({ system: adjacentSystem(input), user: user }), ADJACENT_SCHEMA, (t) => {
     const g = parseAdjacent(t, input.name);
+    if (input.neo && input.neo.length) { const one = g.filter((x) => x.theme && input.neo!.includes(x.theme)).slice(0, 1); return one.length ? one : null; } /* PR 119: exactly one themed branch */
     return g.length ? g : null;
   }, env, fetchImpl, { route: "adjacent" });
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });

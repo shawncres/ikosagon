@@ -935,6 +935,56 @@
     [/craft|wood|sew|knit|build|cook|bak|recipe/i, "planning, measuring and working carefully", "planning and measuring carefully"],
     [/sport|soccer|football|basketball|chess|game/i, "practice, strategy and learning from mistakes", "practising and learning from mistakes"]
   ];
+  /*
+   * PR 119 NEO-IKIGAI, "what the world needs": light, interest-gated adjacency. Nothing for a new learner; after 5+ earned
+   * cards or 3+ days visited, at most one optional themed branch at a time, next to a topic the learner already has, and
+   * more rarely the more are left alone. State on this device only (ikolearn.v1.neo): { s: [{ label, parent, theme, at,
+   * cards, taken, ign }], w: { theme: weight } }.
+   */
+  var NEO_THEMES = ["ai-tools", "judgment", "systems", "recombination", "communication"];
+  var NEO_LINE = { "ai-tools": "using AI and digital tools well", judgment: "judging what to trust", systems: "seeing how systems fit together", recombination: "joining ideas from different fields", communication: "explaining ideas to other people" };
+  function neoState(raw) {
+    var st = raw && typeof raw === "object" ? raw : {};
+    return { s: Array.isArray(st.s) ? st.s.filter(function (x) { return x && typeof x.label === "string"; }).slice(-30) : [], w: st.w && typeof st.w === "object" ? st.w : {} };
+  }
+  function neoGated(cloud) { var d = (cloud.deck || []).length, days = (C.profileOf(cloud) || {}).days || 0; return d >= 5 || days >= 3; }
+  /* the open suggestion: still on the cloud as a ghost, neither taken nor set aside */
+  function neoOpen(cloud, st) {
+    return st.s.filter(function (x) { if (x.taken || x.ign) return false; var id = cloud.order.find(function (k) { var n = cloud.nodes[k]; return n && n.label === x.label; }); return id && cloud.nodes[id].ghost; })[0] || null;
+  }
+  /* due: gated, none open, and enough new cards since the last one (the gap grows with each suggestion and each one left alone) */
+  function neoDue(cloud, st) {
+    if (!neoGated(cloud) || neoOpen(cloud, st)) return false;
+    var last = st.s[st.s.length - 1], cards = (cloud.deck || []).length;
+    if (!last) return true;
+    var ign = st.s.filter(function (x) { return x.ign; }).length;
+    return cards - (last.cards || 0) >= 2 + st.s.length + 2 * ign;
+  }
+  /* themes by weight (taken +1, left alone -0.5, never below 0.2), ties in the base order */
+  function neoThemes(st) {
+    var w = function (t) { var v = Number(st.w[t]); return isFinite(v) ? v : 1; };
+    return NEO_THEMES.slice().sort(function (a, b) { return w(b) - w(a) || NEO_THEMES.indexOf(a) - NEO_THEMES.indexOf(b); });
+  }
+  function neoBump(st, theme, d) { if (NEO_THEMES.indexOf(theme) < 0) return; var v = Number(st.w[theme]); st.w[theme] = Math.max(0.2, Math.min(4, (isFinite(v) ? v : 1) + d)); }
+  /* before a new one: any older open suggestion the learner never opened counts as set aside */
+  function neoAdd(cloud, st, g, t) {
+    st.s.forEach(function (x) { if (!x.taken && !x.ign) { x.ign = 1; neoBump(st, x.theme, -0.5); } });
+    st.s.push({ label: g.name, parent: g.parent || "", theme: g.theme, at: t || Date.now(), cards: (cloud.deck || []).length, taken: 0, ign: 0 });
+    return st;
+  }
+  /* the learner opened a lesson on it: taken (its theme comes up a little more) */
+  function neoTaken(st, label) {
+    var x = st.s.filter(function (y) { return y.label === label && !y.taken; })[0];
+    if (!x) return false;
+    x.taken = 1; x.ign = 0; neoBump(st, x.theme, 1); return true;
+  }
+  /* the recap's optional line, only when gated in */
+  function neoLine(cloud, st) {
+    if (!neoGated(cloud)) return "";
+    var x = neoOpen(cloud, st) || st.s.filter(function (y) { return y.taken; }).slice(-1)[0];
+    return x ? "Where this could lead: " + x.label + (x.parent ? ", next to " + x.parent : "") + (NEO_LINE[x.theme] ? ", which ties in " + NEO_LINE[x.theme] : "") + "." : "";
+  }
+
   function homeStory(cloud, o) {
     o = o || {};
     var name = String(o.name || cloud.name || "This learner"), now = o.now || Date.now(), kid = o.band === "u10", lessons = Math.max(0, o.lessons || 0);
@@ -958,27 +1008,34 @@
       lines.push("Each lesson you finish adds a card to your Deck, and your cloud grows new branches along the way.");
       return { lines: lines, empty: true, strongest: null, next: null };
     }
-    var subTxt = subs.length === 1 ? "one subject" : subs.length + " subjects", topTxt = topics === 1 ? "1 topic" : topics + " topics";
-    lines.push(pick(["You've grown an IkoCloud of ", "Your IkoCloud has grown to "]) + subTxt + " and " + topTxt + " so far.");
-    var ls = lessons === 1 ? "1 lesson" : lessons + " lessons", cs = cards === 1 ? "1 card" : cards + " cards";
-    lines.push(lessons || cards ? (lessons ? "You've finished " + ls : "You've started learning") + (cards ? " and have " + cs + " in your Deck" : ", and your Deck is waiting for its first card") + (done ? ", with " + (done === 1 ? "1 topic" : done + " topics") + " finished." : ".")
-      : "No lessons finished yet. The first one you finish adds a card to your Deck.");
+    /* PR 119 NEO-IKIGAI, second person, 3-5 short sentences from what is on this device */
     var top = ranked[0], second = ranked[1];
-    if (top && top.score > 0) {
-      lines.push(kid ? "You seem to really enjoy " + top.label + (second && second.score > 0 ? ", and " + second.label + " too." : ".")
-        : pick(["Your strongest branch so far is " + top.label, "You've done the most in " + top.label]) + (second && second.score > 0 ? (pick([", with " + second.label + " close behind.", ", and " + second.label + " is growing too."], 1)) : "."));
-    }
-    /* the next step, read without drawing (draw() logs a draw: opening the card changes nothing) */
+    /* what you love: the thread you keep coming back to */
+    if (top && top.score > 0) lines.push("You keep coming back to " + top.label + (second && second.score > 0 && second.score >= top.score / 2 ? ", with " + second.label + " pulling you back too." : "."));
+    else lines.push("You've started " + (subs.length === 1 ? "a thread in " + per[subs[0]].label : subs.length + " threads") + ", and every one stays on your cloud to come back to.");
+    /* what you are good at: where checks show strength */
+    var strong = null, best = 0;
+    cloud.order.forEach(function (id) { var n = cloud.nodes[id]; if (n && n.parent && !n.ghost && (n.correct || 0) > best) { best = n.correct; strong = n; } });
+    if (strong && best >= 2) lines.push("Your checks show solid footing in " + strong.label + ".");
+    else if (cards) lines.push("You have " + (cards === 1 ? "1 card" : cards + " cards") + " in your Deck, each one a check you passed.");
+    /* what sustains you: a path with staying power */
+    var lasting = ranked.filter(function (x) { return x.done >= 3 || x.cards >= 3; })[0];
+    if (lasting) lines.push(lasting.label + " is showing staying power. Keep this thread alive, even with one short lesson now and then.");
+    /* what the world needs: one adjacent direction, only when gated in */
+    var nw = o.neo && neoGated(cloud) ? neoOpen(cloud, neoState(o.neo)) : null;
+    if (nw) lines.push("This could connect to " + nw.label + (nw.parent ? ", right next to " + nw.parent : "") + ", if you're curious.");
+    /* Iko's suggestion: the next step, read without drawing */
     var open = function (x) { return Boolean(x) && unfinished(cloud, x) && !cloud.nodes[x].end; };
     var nx = [cloud.active, lastTouched(cloud), cloud.next].filter(function (x) { return x && nodeOf(cloud, x); }).map(function (x) { var k = pathNext(cloud, x); return open(k) ? k : open(x) ? x : null; }).filter(Boolean)[0] || null;
     var nn = nx && cloud.nodes[nx], nsub = nn && per[subOf(nx)];
-    if (nn) lines.push(pick(["You might try ", "A good next step for you: "], 2) + nn.label + (nsub && nsub.id !== nx ? " in " + nsub.label : "") + (kid ? ". It follows on from what you know." : ". It builds on what you already know."));
+    if (nn) lines.push("Iko suggests " + nn.label + (nsub && nsub.id !== nx ? " in " + nsub.label : "") + " next. It builds on what you already know.");
     var basis = top && top.score > 0 ? top : null;
-    if (basis) {
+    if (lines.length < 3 && basis) {
       var words = basis.label + " " + cloud.order.filter(function (id) { return subOf(id) === basis.id; }).slice(0, 10).map(function (id) { return cloud.nodes[id].label; }).join(" ");
       var sk = SKILLS.filter(function (x) { return x[0].test(words); })[0];
-      if (sk) lines.push(kid ? "Learning about " + basis.label + " helps you with " + sk[2] + "." : "Over time, " + basis.label + " helps you build " + sk[1] + ", which is useful in many other subjects too.");
+      if (sk) lines.push("Over time, " + basis.label + " helps you build " + sk[1] + ", which carries into other subjects too.");
     }
+    if (lines.length < 3) lines.push("Your cloud grows new branches as you go.");
     return { lines: lines.slice(0, 5), empty: false, strongest: basis ? basis.id : null, next: nn ? nx : null };
   }
 
@@ -986,7 +1043,7 @@
     PLAN: PLAN, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, needsRepair: needsRepair, repairRequest: repairRequest,
     MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild, nextStep: nextStep,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
-    weekRecap: weekRecap, suggest: suggest, draw: draw, lessonContext: lessonContext, withBand: withBand, areaOf: areaOf, starterIdeas: starterIdeas, mixStarters: mixStarters, STARTER: STARTER, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, unfinished: unfinished, fresh: fresh, PACE: PACE, paceOf: paceOf, placeTopic: placeTopic, placedTopic: placedTopic, related: related, DESCRIBE: DESCRIBE, describeBatch: describeBatch, isBroad: isBroad,
+    weekRecap: weekRecap, neoState: neoState, neoGated: neoGated, neoOpen: neoOpen, neoDue: neoDue, neoThemes: neoThemes, neoAdd: neoAdd, neoTaken: neoTaken, neoLine: neoLine, NEO_THEMES: NEO_THEMES, suggest: suggest, draw: draw, lessonContext: lessonContext, withBand: withBand, areaOf: areaOf, starterIdeas: starterIdeas, mixStarters: mixStarters, STARTER: STARTER, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, unfinished: unfinished, fresh: fresh, PACE: PACE, paceOf: paceOf, placeTopic: placeTopic, placedTopic: placedTopic, related: related, DESCRIBE: DESCRIBE, describeBatch: describeBatch, isBroad: isBroad,
     onboarding: onboarding, openQuestion: openQuestion, examples: examples, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics, directions: directions, homeStats: homeStats, homeStory: homeStory, SKILLS: SKILLS,
     needsNext: needsNext, readyNext: readyNext, createRequest: createRequest, OPENING: OPENING
   };

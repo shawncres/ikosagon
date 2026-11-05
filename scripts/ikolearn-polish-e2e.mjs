@@ -170,7 +170,7 @@ for (const width of [390, 1280]) {
         glass: (() => { const cs = getComputedStyle(pn); return { bf: cs.backdropFilter || cs.webkitBackdropFilter || "", bg: cs.backgroundImage + " " + cs.backgroundColor, r: parseFloat(cs.borderTopLeftRadius) }; })() }; });
     const st = await card();
     ok(st.open && st.root && st.title === "Maya" && st.panes.story && !st.panes.stats && !st.panes.prefs, `${tag}: home: tapping the name opens its card on the story`, JSON.stringify([st.open, st.panes]));
-    ok(st.story.length >= 3 && /^(You've grown an IkoCloud of|Your IkoCloud has grown to) /.test(st.story[0]) && /You've finished 3 lessons/.test(st.story.join(" ")) && /your Deck/.test(st.story.join(" ")) && !/\bMaya\b|and Iko have|Together,|We at Ikosagon/.test(st.story.join(" ")), `${tag}: home: the story speaks to you (PR 112): the IkoCloud, lessons and your Deck; no name, no "and Iko have"`, JSON.stringify(st.story));
+    ok(st.story.length >= 3 && st.story.length <= 5 && /^You keep coming back to /.test(st.story[0]) && /Iko suggests|staying power|solid footing/.test(st.story.join(" ")) && !/\bMaya\b|and Iko have|Together,|We at Ikosagon/.test(st.story.join(" ")), `${tag}: home: the story speaks to you (PR 119 NEO-IKIGAI): what you keep coming back to, strengths, staying power; no name`, JSON.stringify(st.story));
     ok(JSON.stringify(st.tabs) === JSON.stringify([["story", "true", "Story"], ["stats", "false", "Stats"], ["prefs", "false", "Preferences"]]), `${tag}: home: Story, Stats and a Preferences gear as tabs`, JSON.stringify(st.tabs));
     ok(st.save && st.open2 && /Save IkoCloud · Open IkoCloud/.test(st.text), `${tag}: home: Save IkoCloud and Open IkoCloud stay under the card`);
     ok(!/What do you notice/.test(st.text), `${tag}: home: no "What do you notice here?"`);
@@ -181,13 +181,13 @@ for (const width of [390, 1280]) {
       return { cards: c.deck.length, topics: ts.filter((x) => C.isDone(c, x)).length, days: C.profileOf(c).days, vday: C.profileOf(c).vday }; });
     const td = new Date(), today = td.getFullYear() * 1e4 + (td.getMonth() + 1) * 100 + td.getDate();
     ok(ss.panes.stats && !ss.panes.story && ss.tabs[1][1] === "true", `${tag}: home: the Stats tab shows the stats`, JSON.stringify(ss.panes));
-    ok(JSON.stringify(ss.labels) === JSON.stringify(["Days visited", "Day streak", "Cards earned", "Topics finished", "Lessons completed"]) && ss.nums.lessons === 3 && ss.nums.cards === want.cards && ss.nums.topics === want.topics && want.days === 7 && want.vday === today && ss.nums.days === 7 && ss.nums.streak >= 1, `${tag}: home: stats from the seeded data (7 days visited, 3 lessons, the Deck's cards, topics finished)`, JSON.stringify([ss.nums, want]));
+    ok(JSON.stringify(ss.labels) === JSON.stringify(["Days visited", "Cards earned", "Topics finished", "Lessons completed"]) && ss.nums.lessons === 3 && ss.nums.cards === want.cards && ss.nums.topics === want.topics && want.days === 7 && want.vday === today && ss.nums.days === 7, `${tag}: home: stats from the seeded data (7 days visited, 3 lessons, the Deck's cards, topics finished)`, JSON.stringify([ss.nums, want]));
     await p.click("#hc-t-prefs"); await p.waitForTimeout(150);
     const sp = await card();
-    ok(sp.panes.prefs && !sp.panes.stats && sp.bands === 5 && JSON.stringify(sp.modes) === JSON.stringify(["Light", "Dark", "Match device"]), `${tag}: home: the gear opens Preferences (age range, appearance)`, JSON.stringify([sp.panes, sp.bands, sp.modes]));
-    await p.click('#hc-prefs [data-band="14-17"]'); await p.waitForTimeout(150);
-    const band = await p.evaluate(() => [window.IkoCloud.profileOf(window.IkoCloud.deserialize(localStorage.getItem("ikolearn.v1.cloud"))).band, document.querySelector('#hc-prefs [data-band="14-17"]').getAttribute("aria-pressed"), !document.querySelector("#panel").hidden]);
-    ok(band[0] === "14-17" && band[1] === "true" && band[2], `${tag}: home: picking an age range in Preferences saves it, the card stays open`, JSON.stringify(band));
+    ok(sp.panes.prefs && !sp.panes.stats && sp.bands === 3 && JSON.stringify(sp.modes) === JSON.stringify(["Light", "Dark", "Match device"]), `${tag}: home: the gear opens Preferences (lesson level, appearance)`, JSON.stringify([sp.panes, sp.bands, sp.modes]));
+    await p.click('#hc-prefs [data-band="deeper"]'); await p.waitForTimeout(150);
+    const band = await p.evaluate(() => [window.IkoCloud.profileOf(window.IkoCloud.deserialize(localStorage.getItem("ikolearn.v1.cloud"))).band, document.querySelector('#hc-prefs [data-band="deeper"]').getAttribute("aria-pressed"), !document.querySelector("#panel").hidden]);
+    ok(band[0] === "deeper" && band[1] === "true" && band[2], `${tag}: home: picking a lesson level in Preferences saves it, the card stays open`, JSON.stringify(band));
     await p.click('#hc-prefs [data-mode="dark"]'); await p.waitForTimeout(250);
     const dk = await p.evaluate(() => [document.documentElement.classList.contains("theme-dark") || window.IkoTheme.mode(), localStorage.getItem(window.IkoTheme.KEY)]);
     await p.click('#hc-prefs [data-mode=""]'); await p.waitForTimeout(250);
