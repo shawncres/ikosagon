@@ -18,7 +18,7 @@
   function retheme() { if (!TH) return; var k = TH.inks(); INK = k.ink; PAPER = k.paper; }
   retheme();
   if (TH && root.addEventListener) root.addEventListener("ikotheme", retheme);
-  var FONT = "Georgia, 'Iowan Old Style', serif";
+  var FONT = "'Avenir Next', Avenir, Futura, 'Century Gothic', 'Segoe UI', system-ui, sans-serif"; /* PR 120: the UI sans, crisper on canvas */
   var DRAW_CAP = 260, ZMIN = CAM.CAM.zmin, ZMAX = CAM.CAM.zmax, HOME = { yaw: -0.5, pitch: 0.32, zoom: 1, panX: 0, panY: 40 }; /* panY: the home view sits a little low, so the top branches stay clear of the controls and the hint line */
   var reduce = root.matchMedia && root.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -210,8 +210,8 @@
         else if (side) { ctx.setLineDash([1.5, 3]); ctx.globalAlpha = (fin ? 0.75 : 0.5) * it.p.f * fade; ctx.lineWidth = 1.1 * k; ctx.strokeStyle = fin ? colorOf(n) : INK; }
         else if (n.ghost) { ctx.setLineDash([2, 4]); ctx.globalAlpha = 0.42 * it.p.f * fade; ctx.lineWidth = 1 * k; ctx.strokeStyle = INK; }
         else if (n.parent && fin) { ctx.globalAlpha = 0.92 * it.p.f * fade; ctx.lineWidth = (1.7 + 0.7 * vivid) * k; ctx.strokeStyle = colorOf(n); }
-        else if (n.parent) { ctx.globalAlpha = 0.66 * it.p.f * fade; ctx.lineWidth = 1.2 * k; ctx.strokeStyle = INK; }
-        else { ctx.globalAlpha = 0.5 * fade; ctx.lineWidth = 1.2 * k; ctx.strokeStyle = INK; }
+        else if (n.parent) { ctx.globalAlpha = 0.5 * it.p.f * fade; ctx.lineWidth = 1 * k; /* PR 120: softer lines */ ctx.strokeStyle = INK; }
+        else { ctx.globalAlpha = 0.4 * fade; ctx.lineWidth = 1 * k; ctx.strokeStyle = INK; }
         ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(it.p.x, it.p.y); ctx.stroke();
         ctx.restore();
       });
@@ -287,7 +287,7 @@
         var size = !n.parent ? 14 + Math.min(3, n.weight * 0.2) : 12.5;
         var text = (pathRank[n.id] && reads(n.id) >= 0.8 ? pathRank[n.id] + ". " : "") + n.label + (ml ? " " + C.roman(n.ml) : "");
         labels.push({ n: n, text: text, x: p.x, y: p.y - r - 5, a: la, fresh: age < 6000,
-          font: (n.ghost ? "italic " : "") + (n.parent && n.id !== focusId ? "" : "600 ") + Math.round(size * Math.max(0.85, Math.min(1.2, p.f))) + "px " + FONT });
+          font: (n.ghost ? "italic " : "") + (n.parent && n.id !== focusId ? "" : "600 ") + Math.round(size * Math.max(0.85, Math.min(1.35, p.f))) + "px " + FONT });
       });
 
       /* test nodes: a dotted diamond while offered, inked once taken, on a short dotted link from their parent */
@@ -328,7 +328,7 @@
         }
         placed.push(box);
         /* a paper halo keeps labels readable over edges at every zoom */
-        ctx.globalAlpha = l.a * 0.9; ctx.strokeStyle = PAPER; ctx.lineWidth = 3.2; ctx.lineJoin = "round";
+        ctx.globalAlpha = l.a * 0.95; ctx.strokeStyle = PAPER; ctx.lineWidth = fs > 14 ? 4 : 3.2; /* PR 120: a fuller halo when zoomed */ ctx.lineJoin = "round";
         ctx.strokeText(l.text, l.x, l.y);
         ctx.globalAlpha = l.a;
         ctx.fillText(l.text, l.x, l.y);

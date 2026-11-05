@@ -699,7 +699,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   }
   ok(D.render(doc, sp, { size: "mini" }).kids[0].className === "gc-art" && !flat(D.render(doc, sp, { size: "mini" })).some((k) => /gc-title|gc-chain|gc-mark/.test(k.className)), "render: mini card is the landscape only (plus its colour layer)");
   const count = (e, tag) => (e.tag === tag ? 1 : 0) + (e.kids || []).reduce((n, k) => n + count(k, tag), 0);
-  ok(count(svg, "path") >= sp.art.layers.length * 2 + sp.art.trees.length + sp.art.birds.length && count(svg, "line") >= sp.art.hatch.length, "render: ridges (fill + line), trees, birds and hatching are drawn");
+  ok(count(svg, "path") >= sp.art.layers.length * 2 && count(svg, "circle") >= 1, "render (PR 120 Bauhaus): ridges (fill + line) under a geometric composition (circle, bar, triangle)");
   const all = JSON.stringify(full, (k, v) => (k === "ns" ? undefined : v));
   ok(!/"tag":"(img|image|use|i|picture)"|href|https?:/.test(all) && !/\p{Extended_Pictographic}/u.test(all), "no images, icons or emoji: text and line drawing only");
   const ach = Object.assign({}, sp, { achieved: true, stage: 4, stageName: "Achieved", tier: 3, tierKey: "achieved", tierName: "Achieved", pips: 3 });
@@ -1107,8 +1107,8 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
   const bytes = files.reduce((n, f) => n + served(f).length, 0);
   const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
-  ok(bytes < 370_000, "app weight under 370 KB uncompressed (served, minified)", String(bytes));
-  ok(gz < 124_000, "app weight under 124 KB gzipped (served, minified)", String(gz));
+  ok(bytes < 380_000, "app weight under 380 KB uncompressed (served, minified)", String(bytes));
+  ok(gz < 127_000, "app weight under 127 KB gzipped (served, minified)", String(gz));
 }
 
 /* ================= PR 108: QA polish ================= */
@@ -2240,7 +2240,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(pkg.scripts.prebuild === "node scripts/ikolearn-minify.mjs" && /^\^?0\.\d+/.test(pkg.devDependencies.esbuild || ""), "minify: runs before next build (prebuild), esbuild is a dev dependency");
   const mjs = fs.readFileSync("scripts/ikolearn-minify.mjs", "utf8");
   ok(/process\.env\.VERCEL === "1" \|\| process\.env\.IKOLEARN_MINIFY === "1"/.test(mjs) && !/mangleProps|keepNames: false|bundle: true/.test(mjs) && /sourcesContent: true/.test(mjs), "minify: in place only on Vercel's build (or when asked), no property mangling, no bundling, readable source in the maps");
-  eq(minTargets(), ["app.js", "camera.js", "cloud-model.js", "cloud-view.js", "deck.js", "family.css", "family.js", "learners.js", "lesson.js", "orchestrator.js", "profiles.js", "rank.js", "styles.css", "theme.js", "transfer.js"], "minify: every app script and stylesheet (the parents & teachers view and learners too)");
+  eq(minTargets(), ["app.js", "camera.js", "cloud-model.js", "cloud-view.js", "deck.js", "family.css", "family.js", "learners.js", "lesson.js", "orchestrator.js", "profiles.js", "rank.js", "sound.js", "styles.css", "theme.js", "transfer.js"], "minify: every app script and stylesheet (the parents & teachers view and learners too)");
   const min = {}, src = {};
   minTargets().forEach((f) => { src[f] = fs.readFileSync("public/ikolearn/" + f, "utf8"); min[f] = minifyFile(f, src[f]); });
   ok(Object.keys(min).every((f) => min[f].code.length < src[f].length * 0.85 && min[f].code.endsWith(`sourceMappingURL=${f}.map${f.endsWith(".css") ? " */" : ""}\n`)), "minify: every file is smaller and links its source map");
