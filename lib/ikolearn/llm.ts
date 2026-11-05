@@ -76,7 +76,7 @@ export async function streamJson(system: string, user: string, schema: unknown, 
   if (cfg.provider === "gemini") return geminiJsonStream(cfg, system, user, schema, fetchImpl, opts);
   const r = await openaiJson(cfg, system, user, schema, (t) => t || null, fetchImpl, opts);
   if (!r.ok) return r;
-  return { ok: true, model: r.model, pieces: (async function* () { yield r.value; })(), abort: () => {} };
+  return { ok: true, model: r.model, pieces: (async function* () { yield r.value; })(), abort: () => {}, finishReason: () => "" };
 }
 
 /* ---------- PR 113: one wrapper for every structured call ---------- */

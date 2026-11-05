@@ -99,7 +99,7 @@
       id: id, label: cleanLabel(o.label), key: norm(o.label), parent: o.parent || null,
       weight: o.ghost ? 0 : (o.weight == null ? 1 : o.weight), mastery: 0, ghost: Boolean(o.ghost),
       born: o.born == null ? Date.now() : o.born, touched: o.born || 0, cards: [], opened: false,
-      spent: 0, engaged: 0, end: false, correct: 0, heat: 0, heatAt: 0, blurb: "", achievedAt: 0, pending: null, doneAt: 0,
+      spent: 0, engaged: 0, end: false, correct: 0, inked: false, heat: 0, heatAt: 0, blurb: "", achievedAt: 0, pending: null, doneAt: 0,
       imp: null, impAt: 0, goal: "", asked: 0,
       /* v7: role among its siblings (core = the main sequence, optional = a side path off one core step), made by a creation call, bridge cached; absorb groundwork */
       role: o.role === "core" || o.role === "optional" ? o.role : "", off: o.off || null, made: Boolean(o.made), bridged: 0, absorbedInto: null, absorbed: [],
@@ -999,7 +999,7 @@
   /*
    * Card tiers (v8), a monotonic ladder derived from confirmed learning (never from time spent):
    *   0 Sketch    nothing confirmed yet
-   *   1 Inked     the first confirmation (a right answer, or "I've got it")
+   *   1 Inked     the first right answer (kept even if that check is missed), or "I've got it"
    *   2 Tinted    the topic is completed (isDone: mastered, or 2 right answers)
    *   3 Achieved  completed and confirmed: 3+ right answers, or its whole branch has ended
    *   4 Merged    a parent that has absorbed completed subtopic cards; its level (I, II, III ...) rises with each batch
@@ -1017,7 +1017,7 @@
     var r = 0;
     if (n && !n.ghost) {
       var c = confirmedOf(n);
-      if (c >= 1) r = 1;
+      if (c >= 1 || n.inked) r = 1;
       if (isDone(cloud, id)) r = 2;
       if (r === 2 && ((n.correct || 0) >= ACHIEVE_RIGHT || branchEnded)) r = 3;
     }
@@ -1081,6 +1081,16 @@
       (n.absorbed || []).forEach(function (x) { var k = cloud.nodes[x]; if (k && !(e.co || []).some(function (c) { return c[0] === x; })) (e.co = e.co || []).push([x, k.label]); });
     });
     return joined;
+  }
+  /* The first right answer inks the card now. A missed round still earns no credit (confirm is not called for those). */
+  function markInk(cloud, id, t) {
+    var n = node(cloud, id);
+    if (!n || n.ghost) return false;
+    if (n.inked || (n.correct || 0) > 0) { n.inked = true; return true; }
+    n.inked = true;
+    n.touched = now_(t);
+    cloud.rev += 1;
+    return true;
   }
   /* A multiple-choice answer from a lesson: a right one is confirmed learning (colour); either way it counts as use. */
   function confirm(cloud, id, right, t) {
@@ -1718,7 +1728,7 @@
    * Compact form: one array per node
    * [id, label, parent, flags, weight*10, mastery*100, born(s), touched(s), hue, struggle(s), spent(s), engaged,
    *  then only when set: correct answers, heat*100, heatAt(s), blurb, achieved(s)]
-   * (flags: 1 ghost, 2 opened, 4 branch ends here). New fields go on the end of the array, so older saves still load.
+   * (flags: 1 ghost, 2 opened, 4 branch ends here, 8 inked by a right answer). New fields go on the end of the array, so older saves still load.
    * p: paths { id: [stepIds, next, at] }, f: forks { id: [choiceIds, whys, picked, at] },
    * k: the deck [[id, label, subject, hue, joined(s), best stage, chain labels, blurb, achieved(s)]], g: draw log [[day, id]], ss: session count.
    * Node.cards and keys are rebuilt on load.
@@ -1730,7 +1740,7 @@
       var x = cloud.nodes[id];
       if (x.path && x.path.ids.length) paths[id] = [x.path.ids, x.path.next || 0, s(x.path.at)];
       if (x.fork && x.fork.ids.length) forks[id] = [x.fork.ids, x.fork.why, x.fork.picked || 0, s(x.fork.at)];
-      var row = [id, x.label, x.parent || 0, (x.ghost ? 1 : 0) | (x.opened ? 2 : 0) | (x.end ? 4 : 0), Math.round(x.weight * 10), Math.round(x.mastery * 100), s(x.born), s(x.touched), x.parent ? -1 : (x.hue == null ? 30 : x.hue), s(x.lastStruggle), x.spent || 0, x.engaged || 0];
+      var row = [id, x.label, x.parent || 0, (x.ghost ? 1 : 0) | (x.opened ? 2 : 0) | (x.end ? 4 : 0) | (x.inked ? 8 : 0), Math.round(x.weight * 10), Math.round(x.mastery * 100), s(x.born), s(x.touched), x.parent ? -1 : (x.hue == null ? 30 : x.hue), s(x.lastStruggle), x.spent || 0, x.engaged || 0];
       /* v4 and v5 fields only when set, so most rows stay short */
       var v9 = x.pre && x.pre.length;
       var v8 = v9 || x.ml || x.mergedAt || x.repaired;
@@ -1912,7 +1922,7 @@
           id: a[0], label: cleanLabel(a[1]), key: norm(a[1]), parent: a[2] || null, ghost: Boolean(a[3] & 1), opened: Boolean(a[3] & 2),
           weight: (Number(a[4]) || 0) / 10, mastery: clamp01((Number(a[5]) || 0) / 100), born: ms(a[6]), touched: ms(a[7]),
           hue: a[2] ? undefined : (Number.isFinite(a[8]) && a[8] >= 0 ? a[8] : 30), lastStruggle: a[9] ? ms(a[9]) : undefined, cards: [],
-          end: Boolean(a[3] & 4), spent: Math.max(0, Number(a[10]) || 0), engaged: Math.max(0, Number(a[11]) || 0),
+          end: Boolean(a[3] & 4), inked: Boolean(a[3] & 8), spent: Math.max(0, Number(a[10]) || 0), engaged: Math.max(0, Number(a[11]) || 0),
           correct: Math.max(0, Number(a[12]) || 0), heat: Math.max(0, Number(a[13]) || 0) / 100, heatAt: ms(a[14]), blurb: cleanBlurb(a[15] || ""), achievedAt: ms(a[16]),
           pending: Array.isArray(a[17]) && Array.isArray(a[17][0]) && a[17][0].length ? { steps: a[17][0].map(cleanLabel).filter(Boolean).slice(0, LIMITS.pathSteps), next: cleanLabel(a[17][1]) } : null,
           doneAt: ms(a[18]),
@@ -1996,7 +2006,7 @@
     applyCreate: applyCreate, pruneSeeds: pruneSeeds, deepenChain: deepenChain, applyBridge: applyBridge, coreChildren: coreChildren, doneCore: doneCore, sidePaths: sidePaths, absorbable: absorbable, markCore: markCore,
     create: create, applyTopics: applyTopics, addGhosts: addGhosts, applyPath: applyPath, nextFor: nextFor, engage: engage,
     track: track, markEnd: markEnd, activity: activity, hueOf: hueOf,
-    GROWTH: GROWTH, growthOf: growthOf, joinDeck: joinDeck, chainOf: chainOf, confirm: confirm, setBlurb: setBlurb, cleanBlurb: cleanBlurb,
+    GROWTH: GROWTH, growthOf: growthOf, joinDeck: joinDeck, chainOf: chainOf, confirm: confirm, markInk: markInk, setBlurb: setBlurb, cleanBlurb: cleanBlurb,
     isAchieved: isAchieved, placeChain: placeChain, HEAT: HEAT, heatNow: heatNow, inDeck: inDeck, deckEntry: deckEntry, logDraw: logDraw,
     isDone: isDone, doneChildren: doneChildren, setPending: setPending, applyPending: applyPending, TEST_PASS: TEST_PASS, testOf: testOf,
     markOffered: markOffered, recordTest: recordTest, adoptComputerScience: adoptComputerScience, CS_TOPICS: CS_TOPICS,

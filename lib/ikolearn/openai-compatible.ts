@@ -39,14 +39,18 @@ export async function openaiStream(cfg: LlmConfig, system: string, contents: Con
       done();
       return logFail(cfg, cfg.model, opts, res.ok ? { ...statusFail(502), detail: "empty stream body" } : await failFromResponse(res));
     }
+    let finish = "";
     const pieces = (async function* () {
       try {
-        yield* readSseWith(res.body as ReadableStream<Uint8Array>, deltaOf);
+        yield* readSseWith(res.body as ReadableStream<Uint8Array>, deltaOf, (data) => {
+          const fr = data?.choices?.[0]?.finish_reason;
+          if (typeof fr === "string" && fr) finish = fr;
+        });
       } finally {
         done();
       }
     })();
-    return { ok: true, model: cfg.model, pieces, abort };
+    return { ok: true, model: cfg.model, pieces, abort, finishReason: () => finish };
   } catch (e) {
     return logFail(cfg, cfg.model, opts, errorFail(e));
   }

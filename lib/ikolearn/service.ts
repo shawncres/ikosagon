@@ -58,6 +58,7 @@ import {
   parseCard,
   parseCloudBlock,
   parseLearnInput,
+  lessonLooksComplete,
   replyLooksComplete,
   type Card,
   type CloudBlock,
@@ -175,8 +176,9 @@ export type ChatEvent =
   | { t: "delta"; text: string }
   | { t: "cloud"; topics: CloudBlock["topics"]; ghosts: CloudBlock["ghosts"] }
   | ({ t: "path" } & LessonBlock)
+  | { t: "reset" }
   | { t: "done" }
-  | { t: "error"; reason: FailCode | "cut" };
+  | { t: "error"; reason: FailCode | "cut" | "incomplete" };
 
 type StreamSpec = {
   system: string;
@@ -191,6 +193,8 @@ type StreamSpec = {
   keepCode?: boolean;
   /** Turns the hidden trailing block into the event sent before "done" (or null for none). */
   tail: (block: string, found: boolean) => ChatEvent | null;
+  /** Lesson retries decide "done" only after a completeness check, so it is not yielded here. */
+  deferDone?: boolean;
 };
 
 /** One streamed reply as events. The trailing structured block is held back and never sent as text. */
@@ -225,7 +229,9 @@ async function* replyEvents(spec: StreamSpec, pieces: AsyncGenerator<string>): A
         yield { t: "delta", text };
       }
     }
-  } catch {
+  } catch (e) {
+    const aborted = (e as Error)?.name === "AbortError" || /\babort/i.test(String((e as Error)?.message || e));
+    if (spec.deferDone && aborted) throw e;
     const end = split.finish();
     if (end.tail) { spoken += end.tail; yield { t: "delta", text: end.tail }; }
     if (spoken.trim() && !replyLooksComplete(spoken)) console.log(JSON.stringify({ ev: "ikolearn.chat_trunc", chars: spoken.trim().length, found: end.found }));
@@ -242,7 +248,7 @@ async function* replyEvents(spec: StreamSpec, pieces: AsyncGenerator<string>): A
   if (spoken.trim() && !replyLooksComplete(spoken)) console.log(JSON.stringify({ ev: "ikolearn.chat_trunc", chars: spoken.trim().length, found: end.found }));
   const last = spec.tail(end.block, end.found);
   if (last) yield last;
-  yield { t: "done" };
+  if (!spec.deferDone) yield { t: "done" };
 }
 
 /** Streams one companion or notice reply. Ends with a "cloud" event (empty arrays when the block was missing or bad). */
@@ -267,30 +273,87 @@ export function chatEvents(input: LearnInput, env: Env, fetchImpl: typeof fetch 
   );
 }
 
-/** Streams one lesson (tagged lines). The hidden trailing block (path steps when asked, fork choices, 1-2 questions, the card line, branch end) becomes one "path" event. */
-export function lessonEvents(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch, run: StreamRun = {}): AsyncGenerator<ChatEvent> {
-  return streamEvents(
-    {
-      system: lessonSystem(input),
-      contents: lessonContents(input),
-      open: PATH_OPEN,
-      close: PATH_CLOSE,
-      route: "lesson",
-      maxChars: LEARN_LIMITS.lessonChars,
-      keepCode: true,
-      maxTokens: MODEL_LIMITS.lessonMaxTokens,
-      tail: (block, found) => {
-        /* PR 120: one line when the block is missing or unusable (never the prompt or the block text), so the cause shows in the logs */
-        if (!found) { console.log(JSON.stringify({ ev: "ikolearn.lesson_block", found: false })); return null; }
-        const b = parseLessonBlock(block, input.name, input.focus, input.wantPath);
-        if (!b || !b.questions.length) console.log(JSON.stringify({ ev: "ikolearn.lesson_block", found: true, parsed: Boolean(b), chars: block.length }));
-        return b ? { t: "path", ...b } : null;
-      },
-    },
-    env,
-    fetchImpl,
-    run,
-  );
+const LESSON_TRIES = 3; /* the first write, plus up to 2 retries when it comes back cut off */
+
+function lessonTail(input: LearnInput): StreamSpec["tail"] {
+  return (block, found) => {
+    /* one line when the block is missing or unusable (never the prompt or the block text), so the cause shows in the logs */
+    if (!found) { console.log(JSON.stringify({ ev: "ikolearn.lesson_block", found: false })); return null; }
+    const b = parseLessonBlock(block, input.name, input.focus, input.wantPath);
+    if (!b || !b.questions.length) console.log(JSON.stringify({ ev: "ikolearn.lesson_block", found: true, parsed: Boolean(b), chars: block.length }));
+    return b ? { t: "path", ...b } : null;
+  };
+}
+
+/**
+ * Streams one lesson (tagged lines). The hidden trailing block becomes one "path" event.
+ * A cut-off lesson (token cap, missing worked example or check, a mid-sentence ending, unbalanced fences) is written
+ * again, up to 2 more times, with a higher token cap and the draft so far. Only a complete lesson is finished with
+ * "done". After the retries, "incomplete" is sent and nothing is left for the device to cache.
+ */
+export async function* lessonEvents(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch, run: StreamRun = {}): AsyncGenerator<ChatEvent> {
+  const spec: StreamSpec = {
+    system: "",
+    contents: [],
+    open: PATH_OPEN,
+    close: PATH_CLOSE,
+    route: "lesson",
+    maxChars: LEARN_LIMITS.lessonChars,
+    keepCode: true,
+    deferDone: true,
+    tail: lessonTail(input),
+  };
+  let draft = "";
+  for (let attempt = 0; attempt < LESSON_TRIES; attempt++) {
+    if (attempt > 0 && run.spend && !run.spend()) break;
+    const strict = attempt > 0 || Boolean(input.strict);
+    const maxTokens = attempt === 0 ? MODEL_LIMITS.lessonMaxTokens : MODEL_LIMITS.lessonRetryTokens;
+    const started = await streamText(lessonSystem({ ...input, strict }), lessonContents(input, attempt > 0 ? draft : ""), env, fetchImpl, {
+      maxTokens, route: "lesson", attempt: attempt + 1, spend: attempt === 0 ? run.spend : undefined,
+    });
+    if (!started.ok) {
+      if (attempt === 0 || started.code === "busy" || started.code === "no_key" || started.code === "refused") {
+        yield { t: "error", reason: started.code };
+        return;
+      }
+      break;
+    }
+    if (attempt === 0) yield { t: "start", model: started.model };
+    else yield { t: "reset" };
+    let text = "";
+    let pathEv: Extract<ChatEvent, { t: "path" }> | null = null;
+    let failed: Extract<ChatEvent, { t: "error" }> | null = null;
+    let cancelled = false;
+    try {
+      for await (const ev of replyEvents(spec, started.pieces)) {
+        if (ev.t === "delta") { text += ev.text; yield ev; }
+        else if (ev.t === "path") pathEv = ev;
+        else if (ev.t === "error") failed = ev;
+      }
+    } catch (e) {
+      cancelled = (e as Error)?.name === "AbortError" || /\babort/i.test(String((e as Error)?.message || e));
+      if (!cancelled) failed = { t: "error", reason: "cut" };
+    } finally {
+      started.abort();
+    }
+    if (cancelled) return;
+    const questions = pathEv ? pathEv.questions.length : 0;
+    const finish = started.finishReason();
+    const last = attempt === LESSON_TRIES - 1;
+    if (!failed && lessonLooksComplete(text, { finishReason: finish, hasCheck: questions > 0, allowCapped: last })) {
+      if (pathEv) yield pathEv;
+      yield { t: "done" };
+      return;
+    }
+    draft = text;
+    console.log(JSON.stringify({ ev: "ikolearn.lesson_incomplete", attempt: attempt + 1, finish: finish || "", chars: text.trim().length, reason: failed ? failed.reason : "" }));
+    if (failed && failed.reason !== "empty" && failed.reason !== "cut") {
+      yield failed;
+      return;
+    }
+  }
+  yield { t: "reset" };
+  yield { t: "error", reason: "incomplete" };
 }
 
 /** NDJSON stream for the route. */
