@@ -13,7 +13,7 @@ ok(JSON.stringify(calls.at(-1)).includes("JSON object only"),"retry is stricter"
 r=await callModel(s=>({system:"s",user:"u"}),{},v,ENV,f(["bad","bad","bad","bad"]));
 ok(!r.ok,"malformed never returned as value");
 const blk={key_idea:"Volcanoes erupt when pressure from melted rock pushes up through weak spots in the crust.",questions:[
-{kind:"recall",q:"What makes a volcano erupt?",options:["Pressure from magma","The moon pulling","Cold rain"],answer:0,why:["","Tides are pulled by the moon","Rain cools things"]},
+{kind:"recall",q:"What makes a volcano erupt?",options:["Pressure from magma","The moon pulling","Rain filling the crater"],answer:0,why:["","Tides are pulled by the moon","Rain cools things"]},
 {kind:"apply",q:"A soda bottle is shaken then opened. Why does it spray?",options:["Built-up gas pressure","It got colder","The cap was sticky"],answer:0,why:["","Cold feels like it matters","Sticky things pop"]},
 {kind:"mistake",q:"Sam says lava is hottest when it is black. What went wrong?",options:["Black lava has cooled","Black lava is hotter","Lava cools into ash"],answer:0,why:["","It sounds plausible","Some rocks are cool"]}],choices:[{name:"Magma",kind:"deeper",why:"go deeper"}]};
 const b=parseLessonBlock(JSON.stringify(blk),"Shawn","Volcanoes",false);
@@ -65,7 +65,7 @@ console.log(`pr113 mocked: ${pass} passed, ${fail} failed`);
   const { checkFor } = await import("../lib/ikolearn/service.ts");
   const IN = parseLearnInput({ mode: "notice", name: "Sam", focus: "Magma", messages: [], lesson: "INTRO: Magma is melted rock under the ground. EXPLAIN: When it reaches the surface it is called lava, and it cools into new rock over time." });
   const Q = (kind, opts) => ({ kind, q: `A ${kind} question about magma here?`, options: opts || ["Melted rock underground", "Lava on the surface", "Cooled granite"], answer: 0, why: ["", "Same stuff, different place", "Granite starts as magma"] });
-  const absurd = JSON.stringify({ key_idea: "Magma is melted rock found below the surface of the Earth.", questions: [Q("recall"), Q("apply"), Q("mistake", ["Magma is melted rock below ground", "Magma is always cold", "Lava is underground rock"])] });
+  const absurd = JSON.stringify({ key_idea: "Magma is melted rock found below the surface of the Earth.", questions: [Q("recall"), Q("apply"), Q("mistake", ["Magma is melted rock below ground", "Magma is always cold", "Magma is made of cold ice"])] });
   const good = JSON.stringify({ key_idea: "Magma is melted rock found below the surface of the Earth.", questions: [Q("recall"), Q("apply"), Q("mistake")] });
   const o = await checkFor(IN, ENV, f([absurd, good]));
   ok(o.status === 200 && calls.length === 2 && !o.body.questions.some((q) => q.options.some((x) => /always cold/.test(x))), "distractors: 'Magma is always cold' is rejected and the strict retry is used");
