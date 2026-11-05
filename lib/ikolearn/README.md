@@ -409,3 +409,13 @@ Checks: the "parents & teachers view" block in `check:ikolearn`, and `IKOLEARN_P
 - **Tone**: the answer is not sent anywhere and changes no prompt (0 extra calls).
 
 Checks: the "learners" block in `check:ikolearn`, and `IKOLEARN_PW=<playwright-core folder> node scripts/ikolearn-guide-e2e.mjs [--shots DIR] [--root DIR]`.
+
+## Tidying the cloud (PR 119)
+
+As a cloud grows, topics are re-nested under sensible subjects and sub-branches so the map stays a neat, readable tree.
+- **When:** quietly on idle when the cloud has grown by 8+ topics since the last tidy (at least 12 topics, at most once a day, only on the cloud, never mid-lesson), or by hand with "Tidy my cloud" in the name card's Preferences.
+- **Call:** `/api/ikolearn/restructure` (one structured call through `callModel`, Gemini by default). It sends the top of the tree only (`C.restructureTree`: ids, titles, parent ids, earned; no progress, at most 120 nodes, depth 3). Prompt and schema in `prompts.ts` (`restructureSystem`, `RESTRUCTURE_SCHEMA`, `parseRestructure`).
+- **Validation (device, `C.checkRestructure`):** every sent id exactly once, no invented ids, no cycles, subjects stay subjects, parents at most depth 3, new groups hold 2-10 nodes with a fresh title, at most 8 groups and 16 children per branch. Anything off keeps the old tree silently.
+- **Apply / Undo:** only parent links change (ids, cards, the Deck, stages and progress untouched) plus new grouping branches. Nodes glide to their new places; Iko says "I tidied your cloud so related topics sit together." with Undo, which restores the one kept snapshot.
+- **Storage:** the optional v9 field `rs` ([last run, topic count then, moved, group ids, snapshot]); older readers ignore it.
+- **Tests:** `check:ikolearn` (validation, threshold, debounce, Undo, the route) and `scripts/ikolearn-restructure-e2e.mjs` (phone taps before and after a tidy and after Undo).

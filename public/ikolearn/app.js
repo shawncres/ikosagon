@@ -695,9 +695,65 @@
       setTimeout(function () { el.thumb.classList.remove("grew"); }, 2400);
     }
   }
+
+  /*
+   * PR 119: tidy the cloud. When the cloud has grown by about 8 topics since the last tidy (at most once a day), on idle
+   * and only on the cloud (never mid-lesson), or when the learner taps "Tidy my cloud" in Preferences: the top of the
+   * tree goes to /restructure, the device checks the proposal fully (C.applyRestructure) and keeps the old tree when
+   * anything is off, silently. Nodes glide to their new places; Iko says one calm line with Undo (one snapshot).
+   */
+  var tidy = { busy: false, t: 0 };
+  var TIDY_LINE = "I tidied your cloud so related topics sit together.";
+  function tidyQuiet() { return !state.busy && state.mode !== "lesson" && !intakeOn && !document.hidden && /^(cloud|home|topic|)$/.test(iko.tipKey || ""); }
+  function maybeTidy() {
+    if (!tidy || tidy.busy || !state.cloud || !C.restructureDue(state.cloud)) return;
+    clearTimeout(tidy.t);
+    tidy.t = setTimeout(function () {
+      var go = function () { if (tidyQuiet() && C.restructureDue(state.cloud)) tidyCloud(false); };
+      if (window.requestIdleCallback) window.requestIdleCallback(go, { timeout: 4000 }); else go();
+    }, 6000);
+  }
+  function tidyCloud(manual, done) {
+    if (tidy.busy || !state.cloud) { if (done) done(false); return; }
+    var cloud = state.cloud, sent = C.restructureTree(cloud);
+    if (sent.length < 6) { if (done) done(false, "small"); return; }
+    tidy.busy = true;
+    C.noteRestructure(cloud); save(); /* stamped first: at most one try a day, whatever happens */
+    var body = basePayload(null); body.focus = state.name || "cloud"; body.tree = sent;
+    postJson("/restructure", body).then(function (j) {
+      tidy.busy = false;
+      if (state.cloud !== cloud) { if (done) done(false); return; }
+      var r = j && j.ok && j.proposal ? C.applyRestructure(cloud, sent, j.proposal) : { ok: false };
+      if (!r.ok) { if (done) done(false, r.why === "same" ? "neat" : ""); return; } /* the old tree stays, quietly */
+      save();
+      if (big) big.setCloud(state.cloud, { morph: 1400 });
+      if (mini) mini.setCloud(state.cloud, { morph: 1400 });
+      refreshAll();
+      tidySay();
+      if (done) done(true);
+    });
+  }
+  function tidySay() {
+    ikoLine(TIDY_LINE, 14000);
+    el.ikoLine.setAttribute("data-say", "tidy");
+    var u = mk("button", "iko-yes", "Undo");
+    u.type = "button"; u.setAttribute("aria-label", "Undo the tidy");
+    u.addEventListener("click", function (e) { e.stopPropagation(); ikoLine(""); undoTidy(); });
+    el.ikoLine.appendChild(document.createTextNode(" ")); el.ikoLine.appendChild(u);
+  }
+  function undoTidy() {
+    if (!state.cloud || !C.undoRestructure(state.cloud)) return false;
+    save();
+    if (big) big.setCloud(state.cloud, { morph: 1100 });
+    if (mini) mini.setCloud(state.cloud, { morph: 1100 });
+    refreshAll();
+    return true;
+  }
+  window.__ikoTidy = { run: tidyCloud, undo: undoTidy, say: tidySay }; /* tests */
   /* Paths and mastery show in several places; redraw them all after a change. */
   function refreshAll(flashIds) {
     refreshViews(flashIds);
+    maybeTidy();
     renderThread();
     renderDeckButton();
     if (state.lessonNode && state.mode === "lesson") { renderLessonPath(); renderFork(state.lessonNode); }
@@ -2800,6 +2856,15 @@
       });
       paintTheme(); panes.prefs.appendChild(tr);
     }
+    /* PR 119: tidy the cloud by hand */
+    panes.prefs.appendChild(mk("p", "hc-ph", "Your cloud"));
+    panes.prefs.appendChild(mk("p", "hc-hint fine", "Re-files topics so related ones sit together. Nothing you've learned changes, and you can undo it."));
+    var tst = mk("p", "hc-hint fine tidy-status"); tst.setAttribute("role", "status"); tst.setAttribute("aria-live", "polite");
+    var tb = linkBtn("Tidy my cloud", function () {
+      tb.disabled = true; tst.textContent = "Tidying…";
+      tidyCloud(true, function (ok, why) { tb.disabled = false; var ts = document.querySelector(".tidy-status") || tst; ts.textContent = ok ? "Done. Related topics now sit together." : why === "small" ? "Your cloud is still small and neat." : why === "neat" ? "Your cloud is already tidy." : "Your cloud stays as it is for now."; });
+    }, "btn sm tidy-btn");
+    panes.prefs.appendChild(tb); panes.prefs.appendChild(tst);
     Object.keys(panes).forEach(function (k) { box.appendChild(panes[k]); });
     show(homeTab);
     box.appendChild(cloudTools());

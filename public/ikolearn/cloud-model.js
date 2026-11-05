@@ -1547,6 +1547,171 @@
     return out.slice(0, max);
   }
 
+  /* ---------- restructure (PR 119): tidy a grown cloud into neat, logical branches ---------- */
+  /*
+   * As the cloud grows, topics can end up filed loosely (everything straight under its subject). A restructure sends the
+   * top of the tree (subjects, topics and sub-branches, ids and titles only, plus which are earned) to the model, which
+   * proposes a parent for every node and a few new grouping branches. The proposal is only a suggestion: applyRestructure
+   * checks it thoroughly (every id kept exactly once, no cycles, nothing lost or duplicated, sensible depth and branch
+   * sizes, subjects stay subjects, earned cards and progress untouched) and anything invalid leaves the tree as it was.
+   * Only parent links change and grouping branches are added (ids kept, so cards, the Deck, stages and paths' history stay).
+   * One snapshot is kept so Undo restores the previous tree. Stored as the optional v9 field rs (older readers ignore it).
+   */
+  var RESTRUCTURE = { grow: 8, minTopics: 12, gapMs: 864e5, maxNodes: 120, maxDepth: 3, maxGroups: 8, groupMin: 2, groupMax: 10, kidsMax: 16, titleChars: 40 };
+  function rsOf(cloud) { return cloud.rs || { at: 0, base: 0, groups: [], snap: null, n: 0 }; }
+  /* Due on its own: the cloud has grown by RESTRUCTURE.grow topics since the last one, and not more than once a day. */
+  function restructureDue(cloud, now) {
+    var r = rsOf(cloud), count = topicCount(cloud), t = now == null ? Date.now() : now;
+    return count >= RESTRUCTURE.minTopics && count - (r.base || 0) >= RESTRUCTURE.grow && t - (r.at || 0) >= RESTRUCTURE.gapMs;
+  }
+  /* A try (applied or not) is stamped, so a failed or invalid answer is not retried the same day. */
+  function noteRestructure(cloud, now) { var r = cloud.rs = rsOf(cloud); r.at = now == null ? Date.now() : now; return r; }
+  /* What the model sees: real nodes (no placeholders) down to depth 3, ids and titles only, and whether a card is earned. */
+  function restructureTree(cloud) {
+    var out = [];
+    all(cloud).forEach(function (n) {
+      if (n.ghost || out.length >= RESTRUCTURE.maxNodes) return;
+      var d = depthOf(cloud, n.id);
+      if (d > RESTRUCTURE.maxDepth) return;
+      out.push({ id: n.id, t: n.label, p: n.parent || "", e: Boolean(inDeck(cloud, n.id) || isAchieved(cloud, n.id)) });
+    });
+    return out;
+  }
+  /*
+   * Check a proposal { groups: [{ key, title, parent }], moves: [{ id, parent }] } against the sent tree. Pure.
+   * -> { ok: true, groups, moves } or { ok: false, why }.
+   */
+  function checkRestructure(cloud, sent, prop) {
+    var bad = function (why) { return { ok: false, why: why }; };
+    if (!prop || typeof prop !== "object" || !Array.isArray(prop.moves)) return bad("shape");
+    var ids = {}; sent.forEach(function (x) { ids[x.id] = x; });
+    var groups = Array.isArray(prop.groups) ? prop.groups : [];
+    if (groups.length > RESTRUCTURE.maxGroups) return bad("groups");
+    var gk = {}, gl = [], labels = {};
+    all(cloud).forEach(function (n) { labels[norm(n.label)] = 1; });
+    for (var i = 0; i < groups.length; i++) {
+      var g = groups[i] || {}, key = String(g.key || ""), title = cleanLabel(g.title);
+      if (!/^g\d{1,3}$/.test(key) || gk[key] || ids[key] || !title || title.length > RESTRUCTURE.titleChars || labels[norm(title)] || norm(title) === norm(cloud.name)) return bad("group");
+      labels[norm(title)] = 1;
+      gk[key] = { key: key, title: title, parent: String(g.parent || "") };
+      gl.push(gk[key]);
+    }
+    var par = {}, seen = {};
+    for (var j = 0; j < prop.moves.length; j++) {
+      var m = prop.moves[j] || {}, id = String(m.id || ""), p = String(m.parent || "");
+      if (!ids[id]) return bad("unknown");
+      if (seen[id]) return bad("duplicate");
+      seen[id] = 1;
+      if (p && !ids[p] && !gk[p]) return bad("parent");
+      if (p === id) return bad("cycle");
+      par[id] = p;
+    }
+    if (Object.keys(seen).length !== sent.length) return bad("lost");
+    for (var k = 0; k < sent.length; k++) {
+      var s = sent[k];
+      if (!s.p && par[s.id]) return bad("subject"); /* subjects stay subjects (their colour is theirs) */
+      if (s.p && !par[s.id]) return bad("root");
+    }
+    gl.forEach(function (g) { par[g.key] = g.parent; });
+    for (var gi = 0; gi < gl.length; gi++) if (!gl[gi].parent || (!ids[gl[gi].parent] && !gk[gl[gi].parent])) return bad("group_parent");
+    /* no cycles, and depth (subject = 1) of every parent at most maxDepth */
+    var depth = {};
+    var depthOfP = function (x) {
+      if (depth[x] != null) return depth[x];
+      var d = 0, cur = x, walk = {};
+      while (cur) { if (walk[cur]) return -1; walk[cur] = 1; d += 1; cur = par[cur]; }
+      depth[x] = d; return d;
+    };
+    var everyone = Object.keys(par);
+    for (var q = 0; q < everyone.length; q++) {
+      var dd = depthOfP(everyone[q]);
+      if (dd < 0) return bad("cycle");
+      if (par[everyone[q]] && depthOfP(par[everyone[q]]) > RESTRUCTURE.maxDepth) return bad("depth");
+    }
+    /* branch sizes: a new group holds groupMin..groupMax; no node more than kidsMax children (sent ones; unsent stay) */
+    var kids = {};
+    everyone.forEach(function (x) { if (par[x]) kids[par[x]] = (kids[par[x]] || 0) + 1; });
+    for (var gg = 0; gg < gl.length; gg++) { var c = kids[gl[gg].key] || 0; if (c < RESTRUCTURE.groupMin || c > RESTRUCTURE.groupMax) return bad("group_size"); }
+    var moved = sent.filter(function (x) { return par[x.id] !== x.p; });
+    var over = Object.keys(kids).some(function (x) { return kids[x] > RESTRUCTURE.kidsMax && (gk[x] || moved.some(function (m2) { return par[m2.id] === x; })); });
+    if (over) return bad("branch_size");
+    return { ok: true, groups: gl, moves: moved.map(function (x) { return { id: x.id, parent: par[x.id] }; }) };
+  }
+  /*
+   * Apply a checked proposal. Earned cards, mastery, stages, cards and tests stay exactly as they were (only parent links
+   * change, ids kept). Keeps one snapshot for Undo. -> { ok, moved, groups: [ids] } or { ok: false, why } (tree unchanged).
+   */
+  function applyRestructure(cloud, sent, prop, now) {
+    var t = now == null ? Date.now() : now;
+    var v = checkRestructure(cloud, sent, prop);
+    if (!v.ok) return v;
+    if (!v.moves.length && !v.groups.length) return { ok: false, why: "same" };
+    var snap = { at: t, moves: [], groups: [] }, made = {};
+    v.groups.forEach(function (g) {
+      var p = cloud.nodes[g.parent] ? g.parent : null; /* a group under a group: placed once its parent exists (below) */
+      var n = addNode(cloud, { label: g.title, parent: p || "_", weight: 1, born: t });
+      n.made = true; made[g.key] = n.id; snap.groups.push(n.id);
+    });
+    v.groups.forEach(function (g) { var n = cloud.nodes[made[g.key]]; n.parent = made[g.parent] || g.parent; });
+    v.moves.forEach(function (m) {
+      var x = cloud.nodes[m.id], old = cloud.nodes[x.parent], pid = made[m.parent] || m.parent;
+      var at = old && old.path ? old.path.ids.indexOf(m.id) : -1;
+      snap.moves.push([m.id, x.parent, x.role || "", x.off || 0, x.absorbedInto || 0, at, old && old.path && old.path.next === m.id ? 1 : 0]);
+      if (!moveUnder(cloud, m.id, pid)) { x.parent = pid; x.role = ""; x.off = null; }
+    });
+    var r = noteRestructure(cloud, t);
+    r.base = topicCount(cloud); r.n = v.moves.length; r.groups = snap.groups.slice(); r.snap = snap;
+    cloud.rev = (cloud.rev || 0) + 1;
+    return { ok: true, moved: v.moves.length, groups: snap.groups.slice() };
+  }
+  /* Undo: the previous tree comes back (moved nodes to their old parents and path places, new groups removed). */
+  function undoRestructure(cloud) {
+    var r = rsOf(cloud), snap = r.snap;
+    if (!snap) return false;
+    var gone = {}; (snap.groups || []).forEach(function (g) { gone[g] = 1; });
+    snap.moves.slice().reverse().forEach(function (m) {
+      var x = cloud.nodes[m[0]], oldP = m[1];
+      if (!x || (oldP && !cloud.nodes[oldP])) return;
+      x.parent = oldP || null; x.role = m[2] || ""; x.off = m[3] || null;
+      if (m[4] && cloud.nodes[m[4]]) { x.absorbedInto = m[4]; var a = cloud.nodes[m[4]]; if (a.absorbed.indexOf(x.id) < 0) a.absorbed.push(x.id); }
+      var op = cloud.nodes[oldP];
+      if (op && op.path && m[5] >= 0 && op.path.ids.indexOf(x.id) < 0) { op.path.ids.splice(Math.min(m[5], op.path.ids.length), 0, x.id); if (m[6]) op.path.next = x.id; }
+    });
+    /* anything that landed in a group since goes to the group's parent; a group that has become a card itself stays */
+    Object.keys(gone).forEach(function (g) {
+      var n = cloud.nodes[g];
+      if (!n) return;
+      if (inDeck(cloud, g) || (n.cards && n.cards.length) || n.engaged) return;
+      var up = n.parent; while (gone[up] && cloud.nodes[up]) up = cloud.nodes[up].parent;
+      all(cloud).forEach(function (k) { if (k.parent === g) k.parent = up || n.parent; });
+    });
+    Object.keys(gone).forEach(function (g) {
+      var n = cloud.nodes[g];
+      if (!n || inDeck(cloud, g) || (n.cards && n.cards.length) || n.engaged) return;
+      if (all(cloud).some(function (k) { return k.parent === g; })) return;
+      delete cloud.nodes[g]; cloud.order = cloud.order.filter(function (x) { return x !== g; });
+    });
+    tidyRefs(cloud);
+    r.snap = null; r.groups = []; r.n = 0;
+    cloud.rev = (cloud.rev || 0) + 1;
+    return true;
+  }
+  function rsRow(cloud) {
+    var r = cloud.rs, s = function (ms) { return ms ? Math.round(ms / 1000) : 0; };
+    if (!r || (!r.at && !r.snap)) return 0;
+    return [s(r.at), r.base || 0, r.n || 0, r.groups || [], r.snap ? [s(r.snap.at), r.snap.moves, r.snap.groups] : 0];
+  }
+  function rsRead(out, row) {
+    if (!Array.isArray(row)) return;
+    var ms = function (x) { return (Number(x) || 0) * 1000; }, str = function (x) { return typeof x === "string" && out.nodes[x]; };
+    var r = { at: ms(row[0]), base: Math.max(0, Number(row[1]) || 0), n: Math.max(0, Number(row[2]) || 0), groups: (Array.isArray(row[3]) ? row[3] : []).filter(str), snap: null };
+    var sn = row[4];
+    if (Array.isArray(sn) && Array.isArray(sn[1])) {
+      r.snap = { at: ms(sn[0]), moves: sn[1].filter(function (m) { return Array.isArray(m) && str(m[0]); }), groups: (Array.isArray(sn[2]) ? sn[2] : []).filter(str) };
+    }
+    out.rs = r;
+  }
+
   /* ---------- storage ---------- */
   /*
    * Compact form: one array per node
@@ -1584,7 +1749,7 @@
     return JSON.stringify({ v: VERSION, name: cloud.name, seq: cloud.seq, rev: cloud.rev, created: cloud.created, next: cloud.next || 0, n: n, p: paths, f: forks, cards: cloud.cards,
       k: (cloud.deck || []).map(function (e) { var r = [e.id, e.label, e.subject, e.hue, s(e.at), e.best || 0, e.chain || [], e.blurb || "", s(e.ach)]; if (e.tb || e.ml || e.inn || (e.co && e.co.length)) r.push(e.tb || 0, e.ml || 0, e.inn || 0, e.co && e.co.length ? e.co : 0); return r; }), g: cloud.draws || [], ss: cloud.sessions || 0,
       t: tests, sg: sg, fl: cloud.active || 0, pr: profileRow(cloud.profile),
-      ev: (cloud.events || []).map(function (e) { return [s(e.t), e.k, e.id, e.lv || 0, e.ids || [], e.why || ""]; }), mo: motifMap(cloud), ez: easeMap(cloud) });
+      ev: (cloud.events || []).map(function (e) { return [s(e.t), e.k, e.id, e.lv || 0, e.ids || [], e.why || ""]; }), mo: motifMap(cloud), ez: easeMap(cloud), rs: rsRow(cloud) });
   }
   /*
    * How easily the learner answers in a branch (PR 103): one number per subject, -1 (finding the checks hard) .. 1 (answering
@@ -1764,6 +1929,7 @@
       try { out = finish(base, list, c.cards, c.p, { forks: c.f, deck: c.k, draws: c.g, sessions: c.ss, tests: c.t, suggest: c.sg, active: c.fl, profile: c.pr, events: c.ev }); } finally { gateOff = false; }
       if (c.mo && typeof c.mo === "object") Object.keys(c.mo).forEach(function (id) { if (out.nodes[id]) out.nodes[id].motif = cleanMotif(c.mo[id]); });
       if (c.ez && typeof c.ez === "object") Object.keys(c.ez).forEach(function (id) { var x = out.nodes[id], v = Number(c.ez[id]); if (x && !x.parent && Number.isFinite(v)) x.ez = Math.max(-1, Math.min(1, Math.round(v) / 100)); });
+      if (c.rs) rsRead(out, c.rs);
       var nowS = Math.round(Date.now() / 1000) * 1000; /* whole seconds, as stored, so a migrated cloud round-trips exactly */
       if (c.v < 5) adoptComputerScience(out, nowS); /* v4 and older: Computer Science becomes its own subject */
       if (c.v < 6) { pruneSeeds(out); joinDeck(out, nowS); } /* v5 and older: untouched starter seeds go; everything learned stays */
@@ -1824,6 +1990,7 @@
     newProfile: newProfile, profileOf: profileOf, BANDS: BANDS, LEVELS: LEVELS, bandOf: bandOf, levelOf: levelOf, setLast: setLast, lastOf: lastOf, dirOf: dirOf, setLater: setLater, setProfile: setProfile, topicCount: topicCount,
     TIERS: TIERS, TIER_NAMES: TIER_NAMES, TIER_STAGE: TIER_STAGE, ACHIEVE_RIGHT: ACHIEVE_RIGHT, roman: roman, tierOf: tierOf, mergeLevel: mergeLevel, mergeInto: mergeInto, corpusOf: corpusOf, absorbedInto: absorbedInto,
     GATE: GATE, needOf: needOf, gateCore: gateCore, coreProgress: coreProgress, prereqs: prereqs, lockedBy: lockedBy, completable: completable, addPrereqs: addPrereqs, PRE_MAX: PRE_MAX,
+    RESTRUCTURE: RESTRUCTURE, restructureDue: restructureDue, noteRestructure: noteRestructure, restructureTree: restructureTree, checkRestructure: checkRestructure, applyRestructure: applyRestructure, undoRestructure: undoRestructure,
     checkChain: checkChain, applyRepair: applyRepair, moveUnder: moveUnder, EVENTS_MAX: EVENTS_MAX,
     applyCreate: applyCreate, pruneSeeds: pruneSeeds, deepenChain: deepenChain, applyBridge: applyBridge, coreChildren: coreChildren, doneCore: doneCore, sidePaths: sidePaths, absorbable: absorbable, markCore: markCore,
     create: create, applyTopics: applyTopics, addGhosts: addGhosts, applyPath: applyPath, nextFor: nextFor, engage: engage,
