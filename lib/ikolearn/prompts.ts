@@ -417,9 +417,37 @@ export function companionSystem(i: LearnInput): string {
   return (
     `${SYSTEM_BASE}\n\nRole: companion. Have a normal, helpful learning conversation. Answer questions clearly and correctly at the learner's level, ` +
     "check understanding with one light question when it helps, notice patterns gently, and suggest a next step now and then. " +
-    "If the learner seems stuck, break it into a smaller step. Prefer topics that build on what they already know, and sometimes point toward skills that will matter in the future.\n\n" +
+    "If the learner seems stuck, break it into a smaller step. Prefer topics that build on what they already know, and sometimes point toward skills that will matter in the future. " +
+    "Always finish every sentence: end with . ! or ? before the cloud block. Never stop mid-word or mid-sentence. " +
+    'When the learner says they want to learn, start, study, add or explore a topic (for example "I want to learn hat making"), put that topic in topics with a placement, ' +
+    "keep your spoken reply to 2 to 4 short complete sentences, and invite them to open the new node on their cloud (learning anything, any time, by growing the cloud).\n\n" +
     `${profile(i)}${screenLine(i) ? `\n${screenLine(i)}` : ""}\n\n${blockRules(i.parents)}`
   );
+}
+
+/**
+ * True when a spoken reply looks finished (ends on sentence punctuation), not cut mid-word.
+ * Used to catch max-token mid-sentence cuts before the CLOUD block.
+ */
+export function replyLooksComplete(text: string): boolean {
+  const t = String(text || "").replace(/\s+$/, "").trim();
+  return Boolean(t) && /[.!?…]["')\]]*$/.test(t);
+}
+
+/** Pull a topic phrase from clear "I want to learn X" / "add X" / "teach me X" lines. "" when unclear. */
+export function learnTopicFrom(text: string): string {
+  let t = String(text || "").replace(/\s+/g, " ").trim();
+  if (!t || t.length > 120) return "";
+  t = t.replace(/[.!?]+$/g, "").trim();
+  const m = t.match(
+    /^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:(?:i(?:'d| would)?\s+like\s+to|i\s+want\s+to|i\s+wanna|let'?s|help\s+me)\s+)?(?:learn|study|start|add|explore|teach\s+me)\s+(.+)$/i,
+  );
+  if (!m) return "";
+  let topic = m[1].replace(/^(?:about|more\s+about|how\s+to)\s+/i, "").replace(/\s+please$/i, "").trim();
+  topic = topic.replace(/^(?:a|an|the)\s+/i, "").trim();
+  if (topic.length < 2 || topic.length > 40) return "";
+  if (/^(something|anything|everything|this|that|it)$/i.test(topic)) return "";
+  return topic;
 }
 
 export function noticeSystem(i: LearnInput): string {

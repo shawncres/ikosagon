@@ -559,6 +559,40 @@
    * and deleting a branch: first a gentle word for leaving it, and it goes only on a clear tap of "Delete". Anything else
    * goes to the model as usual.
    */
+  /*
+   * PR chat-complete: clear "I want to learn X" / "add X" / "teach me X" lines. Used after a chat turn when the
+   * model cut off before the cloud block, so the cloud still grows (anything, any time) without a second call.
+   */
+  function learnTopicFrom(text) {
+    var t = String(text || "").replace(/\s+/g, " ").trim();
+    if (!t || t.length > 120) return "";
+    t = t.replace(/[.!?]+$/g, "").trim();
+    var m = t.match(/^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:(?:i(?:'d| would)?\s+like\s+to|i\s+want\s+to|i\s+wanna|let'?s|help\s+me)\s+)?(?:learn|study|start|add|explore|teach\s+me)\s+(.+)$/i);
+    if (!m) return "";
+    var topic = m[1].replace(/^(?:about|more\s+about|how\s+to)\s+/i, "").replace(/\s+please$/i, "").trim().replace(/^(?:a|an|the)\s+/i, "").trim();
+    if (topic.length < 2 || topic.length > 40) return "";
+    if (/^(something|anything|everything|this|that|it)$/i.test(topic)) return "";
+    return topic;
+  }
+  function titleTopic(s) {
+    return String(s || "").split(/\s+/).map(function (w) {
+      if (!w) return w;
+      if (/^[A-Z0-9]+$/.test(w) && w.length <= 4) return w;
+      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    }).join(" ");
+  }
+  function replyLooksComplete(text) {
+    var t = String(text || "").replace(/\s+$/, "").trim();
+    return Boolean(t) && /[.!?…]["')\]]*$/.test(t);
+  }
+  /* Drop a trailing unfinished sentence so a mid-token cut never shows as "Would". */
+  function finishSpoken(text) {
+    var t = String(text || "").replace(/\s+$/, "").trim();
+    if (!t || replyLooksComplete(t)) return t;
+    var cut = Math.max(t.lastIndexOf(". "), t.lastIndexOf("! "), t.lastIndexOf("? "), t.lastIndexOf(".\n"), t.lastIndexOf("!\n"), t.lastIndexOf("?\n"));
+    if (cut > 12) return t.slice(0, cut + 1).trim();
+    return "";
+  }
   var IT_THIS = ["this", "it", "this one", "that", "that one", "branch", "this branch", "that branch", "this topic"];
   function localIntent(text) {
     var t = String(text || "").toLowerCase().replace(/[.!?\s]+$/, "").trim();
@@ -894,14 +928,55 @@
     /* the focus is what is on screen: in Iko's sheet, the node of the screen it was opened on (none on the cloud with
        nothing selected); in the whole conversation, the focus shown above the composer. Never an earlier screen's node. */
     var fid = iko.open && iko.ctx ? (nodeOf(iko.ctx.id) ? iko.ctx.id : null) : state.focus;
+    var learn = learnTopicFrom(text), grew = false;
     var body = Object.assign(basePayload(fid, text), { mode: "chat", messages: history(), screen: iko.open && iko.ctx ? screenOf(iko.ctx) : { view: "chat" } });
     stream("/chat", body, {
       delta: function (t) { m.text += t; upsert(m); scrollDown(); },
-      cloud: function (ev) { var r = grow(ev, fid); if (r.topic) { m.topic = r.topic.name; m.parent = r.topic.parent; } }
+      cloud: function (ev) {
+        var r = grow(ev, fid);
+        if ((ev.topics && ev.topics.length) || (ev.ghosts && ev.ghosts.length)) grew = true;
+        if (r.topic) { m.topic = r.topic.name; m.parent = r.topic.parent; grew = true; }
+      }
     }).then(function (r) {
       m.streaming = false;
       if (!r.ok && !m.text) { m.text = fallbackText(r.reason); m.fallback = true; }
-      m.text = m.text.trim();
+      /* a mid-sentence cut (token cap): keep only finished sentences so "Would" never sticks on screen */
+      if (!m.fallback && m.text && !replyLooksComplete(m.text)) {
+        var kept = finishSpoken(m.text);
+        m.text = kept || m.text.trim();
+        m.cut = !kept;
+      } else {
+        m.text = m.text.trim();
+      }
+      /* learn intent, but the reply never carried a cloud block (cut off or skipped): grow on the device, 0 extra calls */
+      if (learn && !grew && !m.fallback) {
+        var label = titleTopic(learn), tp = { name: label, signal: "curious", placement: "parent", chain: [], parent: "" };
+        var plan = P.placeTopic(state.cloud, tp, fid);
+        if (plan) {
+          if (plan.how === "reuse") {
+            grew = true;
+            m.topic = plan.label;
+            revealNode(plan.id);
+            if (!m.text || m.cut) m.text = plan.label + " is already on your cloud. Open it whenever you like.";
+            else if (m.text.toLowerCase().indexOf(plan.label.toLowerCase()) < 0) m.text = m.text.replace(/\s+$/, "") + " " + plan.label + " is already on your cloud.";
+          } else {
+            if (plan.how === "ambiguous") plan = { how: "parent", label: label }; /* prefer growing the cloud over asking when recovering from a cut */
+            var placed = P.placedTopic(tp, plan);
+            var gr = C.applyTopics(state.cloud, [placed]);
+            var id = gr.parentsCreated[0] || gr.created[0] || null;
+            if (id) {
+              grew = true;
+              m.topic = label;
+              refreshViews([id]);
+              revealNode(id);
+              var note = !nodeOf(id).parent ? label + " is a new branch on your cloud. Open it whenever you like — you can learn anything, any time." : label + " is now under " + nodeOf(nodeOf(id).parent).label + ". Open it whenever you like.";
+              if (!m.text || m.cut) m.text = note;
+              else m.text = m.text.replace(/\s+$/, "") + " " + note;
+              push({ role: "grow", text: "Your cloud grew: " + (!nodeOf(id).parent ? "new subject " + label : C.trail(state.cloud, id, " → ") + " (new)"), open: id });
+            }
+          }
+        }
+      }
       upsert(m);
       save();
       lock(false);

@@ -5,7 +5,7 @@ import fs from "node:fs";
 import zlib from "node:zlib";
 import { createRequire } from "node:module";
 import {
-  LEARN_LIMITS, CLOUD_OPEN, CLOUD_CLOSE, cleanName, cleanLabel, cleanMessages, parseLearnInput, SYSTEM_BASE, companionSystem, noticeSystem,
+  LEARN_LIMITS, CLOUD_OPEN, CLOUD_CLOSE, cleanName, cleanLabel, cleanMessages, parseLearnInput, SYSTEM_BASE, companionSystem, noticeSystem, replyLooksComplete, learnTopicFrom,
   buildContents, cardSystem, adjacentSystem, plainReply, parseCloudBlock, parseCard, parseAdjacent, createBlockSplitter,
   PATH_OPEN, PATH_CLOSE, lessonSystem, lessonContents, pathSystem, PATH_SCHEMA, CARD_SCHEMA, parsePath, parseChoices, parseLessonBlock, parseQuestions, parseBlurb, parseChain,
   parseTest, testSystem, TEST_SCHEMA, createSystem, parseCreate, CREATE_SCHEMA, examplesSystem, parseExamples, EXAMPLES_SCHEMA, EXAMPLE_LIMITS, SIGNALS, parseReading,
@@ -344,6 +344,16 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(ev.some((e) => e.t === "delta" && e.text.includes("No block")) && ev.find((e) => e.t === "cloud").topics.length === 0, "missing block: reply still shows");
   ev = await collect(chatEvents(IN, {}, f));
   ok(ev[0].t === "error" && ev[0].reason === "no_key", "no key -> error without a call");
+
+  /* PR chat-complete: a stream that dies mid-sentence (max tokens) still delivers what it has; we log and leave the device to finish grow */
+  f = fakeFetch([() => res(200, sse(["Hat making is a craft of shaping felt and fabric. Would"]))]);
+  const prevLog = console.log;
+  const seen = [];
+  console.log = (...a) => { seen.push(String(a[0] || "")); prevLog.apply(console, a); };
+  ev = await collect(chatEvents(IN, ENV, f));
+  console.log = prevLog;
+  const truncText = ev.filter((e) => e.t === "delta").map((e) => e.text).join("");
+  ok(/Would$/.test(truncText.trim()) && !replyLooksComplete(truncText) && seen.some((l) => /ikolearn\.chat_trunc/.test(l)) && ev.find((e) => e.t === "cloud").topics.length === 0 && ev.at(-1).t === "done", "chat truncate: mid-sentence reply is delivered, logged, and has no cloud block", truncText.slice(-40) + " | " + seen.filter((l) => /chat_trunc/.test(l)).join(" "));
 
   // NDJSON stream
   f = fakeFetch([() => res(200, sse(reply))]);
@@ -2946,6 +2956,10 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     ok(pin.focusId === "n3" && bad.focusId === "", "chat input: the focus id is kept only in its own shape (n123)");
     const sys = companionSystem(pin);
     ok(/Current focus: Games.*id n3/.test(sys) && /placement "parent"/.test(sys) && /placement "child"/.test(sys) && /placement "ambiguous"/.test(sys) && /do not put it under the current focus just because that is in focus/.test(sys), "chat prompt: placement is decided in the same call (no extra round trip), never by focus alone");
+    ok(MODEL_LIMITS.chatMaxTokens >= 1800, "chat token budget leaves room for a full reply plus the CLOUD block (was cutting mid-sentence at 900)", String(MODEL_LIMITS.chatMaxTokens));
+    ok(/Always finish every sentence/.test(sys) && /I want to learn hat making/.test(sys) && /invite them to open the new node/.test(sys), "chat prompt: finish replies; learn-intent grows the cloud");
+    ok(replyLooksComplete("Hat making is on your cloud now.") && replyLooksComplete('Nice — open it whenever you like!') && !replyLooksComplete("Would") && !replyLooksComplete("Hat making is on your cloud. Would"), "replyLooksComplete: ends on sentence punct, rejects a mid-sentence cut");
+    ok(learnTopicFrom("I want to learn hat making") === "hat making" && learnTopicFrom("teach me origami please") === "origami" && learnTopicFrom("add puzzle strategies") === "puzzle strategies" && !learnTopicFrom("how are you?") && !learnTopicFrom("I want to learn something"), "learnTopicFrom: clear learn/add/teach lines only");
 
     // Shawn's cloud: Johnny > Games (Video Games, Puzzle Games), Aviation, Physical Activity, Social Skills
     const jc = C.create("Johnny", T0);
@@ -3032,6 +3046,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     const appP = fs.readFileSync("public/ikolearn/app.js", "utf8");
     const gr = appP.slice(appP.indexOf("  function grow(block, focusId) {"), appP.indexOf("  /* Test nodes on the cloud"));
     ok(/P\.placeTopic\(state\.cloud, tp, focusId\)/.test(gr) && /P\.placedTopic\(tp, plan\)/.test(gr) && /role: "place", plan:/.test(gr) && /if \(placed\[C\.norm\(tp\.name\)\]\) return;/.test(gr), "chat growth: placed first (reuse / parent / child / ask); a placed topic gets no bridge call");
+    ok(/function learnTopicFrom/.test(appP) && /learn && !grew && !m\.fallback/.test(appP) && /finishSpoken/.test(appP) && /you can learn anything, any time/.test(appP), "chat: learn-intent recovers a cut reply by growing the cloud on the device");
     const pl3 = gr.slice(gr.indexOf("  function renderPlace(m) {"));
     ok(pl3.length > 500 && !/postJson\(|stream\(|fetch\(|Try again/.test(pl3), "the ambiguous choice: no call and no Try again (the cached plan applies on the device)");
     ok(/linkBtn\("New branch"/.test(pl3) && /"Under " \+ f\.label/.test(pl3), "the ambiguous choice: two quiet buttons, New branch / Under Focus");

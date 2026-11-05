@@ -58,6 +58,7 @@ import {
   parseCard,
   parseCloudBlock,
   parseLearnInput,
+  replyLooksComplete,
   type Card,
   type CloudBlock,
   type Ghost,
@@ -212,28 +213,33 @@ async function* replyEvents(spec: StreamSpec, pieces: AsyncGenerator<string>): A
   const started = { pieces };
   const split = createBlockSplitter(spec.open, spec.close);
   let shown = 0;
+  let spoken = "";
   try {
     for await (const piece of started.pieces) {
       const visible = split.push(piece);
       if (visible) {
         const text = spec.keepCode ? visible.replace(/\*\*|__/g, "") : visible.replace(/\*\*|__|`+/g, "");
         shown += text.length;
+        spoken += text;
         if (shown > spec.maxChars) break;
         yield { t: "delta", text };
       }
     }
   } catch {
     const end = split.finish();
-    if (end.tail) yield { t: "delta", text: end.tail };
+    if (end.tail) { spoken += end.tail; yield { t: "delta", text: end.tail }; }
+    if (spoken.trim() && !replyLooksComplete(spoken)) console.log(JSON.stringify({ ev: "ikolearn.chat_trunc", chars: spoken.trim().length, found: end.found }));
     yield { t: shown ? "done" : "error", ...(shown ? {} : { reason: "cut" as const }) } as ChatEvent;
     return;
   }
   const end = split.finish();
-  if (end.tail.trim()) yield { t: "delta", text: end.tail.replace(/\s+$/, "") };
+  if (end.tail.trim()) { spoken += end.tail; yield { t: "delta", text: end.tail.replace(/\s+$/, "") }; }
   if (!shown && !end.tail.trim()) {
     yield { t: "error", reason: "empty" };
     return;
   }
+  /* mid-sentence cut (usually maxOutputTokens): log so we can raise the cap; still deliver what we have */
+  if (spoken.trim() && !replyLooksComplete(spoken)) console.log(JSON.stringify({ ev: "ikolearn.chat_trunc", chars: spoken.trim().length, found: end.found }));
   const last = spec.tail(end.block, end.found);
   if (last) yield last;
   yield { t: "done" };
@@ -247,6 +253,7 @@ export function chatEvents(input: LearnInput, env: Env, fetchImpl: typeof fetch 
       contents: buildContents(input),
       route: input.mode,
       maxChars: LEARN_LIMITS.replyChars,
+      maxTokens: MODEL_LIMITS.chatMaxTokens,
       keepCode: input.mode === "clarify",
       tail: (block) => {
         if (input.mode === "clarify") return null; /* inline help only: nothing lands on the cloud */
