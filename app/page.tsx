@@ -54,15 +54,15 @@ export default async function Home() {
                 Cards fill in as the learning sticks. No account needed; your learning stays on your device.
               </p>
               <div className="flex flex-wrap gap-3">
-                <Link href="/ikolearn" className="rounded-xl bg-accent px-4 py-2 font-semibold text-black">
+                <a href="https://ikolearn.com" className="rounded-xl bg-accent px-4 py-2 font-semibold text-black">
                   Open IkoLearn
-                </Link>
+                </a>
                 <Link href="/projects/ikolearn" className="rounded-xl border border-border px-4 py-2 transition hover:border-accent">
                   About the project
                 </Link>
               </div>
             </div>
-            <Link href="/ikolearn" aria-label="Open IkoLearn" className="block overflow-hidden rounded-xl border border-border transition hover:border-accent">
+            <a href="https://ikolearn.com" aria-label="Open IkoLearn" className="block overflow-hidden rounded-xl border border-border transition hover:border-accent">
               {/* eslint-disable-next-line @next/next/no-img-element -- static public asset, same as project cards */}
               <img
                 src="/projects/ikolearn/cover.png"
@@ -71,7 +71,7 @@ export default async function Home() {
                 height={840}
                 className="h-auto w-full"
               />
-            </Link>
+            </a>
           </article>
         </div>
       </section>

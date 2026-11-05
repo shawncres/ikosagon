@@ -39,7 +39,7 @@ IkoArtist (formerly AI Recording Artist) is a web product for almost anonymous s
 
 ## What featured products exist today?
 
-IkoLearn is the featured app: a calm learning app for curious learners (/ikolearn, about it at /projects/ikolearn). Other featured work includes IkoAgent (call-flow demo), IkoReadTube, IkoArtist, IkoDesk, Hexcast (In progress. No win rates on this site.), and Signalboard (shipped proof). NeonOps is paused. Do not invent client builds, shipped products, or metrics that are not in the notes.
+IkoLearn is the featured app: a calm learning app for curious learners (ikolearn.com, about it at /projects/ikolearn; the app also lives at /ikolearn on this site). Other featured work includes IkoAgent (call-flow demo), IkoReadTube, IkoArtist, IkoDesk, Hexcast (In progress. No win rates on this site.), and Signalboard (shipped proof). NeonOps is paused. Do not invent client builds, shipped products, or metrics that are not in the notes.
 
 ## How do I start?
 
