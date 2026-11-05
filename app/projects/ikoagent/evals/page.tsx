@@ -1,13 +1,18 @@
+import { pageOpenGraph } from "@/lib/site";
 import type { Metadata } from "next";
 import Link from "next/link";
 import latest from "@/content/ikoagent/evals/latest.json";
 import history from "@/content/ikoagent/evals/history.json";
 
+const TITLE = "IkoAgent evals";
+const DESCRIPTION =
+  "How we at Ikosagon test IkoAgent: an offline regression suite over routing, slot extraction, identity, safety guards, verbatim compliance, and close routing, run before every merge.";
+
 export const metadata: Metadata = {
   alternates: { canonical: "/projects/ikoagent/evals" },
-  title: "IkoAgent evals",
-  description:
-    "How we at Ikosagon test IkoAgent: an offline regression suite over routing, slot extraction, identity, safety guards, verbatim compliance, and close routing, run before every merge.",
+  title: TITLE,
+  description: DESCRIPTION,
+  openGraph: pageOpenGraph("/projects/ikoagent/evals", TITLE, DESCRIPTION),
 };
 
 type Tally = Record<string, { total: number; passed: number }>;

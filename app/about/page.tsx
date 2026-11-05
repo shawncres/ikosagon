@@ -1,10 +1,15 @@
+import { pageOpenGraph } from "@/lib/site";
 import type { Metadata } from "next";
+
+const TITLE = "About";
+const DESCRIPTION =
+  "About Ikosagon and its founder, Shawn Cooper: software, AI and careful testing for businesses that want to improve how they work.";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/about" },
-  title: "About",
-  description:
-    "About Ikosagon and its founder, Shawn Cooper: software, AI and careful testing for businesses that want to improve how they work.",
+  title: TITLE,
+  description: DESCRIPTION,
+  openGraph: pageOpenGraph("/about", TITLE, DESCRIPTION),
 };
 
 const skills = [
