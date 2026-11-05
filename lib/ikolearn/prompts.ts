@@ -141,6 +141,8 @@ export type LearnInput = {
   band: (typeof AGE_BANDS)[number] | "";
   /** PR 113: the device's one automatic retry of a lesson: a shorter, stricter prompt. */
   strict?: boolean;
+  /** PR 119: adjacent only: the future-useful themes to blend with the focus, in the learner's order of preference. */
+  neo?: NeoTheme[];
   /** PR 114: Lesson only: labels of cards the learner has earned (for an optional, never forced, connection). */
   earned?: string[];
 };
@@ -190,7 +192,11 @@ export function checkPlacement(t: Topic, ctx: PlaceCtx = {}): Topic {
   delete out.target;
   return { ...out, placement: "parent", parent: "", chain: [], why: out.why || "A subject of its own" };
 }
-export type Ghost = { name: string; parent: string; blurb?: string };
+export type Ghost = { name: string; parent: string; blurb?: string; theme?: NeoTheme };
+/** PR 119 (NEO-IKIGAI): future-useful themes an optional adjacent branch may blend with the learner's own topic. */
+export const NEO_THEMES = ["ai-tools", "judgment", "systems", "recombination", "communication"] as const;
+export type NeoTheme = (typeof NEO_THEMES)[number];
+const NEO_TEXT: Record<NeoTheme, string> = { "ai-tools": "using AI and digital tools well", judgment: "judgment and evaluating information", systems: "systems thinking (how parts affect each other)", recombination: "creative recombination (joining ideas from different fields)", communication: "communication (explaining and working with people)" };
 export type CloudBlock = { topics: Topic[]; ghosts: Ghost[] };
 export type Card = { title: string; body: string; topic: string; parent: string; path?: string[]; next?: string; chain?: string[] };
 /** end: the branch stops here (no smaller subtopics); steps is then empty. */
@@ -286,6 +292,7 @@ export function parseLearnInput(raw: unknown): LearnInput | { error: string } {
     favorites: (Array.isArray(b.favorites) ? b.favorites : []).map(cleanLabel).filter(Boolean).slice(0, LEARN_LIMITS.favorites),
     ...(mode === "chat" ? cleanScreen(b.screen) : {}),
     ...(b.strict === true ? { strict: true } : {}),
+    ...(Array.isArray(b.neo) && b.neo.some((x) => (NEO_THEMES as readonly string[]).includes(String(x))) ? { neo: b.neo.filter((x, i, a) => (NEO_THEMES as readonly string[]).includes(String(x)) && a.indexOf(x) === i).slice(0, 5) as NeoTheme[] } : {}),
   };
 }
 
@@ -477,7 +484,19 @@ export function parseDescribe(raw: unknown, asked: string[], learnerName = ""): 
   return out;
 }
 
+/** PR 119: one quiet, optional branch that blends the focus with a future-useful theme (never a career push). */
+function neoAdjacent(i: LearnInput): string {
+  const themes = (i.neo || []).map((t) => `${t} = ${NEO_TEXT[t]}`).join("; ");
+  return (
+    `${SYSTEM_BASE}\n\nRole: adjacent, future-useful. Suggest exactly 1 related topic the learner has not explored, right next to "${i.focus}", that blends "${i.focus}" with one of these themes (earlier ones preferred, pick the one with the most genuine connection): ${themes}. ` +
+    'Answer {"ghosts":[{"name":"...","parent":"...","blurb":"...","theme":"<theme id>"}]}. name: 1 to 4 words, Title Case, about the blend itself (for example "Fact-Checking Science" or "Recipe Systems"), never a job title. ' +
+    `parent: "${i.focus}". ` + DESC_RULE + "The blurb is calm and optional in tone, like \"this could connect to...\"; no careers, money, pressure or claims about the future. Do not repeat topics already in the profile.\n\n" +
+    profile(i)
+  );
+}
+
 export function adjacentSystem(i: LearnInput): string {
+  if (i.neo && i.neo.length) return neoAdjacent(i);
   return (
     `${SYSTEM_BASE}\n\nRole: adjacent. Suggest up to 3 related topics the learner has not explored yet that would make good next branches from the focus topic. ` +
     "Each has name (1 to 3 words, Title Case), parent (one of the existing subjects when it fits) and " + DESC_RULE + " Mix one easy neighbour and one forward-looking skill when sensible. Do not repeat topics already in the profile.\n\n" +
@@ -579,7 +598,7 @@ export const CARD_SCHEMA = {
 };
 export const ADJACENT_SCHEMA = {
   type: "object",
-  properties: { ghosts: { type: "array", items: { type: "object", properties: { name: { type: "string" }, parent: { type: "string" }, blurb: { type: "string" } }, required: ["name", "parent"] } } },
+  properties: { ghosts: { type: "array", items: { type: "object", properties: { name: { type: "string" }, parent: { type: "string" }, blurb: { type: "string" }, theme: { type: "string" } }, required: ["name", "parent"] } } },
   required: ["ghosts"],
 };
 
@@ -1214,7 +1233,8 @@ export function parseAdjacent(raw: unknown, learnerName = ""): Ghost[] {
     const name = cleanLabel((g as Ghost).name);
     if (!name || (learnerName && sameLabel(name, learnerName)) || out.some((x) => sameLabel(x.name, name))) continue;
     const gb = parseBlurb((g as Ghost).blurb, learnerName);
-    out.push({ name, parent: cleanLabel((g as Ghost).parent), ...(gb ? { blurb: gb } : {}) });
+    const th = (NEO_THEMES as readonly string[]).includes(String((g as Ghost).theme)) ? ((g as Ghost).theme as NeoTheme) : undefined;
+    out.push({ name, parent: cleanLabel((g as Ghost).parent), ...(gb ? { blurb: gb } : {}), ...(th ? { theme: th } : {}) });
     if (out.length >= LEARN_LIMITS.ghostsPerTurn) break;
   }
   return out;
