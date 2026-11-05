@@ -1030,7 +1030,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     ok(desc.length >= 80 && desc.length <= 165, `meta description is 80-165 chars (${desc.length})`);
     /* universal positioning: for anyone curious, at any age; neither kid-directed nor adults-only; homeschool parents as one use */
     const sum = (fm.match(/^summary:\s*"([^"]+)"/m) || [])[1] || "";
-    ok(/anyone curious, at any age/.test(sum) && /anyone curious, at any age/.test(desc) && /homeschool/.test(sum) && /homeschool/.test(desc), "project copy: universal (anyone curious, at any age), homeschool parents as a secondary use");
+    ok(/for curious learners/.test(sum) && /for curious learners/.test(desc) && !/homeschool|any age|[Pp]arents/.test(sum + desc), "project copy (PR 114): for curious learners, no homeschool or parent wording");
     ok(!/18 and over|adults? only|\bfor (kids|children)\b|young learners|lifelong learners/i.test(mdx + privacy), "project page and privacy: no age framing (no 18+, no kids or adults-only wording)");
     {
       const css2 = fs.readFileSync("public/ikolearn/styles.css", "utf8");
@@ -1039,18 +1039,18 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
       ok(/HOME = \{ yaw: -0\.5, pitch: 0\.32, zoom: 1, panX: 0, panY: 40 \}/.test(cv2) && /var yaw = HOME\.yaw, pitch = HOME\.pitch, zoom = HOME\.zoom, panX = HOME\.panX, panY = mini \? 0 : HOME\.panY/.test(cv2), "the cloud opens on the home view, a little low, so the top branches clear the hint line (the header's small cloud: its name at the centre, PR 104)");
       ok(/\.cloud-hint \{[^}]*width: fit-content;[^}]*background: color-mix\(in srgb, var\(--paper\)/.test(css2), "cloud hint sits on a paper pill, readable over branches");
     }
-    ok(/IkoLearn is for anyone curious, at any age\. Parents can also use it to plan and guide homeschool learning\./.test(privacy), "privacy: the neutral who-it's-for line");
+    ok(/IkoLearn is for curious learners who want to learn something new\./.test(privacy) && !/homeschool/i.test(privacy), "privacy: the neutral who-it's-for line (PR 114)");
     ok(/ogImage:\s*"\/projects\/ikolearn\/og\.png"/.test(fm) && /cover:\s*"\/projects\/ikolearn\/cover\.png"/.test(fm), "raster cover + OG image");
     for (const f of ["cover.png", "og.png", "album.webp", "card-hub.webp", "lesson.webp", "cloud-phone.webp"]) ok(fs.existsSync("public/projects/ikolearn/" + f), "asset " + f);
     // the featured app on the homepage (Oct 22): IkoLearn leads, IkoAgent stays a normal featured project
     const home = fs.readFileSync("app/page.tsx", "utf8"), projTs = fs.readFileSync("lib/projects.ts", "utf8");
     ok(/FEATURED_LEAD_SLUG = "ikolearn"/.test(projTs) && /featured:\s*true/.test(fs.readFileSync("content/projects/ikoagent.mdx", "utf8")), "homepage: IkoLearn is the featured lead; IkoAgent stays featured in the grid");
     ok(/Featured app/.test(home) && /<h2[^>]*>IkoLearn<\/h2>/.test(home) && /href="\/ikolearn"/.test(home) && /href="\/projects\/ikolearn"/.test(home) && /src="\/projects\/ikolearn\/cover\.png"/.test(home), "homepage: the featured section links to /ikolearn and the project page, with the cover");
-    ok(/A thoughtful learning harness for anyone curious, at any age\. IkoLearn is a place where you can\s+start learning/.test(home) && !/We at Ikosagon/.test(home.slice(home.indexOf("Featured app"), home.indexOf("Featured Projects"))) && !/Lead product/.test(home) && !/\b(kids?|children|age \d)/i.test(home.slice(home.indexOf("Featured app"), home.indexOf("Featured Projects"))), "homepage: the universal wording, in a softer voice (PR 107: no \"We at Ikosagon\" in IkoLearn's copy)");
+    ok(/A calm learning app for curious learners\. IkoLearn is a place where you can\s+start learning/.test(home) && !/homeschool|parents/i.test(home.slice(home.indexOf("Featured app"), home.indexOf("Featured Projects"))) && !/We at Ikosagon/.test(home.slice(home.indexOf("Featured app"), home.indexOf("Featured Projects"))) && !/\b(kids?|children|age \d)/i.test(home.slice(home.indexOf("Featured app"), home.indexOf("Featured Projects"))), "homepage (PR 114): neutral copy for curious learners, no parent or homeschool wording");
     ok(!/Maya|Minecraft|Redstone/.test(mdx), "project page copy names no sample learner or niche topic");
     const imgs = [...mdx.matchAll(/!\[([^\]]*)\]\((\/projects\/ikolearn\/[^)]+)\)/g)];
     ok(imgs.length >= 4 && imgs.every(([, alt, src]) => alt.length > 30 && fs.existsSync("public" + src)), "gallery images exist with descriptive alt text");
-    ok(/Parent & instructor dashboard\*\* \(first version in place\)/.test(mdx) && /\*\*For parents & teachers:\*\* a calm, read-only page/.test(mdx), "roadmap: the parent & instructor dashboard has a first, read-only version; planning tools come next");
+    ok(!/Parent & instructor dashboard|For parents & teachers|homeschool/i.test(mdx) && /\*\*Your week:\*\*/.test(mdx), "project page (PR 114): no parent dashboard; the weekly recap is described");
     ok(!/kickstarter\.com|https?:\/\/[^\s)]*kick|<form|<input/i.test(mdx), "Kickstarter is a plain mention: no link, no form");
     ok(!/shawn|cooper|resume|résumé/i.test(mdx), "no personal name or resume on the project page");
     const oldFm = (fs.readFileSync("content/projects/ikosagon-learn.mdx", "utf8").split("---")[1]) || "";
@@ -1573,7 +1573,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     ok(px.includes("Why is the sky blue?") && parseExamples({ examples: EXS.slice(0, EXAMPLE_LIMITS.min - 1) }) === null && parseExamples("junk") === null && parseExamples({ examples: Array.from({ length: 40 }, (_, i) => "Topic number " + "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMN"[i]) }).length === EXAMPLE_LIMITS.count, "parseExamples: too few is unusable (null); at most " + EXAMPLE_LIMITS.count);
     const exSys = examplesSystem();
     ok(/any age/.test(exSys) && /Don't skew toward childhood activities or toward work and careers/.test(exSys) && /calm and family-friendly/.test(exSys) && !/grown-up|being patient/.test(exSys), "examples prompt: a varied mix for any age, calm and family-friendly, no 'grown-up' or 'being patient'");
-    ok(/could be any age/.test(SYSTEM_BASE) && !/young learner|may be a child|reading along should understand/i.test(SYSTEM_BASE + exSys), "prompts: the learner could be any age (no child framing)");
+    ok(/whoever they are/.test(SYSTEM_BASE) && !/young learner|may be a child|reading along should understand/i.test(SYSTEM_BASE + exSys), "prompts: the learner could be anyone (no child framing)");
     ok(examplesSystem.length === 0 && /Role: examples/.test(exSys) && !/Age band|Rough region|Learner's first name|profile/i.test(exSys.replace(SYSTEM_BASE, "")) && EXAMPLES_SCHEMA.required.join() === "examples,growth", "the examples prompt takes no input at all: nothing about any learner goes in (so one set serves everyone)");
     // examplesFor: day cache, coalescing, caps, cache headers, failures never cached
     const exOk = () => res(200, { candidates: [{ content: { parts: [{ text: JSON.stringify({ examples: EXS }) }] } }] });
@@ -1727,7 +1727,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   // UI wiring for the procedural flow
   const priv = fs.readFileSync("public/ikolearn/privacy.html", "utf8");
   ok(!/id="you"|you-age|you-region|you-link|About you/.test(html), "no About-you age or region fields remain");
-  ok(/Your age range, if you choose\./.test(priv) && /prefer not to say/.test(priv) && /No location\./.test(priv) && /never asks where you live/.test(priv) && /never sent/.test(priv) && !/age band like|Ontario-ish|About you/.test(priv), "privacy page (PR 107): the optional age range and what it is for; no location (the time zone and language stay on the device)");
+  ok(/Your lesson level, if you choose\./.test(priv) && /no longer asks your age/.test(priv) && /No location\./.test(priv) && /never asks where you live/.test(priv) && /never sent/.test(priv) && !/prefer not to say|age band like|Ontario-ish|About you/.test(priv), "privacy page (PR 114): the optional lesson level; no age; no location");
   ok(/"\/create"/.test(app) && /P\.createRequest\(/.test(app) && /C\.applyCreate\(/.test(app) && /cloudBuilder/.test(app) && /mode: "notice"/.test(app), "the app builds from one creation call, visibly");
   ok(/P\.onboarding\(/.test(app) && /askTile/.test(app) && /answerReask/.test(app), "onboarding questions and a light re-ask");
   {
@@ -3109,9 +3109,9 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok((fam.match(/ikolearn\.v1\.[a-z]+/g) || []).every((k) => ["ikolearn.v1.name", "ikolearn.v1.cloud", "ikolearn.v1.lessons"].includes(k)), "family.js: reads only the name, the cloud and the lesson cache (existing keys)");
   ok(/<meta name="robots" content="noindex/.test(famHtml) && !/<script[^>]+src="https?:/i.test(famHtml) && !/<link[^>]+href="https?:/i.test(famHtml) && !/@import|url\(https?:/i.test(famCss), "family page: noindex, no external scripts, styles or fonts");
   ok(famHtml.indexOf("cloud-model.js") < famHtml.indexOf("rank.js") && famHtml.indexOf("rank.js") < famHtml.indexOf("deck.js") && famHtml.indexOf("deck.js") < famHtml.indexOf("orchestrator.js") && famHtml.indexOf("orchestrator.js") < famHtml.indexOf("family.js"), "family page: the model scripts load in the app's order, the view last");
-  ok(/\{ source: "\/ikolearn\/family", destination: "\/ikolearn\/family\.html" \}/.test(fs.readFileSync("next.config.ts", "utf8")), "next.config: /ikolearn/family serves the view (noindex via /ikolearn/:path*)");
+  ok(/\{ source: "\/ikolearn\/family", destination: "\/ikolearn\/", permanent: false \}/.test(fs.readFileSync("next.config.ts", "utf8")), "next.config (PR 114): the old parents page goes back to the app");
   const idx = fs.readFileSync("public/ikolearn/index.html", "utf8");
-  ok(/<a href="\/ikolearn\/family" id="family-link">For parents &amp; teachers<\/a>/.test(idx) && (idx.match(/ikolearn\/family/g) || []).length === 2 && /<p class="cloud-foot fine"(?: data-theme-slot)?>[^\n]*<a href="\/ikolearn\/family">For parents &amp; teachers<\/a>/.test(idx), "app: one quiet text link, \"For parents & teachers\", in the chat's footer line and in the cloud's fine print");
+  ok(!/ikolearn\/family/.test(idx), "app (PR 114): no link to the old parents page");
   ok(/@media print/.test(famCss) && /\.fam-tools[^}]*display: none|\.fam-back, \.fam-tools/.test(famCss), "family page: prints without its buttons");
   const servedFam = ["family.html", "family.css", "family.js"].reduce((n, f) => n + (/\.(js|css)$/.test(f) ? Buffer.byteLength(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.statSync("public/ikolearn/" + f).size), 0);
   ok(servedFam < 20_000, "family page: its own files stay small (under 20 KB served)", String(servedFam));
@@ -3879,16 +3879,18 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(C.bandOf(cb) === "" && C.serialize(cb) === C.serialize(C.deserialize(C.serialize(cb))) && JSON.parse(C.serialize(cb)).pr.length === 10, "band: none by default; the profile row keeps its old length until one is set (additive)");
   C.setProfile(cb, { band: "10-13" }, T0);
   const cbr = C.deserialize(C.serialize(cb));
-  ok(C.bandOf(cbr) === "10-13" && JSON.parse(C.serialize(cb)).v === 9, "band: kept with the learner's cloud and read back (storage stays v9)");
+  C.setProfile(cb, { band: "simple" }, T0); const cbr2 = C.deserialize(C.serialize(cb));
+  ok(C.bandOf(cbr2) === "simple" && C.levelOf(cbr2) === "simple" && C.bandOf(cbr) === "" && JSON.parse(C.serialize(cb)).v === 9, "level (PR 114): kept in the old band slot and read back; an old age band is ignored (storage stays v9)");
   C.setProfile(cb, { band: "none" }, T0); ok(C.bandOf(cb) === "", "band: \"prefer not to say\" is the same as none to the prompts");
   C.setProfile(cb, { band: "<b>12" }, T0); ok(C.BANDS.indexOf(C.profileOf(cb).band) >= 0 || C.profileOf(cb).band === "", "band: only the five known values are kept");
   const B0 = parseLearnInput({ mode: "notice", name: "Sam", focus: "Fractions", messages: [], band: "10-13" }), Bx = parseLearnInput({ mode: "notice", name: "Sam", focus: "Fractions", messages: [], band: "Ontario" });
-  ok(B0.band === "10-13" && !Bx.band, "band: the API keeps a known band only");
+  ok(!B0.band && !Bx.band && parseLearnInput({ mode: "notice", name: "Sam", focus: "Fractions", messages: [], level: "deeper" }).band === "deeper", "level (PR 114): the API ignores an age band and keeps a known level only");
   const lsB = lessonSystem(B0), lsN = lessonSystem({ ...B0, band: undefined });
-  ok(/teach the topic fully, whatever it is, and never mention their age/.test(lsB) && !/never mention their age/.test(lsN) && /never mention their age/.test(clarifySystem({ ...B0, mode: "clarify", clarify: "simpler" })) && /never mention their age/.test(testSystem({ ...B0, material: [{ label: "Sets", line: "One of each." }] })), "band: it shapes the lesson, clarify and test prompts only (never which topics)");
+  const BL = { ...B0, band: "simple" };
+  ok(/keep it simple/.test(lessonSystem(BL)) && !/keep it simple/.test(lsN) && /keep it simple/.test(clarifySystem({ ...BL, mode: "clarify", clarify: "simpler" })) && /keep it simple/.test(testSystem({ ...BL, material: [{ label: "Sets", line: "One of each." }] })) && !/\b(age band|how old|age range)\b/i.test(lessonSystem(BL)), "level (PR 114): shapes the lesson, clarify and test prompts only; no age wording");
   ok(!/never mention their age/.test(companionSystem(B0)) && !/never mention their age/.test(createSystem({ ...B0, kind: "start", about: "volcanoes" })) && !/never mention their age/.test(noticeSystem(B0)), "band: the chat, notice and creation prompts never see it");
   ok(/function withBand\(cloud, ctx\)/.test(fs.readFileSync("public/ikolearn/orchestrator.js", "utf8")) && /P\.withBand\(state\.cloud,/.test(appS) && !/band:/.test(appS.slice(appS.indexOf("function basePayload("), appS.indexOf("function basePayload(") + 1200)), "band: added by the lesson context, clarify and the test (not the base payload every call shares)");
-  ok(/function ageIntent\(t\)/.test(appS) && !/id="age-link"/.test(htmlS) && /id="cs-ages"/.test(htmlS) && /hintSeen\("ageAsked"\)/.test(appS), "band (PR 108): asked as Iko's first, skippable step at the opening (not the footer), changed through Iko or the quiet link");
+  ok(/var ageStep = false;/.test(appS) && /Lesson level/.test(appS) && !/how old are you\?" :/.test(appS.replace("ageStep ? \"First, if you like: how old are you? It only changes how lessons are written.\" : CS_Q", "")), "level (PR 114): no age step at the opening; a Lesson level preference instead");
   /* 2. code: fenced blocks parse to code items; rendered as text (no innerHTML); prompts and parsers carry it */
   const lc = L.parse("INTRO: A loop.\nEXPLAIN: Look:\n```python\nfor i in range(3):\n    print(i)\n```\nSTEP: Run `loop()` once.");
   const item = [].concat(lc.explain, lc.steps, lc.example || []).find((x) => x && typeof x === "object" && "code" in x);

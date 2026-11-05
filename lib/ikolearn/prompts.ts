@@ -141,8 +141,11 @@ export type LearnInput = {
   band: (typeof AGE_BANDS)[number] | "";
   /** PR 113: the device's one automatic retry of a lesson: a shorter, stricter prompt. */
   strict?: boolean;
+  /** PR 114: Lesson only: labels of cards the learner has earned (for an optional, never forced, connection). */
+  earned?: string[];
 };
-export const AGE_BANDS = ["u10", "10-13", "14-17", "18+"] as const;
+/** PR 114: the optional lesson level (standard = not sent). Old age bands are no longer accepted and are ignored. */
+export const AGE_BANDS = ["simple", "deeper"] as const;
 /** chain: broader topics from the subject down to the parent (only for a new topic that sits deeper), e.g. ["Computer Science","Programming","Python"]. */
 /**
  * placement (chat, a topic the learner asked to start or add): "parent" = a new branch right under the learner's name,
@@ -271,7 +274,8 @@ export function parseLearnInput(raw: unknown): LearnInput | { error: string } {
       .slice(0, LEARN_LIMITS.material),
     /* PR 107: an optional age band (a learner can choose one on their device) shapes lessons only; no region and no exact
        age are ever kept, and an older client's age or region fields are dropped here */
-    band: (AGE_BANDS as readonly string[]).includes(b.band as string) ? (b.band as LearnInput["band"]) : "",
+    band: (AGE_BANDS as readonly string[]).includes(b.level as string) ? (b.level as LearnInput["band"]) : "",
+    earned: (Array.isArray(b.earned) ? b.earned : []).map(cleanLabel).filter(Boolean).slice(0, 8),
     interests: (Array.isArray(b.interests) ? b.interests : [])
       .map((x) => cleanText(x, LEARN_LIMITS.interestChars).replace(/[\n\r"<>{}[\]`*_#|\\]/g, " ").replace(/\s+/g, " ").trim())
       .filter(Boolean)
@@ -339,7 +343,7 @@ export function cleanCode(v: unknown): string {
 }
 
 export const SYSTEM_BASE =
-  "You are Iko, the warm, calm learning companion in IkoLearn, made by Ikosagon. You talk with one learner, who could be any age; meet them where they are. Sometimes it is a parent planning or guiding homeschool learning. " +
+  "You are Iko, the warm, calm learning companion in IkoLearn, made by Ikosagon. You talk with one learner, whoever they are; meet them where they are. " +
   "Your language is encouraging, personable and regular: short sentences, everyday words, no jargon, no gushing. " +
   "Never name external frameworks, curricula, standards, tests, programs, brands or methods; just teach and suggest. " +
   "Keep replies short (about 40 to 120 words) unless the learner asks for more. Plain text only: no markdown, no headings, no bullet symbols, no emoji, no asterisks. " +
@@ -492,13 +496,11 @@ const pathRules = (i: LearnInput) =>
  * abstract. The topic itself is never limited by it.
  */
 const BAND_STYLE: Record<(typeof AGE_BANDS)[number], string> = {
-  u10: "The learner is under 10. Write at an early-reader level: very short sentences (about 8 words), the most common everyday words, one idea at a time, and things they can see, touch or picture (toys, animals, food, the playground). Give one simple example.",
-  "10-13": "The learner is 10 to 13. Write at a middle-school reading level: short sentences (about 12 words), everyday words, and explain any new word the first time it appears. Start from a concrete example, then name the idea. One or two examples.",
-  "14-17": "The learner is 14 to 17. Write at a high-school reading level: clear sentences (about 16 words). Use the proper terms, each with a quick plain explanation. Move from a concrete example to the general idea, and add a little of the why. Two examples.",
-  "18+": "The learner is an adult. Write naturally for a grown-up reader: precise terms, ideas can be more abstract, and go a little deeper into how and why. Two examples, one of them a real-world use.",
+  simple: "The learner chose \"keep it simple\": short sentences, everyday words, one idea at a time, explain any new term the first time, and start from something concrete.",
+  deeper: "The learner chose \"go deeper\": precise terms, a little more of the how and why, and one detail that goes beyond the basics.",
 };
 const bandLine = (i: LearnInput) =>
-  i.band ? `${BAND_STYLE[i.band]} This only changes how you explain it: teach the topic fully, whatever it is, and never mention their age.\n\n` : "";
+  i.band ? `${BAND_STYLE[i.band]} This only changes how you explain it: teach the topic fully, whatever it is.\n\n` : "";
 
 export function lessonSystem(i: LearnInput): string {
   return (
@@ -511,6 +513,8 @@ export function lessonSystem(i: LearnInput): string {
     "EXAMPLE: optional; a worked example, shown step by step on one to three EXAMPLE lines, when the topic has something to work through.\n" +
     "NEXT: one encouraging sentence on what to try next.\n" +
     "Do not write check questions in the lesson text; they go in the hidden block below, and they only ask about what you explained. " +
+    "Examples: when the learner's profile shows another interest with a genuine connection to this topic, use one example drawn from that interest; otherwise use an everyday example. Never force a connection. " +
+    (i.earned && i.earned.length ? `Cards the learner has earned: ${i.earned.join(", ")}. If one of them truly connects, you may add one short sentence linking it in an EXPLAIN line; skip it if nothing fits. ` : "") +
     "Keep the whole lesson under 260 words. Use concrete numbers and everyday examples. Anyone reading along should be able to follow it.\n" +
     CODE_RULE + "\n\n" +
     bandLine(i) +
@@ -531,7 +535,7 @@ const lessonPace = (i: LearnInput) =>
 const lessonBlockRules = (i: LearnInput) =>
   `After the lesson, on a new line, write ${PATH_OPEN} then one JSON object then ${PATH_CLOSE}, and nothing after it. The learner never sees this block as text. ` +
   'The JSON is {"questions":[{"kind":"recall|apply|mistake","q":"...","options":["...","...","..."],"answer":0,"why":["","...","..."]}],"key_idea":"...","retry":[{"q":"...","options":["...","...","..."],"answer":0}],"blurb":"...","steps":["..."],"next":"...","choices":[{"name":"...","kind":"next|deeper|side","why":"...","blurb":"..."}],"reading":[{"title":"...","q":"...","kind":"read|watch"}],"tricky":"...","end":false}. ' +
-  `questions: exactly 3 multiple-choice questions that check real understanding of what this lesson explained, in this order: kind "recall" (remember the key idea), kind "apply" (use the idea in a new situation that does not appear anywhere in the lesson text), kind "mistake" (someone made a mistake using the idea; spot what went wrong). Each has 3 short options: one clearly right; every wrong option is a believable misconception a learner at this level really might hold, never a joke or an absurd option. answer = the position of the right option counting from 0. why: one entry per option, in the same order: for each wrong option a short line (under 15 words) on why it is tempting; "" for the right one. Short and kind, at the learner's level. ${QUESTION_CODE} ` +
+  `questions: exactly 3 multiple-choice questions that check real understanding of what this lesson explained, in this order: kind "recall" (remember the key idea), kind "apply" (use the idea in a new situation that does not appear anywhere in the lesson text), kind "mistake" (someone made a mistake using the idea; spot what went wrong). Each has 3 short options: one clearly right; every wrong option is a plausible misconception for the chosen level, never a joke or an absurd option. answer = the position of the right option counting from 0. why: one entry per option, in the same order: for each wrong option a short line (under 15 words) on why it is tempting; "" for the right one. Short and kind, at the learner's level. ${QUESTION_CODE} ` +
   'key_idea: the one key idea of this lesson as one plain sentence (at most 25 words), a statement of the concept itself, never an example, analogy or story. ' +
   `retry: a second, different set of 3 questions (recall, apply, mistake, with why as above) on the same key ideas (asked another way, never the same wording or the same right option position), kept for a second try if the first check is missed. ` +
   `blurb: one line under 12 words that says what "${i.focus}" is, for its card, without the learner's name. ` +

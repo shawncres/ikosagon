@@ -46,13 +46,12 @@ export default async function Home() {
               <p className="mb-2 font-mono text-sm text-accent">Featured app</p>
               <h2 className="mb-3 text-3xl font-semibold">IkoLearn</h2>
               <p className="mb-4 max-w-3xl text-zinc-300">
-                A thoughtful learning harness for anyone curious, at any age. IkoLearn is a place where you can
+                A calm learning app for curious learners. IkoLearn is a place where you can
                 start learning about as many or as few things as you want, and Iko will help you: say what you enjoy, and it grows a learning
                 cloud of subjects and topics in a sensible order, with short lessons that teach, then check.
               </p>
               <p className="mb-5 max-w-3xl text-sm text-zinc-400">
-                Cards fill in as the learning sticks, and parents can also use it to plan and guide
-                homeschool learning. No account needed; your learning stays on your device.
+                Cards fill in as the learning sticks. No account needed; your learning stays on your device.
               </p>
               <div className="flex flex-wrap gap-3">
                 <Link href="/ikolearn" className="rounded-xl bg-accent px-4 py-2 font-semibold text-black">

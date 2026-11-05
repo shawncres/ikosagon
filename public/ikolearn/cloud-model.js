@@ -792,7 +792,8 @@
    * last: the most recent lesson or card, { id, kind: "lesson" | "card", t }, for the "Return to ..." control.
    * Older saves' age slot [0] is a different, retired value and is never read back.
    */
-  var BANDS = ["u10", "10-13", "14-17", "18+", "none"];
+  var BANDS = ["u10", "10-13", "14-17", "18+", "none", "simple", "standard", "deeper"]; /* PR 114: the slot now holds the lesson level; an old age band is kept harmlessly and ignored */
+  var LEVELS = ["simple", "standard", "deeper"];
   function cleanBand(v) { return BANDS.indexOf(v) >= 0 ? v : ""; }
   /*
    * Directions (an additive v9 slot, profile row [9]; older readers ignore it, older saves read as all zero):
@@ -824,7 +825,8 @@
     return p;
   }
   /* the band to write lessons for: "" when not given (or "prefer not to say") */
-  function bandOf(cloud) { var b = profileOf(cloud).band; return b && b !== "none" ? b : ""; }
+  function bandOf(cloud) { var b = profileOf(cloud).band; return LEVELS.indexOf(b) >= 0 && b !== "standard" ? b : ""; }
+  function levelOf(cloud) { var b = profileOf(cloud).band; return LEVELS.indexOf(b) >= 0 ? b : "standard"; }
   function setLast(cloud, id, kind, t) { if (!cloud.nodes[id]) return; profileOf(cloud).last = { id: id, kind: kind === "card" ? "card" : "lesson", t: now_(t) }; }
   function lastOf(cloud) { var l = profileOf(cloud).last; return l && cloud.nodes[l.id] && cloud.nodes[l.id].parent ? l : null; }
   /* Topics the learner has (explored, below a subject). */
@@ -1819,7 +1821,7 @@
 
   var api = {
     VERSION: VERSION, LIMITS: LIMITS, STORE: STORE, subjectSlot: subjectSlot, promptSubjects: promptSubjects, promptView: promptView, prune: prune, removeBranch: removeBranch, MASTERED: MASTERED, OLD_SEEDS: OLD_SEEDS, HUES: HUES, subjectHue: subjectHue, plant: plant,
-    newProfile: newProfile, profileOf: profileOf, BANDS: BANDS, bandOf: bandOf, setLast: setLast, lastOf: lastOf, dirOf: dirOf, setLater: setLater, setProfile: setProfile, topicCount: topicCount,
+    newProfile: newProfile, profileOf: profileOf, BANDS: BANDS, LEVELS: LEVELS, bandOf: bandOf, levelOf: levelOf, setLast: setLast, lastOf: lastOf, dirOf: dirOf, setLater: setLater, setProfile: setProfile, topicCount: topicCount,
     TIERS: TIERS, TIER_NAMES: TIER_NAMES, TIER_STAGE: TIER_STAGE, ACHIEVE_RIGHT: ACHIEVE_RIGHT, roman: roman, tierOf: tierOf, mergeLevel: mergeLevel, mergeInto: mergeInto, corpusOf: corpusOf, absorbedInto: absorbedInto,
     GATE: GATE, needOf: needOf, gateCore: gateCore, coreProgress: coreProgress, prereqs: prereqs, lockedBy: lockedBy, completable: completable, addPrereqs: addPrereqs, PRE_MAX: PRE_MAX,
     checkChain: checkChain, applyRepair: applyRepair, moveUnder: moveUnder, EVENTS_MAX: EVENTS_MAX,

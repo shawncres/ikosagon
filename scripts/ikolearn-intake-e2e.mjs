@@ -234,7 +234,7 @@ for (const s of SIZES) {
 
 /* PR 109 (t297u): the age step on a desktop is calm and centred: the question, the bands on their own row, Skip a quiet
    link on its own line; clear gaps, nothing overlapping, the column centred under the name. A phone keeps its layout. */
-for (const s of [{ w: 1280, h: 800, scheme: "light" }, { w: 1024, h: 768, scheme: "dark" }, { w: 390, h: 844, scheme: "light", phone: true }, { w: 320, h: 568, scheme: "light", phone: true }]) {
+for (const s of (/* PR 114: no age step any more */ [{ w: 1280, h: 800, scheme: "light" }, { w: 1024, h: 768, scheme: "dark" }, { w: 390, h: 844, scheme: "light", phone: true }, { w: 320, h: 568, scheme: "light", phone: true }]).slice(0, 0)) {
   const tag = `age step ${s.w}x${s.h} ${s.scheme}`;
   const ctx = await browser.newContext({ viewport: { width: s.w, height: s.h }, isMobile: Boolean(s.phone), hasTouch: Boolean(s.phone), colorScheme: s.scheme, timezoneId: "America/Toronto" });
   const p = await ctx.newPage();
