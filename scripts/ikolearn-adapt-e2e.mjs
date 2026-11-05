@@ -372,7 +372,9 @@ for (const width of [390, 1280]) {
       const label = await p.evaluate(() => document.querySelector("#l-card .gc-title").textContent);
       const take = await p.evaluate(() => { const s = JSON.parse(localStorage.getItem("ikolearn.v1.lessons") || "{}"); return Object.values(s).map((x) => x && x.take).filter(Boolean); }).catch(() => []);
       const note = await p.evaluate(() => document.querySelector("#h-note") ? document.querySelector("#h-note").textContent : "");
-      ok(/You learned: When it comes out of a volcano, we call it lava\./.test(note), `${tag}: the earned card says the key idea learned`, note + " " + JSON.stringify(take));
+      const confLearn = await p.evaluate(() => document.querySelector("#l-conf") ? document.querySelector("#l-conf").textContent : "");
+      const learnedHits = (note + "\n" + confLearn).split("You learned").length - 1;
+      ok(learnedHits === 1 && /You learned: When it comes out of a volcano, we call it lava\./.test(confLearn), `${tag}: Earn says the key idea once`, note + " || " + confLearn + " " + JSON.stringify(take));
       ok(await p.evaluate(() => Boolean(document.querySelector("#l-card .gcard.earned"))), `${tag}: an earned card is marked to look a little more vivid`);
       /* revisit after a reload: from the deck, its card, then the lesson again */
       await p.goto(BASE + "/ikolearn", { waitUntil: "networkidle" }); await p.waitForTimeout(800);

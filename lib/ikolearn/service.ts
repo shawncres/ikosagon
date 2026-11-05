@@ -465,7 +465,10 @@ export async function testFor(input: LearnInput, env: Env, fetchImpl: typeof fet
   const allowed = input.material.map((m) => m.label);
   if (allowed.length < 2) return json(422, { ok: false, reason: "material" });
   const user = `Make my test on ${input.focus}. Topics I have finished: ${allowed.join(", ")}.`;
-  const r = await callModel<TestQuestion[]>((strict) => ({ system: testSystem(input, strict), user: user }), TEST_SCHEMA, (t) => parseTest(t, allowed), env, fetchImpl, { route: "test" });
+  const r = await callModel<TestQuestion[]>((strict) => ({
+    system: testSystem(input, strict),
+    user: strict ? `${user} Replace every silly or literal-physical wrong option, and keep each question's options a similar length so the right one is not the longest.` : user,
+  }), TEST_SCHEMA, (t) => parseTest(t, allowed), env, fetchImpl, { route: "test" });
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
   return json(200, { ok: true, questions: r.value });
 }
@@ -528,7 +531,13 @@ export function retryable(f: { code: FailCode; status?: number }): boolean {
 /** PR 118: the check alone (recall, apply, mistake), for a lesson whose hidden block was missing or unusable. One call (+1 stricter retry). */
 export async function checkFor(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): Promise<Out> {
   if (!input.lesson || input.lesson.length < 80) return json(422, { ok: false, reason: "lesson" });
-  const r = await callModel<CheckBlock>((strict) => ({ system: checkSystem(input, strict), user: `Write my check on ${input.focus}.` }), CHECK_SCHEMA, (t) => parseCheck(t, input.name), env, fetchImpl, { route: "check", maxTokens: 1_800 });
+  const r = await callModel<CheckBlock>((strict) => ({
+    system: checkSystem(input, strict),
+    /* A joke, a literal-physical gag, or a right option that is notably the longest makes parseCheck return null, so this strict retry runs. */
+    user: strict
+      ? `Write my check on ${input.focus} again. Every wrong option is a plausible near-miss of similar length, never a joke or a literal-physical gag, and the right option is not the longest.`
+      : `Write my check on ${input.focus}.`,
+  }), CHECK_SCHEMA, (t) => parseCheck(t, input.name), env, fetchImpl, { route: "check", maxTokens: 1_800 });
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
   return json(200, { ok: true, ...r.value });
 }

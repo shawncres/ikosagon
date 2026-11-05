@@ -805,7 +805,24 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(cheese.length === 1 && cheese[0].options.length === 2 && !/cheese/i.test(cheese[0].options.join(" ")), "parseQuestions: a cheese-moon joke is stripped, the near-miss stays");
   eq(parseQuestions([{ q: "What is magma?", options: ["Melted rock", "A kind of ice cream", "Cold candy"], answer: 0 }]), [], "parseQuestions: joke-food distractors on magma drop the question");
   ok(parseQuestions([{ q: "Which total is larger?", options: ["The one with interest added", "None of the above", "The one that stays the same"], answer: 0 }])[0].options.length === 2, "parseQuestions: filler options are stripped");
-  ok(/plausible near-miss/.test(checkSystem(parseLearnInput({ mode: "notice", name: "Sam", focus: "Magma", messages: [], lesson: "INTRO: Magma is melted rock." }), true)) && /Second try: every wrong option must be a plausible near-miss/.test(checkSystem(parseLearnInput({ mode: "notice", name: "Sam", focus: "Magma", messages: [], lesson: "INTRO: Magma is melted rock." }), true)), "check prompt: the strict retry demands near-misses");
+  const ovens = parseQuestions([{ q: "Why do companies have shareholders?", options: ["They share ownership of the company", "They manage the day to day work", "Ovens are too heavy for individual shareholders to carry"], answer: 0 }]);
+  ok(ovens.length === 1 && ovens[0].options.length === 2 && !/oven|heavy/i.test(ovens[0].options.join(" ")) && ovens[0].options[ovens[0].answer] === "They share ownership of the company", "parseQuestions: a literal-physical joke (ovens too heavy for shareholders) is stripped");
+  eq(parseQuestions([{ q: "Why do companies have shareholders?", options: ["Ovens are too heavy for shareholders to carry", "Shareholders carry the ovens home", "Investors lift the building"], answer: 0 }]), [], "parseQuestions: only literal-physical gags drop the question");
+  const carry = parseQuestions([{ q: "Why is a boulder hard to move?", options: ["It is too heavy for one person to carry", "It is too heavy for two people to lift", "It rolls uphill by itself"], answer: 0 }]);
+  ok(carry.length === 1 && carry[0].options.length === 3 && carry[0].options[carry[0].answer] === "It is too heavy for one person to carry", "parseQuestions: a physical near-miss stays when the right answer is physical too");
+  eq(parseQuestions([{ q: "What does a shareholder own?", options: ["A share of the company and a vote on its biggest decisions", "A day's wages", "A shop job"], answer: 0 }]), [], "parseQuestions: a notably longer correct option is dropped so the check is written again");
+  const even = parseQuestions([{ q: "What does a shareholder own?", options: ["A share of the company", "A day's wages only", "The shop itself"], answer: 0 }]);
+  ok(even.length === 1 && even[0].options.length === 3 && even[0].options[even[0].answer] === "A share of the company" && new Set(even[0].options.map((_, i) => i)).size === 3, "parseQuestions: similar-length options are kept and the right one still points at the answer");
+  let pos = new Set();
+  for (let i = 0; i < 12; i++) { const r = parseQuestions([{ q: "Where does idea number " + i + " belong now?", options: ["right", "w1", "w2"], answer: 0 }])[0]; pos.add(r.answer); }
+  ok(pos.size >= 2, "parseQuestions: shuffled positions are not a single slot", [...pos].join(","));
+  ok(/plausible near-miss/.test(checkSystem(parseLearnInput({ mode: "notice", name: "Sam", focus: "Magma", messages: [], lesson: "INTRO: Magma is melted rock." }), true)) && /Second try: every wrong option must be a plausible near-miss/.test(checkSystem(parseLearnInput({ mode: "notice", name: "Sam", focus: "Magma", messages: [], lesson: "INTRO: Magma is melted rock." }), true)) && /literal-physical/.test(checkSystem(parseLearnInput({ mode: "notice", name: "Sam", focus: "Magma", messages: [], lesson: "INTRO: Magma is melted rock." }), true)) && /not be the longest/.test(checkSystem(parseLearnInput({ mode: "notice", name: "Sam", focus: "Magma", messages: [], lesson: "INTRO: Magma is melted rock." }), true)), "check prompt: the strict retry demands near-misses of similar length, not jokes");
+  const svc = fs.readFileSync("lib/ikolearn/service.ts", "utf8");
+  ok(/literal-physical gag/.test(svc) && /right option is not the longest/.test(svc) && /literal-physical wrong option/.test(svc), "check and test retries say so again when a joke or a long correct option is rejected");
+  const appUi = fs.readFileSync("public/ikolearn/app.js", "utf8"), viewUi = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8");
+  ok(/confSays = lessonDone/.test(appUi) && /"You learned: " \+ tk/.test(appUi) && !/picked up more colour/.test(appUi) && /after\.tier > before\.tier/.test(appUi) && /card is " \+ after\.tierName/.test(appUi), "earn: You learned is said once, and a tier change names the mark the card shows");
+  ok(/function prepareAhead\(/.test(appUi) && /function prefetchFirstLesson\(/.test(appUi) && /prefetchFirstLesson\(\)/.test(appUi) && /prepareAhead\(P\.pathNext/.test(appUi), "the first suggested lesson is written ahead with the same prepare-ahead slot");
+  ok(/-vy \/ vl/.test(viewUi) && /pill\(l\.x - plateW/.test(viewUi) && /strokeText/.test(viewUi), "cloud labels sit off the branch line, on a paper plate");
   ok(/plausible near-misses/.test(testSystem(parseLearnInput({ mode: "notice", name: "Sam", focus: "Magma", messages: [], material: [{ label: "Magma", line: "Melted rock." }] }), true)) && /Second try: replace every silly/.test(testSystem(parseLearnInput({ mode: "notice", name: "Sam", focus: "Magma", messages: [], material: [{ label: "Magma", line: "Melted rock." }] }), true)), "test prompt: wrong options are near-misses, and the retry says so");
   ok(parseBlurb("A set keeps one of each thing.") === "A set keeps one of each thing." && parseBlurb("Sam, a set keeps one of each.", "Sam") === "" && parseBlurb("ok") === "", "parseBlurb: short, plain, never the learner's name");
   const blk2 = parseLessonBlock('{"steps":[],"choices":[],"questions":[{"q":"Which of these could be a set?","options":["a, a","a, b"],"answer":1}],"blurb":"A set keeps one of each thing."}', "Sam", "Sets", false);
@@ -2342,6 +2359,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     const { c, v, k } = mk9();
     right9(c, k("Eruptions").id, 3, T9 + 10); C.joinDeck(c, T9 + 20);
     ok(!C.isDone(c, k("Eruptions").id) && !k("Eruptions").doneAt && C.tierOf(c, k("Eruptions").id).key === "inked", "nothing completes before its prerequisites (3 right answers, still Inked)");
+    ok(C.growthOf(c, k("Eruptions").id).stage === C.TIER_STAGE[1], "3 right answers before a prerequisite: colour stays on the Inked mark");
     eq(C.lockedBy(c, k("Eruptions").id), [k("Magma").id], "lockedBy names the unmet prerequisite");
     eq(D.cardSpec(c, k("Eruptions").id).after, ["Magma"], "the card spec carries a quiet \u201cafter Magma\u201d");
     right9(c, k("Magma").id, 2, T9 + 30);
@@ -3860,6 +3878,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     const low = pairs.map(([a, b]) => [a + "/" + b, ratio(v[a], v[b])]).filter((p) => p[1] < 4.5);
     ok(low.length === 0, `theme ${nm}: text pairs (ink and soft on paper and sheet, a pressed chip) pass WCAG AA 4.5:1`, JSON.stringify(low));
   }
+  ok(ratio(dark.ink, dark.paper) >= 4.5 && /who-opt\.on:hover/.test(css) && /\.btn\.on:hover:not\(:disabled\)[\s\S]{0,220}background-color: var\(--ink\)/.test(css), "theme dark: a selected pill (Learning for yourself) keeps ink on paper when hovered, WCAG AA", ratio(dark.ink, dark.paper).toFixed(2));
   ok(["paper", "sheet", "ink", "soft", "rule", "fold", "ink-rgb", "shadow-rgb", "pebble", "pebble-face", "scrim"].every((k) => light[k] && dark[k]), "theme: every colour has a light and a dark value (custom properties)");
   ok(lum(dark.paper) > 0.004 && lum(dark.paper) < 0.02 && /^#(?!000)/.test(dark.paper), "theme dark: a deep warm brown paper, not black");
   ok(!/#[0-9a-f]{3,8}\b/i.test(css.replace(block(":root"), "").replace(block('html[data-theme="dark"]'), "").replace(/rgba\((255, 255, 255|0, 0, 0|150, 110, 60)[^)]*\)/g, "")), "theme: no colour is written outside the two palettes (bar white and black washes)");
