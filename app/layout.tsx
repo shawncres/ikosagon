@@ -29,11 +29,11 @@ export const metadata: Metadata = {
     template: "%s | Ikosagon",
   },
   description:
-    "We at Ikosagon learn your business, connect your tools and data, improve how work gets done, and add AI carefully, so you save time without risking what already works.",
+    "Ikosagon learns your business, connects your tools and data, improves how work gets done, and adds AI carefully, so you save time without risking what already works.",
   openGraph: {
     title: "Ikosagon | Software & AI, built around your business",
     description:
-      "We at Ikosagon learn your business, connect your tools and data, improve how work gets done, and add AI carefully, so you save time without risking what already works.",
+      "Ikosagon learns your business, connects your tools and data, improves how work gets done, and adds AI carefully, so you save time without risking what already works.",
     url: "/",
     siteName: "Ikosagon",
     images: [{ url: "/opengraph-image" }],
@@ -43,7 +43,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Ikosagon | Software & AI, built around your business",
     description:
-      "We at Ikosagon learn your business, connect your tools and data, improve how work gets done, and add AI carefully, so you save time without risking what already works.",
+      "Ikosagon learns your business, connects your tools and data, improves how work gets done, and adds AI carefully, so you save time without risking what already works.",
     images: ["/opengraph-image"],
   },
 };

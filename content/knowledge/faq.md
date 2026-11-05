@@ -15,7 +15,7 @@ No. Vercel Hobby has no GPU and a 250 MB function bundle. Weights do not fit. In
 
 ## What businesses do you help?
 
-We at Ikosagon work from anywhere with small and growing businesses through larger teams that lose time on intake, quotes, policy questions, handoffs between tools (like a customer-record system, or CRM), and follow-up. Our education app is IkoLearn. Work on connected devices (IoT) and AI assistants that use your tools is available when the job needs it.
+We work from anywhere with small and growing businesses through larger teams that lose time on intake, quotes, policy questions, handoffs between tools (like a customer-record system, or CRM), and follow-up. Our education app is IkoLearn, a calm learning app for curious learners (ikolearn.com). Work on connected devices (IoT) and AI assistants that use your tools is available when the job needs it.
 
 ## How do you work with a business?
 
@@ -43,7 +43,7 @@ IkoLearn is the featured app: a calm learning app for curious learners (ikolearn
 
 ## How do I start?
 
-Open /contact. There are two ways in: Start a project, and Hiring (a role, contract or selected full-time, Toronto hybrid or remote). Or email shawn@ikosagon.com. No public resume.
+Open /contact. There are two ways in: Start a project, and Hiring (a role, contract or selected full-time, remote). Or email shawn@ikosagon.com. No public resume.
 
 ## What is Hexcast?
 

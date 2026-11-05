@@ -5,11 +5,11 @@ slug: services
 
 # Services
 
-We at Ikosagon take the time to understand how your business really runs. Then we connect the right tools, improve the way work gets done, and bring in AI where it truly helps, without putting what already works at risk. The result is new efficiencies you can see, like time saved and fewer manual steps. We build lean and cost-aware, on your own servers or in the cloud.
+We take the time to understand how your business really runs. Then we connect the right tools, improve the way work gets done, and bring in AI where it truly helps, without putting what already works at risk. The result is new efficiencies you can see, like time saved and fewer manual steps. We build lean and cost-aware, on your own servers or in the cloud.
 
 ## How we work
 
-We at Ikosagon follow five steps on every project:
+We follow five steps on every project:
 
 1. Understand. We learn your business the way an expert in your field would: your customers, your team, and where the day gets stuck.
 2. Connect. We find the right technology to tie your tools and data together, so information flows instead of being typed in twice.
