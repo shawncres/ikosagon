@@ -93,6 +93,7 @@
   }
   function save() {
     C.joinDeck(state.cloud); /* any topic past the threshold joins the deck for good */
+    if (window.IkoUsage) window.IkoUsage.sync(state.cloud); /* anonymous counts only (usage.js) */
     var text = C.serialize(state.cloud);
     if (text.length > C.STORE.softChars && C.prune(state.cloud)) text = C.serialize(state.cloud); /* past the byte ceiling: old placeholders go */
     if (!storeCloud(text)) { storeSay(true); return; }
@@ -304,7 +305,7 @@
     if (state.ex.status === "off") {
       if (r.quiet) return; /* the intake: free text is the way in; no note, no retry */
       box.appendChild(mk("span", "ex-note", "Examples couldn't load just now."));
-      box.appendChild(linkBtn("Try again", function () { loadExamples(); }, "link ex-retry"));
+      box.appendChild(linkBtn("Try again", function () { if (window.IkoUsage) window.IkoUsage.bump("generation_retries"); loadExamples(); }, "link ex-retry"));
       return;
     }
     var grow = r.set === "growth", key = grow ? "gat" : "at";
@@ -414,7 +415,7 @@
       /* (an old save's empty start, from the retired Skip call, has nothing to retry: typing below starts the path) */
       if (m.role === "model" && m.retry && !m.streaming && (m.retry.kind !== "start" || (!state.cloud.order.length && m.retry.about))) {
         var again = mk("div", "acts"), rt = m.retry;
-        again.appendChild(linkBtn("Try again", function () { if (!state.busy) { m.retry = null; upsert(m); buildCloud(rt.kind, [], rt.about || "", rt.grow || ""); } }, "btn draw-btn sm"));
+        again.appendChild(linkBtn("Try again", function () { if (!state.busy) { if (window.IkoUsage) window.IkoUsage.bump("generation_retries"); m.retry = null; upsert(m); buildCloud(rt.kind, [], rt.about || "", rt.grow || ""); } }, "btn draw-btn sm"));
         d.appendChild(again);
       }
       /* the API's examples under the Skip message ("start": the first one tapped starts the path) or the welcome back ("chat"); an old save's own chips are not shown */
@@ -666,7 +667,7 @@
   function bandSaid(b) {
     return "Okay. Lessons are now written " + (b === "simple" ? "simply, in everyday words." : b === "deeper" ? "with more depth and detail." : "at a standard level.") + " You can change this any time.";
   }
-  function setBand(b) { C.setProfile(state.cloud, { band: b }); save(); renderAgeBits(); }
+  function setBand(b) { C.setProfile(state.cloud, { band: b }); save(); renderAgeBits(); if (window.IkoUsage) window.IkoUsage.level(b); }
   function bandRow(onPick) {
     var cur = C.levelOf(state.cloud), row = mk("div", "place-opts age-opts");
     row.setAttribute("role", "group"); row.setAttribute("aria-label", "Lesson level");
@@ -1452,7 +1453,7 @@
     wrap.appendChild(mk("h3", "phase-head", "Check yourself"));
     if (q && q.id === state.lessonNode && !q.qs.length && (q.wait || q.fail)) {
       var cl = mk("p", "fine calm-fail", q.wait ? "Writing a few quick questions for this lesson…" : "Iko is still writing this one. Try another card while you wait. ");
-      if (q.fail) cl.appendChild(linkBtn("Retry", function () { q.fail = false; ensureCheck(q.id); }, "link calm-retry"));
+      if (q.fail) cl.appendChild(linkBtn("Retry", function () { if (window.IkoUsage) window.IkoUsage.bump("generation_retries"); q.fail = false; ensureCheck(q.id); }, "link calm-retry"));
       wrap.appendChild(cl);
       el.lQuiz.appendChild(wrap);
       return;
@@ -1563,8 +1564,11 @@
   }
   /* PR 109: once earned, a short confirmation in place of the lesson (what was learned), then Where next; the lesson
      itself one quiet tap away */
+  var confWas = {};
   function renderConf(id) {
     var dn = lessonDone(id);
+    if (dn && confWas[id] === false) { if (window.IkoUsage) window.IkoUsage.bump("lessons_completed"); } /* counted once, as it turns done */
+    confWas[id] = dn;
     el.lConf.hidden = !dn;
     if (!dn) { el.lConf.textContent = ""; return; }
     var n = nodeOf(id), tk = takeawayOf(id), inDeck = C.inDeck(state.cloud, id);
@@ -1811,7 +1815,7 @@
           /* PR 113: one calm line, never the raw reason; the rest of the screen stays as it was */
           el.lBody.textContent = "";
           var calm = mk("p", "l-intro calm-fail", "Iko is still writing this one. Try another card while you wait. ");
-          calm.appendChild(linkBtn("Retry", function () { openLesson(id, true); }, "link calm-retry"));
+          calm.appendChild(linkBtn("Retry", function () { if (window.IkoUsage) window.IkoUsage.bump("generation_retries"); openLesson(id, true); }, "link calm-retry"));
           el.lBody.appendChild(calm);
         }
       }
@@ -3229,6 +3233,7 @@
     var c = screenCtx();
     if (o.tricky && c.view === "lesson") c.step = "tricky"; /* the clarification is about to show */
     iko.ctx = c; iko.from = state.thread.length; iko.open = true;
+    if (window.IkoUsage) window.IkoUsage.bump("iko_opened");
     dismissHint("iko");
     var note = storeNote.text && !el.ikoLine.hidden && el.ikoLine.textContent === storeNote.text; /* a storage note still showing */
     ikoLine("");
@@ -4118,6 +4123,7 @@
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
     st.textContent = T.MSG.saved(f.name);
+    if (window.IkoUsage) window.IkoUsage.bump("exports");
     placeCard();
   }
   var ctStatus = null;
