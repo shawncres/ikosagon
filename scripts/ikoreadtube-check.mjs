@@ -605,6 +605,7 @@ const gAn = makeGem(askOk);
 ok((await ask({ env: { YOUTUBE_API_KEY: YT_KEY }, fetchImpl: combo(makeYt(), gAn) })).body.reason === "off" && gAn.calls.length === 0, "ask without Gemini key -> reason off");
 ok((await ask({ fetchImpl: combo(makeYt({ duration: { [ID1]: "PT1H" } }), gAn) })).body.reason === "long" && gAn.calls.length === 0, "ask on a long video -> reason long, no Gemini call");
 ok((await ask({ env: { ...ENV, GEMINI_DAILY_VIDEO_SECONDS: "100" }, fetchImpl: combo(makeYt(), gAn) })).body.reason === "budget" && gAn.calls.length === 0, "ask respects the daily budget guard");
+ok((await ask({ state: astate, env: { ...ENV, GEMINI_DAILY_CALLS: "2" }, fetchImpl: combo(makeYt(), gAn), question: "a brand new question?" })).body.reason === "budget" && gAn.calls.length === 0, "daily Gemini call cap (shared free key) -> calm budget reason, no call");
 const bAsk = createSummaryState(() => NOW);
 const r429 = await ask({ state: bAsk, fetchImpl: combo(makeYt(), makeGem(() => json(429, {}))) });
 ok(r429.body.ok === false && r429.body.reason === "busy" && bAsk.budget.seconds === 0 && bAsk.cooldownUntil > NOW, "Gemini 429 -> busy, budget refunded, cooldown set");
