@@ -272,6 +272,8 @@ function gate(meta: VideoMeta, env: Env, st: SummaryState, t: number): SummaryRe
   if (st.budget.day !== day) st.budget = { day, seconds: 0, calls: 0 };
   const cap = Number(env.GEMINI_DAILY_VIDEO_SECONDS) > 0 ? Number(env.GEMINI_DAILY_VIDEO_SECONDS) : GEMINI_LIMITS.dailyVideoSeconds;
   if (st.budget.seconds + meta.duration > cap) return "budget";
+  const callCap = Number(env.GEMINI_DAILY_CALLS) > 0 ? Number(env.GEMINI_DAILY_CALLS) : GEMINI_LIMITS.dailyCalls;
+  if (st.budget.calls >= callCap) return "budget";
   if (t < st.cooldownUntil || !st.geminiLimiter.check("all").ok) return "busy";
   return null;
 }

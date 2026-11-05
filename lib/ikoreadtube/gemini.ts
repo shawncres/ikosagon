@@ -16,6 +16,7 @@ export const GEMINI_LIMITS = {
   maxVideoSeconds: 40 * 60, // longer videos: description excerpt instead (keeps the 8 h/day free budget useful)
   minVideoSeconds: 20,
   dailyVideoSeconds: 6 * 3600, // our guard, under Google's 8 h free-tier cap
+  dailyCalls: 200, // request guard: the free Gemini key (~500 requests/day) is shared with IkoLearn
   perIpPerMinute: 3,
   perIpPerHour: 12,
   globalPerMinute: 6,
