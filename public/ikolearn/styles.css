@@ -234,8 +234,9 @@ button.gcard:hover { border-color: var(--soft); }
 .sg .gcard { flex: none; width: auto; max-width: none; }
 .sg-why { font-size: 12.5px; line-height: 1.35; color: var(--soft); margin: 6px 2px 0; }
 .flow-acts { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 4px; }
-.btn.draw-btn { background: var(--ink); color: var(--paper); }
+.btn.draw-btn { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .btn.draw-btn:disabled { opacity: .45; }
+.btn.draw-btn:hover:not(:disabled) { background: var(--accent); opacity: .92; }
 .btn.quiet { border-color: var(--rule); text-decoration: none; }
 #deck .flow { border-bottom: 1px solid var(--rule); margin: 0 0 18px; padding-bottom: 12px; }
 .gcard.test-tile { border-style: dashed; text-align: left; justify-content: flex-start; }
@@ -994,8 +995,8 @@ h2 { font-size: var(--t-xl); font-weight: 600; letter-spacing: -.005em; line-hei
 .btn { font-weight: 500; letter-spacing: .01em; transition: transform var(--t-fast) var(--ease), opacity var(--t-fast) var(--ease), background-color var(--t-med) var(--ease), border-color var(--t-med) var(--ease), color var(--t-med) var(--ease); }
 .btn:hover:not(:disabled) { background: rgba(var(--ink-rgb), .05); }
 .btn:active:not(:disabled) { transform: scale(.97); opacity: .9; }
-.btn.draw, .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-.btn.draw:hover:not(:disabled), .btn.primary:hover:not(:disabled) { background: var(--accent); opacity: .92; }
+.btn.draw, .btn.draw-btn, .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.draw:hover:not(:disabled), .btn.draw-btn:hover:not(:disabled), .btn.primary:hover:not(:disabled) { background: var(--accent); opacity: .92; }
 .btn.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* cards: one consistent plate, title, short text, state; flat with a barely-lifted edge */

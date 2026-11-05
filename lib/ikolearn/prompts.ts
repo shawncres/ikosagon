@@ -370,9 +370,9 @@ export function cleanCode(v: unknown): string {
   return out.length > MAX_CODE.chars ? "" : out;
 }
 
-/** PR 120: wrong options are real mix-ups, never absurd or absolute. */
+/** PR 120/125: wrong options are real mix-ups, never absurd, absolute, or joke-science. */
 export const DISTRACTOR_RULE =
-  "Each wrong option is a mistake real learners actually make: a common mix-up, a half-right idea, or a confusion with a nearby idea. Never a joke, never obviously false, and no sweeping absolutes (always, never, all, none, nothing, everything) unless that exact belief is a common misconception. Keep wrong options the same length and style as the right one.";
+  "Each wrong option is a mistake real learners actually make: a common mix-up, a half-right idea, or a confusion with a nearby idea. Never a joke, never obviously false (e.g. magma or lava being cold or made of ice, the sun being cold, the earth being flat), and no sweeping absolutes (always, never, all, none, nothing, everything, forever) unless that exact belief is a common misconception. Keep wrong options the same length and style as the right one.";
 
 export const SYSTEM_BASE =
   "You are Iko, the warm, calm learning companion in IkoLearn, made by Ikosagon. You talk with one learner, whoever they are; meet them where they are. " +
@@ -1132,10 +1132,37 @@ export function parseQuestions(raw: unknown, max: number = LEARN_LIMITS.question
     const rot = strHash(q) % kept.length;
     const options = kept.slice(rot).concat(kept.slice(0, rot));
     const code = cleanCode(o.code);
-    const answer = options.findIndex((x) => sameLabel(x, right));
-    /* PR 120: a near-absurd distractor (a sweeping absolute the right option doesn't share) drops the question */
-    const ABS = /\b(always|never|all|every|none|nothing|everything|impossible|only ever)\b/i;
-    if (!ABS.test(options[answer]) && options.some((x, xi) => xi !== answer && ABS.test(x))) continue;
+    let answer = options.findIndex((x) => sameLabel(x, right));
+    /* PR 120/125: strip near-absurd distractors (sweeping absolute the right option doesn't share, or a banned
+       joke-science pattern such as cold magma / ice lava). If fewer than 2 options remain, drop the question;
+       incomplete checks fall through to /check. */
+    const ABS = /\b(always|never|all|every|none|nothing|everything|impossible|only ever|forever|under no circumstances)\b/i;
+    const ABSURD = [
+      /\b(magma|lava)\b.{0,48}\b(cold|ice|icy|frozen|freezing|snow|chill(?:y)?|cool(?:ed)?)\b/i,
+      /\b(cold|ice|icy|frozen|freezing|snow|chill(?:y)?)\b.{0,48}\b(magma|lava)\b/i,
+      /\b(sun|star)\b.{0,36}\b(cold|ice|icy|frozen|made of ice)\b/i,
+      /\b(earth|planet)\b.{0,36}\b(is flat|flat like|a flat disc|a flat disk)\b/i,
+      /\b(water|ocean|sea)\b.{0,36}\b(is dry|made of (?:sand|dust|dirt))\b/i,
+      /\bmade of (?:cold )?ice\b/i,
+      /\bcold (?:underground )?caves?(?: of ice)?\b/i,
+      /\b(?:caves?|caverns?) of ice\b/i,
+      /\binside (?:cold )?(?:underground )?caves? of ice\b/i,
+    ];
+    const scienceHot = /\b(magma|lava|volcano|volcanic|molten|erupt)\b/i.test(q);
+    const coldJoke = /\b(cold|ice|icy|frozen|freezing|snow)\b/i;
+    const rightHasAbs = ABS.test(options[answer]);
+    const bad = (x: string, xi: number) =>
+      xi !== answer && (
+        (!rightHasAbs && ABS.test(x)) ||
+        ABSURD.some((re) => re.test(x)) ||
+        (scienceHot && coldJoke.test(x) && !/\b(rock|earth|crust|mantle|heat|hot|melt)\b/i.test(x))
+      );
+    if (options.some(bad)) {
+      const keptOpts = options.filter((x, xi) => !bad(x, xi));
+      if (keptOpts.length < 2 || !keptOpts.some((x) => sameLabel(x, right))) continue;
+      options.length = 0; options.push(...keptOpts);
+      answer = options.findIndex((x) => sameLabel(x, right));
+    }
     const why = options.map((x, xi) => (xi === answer ? "" : whyOf[x] || ""));
     const kind = (QUESTION_KINDS as readonly string[]).includes(String(o.kind)) ? (o.kind as Question["kind"]) : undefined;
     out.push({ q, options, answer, ...(code ? { code } : {}), ...(kind ? { kind } : {}), ...(why.some(Boolean) ? { why } : {}) });

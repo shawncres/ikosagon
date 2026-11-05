@@ -700,6 +700,8 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(D.render(doc, sp, { size: "mini" }).kids[0].className === "gc-art" && !flat(D.render(doc, sp, { size: "mini" })).some((k) => /gc-title|gc-chain|gc-mark/.test(k.className)), "render: mini card is the landscape only (plus its colour layer)");
   const count = (e, tag) => (e.tag === tag ? 1 : 0) + (e.kids || []).reduce((n, k) => n + count(k, tag), 0);
   ok(count(svg, "path") >= sp.art.layers.length * 2 && count(svg, "circle") >= 1, "render (PR 120 Bauhaus): ridges (fill + line) under a geometric composition (circle, bar, triangle)");
+  const cssBau = fs.readFileSync("public/ikolearn/styles.css", "utf8");
+  ok(/\.btn\.draw-btn\s*\{[^}]*var\(--accent\)/.test(cssBau) && /\.btn\.draw, \.btn\.draw-btn, \.btn\.primary/.test(cssBau), "Bauhaus: Draw a card (draw-btn) uses the accent colour");
   const all = JSON.stringify(full, (k, v) => (k === "ns" ? undefined : v));
   ok(!/"tag":"(img|image|use|i|picture)"|href|https?:/.test(all) && !/\p{Extended_Pictographic}/u.test(all), "no images, icons or emoji: text and line drawing only");
   const ach = Object.assign({}, sp, { achieved: true, stage: 4, stageName: "Achieved", tier: 3, tierKey: "achieved", tierName: "Achieved", pips: 3 });
@@ -784,6 +786,11 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   for (let i = 0; i < 12; i++) { const r = parseQuestions([{ q: "Question number " + i + " here", options: ["right", "w1", "w2"], answer: 0 }])[0]; if (r.answer !== 0) rot += 1; }
   ok(rot >= 4, "parseQuestions: the right answer isn't always first", String(rot));
   eq(parseQuestions("nope"), [], "parseQuestions: junk -> none");
+  /* PR 125: absurd / joke-science distractors drop the question (incomplete sets fall through to /check) */
+  const coldDrop = parseQuestions([{ q: "Where is magma found before it reaches the surface?", options: ["Deep underground", "Inside cold caves of ice", "In rivers"], answer: 0 }]);
+  ok(coldDrop.length === 1 && coldDrop[0].options.length === 2 && !/ice|cold/i.test(coldDrop[0].options.join(" ")), "parseQuestions: cold-ice cave distractor is stripped, plausible options kept");
+  eq(parseQuestions([{ q: "What is lava made of?", options: ["Melted rock", "Always cold ice", "Made of cold ice"], answer: 0 }]), [], "parseQuestions: only-absurd ice-lava set is dropped (falls through to /check)");
+  ok(parseQuestions([{ q: "Where is magma found before it reaches the surface?", options: ["Deep underground", "In rivers of water", "In open air"], answer: 0 }]).length === 1, "parseQuestions: plausible science mix-ups are kept");
   ok(parseBlurb("A set keeps one of each thing.") === "A set keeps one of each thing." && parseBlurb("Sam, a set keeps one of each.", "Sam") === "" && parseBlurb("ok") === "", "parseBlurb: short, plain, never the learner's name");
   const blk2 = parseLessonBlock('{"steps":[],"choices":[],"questions":[{"q":"Which of these could be a set?","options":["a, a","a, b"],"answer":1}],"blurb":"A set keeps one of each thing."}', "Sam", "Sets", false);
   ok(blk2 && blk2.questions.length === 1 && blk2.blurb === "A set keeps one of each thing.", "parseLessonBlock: questions and blurb alone are enough");
