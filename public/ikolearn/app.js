@@ -1868,6 +1868,8 @@
       save(); refreshViews(r.added);
     }, function () { neoBusy = false; });
   }
+  /* matches LEARN_LIMITS.lessonExcerptChars: a check or a clarification needs the example, not only the opening */
+  var LESSON_EXCERPT = 5000;
   /* PR 118: a check is usable when it has a valid question; a new-style one (kinds) only when it is the full three */
   function needCheck(qs) {
     var v = validQs(qs);
@@ -1881,7 +1883,7 @@
     if (!les || !les.text || les.ckWait) return;
     les.ckWait = 1;
     if (state.quiz && state.quiz.id === id) { state.quiz.qs = []; state.quiz.wait = true; renderQuiz(true); }
-    postJson("/check", Object.assign(basePayload(id), P.withBand(state.cloud, {}), { mode: "notice", messages: [], lesson: String(les.text).slice(0, 1500) })).then(function (j) {
+    postJson("/check", Object.assign(basePayload(id), P.withBand(state.cloud, {}), { mode: "notice", messages: [], lesson: String(les.text).slice(0, LESSON_EXCERPT) })).then(function (j) {
       delete les.ckWait;
       var qs = j && j.ok ? validQs(j.questions) : [];
       if (qs.length === 3) {
@@ -2104,7 +2106,7 @@
     var ui = clarBox(style, ""), text = "";
     ui.body.className = "clar-body streaming";
     focusClar(style);
-    var body = P.withBand(state.cloud, Object.assign(basePayload(id), { mode: "clarify", clarify: style, lesson: les ? String(les.text).slice(0, 1500) : "", messages: [] }));
+    var body = P.withBand(state.cloud, Object.assign(basePayload(id), { mode: "clarify", clarify: style, lesson: les ? String(les.text).slice(0, LESSON_EXCERPT) : "", messages: [] }));
     stream("/chat", body, {
       delta: function (t) { text += t; paragraphs(ui.body, text); }
     }, callSignal("clarify")).then(function (r) {

@@ -7,9 +7,10 @@
  *  - notice:    a warm brief reflection or 2-3 suggestions about the name (whole cloud) or one node (streamed, same block).
  *  - card:      a short learning card, JSON { title, body, topic, parent }.
  *  - adjacent:  related unexplored topics for one node, JSON { ghosts: [{ name, parent }] } (shown as ghost branches).
- *  - lesson:    one topic as a short lesson that teaches first (streamed, tagged lines INTRO/EXPLAIN/STEP/EXAMPLE/NEXT), ending
- *               with a hidden <<<PATH {json} PATH>>> block: 2-3 multiple-choice questions on what it explained, the fork
- *               choices, a one-line card description, and (when asked) the topic's child topics in learning order.
+ *  - lesson:    one topic as a lesson that teaches first (streamed, tagged lines INTRO/EXPLAIN/STEP/EXAMPLE/NEXT,
+ *               fuller by level: simple, standard, deeper), ending with a hidden <<<PATH {json} PATH>>> block: 3
+ *               multiple-choice questions on what it explained, the fork choices, a one-line card description, and
+ *               (when asked) the topic's child topics in learning order.
  *  - path:      just the ordered subtopics for one node, JSON { steps: [{ name }], next }.
  *  - test:      3-5 questions built only from the completed topics under a parent, JSON { questions: [{ q, options, answer, topic }] }.
  * Every topic carries its full chain from the subject down; when the model sends a shallow one, the device asks a
@@ -30,11 +31,12 @@ export const LEARN_LIMITS = {
   cardTitleChars: 60,
   cardBodyChars: 700,
   replyChars: 4_000,
-  /** clarify: how much of the lesson the device sends back as context */
-  lessonExcerptChars: 1_500,
+  /** clarify and the standalone check: how much of the lesson the device sends back (enough to include the example) */
+  lessonExcerptChars: 5_000,
   /** the lesson's prepared "Still tricky" clarification (written in the same call, shown only if asked) */
   trickyChars: 600,
-  lessonChars: 6_000,
+  /** visible lesson text only (the hidden check block is held back). Room for a deeper lesson plus one small diagram. */
+  lessonChars: 12_000,
   trailChars: 200,
   known: 16,
   pathSteps: 6,
@@ -574,41 +576,74 @@ const BAND_STYLE: Record<(typeof AGE_BANDS)[number], string> = {
 const bandLine = (i: LearnInput) =>
   i.band ? `${BAND_STYLE[i.band]} This only changes how you explain it: teach the topic fully, whatever it is.\n\n` : "";
 
+/**
+ * How full the lesson is. Standard is the default (the device sends no level). Counts are the sections; the tag list
+ * in the lesson prompt says what each tag is. Simple stays short. Deeper adds the why and one step past the basics.
+ */
+const LESSON_DEPTH: Record<"simple" | "standard" | "deeper", string> = {
+  simple:
+    "Level simple. Short sentences and everyday words. One idea. Explain any new term the first time.\n" +
+    "Sections, in order: INTRO. Then 2 EXPLAIN lines (what it is, then how it works). Then 3 STEP lines. Then one worked EXAMPLE. Then NEXT.\n" +
+    "About 340 to 480 words.",
+  standard:
+    "Level standard. Clear and calm. Use the real term, and say what it means the first time.\n" +
+    "Sections, in order: INTRO. Then 3 EXPLAIN lines, each a short paragraph that builds on the one before: what it means, with a concrete picture; how or why it works; one common mix-up, corrected kindly. Then 4 STEP lines. Then one worked EXAMPLE. Then NEXT.\n" +
+    "About 520 to 760 words.",
+  deeper:
+    "Level deeper. Precise terms, the how and the why, and one detail past the basics. Still calm and readable.\n" +
+    "Sections, in order: INTRO. Then 4 EXPLAIN lines: what it is, how it works, why that is so, then one step past the basics. Then 5 STEP lines. Then a worked EXAMPLE and a short second EXAMPLE that changes one thing. Then NEXT.\n" +
+    "About 700 to 960 words.",
+};
+const lessonDepth = (i: LearnInput) => LESSON_DEPTH[i.band || "standard"];
+
+/**
+ * One optional plain diagram. The app already renders a fenced block as a quiet monospace listing (lesson.js);
+ * language text, diagram or fig is announced as a diagram. Not a new picture format.
+ */
+export const DIAGRAM_RULE =
+  "Diagram: only when a simple picture makes the idea easier than more sentences (a cycle, parts of a whole, a before and after, or a small comparison). At most one, and skip it when prose is clearer. " +
+  "Put a one-line caption on its own EXPLAIN or EXAMPLE line, then a fenced block whose language is text: a line ```text, then 2 to 6 short lines of words and arrows such as → or ↓, then a line ```. " +
+  "No boxes made of characters, no pictures, no colour, no links, and do not start a line with # or //. This is the one exception to using a fence for something that is not code.";
+
 export function lessonSystem(i: LearnInput): string {
   return (
-    `${SYSTEM_BASE}\n\nRole: lesson. Teach the topic "${i.focus}"${i.trail ? ` (${i.trail})` : ""} as one short lesson for this learner, at their level, building on what their profile shows. ` +
+    `${SYSTEM_BASE}\n\nRole: lesson. Teach the topic "${i.focus}"${i.trail ? ` (${i.trail})` : ""} as one full lesson for this learner, at their level, building on what their profile shows. ` +
+    "The short-reply limit above does not apply here: write the whole lesson, then the hidden block. " +
     "Teach first: really explain the idea so the learner understands it, with concrete, everyday details, before anything is checked. " +
+    "Stay calm. No points, streaks, badges, scores, or cheerleading. Do not write your own headings; the tags are the sections. " +
+    "The plain-text rule above still holds for the words. A fenced block is allowed only for a short piece of code, or for one diagram, as below.\n" +
     "Write plain text lines, each starting with one of these tags, in this order:\n" +
     "INTRO: one or two warm sentences: what it is and why it is useful, using the learner's first name once.\n" +
-    "EXPLAIN: a short paragraph (two or three sentences) that explains how it works or what it means, with a concrete picture or comparison. Write 2 or 3 EXPLAIN lines, each building on the one before.\n" +
-    "STEP: one small step for doing it or spotting it yourself, one short sentence. Write 2 to 4 STEP lines.\n" +
-    "EXAMPLE: optional; a worked example, shown step by step on one to three EXAMPLE lines, when the topic has something to work through.\n" +
-    "NEXT: one encouraging sentence on what to try next.\n" +
+    "EXPLAIN: a short paragraph (two or three sentences) that carries one part of the idea, with a concrete picture or comparison. Each EXPLAIN line builds on the one before and does not repeat it.\n" +
+    "STEP: one small step for doing it or spotting it yourself, one or two short sentences.\n" +
+    "EXAMPLE: optional only when there is nothing to work through. Otherwise one concrete worked example, with real numbers or a familiar scene, shown in order on its own EXAMPLE lines.\n" +
+    "NEXT: one calm sentence on what to try next.\n" +
+    `${lessonDepth(i)}\n` +
     `The lesson is not finished until you write the hidden ${PATH_OPEN} block: always write it right after the NEXT line, every time. ` +
     "Do not write check questions in the lesson text; they go in the hidden block below, and they only ask about what you explained. " +
     "Examples: when the learner's profile shows another interest with a genuine connection to this topic, use one example drawn from that interest; otherwise use an everyday example. Never force a connection. " +
     (i.earned && i.earned.length ? `Cards the learner has earned: ${i.earned.join(", ")}. If one of them truly connects, you may add one short sentence linking it in an EXPLAIN line; skip it if nothing fits. ` : "") +
-    "Keep the whole lesson under 260 words. Use concrete numbers and everyday examples. Anyone reading along should be able to follow it.\n" +
-    CODE_RULE + "\n\n" +
+    "Use concrete numbers and everyday examples. Anyone reading along should be able to follow it.\n" +
+    CODE_RULE + "\n" + DIAGRAM_RULE + "\n\n" +
     bandLine(i) +
     lessonPace(i) +
     `${profile(i)}\n\n${lessonBlockRules(i)}` +
-    (i.strict ? `\n\nThis is a second try: keep the lesson under 180 words, follow the tags exactly, and make the ${PATH_OPEN} block valid JSON with every field filled.` : "")
+    (i.strict ? `\n\nThis is a second try: follow the tags exactly, keep the same sections a little shorter, and make the ${PATH_OPEN} block valid JSON with every field filled. Do not stop before that block.` : "")
   );
 }
 
 /** The orchestrator's gentle difficulty signal for this branch, and the clearer second telling after a missed check. */
 const lessonPace = (i: LearnInput) =>
   (i.again ? `The learner has read this lesson before and missed its check twice: explain it again more clearly and in a different way, in smaller steps with a new everyday comparison, and ask fresh questions. ` : "") +
-  (i.pace === "gentle" ? "In this subject the learner has been finding the checks hard: keep it gentle, one idea at a time, with simple words. "
-    : i.pace === "stretch" ? "In this subject the learner has been answering easily: add one small extra detail that stretches them a little, still kind and short. " : "") +
+  (i.pace === "gentle" ? "In this subject the learner has been finding the checks hard: keep it gentle, one idea at a time, with simple words. Keep the sections the level asked for, and use the simplest example. "
+    : i.pace === "stretch" ? "In this subject the learner has been answering easily: add one small extra detail that stretches them a little, still kind and short. Do not add another section. " : "") +
   (i.again || i.pace ? "\n\n" : "");
 
 /** One hidden block after every lesson (no extra call): check questions, the fork of 2 or 3 choices, the card line, and the path when asked. */
 const lessonBlockRules = (i: LearnInput) =>
   `After the lesson, on a new line, write ${PATH_OPEN} then one JSON object then ${PATH_CLOSE}, and nothing after it. The learner never sees this block as text. ` +
   'The JSON is {"questions":[{"kind":"recall|apply|mistake","q":"...","options":["...","...","..."],"answer":0,"why":["","...","..."]}],"key_idea":"...","retry":[{"q":"...","options":["...","...","..."],"answer":0}],"blurb":"...","steps":["..."],"next":"...","choices":[{"name":"...","kind":"next|deeper|side","why":"...","blurb":"..."}],"reading":[{"title":"...","q":"...","kind":"read|watch"}],"tricky":"...","end":false}. ' +
-  `questions: exactly 3 multiple-choice questions that check real understanding of what this lesson explained, in this order: kind "recall" (remember the key idea), kind "apply" (use the idea in a new situation that does not appear anywhere in the lesson text), kind "mistake" (someone made a mistake using the idea; spot what went wrong). Each has 3 short options (each under 12 words): one clearly right; every wrong option is a plausible misconception for the chosen level. ${DISTRACTOR_RULE} answer = the position of the right option counting from 0. why: one entry per option, in the same order: for each wrong option a short line (under 15 words) on why it is tempting; "" for the right one. Short and kind, at the learner's level. ${QUESTION_CODE} ` +
+  `questions: exactly 3 multiple-choice questions that check real understanding of what this lesson explained, in this order: kind "recall" (the key idea, asked so it cannot be answered by spotting one repeated phrase), kind "apply" (use the idea in a new situation that does not appear anywhere in the lesson text; the right answer needs the idea), kind "mistake" (someone took one specific plausible wrong step with the idea; the question asks what went wrong). Each has 3 short options (each under 12 words): one clearly right; every wrong option is a plausible misconception for the chosen level. ${DISTRACTOR_RULE} answer = the position of the right option counting from 0. why: one entry per option, in the same order: for each wrong option a short line (under 15 words) on why it is tempting; "" for the right one. Short and kind, at the learner's level. Do not ask anything the lesson never taught. ${QUESTION_CODE} ` +
   'key_idea: the one key idea of this lesson as one plain sentence (at most 25 words), a statement of the concept itself, never an example, analogy or story. ' +
   `retry: a second, different set of 3 questions (recall, apply, mistake, with why as above) on the same key ideas (asked another way, never the same wording or the same right option position), kept for a second try if the first check is missed. ` +
   `blurb: one line under 12 words that says what "${i.focus}" is, for its card, without the learner's name. ` +
@@ -1387,8 +1422,9 @@ export function checkSystem(i: LearnInput): string {
   return (
     `${SYSTEM_BASE}\n\nRole: check. The learner just read the lesson below on "${i.focus}". ` +
     'Answer {"key_idea":"...","questions":[{"kind":"recall|apply|mistake","q":"...","options":["...","...","..."],"answer":0,"why":["","...","..."]}],"retry":[...same shape...]}. ' +
-    "questions: exactly 3, in this order: recall (the key idea), apply (a new situation that is not in the lesson text), mistake (spot what went wrong in someone's use of the idea). " +
+    "questions: exactly 3, in this order: recall (the key idea, not a hunt for one repeated phrase), apply (a new situation that is not in the lesson text, where the right answer needs the idea), mistake (one specific plausible wrong step; the question asks what went wrong). " +
     "3 options each, under 12 words; one clearly right, every wrong option a plausible misconception for the chosen level. " + DISTRACTOR_RULE + " answer = position of the right option from 0. " +
+    "Only ask what the lesson taught. " +
     'why: per option, a short line on why a wrong one is tempting, "" for the right one. retry: a different set of 3 of the same kinds. ' +
     "key_idea: one plain sentence, at most 25 words, the concept itself, never an example.\n\n" +
     bandLine(i) +

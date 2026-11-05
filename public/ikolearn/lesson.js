@@ -1,7 +1,8 @@
 /*
  * IkoLearn lessons: parses the tagged lesson text the server streams (INTRO / EXPLAIN / STEP / EXAMPLE / CHECK / ANSWER / NEXT)
- * and renders the teaching half of a short, calm lesson ("Learn"); the app renders the questions after it ("Check yourself"). Works on partial text while it streams. No DOM needed for parsing, so the
- * check script can test it in Node (module.exports); the browser gets window.IkoLesson.
+ * and renders the teaching half of a calm lesson ("Learn"); the app renders the questions after it ("Check yourself"). A fenced
+ * block is a quiet monospace listing: code, or a plain diagram when the language is text, diagram or fig. Works on partial text
+ * while it streams. No DOM needed for parsing, so the check script can test it in Node (module.exports); the browser gets window.IkoLesson.
  */
 (function (root) {
   "use strict";
@@ -71,12 +72,14 @@
     });
     return el;
   }
-  /* a quiet monospace block: indentation and line breaks kept, scrolls sideways, comment lines a little softer */
+  /* a quiet monospace block: indentation and line breaks kept, scrolls sideways, comment lines a little softer.
+     text / diagram / fig uses the same block and is named as a diagram (no new renderer, no size change). */
+  function isDiagram(lang) { return lang === "text" || lang === "diagram" || lang === "fig"; }
   function codeBlock(doc, code, lang) {
-    var pre = doc.createElement("pre"), c = doc.createElement("code");
-    pre.className = "code"; pre.tabIndex = 0;
-    pre.setAttribute("aria-label", (lang ? lang + " " : "") + "code");
-    if (lang) pre.setAttribute("data-lang", lang);
+    var pre = doc.createElement("pre"), c = doc.createElement("code"), diagram = isDiagram(lang);
+    pre.className = diagram ? "code fig" : "code"; pre.tabIndex = 0;
+    pre.setAttribute("aria-label", diagram ? "diagram" : (lang ? lang + " " : "") + "code");
+    if (lang && !diagram) pre.setAttribute("data-lang", lang);
     String(code).split("\n").forEach(function (ln, i) {
       if (i) c.appendChild(doc.createTextNode("\n"));
       if (/^\s*(#|\/\/|--)/.test(ln)) { var s = doc.createElement("span"); s.className = "cm"; s.textContent = ln; c.appendChild(s); }
