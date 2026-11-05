@@ -28,6 +28,10 @@ import {
   type CreateResult,
   adjacentSystem,
   describeSystem,
+  restructureSystem,
+  RESTRUCTURE_SCHEMA,
+  parseRestructure,
+  type RestructureProposal,
   DESCRIBE_SCHEMA,
   parseDescribe,
   parseTest,
@@ -337,6 +341,19 @@ export async function describeFor(input: LearnInput, env: Env, fetchImpl: typeof
   }, env, fetchImpl, { route: "describe" });
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
   return json(200, { ok: true, items: r.value });
+}
+
+/**
+ * PR 120: Restructure (tidy the cloud): one structured call with the top of the learner's tree (input.tree). Fewer than 6
+ * nodes is 422 with no call. -> { ok, proposal: { groups, moves } } (shape-checked; the device validates it fully).
+ */
+export async function restructureFor(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): Promise<Out> {
+  const tree = input.tree || [];
+  if (tree.length < 6) return json(422, { ok: false, reason: "nothing_to_tidy" });
+  const user = `Tidy this map of ${tree.length} nodes into neat branches.`;
+  const r = await callModel<RestructureProposal>((strict) => ({ system: restructureSystem(input, strict), user }), RESTRUCTURE_SCHEMA, (t) => parseRestructure(t, tree), env, fetchImpl, { route: "restructure" });
+  if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
+  return json(200, { ok: true, proposal: r.value });
 }
 
 export async function pathFor(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): Promise<Out> {
