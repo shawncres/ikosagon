@@ -133,7 +133,7 @@ export default async function ContactPage({ searchParams }: ContactPageProps) {
         </section>
       </div>
 
-      <p className="mt-6 text-sm text-zinc-500">
+      <p className="mt-6 text-sm text-zinc-400">
         Prefer a call? Mention your timezone in the message and we&apos;ll suggest times.
       </p>
     </div>
