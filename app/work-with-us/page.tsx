@@ -28,7 +28,7 @@ export default function WorkWithUsPage() {
       <header>
         <h1 className="mb-4 font-[var(--font-space-grotesk)] text-4xl font-bold">Work with us</h1>
         <p className="max-w-3xl text-zinc-300">
-          We at Ikosagon work with owner-led businesses of roughly 5 to 100 people, in any industry. The
+          We work with owner-led businesses of roughly 5 to 100 people, in any industry. The
           easiest way to start is small: one workflow, a short, focused engagement, and a clear picture
           of what to fix first.
         </p>

@@ -55,7 +55,7 @@ export default function AboutPage() {
         Shawn Cooper · Founder · software, AI and quality testing · works from anywhere
       </p>
       <p className="mt-4 max-w-3xl text-zinc-300">
-        We at Ikosagon build and improve software that has to work every day. Our founder, Shawn
+        Ikosagon builds and improves software that has to work every day. Our founder, Shawn
         Cooper, brings quality testing and business analysis experience from Intact Financial and
         ATTAbotics, where a release had to be right before it went out. Formal QA work started at
         Intact in 2020; the habit of working within strict rules began earlier, in insurance.
@@ -80,20 +80,24 @@ export default function AboutPage() {
         <h2 className="mb-4 text-2xl font-semibold">How we keep AI trustworthy</h2>
         <ul className="max-w-3xl space-y-3 text-zinc-300">
           <li>
-            <span className="font-semibold text-zinc-100">It answers from your sources.</span> An answer
-            comes from your own documents, or it isn&apos;t given.
+            <span className="font-semibold text-zinc-100">It answers from your sources.</span>
+            {" "}
+            An answer comes from your own documents, or it isn&apos;t given.
           </li>
           <li>
-            <span className="font-semibold text-zinc-100">It says when it doesn&apos;t know.</span> No
-            made-up answers when the information isn&apos;t there.
+            <span className="font-semibold text-zinc-100">It says when it doesn&apos;t know.</span>
+            {" "}
+            No made-up answers when the information isn&apos;t there.
           </li>
           <li>
-            <span className="font-semibold text-zinc-100">It&apos;s tested against misuse.</span> We try to
-            trick it on purpose, and every failure becomes a new test.
+            <span className="font-semibold text-zinc-100">It&apos;s tested against misuse.</span>
+            {" "}
+            We try to trick it on purpose, and every failure becomes a new test.
           </li>
           <li>
-            <span className="font-semibold text-zinc-100">It keeps costs in check.</span> Smaller,
-            efficient models where they&apos;re enough, and no surprise spending.
+            <span className="font-semibold text-zinc-100">It keeps costs in check.</span>
+            {" "}
+            Smaller, efficient models where they&apos;re enough, and no surprise spending.
           </li>
         </ul>
       </section>

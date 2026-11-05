@@ -15,7 +15,7 @@ const STORIES = [
     kind: "Our own product",
     href: "/projects/ikolearn",
     problem: "AI apps can feel slow, or get expensive as more people use them.",
-    built: "A learning app that runs on a free AI tier, streams each lesson as it is written, and switches to a backup model when the main one is busy.",
+    built: "A calm learning app for curious learners that runs on a free AI tier, streams each lesson as it is written, and switches to a backup model when the main one is busy.",
     shows: "We build AI tools that stay quick and affordable, and keep working when a service has a bad day.",
   },
   {

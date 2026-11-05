@@ -24,7 +24,7 @@ export function TalentIntakeChat() {
           <p className="mb-1 font-mono text-xs text-accent">IkoArtist · leaderboard playlist · anonymous OK</p>
           <h2 className="text-xl font-semibold">IkoArtist — discover your sound, get a song made</h2>
           <p className="mt-1 max-w-2xl text-sm text-zinc-400">
-            We at Ikosagon turn your clicks into a song brief: your three favorite artists (the
+            We turn your clicks into a song brief: your three favorite artists (the
             sound), the themes you gravitate toward, and — only if you want — who it’s for. Every
             step has a skip and an optional “add your own”. The agentic Ikosagon engine produces the
             hit (takes some time); tracks compete on a view-ranked leaderboard. Finish without email

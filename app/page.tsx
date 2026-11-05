@@ -46,9 +46,9 @@ export default async function Home() {
               <p className="mb-2 font-mono text-sm text-accent">Featured app</p>
               <h2 className="mb-3 text-3xl font-semibold">IkoLearn</h2>
               <p className="mb-4 max-w-3xl text-zinc-300">
-                A calm learning app for curious learners. IkoLearn is a place where you can
-                start learning about as many or as few things as you want, and Iko will help you: say what you enjoy, and it grows a learning
+                A calm learning app for curious learners. Say what you enjoy, and Iko grows a learning
                 cloud of subjects and topics in a sensible order, with short lessons that teach, then check.
+                Follow as many or as few threads as you like.
               </p>
               <p className="mb-5 max-w-3xl text-sm text-zinc-400">
                 Cards fill in as the learning sticks. No account needed; your learning stays on your device.
@@ -95,7 +95,7 @@ export default async function Home() {
           <article className="card-surface rounded-2xl p-6 md:p-8">
             <h2 className="mb-2 text-3xl font-semibold">How we work</h2>
             <p className="mb-6 max-w-3xl text-zinc-300">
-              We at Ikosagon follow the same five steps on every project, big or small.
+              We follow the same five steps on every project, big or small.
             </p>
             <ol className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
               {HOW_WE_WORK.map((step, i) => (
@@ -119,7 +119,7 @@ export default async function Home() {
           <article className="card-surface rounded-2xl p-6">
             <h3 className="mb-3 text-2xl font-semibold">What we do</h3>
             <p className="mb-2 text-zinc-300">
-              We at Ikosagon build and improve software for small businesses through to larger teams:
+              We build and improve software for small businesses through to larger teams:
               web apps, links between the tools you already use (like the system that holds your
               customer records), and AI assistants that answer from your own documents.
             </p>

@@ -5,11 +5,11 @@ slug: about
 
 # About Ikosagon
 
-Ikosagon is Shawn Cooper's software and AI studio. We at Ikosagon take time to understand a business, connect its tools and data, improve how work gets done, and bring in AI carefully, protecting what already works. Public site: ikosagon.com. Site chrome uses the studio only ("Software & AI studio" / we at Ikosagon); do not put Shawn Cooper in Nav, Footer, hero or other global chrome; save the personal name for /about. Works from anywhere; do not lock Shawn to Toronto.
+Ikosagon is Shawn Cooper's software and AI studio. We take time to understand a business, connect its tools and data, improve how work gets done, and bring in AI carefully, protecting what already works. Public site: ikosagon.com. Site chrome uses the studio only ("Software & AI studio"); do not put Shawn Cooper in Nav, Footer, hero or other global chrome; save the personal name for /about. Works from anywhere; do not lock location to Toronto or Canada by default.
 
 ## How we work
 
-We at Ikosagon follow five steps on every project:
+We follow five steps on every project:
 
 1. Understand. We learn your business the way an expert in your field would: your customers, your team, and where the day gets stuck.
 2. Connect. We find the right technology to tie your tools and data together, so information flows instead of being typed in twice.
@@ -19,7 +19,7 @@ We at Ikosagon follow five steps on every project:
 
 ## Who this is for
 
-Small and growing businesses through larger teams, homeschool families, and anyone who needs a working tool more than a slide deck. Typical first jobs: booking and intake, answering common questions from your real policies, quote drafts, sorting a busy inbox, connecting your customer-record system (CRM) to other tools, AI assistants that answer from your own documents (RAG), and small AI helpers added to the way you already work, including phone and chat conversation flows.
+Small and growing businesses through larger teams, and anyone who needs a working tool more than a slide deck. Typical first jobs: booking and intake, answering common questions from your real policies, quote drafts, sorting a busy inbox, connecting your customer-record system (CRM) to other tools, AI assistants that answer from your own documents (RAG), and small AI helpers added to the way you already work, including phone and chat conversation flows.
 
 ## Who builds it
 
@@ -57,7 +57,7 @@ Daily and project stack includes: Python, Next.js, TypeScript, React, Node.js, P
 
 ## How work starts
 
-Two doors at /contact: Build (studio product/process work) and Hiring (role, contract or selected full-time, Toronto hybrid or remote). Email shawn@ikosagon.com. No public resume PDF. Discovery is paid when the scope is unclear. No invented case studies, client logo walls, win rates, or prices live on this site.
+Two doors at /contact: Build (studio product/process work) and Hiring (role, contract or selected full-time, remote). Email shawn@ikosagon.com. No public resume PDF. Discovery is paid when the scope is unclear. No invented case studies, client logo walls, win rates, or prices live on this site.
 
 ## What this site is not
 

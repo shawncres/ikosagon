@@ -22,7 +22,7 @@ export function StartSmall({ moreLink = true }: { moreLink?: boolean }) {
         A process check-in
       </h2>
       <p className="mb-4 max-w-3xl text-zinc-300">
-        We at Ikosagon spend a short, focused engagement learning one workflow in your business, like
+        We spend a short, focused engagement learning one workflow in your business, like
         how a quote, a booking or an order moves from start to finish. Then we show you where time is
         lost and what we&apos;d fix first.
       </p>

@@ -4,7 +4,7 @@ import { cleanPrefill } from "@/lib/contact-prefill";
 
 const TITLE = "Contact";
 const DESCRIPTION =
-  "Start a project with Ikosagon, or get in touch about a role (contract or selected full-time, Toronto hybrid or remote).";
+  "Start a project with Ikosagon, or get in touch about a role (contract or selected full-time, remote).";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/contact" },
@@ -29,8 +29,8 @@ export default async function ContactPage({ searchParams }: ContactPageProps) {
     <div className="container-shell section-block">
       <h1 className="mb-4 font-[var(--font-space-grotesk)] text-4xl font-bold">Contact</h1>
       <p className="mb-2 max-w-3xl text-zinc-300">
-        Two ways to reach us. Start a project with us at Ikosagon, or get in touch about a role
-        (contract or selected full-time, Toronto hybrid or remote).
+        Two ways to reach us. Start a project, or get in touch about a role
+        (contract or selected full-time, remote).
       </p>
       <p className="mb-8 text-zinc-400">
         Email:{" "}
@@ -95,7 +95,7 @@ export default async function ContactPage({ searchParams }: ContactPageProps) {
         <section id="hiring" className="scroll-mt-24">
           <h2 className="mb-2 text-2xl font-semibold">Hiring</h2>
           <p className="mb-4 text-sm text-zinc-400">
-            Have a role in mind? Contract or selected full-time, Toronto hybrid or remote. There&apos;s no
+            Have a role in mind? Contract or selected full-time, remote. There&apos;s no
             public resume, so email us or use the form.
           </p>
           <form action="/api/contact" method="POST" className="card-surface space-y-4 rounded-2xl p-6">
@@ -110,7 +110,7 @@ export default async function ContactPage({ searchParams }: ContactPageProps) {
             />
             <input
               name="projectType"
-              placeholder="Role title · contract or full-time · Toronto hybrid or remote"
+              placeholder="Role title · contract or full-time · remote"
               className="w-full rounded-xl border border-border bg-black/40 px-4 py-2"
             />
             <textarea

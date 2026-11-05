@@ -108,7 +108,7 @@ export function Hero() {
             </div>
           ) : null}
           <p className="max-w-xl text-zinc-300">
-            We at Ikosagon take the time to understand how your business really runs. Then we connect
+            We take the time to understand how your business really runs. Then we connect
             the right tools, improve the way work gets done, and bring in AI where it truly helps,
             without putting what already works at risk.
           </p>
