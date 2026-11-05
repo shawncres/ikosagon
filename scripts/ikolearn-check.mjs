@@ -1032,7 +1032,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/ikolearn\.v1\.name/.test(app) && /ikolearn\.v1\.cloud/.test(app) && /ikolearn\.v1\.thread/.test(app), "storage keys");
   {
     const fm = mdx.split("---")[1] || "";
-    ok(!/unlisted:\s*true/.test(fm) && /featured:\s*true/.test(fm) && /demo:\s*"\/ikolearn\/"/.test(fm), "project page is listed and featured, demo opens /ikolearn/");
+    ok(!/unlisted:\s*true/.test(fm) && /featured:\s*true/.test(fm) && /demo:\s*"https:\/\/ikolearn\.com"/.test(fm), "project page is listed and featured, demo opens ikolearn.com");
     const desc = (fm.match(/^description:\s*"([^"]+)"/m) || [])[1] || "";
     ok(desc.length >= 80 && desc.length <= 165, `meta description is 80-165 chars (${desc.length})`);
     /* universal positioning: for anyone curious, at any age; neither kid-directed nor adults-only; homeschool parents as one use */
@@ -1052,8 +1052,8 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     // the featured app on the homepage (Oct 22): IkoLearn leads, IkoAgent stays a normal featured project
     const home = fs.readFileSync("app/page.tsx", "utf8"), projTs = fs.readFileSync("lib/projects.ts", "utf8");
     ok(/FEATURED_LEAD_SLUG = "ikolearn"/.test(projTs) && /featured:\s*true/.test(fs.readFileSync("content/projects/ikoagent.mdx", "utf8")), "homepage: IkoLearn is the featured lead; IkoAgent stays featured in the grid");
-    ok(/Featured app/.test(home) && /<h2[^>]*>IkoLearn<\/h2>/.test(home) && /href="\/ikolearn"/.test(home) && /href="\/projects\/ikolearn"/.test(home) && /src="\/projects\/ikolearn\/cover\.png"/.test(home), "homepage: the featured section links to /ikolearn and the project page, with the cover");
-    ok(/A calm learning app for curious learners\. IkoLearn is a place where you can\s+start learning/.test(home) && !/homeschool|parents/i.test(home.slice(home.indexOf("Featured app"), home.indexOf("Featured Projects"))) && !/We at Ikosagon/.test(home.slice(home.indexOf("Featured app"), home.indexOf("Featured Projects"))) && !/\b(kids?|children|age \d)/i.test(home.slice(home.indexOf("Featured app"), home.indexOf("Featured Projects"))), "homepage (PR 114): neutral copy for curious learners, no parent or homeschool wording");
+    ok(/Featured app/.test(home) && /<h2[^>]*>IkoLearn<\/h2>/.test(home) && /href="https:\/\/ikolearn\.com"/.test(home) && /href="\/projects\/ikolearn"/.test(home) && /src="\/projects\/ikolearn\/cover\.png"/.test(home), "homepage: the featured section links to ikolearn.com and the project page, with the cover");
+    ok(/A calm learning app for curious learners\. Say what you enjoy, and Iko grows a learning/.test(home) && !/homeschool|parents/i.test(home.slice(home.indexOf("Featured app"), home.indexOf("Featured Projects"))) && !/We at Ikosagon/.test(home.slice(home.indexOf("Featured app"), home.indexOf("Featured Projects"))) && !/\b(kids?|children|age \d)/i.test(home.slice(home.indexOf("Featured app"), home.indexOf("Featured Projects"))), "homepage (PR 114): neutral copy for curious learners, no parent or homeschool wording");
     ok(!/Maya|Minecraft|Redstone/.test(mdx), "project page copy names no sample learner or niche topic");
     const imgs = [...mdx.matchAll(/!\[([^\]]*)\]\((\/projects\/ikolearn\/[^)]+)\)/g)];
     ok(imgs.length >= 4 && imgs.every(([, alt, src]) => alt.length > 30 && fs.existsSync("public" + src)), "gallery images exist with descriptive alt text");
