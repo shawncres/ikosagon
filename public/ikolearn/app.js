@@ -3170,7 +3170,7 @@
   function ikoLine(t, ms) {
     clearTimeout(iko.lineT);
     el.ikoLine.textContent = t || "";
-    el.ikoLine.hidden = !t;
+    el.ikoLine.hidden = !t; if (t) placeIkoSoon(); /* PR 120: a new line is checked against the content at once */
     if (t) el.ikoLine.setAttribute("aria-label", "Dismiss hint: " + t);
     el.ikoLine.removeAttribute("data-tip"); el.ikoLine.removeAttribute("data-react"); el.ikoLine.removeAttribute("data-say"); el.ikoLine.removeAttribute("data-pool");
     iko.quietAt = Date.now(); poolLater(); /* PR 108: a silence starts (or is reset) here */
@@ -3404,7 +3404,9 @@
     var on = !el.ikoWrap.hidden && el.ikoWrap.getClientRects().length, talking = false;
     if (on && !el.ikoLine.hidden) {
       var line = el.ikoLine.getBoundingClientRect(), over = function (e) { if (!e || e.hidden || !e.getClientRects().length) return false; var r = e.getBoundingClientRect(); return r.width && r.left < line.right && r.right > line.left && r.top < line.bottom && r.bottom > line.top; };
-      if (intakeOn || (line.width && (over(el.cloud.hidden ? null : el.panel) || over(el.ikc)))) { clearTimeout(iko.lineT); el.ikoLine.hidden = true; }
+      /* PR 120: never over lesson or check text: any visible heading, paragraph, question or option under the line hides it */
+      var overText = function (root) { if (!root || root.hidden || !root.getClientRects().length) return false; return [].some.call(root.querySelectorAll("h1, h2, h3, p, legend, label, li, pre, button"), over); };
+      if (intakeOn || (line.width && (over(el.cloud.hidden ? null : el.panel) || over(el.ikc) || overText(el.lesson) || overText(el.deck) || overText(el.hub)))) { clearTimeout(iko.lineT); el.ikoLine.hidden = true; }
       else talking = true;
     }
     if (on && !intakeOn && iko.pendingReact && !iko.open) { var pr = iko.pendingReact; iko.pendingReact = null; setTimeout(function () { ikoLine(pr, 4500); }, 300); }
@@ -3414,6 +3416,7 @@
   var ikoRaf = 0;
   function placeIkoSoon() { if (!ikoRaf) ikoRaf = requestAnimationFrame(function () { ikoRaf = 0; placeIko(); }); }
   window.addEventListener("resize", placeIkoSoon);
+  window.addEventListener("scroll", placeIkoSoon, { passive: true, capture: true }); /* PR 120: re-check as the lesson scrolls under it */
   /* every change of screen (a view shown or hidden, the card opened or closed) re-checks Iko */
   if (window.MutationObserver) {
     var ikoWatch = new MutationObserver(function () { renderIko(); });
