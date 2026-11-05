@@ -1021,3 +1021,6 @@ button.gcard:active { transform: scale(.985); }
 .album { gap: var(--s-5); }
 .album-empty { font-style: normal; font-size: var(--t-md); }
 @media (prefers-reduced-motion: reduce) { .btn, .gcard, .q label { transition: none !important; } button.gcard:hover, .btn:active { transform: none !important; } }
+/* the question sits inside its pane (a legend would otherwise cut the pane's top edge) */
+.q > legend { float: left; width: 100%; padding: 0; margin: 0 0 var(--s-3); }
+.q > legend + * { clear: both; }
