@@ -1168,12 +1168,29 @@
     if (hintSeen("growWait") && !hintSeen("growSaid") && !el.cloud.hidden && !dirInviting()) sayGrow();
   }
   /* "What comes next" for a parent: one creation call (the orchestrator only offers it when needed, and it is cached). */
-  function createNext(id) {
+  var aheadBusy = {};
+  /* Put a lesson block's steps and choices on the cloud now. A path already there is left alone; a later open reuses the same nodes. */
+  function plantBlock(id, ev) {
+    var n = nodeOf(id), added = [];
+    if (!n || !ev) return added;
+    if (n.pending) {
+      var p = C.applyPending(state.cloud, id);
+      if (p && p.added) added = added.concat(p.added);
+    } else if (ev.steps && ev.steps.length && !n.path) {
+      added = added.concat(C.applyPath(state.cloud, id, ev.steps, ev.next).added || []);
+    }
+    n = nodeOf(id);
+    if (n && ev.choices && ev.choices.length && !(n.fork && n.fork.ids && n.fork.ids.length >= 2)) added = added.concat(C.applyChoices(state.cloud, id, ev.choices).added || []);
+    return added.filter(function (x, i, a) { return x && nodeOf(x) && a.indexOf(x) === i; });
+  }
+  function placeNext(id, opts) {
+    opts = opts || {};
     var n = nodeOf(id);
-    if (!n || state.busy) return;
-    lock(true);
-    var say = function (t) { if (state.panelNode === id && !el.panel.hidden) paragraphs(el.pNote, t); else push({ role: "grow", text: t, open: null }); };
-    say("Working out what comes next in " + n.label + "...");
+    var bail = function () { if (opts.unlock) lock(false); };
+    if (!n || aheadBusy[id]) { bail(); return; }
+    if (!opts.force && !P.needsNext(state.cloud, id)) { bail(); return; }
+    aheadBusy[id] = 1;
+    if (opts.say) opts.say("Working out what comes next in " + n.label + "...");
     postJson("/create", Object.assign(basePayload(id), { mode: "notice" }, P.createRequest(state.cloud, "next", id))).then(function (j) {
       if (j && j.ok && Array.isArray(j.items) && j.items.length) {
         var r = C.applyCreate(state.cloud, { items: j.items.slice(0, 1) }, { focusId: id });
@@ -1181,9 +1198,50 @@
         refreshAll(r.children);
         if (r.children.length) ikoReact("grow");
         var first = nodeOf(P.nextChild(state.cloud, id));
-        say(r.children.length ? "Next in " + n.label + ": " + r.children.map(function (x) { return nodeOf(x).label; }).join(", ") + "." + (first ? " " + first.label + " is a good place to start." : "") : "Nothing new to add in " + n.label + " right now.");
-      } else say("I couldn't work out what comes next just now (" + ((j && (j.reason || j.error)) || "error") + "). Try again in a moment.");
-    }).then(function () { save(); lock(false); if (!el.draw.hidden) renderDraw(); });
+        if (opts.say) opts.say(r.children.length ? "Next in " + n.label + ": " + r.children.map(function (x) { return nodeOf(x).label; }).join(", ") + "." + (first ? " " + first.label + " is a good place to start." : "") : "Nothing new to add in " + n.label + " right now.");
+      } else if (opts.say) opts.say("I couldn't work out what comes next just now (" + ((j && (j.reason || j.error)) || "error") + "). Try again in a moment.");
+    }).then(function () {
+      delete aheadBusy[id];
+      save();
+      if (opts.unlock) { lock(false); if (!el.draw.hidden) renderDraw(); }
+      if (state.mode === "lesson" && state.lessonNode) renderLessonPath();
+      if (state.mode === "test") renderTestNext(state.lessonNode);
+    }, function () { delete aheadBusy[id]; if (opts.unlock) lock(false); });
+  }
+  function createNext(id) {
+    var n = nodeOf(id);
+    if (!n || state.busy || aheadBusy[id]) return;
+    var first = nodeOf(P.nextChild(state.cloud, id));
+    if (first && !P.needsNext(state.cloud, id)) { openLesson(first.id); return; }
+    lock(true);
+    var say = function (t) { if (state.panelNode === id && !el.panel.hidden) paragraphs(el.pNote, t); else push({ role: "grow", text: t, open: null }); };
+    placeNext(id, { say: say, unlock: true, force: true });
+  }
+  /* After an earn, or a test that moves the card on: the next related branches land on the cloud without another click.
+     Tapping one still opens its lesson. */
+  function ensureAhead(id) {
+    var n = nodeOf(id);
+    if (!n) return;
+    var added = growChildren(id).slice();
+    var w = P.whereNext(state.cloud, id, nextStep(id));
+    var rel = [];
+    if (w.path) rel.push(w.path);
+    (w.choices || []).forEach(function (c) { if (c && rel.indexOf(c.id) < 0) rel.push(c.id); });
+    rel.forEach(function (rid) {
+      var m = nodeOf(rid);
+      if (!m) return;
+      if (m.pending) {
+        var p = C.applyPending(state.cloud, rid);
+        if (p && p.added) added = added.concat(p.added);
+      }
+      var slot = pre[rid];
+      if (slot && slot.ev) added = added.concat(plantBlock(rid, slot.ev));
+    });
+    if (added.length) { save(); refreshViews(added); }
+    [id, n.parent].filter(function (h, i, a) { return h && nodeOf(h) && a.indexOf(h) === i && P.needsNext(state.cloud, h); }).forEach(function (h) { placeNext(h); });
+    prefetchNext(id);
+    if (state.mode === "lesson" && state.lessonNode === id) renderLessonPath();
+    if (state.mode === "test") renderTestNext(state.lessonNode);
   }
   /*
    * The soft opening: P.OPENING and one open question in the learner's own words (with the API's examples) and, when
@@ -1397,17 +1455,30 @@
   function passed(id) {
     var les = state.lessons[id], ck = les && les.ck;
     if (ck && ck.p) return true;
-    if (les && les.got) return true;
     /* a lesson answered in full before PR 103, every answer right: that was a pass */
     var qs = les ? validQs(les.qs) : [], ans = les && Array.isArray(les.ans) ? les.ans : [];
-    return Boolean(!(ck && ck.r) && qs.length && ans.length >= qs.length && qs.every(function (q, i) { return ans[i] === q.answer; }));
+    if (!(ck && ck.r) && qs.length && ans.length >= qs.length && qs.every(function (q, i) { return ans[i] === q.answer; })) return true;
+    /* "I've got it" only counts when there is no check. A check that arrives is still offered. */
+    return Boolean(les && les.got && !qs.length);
+  }
+  /* no questions yet, but a check is being written or its last try failed: not a skip */
+  function checkGate(id) {
+    var q = state.quiz, les = state.lessons[id];
+    if (hasQs(id)) return "";
+    if ((les && les.ckWait) || (q && q.id === id && q.wait)) return "wait";
+    if (q && q.id === id && q.fail) return "fail";
+    return "";
   }
   /* what the lesson shows now: learn (reading + Continue), check (the questions), missed (a clearer telling, then a fresh set), passed */
   function lessonPhase(id) {
     if (state.mode !== "lesson" || state.lessonNode !== id) return "learn";
-    if (!hasQs(id) || passed(id)) return "passed";
-    var ck = ckOf(id);
-    return !ck || !ck.c ? "learn" : state.quiz.missed ? "missed" : "check";
+    if (hasQs(id)) {
+      if (passed(id)) return "passed";
+      var ck = ckOf(id);
+      return !ck || !ck.c ? "learn" : state.quiz.missed ? "missed" : "check";
+    }
+    if (checkGate(id)) { var ck2 = ckOf(id); return ck2 && ck2.c ? "check" : "learn"; }
+    return "passed";
   }
   function nextOpen(id) { return state.mode === "lesson" && lessonPhase(id) === "passed"; }
   function setPhase(which) {
@@ -1437,7 +1508,15 @@
   /* Continue: the reading is done, the questions open in their own pane (their first question focused) */
   function startCheck() {
     var id = state.lessonNode, ck = ckOf(id);
-    if (!ck || !hasQs(id)) return;
+    if (!ck) return;
+    if (!hasQs(id)) {
+      if (!checkGate(id)) return;
+      ck.c = 1; save();
+      renderQuiz(); applyPhase();
+      var wait = el.lQuiz.querySelector(".quiz");
+      if (wait) { wait.tabIndex = -1; showNear(wait); try { wait.focus({ preventScroll: true }); } catch (e) { wait.focus(); } }
+      return;
+    }
     ck.c = 1; save();
     renderQuiz();
     applyPhase();
@@ -1646,7 +1725,7 @@
     offerTest(id);
     if (kids.length) ikoReact("grow");
     renderIko();
-    if (all) { finishLesson("got", { auto: true, pre: pre.trim() }); return; }
+    if (all) { finishLesson("got", { auto: true, pre: pre.trim() }); ensureAhead(id); return; }
     var f = el.lQuiz.querySelector(".q-miss");
     if (f) { f.tabIndex = -1; showNear(f); try { f.focus({ preventScroll: true }); } catch { f.focus(); } }
   }
@@ -1747,9 +1826,13 @@
       state.quiz = { id: id, qs: qs, ans: Array.isArray(cached.ans) ? cached.ans.slice(0, qs.length) : [] };
       /* a round answered in full and missed: its clearer telling is still waiting */
       state.quiz.missed = Boolean(qs.length && !passed(id) && ck.c && state.quiz.ans.length >= qs.length && qs.every(function (_, i) { return Number.isInteger(state.quiz.ans[i]); }));
+      var storedQs = validQs(cached.cur).length ? cached.cur : cached.qs;
+      var wantCk = needCheck(storedQs) && !passed(id);
+      if (wantCk) { state.quiz.qs = []; state.quiz.wait = true; state.quiz.fail = false; }
       renderLessonBody(cached.text, false);
       lessonReady(id, false);
       showReading(cached.rd);
+      if (wantCk) ensureCheck(id);
       return;
     }
     state.quiz = { id: id, qs: [], ans: [] };
@@ -1805,8 +1888,13 @@
         if (reading.length) state.lessons[id].rd = reading;
         if (tricky) state.lessons[id].tk = tricky;
         if (key) state.lessons[id].key = key; /* PR 113: the lesson's own key idea, for "You learned:" */
-        if (state.lessonNode === id) { renderLessonBody(text, false); lessonReady(id, true); showReading(reading); }
-        if (needCheck(state.lessons[id].qs)) ensureCheck(id); /* PR 118: the hidden block was missing or partial */
+        if (state.lessonNode === id) {
+          renderLessonBody(text, false);
+          if (needCheck(state.lessons[id].qs) && state.quiz && state.quiz.id === id) { state.quiz.qs = []; state.quiz.wait = true; state.quiz.fail = false; }
+          lessonReady(id, true);
+          showReading(reading);
+        }
+        if (needCheck(state.lessons[id].qs)) ensureCheck(id); /* the hidden block was missing or partial: a real check, not "I've got it" */
       } else if (r.reason === "aborted") {
         /* cancelled because the learner moved on: not a failure; it is written next time it's opened */
       } else if (state.lessonNode === id) {
@@ -1877,24 +1965,38 @@
     var kinds = v.filter(function (q) { return q.kind; }).length;
     return kinds > 0 && !(v.length === 3 && ["recall", "apply", "mistake"].every(function (k) { return v.some(function (q) { return q.kind === k; }); }));
   }
-  /* the check written on its own from the lesson text (one call, the server retries once); the calm line only if that fails */
+  function revealCheck(id) {
+    if (state.lessonNode === id && state.mode === "lesson") { renderQuiz(); applyPhase(); }
+  }
+  function markCheckFail(id) {
+    if (state.quiz && state.quiz.id === id) { state.quiz.wait = false; state.quiz.fail = true; }
+    revealCheck(id);
+    if (state.lessonNode === id && state.mode === "lesson" && el.lStatus && !String(el.lStatus.textContent || "").trim()) el.lStatus.textContent = "The check didn't come through. Continue to try it again.";
+  }
+  /* the check written on its own from the lesson text (one call, the server retries once); shown when it succeeds, never swapped for "I've got it" */
   function ensureCheck(id) {
     var les = state.lessons[id];
     if (!les || !les.text || les.ckWait) return;
+    if (!needCheck(les.qs) && validQs(les.qs).length) {
+      if (state.quiz && state.quiz.id === id && !hasQs(id)) { state.quiz.qs = mixQs(validQs(les.qs)); state.quiz.ans = []; state.quiz.wait = false; state.quiz.fail = false; }
+      revealCheck(id);
+      return;
+    }
     les.ckWait = 1;
-    if (state.quiz && state.quiz.id === id) { state.quiz.qs = []; state.quiz.wait = true; renderQuiz(true); }
+    if (state.quiz && state.quiz.id === id) { state.quiz.qs = []; state.quiz.wait = true; state.quiz.fail = false; renderQuiz(true); applyPhase(); }
     postJson("/check", Object.assign(basePayload(id), P.withBand(state.cloud, {}), { mode: "notice", messages: [], lesson: String(les.text).slice(0, LESSON_EXCERPT) })).then(function (j) {
       delete les.ckWait;
       var qs = j && j.ok ? validQs(j.questions) : [];
-      if (qs.length === 3) {
+      if (qs.length === 3 && !needCheck(qs)) {
         les.qs = mixQs(qs); les.ans = [];
         var rq = validQs(j.retry); if (rq.length >= 2) les.rq = mixQs(rq);
         if (typeof j.key === "string" && j.key.trim()) les.key = j.key.trim().slice(0, 220);
-        if (state.quiz && state.quiz.id === id) { state.quiz.qs = les.qs; state.quiz.ans = []; state.quiz.wait = false; }
-      } else if (state.quiz && state.quiz.id === id) { state.quiz.wait = false; state.quiz.fail = true; }
-      save();
-      if (state.lessonNode === id && state.mode === "lesson") renderQuiz();
-    }, function () { delete les.ckWait; if (state.quiz && state.quiz.id === id) { state.quiz.wait = false; state.quiz.fail = true; renderQuiz(); } });
+        if (state.quiz && state.quiz.id === id) { state.quiz.qs = les.qs; state.quiz.ans = []; state.quiz.wait = false; state.quiz.fail = false; }
+        if (el.lStatus && String(el.lStatus.textContent || "").indexOf("didn't come through") >= 0) el.lStatus.textContent = "";
+        save();
+        revealCheck(id);
+      } else { save(); markCheckFail(id); }
+    }, function () { delete les.ckWait; save(); markCheckFail(id); });
   }
   function lessonStream(id, body, on, signal) {
     var p = pre[id];
@@ -1920,7 +2022,11 @@
     var slot = pre[next] = { ok: false, text: "", ev: null };
     var body = Object.assign(basePayload(next), P.lessonContext(state.cloud, next), { pre: true });
     stream("/lesson", body, { delta: function (t) { slot.text += t; }, path: function (ev) { slot.ev = ev; } }).then(function (r) {
-      if (r.ok && L.usable(L.parse(slot.text))) slot.ok = true; else delete pre[next];
+      if (r.ok && L.usable(L.parse(slot.text))) {
+        slot.ok = true;
+        var added = slot.ev ? plantBlock(next, slot.ev) : [];
+        if (added.length) { save(); refreshViews(added); if (state.mode === "lesson") renderLessonPath(); if (state.mode === "test") renderTestNext(state.lessonNode); }
+      } else delete pre[next];
     }, function () { delete pre[next]; });
   }
 
@@ -2245,12 +2351,13 @@
     if (back && nodeOf(back)) { showLesson(false); openHub(back, null, "deck"); return; }
     home(id);
   });
-  el.lGot.addEventListener("click", function () { finishLesson("got"); });
+  el.lGot.addEventListener("click", function () { finishLesson("got"); ensureAhead(state.lessonNode); });
   el.lCont.addEventListener("click", startCheck);
   el.ikoGot.addEventListener("click", function () {
     if (el.lGot.disabled) return;
     closeIko();
     finishLesson("got");
+    ensureAhead(state.lessonNode);
     el.lStatus.scrollIntoView({ block: "nearest" }); /* the note, clear of the sticky header (scroll-margin) */
   });
   el.lChat.addEventListener("click", function () { openIko(); });
@@ -2371,6 +2478,35 @@
     el.lStatus.appendChild(linkBtn("Back to your cloud", function () { home(t.pid); }));
     renderLessonCard(true);
     refreshViews([t.pid].concat(res ? res.touched : []));
+    if (res && res.passed) { ensureAhead(t.pid); renderTestNext(t.pid); }
+  }
+  /* After a passed test: the next path and related branches, each one opening its lesson. Not a dead end. */
+  function renderTestNext(id) {
+    if (state.mode !== "test" || !nodeOf(id)) return;
+    el.lNext.textContent = "";
+    var w = P.whereNext(state.cloud, id, nextStep(id));
+    var choices = (w.choices || []).slice();
+    if (!choices.length && nodeOf(id).parent) choices = (P.whereNext(state.cloud, nodeOf(id).parent, nextStep(nodeOf(id).parent)).choices || []).slice();
+    if (!choices.length) {
+      var sug = (P.suggest(state.cloud) || []).filter(function (it) { return it && it.id !== id && nodeOf(it.id) && it.kind !== "ask" && it.kind !== "test"; })[0];
+      if (sug) choices = [{ id: sug.id, kind: "branch", why: sug.why || "" }];
+    }
+    var busy = aheadBusy[id] || (nodeOf(id).parent && aheadBusy[nodeOf(id).parent]);
+    if (!choices.length) {
+      if (busy) el.lNext.appendChild(mk("p", "fine", "Next branches are growing on your cloud."));
+      return;
+    }
+    el.lNext.appendChild(mk("p", "l-head", "Where next"));
+    var g = mk("div", "wn-opts");
+    choices.forEach(function (c) {
+      var m = nodeOf(c.id);
+      if (!m) return;
+      var b = mk("button", "btn sm", (c.kind === "path" ? "Continue " : "Open ") + m.label);
+      b.type = "button";
+      b.addEventListener("click", function () { openLesson(c.id); });
+      g.appendChild(b);
+    });
+    el.lNext.appendChild(g);
   }
 
   /* ---------- suggestions and Draw (orchestrator.js, no calls) ---------- */
