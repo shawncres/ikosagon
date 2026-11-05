@@ -533,11 +533,14 @@
 
   /* PR 107: the learner's age band (if they chose one) goes with the calls that write teaching (lesson, clarify, test) and
      nowhere else; it shapes how things are explained, never which topics */
-  function withBand(cloud, ctx) { var b = C.bandOf(cloud); if (b) ctx.band = b; return ctx; }
+  function withBand(cloud, ctx) { var b = C.bandOf(cloud); if (b) ctx.level = b; return ctx; } /* PR 114: the lesson level (simple / deeper; standard sends nothing) */
   /* The prompt context for a lesson call: ask for child topics only when wanted; the planned next step, for the fork. */
   function lessonContext(cloud, id) {
     var ctx = { wantPath: wantChildren(cloud, id), ahead: aheadOf(cloud, id) }, pace = paceOf(cloud, id);
     if (pace) ctx.pace = pace;
+    /* PR 114: earned cards (labels only), for an optional link in the lesson; never this topic itself */
+    var earned = (cloud.deck || []).filter(function (c) { return c && c.id !== id && c.label; }).slice(-8).map(function (c) { return c.label; });
+    if (earned.length) ctx.earned = earned;
     return withBand(cloud, ctx);
   }
   /*

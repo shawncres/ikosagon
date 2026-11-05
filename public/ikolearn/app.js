@@ -604,9 +604,10 @@
    * time via Iko ("I'm 12", "change my age") or the cloud's footer. It changes how lessons are written (P.withBand), never
    * which topics are open; it goes along only inside the teaching calls and is never kept on a server.
    */
-  var BAND_LABEL = { u10: "Under 10", "10-13": "10\u201313", "14-17": "14\u201317", "18+": "18+", none: "Prefer not to say" };
+  var BAND_LABEL = { simple: "Keep it simple", standard: "Standard", deeper: "Go deeper" }; /* PR 114: a lesson level, not an age */
   function ageIntent(t) {
     if (t.length > 60) return null;
+    return null; /* PR 114: no age questions */
     var n = t.match(/^(?:hi,?\s+)?(?:i'?m|i am|im|my age is|age)\s*(\d{1,3})(?:\s*(?:years?|yrs?)(?:\s*old)?|\s*y\/?o)?$/);
     if (n) return { kind: "age", n: Number(n[1]) };
     if (/^(?:please\s+)?(?:forget|remove|clear|delete|erase)\s+my\s+age$/.test(t)) return { kind: "age", forget: true };
@@ -615,14 +616,13 @@
   }
   function bandFor(n) { return n < 10 ? "u10" : n <= 13 ? "10-13" : n <= 17 ? "14-17" : "18+"; }
   function bandSaid(b) {
-    return b === "none" ? "That's fine. Lessons stay at an everyday level for anyone."
-      : "Thanks. I'll write your lessons for " + (b === "u10" ? "under 10" : b === "18+" ? "a grown-up reader" : BAND_LABEL[b].replace("\u2013", " to ")) + ". Every topic stays open to you, and you can change this any time.";
+    return "Okay. Lessons are now written " + (b === "simple" ? "simply, in everyday words." : b === "deeper" ? "with more depth and detail." : "at a standard level.") + " You can change this any time.";
   }
   function setBand(b) { C.setProfile(state.cloud, { band: b }); save(); renderAgeBits(); }
   function bandRow(onPick) {
-    var cur = C.profileOf(state.cloud).band, row = mk("div", "place-opts age-opts");
-    row.setAttribute("role", "group"); row.setAttribute("aria-label", "Your age range");
-    C.BANDS.forEach(function (b) {
+    var cur = C.levelOf(state.cloud), row = mk("div", "place-opts age-opts");
+    row.setAttribute("role", "group"); row.setAttribute("aria-label", "Lesson level");
+    C.LEVELS.forEach(function (b) {
       var x = linkBtn(BAND_LABEL[b], function () { onPick(b); }, "btn sm age-opt");
       x.setAttribute("data-band", b); x.setAttribute("aria-pressed", String(cur === b)); if (cur === b) x.classList.add("on");
       row.appendChild(x);
@@ -632,14 +632,14 @@
   function renderAge(m) {
     var d = mk("div", "place age");
     if (m.done) { d.appendChild(mk("p", "grow", m.done)); return d; }
-    d.appendChild(mk("p", "place-q", "If you like, pick your age range. It changes how lessons are written, never which topics you can learn, and it stays on this device."));
+    d.appendChild(mk("p", "place-q", "How would you like lessons written? You can change this any time."));
     d.appendChild(bandRow(function (b) { setBand(b); m.done = bandSaid(b); upsert(m); save(); if (iko.open) renderIkoLog(); }));
     return d;
   }
   /* the opening's quiet line and the cloud footer's link show the choice (or that it's optional) */
   function renderAgeBits() {
     var b = state.cloud ? C.profileOf(state.cloud).band : "";
-    if (el.ageLink) { el.ageLink.textContent = b ? "Age: " + BAND_LABEL[b] : "Your age (optional)"; }
+    if (el.ageLink) { el.ageLink.textContent = "Lesson level: " + BAND_LABEL[C.levelOf(state.cloud)]; }
   }
 
   if (el.ageLink) el.ageLink.addEventListener("click", function () { openAge(); });
@@ -1669,6 +1669,31 @@
    * PR 113: a lesson stream with one automatic, stricter retry when the first try gives nothing usable, and the
    * "Next on this path" lesson written ahead in the background (kept in memory on this device) so it opens at once.
    */
+  /*
+   * PR 114: the weekly recap, written to the learner in four sentences (what was explored, one check passed, a question to
+   * think about, a next step). Made on this device from the saved lessons (no call), kept a day (ikolearn.v1.recap).
+   */
+  var RECAP = "ikolearn.v1.recap";
+  function weeklyRecap() {
+    var day = new Date().toDateString(), key = (state.cloud && state.cloud.name) || "";
+    try { var c = JSON.parse(load(RECAP) || "null"); if (c && c.day === day && c.who === key && typeof c.t === "string") return c.t; } catch (x) { /* rebuilt below */ }
+    var wk = Date.now() - 7 * 864e5, ids = Object.keys(state.lessons || {}).filter(function (id) { var l = state.lessons[id]; return l && (l.at || 0) >= wk && nodeOf(id); });
+    if (!ids.length) return "";
+    ids.sort(function (a, b) { return (state.lessons[b].at || 0) - (state.lessons[a].at || 0); });
+    var names = ids.slice(0, 3).map(function (id) { return nodeOf(id).label; });
+    var list = names.length === 1 ? names[0] : names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
+    var ok = ids.filter(function (id) { return passed(id) || state.lessons[id].earned; })[0];
+    var s1 = "This week you explored " + list + ".";
+    var tk = ok ? takeawayOf(ok) : "";
+    var s2 = ok ? "You passed the check on " + nodeOf(ok).label + (tk ? ", which was about this idea: " + tk.replace(/[.!?]$/, "") : "") + "."
+      : "You read about " + names[0] + " and can take its check whenever you're ready.";
+    var s3 = "A question to think about: how would you explain " + nodeOf(ok || ids[0]).label + " to a friend in one or two sentences?";
+    var nx = P.pathNext(state.cloud, ok || ids[0]), nn = nx && nodeOf(nx);
+    var s4 = nn ? "A good next step is " + nn.label + "." : "A good next step is to open one more card on your cloud.";
+    var t = [s1, s2, s3, s4].join(" ");
+    store(RECAP, JSON.stringify({ day: day, who: key, t: t }));
+    return t;
+  }
   var pre = {};
   function lessonStream(id, body, on, signal) {
     var p = pre[id];
@@ -2314,7 +2339,7 @@
     /* one calm step: a short hello, the one question, the field and Begin; a few light ideas (from the API, cycling with More) */
     el.csHi.textContent = building ? "" : "Hi " + state.name + ". Let's begin your learning cloud together.";
     /* PR 108: before the first question, Iko asks the optional age range in the same place (band chips and Skip), once */
-    var ageStep = !building && !hintSeen("ageAsked") && !C.profileOf(state.cloud).band;
+    var ageStep = false; /* PR 114: no age step */
     el.csQ.textContent = ageStep ? "First, if you like: how old are you? It only changes how lessons are written." : CS_Q;
     el.csQ.hidden = building;
     el.csFew.hidden = building || ageStep;
@@ -2711,6 +2736,15 @@
     });
     if (story.empty) panes.story.classList.add("is-empty");
     /* Stats */
+    var rc = weeklyRecap();
+    if (rc) {
+      var rb = mk("div", "hc-recap");
+      rb.appendChild(mk("p", "hc-ph", "Your week"));
+      rb.appendChild(mk("p", "hc-recap-t", rc));
+      var cp = linkBtn("Copy", function () { try { navigator.clipboard.writeText(rc); cp.textContent = "Copied"; } catch (x) { /* no clipboard: the text can still be selected */ } }, "link hc-copy");
+      rb.appendChild(cp);
+      panes.stats.appendChild(rb);
+    }
     var dl = mk("dl", "hc-nums");
     [["days", "Days visited", num.days], ["streak", "Day streak", num.streak], ["cards", "Cards earned", num.cards], ["topics", "Topics finished", num.topics], ["lessons", "Lessons completed", num.lessons]].forEach(function (x) {
       var d = mk("div", "hc-num"); d.setAttribute("data-k", x[0]);
@@ -2724,8 +2758,8 @@
     if (st.cards) { var od = mk("p", "hc-sub"); od.appendChild(linkBtn("Open your Deck", function () { closeCloud(true); showDeck(true); }, "link st-link")); panes.stats.appendChild(od); }
     if (st.insight) panes.stats.appendChild(mk("p", "st-insight", st.insight.text));
     /* Preferences */
-    panes.prefs.appendChild(mk("p", "hc-ph", "Age range"));
-    panes.prefs.appendChild(mk("p", "hc-hint fine", "Only changes how lessons are written. Kept on this device."));
+    panes.prefs.appendChild(mk("p", "hc-ph", "Lesson level"));
+    panes.prefs.appendChild(mk("p", "hc-hint fine", "Changes how lessons are written: simpler words or more depth. Kept on this device."));
     var paintBands = function () { var r = bandRow(function (b) { setBand(b); var nr = paintBands(); old.replaceWith(nr); old = nr; }); return r; }, old = paintBands();
     panes.prefs.appendChild(old);
     if (TH) {

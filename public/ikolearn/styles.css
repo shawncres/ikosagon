@@ -955,3 +955,7 @@ html:not([data-theme="dark"]) .cloud-fog { mix-blend-mode: multiply; }
 .hc-theme .age-opt.on { color: var(--ink); border-color: var(--ink); }
 #panel.is-root .cloud-tools { margin-top: 6px; padding-top: 4px; border-top-color: rgba(var(--ink-rgb), .1); font-size: 13px; }
 #panel.is-root .cloud-tools .link { font-size: 13px; }
+
+/* PR 114: the weekly recap in the name card */
+.hc-recap { margin: 0 0 14px; }
+.hc-recap-t { margin: 4px 0 6px; line-height: 1.5; }

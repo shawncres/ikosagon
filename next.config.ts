@@ -11,7 +11,6 @@ const nextConfig: NextConfig = {
       { source: "/ikolearn", destination: "/ikolearn/index.html" },
       { source: "/ikolearn/", destination: "/ikolearn/index.html" },
       { source: "/ikolearn/privacy", destination: "/ikolearn/privacy.html" },
-      { source: "/ikolearn/family", destination: "/ikolearn/family.html" },
       { source: "/ikolearn/learners", destination: "/ikolearn/learners.html" },
     ];
   },
@@ -24,6 +23,9 @@ const nextConfig: NextConfig = {
   },
   async redirects() {
     return [
+      // PR 114: IkoLearn is for any curious learner; the old parents page goes back to the app (the recap is in your name card)
+      { source: "/ikolearn/family", destination: "/ikolearn/", permanent: false },
+      { source: "/ikolearn/family.html", destination: "/ikolearn/", permanent: false },
       {
         source: "/projects/ai-recording-artist",
         destination: "/projects/ikoartist",
