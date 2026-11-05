@@ -1547,7 +1547,7 @@
     return out.slice(0, max);
   }
 
-  /* ---------- restructure (PR 119): tidy a grown cloud into neat, logical branches ---------- */
+  /* ---------- restructure (PR 120): tidy a grown cloud into neat, logical branches ---------- */
   /*
    * As the cloud grows, topics can end up filed loosely (everything straight under its subject). A restructure sends the
    * top of the tree (subjects, topics and sub-branches, ids and titles only, plus which are earned) to the model, which

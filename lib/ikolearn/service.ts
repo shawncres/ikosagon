@@ -318,6 +318,7 @@ export async function adjacentFor(input: LearnInput, env: Env, fetchImpl: typeof
   const user = `Focus topic: ${input.focus}${input.focusParent ? ` (in ${input.focusParent})` : ""}`;
   const r = await callModel<Ghost[]>(() => ({ system: adjacentSystem(input), user: user }), ADJACENT_SCHEMA, (t) => {
     const g = parseAdjacent(t, input.name);
+    if (input.neo && input.neo.length) { const one = g.filter((x) => x.theme && input.neo!.includes(x.theme)).slice(0, 1); return one.length ? one : null; } /* PR 119: exactly one themed branch */
     return g.length ? g : null;
   }, env, fetchImpl, { route: "adjacent" });
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
@@ -341,7 +342,7 @@ export async function describeFor(input: LearnInput, env: Env, fetchImpl: typeof
 }
 
 /**
- * PR 119: Restructure (tidy the cloud): one structured call with the top of the learner's tree (input.tree). Fewer than 6
+ * PR 120: Restructure (tidy the cloud): one structured call with the top of the learner's tree (input.tree). Fewer than 6
  * nodes is 422 with no call. -> { ok, proposal: { groups, moves } } (shape-checked; the device validates it fully).
  */
 export async function restructureFor(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): Promise<Out> {

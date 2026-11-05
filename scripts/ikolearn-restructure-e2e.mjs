@@ -1,4 +1,4 @@
-// End-to-end checks for tidying the cloud (PR 119), in a real browser on a phone (390x844, real touch), every
+// End-to-end checks for tidying the cloud (PR 120), in a real browser on a phone (390x844, real touch), every
 // /api/ikolearn call mocked. A seeded cloud with 8 topics loose under one subject is tidied from the name card's
 // Preferences ("Tidy my cloud"): two grouping branches appear, nodes glide to their new places, Iko says one calm line
 // with Undo, taps on the name and on moved nodes still open their cards, and Undo restores the previous tree.

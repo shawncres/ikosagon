@@ -66,7 +66,7 @@
       request();
     }
 
-    /* PR 119: after a restructure, nodes glide from where they were to their new places (smoothstep; instant with reduced motion) */
+    /* PR 120: after a restructure, nodes glide from where they were to their new places (smoothstep; instant with reduced motion) */
     var morph = null;
     function stepMorph(now) {
       var k = Math.min(1, (now - morph.t0) / morph.ms), e = k * k * (3 - 2 * k), to = morph.to, from = morph.from;

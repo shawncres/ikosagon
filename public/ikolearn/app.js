@@ -697,7 +697,7 @@
   }
 
   /*
-   * PR 119: tidy the cloud. When the cloud has grown by about 8 topics since the last tidy (at most once a day), on idle
+   * PR 120: tidy the cloud. When the cloud has grown by about 8 topics since the last tidy (at most once a day), on idle
    * and only on the cloud (never mid-lesson), or when the learner taps "Tidy my cloud" in Preferences: the top of the
    * tree goes to /restructure, the device checks the proposal fully (C.applyRestructure) and keeps the old tree when
    * anything is off, silently. Nodes glide to their new places; Iko says one calm line with Undo (one snapshot).
@@ -1519,7 +1519,7 @@
   /* every question answered: a pass confirms the right answers (colour, children, the deck); a miss earns nothing */
   function endRound(id) {
     var q = state.quiz, ck = ckOf(id), right = q.qs.filter(function (it, i) { return q.ans[i] === it.answer; }).length, all = right === q.qs.length;
-    if (all) setTimeout(function () { prefetchNext(id); }, 4000); /* PR 113: the next lesson on the path, written ahead once this one is passed */
+    if (all) { setTimeout(function () { prefetchNext(id); }, 4000); setTimeout(function () { maybeNeo(id); }, 2500); } /* PR 113: the next lesson on the path, written ahead once this one is passed */
     var before = C.growthOf(state.cloud, id), kids = [];
     ck.r = (ck.r || 0) + 1; ck.c = 0;
     /* how easily it went: a first-time pass is easy, a pass after misses less so, a miss by how many were right */
@@ -1677,6 +1677,7 @@
     renderLessonBody("", true);
     renderQuiz(true);
     var lessonBody = Object.assign(basePayload(id), ctx);
+    var nst = neoGet(); if (P.neoTaken(nst, nodeOf(id).label)) neoPut(nst); /* PR 119: a suggestion opened is a suggestion taken */
     lessonStream(id, lessonBody, {
       reset: function () { text = ""; },
       delta: function (t) { text += t; if (state.lessonNode === id) renderLessonBody(text, true); },
@@ -1748,10 +1749,32 @@
     var first = ids.filter(function (id) { return passed(id) || state.lessons[id].earned; })[0] || ids[0];
     var nx = P.pathNext(state.cloud, first), nn = nx && nodeOf(nx);
     var t = P.weekRecap(items, nn ? nn.label : "");
+    var nl = P.neoLine(state.cloud, neoGet()); if (nl) t += " " + nl; /* PR 119: only when gated in */
     store(RECAP, JSON.stringify({ day: day, who: key, t: t }));
     return t;
   }
   var pre = {};
+  /* PR 119 NEO-IKIGAI: one optional, quiet "this could connect to..." branch next to a topic the learner has, only once
+     gated in by history (P.neoDue), through the existing adjacent call; taken or left alone is noted on this device */
+  var NEO = "ikolearn.v1.neo";
+  function neoGet() { try { return P.neoState(JSON.parse(load(NEO) || "null")); } catch (x) { return P.neoState(null); } }
+  function neoPut(st) { store(NEO, JSON.stringify(st)); }
+  var neoBusy = false;
+  function maybeNeo(id) {
+    var st = neoGet(), n = nodeOf(id);
+    if (neoBusy || !n || !P.neoDue(state.cloud, st) || state.busy || document.hidden) return;
+    var host = n.parent && nodeOf(n.parent) && nodeOf(n.parent).parent ? n.parent : id; /* next to a topic the learner already has */
+    neoBusy = true;
+    postJson("/adjacent", Object.assign(basePayload(host), { neo: P.neoThemes(st) })).then(function (j) {
+      neoBusy = false;
+      var g = j && j.ok && j.ghosts && j.ghosts[0];
+      if (!g || !g.theme) return;
+      var r = C.addGhosts(state.cloud, [{ name: g.name, parent: nodeOf(host).label, blurb: g.blurb }], Date.now(), host);
+      if (!r.added.length) return;
+      neoPut(P.neoAdd(state.cloud, neoGet(), { name: nodeOf(r.added[0]).label, parent: nodeOf(host).label, theme: g.theme }, Date.now()));
+      save(); refreshViews(r.added);
+    }, function () { neoBusy = false; });
+  }
   /* PR 118: a check is usable when it has a valid question; a new-style one (kinds) only when it is the full three */
   function needCheck(qs) {
     var v = validQs(qs);
@@ -2806,7 +2829,7 @@
     });
     box.appendChild(tabs);
     /* Story */
-    var story = P.homeStory(state.cloud, { name: state.cloud.name, band: C.profileOf(state.cloud).band, now: now, lessons: num.lessons });
+    var story = P.homeStory(state.cloud, { name: state.cloud.name, now: now, lessons: num.lessons, neo: neoGet() });
     var nn = story.next && nodeOf(story.next);
     story.lines.forEach(function (line) {
       var pl = mk("p", "hc-line"), at = nn ? line.indexOf(nn.label) : -1;
@@ -2856,7 +2879,7 @@
       });
       paintTheme(); panes.prefs.appendChild(tr);
     }
-    /* PR 119: tidy the cloud by hand */
+    /* PR 120: tidy the cloud by hand */
     panes.prefs.appendChild(mk("p", "hc-ph", "Your cloud"));
     panes.prefs.appendChild(mk("p", "hc-hint fine", "Re-files topics so related ones sit together. Nothing you've learned changes, and you can undo it."));
     var tst = mk("p", "hc-hint fine tidy-status"); tst.setAttribute("role", "status"); tst.setAttribute("aria-live", "polite");

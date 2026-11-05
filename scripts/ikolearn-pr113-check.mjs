@@ -48,3 +48,14 @@ console.log(`pr113 mocked: ${pass} passed, ${fail} failed`);
   ok(P.weekRecap([], "") === "", "recap: nothing this week, no recap");
   console.log(`pr118 mocked: ${pass} passed, ${fail} failed`);
 }
+
+/* PR 119: the themed adjacent call keeps exactly one themed branch, else nothing reaches the cloud */
+{
+  const { adjacentFor } = await import("../lib/ikolearn/service.ts");
+  const NI = parseLearnInput({ mode: "notice", name: "Sam", focus: "Cooking", messages: [], neo: ["systems"] });
+  let o = await adjacentFor(NI, ENV, f([JSON.stringify({ ghosts: [{ name: "Recipe Systems", parent: "Cooking", blurb: "How the steps of a recipe depend on each other.", theme: "systems" }, { name: "Plating", parent: "Cooking", theme: "systems" }] })]));
+  ok(o.status === 200 && o.body.ghosts.length === 1 && o.body.ghosts[0].theme === "systems", "neo adjacent: exactly one themed branch");
+  o = await adjacentFor(NI, ENV, f([JSON.stringify({ ghosts: [{ name: "Plating", parent: "Cooking" }] }), JSON.stringify({ ghosts: [{ name: "Plating", parent: "Cooking", theme: "careers" }] })]));
+  ok(o.status !== 200, "neo adjacent: an unthemed or unknown-theme answer never reaches the cloud");
+  console.log(`pr119 mocked: ${pass} passed, ${fail} failed`);
+}

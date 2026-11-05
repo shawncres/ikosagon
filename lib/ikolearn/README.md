@@ -410,7 +410,7 @@ Checks: the "parents & teachers view" block in `check:ikolearn`, and `IKOLEARN_P
 
 Checks: the "learners" block in `check:ikolearn`, and `IKOLEARN_PW=<playwright-core folder> node scripts/ikolearn-guide-e2e.mjs [--shots DIR] [--root DIR]`.
 
-## Tidying the cloud (PR 119)
+## Tidying the cloud (PR 120)
 
 As a cloud grows, topics are re-nested under sensible subjects and sub-branches so the map stays a neat, readable tree.
 - **When:** quietly on idle when the cloud has grown by 8+ topics since the last tidy (at least 12 topics, at most once a day, only on the cloud, never mid-lesson), or by hand with "Tidy my cloud" in the name card's Preferences.

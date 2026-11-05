@@ -1107,8 +1107,8 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
   const bytes = files.reduce((n, f) => n + served(f).length, 0);
   const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
-  ok(bytes < 376_000, "app weight under 376 KB uncompressed (served, minified)", String(bytes));
-  ok(gz < 126_000, "app weight under 126 KB gzipped (served, minified)", String(gz));
+  ok(bytes < 380_000, "app weight under 380 KB uncompressed (served, minified)", String(bytes));
+  ok(gz < 128_000, "app weight under 128 KB gzipped (served, minified)", String(gz));
 }
 
 /* ================= PR 108: QA polish ================= */
@@ -3733,22 +3733,46 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   eq([q0.active, P.homeStats(none, NOW).active], [4, 0], "home stats (PR 111): distinct active days counted");
   const story = P.homeStory(cloud, { name: "Maya", now: NOW, lessons: 3 });
   const st1 = story.lines.join(" ");
-  ok(!story.empty && /^(You've grown an IkoCloud of|Your IkoCloud has grown to) \d+ subjects? and \d+ topics? so far\.$/.test(story.lines[0]), "home story (PR 112): opens in the second person, with the IkoCloud", story.lines[0]);
-  ok(/You've finished 3 lessons and have \d+ cards? in your Deck/.test(st1) && !/\bMaya\b|and Iko have|Together,|\b(I|we|We at Ikosagon)\b|\b(has|is|seems)\b.*\b(learner|she|he|they)\b/.test(st1), "home story (PR 112): lessons and your Deck; no name, no \"and Iko have\", no third or first person", st1);
+  ok(!story.empty && /^You keep coming back to /.test(story.lines[0]), "home story (PR 119): opens with the thread you keep coming back to (what you love)", story.lines[0]);
+  ok(/Your checks show solid footing in |each one a check you passed/.test(st1) && !/\bMaya\b|and Iko have|Together,|\b(I|we|We at Ikosagon)\b|\b(best|amazing|brilliant|genius|smartest|career|job)\b/i.test(st1), "home story (PR 119): where checks show strength; second person, no superlatives or career talk", st1);
   const homeAll = [0, 1, 2, 3, 4, 5].flatMap((k) => ["", "u10"].flatMap((b) => [P.homeStory(cloud, { name: "Maya", now: NOW, band: b, lessons: 2, seed: k }), P.homeStory(none, { name: "Zed", now: NOW, band: b, seed: k })])).flatMap((x) => x.lines).join(" ");
-  ok(!/\b(Maya|Zed)\b|and Iko (have|are)|has just met|Iko suggests|Together,/.test(homeAll) && /\byou\b|\byour\b/i.test(homeAll), "home story (PR 112): every variant (seeds, under-10s, empty) speaks to you, never in the third person", homeAll.slice(0, 300));
+  ok(!/\b(Maya|Zed)\b|and Iko (have|are)|has just met|Together,/.test(homeAll) && /\byou\b|\byour\b/i.test(homeAll), "home story (PR 112/119): every variant speaks to you, never in the third person", homeAll.slice(0, 300));
   ok(story.strongest && C.subjects(cloud).some((n) => n.id === story.strongest) && st1.includes(cloud.nodes[story.strongest].label), "home story: names the branch with the most going on", st1);
   ok(!story.next || st1.includes(cloud.nodes[story.next].label), "home story: a realistic next step from the cloud itself", st1);
   ok(story.lines.length >= 3 && story.lines.length <= 5 && story.lines.every((l) => l.length < 200), "home story: short (3 to 5 short lines)", JSON.stringify(story.lines));
   const pk = (o) => P.homeStory(cloud, Object.assign({ name: "Maya", now: NOW, lessons: 3 }, o)).lines.join(" ");
-  ok(new Set([0, 1, 2, 3, 4, 5].map((k) => pk({ seed: k }))).size > 1 && pk({ seed: 7 }) === pk({ seed: 7 }), "home story: phrasing varies by day, steady within one");
+  ok(pk({ seed: 7 }) === pk({ seed: 7 }), "home story: steady for the same cloud");
   const ns = P.homeStory(none, { name: "Zed", now: NOW });
   ok(ns.empty && /^(You're just getting started|Here's where it begins)\. Your IkoCloud is ready to grow from the first thing you're curious about\.$/.test(ns.lines[0]) && ns.lines.length === 2 && /^Each lesson you finish adds a card to your Deck/.test(ns.lines[1]), "home story: an empty cloud gets a gentle start, spoken to you", JSON.stringify(ns.lines));
   const cb = C.serialize(cloud); P.homeStory(cloud, { name: "Maya", now: NOW, lessons: 3 });
   ok(C.serialize(cloud) === cb, "home story: reading it changes nothing (no draw logged)");
   const kidL = P.homeStory(cloud, { name: "Maya", now: NOW, band: "u10", lessons: 1 }).lines.join(" ");
-  ok(/You've finished 1 lesson\b/.test(kidL) && /You seem to really enjoy/.test(kidL) && !/strongest branch|which is useful/.test(kidL), "home story: simpler words for under-10s, spoken to you", kidL);
-  ok(/(You might try|A good next step for you:) .+\. It builds on what you already know\./.test(st1) || !story.next, "home story (PR 112): the next step is offered to you", st1);
+  ok(/^You keep coming back to /.test(kidL) && !/age|under 10/i.test(kidL), "home story (PR 114): an old age band changes nothing", kidL);
+  ok(/Iko suggests .+ next\. It builds on what you already know\./.test(st1) || !story.next, "home story (PR 119): a subtle Iko suggestion line", st1);
+  {
+    /* PR 119 NEO-IKIGAI: gating, one at a time, slow growth, adjacency, adapting */
+    const nc = C.create("Neo", NOW); C.applyCreate(nc, { items: [{ node: { name: "Cooking", chain: ["Food"], motif: "leaf" }, card: { title: "Cooking", blurb: "Making food.", goal: "" }, children: [{ name: "Knife Skills", order: 1, score: 0.5, why: "", role: "core", motif: "leaf" }, { name: "Baking", order: 2, score: 0.5, why: "", role: "core", motif: "leaf" }] }] }, { t: NOW });
+    let ns0 = P.neoState(null);
+    ok(!P.neoGated(nc) && !P.neoDue(nc, ns0) && P.neoLine(nc, ns0) === "", "neo: nothing for a new learner (no cards, first days)");
+    C.profileOf(nc).days = 3;
+    ok(P.neoGated(nc) && P.neoDue(nc, ns0), "neo: 3+ days visited gates it in");
+    const host = nc.order.find((x) => nc.nodes[x].label === "Cooking");
+    const g = C.addGhosts(nc, [{ name: "Recipe Systems", parent: "Cooking", blurb: "How the steps of a recipe depend on each other." }], NOW, host);
+    ok(g.added.length === 1 && nc.nodes[nc.nodes[g.added[0]].parent].label === "Cooking", "neo: the branch sits next to a topic the learner already has (adjacent)");
+    ns0 = P.neoAdd(nc, ns0, { name: "Recipe Systems", parent: "Cooking", theme: "systems" }, NOW);
+    ok(!P.neoDue(nc, ns0) && P.neoOpen(nc, ns0).label === "Recipe Systems", "neo: at most one suggestion visible at a time");
+    ok(/^Where this could lead: Recipe Systems, next to Cooking/.test(P.neoLine(nc, ns0)), "neo: the recap's optional line when gated in", P.neoLine(nc, ns0));
+    ok(/This could connect to Recipe Systems/.test(P.homeStory(nc, { now: NOW, neo: ns0 }).lines.join(" ")), "neo: the story mentions the one direction, gently");
+    nc.nodes[g.added[0]].ghost = false; /* explored elsewhere: no longer open */
+    const need = (st) => { const n = st.s.length, ign = st.s.filter((x) => x.ign).length; return 2 + n + 2 * ign; };
+    ok(!P.neoDue(nc, ns0) && need(ns0) === 3, "neo: the next one waits for new cards (the gap grows with use)");
+    const ns2 = P.neoAdd(nc, P.neoState(JSON.parse(JSON.stringify(ns0))), { name: "Kitchen Tools", parent: "Cooking", theme: "ai-tools" }, NOW);
+    ok(ns2.s[0].ign === 1 && ns2.w.systems < 1 && P.neoThemes(ns2).indexOf("systems") === 4, "neo: a suggestion left alone backs its theme off");
+    ok(P.neoTaken(ns2, "Kitchen Tools") && ns2.w["ai-tools"] > 1 && P.neoThemes(ns2)[0] === "ai-tools", "neo: a suggestion taken comes up a little more");
+    ok(need(ns2) > need(ns0), "neo: frequency slows as suggestions are set aside");
+    const NI = parseLearnInput({ mode: "notice", name: "Sam", focus: "Cooking", messages: [], neo: ["systems", "bogus", "judgment"] });
+    ok(JSON.stringify(NI.neo) === '["systems","judgment"]' && /Role: adjacent, future-useful/.test(adjacentSystem(NI)) && /never a job title/.test(adjacentSystem(NI)) && !/future-useful/.test(adjacentSystem({ ...NI, neo: undefined })), "neo: the adjacent call blends known themes only; the normal adjacent prompt is unchanged");
+  }
   const sk = P.SKILLS.filter((x) => x[0].test("Volcanoes and Weather"))[0];
   ok(sk && /observation/.test(sk[1]) && P.SKILLS.every((x) => !/career|job|genius|guarantee|best/i.test(x[1] + x[2])), "home story: grounded skills, no hype or career promises");
   const pdc = C.create("Zed", NOW), pd0 = C.serialize(pdc), pdz = C.deserialize(pd0);
@@ -3921,7 +3945,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/@media \(pointer: coarse\), \(max-width: 699px\) \{[\s\S]*?\.zoom #zin, \.zoom #zout \{ display: none; \}/.test(cssS) && /class="zr-ico"/.test(htmlS) && /opts\.onGesture\("turn"\)/.test(cvS), "controls: a phone gets one small icon (it recentres); a twist counts as a gesture tried");
 }
 
-/* ---------- PR 119: tidy the cloud (restructure) ---------- */
+/* ---------- PR 120: tidy the cloud (restructure) ---------- */
 {
   const { restructureSystem, RESTRUCTURE_SCHEMA, parseRestructure, cleanTree } = await import("../lib/ikolearn/prompts.ts");
   const { restructureFor } = await import("../lib/ikolearn/service.ts");
