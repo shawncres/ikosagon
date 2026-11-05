@@ -273,8 +273,10 @@ export function lessonEvents(input: LearnInput, env: Env, fetchImpl: typeof fetc
       keepCode: true,
       maxTokens: MODEL_LIMITS.lessonMaxTokens,
       tail: (block, found) => {
-        if (!found) return null;
+        /* PR 120: one line when the block is missing or unusable (never the prompt or the block text), so the cause shows in the logs */
+        if (!found) { console.log(JSON.stringify({ ev: "ikolearn.lesson_block", found: false })); return null; }
         const b = parseLessonBlock(block, input.name, input.focus, input.wantPath);
+        if (!b || !b.questions.length) console.log(JSON.stringify({ ev: "ikolearn.lesson_block", found: true, parsed: Boolean(b), chars: block.length }));
         return b ? { t: "path", ...b } : null;
       },
     },
