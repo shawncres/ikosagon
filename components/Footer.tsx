@@ -4,7 +4,7 @@ export function Footer() {
       <div className="container-shell flex flex-col justify-between gap-3 text-sm text-zinc-400 md:flex-row">
         <div>
           <p>© {new Date().getFullYear()} Ikosagon. We improve the systems you already run.</p>
-          <p className="mt-1 font-mono text-xs text-zinc-500">
+          <p className="mt-1 font-mono text-xs text-zinc-400">
             Software &amp; AI studio · working from anywhere
           </p>
         </div>

@@ -77,7 +77,7 @@ export function Hero() {
               >
                 Previous
               </button>
-              <div className="flex gap-1.5" role="tablist" aria-label="Headline slides">
+              <div className="flex" role="tablist" aria-label="Headline slides">
                 {H1_LINES.map((line, i) => (
                   <button
                     key={line.text}
@@ -86,12 +86,16 @@ export function Hero() {
                     aria-selected={i === index}
                     aria-label={`Show headline ${i + 1}`}
                     onClick={() => setIndex(i)}
-                    className={
-                      i === index
-                        ? "h-2 w-6 rounded-full bg-accent"
-                        : "h-2 w-2 rounded-full bg-border transition hover:bg-accent/50"
-                    }
-                  />
+                    className="group flex h-6 min-w-6 items-center justify-center"
+                  >
+                    <span
+                      className={
+                        i === index
+                          ? "h-2 w-6 rounded-full bg-accent"
+                          : "h-2 w-2 rounded-full bg-border transition group-hover:bg-accent/50"
+                      }
+                    />
+                  </button>
                 ))}
               </div>
               <button
