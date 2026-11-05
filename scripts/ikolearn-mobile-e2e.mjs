@@ -324,15 +324,15 @@ const MIXED = { act: { "Coral Reefs": { ago: 3, done: true }, Shapes: { ago: 2, 
     await fingers([{ x: sky.x - R, y: sky.y + 60, steps: ang.map((q) => [R - R * Math.cos(q), -R * Math.sin(q)]) }, { x: sky.x + R, y: sky.y + 60, steps: ang.map((q) => [-(R - R * Math.cos(q)), R * Math.sin(q)]) }]); await p.waitForTimeout(80);
     const t1 = await V();
     ok(Math.abs(t1.yaw - t0.yaw) > 0.3 && Math.abs(t1.zoom / t0.zoom - 1) < 0.1, "touch: a clear two-finger twist turns the cloud (and doesn't zoom)", JSON.stringify({ yaw: t1.yaw - t0.yaw, zoom: t1.zoom / t0.zoom }));
-    /* 6. Support & feedback and Follow on X on the cloud, in the fine print, on screen and clear of the Pick up row */
+    /* 6. Support & feedback (no Follow on X) on the cloud, in the fine print, on screen and clear of the Pick up row */
     const foot = await p.evaluate(() => { const r = (e) => e && e.getBoundingClientRect(); const fb = document.querySelector("#cloud .cloud-foot .fb-link"), x = document.querySelector('#cloud .cloud-foot a[href="https://x.com/IkosagonAI"]'), flow = document.querySelector(".cloud-flow:not([hidden])"); return { fb: fb && fb.getClientRects().length ? [r(fb).top, r(fb).bottom, r(fb).left, r(fb).right] : null, href: fb && fb.href, x: Boolean(x && x.getClientRects().length && r(x).bottom <= innerHeight), flowB: flow ? r(flow).bottom : 0, footT: r(document.querySelector("#cloud .cloud-foot")).top, h: innerHeight, w: innerWidth }; });
-    ok(foot.fb && foot.fb[1] <= foot.h && foot.fb[0] >= 0 && foot.fb[3] <= foot.w && foot.x && /contact\?name=Maya&subject=IkoLearn%20Feedback$/.test(foot.href), "phone: Support & feedback (with the name) and Follow on X are on the cloud's screen", JSON.stringify(foot));
+    ok(foot.fb && foot.fb[1] <= foot.h && foot.fb[0] >= 0 && foot.fb[3] <= foot.w && !foot.x && /contact\?name=Maya&subject=IkoLearn%20Feedback$/.test(foot.href), "phone: Support & feedback (with the name) is on the cloud screen (no Follow on X)", JSON.stringify(foot));
     ok(!foot.flowB || foot.flowB <= foot.footT + 0.5, "phone: the Pick up row sits above the two-line fine print", JSON.stringify(foot));
     /* 7. the deck: no "Back to your cloud" beside the cloud widget; the page ends with the support links */
     await p.tap("#cloud-deck"); await p.waitForSelector("#deck:not([hidden])"); await p.waitForTimeout(900);
     const dk = await p.evaluate(() => { const vis = (e) => Boolean(e && e.getClientRects().length); window.scrollTo(0, document.documentElement.scrollHeight); return { back: vis(document.querySelector("#d-back")), thumb: vis(document.querySelector("#thumb")), fb: vis(document.querySelector("#page-foot .fb-link")), x: vis(document.querySelector('#page-foot a[href="https://x.com/IkosagonAI"]')), href: (document.querySelector("#page-foot .fb-link") || {}).href }; });
     ok(!dk.back && dk.thumb, "deck: no \"Back to your cloud\" link beside the cloud widget", JSON.stringify(dk));
-    ok(dk.fb && dk.x && /name=Maya&subject=IkoLearn%20Feedback$/.test(dk.href), "deck: the page ends with Support & feedback and Follow on X", JSON.stringify(dk));
+    ok(dk.fb && !dk.x && /name=Maya&subject=IkoLearn%20Feedback$/.test(dk.href), "deck: the page ends with Support & feedback (no Follow on X)", JSON.stringify(dk));
     /* 8. the deck's tiles: titles wrap between words, the chain has its own whole line, the tier row fits */
     await p.evaluate(() => window.scrollTo(0, 0));
     const measureTiles = () => p.evaluate(() => [...document.querySelectorAll("#d-album .ap-grid > .gcard.size-tile")].map((c) => {
