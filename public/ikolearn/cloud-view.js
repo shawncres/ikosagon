@@ -112,7 +112,20 @@
         Object.keys(tally).forEach(function (sid) { fill[sid] = tally[sid].all ? tally[sid].done / tally[sid].all : 0; subN[sid] = tally[sid].all; nTopics += tally[sid].all; });
         fogKey = "";
         vivid = Math.min(1, nDone / 12);
-        roomForActive(c);
+        var busyId = roomForActive(c);
+        if (busyId) {
+          var far = ext;
+          c.order.forEach(function (id) {
+            if (id !== busyId && C.ancestry(c, id).indexOf(busyId) < 0) return;
+            var bp = pos[id];
+            if (bp) far = Math.max(far, Math.hypot(bp.x, bp.y, bp.z));
+          });
+          if (far > ext) {
+            camD = Math.max(3.2, far * 1.35);
+            home.zoom = Math.min(home.zoom, Math.min(1, 1.05 / far));
+            zfloor = Math.min(ZMIN, home.zoom * 0.7);
+          }
+        }
         c.order.forEach(function (id) {
           var n = c.nodes[id];
           if (n && n.path) n.path.ids.forEach(function (x, i) { if (c.nodes[x] && c.nodes[x].parent === id) pathRank[x] = i + 1; });
@@ -137,7 +150,7 @@
         var score = n * 10 + Math.min(30, s.weight || 0);
         if (score > bestN) { bestN = score; best = s; }
       });
-      if (!best || bestN < 40) return;
+      if (!best || bestN < 40) return null;
       var p = pos[best.id];
       if (!p) return;
       var dx = p.x * 0.22, dy = p.y * 0.22, dz = p.z * 0.22;
@@ -153,6 +166,7 @@
           q.x += ox * 0.18; q.y += oy * 0.18; q.z += oz * 0.18;
         }
       });
+      return best.id;
     }
     function flash(ids) {
       var t = performance.now();

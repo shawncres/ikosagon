@@ -512,7 +512,7 @@
     var made = [];
     (names || []).forEach(function (raw) {
       var label = titleTopic(raw);
-      if (!label || C.findAny(state.cloud, label)) return;
+      if (!label || junkSubject(label) || C.findAny(state.cloud, label)) return;
       var tp = { name: label, signal: "curious", placement: "parent", chain: [], parent: "" };
       var plan = P.placeTopic(state.cloud, tp, null);
       if (!plan || plan.how === "reuse") return;
@@ -625,15 +625,38 @@
     if (/^(something|anything|everything|this|that|it)$/i.test(topic)) return "";
     return topic;
   }
+  function interestPhrase(part) {
+    var p = String(part || "").replace(/^(?:a|an|the|about|more about|how to|and|or)\s+/i, "").replace(/[.!?]+$/g, "").replace(/\s+/g, " ").trim();
+    if (p.length < 2 || p.length > 40) return "";
+    var words = p.split(" ");
+    if (words.length > 4) return "";
+    if (/^(how|what|why|when|where|whether|who|which)\b/i.test(p)) return "";
+    if (/\b(is|are|was|were|handle|handling|topic)\b/i.test(p)) return "";
+    if (/^(something|anything|everything|this|that|it|both|please|yes|them|those|these|all|one)$/i.test(p)) return "";
+    return words.some(function (w) { return !/^(a|an|the|of|to|on|in|for|with|and|or)$/i.test(w); }) ? p : "";
+  }
   function splitSubjects(phrase) {
-    var out = [];
-    String(phrase || "").split(/\s*(?:,|;|\/|&|\band\b|\bor\b)\s*/i).forEach(function (part) {
-      var p = part.replace(/^(?:a|an|the|about|more about|how to)\s+/i, "").replace(/[.!?]+$/g, "").replace(/\s+/g, " ").trim();
-      if (p.length < 2 || p.length > 40) return;
-      if (/^(something|anything|everything|this|that|it|both|please|yes|them|those|these|all)$/i.test(p)) return;
-      if (!out.some(function (y) { return y.toLowerCase() === p.toLowerCase(); })) out.push(p);
+    var out = [], push = function (p) { if (p && !out.some(function (y) { return y.toLowerCase() === p.toLowerCase(); })) out.push(p); };
+    String(phrase || "").split(/\s*(?:,|;|\/|&)\s*/).forEach(function (chunk) {
+      var bits = chunk.split(/\s+\band\b\s+|\s+\bor\b\s+/i);
+      if (bits.length >= 2) {
+        var interests = bits.map(interestPhrase);
+        if (interests.every(Boolean)) interests.forEach(push);
+        return;
+      }
+      push(interestPhrase(chunk));
     });
     return out.slice(0, 4);
+  }
+  function clarifyingNow(text) {
+    if (state.mode !== "lesson" || !state.lessonNode) return false;
+    var ph = lessonPhase(state.lessonNode), step = iko.ctx && iko.ctx.step;
+    if (ph !== "check" && ph !== "missed" && step !== "check" && step !== "tricky") return false;
+    return !learnTopicsFrom(text).length;
+  }
+  function junkSubject(name) {
+    var n = String(name || "").replace(/\s+/g, " ").trim().toLowerCase();
+    return !n || n.split(" ").length > 6 || /\b(topic on what|handle one|how to handle|what a \w+ is)\b/.test(n);
   }
   function learnTopicFrom(text) {
     var topic = learnRest(text);
@@ -696,8 +719,15 @@
     if (a && b && a !== b) return false;
     return true;
   }
+  function toAdult(text) {
+    return String(text || "")
+      .replace(/ask an adult to help contact a doctor/gi, "A high or persistent fever should be checked by a doctor")
+      .replace(/ask a trusted adult[^.!?]*/gi, "")
+      .replace(/your little brother/gi, "someone else")
+      .replace(/a game at the park/gi, "an ordinary example");
+  }
   function withHealthNote(focus, text) {
-    var src = String(text || "");
+    var src = toAdult(text);
     if (!/\bfever\b/i.test(focus) && !/turn(?:ing|s)? up the heat|body (?:runs|running) hot/i.test(src)) return src;
     if (/\b(doctor|clinician|medical care|checked by)\b/i.test(src)) return src;
     var note = "A fever is more than the body turning up the heat. A high or persistent fever should be checked by a doctor.";
@@ -1069,6 +1099,7 @@
       return stream("/chat", body, {
         delta: function (t) { m.text += t; upsert(m); scrollDown(); },
         cloud: function (ev) {
+          if (clarifyingNow(text)) return; /* a hint during a check is not a new subject */
           var r = grow(ev, fid);
           if ((ev.topics && ev.topics.length) || (ev.ghosts && ev.ghosts.length)) grew = true;
           if (r.topic) { m.topic = r.topic.name; m.parent = r.topic.parent; grew = true; }
@@ -1088,14 +1119,14 @@
         m.text = (m.text || "").trim();
       }
       /* every subject they named, not only the first; a name already on the cloud is reused */
-      var made = !m.fallback ? ensureAsked(asked) : [];
+      var made = !m.fallback && !clarifyingNow(text) ? ensureAsked(asked) : [];
       if (made.length) {
         grew = true;
         made.forEach(noteBare);
         if (!m.text || m.cut) m.text = made.map(function (id) { return nodeOf(id).label; }).join(" and ") + (made.length > 1 ? " are new branches on your cloud." : " is a new branch on your cloud.") + " Open one whenever you like.";
       }
       /* learn intent, but the reply never carried a cloud block (cut off or skipped): grow on the device, 0 extra calls */
-      if (learn && !grew && !m.fallback) {
+      if (learn && !grew && !m.fallback && !clarifyingNow(text)) {
         var label = titleTopic(learn), tp = { name: label, signal: "curious", placement: "parent", chain: [], parent: "" };
         var plan = P.placeTopic(state.cloud, tp, fid);
         if (plan) {
@@ -2161,8 +2192,9 @@
     if (state.lessonNode === id && state.mode === "lesson" && el.lStatus && !String(el.lStatus.textContent || "").trim()) el.lStatus.textContent = "The check didn't come through. Continue to try it again.";
   }
   /* the check written on its own from the lesson text (one call, the server retries once); shown when it succeeds, never swapped for "I've got it" */
-  function ensureCheck(id) {
+  function ensureCheck(id, n) {
     var les = state.lessons[id];
+    n = n || 0;
     if (!les || !les.text || les.ckWait) return;
     if (!needCheck(les.qs) && validQs(les.qs).length) {
       if (state.quiz && state.quiz.id === id && !hasQs(id)) { state.quiz.qs = mixQs(validQs(les.qs)); state.quiz.ans = []; state.quiz.wait = false; state.quiz.fail = false; }
@@ -2182,8 +2214,9 @@
         if (el.lStatus && String(el.lStatus.textContent || "").indexOf("didn't come through") >= 0) el.lStatus.textContent = "";
         save();
         revealCheck(id);
-      } else { save(); markCheckFail(id); }
-    }, function () { delete les.ckWait; save(); markCheckFail(id); });
+      } else if (n < 1) ensureCheck(id, 1);
+      else { save(); markCheckFail(id); }
+    }, function () { delete les.ckWait; if (n < 1) ensureCheck(id, 1); else { save(); markCheckFail(id); } });
   }
   function lessonHasCheck(ev) { return Boolean(ev && Array.isArray(ev.questions) && ev.questions.length); }
   /* A lesson written ahead (finished, or still arriving) plays instead of a second call. A cut-off lesson is not kept. */
@@ -3762,7 +3795,10 @@
     var on = ikoScreen();
     if (on) state.back = null; /* left the whole conversation some other way */
     el.chatBack.hidden = !state.back;
-    if (iko.open && (!on || (screenCtx().id || "") !== (iko.ctx.id || "") || (screenCtx().view === "chat"))) closeIko(); /* the screen changed under it */
+    var nextCtx = screenCtx();
+    if (iko.open && nextCtx.view === "chat") closeIko();
+    else if (iko.open && iko.ctx && nextCtx.view === iko.ctx.view && nextCtx.view !== "chat" && (nextCtx.id || "") !== (iko.ctx.id || "")) { iko.ctx = nextCtx; el.ikoAbout.textContent = ikoAbout(iko.ctx); }
+    else if (iko.open && (!on || (nextCtx.id || "") !== (iko.ctx.id || ""))) closeIko(); /* the screen changed under it */
     dockIko(on);
     el.ikoWrap.hidden = !on;
     el.iko.classList.toggle("glow", on && !hintSeen("iko")); /* the first visits' cue: until Iko has been opened once (seen.h.iko, v9) */

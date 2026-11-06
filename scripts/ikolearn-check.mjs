@@ -5,7 +5,7 @@ import fs from "node:fs";
 import zlib from "node:zlib";
 import { createRequire } from "node:module";
 import {
-  LEARN_LIMITS, CLOUD_OPEN, CLOUD_CLOSE, cleanName, cleanLabel, cleanMessages, parseLearnInput, SYSTEM_BASE, companionSystem, noticeSystem, replyLooksComplete, lessonLooksComplete, learnTopicFrom, learnTopicsFrom, affirmSeveral, subjectsOffered, goodChildName, withHealthNote, vaccineMisleads, HEALTH_RULE,
+  LEARN_LIMITS, CLOUD_OPEN, CLOUD_CLOSE, cleanName, cleanLabel, cleanMessages, parseLearnInput, SYSTEM_BASE, companionSystem, noticeSystem, replyLooksComplete, lessonLooksComplete, learnTopicFrom, learnTopicsFrom, affirmSeveral, subjectsOffered, goodChildName, withHealthNote, vaccineMisleads, HEALTH_RULE, junkSubject, toAdult, DISTRACTOR_RULE,
   buildContents, cardSystem, adjacentSystem, plainReply, parseCloudBlock, parseCard, parseAdjacent, createBlockSplitter,
   PATH_OPEN, PATH_CLOSE, lessonSystem, lessonContents, pathSystem, PATH_SCHEMA, CARD_SCHEMA, parsePath, parseChoices, parseLessonBlock, parseQuestions, parseBlurb, parseChain, checkSystem,
   parseTest, testSystem, TEST_SCHEMA, parseCheck, createSystem, parseCreate, CREATE_SCHEMA, examplesSystem, parseExamples, EXAMPLES_SCHEMA, EXAMPLE_LIMITS, SIGNALS, parseReading,
@@ -4132,6 +4132,9 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
 /* ---------- multi-subject growth, starter children, careful checks, the listed UI ---------- */
 {
   ok(learnTopicsFrom("I want to learn ancient Rome and a website").join("|") === "ancient Rome|website", "several subjects in one line are all kept", learnTopicsFrom("I want to learn ancient Rome and a website").join("|"));
+  ok(learnTopicsFrom("I want to learn astronomy and Japanese cooking").join("|") === "astronomy|Japanese cooking", "and splits two short interests");
+  ok(learnTopicsFrom("I want to learn what a fever is and how to handle one").length === 0 && junkSubject("Handle One") && junkSubject("Topic On What A Fever Is") && !junkSubject("Fever Care"), "one coherent request is not split into junk subjects");
+  ok(/neutral adult voice/.test(SYSTEM_BASE) && /ask a trusted adult/.test(SYSTEM_BASE) && /your little brother/.test(SYSTEM_BASE) && toAdult("Ask an adult to help contact a doctor.").toLowerCase().indexOf("checked by a doctor") >= 0 && !/little brother/.test(toAdult("Show your little brother.")) && /Vary the lengths/.test(DISTRACTOR_RULE), "adult voice: prompts forbid child lines, and a doctor note stays adult");
   ok(learnTopicFrom("I want to learn hat making") === "hat making" && learnTopicsFrom("teach me origami please").join() === "origami", "a single learn line is unchanged");
   ok(affirmSeveral("Both please") && affirmSeveral("all of them") && !affirmSeveral("just Rome please"), "both / all of them is a yes to every subject just offered");
   const offered = subjectsOffered("Would you like ancient Rome or a website?");
@@ -4139,6 +4142,8 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(!goodChildName("Simple Jointery", "Woodwork") && !goodChildName("Fitness App Logic", "Vaccines") && goodChildName("Roman Army", "Ancient Rome") && goodChildName("Daily Life", "Ancient Rome"), "odd names and a topic from another subject are rejected; a real part of the subject stays");
   ok(/checked by a doctor/.test(withHealthNote("Fever", "INTRO: A fever is the body turning up the heat.\nEXPLAIN: It fights germs.")) && /doctor/.test(withHealthNote("Volcanoes", "INTRO: No fever here.")) === false && /doctor/.test(withHealthNote("Fever", "EXPLAIN: A high fever should be checked by a doctor.")), "fever text gains one doctor note; other lessons and careful text stay as they are");
   eq(parseQuestions([{ q: "What is a vaccine made from?", options: ["Some use a weakened live virus", "They never use a live virus", "Only sugar"], answer: 1 }]), [], "a vaccine question that marks a weakened live version wrong is dropped");
+  eq(parseQuestions([{ q: "What is a fever?", options: ["The body running hotter than usual", "Your friend's shoe size", "A normal temperature"], answer: 0 }]), [], "a shoe-size joke that leaves fewer than 3 options drops the question");
+  eq(parseQuestions([{ q: "What is a fever?", options: ["The body running hotter than usual", "An illness caused by drinking cold water", "A normal temperature"], answer: 0 }]), [], "a cold-water nonsense option that leaves fewer than 3 options drops the question");
   const liveOk = parseQuestions([{ q: "What can a vaccine contain?", options: ["A weakened live virus", "Only a killed germ", "Only a set of instructions"], answer: 0 }]);
   ok(liveOk.length === 1 && liveOk[0].options[liveOk[0].answer] === "A weakened live virus", "saying some vaccines use a weakened live virus is allowed");
   eq(parseQuestions([{ kind: "recall", q: "What does a vaccine help the body do?", options: ["Recognize a germ", "lol", "Forget how to heal"], answer: 0 }]), [], "a nonsense option that leaves fewer than 3 choices drops the question");
@@ -4161,6 +4166,12 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(C.addStarters(bare, cook.id, ["Simple Jointery"]).length === 3 && C.childrenOf(bare, cook.id).every((c) => !/jointery/i.test(c.label)), "fewer than 3 real names falls back to a clean placeholder set");
   const appG = fs.readFileSync("public/ikolearn/app.js", "utf8"), cssG = fs.readFileSync("public/ikolearn/styles.css", "utf8"), viewG = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8");
   ok(/function ensureAsked\(/.test(appG) && /function fillStarter\(/.test(appG) && /wantedSubjects\(text\)/.test(appG) && /replyThin\(/.test(appG) && /attempt < 1/.test(appG), "chat: missing subjects are added on the device, and a thin reply is tried once");
+  ok(/n < 1\) ensureCheck\(id, 1\)/.test(appG) && /function clarifyingNow\(/.test(appG) && /clarifyingNow\(text\)\) return/.test(appG) && /nextCtx\.view === iko\.ctx\.view/.test(appG), "a filtered check is tried once, a check clarification does not grow the cloud, and Iko stays open on the same view");
+  const hc = C.create("Sam", T0);
+  C.applyTopics(hc, [{ name: "Health", signal: "curious", asSubject: true }, { name: "Handle One", signal: "curious", asSubject: true }], T0);
+  const health = C.findSubject(hc, "Health");
+  ok(P.placeTopic(hc, { name: "Japanese Cooking", parent: "Health", placement: "child", target: health.id }, health.id).how === "parent", "Japanese cooking is not filed under Health");
+  ok(C.findSubject(hc, "Handle One") && learnTopicsFrom("please teach me what a fever is and how to handle one").length === 0, "an existing junk subject stays, and a new fever request does not add another");
   ok(/el\.lConf\.hidden = true/.test(appG.slice(appG.indexOf("function openTest("), appG.indexOf("function openTest(") + 1800)) && /\.testing #l-conf \{ display: none; \}/.test(cssG), "a subject test clears the previous Card earned box");
   ok(/id === "root"\) return;/.test(appG.slice(appG.indexOf("function markLast("), appG.indexOf("function markLast(") + 280)) && /openPanel\.keep = true/.test(appG) && /if \(!isRoot && !keep\) markLast\(/.test(appG), "Return to follows the latest lesson or topic, including a subject");
   ok(/Open always opens that topic's lesson/.test(appG) && /go\(x\);/.test(appG.slice(appG.indexOf("Open always opens"), appG.indexOf("Open always opens") + 220)), "Where Next Open opens the lesson");

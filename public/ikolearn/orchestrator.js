@@ -758,6 +758,15 @@
     var tw = trail.reduce(function (a, l) { return a.concat(words(l)); }, []);
     return words(label).some(function (w) { return tw.indexOf(w) >= 0; });
   }
+  function domainOf(label) {
+    var s = String(label || "");
+    if (/\b(vaccine|vaccination|fever|health|medicine|medical|disease|immune|virus|doctor|symptom)\b/i.test(s)) return "health";
+    if (/\b(cook|cooking|recipe|kitchen|baking|cuisine|food)\b/i.test(s)) return "food";
+    if (/\b(website|coding|programming|html|software)\b/i.test(s)) return "tech";
+    if (/\b(rome|roman|empire|ancient|dynasty|medieval)\b/i.test(s)) return "history";
+    return "";
+  }
+  function domainClash(a, b) { var x = domainOf(a), y = domainOf(b); return Boolean(x && y && x !== y); }
   function placeTopic(cloud, tp, focusId) {
     var label = C.cleanLabel(tp && tp.name), k = C.norm(label);
     if (!label || k === C.norm(cloud.name)) return null;
@@ -772,8 +781,10 @@
     var asParent = function () { return { how: "parent", label: label }; };
     var ask = function () { return focus ? { how: "ambiguous", target: focus.id, label: label } : broad ? asParent() : { how: "legacy", label: label }; };
     if (pl === "parent") return asParent();
+    if ((tp && tp.parent && domainClash(label, tp.parent)) || (focus && domainClash(label, focus.label) && pl !== "child")) return asParent();
     if (pl === "child") {
       var t = placeTarget(cloud, tp.target);
+      if (t && domainClash(label, t.label)) return asParent();
       if (!t) return broad ? asParent() : ask();
       /* a broad subject aimed at the focus (or the focus's own subject) is not clearly a subtopic: ask */
       if (broad && focus && C.ancestry(cloud, focus.id).indexOf(t.id) >= 0) return ask();
