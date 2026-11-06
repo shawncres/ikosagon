@@ -1273,10 +1273,10 @@ function jokeDistractor(option: string, question: string, right: string): boolea
 }
 
 /**
- * Check questions: question text and 2-4 distinct options, cleaned; the answer index must point at an option.
- * Joke, absurd, and literal-physical distractors are stripped. If the right option is notably the longest, the
- * question is dropped so the check is written again. The options are then shuffled (same order every time for the
- * same question), so the right one is not always first.
+ * Check and test questions: exactly 3 distinct options, cleaned; the answer index must point at an option.
+ * Joke, absurd, and literal-physical distractors are stripped. Fewer than 3 options left, or a right option that is
+ * notably the longest, drops the question so the check or test is written again. Extra options are trimmed to 3,
+ * keeping the right one. The options are then shuffled (same order every time for the same question).
  */
 export function parseQuestions(raw: unknown, max: number = LEARN_LIMITS.questions): Question[] {
   const out: Question[] = [];
@@ -1297,13 +1297,13 @@ export function parseQuestions(raw: unknown, max: number = LEARN_LIMITS.question
       const t = cleanText(plainReply(v), LEARN_LIMITS.optionChars);
       if (t && !opts.some((x) => sameLabel(x, t))) { opts.push(t); whyOf[t] = cleanText(plainReply(whyRaw[vi]), LEARN_LIMITS.whyChars + 40).replace(/[<>{}[\]`*_#|\\]/g, " ").trim(); }
     });
-    if (!right || opts.length < 2) continue;
+    if (!right || opts.length < 3) continue;
     const kept = opts.slice(0, LEARN_LIMITS.options);
     if (!kept.some((x) => sameLabel(x, right))) kept[kept.length - 1] = right;
     const code = cleanCode(o.code);
-    /* Strip near-absurd, joke, and literal-physical distractors before the order is mixed. If fewer than 2 options
-       remain, drop the question so an incomplete check is written again. A right option that is notably the longest
-       is dropped the same way (the strict retry asks for a similar length). */
+    /* Strip near-absurd, joke, and literal-physical distractors before the order is mixed. Every kind (recall, apply,
+       mistake, and a test question) needs exactly 3 options: fewer than 3 drops the question so it is written again.
+       A right option that is notably the longest is dropped the same way. */
     const ABS = /\b(always|never|all|every|none|nothing|everything|impossible|only ever|forever|under no circumstances)\b/i;
     const scienceHot = /\b(magma|lava|volcano|volcanic|molten|erupt)\b/i.test(q);
     const coldJoke = /\b(cold|ice|icy|frozen|freezing|snow)\b/i;
@@ -1315,21 +1315,17 @@ export function parseQuestions(raw: unknown, max: number = LEARN_LIMITS.question
         (scienceHot && coldJoke.test(x) && !/\b(rock|earth|crust|mantle|heat|hot|melt)\b/i.test(x))
       );
     const cleaned = kept.some(bad) ? kept.filter((x) => !bad(x)) : kept;
-    if (cleaned.length < 2 || !cleaned.some((x) => sameLabel(x, right))) continue;
+    if (cleaned.length < 3 || !cleaned.some((x) => sameLabel(x, right))) continue;
     if (notablyLongest(right, cleaned)) continue;
     const options = shuffleBy(cleaned, q);
     let answer = options.findIndex((x) => sameLabel(x, right));
-    const kind = (QUESTION_KINDS as readonly string[]).includes(String(o.kind)) ? (o.kind as Question["kind"]) : undefined;
-    /* Spot-the-mistake is specified as exactly 3 options. Fewer than 3 is dropped (the check is regenerated);
-       more than 3 is trimmed, keeping the right answer. */
-    if (kind === "mistake") {
-      if (options.length < 3) continue;
-      while (options.length > 3) {
-        const drop = options.length - 1 === answer ? options.length - 2 : options.length - 1;
-        options.splice(drop, 1);
-        if (drop < answer) answer -= 1;
-      }
+    while (options.length > 3) {
+      const drop = options.length - 1 === answer ? options.length - 2 : options.length - 1;
+      options.splice(drop, 1);
+      if (drop < answer) answer -= 1;
     }
+    if (options.length !== 3) continue;
+    const kind = (QUESTION_KINDS as readonly string[]).includes(String(o.kind)) ? (o.kind as Question["kind"]) : undefined;
     const why = options.map((x, xi) => (xi === answer ? "" : whyOf[x] || ""));
     out.push({ q, options, answer, ...(code ? { code } : {}), ...(kind ? { kind } : {}), ...(why.some(Boolean) ? { why } : {}) });
     if (out.length >= max) break;
@@ -1351,7 +1347,8 @@ export function parseTest(raw: unknown, allowed: string[]): TestQuestion[] | nul
     const topic = allowed.find((a) => sameLabel(a, want));
     if (!topic) continue;
     const [q] = parseQuestions([item], 1);
-    if (q && !out.some((x) => sameLabel(x.q, q.q))) out.push({ ...q, topic });
+    /* A test question is the same shape as a check question: exactly 3 options, or it is not asked. */
+    if (q && q.options.length === 3 && !out.some((x) => sameLabel(x.q, q.q))) out.push({ ...q, topic });
     if (out.length >= LEARN_LIMITS.testQuestions) break;
   }
   return out.length >= 2 ? out : null;
@@ -1538,9 +1535,9 @@ export function checkSystem(i: LearnInput, strict = false): string {
 const Q_ITEM = { type: "object", properties: { kind: { type: "string" }, q: { type: "string" }, options: { type: "array", items: { type: "string" } }, answer: { type: "integer" }, why: { type: "array", items: { type: "string" } } }, required: ["kind", "q", "options", "answer", "why"] };
 export const CHECK_SCHEMA = { type: "object", properties: { key_idea: { type: "string" }, questions: { type: "array", items: Q_ITEM }, retry: { type: "array", items: Q_ITEM } }, required: ["key_idea", "questions"] };
 export type CheckBlock = { questions: Question[]; retry: Question[]; key: string };
-/** A full check or nothing: three questions, one of each kind. */
+/** A full check or nothing: three questions, one of each kind, each with exactly 3 options. */
 export function validCheck(qs: Question[]): boolean {
-  return qs.length === 3 && QUESTION_KINDS.every((k) => qs.some((q) => q.kind === k));
+  return qs.length === 3 && qs.every((q) => q.options.length === 3) && QUESTION_KINDS.every((k) => qs.some((q) => q.kind === k));
 }
 export function parseCheck(raw: unknown, learnerName = ""): CheckBlock | null {
   const obj = jsonObject(raw);

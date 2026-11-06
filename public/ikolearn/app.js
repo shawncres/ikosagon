@@ -1446,16 +1446,20 @@
     return "";
   }
 
-  /* Check questions from the lesson's hidden block: radio-style options; the first answer to each counts. */
+  /* A stored question with fewer than 3 options is not a check. One of them makes the saved set incomplete. */
+  function shortSet(qs) {
+    return (Array.isArray(qs) ? qs : []).some(function (q) { return q && Array.isArray(q.options) && q.options.length < 3; });
+  }
+  /* Check questions from the lesson's hidden block: radio-style options; the first answer to each counts. Every kind needs 3 options. */
   function validQs(qs) {
     return (Array.isArray(qs) ? qs : []).filter(function (q) {
-      var minOpts = q && q.kind === "mistake" ? 3 : 2;
-      return q && typeof q.q === "string" && Array.isArray(q.options) && q.options.length >= minOpts && Number.isInteger(q.answer) && q.answer >= 0 && q.answer < q.options.length;
+      return q && typeof q.q === "string" && Array.isArray(q.options) && q.options.length >= 3 && Number.isInteger(q.answer) && q.answer >= 0 && q.answer < q.options.length;
     }).map(function (q) { return typeof q.code === "string" && q.code.length <= 600 ? q : Object.assign({}, q, { code: undefined }); }).slice(0, 3);
   }
-  /* A saved lesson is kept only when it is whole: worked example, check, a finished sentence, balanced fences. */
+  /* A saved lesson is kept only when it is whole: worked example, check, a finished sentence, balanced fences, and no short question. */
   function lessonBodyOk(les) {
     if (!les || typeof les.text !== "string" || !les.text.trim()) return false;
+    if (shortSet(les.qs) || shortSet(les.cur) || shortSet(les.rq)) return false;
     return L.complete(les.text, { check: validQs(les.qs).length > 0 || validQs(les.cur).length > 0 });
   }
   /*
@@ -1613,7 +1617,7 @@
   function freshCheck(id) {
     var les = state.lessons[id], ck = ckOf(id), q = state.quiz;
     if (!les || !q || q.id !== id) return;
-    var spare = validQs(les.rq);
+    var spare = shortSet(les.rq) ? [] : validQs(les.rq);
     ck.set = (ck.set || 0) + 1;
     q.qs = ck.set === 1 && spare.length >= 2 ? spare : shuffled(validQs(les.qs).length ? validQs(les.qs) : q.qs, id + ck.r + ck.set);
     les.cur = q.qs; /* the set on screen, kept so a return shows the same questions */
@@ -1633,7 +1637,7 @@
    */
   function refreshLocal(id) {
     var les = state.lessons[id], ck = ckOf(id) || {};
-    return Boolean(les && les.tk && (ck.miss || 0) <= 1 && validQs(les.rq).length >= 2 && (ck.set || 0) < 1);
+    return Boolean(les && les.tk && (ck.miss || 0) <= 1 && !shortSet(les.rq) && validQs(les.rq).length >= 2 && (ck.set || 0) < 1);
   }
   function refreshAttempt(id) {
     var les = state.lessons[id], ck = ckOf(id), q = state.quiz;
@@ -1976,6 +1980,7 @@
   var LESSON_EXCERPT = 5000;
   /* PR 118: a check is usable when it has a valid question; a new-style one (kinds) only when it is the full three */
   function needCheck(qs) {
+    if (shortSet(qs)) return true; /* a 2-option recall or apply question is written again, not shown */
     var v = validQs(qs);
     if (!v.length) return true;
     var kinds = v.filter(function (q) { return q.kind; }).length;
@@ -2440,7 +2445,7 @@
     animateIn(from);
     C.markOffered(state.cloud, pid);
     var cached = state.tests[pid];
-    if (cached && cached.n === labels.length && validTestQs(cached.qs, labels).length >= 2) {
+    if (cached && cached.n === labels.length && !shortSet(cached.qs) && validTestQs(cached.qs, labels).length >= 2) {
       state.test = { pid: pid, qs: validTestQs(cached.qs, labels), ans: Array.isArray(cached.ans) ? cached.ans.slice() : [], ids: ids };
       renderTest();
       return;
@@ -4428,9 +4433,10 @@
     try { state.lessons = JSON.parse(load(LS.lessons) || "{}") || {}; } catch { state.lessons = {}; }
     Object.keys(state.lessons).forEach(function (id) {
       var les = state.lessons[id];
-      if (les && les.text && !lessonBodyOk(les)) { delete les.text; delete les.qs; delete les.cur; les.ans = []; } /* a cut-off lesson is written again when opened */
+      if (les && les.text && !lessonBodyOk(les)) { delete les.text; delete les.qs; delete les.cur; les.ans = []; } /* a cut-off lesson, or one with a short question, is written again when opened */
     });
     try { state.tests = JSON.parse(load(LS.tests) || "{}") || {}; } catch { state.tests = {}; }
+    Object.keys(state.tests).forEach(function (id) { var t = state.tests[id]; if (t && shortSet(t.qs)) delete state.tests[id]; }); /* a saved test with a 2-option question is written again */
     try { var v = JSON.parse(load(LS.view) || "null"); state.view = v && Number.isFinite(v.z) ? v : null; } catch { state.view = null; }
     try { var sn = JSON.parse(load(LS.seen) || "null"); if (sn && sn.c && typeof sn.c === "object") state.seen = { c: sn.c, ev: Number(sn.ev) || 0, h: sn.h && typeof sn.h === "object" ? { cloud: sn.h.cloud ? 1 : 0, card: sn.h.card ? 1 : 0, deck: sn.h.deck ? 1 : 0, iko: sn.h.iko ? 1 : 0, grow: sn.h.grow ? 1 : 0, aboutCloud: sn.h.aboutCloud ? 1 : 0, aboutLesson: sn.h.aboutLesson ? 1 : 0, aboutDeck: sn.h.aboutDeck ? 1 : 0, askAge: sn.h.askAge ? 1 : 0, ageAsked: sn.h.ageAsked ? 1 : 0 } : {} }; } catch { /* keep the empty default */ }
     save(); /* writes a migrated (older -> v9) cloud back in the compact format, with the deck backfilled */

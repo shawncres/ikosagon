@@ -8,7 +8,7 @@ import {
   LEARN_LIMITS, CLOUD_OPEN, CLOUD_CLOSE, cleanName, cleanLabel, cleanMessages, parseLearnInput, SYSTEM_BASE, companionSystem, noticeSystem, replyLooksComplete, lessonLooksComplete, learnTopicFrom,
   buildContents, cardSystem, adjacentSystem, plainReply, parseCloudBlock, parseCard, parseAdjacent, createBlockSplitter,
   PATH_OPEN, PATH_CLOSE, lessonSystem, lessonContents, pathSystem, PATH_SCHEMA, CARD_SCHEMA, parsePath, parseChoices, parseLessonBlock, parseQuestions, parseBlurb, parseChain, checkSystem,
-  parseTest, testSystem, TEST_SCHEMA, createSystem, parseCreate, CREATE_SCHEMA, examplesSystem, parseExamples, EXAMPLES_SCHEMA, EXAMPLE_LIMITS, SIGNALS, parseReading,
+  parseTest, testSystem, TEST_SCHEMA, parseCheck, createSystem, parseCreate, CREATE_SCHEMA, examplesSystem, parseExamples, EXAMPLES_SCHEMA, EXAMPLE_LIMITS, SIGNALS, parseReading,
 } from "../lib/ikolearn/prompts.ts";
 import { LESSON_PACES } from "../lib/ikolearn/prompts.ts";
 import { DEFAULT_MODEL, FALLBACK_MODEL, GEMINI_BASE, chatBody, jsonBody, readSse } from "../lib/ikolearn/gemini.ts";
@@ -798,7 +798,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     { q: "Which of these could be a set?", options: ["cat, cat, dog", "dog, dog", "cat, dog, fish"], answer: 2 },
     { q: "Too short?", options: ["a", "b"], answer: 5 },
     { q: "What is **in** the set now?", options: ["red, blue", "Red, Blue", "blue", "green", "one", "two"], answer: 0 },
-    { q: "A third question that is fine", options: ["x", "y"], answer: 1 },
+    { q: "A third question that is fine", options: ["x", "y", "z"], answer: 1 },
     { q: "Ok?", options: ["x", "y"], answer: 0 },
     "junk",
   ]);
@@ -811,22 +811,27 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(rot >= 4, "parseQuestions: the right answer isn't always first", String(rot));
   eq(parseQuestions("nope"), [], "parseQuestions: junk -> none");
   /* PR 125: absurd / joke-science distractors drop the question (incomplete sets fall through to /check) */
-  const coldDrop = parseQuestions([{ q: "Where is magma found before it reaches the surface?", options: ["Deep underground", "Inside cold caves of ice", "In rivers"], answer: 0 }]);
-  ok(coldDrop.length === 1 && coldDrop[0].options.length === 2 && !/ice|cold/i.test(coldDrop[0].options.join(" ")), "parseQuestions: cold-ice cave distractor is stripped, plausible options kept");
+  eq(parseQuestions([{ q: "Where is magma found before it reaches the surface?", options: ["Deep underground", "Inside cold caves of ice", "In rivers"], answer: 0 }]), [], "parseQuestions: stripping a joke that leaves fewer than 3 options drops the question");
+  const coldKeep = parseQuestions([{ q: "Where is magma found before it reaches the surface?", options: ["Deep underground", "Inside cold caves of ice", "In rivers of water", "In open air"], answer: 0 }]);
+  ok(coldKeep.length === 1 && coldKeep[0].options.length === 3 && !/ice|cold/i.test(coldKeep[0].options.join(" ")), "parseQuestions: a joke is stripped when 3 real options remain");
   eq(parseQuestions([{ q: "What is lava made of?", options: ["Melted rock", "Always cold ice", "Made of cold ice"], answer: 0 }]), [], "parseQuestions: only-absurd ice-lava set is dropped (falls through to /check)");
   ok(parseQuestions([{ q: "Where is magma found before it reaches the surface?", options: ["Deep underground", "In rivers of water", "In open air"], answer: 0 }]).length === 1, "parseQuestions: plausible science mix-ups are kept");
   eq(parseQuestions([{ kind: "mistake", q: "Sam says two plus two is five. What went wrong?", options: ["One was counted twice", "The sum is four"], answer: 0 }]), [], "mistake: fewer than 3 options is rejected");
+  eq(parseQuestions([{ kind: "recall", q: "What does a set keep inside?", options: ["One of each", "Two of each"], answer: 0 }]), [], "recall: fewer than 3 options is dropped so the check is written again");
+  eq(parseQuestions([{ kind: "apply", q: "Which group works as a set?", options: ["cat and dog", "cat and cat"], answer: 0 }]), [], "apply: fewer than 3 options is dropped so the check is written again");
+  const recall4 = parseQuestions([{ kind: "recall", q: "What does a set keep inside?", options: ["One of each", "Two of each", "Three of each", "Four of each"], answer: 0 }]);
+  ok(recall4.length === 1 && recall4[0].options.length === 3 && recall4[0].options[recall4[0].answer] === "One of each", "recall: extra options are trimmed to exactly 3, the right one kept");
   const mk3 = parseQuestions([{ kind: "mistake", q: "Sam says two plus two is five. What went wrong?", options: ["One was counted twice", "The sum is four", "Addition does not apply"], answer: 0 }]);
   ok(mk3.length === 1 && mk3[0].kind === "mistake" && mk3[0].options.length === 3 && mk3[0].options[mk3[0].answer] === "One was counted twice", "mistake: exactly 3 options kept");
   const mk4 = parseQuestions([{ kind: "mistake", q: "Sam says two plus two is five. What went wrong?", options: ["One was counted twice", "The sum is four", "Addition does not apply", "A fourth extra option here"], answer: 0 }]);
   ok(mk4.length === 1 && mk4[0].options.length === 3 && mk4[0].options[mk4[0].answer] === "One was counted twice", "mistake: extra options trimmed to 3, the right one kept");
   ok(/exactly 3 options, never 2/.test(lessonSystem(parseLearnInput({ mode: "notice", name: "Sam", focus: "Sets", messages: [] }))) && /exactly 3 options, never 2/.test(checkSystem(parseLearnInput({ mode: "notice", name: "Sam", focus: "Sets", messages: [], lesson: "INTRO: A set keeps one of each." }))), "mistake prompt: exactly 3 options, never 2");
-  const cheese = parseQuestions([{ q: "What is the moon made of?", options: ["Rock and dust", "It is made of cheese", "Mostly iron"], answer: 0 }]);
-  ok(cheese.length === 1 && cheese[0].options.length === 2 && !/cheese/i.test(cheese[0].options.join(" ")), "parseQuestions: a cheese-moon joke is stripped, the near-miss stays");
+  eq(parseQuestions([{ q: "What is the moon made of?", options: ["Rock and dust", "It is made of cheese", "Mostly iron"], answer: 0 }]), [], "parseQuestions: a cheese-moon joke that leaves fewer than 3 options drops the question");
   eq(parseQuestions([{ q: "What is magma?", options: ["Melted rock", "A kind of ice cream", "Cold candy"], answer: 0 }]), [], "parseQuestions: joke-food distractors on magma drop the question");
-  ok(parseQuestions([{ q: "Which total is larger?", options: ["The one with interest added", "None of the above", "The one that stays the same"], answer: 0 }])[0].options.length === 2, "parseQuestions: filler options are stripped");
-  const ovens = parseQuestions([{ q: "Why do companies have shareholders?", options: ["They share ownership of the company", "They manage the day to day work", "Ovens are too heavy for individual shareholders to carry"], answer: 0 }]);
-  ok(ovens.length === 1 && ovens[0].options.length === 2 && !/oven|heavy/i.test(ovens[0].options.join(" ")) && ovens[0].options[ovens[0].answer] === "They share ownership of the company", "parseQuestions: a literal-physical joke (ovens too heavy for shareholders) is stripped");
+  eq(parseQuestions([{ q: "Which total is larger?", options: ["The one with interest added", "None of the above", "The one that stays the same"], answer: 0 }]), [], "parseQuestions: filler that leaves fewer than 3 options drops the question");
+  const fillerKept = parseQuestions([{ q: "Which total is larger?", options: ["The one with interest added", "None of the above", "The one that stays the same", "The one that shrinks"], answer: 0 }]);
+  ok(fillerKept.length === 1 && fillerKept[0].options.length === 3 && !/none of the above/i.test(fillerKept[0].options.join(" ")), "parseQuestions: filler is stripped when 3 real options remain");
+  eq(parseQuestions([{ q: "Why do companies have shareholders?", options: ["They share ownership of the company", "They manage the day to day work", "Ovens are too heavy for individual shareholders to carry"], answer: 0 }]), [], "parseQuestions: a literal-physical joke that leaves fewer than 3 options drops the question");
   eq(parseQuestions([{ q: "Why do companies have shareholders?", options: ["Ovens are too heavy for shareholders to carry", "Shareholders carry the ovens home", "Investors lift the building"], answer: 0 }]), [], "parseQuestions: only literal-physical gags drop the question");
   const carry = parseQuestions([{ q: "Why is a boulder hard to move?", options: ["It is too heavy for one person to carry", "It is too heavy for two people to lift", "It rolls uphill by itself"], answer: 0 }]);
   ok(carry.length === 1 && carry[0].options.length === 3 && carry[0].options[carry[0].answer] === "It is too heavy for one person to carry", "parseQuestions: a physical near-miss stays when the right answer is physical too");
@@ -842,15 +847,18 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const appUi = fs.readFileSync("public/ikolearn/app.js", "utf8"), viewUi = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8");
   ok(/confSays = lessonDone/.test(appUi) && /"You learned: " \+ tk/.test(appUi) && !/picked up more colour/.test(appUi) && /after\.tier > before\.tier/.test(appUi) && /card is " \+ after\.tierName/.test(appUi), "earn: You learned is said once, and a tier change names the mark the card shows");
   ok(/function prepareAhead\(/.test(appUi) && /function prefetchFirstLesson\(/.test(appUi) && /prefetchFirstLesson\(\)/.test(appUi) && /prepareAhead\(P\.pathNext/.test(appUi), "the first suggested lesson is written ahead with the same prepare-ahead slot");
+  ok(/function shortSet\(/.test(appUi) && /options\.length >= 3/.test(appUi) && !/mistake" \? 3 : 2/.test(appUi) && /shortSet\(les\.qs\)/.test(appUi) && /shortSet\(cached\.qs\)/.test(appUi) && /shortSet\(t\.qs\)/.test(appUi), "a saved lesson or test with any question under 3 options is incomplete and written again");
+  const Q3 = (kind, q) => ({ kind, q, options: ["the right idea here", "a near miss here", "another near miss"], answer: 0, why: ["", "close", "also close"] });
+  ok(parseCheck(JSON.stringify({ key_idea: "A set keeps one of each thing you put in.", questions: [{ ...Q3("recall", "What does a set keep inside?"), options: ["one of each", "two of each"], answer: 0 }, Q3("apply", "Which group works as a set here?"), Q3("mistake", "Sam counted a repeat twice. What went wrong?")] })) === null, "parseCheck: a short recall question is not a check, so it is written again");
   ok(/-vy \/ vl/.test(viewUi) && /pill\(l\.x - plateW/.test(viewUi) && /strokeText/.test(viewUi), "cloud labels sit off the branch line, on a paper plate");
   ok(/plausible near-misses/.test(testSystem(parseLearnInput({ mode: "notice", name: "Sam", focus: "Magma", messages: [], material: [{ label: "Magma", line: "Melted rock." }] }), true)) && /Second try: replace every silly/.test(testSystem(parseLearnInput({ mode: "notice", name: "Sam", focus: "Magma", messages: [], material: [{ label: "Magma", line: "Melted rock." }] }), true)), "test prompt: wrong options are near-misses, and the retry says so");
   ok(parseBlurb("A set keeps one of each thing.") === "A set keeps one of each thing." && parseBlurb("Sam, a set keeps one of each.", "Sam") === "" && parseBlurb("ok") === "", "parseBlurb: short, plain, never the learner's name");
-  const blk2 = parseLessonBlock('{"steps":[],"choices":[],"questions":[{"q":"Which of these could be a set?","options":["a, a","a, b"],"answer":1}],"blurb":"A set keeps one of each thing."}', "Sam", "Sets", false);
+  const blk2 = parseLessonBlock('{"steps":[],"choices":[],"questions":[{"q":"Which of these could be a set?","options":["a, a","a, b","a, c"],"answer":1}],"blurb":"A set keeps one of each thing."}', "Sam", "Sets", false);
   ok(blk2 && blk2.questions.length === 1 && blk2.blurb === "A set keeps one of each thing.", "parseLessonBlock: questions and blurb alone are enough");
 
   // lessonEvents: the questions ride in the same call, hidden from the streamed text
   const LI = parseLearnInput({ mode: "notice", name: "Sam", focus: "Sets", trail: "Making & Coding > Programming > Python > Sets", wantPath: false, messages: [] });
-  const f = fakeFetch([() => res(200, sse(["INTRO: A set keeps one of each, Sam.\nEXPLAIN: Repeats drop out.\nSTEP: Make one.\nEXAMPLE: Cat and cat and dog becomes cat and dog.\nNEXT: Try another set.\n", `${PATH_OPEN}{"steps":[],"choices":[],"questions":[{"q":"Which of these could be a set?","options":["cat, cat","cat, dog"],"answer":1}],`, `"blurb":"A set keeps one of each thing."}${PATH_CLOSE}`]))]);
+  const f = fakeFetch([() => res(200, sse(["INTRO: A set keeps one of each, Sam.\nEXPLAIN: Repeats drop out.\nSTEP: Make one.\nEXAMPLE: Cat and cat and dog becomes cat and dog.\nNEXT: Try another set.\n", `${PATH_OPEN}{"steps":[],"choices":[],"questions":[{"q":"Which of these could be a set?","options":["cat, cat","cat, dog","cat, fish"],"answer":1}],`, `"blurb":"A set keeps one of each thing."}${PATH_CLOSE}`]))]);
   const ev = await collect(lessonEvents(LI, ENV, f));
   const pe = ev.find((e) => e.t === "path"), shown = ev.filter((e) => e.t === "delta").map((e) => e.text).join("");
   ok(pe && pe.questions.length === 1 && pe.questions[0].options[pe.questions[0].answer] === "cat, dog" && pe.blurb === "A set keeps one of each thing." && f.calls.length === 1, "lessonEvents: questions and the card line arrive in the one lesson call");
@@ -1380,6 +1388,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const pt = parseTest({ questions: [tq("Sets", "What does a set keep?"), tq("Dragons", "What do dragons eat?"), tq("loops", "What does a loop do again?"), tq("Sets", "What does a set keep?")] }, ["Sets", "Loops"]);
   ok(pt.length === 2 && pt.every((x) => ["Sets", "Loops"].includes(x.topic)) && pt[1].topic === "Loops", "parseTest: questions on unlearned topics are dropped; duplicates too");
   ok(parseTest({ questions: [tq("Sets", "What does a set keep?")] }, ["Sets", "Loops"]) === null && parseTest("junk", ["Sets"]) === null, "parseTest: fewer than 2 good questions is not a test");
+  ok(parseTest({ questions: [tq("Sets", "What does a set keep?"), { q: "What does a loop do again?", options: ["once more", "twice more"], answer: 0, topic: "Loops" }] }, ["Sets", "Loops"]) === null, "parseTest: a question with fewer than 3 options is dropped, and one question is not a test");
   ok(TEST_SCHEMA.properties.questions.items.required.includes("topic"), "test schema asks for the topic");
   const tf = fakeFetch([() => res(200, { candidates: [{ content: { parts: [{ text: JSON.stringify({ questions: [tq("Sets", "What does a set keep?"), tq("Loops", "What does a loop repeat?"), tq("Maps", "Where is north?")] }) }] } }] })]);
   const to = await testFor(TI, ENV, tf);
@@ -2513,7 +2522,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const pr = parseReading(bad);
   eq(pr.map((r) => r.q), ["how volcanoes erupt", "magma chamber", "plate tectonics"], "parseReading: anything link-like is dropped; at most 3");
   ok(pr[1].kind === "watch" && pr[0].kind === "read" && parseReading("junk").length === 0 && parseReading([{ title: "A b c", q: "x y z", kind: "bogus" }])[0].kind === "read", "parseReading: kind read or watch; junk is nothing");
-  const blk = parseLessonBlock(JSON.stringify({ questions: [{ q: "What is lava?", options: ["Melted rock", "Ice", "Wind"], answer: 0 }], choices: [], reading: bad }), "Mia", "Volcanoes");
+  const blk = parseLessonBlock(JSON.stringify({ questions: [{ q: "What is lava?", options: ["Melted rock", "Ice", "Solid metal", "Wind"], answer: 0 }], choices: [], reading: bad }), "Mia", "Volcanoes");
   ok(blk && blk.reading.length === 3 && !JSON.stringify(blk).includes("evil"), "the lesson block carries the cleaned reading list");
   // the client re-checks and builds links only to the allowlisted search pages
   eq(L.cleanReading(bad).map((r) => r.q), ["how volcanoes erupt", "magma chamber", "plate tectonics"], "cleanReading (device): the same filter, for cached lessons too");
