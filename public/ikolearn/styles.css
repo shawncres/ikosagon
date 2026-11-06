@@ -322,7 +322,7 @@ button.gcard:hover { border-color: var(--soft); }
 .quiz.test .phase-head::before { content: ""; }
 .q-lede { color: var(--soft); font-size: 15.5px; margin: 0 0 6px; }
 .q-topic { display: block; font-size: 12.5px; color: var(--soft); font-style: italic; }
-.testing .l-example, .testing #l-done { display: none; }
+.testing .l-example, .testing #l-done, .testing #l-conf { display: none; }
 /* the card's own branches, under the holder: a disclosure (one summary line on phones, open on wide screens) */
 .h-kids { font-size: 14px; color: var(--soft); margin-top: 10px; }
 .h-fold > summary { list-style: none; display: flex; align-items: baseline; gap: 8px; min-height: 34px; padding: 6px 0 2px; cursor: pointer; }

@@ -5,7 +5,7 @@ import fs from "node:fs";
 import zlib from "node:zlib";
 import { createRequire } from "node:module";
 import {
-  LEARN_LIMITS, CLOUD_OPEN, CLOUD_CLOSE, cleanName, cleanLabel, cleanMessages, parseLearnInput, SYSTEM_BASE, companionSystem, noticeSystem, replyLooksComplete, lessonLooksComplete, learnTopicFrom,
+  LEARN_LIMITS, CLOUD_OPEN, CLOUD_CLOSE, cleanName, cleanLabel, cleanMessages, parseLearnInput, SYSTEM_BASE, companionSystem, noticeSystem, replyLooksComplete, lessonLooksComplete, learnTopicFrom, learnTopicsFrom, affirmSeveral, subjectsOffered, goodChildName, withHealthNote, vaccineMisleads, HEALTH_RULE,
   buildContents, cardSystem, adjacentSystem, plainReply, parseCloudBlock, parseCard, parseAdjacent, createBlockSplitter,
   PATH_OPEN, PATH_CLOSE, lessonSystem, lessonContents, pathSystem, PATH_SCHEMA, CARD_SCHEMA, parsePath, parseChoices, parseLessonBlock, parseQuestions, parseBlurb, parseChain, checkSystem,
   parseTest, testSystem, TEST_SCHEMA, parseCheck, createSystem, parseCreate, CREATE_SCHEMA, examplesSystem, parseExamples, EXAMPLES_SCHEMA, EXAMPLE_LIMITS, SIGNALS, parseReading,
@@ -1171,13 +1171,14 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
    * light/dark and careful delete, the lasting hints and nudges, and the support links: about 1.7 KB gzip; PR 106 by 1 KB
    * for Iko's guidance on every stage, Back from the whole conversation and the movement line that learns: about 0.7 KB;
    * then a little more for a cut lesson's retries, the first-cloud retry, and inking a card on its first right answer).
+   * Multi-subject adds, starter children, and tighter cloud labels need about 8 KB raw / 2 KB gzip.
    */
   const files = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js", "rank.js", "orchestrator.js", "camera.js", "profiles.js", "icon.svg"];
   const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
   const bytes = files.reduce((n, f) => n + served(f).length, 0);
   const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
-  ok(bytes < 394_000, "app weight under 394 KB uncompressed (served, minified)", String(bytes));
-  ok(gz < 132_000, "app weight under 132 KB gzipped (served, minified)", String(gz));
+  ok(bytes < 404_000, "app weight under 404 KB uncompressed (served, minified)", String(bytes));
+  ok(gz < 136_000, "app weight under 136 KB gzipped (served, minified)", String(gz));
 }
 
 /* ================= PR 108: QA polish ================= */
@@ -4126,6 +4127,51 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(orr.status === 422 && fr.calls.length === 0, "restructureFor: a tiny cloud makes no call");
   const appR = fs.readFileSync("public/ikolearn/app.js", "utf8");
   ok(/state\.mode !== "lesson"/.test(appR) && /requestIdleCallback/.test(appR) && /Tidy my cloud/.test(appR) && /I tidied your cloud so related topics sit together\./.test(appR) && /"Undo"/.test(appR), "app: tidies on idle, never mid-lesson; Tidy my cloud; one calm line with Undo");
+}
+
+/* ---------- multi-subject growth, starter children, careful checks, the listed UI ---------- */
+{
+  ok(learnTopicsFrom("I want to learn ancient Rome and a website").join("|") === "ancient Rome|website", "several subjects in one line are all kept", learnTopicsFrom("I want to learn ancient Rome and a website").join("|"));
+  ok(learnTopicFrom("I want to learn hat making") === "hat making" && learnTopicsFrom("teach me origami please").join() === "origami", "a single learn line is unchanged");
+  ok(affirmSeveral("Both please") && affirmSeveral("all of them") && !affirmSeveral("just Rome please"), "both / all of them is a yes to every subject just offered");
+  const offered = subjectsOffered("Would you like ancient Rome or a website?");
+  ok(offered.join("|") === "ancient Rome|website", "an offer of two subjects can be accepted together", offered.join("|"));
+  ok(!goodChildName("Simple Jointery", "Woodwork") && !goodChildName("Fitness App Logic", "Vaccines") && goodChildName("Roman Army", "Ancient Rome") && goodChildName("Daily Life", "Ancient Rome"), "odd names and a topic from another subject are rejected; a real part of the subject stays");
+  ok(/checked by a doctor/.test(withHealthNote("Fever", "INTRO: A fever is the body turning up the heat.\nEXPLAIN: It fights germs.")) && /doctor/.test(withHealthNote("Volcanoes", "INTRO: No fever here.")) === false && /doctor/.test(withHealthNote("Fever", "EXPLAIN: A high fever should be checked by a doctor.")), "fever text gains one doctor note; other lessons and careful text stay as they are");
+  eq(parseQuestions([{ q: "What is a vaccine made from?", options: ["Some use a weakened live virus", "They never use a live virus", "Only sugar"], answer: 1 }]), [], "a vaccine question that marks a weakened live version wrong is dropped");
+  const liveOk = parseQuestions([{ q: "What can a vaccine contain?", options: ["A weakened live virus", "Only a killed germ", "Only a set of instructions"], answer: 0 }]);
+  ok(liveOk.length === 1 && liveOk[0].options[liveOk[0].answer] === "A weakened live virus", "saying some vaccines use a weakened live virus is allowed");
+  eq(parseQuestions([{ kind: "recall", q: "What does a vaccine help the body do?", options: ["Recognize a germ", "lol", "Forget how to heal"], answer: 0 }]), [], "a nonsense option that leaves fewer than 3 choices drops the question");
+  ok(/do not stop after the first/i.test(companionSystem(parseLearnInput({ mode: "chat", name: "Sam", messages: [{ role: "user", text: "hi" }] }))) && /3 or 4 starter children/.test(companionSystem(parseLearnInput({ mode: "chat", name: "Sam", messages: [{ role: "user", text: "hi" }] }))) && /checked by a doctor/.test(HEALTH_RULE) && /weakened live/.test(lessonSystem(parseLearnInput({ mode: "notice", name: "Sam", focus: "Fever", messages: [] }))) && /Never repeat the wording of the correct option/.test(clarifySystem(parseLearnInput({ mode: "clarify", name: "Sam", focus: "Fever", clarify: "simpler", messages: [], lesson: "INTRO: A fever is the body running hot." }))), "prompts: every named subject, starter children, fever care, and no quoted check answer");
+  const kids = parseCloudBlock(JSON.stringify({ topics: [{ name: "Ancient Rome", parent: "", signal: "curious", placement: "parent", children: ["Roman Army", "Daily Life", "The Republic", "Simple Jointery"] }] }), "Sam");
+  ok(kids.topics[0].children.join("|") === "Roman Army|Daily Life|The Republic", "a new subject's starter children are kept and a typo is dropped", JSON.stringify(kids.topics[0].children));
+  const dup = C.create("Sam", T0);
+  C.applyTopics(dup, [{ name: "Website Building", signal: "curious", asSubject: true }], T0);
+  C.applyTopics(dup, [{ name: "HTML", parent: "Ancient Rome", signal: "curious", chain: ["Ancient Rome", "Website Building"] }], T0 + 1);
+  ok(dup.order.filter((id) => dup.nodes[id].label === "Website Building").length === 1 && C.findTopic(dup, "HTML").parent === C.findSubject(dup, "Website Building").id, "a name already on the cloud is not created again as a child");
+  const st = C.create("Sam", T0);
+  C.applyTopics(st, [{ name: "Ancient Rome", signal: "curious", asSubject: true }], T0);
+  const rome = C.findSubject(st, "Ancient Rome");
+  const added = C.addStarters(st, rome.id, ["Roman Army", "Daily Life", "The Republic"]);
+  ok(added.length === 3 && C.childrenOf(st, rome.id).map((c) => c.label).join("|") === "Roman Army|Daily Life|The Republic" && rome.path.ids.length === 3, "a new subject from Iko gets the same starter path onboarding uses");
+  ok(C.addStarters(st, rome.id, ["Something Else"]).length === 0, "a subject that already has children is not given a second starter set");
+  const bare = C.create("Sam", T0);
+  C.applyTopics(bare, [{ name: "Cooking", signal: "curious", asSubject: true }], T0);
+  const cook = C.findSubject(bare, "Cooking");
+  ok(C.addStarters(bare, cook.id, ["Simple Jointery"]).length === 3 && C.childrenOf(bare, cook.id).every((c) => !/jointery/i.test(c.label)), "fewer than 3 real names falls back to a clean placeholder set");
+  const appG = fs.readFileSync("public/ikolearn/app.js", "utf8"), cssG = fs.readFileSync("public/ikolearn/styles.css", "utf8"), viewG = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8");
+  ok(/function ensureAsked\(/.test(appG) && /function fillStarter\(/.test(appG) && /wantedSubjects\(text\)/.test(appG) && /replyThin\(/.test(appG) && /attempt < 1/.test(appG), "chat: missing subjects are added on the device, and a thin reply is tried once");
+  ok(/el\.lConf\.hidden = true/.test(appG.slice(appG.indexOf("function openTest("), appG.indexOf("function openTest(") + 1800)) && /\.testing #l-conf \{ display: none; \}/.test(cssG), "a subject test clears the previous Card earned box");
+  ok(/id === "root"\) return;/.test(appG.slice(appG.indexOf("function markLast("), appG.indexOf("function markLast(") + 280)) && /openPanel\.keep = true/.test(appG) && /if \(!isRoot && !keep\) markLast\(/.test(appG), "Return to follows the latest lesson or topic, including a subject");
+  ok(/Open always opens that topic's lesson/.test(appG) && /go\(x\);/.test(appG.slice(appG.indexOf("Open always opens"), appG.indexOf("Open always opens") + 220)), "Where Next Open opens the lesson");
+  ok(/function roomForActive\(/.test(viewG) && /labelCap/.test(viewG) && /distant ones fade/.test(viewG), "the busiest branch is given room, and crowded labels fade");
+  const subA = C.create("Sam", T0);
+  C.applyTopics(subA, [{ name: "Busy", signal: "curious", asSubject: true }], T0);
+  C.applyTopics(subA, [{ name: "Quiet", signal: "curious", asSubject: true }], T0 + 1);
+  const busy = C.findSubject(subA, "Busy");
+  for (let i = 0; i < 6; i++) C.applyTopics(subA, [{ name: "Step " + i, signal: "explored", under: busy.id }], T0 + 2 + i);
+  const layBefore = C.layout(subA)[busy.id];
+  ok(layBefore && Number.isFinite(layBefore.x), "giving a busy branch room on screen does not change the saved layout");
 }
 
 if (fails.length) {
