@@ -488,6 +488,14 @@
     /* a subject that was asked for and is already there: that one is shown (no duplicate) */
     if (!landed) landed = reused.filter(function (id) { return raw.some(function (tp) { return tp.placement && C.norm(C.cleanLabel(tp.name)) === C.norm(nodeOf(id) ? nodeOf(id).label : ""); }); })[0];
     if (landed) revealNode(landed);
+    /* a new parent from Iko arrives with starter children when the reply named good ones */
+    raw.forEach(function (tp) {
+      if (!tp || !tp.children || tp.children.length < 3) return;
+      var sub = C.subjects(state.cloud).filter(function (s) { return s.key === C.norm(C.cleanLabel(tp.name)); })[0];
+      if (!sub || C.childrenOf(state.cloud, sub.id).length) return;
+      var kids = tp.children.filter(function (name) { return goodChild(name, sub.label); });
+      if (kids.length >= 3) C.addStarters(state.cloud, sub.id, kids);
+    });
     asks.forEach(function (a) {
       push({ role: "place", plan: { name: C.cleanLabel(a.tp.name), signal: a.tp.signal || "curious", target: a.plan.target, blurb: a.tp.blurb || "" } });
     });
@@ -497,7 +505,49 @@
       var hit = C.findTopic(state.cloud, tp.name);
       if (hit && grown.indexOf(hit.id) >= 0 && P.needsBridge(state.cloud, hit.id, (tp.chain || []).length) && state.bridgeQueue.indexOf(hit.id) < 0) state.bridgeQueue.push(hit.id);
     });
-    return { topic: topics[0] || (asks[0] && asks[0].tp) || null };
+    return { topic: topics[0] || (asks[0] && asks[0].tp) || null, parents: r.parentsCreated.slice() };
+  }
+  /* Subjects the learner named that the reply did not add. Each one is a parent. A name already anywhere is left as it is. */
+  function ensureAsked(names) {
+    var made = [];
+    (names || []).forEach(function (raw) {
+      var label = titleTopic(raw);
+      if (!label || C.findAny(state.cloud, label)) return;
+      var tp = { name: label, signal: "curious", placement: "parent", chain: [], parent: "" };
+      var plan = P.placeTopic(state.cloud, tp, null);
+      if (!plan || plan.how === "reuse") return;
+      var gr = C.applyTopics(state.cloud, [P.placedTopic(tp, { how: "parent", label: label })]);
+      var id = gr.parentsCreated[0];
+      if (id) made.push(id);
+    });
+    if (made.length) {
+      refreshViews(made);
+      push({ role: "grow", text: "Your cloud grew: " + made.map(function (id) { return "new subject " + nodeOf(id).label; }).join(" · "), open: made[0] });
+      revealNode(made[0]);
+    }
+    return made;
+  }
+  /* New subjects with no children: one creation call for 3 or 4 real parts, then a clean placeholder set. */
+  function fillStarter(id) {
+    var n = nodeOf(id);
+    if (!n || n.parent || C.childrenOf(state.cloud, id).length >= 3) return Promise.resolve();
+    state.starterTried = state.starterTried || {};
+    if (state.starterTried[id]) { C.addStarters(state.cloud, id, []); return Promise.resolve(); }
+    state.starterTried[id] = 1;
+    return postJson("/create", Object.assign(basePayload(id), { mode: "notice" }, P.createRequest(state.cloud, "next", id))).then(function (j) {
+      if (!nodeOf(id) || C.childrenOf(state.cloud, id).length) return;
+      var names = [];
+      if (j && j.ok && j.items && j.items[0] && Array.isArray(j.items[0].children)) {
+        j.items[0].children.forEach(function (c) { if (c && goodChild(c.name, nodeOf(id).label)) names.push(c.name); });
+      }
+      C.addStarters(state.cloud, id, names.length >= 3 ? names : []);
+      refreshViews(C.childrenOf(state.cloud, id).map(function (c) { return c.id; }));
+    });
+  }
+  function fillStarters(ids) {
+    var seq = Promise.resolve();
+    (ids || []).slice(0, 3).forEach(function (id) { seq = seq.then(function () { return fillStarter(id); }); });
+    return seq;
   }
   /*
    * A node just made (or found) from a request: the camera glides to it and its selection card opens, calmly. Not on
@@ -564,16 +614,95 @@
    * PR chat-complete: clear "I want to learn X" / "add X" / "teach me X" lines. Used after a chat turn when the
    * model cut off before the cloud block, so the cloud still grows (anything, any time) without a second call.
    */
-  function learnTopicFrom(text) {
+  function learnRest(text) {
     var t = String(text || "").replace(/\s+/g, " ").trim();
-    if (!t || t.length > 120) return "";
+    if (!t || t.length > 160) return "";
     t = t.replace(/[.!?]+$/g, "").trim();
     var m = t.match(/^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:(?:i(?:'d| would)?\s+like\s+to|i\s+want\s+to|i\s+wanna|let'?s|help\s+me)\s+)?(?:learn|study|start|add|explore|teach\s+me)\s+(.+)$/i);
     if (!m) return "";
     var topic = m[1].replace(/^(?:about|more\s+about|how\s+to)\s+/i, "").replace(/\s+please$/i, "").trim().replace(/^(?:a|an|the)\s+/i, "").trim();
-    if (topic.length < 2 || topic.length > 40) return "";
+    if (topic.length < 2 || topic.length > 100) return "";
     if (/^(something|anything|everything|this|that|it)$/i.test(topic)) return "";
     return topic;
+  }
+  function splitSubjects(phrase) {
+    var out = [];
+    String(phrase || "").split(/\s*(?:,|;|\/|&|\band\b|\bor\b)\s*/i).forEach(function (part) {
+      var p = part.replace(/^(?:a|an|the|about|more about|how to)\s+/i, "").replace(/[.!?]+$/g, "").replace(/\s+/g, " ").trim();
+      if (p.length < 2 || p.length > 40) return;
+      if (/^(something|anything|everything|this|that|it|both|please|yes|them|those|these|all)$/i.test(p)) return;
+      if (!out.some(function (y) { return y.toLowerCase() === p.toLowerCase(); })) out.push(p);
+    });
+    return out.slice(0, 4);
+  }
+  function learnTopicFrom(text) {
+    var topic = learnRest(text);
+    if (!topic) return "";
+    var parts = splitSubjects(topic);
+    if (parts.length <= 1 && topic.length > 40) return "";
+    return parts[0] || "";
+  }
+  function learnTopicsFrom(text) {
+    var topic = learnRest(text);
+    if (!topic) return [];
+    var parts = splitSubjects(topic);
+    if (parts.length <= 1 && topic.length > 40) return [];
+    return parts;
+  }
+  function affirmSeveral(text) {
+    var t = String(text || "").toLowerCase().replace(/[.!?\s]+$/g, "").trim();
+    return /^(?:please\s+)?(?:yes[, ]+)?(?:both(?:\s+of\s+(?:them|those|these))?|all of (?:them|these|those)|the both|yes to both)(?:\s+please)?$/.test(t);
+  }
+  function subjectsOffered(text) {
+    var t = String(text || "").replace(/\s+/g, " ").trim();
+    if (!t) return [];
+    var m = t.match(/(?:would you like|how about|we could (?:do|add|start)|either|choose|between|want(?: to learn)?)\s+([^?]{3,140})/i);
+    return splitSubjects((m ? m[1] : t).replace(/\b(?:or both|both of them|both)\b/gi, " "));
+  }
+  function wantedSubjects(text) {
+    var many = learnTopicsFrom(text);
+    if (many.length > 1) return many;
+    if (affirmSeveral(text)) {
+      var prev = "";
+      for (var i = state.thread.length - 1; i >= 0; i--) {
+        var msg = state.thread[i];
+        if (msg.role === "model" && msg.text && !msg.streaming && !msg.local) { prev = msg.text; break; }
+      }
+      var off = subjectsOffered(prev);
+      if (off.length > 1) return off;
+    }
+    return many;
+  }
+  function replyThin(text, asked) {
+    var t = String(text || "").trim();
+    if (!t) return true;
+    var words = t.split(/\s+/).filter(Boolean);
+    if (!replyLooksComplete(t) && !finishSpoken(t)) return true;
+    if (words.length <= 1 && asked && asked.length) return true;
+    return false;
+  }
+  /* A child name worth planting: plain spelling, and not from a different subject than its parent. */
+  function goodChild(name, parent) {
+    var n = C.cleanLabel(name);
+    if (!n || n.length < 2 || n.length > 32 || n.split(/\s+/).length > 4) return false;
+    if (/\b(jointery|recieve|seperate|app logic|asdf)\b/i.test(n) || /(.)\1{2,}/i.test(n)) return false;
+    var domain = function (s) {
+      if (/\b(vaccine|vaccination|fever|health|medicine|medical|disease|immune|virus|doctor)\b/i.test(s)) return "health";
+      if (/\b(app|software|code|coding|website|programming|algorithm|html)\b/i.test(s)) return "tech";
+      if (/\b(rome|roman|empire|ancient|dynasty|medieval)\b/i.test(s)) return "history";
+      return "";
+    };
+    var a = domain(n), b = domain(parent || "");
+    if (a && b && a !== b) return false;
+    return true;
+  }
+  function withHealthNote(focus, text) {
+    var src = String(text || "");
+    if (!/\bfever\b/i.test(focus) && !/turn(?:ing|s)? up the heat|body (?:runs|running) hot/i.test(src)) return src;
+    if (/\b(doctor|clinician|medical care|checked by)\b/i.test(src)) return src;
+    var note = "A fever is more than the body turning up the heat. A high or persistent fever should be checked by a doctor.";
+    if (/EXPLAIN\s*:/i.test(src)) return src.replace(/\s*$/, "") + "\nEXPLAIN: " + note;
+    return src.replace(/\s*$/, "") + (src.trim() ? "\n\n" : "") + note;
   }
   function titleTopic(s) {
     return String(s || "").split(/\s+/).map(function (w) {
@@ -930,25 +1059,40 @@
     /* the focus is what is on screen: in Iko's sheet, the node of the screen it was opened on (none on the cloud with
        nothing selected); in the whole conversation, the focus shown above the composer. Never an earlier screen's node. */
     var fid = iko.open && iko.ctx ? (nodeOf(iko.ctx.id) ? iko.ctx.id : null) : state.focus;
-    var learn = learnTopicFrom(text), grew = false;
+    var asked = wantedSubjects(text);
+    var learn = asked[0] || learnTopicFrom(text), grew = false, attempt = 0, bare = [];
     var body = Object.assign(basePayload(fid, text), { mode: "chat", messages: history(), screen: iko.open && iko.ctx ? screenOf(iko.ctx) : { view: "chat" } });
-    stream("/chat", body, {
-      delta: function (t) { m.text += t; upsert(m); scrollDown(); },
-      cloud: function (ev) {
-        var r = grow(ev, fid);
-        if ((ev.topics && ev.topics.length) || (ev.ghosts && ev.ghosts.length)) grew = true;
-        if (r.topic) { m.topic = r.topic.name; m.parent = r.topic.parent; grew = true; }
-      }
-    }).then(function (r) {
+    function noteBare(id) {
+      if (id && bare.indexOf(id) < 0 && nodeOf(id) && !nodeOf(id).parent && !C.childrenOf(state.cloud, id).length) bare.push(id);
+    }
+    function turn() {
+      return stream("/chat", body, {
+        delta: function (t) { m.text += t; upsert(m); scrollDown(); },
+        cloud: function (ev) {
+          var r = grow(ev, fid);
+          if ((ev.topics && ev.topics.length) || (ev.ghosts && ev.ghosts.length)) grew = true;
+          if (r.topic) { m.topic = r.topic.name; m.parent = r.topic.parent; grew = true; }
+          (r.parents || []).forEach(noteBare);
+        }
+      }).then(finishTurn);
+    }
+    function finishTurn(r) {
       m.streaming = false;
       if (!r.ok && !m.text) { m.text = fallbackText(r.reason); m.fallback = true; }
       /* a mid-sentence cut (token cap): keep only finished sentences so "Would" never sticks on screen */
       if (!m.fallback && m.text && !replyLooksComplete(m.text)) {
         var kept = finishSpoken(m.text);
-        m.text = kept || m.text.trim();
+        m.text = kept || "";
         m.cut = !kept;
       } else {
-        m.text = m.text.trim();
+        m.text = (m.text || "").trim();
+      }
+      /* every subject they named, not only the first; a name already on the cloud is reused */
+      var made = !m.fallback ? ensureAsked(asked) : [];
+      if (made.length) {
+        grew = true;
+        made.forEach(noteBare);
+        if (!m.text || m.cut) m.text = made.map(function (id) { return nodeOf(id).label; }).join(" and ") + (made.length > 1 ? " are new branches on your cloud." : " is a new branch on your cloud.") + " Open one whenever you like.";
       }
       /* learn intent, but the reply never carried a cloud block (cut off or skipped): grow on the device, 0 extra calls */
       if (learn && !grew && !m.fallback) {
@@ -968,6 +1112,7 @@
             var id = gr.parentsCreated[0] || gr.created[0] || null;
             if (id) {
               grew = true;
+              noteBare(id);
               m.topic = label;
               refreshViews([id]);
               revealNode(id);
@@ -979,12 +1124,31 @@
           }
         }
       }
+      /* a cut or a one-word reply that added nothing: one more try, then a short question instead of the fragment */
+      if (!m.fallback && replyThin(m.text, asked) && !grew && attempt < 1 && r.reason !== "budget" && r.reason !== "busy" && r.reason !== "aborted" && r.reason !== "offline") {
+        attempt += 1;
+        m.text = "";
+        m.cut = false;
+        m.streaming = true;
+        upsert(m);
+        turn();
+        return;
+      }
+      if (!m.fallback && grew && !m.text) m.text = "That's on your cloud now. Open it whenever you like.";
+      if (!m.fallback && !grew && (!m.text || replyThin(m.text, asked))) {
+        m.text = asked.length > 1 ? "Which of those should I add? You can name more than one." : "I didn't catch that. What would you like to learn about?";
+        m.cut = false;
+      }
       upsert(m);
       save();
-      lock(false);
-      scrollDown();
-      runBridge();
-    });
+      fillStarters(bare).then(function () {
+        save();
+        lock(false);
+        scrollDown();
+        runBridge();
+      });
+    }
+    turn();
   }
   /*
    * The bridge (procedural, no table): one creation call ("bridge") for the in-between steps of a topic that landed too
@@ -1667,6 +1831,7 @@
      itself one quiet tap away */
   var confWas = {};
   function renderConf(id) {
+    if (state.mode === "test") { el.lConf.hidden = true; el.lConf.textContent = ""; return; }
     var dn = lessonDone(id);
     if (dn && confWas[id] === false) { if (window.IkoUsage) window.IkoUsage.bump("lessons_completed"); } /* counted once, as it turns done */
     confWas[id] = dn;
@@ -1903,6 +2068,7 @@
       calls.lessonFor = null;
       var keepLesson = L.complete(text, { check: Boolean((state.quiz && validQs(state.quiz.qs).length) || /\n?\s*CHECK\s*[:.-]/i.test(text)) });
       if (r.ok && keepLesson) {
+        text = withHealthNote(nodeOf(id) ? nodeOf(id).label : "", text.trim());
         var prevL = state.lessons[id];
         state.lessons[id] = { text: text.trim(), at: Date.now(), qs: state.quiz && state.quiz.id === id ? state.quiz.qs : [], ans: [] };
         if (prevL && prevL.earned) { state.lessons[id].earned = prevL.earned; if (prevL.take) state.lessons[id].take = prevL.take; } /* PR 108: earned once, for good */
@@ -2250,6 +2416,27 @@
     el.lClar.insertBefore(box, el.lClar.querySelector(".clar-chat"));
     return { box: box, body: body };
   }
+  /* Drop any sentence that quotes a correct check option. What remains is a hint, never the choice itself. */
+  function stripAnswers(id, text) {
+    var rights = [];
+    var add = function (qs) { (qs || []).forEach(function (item) { var r = item && item.options && item.options[item.answer]; if (r && String(r).length >= 4) rights.push(String(r)); }); };
+    if (state.quiz && state.quiz.id === id) add(state.quiz.qs);
+    var les = state.lessons[id];
+    if (les) { add(les.qs); add(les.cur); add(les.rq); }
+    if (!rights.length) return text;
+    var bits = String(text || "").split(/([.!?])\s+/), kept = [], cur = "";
+    bits.forEach(function (p, i) {
+      if (i % 2 === 0) cur = p;
+      else {
+        var s = (cur + p).trim();
+        if (s && !rights.some(function (r) { return s.toLowerCase().indexOf(r.toLowerCase()) >= 0; })) kept.push(s);
+        cur = "";
+      }
+    });
+    if (cur.trim() && !rights.some(function (r) { return cur.toLowerCase().indexOf(r.toLowerCase()) >= 0; })) kept.push(cur.trim());
+    var out = kept.join(" ").trim();
+    return out || "Here's a hint: think about the main idea, and look for the choice that matches it.";
+  }
   function clarify(id, style) {
     var les = state.lessons[id];
     if (state.lessonNode !== id || !nodeOf(id)) return;
@@ -2266,6 +2453,7 @@
       ui.body.className = "clar-body";
       if (r.reason === "aborted") { if (ui.box.parentNode) ui.box.parentNode.removeChild(ui.box); }
       else if (text.trim()) {
+        text = stripAnswers(id, withHealthNote(nodeOf(id) ? nodeOf(id).label : "", text.trim()));
         if (state.lessons[id]) { state.lessons[id].cl = state.lessons[id].cl || {}; state.lessons[id].cl[style] = text.trim(); }
         paragraphs(ui.body, text.trim());
       } else {
@@ -2307,7 +2495,7 @@
     var go = function (to) {
       if (!nodeOf(to)) return;
       /* a fork choice: remember it as the learner's pick (it becomes the planned next step) */
-      if (forkIds.indexOf(to) >= 0) { C.pickChoice(state.cloud, id, to); save(); refreshViews([to]); }
+      if (forkIds.indexOf(to) >= 0) { C.pickChoice(state.cloud, id, to); save(); }
       openLesson(to);
     };
     var group = function (label, cls) {
@@ -2334,7 +2522,12 @@
       act.type = "button";
       act.setAttribute("aria-label", (cont ? "Continue with " : "Open ") + m.label);
       if (!on) { act.tabIndex = -1; act.setAttribute("aria-hidden", "true"); }
-      act.addEventListener("click", function () { if (x === sel) go(x); });
+      act.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        /* Open always opens that topic's lesson. It does not only move the cloud. */
+        go(x);
+      });
       b.appendChild(act);
       list.appendChild(b);
     };
@@ -2438,6 +2631,9 @@
     el.lTrail.textContent = "Test · " + trailOf(pid);
     el.lTitle.textContent = "Test: " + p.label;
     el.lStatus.textContent = ""; el.lDone.hidden = true; el.lFork.textContent = ""; el.lPath.textContent = ""; el.lQuiz.textContent = ""; el.lClar.textContent = ""; el.lNext.textContent = "";
+    /* the previous lesson's "Card earned" box does not sit under a subject test */
+    el.lConf.hidden = true; el.lConf.textContent = ""; el.lMain.classList.remove("reread"); el.lMain.setAttribute("data-done", "");
+    markLast(pid, "lesson");
     el.lQuiz.hidden = false; el.lQuiz.classList.remove("l-pane-on"); el.lMain.setAttribute("data-phase", "test");
     el.lBody.textContent = "";
     el.lBody.appendChild(mk("p", "l-intro", "This test only covers what you've finished: " + labels.join(", ") + ". It's optional and there's no timer. Right answers bring colour into those cards, and every attempt makes " + p.label + " stronger."));
@@ -2664,8 +2860,10 @@
     if (state.lessonNode) showLesson(false);
     el.deck.hidden = true; el.hub.hidden = true; state.hubNode = null; el.thread.hidden = false; el.dock.hidden = false;
     renderRet();
+    openPanel.keep = true;
     openCloud();
     if (id && nodeOf(id)) openPanel(id);
+    else openPanel.keep = false;
   }
   /* landing: the first view after the name, or a returning visit (no focus moves, so no keyboard pops up on phones) */
   function openCloud(landing) {
@@ -3032,6 +3230,8 @@
 
   /* keepNote: leave the note as is; keepView: don't move the camera. The note is never written by opening a panel (see below). */
   function openPanel(id, keepNote, keepView) {
+    var keep = openPanel.keep;
+    openPanel.keep = false;
     if (state.panelNode !== id) cancelCall("notice");
     if (state.panelNode !== id) homeTab = "story"; /* the name's card opens on its story */
     state.panelNode = id;
@@ -3069,6 +3269,7 @@
     }
     renderDesc(id);
     placeCard();
+    if (!isRoot && !keep) markLast(id, C.inDeck(state.cloud, id) ? "card" : "lesson");
     if (keepView) return;
     focusInView(isRoot ? "root" : id, isRoot); /* the name too: the camera eases it into view, its card beside it */
   }
@@ -3881,7 +4082,7 @@
    */
   function retTarget() {
     var l = state.cloud && C.lastOf(state.cloud), n = l && nodeOf(l.id);
-    return n && !n.ghost ? { id: l.id, card: l.kind === "card" && C.inDeck(state.cloud, l.id), label: n.label } : null;
+    return n ? { id: l.id, card: l.kind === "card" && C.inDeck(state.cloud, l.id), label: n.label } : null;
   }
   function renderRet() {
     if (!el.barRet) return;
@@ -3901,9 +4102,10 @@
     else openLesson(r.id, false);
   }
   function markLast(id, kind) {
-    if (!nodeOf(id) || !nodeOf(id).parent) return;
+    if (!nodeOf(id) || id === "root") return;
     C.setLast(state.cloud, id, kind, Date.now());
     save();
+    renderRet();
   }
   el.cloudRet.addEventListener("click", goRet);
   el.barRet.addEventListener("click", goRet);

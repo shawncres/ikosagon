@@ -271,7 +271,8 @@
     if (!list.length) return null;
     var cur = null, at = -1;
     for (var i = list.length - 1; i >= 0; i--) {
-      cur = i === 0 ? findAny(cloud, list[0]) : findTopic(cloud, list[i]);
+      /* a name that already exists anywhere (a subject or a topic) is that node: never a second copy */
+      cur = findAny(cloud, list[i]);
       if (cur) { at = i; break; }
     }
     /* a seeded (dotted) link that now carries a topic becomes explored */
@@ -285,6 +286,8 @@
       var k = keys[j], hit = null;
       childrenOf(cloud, cur.id).forEach(function (c) { if (!hit && c.key === k) hit = c; });
       if (!hit) {
+        var anywhere = findAny(cloud, list[j]);
+        if (anywhere) { cur = anywhere; continue; }
         if (!makeRoom(cloud, cur.id, false)) break;
         hit = addNode(cloud, { label: list[j], parent: cur.id, weight: 0.5, born: t });
         res.created.push(hit.id);
@@ -419,6 +422,38 @@
    * are reused; a topic that already lives elsewhere on the map is skipped (no duplicates); new ones become ghost children.
    * Returns { ids, added, next }.
    */
+  /* Calm names used only when a new subject arrives with no usable children after one try. */
+  function starterFill() {
+    var names = [];
+    names.push("Overview");
+    names.push("Main ideas");
+    names.push("Try it");
+    return names;
+  }
+  /*
+   * 3 or 4 starter children under a new subject, the same shape as an onboarding subject (a core path of ghosts).
+   * Names already anywhere on the cloud are skipped. Fewer than 3 usable names are filled out with starterFill.
+   * A subject that already has children is left alone. -> the new ids.
+   */
+  function addStarters(cloud, id, names, t) {
+    var n = node(cloud, id);
+    if (!n || n.parent || childrenOf(cloud, id).length) return [];
+    var clean = [];
+    var push = function (label) {
+      label = cleanLabel(label);
+      if (!label || norm(label) === n.key || norm(label) === norm(cloud.name)) return;
+      if (/\b(jointery|recieve|seperate|app logic|asdf)\b/i.test(label) || /(.)\1{2,}/i.test(label)) return;
+      if (clean.some(function (y) { return norm(y) === norm(label); })) return;
+      if (findAny(cloud, label)) return;
+      if (clean.length >= 4) return;
+      clean.push(label);
+    };
+    (Array.isArray(names) ? names : []).forEach(push);
+    if (clean.length < 3) starterFill().forEach(function (x) { if (clean.length < 3) push(x); });
+    if (clean.length < 3) return [];
+    return applyPath(cloud, id, clean, clean[0], t).added || [];
+  }
+
   function applyPath(cloud, id, steps, nextLabel, t) {
     t = now_(t);
     var n = node(cloud, id);
@@ -827,8 +862,14 @@
   /* the band to write lessons for: "" when not given (or "prefer not to say") */
   function bandOf(cloud) { var b = profileOf(cloud).band; return LEVELS.indexOf(b) >= 0 && b !== "standard" ? b : ""; }
   function levelOf(cloud) { var b = profileOf(cloud).band; return LEVELS.indexOf(b) >= 0 ? b : "standard"; }
-  function setLast(cloud, id, kind, t) { if (!cloud.nodes[id]) return; profileOf(cloud).last = { id: id, kind: kind === "card" ? "card" : "lesson", t: now_(t) }; }
-  function lastOf(cloud) { var l = profileOf(cloud).last; return l && cloud.nodes[l.id] && cloud.nodes[l.id].parent ? l : null; }
+  function setLast(cloud, id, kind, t) {
+    if (!cloud.nodes[id] || id === "root") return;
+    t = now_(t);
+    var cur = profileOf(cloud).last;
+    if (cur && cur.id !== id && cur.t && t < cur.t) return; /* a later visit wins; an older stamp does not replace it */
+    profileOf(cloud).last = { id: id, kind: kind === "card" ? "card" : "lesson", t: t };
+  }
+  function lastOf(cloud) { var l = profileOf(cloud).last; return l && cloud.nodes[l.id] ? l : null; }
   /* Topics the learner has (explored, below a subject). */
   function topicCount(cloud) { return all(cloud).filter(function (n) { return n.parent && !n.ghost; }).length; }
 
@@ -2003,7 +2044,7 @@
     GATE: GATE, needOf: needOf, gateCore: gateCore, coreProgress: coreProgress, prereqs: prereqs, lockedBy: lockedBy, completable: completable, addPrereqs: addPrereqs, PRE_MAX: PRE_MAX,
     RESTRUCTURE: RESTRUCTURE, restructureDue: restructureDue, noteRestructure: noteRestructure, restructureTree: restructureTree, checkRestructure: checkRestructure, applyRestructure: applyRestructure, undoRestructure: undoRestructure,
     checkChain: checkChain, applyRepair: applyRepair, moveUnder: moveUnder, EVENTS_MAX: EVENTS_MAX,
-    applyCreate: applyCreate, pruneSeeds: pruneSeeds, deepenChain: deepenChain, applyBridge: applyBridge, coreChildren: coreChildren, doneCore: doneCore, sidePaths: sidePaths, absorbable: absorbable, markCore: markCore,
+    applyCreate: applyCreate, addStarters: addStarters, pruneSeeds: pruneSeeds, deepenChain: deepenChain, applyBridge: applyBridge, coreChildren: coreChildren, doneCore: doneCore, sidePaths: sidePaths, absorbable: absorbable, markCore: markCore,
     create: create, applyTopics: applyTopics, addGhosts: addGhosts, applyPath: applyPath, nextFor: nextFor, engage: engage,
     track: track, markEnd: markEnd, activity: activity, hueOf: hueOf,
     GROWTH: GROWTH, growthOf: growthOf, joinDeck: joinDeck, chainOf: chainOf, confirm: confirm, markInk: markInk, setBlurb: setBlurb, cleanBlurb: cleanBlurb,

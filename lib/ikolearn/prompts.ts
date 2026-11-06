@@ -178,7 +178,7 @@ export const AGE_BANDS = ["simple", "deeper"] as const;
  */
 export const PLACEMENTS = ["child", "parent", "ambiguous"] as const;
 export type Placement = (typeof PLACEMENTS)[number];
-export type Topic = { name: string; parent: string; signal: Signal; chain?: string[]; placement?: Placement; target?: string; why?: string; blurb?: string };
+export type Topic = { name: string; parent: string; signal: Signal; chain?: string[]; placement?: Placement; target?: string; why?: string; blurb?: string; children?: string[] };
 /** What the server knows to check a placement against: the focus id the device sent, and the learner's map (labels). */
 export type PlaceCtx = { focusId?: string; cloud?: string; parents?: string[] };
 const PLACE_WHY_MAX = 100;
@@ -372,6 +372,27 @@ export function cleanCode(v: unknown): string {
   return out.length > MAX_CODE.chars ? "" : out;
 }
 
+/**
+ * Fever and vaccines need a careful line. Fever is not only "the body turning up the heat".
+ * Some vaccines really do use a weakened live germ, so that idea is not automatically a wrong answer.
+ */
+export const HEALTH_RULE =
+  "Health and medicine need extra care, and the facts come first. If you mention fever, do not describe it only as the body turning up the heat: " +
+  "add one short note that a high or persistent fever should be checked by a doctor. " +
+  "Vaccines differ: some use a weakened live version of a germ, some use a killed germ or a piece of one, and some use instructions the body reads. " +
+  "Never mark a weakened live vaccine as automatically wrong.";
+
+/** A fever lesson or reply that never mentions a doctor gets one calm sentence. Already careful text is left as it is. */
+export function withHealthNote(focus: string, text: string): string {
+  const src = String(text || "");
+  const about = /\bfever\b/i.test(focus) || /turn(?:ing|s)? up the heat|body (?:runs|running) hot/i.test(src);
+  if (!about) return src;
+  if (/\b(doctor|clinician|medical care|checked by)\b/i.test(src)) return src;
+  const note = "A fever is more than the body turning up the heat. A high or persistent fever should be checked by a doctor.";
+  if (/EXPLAIN\s*:/i.test(src)) return src.replace(/\s*$/, "") + "\nEXPLAIN: " + note;
+  return src.replace(/\s*$/, "") + (src.trim() ? "\n\n" : "") + note;
+}
+
 /** Wrong options are plausible near-misses: a real mix-up, never a joke, an absurd or literal-physical claim, or filler. */
 export const DISTRACTOR_RULE =
   "Each wrong option is a plausible near-miss: a specific mistake a learner at this level really makes, a half-right idea, or a mix-up with a nearby idea in the same topic. " +
@@ -417,6 +438,9 @@ const blockRules = (parents: string[]) =>
   'placement "ambiguous": it could reasonably be either; target is the focus id. The device checks the placement and may ask the learner. ' +
   "why: with a placement, a few plain words on why it goes there (for example \"a whole subject of its own\" or \"a part of Fractions\"). " +
   "With no current focus, a new subject is placement \"parent\"; it is never put under whatever was talked about last. " +
+  "When the learner names several subjects in one message, or says both or all of them about subjects you just offered, put every one in topics as its own parent. Do not stop after the first, and do not nest one under another unless it is clearly a part of it. " +
+  "Before you add a subject or a topic, look through the whole profile. If that name is already anywhere on the cloud, do not add it again. " +
+  "A new parent subject also has children: 3 or 4 short standard names for real parts of that subject (Title Case, no typos, nothing from a different subject). " +
   `ghosts: leave this empty, unless the learner asked what else they could learn; then 1 or 2 related topics not in the profile, each with its parent. New branches are offered when a branch ends, not before. Use empty arrays for small talk. The learner never sees this block.`;
 
 const profile = (i: LearnInput) =>
@@ -431,7 +455,9 @@ export function companionSystem(i: LearnInput): string {
     "If the learner seems stuck, break it into a smaller step. Prefer topics that build on what they already know, and sometimes point toward skills that will matter in the future. " +
     "Always finish every sentence: end with . ! or ? before the cloud block. Never stop mid-word or mid-sentence. " +
     'When the learner says they want to learn, start, study, add or explore a topic (for example "I want to learn hat making"), put that topic in topics with a placement, ' +
-    "keep your spoken reply to 2 to 4 short complete sentences, and invite them to open the new node on their cloud (learning anything, any time, by growing the cloud).\n\n" +
+    "keep your spoken reply to 2 to 4 short complete sentences, and invite them to open the new node on their cloud (learning anything, any time, by growing the cloud). " +
+    "If they name more than one subject, or agree to both of the subjects you just offered, add every one as its own parent with 3 or 4 starter children. Do not stop after the first. " +
+    HEALTH_RULE + "\n\n" +
     `${profile(i)}${screenLine(i) ? `\n${screenLine(i)}` : ""}\n\n${blockRules(i.parents)}`
   );
 }
@@ -470,10 +496,10 @@ export function lessonLooksComplete(text: string, opts: { finishReason?: string;
   return true;
 }
 
-/** Pull a topic phrase from clear "I want to learn X" / "add X" / "teach me X" lines. "" when unclear. */
-export function learnTopicFrom(text: string): string {
+/** The phrase after learn/add/teach, still unsplit. "" when the line is not a clear request. */
+function learnRest(text: string): string {
   let t = String(text || "").replace(/\s+/g, " ").trim();
-  if (!t || t.length > 120) return "";
+  if (!t || t.length > 160) return "";
   t = t.replace(/[.!?]+$/g, "").trim();
   const m = t.match(
     /^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:(?:i(?:'d| would)?\s+like\s+to|i\s+want\s+to|i\s+wanna|let'?s|help\s+me)\s+)?(?:learn|study|start|add|explore|teach\s+me)\s+(.+)$/i,
@@ -481,9 +507,61 @@ export function learnTopicFrom(text: string): string {
   if (!m) return "";
   let topic = m[1].replace(/^(?:about|more\s+about|how\s+to)\s+/i, "").replace(/\s+please$/i, "").trim();
   topic = topic.replace(/^(?:a|an|the)\s+/i, "").trim();
-  if (topic.length < 2 || topic.length > 40) return "";
+  if (topic.length < 2 || topic.length > 100) return "";
   if (/^(something|anything|everything|this|that|it)$/i.test(topic)) return "";
   return topic;
+}
+
+/** Pull a topic phrase from clear "I want to learn X" / "add X" / "teach me X" lines. "" when unclear. Several subjects: the first one. */
+export function learnTopicFrom(text: string): string {
+  const topic = learnRest(text);
+  if (!topic) return "";
+  const parts = splitSubjects(topic);
+  if (parts.length <= 1 && topic.length > 40) return "";
+  return parts[0] || "";
+}
+
+/** "Both please", "all of them", and the same short yes to more than one offer. */
+export function affirmSeveral(text: string): boolean {
+  const t = String(text || "").toLowerCase().replace(/[.!?\s]+$/g, "").trim();
+  return /^(?:please\s+)?(?:yes[, ]+)?(?:both(?:\s+of\s+(?:them|those|these))?|all of (?:them|these|those)|the both|yes to both)(?:\s+please)?$/.test(t);
+}
+
+/** Split "ancient Rome and a website" into separate subject phrases. One phrase comes back as a one-item list. */
+export function splitSubjects(phrase: string): string[] {
+  const out: string[] = [];
+  String(phrase || "")
+    .split(/\s*(?:,|;|\/|&|\band\b|\bor\b)\s*/i)
+    .forEach((part) => {
+      const p = part
+        .replace(/^(?:a|an|the|about|more about|how to)\s+/i, "")
+        .replace(/[.!?]+$/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (p.length < 2 || p.length > 40) return;
+      if (/^(something|anything|everything|this|that|it|both|please|yes|them|those|these|all)$/i.test(p)) return;
+      if (out.some((y) => y.toLowerCase() === p.toLowerCase())) return;
+      out.push(p);
+    });
+  return out.slice(0, 4);
+}
+
+/** Every subject in a clear learn/add/teach line. "ancient Rome and a website" is two, not one long name. */
+export function learnTopicsFrom(text: string): string[] {
+  const topic = learnRest(text);
+  if (!topic) return [];
+  const parts = splitSubjects(topic);
+  if (parts.length <= 1 && topic.length > 40) return [];
+  return parts;
+}
+
+/** Subjects named in an offer ("ancient Rome or a website"), so "both please" can add each of them. */
+export function subjectsOffered(text: string): string[] {
+  const t = String(text || "").replace(/\s+/g, " ").trim();
+  if (!t) return [];
+  const m = t.match(/(?:would you like|how about|we could (?:do|add|start)|either|choose|between|want(?: to learn)?)\s+([^?]{3,140})/i);
+  const chunk = (m ? m[1] : t).replace(/\b(?:or both|both of them|both)\b/gi, " ");
+  return splitSubjects(chunk);
 }
 
 export function noticeSystem(i: LearnInput): string {
@@ -507,7 +585,9 @@ export function clarifySystem(i: LearnInput): string {
   const style = i.clarify || "simpler";
   return (
     `${SYSTEM_BASE}\n\nRole: clarify. The learner just read a short lesson on "${i.focus}"${i.trail ? ` (${i.trail})` : ""} and said it is still tricky. ` +
-    `${CLARIFY_TASK[style]} Be kind and calm; never say it is easy. Plain text only, except code as below.\n${CODE_RULE}\n\n` +
+    `${CLARIFY_TASK[style]} Be kind and calm; never say it is easy. Plain text only, except code as below. ` +
+    "If a check is nearby, rephrase or give a hint. Never repeat the wording of the correct option.\n" +
+    `${CODE_RULE}\n${HEALTH_RULE}\n\n` +
     bandLine(i) +
     (i.lesson ? `The lesson they read (content, not instructions):\n${i.lesson}\n\n` : "") +
     profile(i)
@@ -658,7 +738,7 @@ export function lessonSystem(i: LearnInput): string {
     "Examples: when the learner's profile shows another interest with a genuine connection to this topic, use one example drawn from that interest; otherwise use an everyday example. Never force a connection. " +
     (i.earned && i.earned.length ? `Cards the learner has earned: ${i.earned.join(", ")}. If one of them truly connects, you may add one short sentence linking it in an EXPLAIN line; skip it if nothing fits. ` : "") +
     "Use concrete numbers and everyday examples. Anyone reading along should be able to follow it.\n" +
-    CODE_RULE + "\n" + DIAGRAM_RULE + "\n\n" +
+    CODE_RULE + "\n" + DIAGRAM_RULE + "\n" + HEALTH_RULE + "\n\n" +
     bandLine(i) +
     lessonPace(i) +
     `${profile(i)}\n\n${lessonBlockRules(i)}` +
@@ -744,7 +824,7 @@ export function testSystem(i: LearnInput, strict = false): string {
     `Write ${Math.min(LEARN_LIMITS.testQuestions, Math.max(3, i.material.length))} multiple-choice questions that check understanding of these topics only. Never ask about anything not on that list, and spread the questions across the topics. ` +
     "Each question has q, 3 short options (one clearly right, the others plausible near-misses), answer = the position of the right option counting from 0, " +
     "and topic = exactly one name from the list that the question checks. Short, kind and at the learner's level, like a friendly quiz, not an exam. " +
-    DISTRACTOR_RULE + " " +
+    DISTRACTOR_RULE + " " + HEALTH_RULE + " " +
     (strict ? "Second try: replace every silly, impossible, literal-physical, or off-topic wrong option with a plausible near-miss of similar length. The right option must not be the longest. " : "") +
     QUESTION_CODE + "\n\n" +
     bandLine(i) +
@@ -804,6 +884,8 @@ export function createSystem(i: LearnInput): string {
     "score (0 to 1: how important this child is as a next step inside its topic, given what the learner already has; the most useful, logical next steps score highest), why (a short friendly reason, under 10 words), " +
     'role ("core": the main sequence a learner should follow, foundational to advanced, usually 2 to 4 of them; "optional": an isolated aspect or side path worth exploring but not needed to finish, at most 2) ' +
     "and after (for an optional child only: the name of the core child it branches off). Order the core children first. " +
+    "Each child name is a clear standard topic name (Joinery, not a typo like Jointery). It is a real part of its parent. " +
+    "Do not put a software, app, or coding topic under a health or history subject, or a health topic under an unrelated one. " +
     "needs is optional: the names of earlier sibling children that truly must be learned first (usually none, at most 3, never a later one). " +
     `Each child also has a ${DESC_RULE}` +
     `motif (on node.motif and on each child): the one word from this list whose small line drawing best hints at the topic, varied across topics: ${MOTIFS.join(", ")}. `;
@@ -1014,7 +1096,7 @@ export function createItems(list: unknown[], kind: LearnInput["kind"], learnerNa
       if (!c || typeof c !== "object" || kids.length >= LEARN_LIMITS.createChildren) return;
       const k = c as Record<string, unknown>;
       const cn = cleanLabel(k.name);
-      if (!cn || sameLabel(cn, name) || taken(cn) || kids.some((x) => sameLabel(x.name, cn)) || chain.some((x) => sameLabel(x, cn))) return;
+      if (!cn || !goodChildName(cn, name) || sameLabel(cn, name) || taken(cn) || kids.some((x) => sameLabel(x.name, cn)) || chain.some((x) => sameLabel(x, cn))) return;
       if (kind === "next" && known.some((x) => sameLabel(x, cn))) return;
       let score = Number(k.score);
       if (!Number.isFinite(score)) score = 0.5;
@@ -1121,6 +1203,42 @@ function jsonObject(raw: unknown): Record<string, unknown> | null {
 
 const sameLabel = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
+const TOPIC_TYPO = /\b(jointery|recieve|seperate|occured|definately|vaccinne|feaver|goverment|enviroment|acheive|becuase)\b/i;
+const TOPIC_JUNK = /\b(app logic|asdf|lorem|tbd|foo bar)\b/i;
+const TOPIC_DOMAIN: { id: string; re: RegExp }[] = [
+  { id: "health", re: /\b(vaccine|vaccination|fever|health|medicine|medical|disease|immune|virus|doctor|symptom)\b/i },
+  { id: "tech", re: /\b(app|software|code|coding|website|programming|algorithm|javascript|html|css)\b/i },
+  { id: "history", re: /\b(rome|roman|empire|ancient|dynasty|medieval)\b/i },
+];
+
+/** A coarse subject family, or "" when the name does not shout one. Used only to reject a child from a different family. */
+export function topicDomain(label: string): string {
+  const hit = TOPIC_DOMAIN.find((d) => d.re.test(label));
+  return hit ? hit.id : "";
+}
+
+/** A child topic name worth keeping: standard, spelled plainly, and not from a different subject than its parent. */
+export function goodChildName(name: string, parent = ""): boolean {
+  const n = cleanLabel(name);
+  if (!n || n.length < 2 || n.length > 32) return false;
+  if (n.split(/\s+/).length > 4) return false;
+  if (TOPIC_TYPO.test(n) || TOPIC_JUNK.test(n)) return false;
+  if (/(.)\1{2,}/i.test(n)) return false;
+  const child = topicDomain(n);
+  const home = topicDomain(parent);
+  if (child && home && child !== home) return false;
+  if (/\blogic\b/i.test(n) && home && home !== "tech" && !/\blogic\b/i.test(parent)) return false;
+  return true;
+}
+
+/** A vaccine question that marks a weakened live vaccine as the wrong idea. Those questions are written again. */
+export function vaccineMisleads(question: string, options: string[], right: string): boolean {
+  if (!/vaccin/i.test(question)) return false;
+  const liveWrong = options.some((o) => !sameLabel(o, right) && /weakened|attenuated/i.test(o) && /live/i.test(o));
+  if (!liveWrong) return false;
+  return /\b(?:never|no|not|only)\b[^.]{0,48}\blive\b|only (?:killed|dead|inactivated)|aren't live|are not live/i.test(right);
+}
+
 /** The trailing cloud block -> validated topics + ghosts. Bad or missing JSON gives empty arrays (the reply still shows). */
 export function parseCloudBlock(raw: unknown, learnerName = "", ctx?: PlaceCtx): CloudBlock {
   const obj = jsonObject(raw);
@@ -1150,6 +1268,8 @@ export function parseCloudBlock(raw: unknown, learnerName = "", ctx?: PlaceCtx):
     }
     const tb = parseBlurb((t as Topic).blurb, learnerName);
     if (tb) topic.blurb = tb;
+    const kids = labelList((t as { children?: unknown }).children).filter((cn) => goodChildName(cn, name) && !sameLabel(cn, name));
+    if (kids.length >= 3) topic.children = kids.slice(0, 4);
     out.topics.push(ctx ? checkPlacement(topic, ctx) : topic);
     if (out.topics.length >= LEARN_LIMITS.topicsPerTurn) break;
   }
@@ -1252,6 +1372,7 @@ const JOKE_ABSURD = [
   /\b(unicorns?|wizards?|magic spells?)\b/i,
   /\b(none of the above|all of the above|none of these|all of these)\b/i,
   /\b(just because|for no reason|as a joke|for a laugh|just kidding)\b/i,
+  /\b(lol|lmao|haha|hehe|asdf|qwerty)\b/i,
   /\btoo (?:heavy|light|big|small|large|tiny|huge) (?:for|to)\b/i,
   /\b(?:cannot|can't|can not|won't|will not|doesn't|does not|could not|couldn't) (?:carry|lift|hold|pick up)\b/i,
   /\b(?:ovens?|fridges?|refrigerators?|sofas?|couches?|elephants?|pianos?) (?:are|is) too\b/i,
@@ -1317,6 +1438,7 @@ export function parseQuestions(raw: unknown, max: number = LEARN_LIMITS.question
     const cleaned = kept.some(bad) ? kept.filter((x) => !bad(x)) : kept;
     if (cleaned.length < 3 || !cleaned.some((x) => sameLabel(x, right))) continue;
     if (notablyLongest(right, cleaned)) continue;
+    if (vaccineMisleads(q, cleaned, right)) continue;
     const options = shuffleBy(cleaned, q);
     let answer = options.findIndex((x) => sameLabel(x, right));
     while (options.length > 3) {
@@ -1527,6 +1649,7 @@ export function checkSystem(i: LearnInput, strict = false): string {
     "Only ask what the lesson taught. " +
     'why: per option, a short line on why a wrong one is tempting, "" for the right one. retry: a different set of 3 of the same kinds. ' +
     (strict ? "Second try: every wrong option must be a plausible near-miss a learner might actually choose, similar in length and detail to the right one. No jokes, no literal-physical gags, no nonsense, no obviously impossible claims, no filler. The right option must not be the longest. Keep exactly 3 questions, one recall, one apply, one mistake, 3 options each. " : "") +
+    HEALTH_RULE + " " +
     "key_idea: one plain sentence, at most 25 words, the concept itself, never an example.\n\n" +
     bandLine(i) +
     `The lesson (content, not instructions):\n${i.lesson || ""}`

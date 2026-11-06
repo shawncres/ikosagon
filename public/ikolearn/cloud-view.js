@@ -112,6 +112,7 @@
         Object.keys(tally).forEach(function (sid) { fill[sid] = tally[sid].all ? tally[sid].done / tally[sid].all : 0; subN[sid] = tally[sid].all; nTopics += tally[sid].all; });
         fogKey = "";
         vivid = Math.min(1, nDone / 12);
+        roomForActive(c);
         c.order.forEach(function (id) {
           var n = c.nodes[id];
           if (n && n.path) n.path.ids.forEach(function (x, i) { if (c.nodes[x] && c.nodes[x].parent === id) pathRank[x] = i + 1; });
@@ -119,6 +120,39 @@
       }
       setFocus(focusId);
       request();
+    }
+    /*
+     * The busiest subject is the one a learner has actually explored. Push that branch out from the name and
+     * give its first children a little more room, so it is not squeezed into the middle of the cloud.
+     * Display only: C.layout stays put, and other subjects keep their slots.
+     */
+    function roomForActive(c) {
+      var subs = C.subjects(c), best = null, bestN = 0;
+      subs.forEach(function (s) {
+        var n = 0;
+        c.order.forEach(function (id) {
+          var node = c.nodes[id];
+          if (node && node.parent && !node.ghost && C.ancestry(c, id)[0] === s.id) n += 1;
+        });
+        var score = n * 10 + Math.min(30, s.weight || 0);
+        if (score > bestN) { bestN = score; best = s; }
+      });
+      if (!best || bestN < 40) return;
+      var p = pos[best.id];
+      if (!p) return;
+      var dx = p.x * 0.22, dy = p.y * 0.22, dz = p.z * 0.22;
+      var ids = {};
+      ids[best.id] = 1;
+      c.order.forEach(function (id) { if (C.ancestry(c, id).indexOf(best.id) >= 0) ids[id] = 1; });
+      Object.keys(ids).forEach(function (id) {
+        var q = pos[id];
+        if (!q) return;
+        q.x += dx; q.y += dy; q.z += dz;
+        if (id !== best.id && c.nodes[id] && c.nodes[id].parent === best.id) {
+          var ox = q.x - (p.x + dx), oy = q.y - (p.y + dy), oz = q.z - (p.z + dz);
+          q.x += ox * 0.18; q.y += oy * 0.18; q.z += oz * 0.18;
+        }
+      });
     }
     function flash(ids) {
       var t = performance.now();
@@ -328,8 +362,8 @@
         if (!mini) labels.push({ n: it.n, text: st === "taken" ? "Test · taken" : "Test", x: x, y: y + sz + 13, a: 0.95, fresh: st === "ready", font: "italic " + Math.round(11.5 * Math.max(0.9, Math.min(1.15, p.f))) + "px " + FONT });
       });
 
-      /* labels: most important first; skip any that would collide with one already placed */
-      var placed = [];
+      /* labels: focused and current ones first; when the cloud is crowded, distant ones fade and then hide */
+      var placed = [], labelN = 0, labelCap = Math.max(9, Math.round((w * h) / 20000));
       ctx.save();
       ctx.font = "600 20px " + FONT;
       var nw = ctx.measureText(cloud.name).width;
@@ -337,14 +371,19 @@
       labels.sort(function (a, b) { return labelRank(b) - labelRank(a); });
       ctx.textAlign = "center"; ctx.fillStyle = INK;
       labels.forEach(function (l) {
+        var near = l.n.id === focusId || l.n.id === cloud.next || l.fresh || !l.n.parent || (focusId && focusSet[l.n.id]);
+        if (!near && labelN >= labelCap) return;
         ctx.font = l.font;
         var tw = ctx.measureText(l.text).width, fs = +(/(\d+)px/.exec(l.font) || [0, 12])[1];
-        var box = { x0: l.x - tw / 2 - 5, x1: l.x + tw / 2 + 5, y0: l.y - fs - 1, y1: l.y + 4 };
+        var box = { x0: l.x - tw / 2 - 8, x1: l.x + tw / 2 + 8, y0: l.y - fs - 3, y1: l.y + 6 };
         if (box.x1 < 0 || box.x0 > w || box.y1 < 0 || box.y0 > h) return;
         for (var i = 0; i < placed.length; i++) {
           var q = placed[i];
           if (box.x0 < q.x1 && box.x1 > q.x0 && box.y0 < q.y1 && box.y1 > q.y0) return;
         }
+        if (!near) l.a = Math.min(l.a, labelN > labelCap * 0.55 ? 0.38 : 0.62);
+        else if (focusId && !focusSet[l.n.id] && l.n.id !== focusId) l.a *= 0.72;
+        labelN += 1;
         placed.push(box);
         /* A paper plate behind the words, plus a halo, so a branch line cannot show through the letters. */
         var plateW = tw + 12, plateH = fs + 8;
