@@ -76,9 +76,38 @@
     return (n.correct || 0) >= E.correct || n.mastery >= C.MASTERED || (n.engaged || 0) >= E.visits || (n.spent || 0) >= E.seconds;
   }
   /* Ask the lesson call for child topics when the topic has none yet, isn't an end, and nothing is already waiting. */
+  /* Levels below a subject (the subject itself is 0). Automatic next topics stop at 3; "Go deeper?" allows a 4th. */
+  var DEPTH_CAP = { soft: 3, hard: 4 };
+  function levelsBelow(cloud, id) { var d = C.depthOf(cloud, id); return d ? d - 1 : 0; }
+  function capped(cloud, id) {
+    var n = nodeOf(cloud, id), below = levelsBelow(cloud, id);
+    if (!n) return "";
+    if (below >= DEPTH_CAP.hard) return "hard";
+    if (below >= DEPTH_CAP.soft && !n.deeper) return "soft";
+    return "";
+  }
+  function depthChoices(cloud, id) {
+    var cap = capped(cloud, id), n = nodeOf(cloud, id);
+    if (!cap || !n) return null;
+    var subj = C.subjectOf(cloud, id), sib = null;
+    if (n.parent) {
+      C.childrenOf(cloud, n.parent).some(function (c) {
+        if (c.id !== id && !C.isDone(cloud, c.id)) { sib = c.id; return true; }
+        return false;
+      });
+    }
+    return { capped: true, hard: cap === "hard", test: subj ? subj.id : id, sibling: sib, deeper: cap !== "hard" };
+  }
+  function goDeeper(cloud, id) {
+    var n = nodeOf(cloud, id);
+    if (!n || levelsBelow(cloud, id) >= DEPTH_CAP.hard) return false;
+    n.deeper = true;
+    cloud.rev = (cloud.rev || 0) + 1;
+    return true;
+  }
   function wantChildren(cloud, id) {
     var n = nodeOf(cloud, id);
-    return Boolean(n && !n.path && !n.end && !n.pending && C.depthOf(cloud, id) < PLAN.depth);
+    return Boolean(n && !n.path && !n.end && !n.pending && !capped(cloud, id) && C.depthOf(cloud, id) < PLAN.depth);
   }
   function childrenReady(cloud, id) { var n = nodeOf(cloud, id); return Boolean(n && n.pending && engaged(cloud, id)); }
 
@@ -227,7 +256,7 @@
    */
   function needsNext(cloud, id) {
     var n = nodeOf(cloud, id);
-    if (!n || (!n.parent && !n.path) || n.ghost || n.end || n.pending) return false; /* a subject qualifies once it has its own path (made by a creation call) */
+    if (!n || (!n.parent && !n.path) || n.ghost || n.end || n.pending || capped(cloud, id)) return false; /* a subject qualifies once it has its own path (made by a creation call); at the depth cap, offer a test, a sibling, or Go deeper? */
     var kids = C.coreChildren(cloud, id), done = C.doneCore(cloud, id).length; /* only the core sequence counts: side paths never block */
     if (kids.some(function (c) { return !C.isDone(cloud, c.id) && !c.end; })) return false;
     if (!kids.length && !engaged(cloud, id)) return false;
@@ -332,8 +361,23 @@
     if (kind === "start" && extra && extra.grow) req.grow = String(extra.grow).slice(0, 200);
     /* subjects to file new parents under: only the learner's own (no subject names are built in) */
     req.parents = promptParents(cloud, n ? id : null, req.about || "");
-    if (kind === "next" && n) { req.focus = n.label; req.trail = C.trail(cloud, id); req.known = C.knownUnder(cloud, id); }
+    if (kind === "next" && n) {
+      var subj = C.subjectOf(cloud, id);
+      req.focus = n.label; req.trail = C.trail(cloud, id); req.known = C.knownUnder(cloud, id);
+      req.subject = subj ? subj.label : n.label;
+      req.interest = interestFor(cloud, subj || n);
+    }
     return req;
+  }
+  /* The learner's own words for this subject, else the subject name, so every next-topic prompt has both. */
+  function interestFor(cloud, subjectNode) {
+    var label = subjectNode ? subjectNode.label : "";
+    var best = "", score = 0;
+    ((C.profileOf(cloud).interests) || []).forEach(function (x) {
+      var s = C.nameScore ? C.nameScore(x, label) : 0;
+      if (s > score) { score = s; best = x; }
+    });
+    return best || label;
   }
 
   /*
@@ -766,7 +810,7 @@
     if (/\b(rome|roman|empire|ancient|dynasty|medieval)\b/i.test(s)) return "history";
     return "";
   }
-  function domainClash(a, b) { var x = domainOf(a), y = domainOf(b); return Boolean(x && y && x !== y); }
+  function domainClash(a, b) { var x = domainOf(a), y = domainOf(b); return Boolean(x && y && x !== y) || (C.familyClash && C.familyClash(a, b)); }
   function placeTopic(cloud, tp, focusId) {
     var label = C.cleanLabel(tp && tp.name), k = C.norm(label);
     if (!label || k === C.norm(cloud.name)) return null;
@@ -811,6 +855,59 @@
       if (m && !m.blurb && !(skip && skip(x)) && out.indexOf(x) < 0 && out.length < DESCRIBE.batch) out.push(x);
     });
     return out;
+  }
+
+  /*
+   * What to tell the learner, from the add that actually ran. "new" was created this turn. "existing" was already
+   * there (or only strengthened). "failed" did not land. The model's sentence is not a source for this.
+   */
+  function addLine(label, status, parent) {
+    label = C.cleanLabel(label) || String(label || "That").trim();
+    if (status === "failed") return "I couldn't add " + label + ".";
+    if (status === "existing") return label + " is already on your cloud.";
+    if (parent) return label + " is now under " + parent + ".";
+    return label + " is a new branch on your cloud.";
+  }
+  function addFact(label, res, cloud) {
+    var clean = C.cleanLabel(label) || String(label || "").trim();
+    var n = cloud ? C.findAny(cloud, clean) : null;
+    if (!n) return { label: clean, status: "failed", parent: "" };
+    var created = ((res && res.created) || []).concat((res && res.parentsCreated) || []);
+    if (created.indexOf(n.id) >= 0) {
+      var p = n.parent && cloud.nodes[n.parent];
+      return { label: n.label, status: "new", parent: p ? p.label : "" };
+    }
+    return { label: n.label, status: "existing", parent: "" };
+  }
+  function sentenceSplit(text) { return String(text || "").split(/(?<=[.!?])\s+/).map(function (s) { return s.trim(); }).filter(Boolean); }
+  function contradicts(sentence, fact) {
+    var s = sentence.toLowerCase(), name = String(fact.label || "").toLowerCase();
+    var mentions = name && s.indexOf(name) >= 0;
+    var saysAlready = /already on your cloud/.test(s);
+    var saysNew = /new branch|is now under|i(?:'ve| have) added|added it|on your cloud now/.test(s);
+    var saysFail = /couldn'?t add|could not add|wasn'?t added/.test(s);
+    if (fact.status === "new" && saysAlready) return true;
+    if (fact.status === "existing" && saysNew && (mentions || saysAlready)) return true;
+    if (fact.status === "failed" && (saysNew || saysAlready)) return true;
+    if (fact.status === "new" && saysFail && mentions) return true;
+    if (fact.status === "existing" && saysFail && mentions) return true;
+    return false;
+  }
+  /* Drop internal restructuring talk. The learner hears what landed, not how the tree was rearranged. */
+  function hideInternal(text) {
+    return sentenceSplit(text).filter(function (s) {
+      return !/\b(re-?parent\w*|restructur\w*|filled in the steps|added a missing step)\b/i.test(s);
+    }).join(" ");
+  }
+  function honestReply(text, facts) {
+    facts = (facts || []).filter(function (f) { return f && f.label; });
+    var parts = sentenceSplit(hideInternal(text)).filter(function (s) { return !facts.some(function (f) { return contradicts(s, f); }); });
+    facts.forEach(function (f) {
+      var line = addLine(f.label, f.status, f.parent);
+      var key = line.replace(/\.$/, "").toLowerCase();
+      if (!parts.some(function (s) { return s.toLowerCase().indexOf(key) >= 0; })) parts.push(line);
+    });
+    return parts.join(" ").replace(/\s+/g, " ").trim();
   }
 
   /* The topic for C.applyTopics once placed: a new parent, right under its target, or as it came (reuse, legacy). */
@@ -1051,12 +1148,12 @@
   }
 
   var api = {
-    PLAN: PLAN, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, needsRepair: needsRepair, repairRequest: repairRequest,
+    PLAN: PLAN, DEPTH_CAP: DEPTH_CAP, levelsBelow: levelsBelow, capped: capped, depthChoices: depthChoices, goDeeper: goDeeper, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, needsRepair: needsRepair, repairRequest: repairRequest,
     MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild, nextStep: nextStep,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
     weekRecap: weekRecap, neoState: neoState, neoGated: neoGated, neoOpen: neoOpen, neoDue: neoDue, neoThemes: neoThemes, neoAdd: neoAdd, neoTaken: neoTaken, neoLine: neoLine, NEO_THEMES: NEO_THEMES, suggest: suggest, draw: draw, lessonContext: lessonContext, withBand: withBand, areaOf: areaOf, starterIdeas: starterIdeas, mixStarters: mixStarters, STARTER: STARTER, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, unfinished: unfinished, fresh: fresh, PACE: PACE, paceOf: paceOf, placeTopic: placeTopic, placedTopic: placedTopic, related: related, DESCRIBE: DESCRIBE, describeBatch: describeBatch, isBroad: isBroad,
     onboarding: onboarding, openQuestion: openQuestion, examples: examples, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics, directions: directions, homeStats: homeStats, homeStory: homeStory, SKILLS: SKILLS,
-    needsNext: needsNext, readyNext: readyNext, createRequest: createRequest, OPENING: OPENING
+    needsNext: needsNext, readyNext: readyNext, createRequest: createRequest, interestFor: interestFor, addLine: addLine, addFact: addFact, honestReply: honestReply, hideInternal: hideInternal, OPENING: OPENING
   };
   if (node_) module.exports = api;
   else root.IkoPlan = api;

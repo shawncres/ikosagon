@@ -465,6 +465,7 @@
     });
     var r = C.applyTopics(state.cloud, topics);
     var g = C.addGhosts(state.cloud, ghosts, Date.now(), focusId);
+    var facts = topics.map(function (tp) { return P.addFact(tp.name, r, state.cloud); });
     var parts = [];
     r.parentsCreated.forEach(function (id) { parts.push("new subject " + state.cloud.nodes[id].label); });
     /* a new chain is named once, at its deepest new link: "Making & Coding → Programming → Python → Sets (new)" */
@@ -505,27 +506,35 @@
       var hit = C.findTopic(state.cloud, tp.name);
       if (hit && grown.indexOf(hit.id) >= 0 && P.needsBridge(state.cloud, hit.id, (tp.chain || []).length) && state.bridgeQueue.indexOf(hit.id) < 0) state.bridgeQueue.push(hit.id);
     });
-    return { topic: topics[0] || (asks[0] && asks[0].tp) || null, parents: r.parentsCreated.slice() };
+    return { topic: topics[0] || (asks[0] && asks[0].tp) || null, parents: r.parentsCreated.slice(), facts: facts };
   }
   /* Subjects the learner named that the reply did not add. Each one is a parent. A name already anywhere is left as it is. */
   function ensureAsked(names) {
-    var made = [];
+    var made = [], facts = [];
     (names || []).forEach(function (raw) {
       var label = titleTopic(raw);
-      if (!label || junkSubject(label) || C.findAny(state.cloud, label)) return;
+      if (!label || junkSubject(label)) return;
+      if (C.findAny(state.cloud, label) || C.findClose(state.cloud, label)) {
+        facts.push(P.addFact(label, { created: [], parentsCreated: [] }, state.cloud));
+        return;
+      }
       var tp = { name: label, signal: "curious", placement: "parent", chain: [], parent: "" };
       var plan = P.placeTopic(state.cloud, tp, null);
-      if (!plan || plan.how === "reuse") return;
+      if (!plan || plan.how === "reuse") {
+        facts.push(P.addFact(label, { created: [], parentsCreated: [] }, state.cloud));
+        return;
+      }
       var gr = C.applyTopics(state.cloud, [P.placedTopic(tp, { how: "parent", label: label })]);
+      facts.push(P.addFact(label, gr, state.cloud));
       var id = gr.parentsCreated[0];
-      if (id) made.push(id);
+      if (id) { made.push(id); C.setProfile(state.cloud, { interests: [nodeOf(id).label] }); }
     });
     if (made.length) {
       refreshViews(made);
       push({ role: "grow", text: "Your cloud grew: " + made.map(function (id) { return "new subject " + nodeOf(id).label; }).join(" · "), open: made[0] });
       revealNode(made[0]);
     }
-    return made;
+    return { made: made, facts: facts };
   }
   /* New subjects with no children: one creation call for 3 or 4 real parts, then a clean placeholder set. */
   function fillStarter(id) {
@@ -598,7 +607,9 @@
     save();
     refreshViews([id].filter(Boolean));
     var n = nodeOf(id);
-    m.done = !n ? p.name + " wasn't added." : plan.how === "reuse" ? n.label + " is already on your cloud." : !n.parent ? n.label + " is a new branch on your cloud." : n.label + " is now under " + nodeOf(n.parent).label + ".";
+    var fact = n ? P.addFact(n.label, r, state.cloud) : { label: p.name, status: "failed", parent: "" };
+    if (plan.how === "reuse" && fact.status !== "new") fact = { label: n ? n.label : p.name, status: n ? "existing" : "failed", parent: "" };
+    m.done = P.addLine(fact.label, fact.status, fact.parent);
     m.open = n ? n.id : null;
     upsert(m);
     save();
@@ -1090,17 +1101,31 @@
        nothing selected); in the whole conversation, the focus shown above the composer. Never an earlier screen's node. */
     var fid = iko.open && iko.ctx ? (nodeOf(iko.ctx.id) ? iko.ctx.id : null) : state.focus;
     var asked = wantedSubjects(text);
-    var learn = asked[0] || learnTopicFrom(text), grew = false, attempt = 0, bare = [];
+    var learn = asked[0] || learnTopicFrom(text), grew = false, attempt = 0, bare = [], facts = [], madeIds = {};
     var body = Object.assign(basePayload(fid, text), { mode: "chat", messages: history(), screen: iko.open && iko.ctx ? screenOf(iko.ctx) : { view: "chat" } });
     function noteBare(id) {
       if (id && bare.indexOf(id) < 0 && nodeOf(id) && !nodeOf(id).parent && !C.childrenOf(state.cloud, id).length) bare.push(id);
     }
+    function absorb(list) {
+      (list || []).forEach(function (f) {
+        if (!f || !f.label) return;
+        var n = C.findAny(state.cloud, f.label);
+        if (f.status === "new" && n) madeIds[n.id] = { label: n.label, parent: f.parent || "" };
+        if (n && madeIds[n.id] && f.status !== "failed") f = { label: n.label, status: "new", parent: madeIds[n.id].parent };
+        var i = -1;
+        facts.forEach(function (x, k) { if (C.norm(x.label) === C.norm(f.label)) i = k; });
+        if (i < 0) facts.push(f);
+        else if (f.status === "new" || (f.status === "existing" && facts[i].status === "failed")) facts[i] = f;
+      });
+    }
     function turn() {
+      facts = [];
       return stream("/chat", body, {
         delta: function (t) { m.text += t; upsert(m); scrollDown(); },
         cloud: function (ev) {
           if (clarifyingNow(text)) return; /* a hint during a check is not a new subject */
           var r = grow(ev, fid);
+          absorb(r.facts);
           if ((ev.topics && ev.topics.length) || (ev.ghosts && ev.ghosts.length)) grew = true;
           if (r.topic) { m.topic = r.topic.name; m.parent = r.topic.parent; grew = true; }
           (r.parents || []).forEach(noteBare);
@@ -1119,11 +1144,12 @@
         m.text = (m.text || "").trim();
       }
       /* every subject they named, not only the first; a name already on the cloud is reused */
-      var made = !m.fallback && !clarifyingNow(text) ? ensureAsked(asked) : [];
+      var askedOut = !m.fallback && !clarifyingNow(text) ? ensureAsked(asked) : { made: [], facts: [] };
+      var made = askedOut.made || [];
+      absorb(askedOut.facts);
       if (made.length) {
         grew = true;
         made.forEach(noteBare);
-        if (!m.text || m.cut) m.text = made.map(function (id) { return nodeOf(id).label; }).join(" and ") + (made.length > 1 ? " are new branches on your cloud." : " is a new branch on your cloud.") + " Open one whenever you like.";
       }
       /* learn intent, but the reply never carried a cloud block (cut off or skipped): grow on the device, 0 extra calls */
       if (learn && !grew && !m.fallback && !clarifyingNow(text)) {
@@ -1131,32 +1157,53 @@
         var plan = P.placeTopic(state.cloud, tp, fid);
         if (plan) {
           if (plan.how === "reuse") {
-            grew = true;
-            m.topic = plan.label;
-            revealNode(plan.id);
-            if (!m.text || m.cut) m.text = plan.label + " is already on your cloud. Open it whenever you like.";
-            else if (m.text.toLowerCase().indexOf(plan.label.toLowerCase()) < 0) m.text = m.text.replace(/\s+$/, "") + " " + plan.label + " is already on your cloud.";
+            var reused = P.addFact(plan.label, { created: [], parentsCreated: [] }, state.cloud);
+            absorb([reused]);
+            if (reused.status !== "failed") {
+              grew = true;
+              m.topic = plan.label;
+              revealNode(plan.id);
+            }
           } else {
             if (plan.how === "ambiguous") plan = { how: "parent", label: label }; /* prefer growing the cloud over asking when recovering from a cut */
             var placed = P.placedTopic(tp, plan);
             var gr = C.applyTopics(state.cloud, [placed]);
+            var fact = P.addFact(label, gr, state.cloud);
+            absorb([fact]);
             var id = gr.parentsCreated[0] || gr.created[0] || null;
-            if (id) {
+            if (fact.status === "new" && id) {
               grew = true;
               noteBare(id);
               m.topic = label;
+              if (!nodeOf(id).parent) C.setProfile(state.cloud, { interests: [nodeOf(id).label] });
               refreshViews([id]);
               revealNode(id);
-              var note = !nodeOf(id).parent ? label + " is a new branch on your cloud. Open it whenever you like — you can learn anything, any time." : label + " is now under " + nodeOf(nodeOf(id).parent).label + ". Open it whenever you like.";
-              if (!m.text || m.cut) m.text = note;
-              else m.text = m.text.replace(/\s+$/, "") + " " + note;
-              push({ role: "grow", text: "Your cloud grew: " + (!nodeOf(id).parent ? "new subject " + label : C.trail(state.cloud, id, " → ") + " (new)"), open: id });
+              push({ role: "grow", text: "Your cloud grew: " + (!nodeOf(id).parent ? "new subject " + nodeOf(id).label : C.trail(state.cloud, id, " → ") + " (new)") + ". Open it whenever you like — you can learn anything, any time.", open: id });
             }
           }
         }
       }
+      (asked.length ? asked : (learn ? [learn] : [])).forEach(function (raw) {
+        var name = titleTopic(raw);
+        if (!name || facts.some(function (f) { return C.norm(f.label) === C.norm(name); })) return;
+        absorb([P.addFact(name, { created: [], parentsCreated: [] }, state.cloud)]);
+      });
+      var failedAdd = facts.some(function (f) { return f.status === "failed"; });
+      var canRetry = attempt < 1 && r.reason !== "budget" && r.reason !== "busy" && r.reason !== "aborted" && r.reason !== "offline";
+      /* an add that did not land is tried once more, then the wording says it could not be added */
+      if (!m.fallback && failedAdd && (asked.length || learn) && canRetry && !clarifyingNow(text)) {
+        attempt += 1;
+        m.text = "";
+        m.cut = false;
+        m.streaming = true;
+        upsert(m);
+        turn();
+        return;
+      }
+      if (facts.length && !m.fallback) m.text = P.honestReply(m.text, facts);
+      else if (!m.fallback) m.text = P.hideInternal(m.text);
       /* a cut or a one-word reply that added nothing: one more try, then a short question instead of the fragment */
-      if (!m.fallback && replyThin(m.text, asked) && !grew && attempt < 1 && r.reason !== "budget" && r.reason !== "busy" && r.reason !== "aborted" && r.reason !== "offline") {
+      if (!m.fallback && replyThin(m.text, asked) && !grew && !failedAdd && attempt < 1 && r.reason !== "budget" && r.reason !== "busy" && r.reason !== "aborted" && r.reason !== "offline") {
         attempt += 1;
         m.text = "";
         m.cut = false;
@@ -1193,13 +1240,9 @@
     postJson("/create", Object.assign(basePayload(id), { mode: "notice", messages: history().filter(function (m) { return m.role === "user"; }).slice(-1) }, P.bridgeRequest(state.cloud, id)), sig).then(function (j) {
       if (j && j.reason === "aborted") { aborted = true; return; }
       if (!(j && j.ok && Array.isArray(j.items))) return;
-      var before = C.trail(state.cloud, id, " → ");
       var r = C.applyBridge(state.cloud, id, j);
       save();
-      if (r.moved) {
-        refreshViews(r.created.concat(id));
-        push({ role: "grow", text: "Filled in the steps for " + nodeOf(id).label + ": " + C.trail(state.cloud, id, " → ") + " (was " + before + ")", open: id });
-      }
+      if (r.moved) refreshViews(r.created.concat(id)); /* the steps land quietly: no internal restructuring line */
       return runRepair(id, sig);
     }).then(function (r) {
       /* moved on before it finished: the bridge waits for the next chat turn */
@@ -1217,16 +1260,12 @@
     var n = nodeOf(id);
     n.repaired = Date.now();
     save();
-    var before = C.trail(state.cloud, id, " → ");
     return postJson("/create", Object.assign(basePayload(id), { mode: "notice", messages: history().filter(function (m) { return m.role === "user"; }).slice(-1) }, P.repairRequest(state.cloud, id)), sig).then(function (j) {
       if (j && j.reason === "aborted") return "aborted"; /* still counts as its one repair (the call may have been made) */
       if (!(j && j.ok && Array.isArray(j.items))) return;
       var r = C.applyRepair(state.cloud, id, j);
       save();
-      if (r.moved || r.created.length) {
-        refreshViews(r.created.concat(id));
-        push({ role: "grow", text: "Added a missing step for " + nodeOf(id).label + ": " + C.trail(state.cloud, id, " → ") + " (was " + before + ")", open: id });
-      }
+      if (r.moved || r.created.length) refreshViews(r.created.concat(id)); /* a repair stays off the learner's thread */
     });
   }
 
@@ -1392,6 +1431,7 @@
     var n = nodeOf(id);
     var bail = function () { if (opts.unlock) lock(false); };
     if (!n || aheadBusy[id]) { bail(); return; }
+    if (P.capped(state.cloud, id) && !opts.deeper) { bail(); return; } /* at the depth cap: a test, a sibling, or Go deeper? */
     if (!opts.force && !P.needsNext(state.cloud, id)) { bail(); return; }
     aheadBusy[id] = 1;
     if (opts.say) opts.say("Working out what comes next in " + n.label + "...");
@@ -1983,6 +2023,29 @@
     el.lFork.textContent = "";
     var n = nodeOf(id);
     if (!n || state.mode !== "lesson") return;
+    var cap = P.depthChoices(state.cloud, id);
+    if (cap) {
+      var subj = nodeOf(cap.test), sib = nodeOf(cap.sibling);
+      var box = mk("div", "others");
+      box.appendChild(mk("p", "l-head", "This branch is deep enough for now"));
+      box.appendChild(mk("p", null, "You can take a subject test, try a sibling branch, or choose to go deeper."));
+      var ul = mk("ul");
+      if (subj) { var li = mk("li"); li.appendChild(linkBtn("Test on " + subj.label, function () { openTest(subj.id); })); ul.appendChild(li); }
+      if (sib) { var sli = mk("li"); sli.appendChild(linkBtn(sib.label, function () { openLesson(sib.id); })); ul.appendChild(sli); }
+      if (cap.deeper) {
+        var dli = mk("li");
+        dli.appendChild(linkBtn("Go deeper?", function () {
+          if (!P.goDeeper(state.cloud, id)) return;
+          save();
+          placeNext(id, { deeper: true, force: true });
+          renderFork(id);
+        }));
+        ul.appendChild(dli);
+      }
+      box.appendChild(ul);
+      el.lFork.appendChild(box);
+      return;
+    }
     if (C.isTerminal(state.cloud, id) && nextOpen(id)) {
       var others = C.otherBranches(state.cloud, id, 3, topIds()).map(nodeOf).filter(Boolean);
       var w = mk("div", "others");

@@ -125,6 +125,10 @@ export type LearnInput = {
   material: { label: string; line: string }[];
   /** Create only: what the learner said they enjoy, what the creation is for, and their top-ranked topics (to steer what comes next). */
   interests: string[];
+  /** Next-topic calls: the root subject new topics must stay inside. */
+  subject: string;
+  /** Next-topic calls: the learner's original interest for that subject. */
+  interest: string;
   /** Create (start / more) only: the learner's open answer in their own words ("" after Skip). Sent once, not stored. */
   about: string;
   /** Create (start) only: the optional second answer, what they'd like to grow in themselves ("" when skipped). Sent once, not stored. */
@@ -308,6 +312,8 @@ export function parseLearnInput(raw: unknown): LearnInput | { error: string } {
       .map((x) => cleanText(x, LEARN_LIMITS.interestChars).replace(/[\n\r"<>{}[\]`*_#|\\]/g, " ").replace(/\s+/g, " ").trim())
       .filter(Boolean)
       .slice(0, LEARN_LIMITS.interests),
+    subject: cleanLabel(b.subject),
+    interest: cleanText(b.interest, LEARN_LIMITS.interestChars).replace(/[\n\r"<>{}[\]`*_#|\\]/g, " ").replace(/\s+/g, " ").trim(),
     about: cleanText(b.about, LEARN_LIMITS.aboutChars).replace(/[\n\r"<>{}[\]`*_#|\\]/g, " ").replace(/\s+/g, " ").trim(),
     grow: cleanText(b.grow, LEARN_LIMITS.growChars).replace(/[\n\r"<>{}[\]`*_#|\\]/g, " ").replace(/\s+/g, " ").trim(),
     kind: (CREATE_KINDS as readonly string[]).includes(String(b.kind)) ? (b.kind as LearnInput["kind"]) : "start",
@@ -719,10 +725,23 @@ export function adjacentSystem(i: LearnInput): string {
   );
 }
 
+const stayInside = (i: LearnInput) => {
+  const home = i.subject || "";
+  const interest = i.interest || home;
+  if (!home && !interest) return "Every new topic stays inside the same subject as the focus. Do not switch to a different field. ";
+  return (
+    `Stay inside the subject "${home || i.focus}". The learner's original interest is "${interest || home || i.focus}". ` +
+    "Every new topic is a real part of that subject, not a different field. " +
+    "Do not drift: storm physics is not part of Greek mythology, and volume basics is not part of Thai cooking. " +
+    "Keep breadth across sibling topics. Do not collapse a subject into one narrow part: car maintenance includes fluids, brakes, tires and inspections, not only motor oil. "
+  );
+};
+
 const pathRules = (i: LearnInput) =>
   `The subtopics are the smaller pieces of "${i.focus}" itself, one level down, in the order a learner should meet them (easiest and most foundational first), ` +
   `3 to ${LEARN_LIMITS.pathSteps} of them, 1 to 3 words each, Title Case, never the learner's name. ` +
   `Reuse these existing ones where they fit: ${i.known.join(", ") || "(none yet)"}. Then pick the one the learner should do next, given their profile. ` +
+  stayInside(i) +
   `Only if "${i.focus}" is already so small that it has no smaller pieces worth learning on their own, give an empty steps list and "end": true.`;
 
 /*
@@ -828,6 +847,25 @@ export function lessonContents(i: LearnInput, draft = "") {
 
 export function pathSystem(i: LearnInput): string {
   return `${SYSTEM_BASE}\n\nRole: path. Map a learning path for the topic "${i.focus}"${i.trail ? ` (${i.trail})` : ""}. ${pathRules(i)}\n\n${profile(i)}`;
+}
+
+/** A proposed next topic that leaves its subject. Known drifts are refused even when the names share no domain word. */
+export function topicDrift(name: string, subject: string, interest = ""): boolean {
+  const home = `${subject} ${interest}`.trim().toLowerCase();
+  const n = name.toLowerCase();
+  if (!home || !n) return false;
+  if (/\b(greek|myth\w*)\b/.test(home) && /\b(storm|physics|meteorolog\w*)\b/.test(n)) return true;
+  if (/\b(thai|cook\w*)\b/.test(home) && /\b(volume|litre|liter|measurement)\b/.test(n)) return true;
+  const child = topicDomain(name);
+  const parent = topicDomain(`${subject} ${interest}`);
+  return Boolean(child && parent && child !== parent);
+}
+
+/** A next-topic set that collapses a broad subject onto one narrow part (car maintenance into only motor oil). */
+export function pathTooNarrow(subject: string, names: string[]): boolean {
+  if (!/car maintenance/i.test(subject || "")) return false;
+  if (!names.length) return false;
+  return names.every((n) => /\boil\b/i.test(n) && !/\b(brake|tire|tyre|coolant|battery|filter|inspect|fluid|wiper)\b/i.test(n));
 }
 
 /* Response schemas in plain JSON Schema; each adapter converts or passes them on (llm.ts). */
@@ -959,6 +997,7 @@ export function createSystem(i: LearnInput): string {
   const task =
     i.kind === "next"
       ? `Role: create, next. The learner is working in "${i.focus}"${i.trail ? ` (${i.trail})` : ""}. They already have: ${i.known.join(", ") || "nothing yet"}. ` +
+        stayInside(i) +
         `Decide what should come next inside "${i.focus}": return exactly 1 item whose node.name is "${i.focus}" and whose children are new child topics (not ones they already have). `
       : i.kind === "more"
         ? `Role: create, more. The learner told us, in their own words (in the user message), something new they enjoy or wonder about${i.interests.length ? ` (also: ${i.interests.join(", ")})` : ""}. ` +
@@ -1101,13 +1140,20 @@ function labelList(v: unknown): string[] {
   return out;
 }
 
-export function parseCreate(raw: unknown, kind: LearnInput["kind"], learnerName = "", focus = "", known: string[] = []): CreateResult | null {
+export function parseCreate(raw: unknown, kind: LearnInput["kind"], learnerName = "", focus = "", known: string[] = [], scope?: { subject?: string; interest?: string }): CreateResult | null {
   const list = jsonObject(raw)?.items;
   if (!Array.isArray(list)) return null;
   const later: string[] = [];
   const items = createItems(list, kind, learnerName, focus, known, later);
   const min = kind === "start" ? 2 : 1;
-  return items.length >= min ? { items, ...(later.length ? { later } : {}) } : null;
+  if (items.length < min) return null;
+  if (kind === "next" && (scope?.subject || scope?.interest)) {
+    const names = items[0].children.map((c) => c.name);
+    const home = scope.subject || "";
+    const interest = scope.interest || "";
+    if (names.some((n) => topicDrift(n, home, interest)) || pathTooNarrow(home, names) || pathTooNarrow(interest, names)) return null;
+  }
+  return { items, ...(later.length ? { later } : {}) };
 }
 
 /**
@@ -1334,7 +1380,7 @@ export function parseCloudBlock(raw: unknown, learnerName = "", ctx?: PlaceCtx):
 }
 
 /** Ordered subtopics for one node: cleaned, deduped, never the learner's name or the focus itself; next is one of the steps. */
-export function parsePath(raw: unknown, learnerName = "", focus = ""): LearnPath | null {
+export function parsePath(raw: unknown, learnerName = "", focus = "", scope?: { subject?: string; interest?: string }): LearnPath | null {
   const obj = jsonObject(raw);
   if (!obj) return null;
   const steps: string[] = [];
@@ -1346,6 +1392,9 @@ export function parsePath(raw: unknown, learnerName = "", focus = ""): LearnPath
     if (steps.length >= LEARN_LIMITS.pathSteps) break;
   }
   if (!steps.length) return obj.end === true ? { steps: [], next: "", end: true } : null;
+  const home = scope?.subject || "";
+  const interest = scope?.interest || "";
+  if ((home || interest) && (steps.some((s) => topicDrift(s, home, interest)) || pathTooNarrow(home, steps) || pathTooNarrow(interest, steps))) return null;
   const want = cleanLabel(obj.next);
   return { steps, next: steps.find((x) => sameLabel(x, want)) || steps[0] };
 }

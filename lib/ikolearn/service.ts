@@ -427,8 +427,14 @@ export async function restructureFor(input: LearnInput, env: Env, fetchImpl: typ
 }
 
 export async function pathFor(input: LearnInput, env: Env, fetchImpl: typeof fetch = fetch): Promise<Out> {
-  const user = `Map the learning path for: ${input.focus}${input.trail ? ` (${input.trail})` : ""}`;
-  const r = await callModel<LearnPath>(() => ({ system: pathSystem(input), user: user }), PATH_SCHEMA, (t) => parsePath(t, input.name, input.focus), env, fetchImpl, { route: "path" });
+  const scope = { subject: input.subject || "", interest: input.interest || "" };
+  const home = scope.subject || input.focusParent || input.focus;
+  const interest = scope.interest || home;
+  const user = `Map the learning path for: ${input.focus}${input.trail ? ` (${input.trail})` : ""}. Stay inside the subject "${home}". The learner's original interest is "${interest}".`;
+  const r = await callModel<LearnPath>((strict) => ({
+    system: pathSystem({ ...input, subject: home, interest }) + (strict ? " Second try: the last path left the subject. Every step must stay inside the subject and the original interest, with breadth across siblings." : ""),
+    user,
+  }), PATH_SCHEMA, (t) => parsePath(t, input.name, input.focus, { subject: home, interest }), env, fetchImpl, { route: "path" });
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
   return json(200, { ok: true, path: r.value });
 }
@@ -460,7 +466,7 @@ function createUser(input: LearnInput): string {
         ? `Check the chain for ${input.focus}: ${input.trail || input.focusParent}. Was a level skipped? Give the corrected chain.${bridgeAsk(input)}`
         : `Where does ${input.focus} fit under ${input.focusParent || "its subject"}? Give the steps in between.${bridgeAsk(input)}`
       : input.kind === "next"
-      ? `What should come next in ${input.focus}?`
+      ? `What should come next in ${input.focus}? Stay inside the subject "${input.subject || input.focusParent || input.focus}". The learner's original interest is "${input.interest || input.subject || input.focus}".`
       : `Build my ${input.kind === "start" ? "first" : "new"} learning topics.` +
         (input.about ? ` In my own words: "${input.about}"` : input.interests.length ? ` I enjoy: ${input.interests.join(", ")}.` : "") +
         (input.kind === "start" && input.grow ? ` Something I'd like to grow in myself: "${input.grow}"` : "")
@@ -471,7 +477,11 @@ export async function createFor(input: LearnInput, env: Env, fetchImpl: typeof f
   const bad = createCheck(input);
   if (bad) return bad;
   const user = createUser(input);
-  const r = await callModel<CreateResult>(() => ({ system: createSystem(input), user: user }), CREATE_SCHEMA, (t) => parseCreate(t, input.kind, input.name, input.focus, input.known), env, fetchImpl, { maxTokens: MODEL_LIMITS.createMaxTokens, route: "create" });
+  const scope = { subject: input.subject || "", interest: input.interest || "" };
+  const r = await callModel<CreateResult>((strict) => ({
+    system: createSystem(input) + (strict && input.kind === "next" ? "\n\nSecond try: discard every topic that leaves the subject. Stay inside the subject and the learner's original interest, and keep the children broad across the subject." : ""),
+    user,
+  }), CREATE_SCHEMA, (t) => parseCreate(t, input.kind, input.name, input.focus, input.known, scope), env, fetchImpl, { maxTokens: MODEL_LIMITS.createMaxTokens, route: "create" });
   if (!r.ok) return json(reasonStatus(r.code), { ok: false, reason: r.code });
   return json(200, { ok: true, kind: input.kind, items: r.value.items, ...(r.value.later ? { later: r.value.later } : {}) });
 }
