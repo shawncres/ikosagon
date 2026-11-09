@@ -105,6 +105,8 @@
       role: o.role === "core" || o.role === "optional" ? o.role : "", off: o.off || null, made: Boolean(o.made), bridged: 0, absorbedInto: null, absorbed: [],
       /* v8: merge level (0 = not merged, 1 = I, 2 = II ...), when it last merged, the one-time chain repair */
       ml: 0, mergedAt: 0, repaired: 0,
+      /* the learner asked to go one level past the soft depth cap; stored in the flag byte (bit 16) */
+      deeper: false,
       /* v9: prerequisites, node ids that should be done first (from the creation call); none by default */
       pre: [],
       /* the card's line drawing (one of MOTIFS, from the creation call); "" = the device picks by keyword (deck.js) */
@@ -199,6 +201,94 @@
     if (!k) return null;
     var s = subjects(cloud).filter(function (n) { return n.key === k; })[0];
     return s || findTopic(cloud, label) || findSubject(cloud, label);
+  }
+
+  /*
+   * Near-duplicates: "Basic Car Maintenance" is "Car Maintenance", "Interest Lock Periods" is "Lock Periods".
+   * Qualifier words drop out; the remaining words must be the same (one extra word at most). A single shared word
+   * is not enough, so "Number Sense" stays distinct from "Number Bonds".
+   */
+  var NAME_QUALIFIER = { basic: 1, simple: 1, introduction: 1, intro: 1, beginner: 1, beginners: 1, advanced: 1, general: 1, fundamental: 1, fundamentals: 1, interest: 1, introductory: 1, overview: 1 };
+  function nameTokens(label) { return norm(label).split(" ").filter(Boolean); }
+  function coreTokens(label) {
+    var all = nameTokens(label), stripped = all.filter(function (w) { return !NAME_QUALIFIER[w]; });
+    return stripped.length ? stripped : all;
+  }
+  function stemHit(a, b) {
+    if (a === b) return true;
+    return a.length >= 4 && b.length >= 4 && (a.indexOf(b) === 0 || b.indexOf(a) === 0);
+  }
+  function nearName(a, b) {
+    if (!a || !b) return false;
+    if (norm(a) === norm(b)) return true;
+    var x = coreTokens(a), y = coreTokens(b);
+    if (x.length < 2 || y.length !== x.length) return false;
+    return x.every(function (w, i) { return stemHit(w, y[i]); });
+  }
+  /* How much two names share: exact or prefix stems. Used to pick a parent and to match an original interest. */
+  function nameScore(a, b) {
+    var x = nameTokens(a).filter(function (w) { return w.length > 2; }), y = nameTokens(b).filter(function (w) { return w.length > 2; }), s = 0;
+    x.forEach(function (w) { y.forEach(function (v) { if (stemHit(w, v)) s += 2; }); });
+    return s;
+  }
+  /*
+   * Coarse families, only to refuse a parent from a different field. A name with no family is not a clash.
+   * "photo" is photography, not photosynthesis. "thai" only counts inside cooking.
+   */
+  var FAMILIES = [
+    { id: "myth", re: /\b(myths?|mythology|olympus|zeus|odyssey|iliad|gods?|goddess(?:es)?)\b/i },
+    { id: "physics", re: /\b(particles?|collisions?|physics|quantum|momentum)\b/i },
+    { id: "storm", re: /\b(storms?|thunder|lightning|hurricanes?|meteorology)\b/i },
+    { id: "bird", re: /\b(birds?|birding|birdwatch\w*|avian|ornitholog\w*)\b/i },
+    { id: "photo", re: /\b(photographs?|photography|cameras?)\b/i },
+    { id: "food", re: /\b(cook(?:ing|ery)?|recipes?|cuisine|kitchen|baking|foods?)\b|\bthai cook/i },
+    { id: "measure", re: /\b(volumes?|litres?|liters?|millilitres?|milliliters?)\b/i },
+    { id: "health", re: /\b(vaccines?|vaccination|fevers?|health|medicines?|medical|diseases?|immune|viruses?|doctors?|symptoms?)\b/i },
+    { id: "tech", re: /\b(apps?|software|codes?|coding|websites?|programming|algorithms?|javascript|html|css)\b/i },
+    { id: "history", re: /\b(rome|roman|empires?|ancient|dynasties|medieval)\b/i },
+    { id: "auto", re: /\b(cars?|automotive|engines?|brakes?|tires?|tyres?)\b|\bmotor oil\b|\bcar maintenance\b/i }
+  ];
+  function familiesOf(label) {
+    var s = String(label || ""), ids = [];
+    FAMILIES.forEach(function (f) { if (f.re.test(s) && ids.indexOf(f.id) < 0) ids.push(f.id); });
+    return ids;
+  }
+  function familyClash(a, b) {
+    var x = familiesOf(a), y = familiesOf(b);
+    if (!x.length || !y.length) return false;
+    return !x.some(function (id) { return y.indexOf(id) >= 0; });
+  }
+  /* An existing node whose name is the same idea, anywhere on the cloud. Exact matches stay with findTopic. */
+  function findClose(cloud, label) {
+    var k = norm(label);
+    if (!k) return null;
+    var hits = all(cloud).filter(function (n) { return n.key !== k && nearName(n.label, label); });
+    if (!hits.length) return null;
+    hits.sort(function (a, b) { return depthOf(cloud, a.id) - depthOf(cloud, b.id); });
+    return hits[0];
+  }
+  /* The existing node this topic most clearly belongs under. Nothing under a different family. */
+  function closestParent(cloud, label) {
+    /* The new name has to be a more specific form of an existing one ("Bird Photography" under "Birdwatching").
+       A one-word name is left alone, and parallel names ("Field 10", "Field 11") are not nested in each other. */
+    var cores = coreTokens(label);
+    if (cores.length < 2) return null;
+    var best = null, score = 0;
+    all(cloud).forEach(function (n) {
+      if (norm(n.label) === norm(label) || familyClash(label, n.label)) return;
+      var theirs = coreTokens(n.label);
+      if (!theirs.length || theirs.length >= cores.length) return;
+      if (!theirs.every(function (w) { return cores.some(function (v) { return stemHit(w, v); }); })) return;
+      var s = nameScore(label, n.label);
+      if (s > score || (s === score && best && depthOf(cloud, n.id) < depthOf(cloud, best.id))) { score = s; best = n; }
+    });
+    return score >= 2 ? best : null;
+  }
+  /* A requested parent from another field is refused. The closest real match is used instead, else none. */
+  function rejectHome(cloud, label, parent) {
+    if (!parent || !familyClash(label, parent.label)) return parent;
+    var close = closestParent(cloud, label);
+    return close && close.id !== parent.id ? close : null;
   }
 
   /* ---------- growth ---------- */
@@ -336,8 +426,28 @@
       var sig = SIGNAL[tp.signal] || SIGNAL.explored;
       var subj = subjects(cloud).filter(function (s) { return s.key === norm(label); })[0];
       if (subj) { subj.weight += sig.w * 0.5; subj.touched = t; res.strengthened.push(subj.id); return; }
+      /* a near-duplicate is the existing node: nothing new, and nothing already on the cloud is moved */
+      var close = findClose(cloud, label);
+      if (close && !findTopic(cloud, label)) {
+        if (close.ghost) { close.ghost = false; close.born = t; res.promoted.push(close.id); }
+        else res.strengthened.push(close.id);
+        close.weight += sig.w; close.touched = t; warm(close, HEAT.chat * sig.w, t);
+        bumpAncestors(cloud, close.id, 0.25, t);
+        return;
+      }
       /* placed by the orchestrator (chat placement, checked on the device): a new branch under the learner's name ... */
       if (tp.asSubject && !findTopic(cloud, label)) {
+        var home = closestParent(cloud, label);
+        if (home) {
+          if (makeRoom(cloud, home.id, false)) {
+            var child = addNode(cloud, { label: label, parent: home.id, weight: 0, born: t });
+            child.weight += sig.w; child.touched = t; warm(child, HEAT.chat * sig.w, t);
+            if (tp.blurb) setBlurb(cloud, child.id, tp.blurb);
+            res.created.push(child.id);
+            bumpAncestors(cloud, child.id, 0.25, t);
+          }
+          return;
+        }
         var sn = addNode(cloud, { label: label, parent: null, weight: 1, born: t });
         sn.weight += sig.w * 0.5; sn.touched = t; warm(sn, HEAT.chat * sig.w, t);
         if (tp.blurb) setBlurb(cloud, sn.id, tp.blurb);
@@ -349,7 +459,16 @@
       var hint = under || findAny(cloud, tp.parent);
       var n = findTopic(cloud, label, hint ? hint.id : null);
       var parent;
+      /* adding never moves a node that is already there: a clashing parent is replaced by the closest real match */
       if (!n && under) {
+        under = rejectHome(cloud, label, under);
+        if (!under) {
+          var owned = addNode(cloud, { label: label, parent: null, weight: 1, born: t });
+          owned.weight += sig.w * 0.5; owned.touched = t; warm(owned, HEAT.chat * sig.w, t);
+          if (tp.blurb) setBlurb(cloud, owned.id, tp.blurb);
+          res.parentsCreated.push(owned.id);
+          return;
+        }
         if (!makeRoom(cloud, under.id, false)) { under.weight += 0.5; under.touched = t; res.strengthened.push(under.id); return; }
         if (under.ghost) { under.ghost = false; under.born = t; res.promoted.push(under.id); }
         n = addNode(cloud, { label: label, parent: under.id, weight: 0, born: t });
@@ -361,16 +480,27 @@
         /* a short chain: deepen it from a topic on the learner's map that they named (no call) */
         if (links.length <= 1 && said) links = deepenChain(cloud, links.length ? links : [tp.parent], label, said) || links;
         links = links.filter(function (l) { return norm(l) !== norm(label); });
-        /* nothing names a subject above it: the topic is a subject of its own, under the learner's name (never a
-           fixed catch-all, never the last branch) */
+        /* nothing names a subject above it: under the closest existing match, else a subject of its own */
         if (!links.length && !cleanLabel(tp.parent)) {
-          var own = addNode(cloud, { label: label, parent: null, weight: 1, born: t });
-          own.weight += sig.w * 0.5; own.touched = t; warm(own, HEAT.chat * sig.w, t);
-          if (tp.blurb) setBlurb(cloud, own.id, tp.blurb);
-          res.parentsCreated.push(own.id);
+          parent = closestParent(cloud, label);
+          if (!parent) {
+            var own = addNode(cloud, { label: label, parent: null, weight: 1, born: t });
+            own.weight += sig.w * 0.5; own.touched = t; warm(own, HEAT.chat * sig.w, t);
+            if (tp.blurb) setBlurb(cloud, own.id, tp.blurb);
+            res.parentsCreated.push(own.id);
+            return;
+          }
+        } else {
+          parent = (links.length > 1 && placeChain(cloud, links, t, res)) || resolveParent(cloud, links.length ? links[0] : tp.parent, t, res);
+          parent = rejectHome(cloud, label, parent);
+        }
+        if (!parent) {
+          var alone = addNode(cloud, { label: label, parent: null, weight: 1, born: t });
+          alone.weight += sig.w * 0.5; alone.touched = t; warm(alone, HEAT.chat * sig.w, t);
+          if (tp.blurb) setBlurb(cloud, alone.id, tp.blurb);
+          res.parentsCreated.push(alone.id);
           return;
         }
-        parent = (links.length > 1 && placeChain(cloud, links, t, res)) || resolveParent(cloud, links.length ? links[0] : tp.parent, t, res);
         if (!makeRoom(cloud, parent.id, false)) { parent.weight += 0.5; parent.touched = t; res.strengthened.push(parent.id); return; }
         n = addNode(cloud, { label: label, parent: parent.id, weight: 0, born: t });
         res.created.push(n.id);
@@ -405,7 +535,7 @@
       if (!g) return;
       var label = cleanLabel(g.name);
       if (!label || norm(label) === norm(cloud.name)) { out.unplaced += 1; return; }
-      if (findTopic(cloud, label) || subjects(cloud).some(function (s) { return s.key === norm(label); })) { out.dupes += 1; return; }
+      if (findTopic(cloud, label) || findClose(cloud, label) || subjects(cloud).some(function (s) { return s.key === norm(label); })) { out.dupes += 1; return; }
       var parent = findAny(cloud, g.parent) || fallback;
       if (!parent || !makeRoom(cloud, parent.id, true)) { out.unplaced += 1; return; }
       var gn = addNode(cloud, { label: label, parent: parent.id, ghost: true, born: t });
@@ -445,7 +575,7 @@
       if (/\b(jointery|recieve|seperate|app logic|asdf)\b/i.test(label) || /(.)\1{2,}/i.test(label)) return;
       if (/^(?:(?:a|an|the)\s+)?(overview|introduction|intro)$/i.test(label) || /^deeper\b/i.test(label) || /\bdeeper$/i.test(label)) return;
       if (clean.some(function (y) { return norm(y) === norm(label); })) return;
-      if (findAny(cloud, label)) return;
+      if (findAny(cloud, label) || findClose(cloud, label)) return;
       if (clean.length >= 4) return;
       clean.push(label);
     };
@@ -469,9 +599,9 @@
       var hit = childrenOf(cloud, id).filter(function (c) { return c.key === k; })[0];
       if (!hit) {
         /* already somewhere else on the map: reuse it only if it sits inside this branch, otherwise leave it where it is */
-        var other = findTopic(cloud, label, id);
+        var other = findTopic(cloud, label, id) || findClose(cloud, label);
         if (other && isAncestor(cloud, id, other.id)) hit = other;
-        else if (other) return;
+        else if (other) return; /* a near-duplicate stays where it is: adding never moves it */
       }
       if (!hit) {
         if (!makeRoom(cloud, id, true, out.ids)) return;
@@ -1782,7 +1912,7 @@
       var x = cloud.nodes[id];
       if (x.path && x.path.ids.length) paths[id] = [x.path.ids, x.path.next || 0, s(x.path.at)];
       if (x.fork && x.fork.ids.length) forks[id] = [x.fork.ids, x.fork.why, x.fork.picked || 0, s(x.fork.at)];
-      var row = [id, x.label, x.parent || 0, (x.ghost ? 1 : 0) | (x.opened ? 2 : 0) | (x.end ? 4 : 0) | (x.inked ? 8 : 0), Math.round(x.weight * 10), Math.round(x.mastery * 100), s(x.born), s(x.touched), x.parent ? -1 : (x.hue == null ? 30 : x.hue), s(x.lastStruggle), x.spent || 0, x.engaged || 0];
+      var row = [id, x.label, x.parent || 0, (x.ghost ? 1 : 0) | (x.opened ? 2 : 0) | (x.end ? 4 : 0) | (x.inked ? 8 : 0) | (x.deeper ? 16 : 0), Math.round(x.weight * 10), Math.round(x.mastery * 100), s(x.born), s(x.touched), x.parent ? -1 : (x.hue == null ? 30 : x.hue), s(x.lastStruggle), x.spent || 0, x.engaged || 0];
       /* v4 and v5 fields only when set, so most rows stay short */
       var v9 = x.pre && x.pre.length;
       var v8 = v9 || x.ml || x.mergedAt || x.repaired;
@@ -1964,7 +2094,7 @@
           id: a[0], label: cleanLabel(a[1]), key: norm(a[1]), parent: a[2] || null, ghost: Boolean(a[3] & 1), opened: Boolean(a[3] & 2),
           weight: (Number(a[4]) || 0) / 10, mastery: clamp01((Number(a[5]) || 0) / 100), born: ms(a[6]), touched: ms(a[7]),
           hue: a[2] ? undefined : (Number.isFinite(a[8]) && a[8] >= 0 ? a[8] : 30), lastStruggle: a[9] ? ms(a[9]) : undefined, cards: [],
-          end: Boolean(a[3] & 4), inked: Boolean(a[3] & 8), spent: Math.max(0, Number(a[10]) || 0), engaged: Math.max(0, Number(a[11]) || 0),
+          end: Boolean(a[3] & 4), inked: Boolean(a[3] & 8), deeper: Boolean(a[3] & 16), spent: Math.max(0, Number(a[10]) || 0), engaged: Math.max(0, Number(a[11]) || 0),
           correct: Math.max(0, Number(a[12]) || 0), heat: Math.max(0, Number(a[13]) || 0) / 100, heatAt: ms(a[14]), blurb: cleanBlurb(a[15] || ""), achievedAt: ms(a[16]),
           pending: Array.isArray(a[17]) && Array.isArray(a[17][0]) && a[17][0].length ? { steps: a[17][0].map(cleanLabel).filter(Boolean).slice(0, LIMITS.pathSteps), next: cleanLabel(a[17][1]) } : null,
           doneAt: ms(a[18]),
@@ -2003,7 +2133,7 @@
         id: id, label: cleanLabel(n.label), key: norm(n.label), parent: n.parent || null, ghost: Boolean(n.ghost), opened: false,
         weight: Number(n.weight) || 0, mastery: clamp01(Number(n.mastery) || 0), born: Number(n.born) || 0, touched: Number(n.touched) || 0,
         hue: n.parent ? undefined : (Number.isFinite(n.hue) ? n.hue : 30), lastStruggle: n.lastStruggle || undefined, cards: [],
-        spent: 0, engaged: 0, end: false, correct: 0, heat: 0, heatAt: 0, blurb: "", achievedAt: 0, pending: null, doneAt: 0, imp: null, impAt: 0, goal: "", asked: 0,
+        spent: 0, engaged: 0, end: false, deeper: false, correct: 0, heat: 0, heatAt: 0, blurb: "", achievedAt: 0, pending: null, doneAt: 0, imp: null, impAt: 0, goal: "", asked: 0,
         role: "", off: null, made: false, bridged: 0, absorbedInto: null, absorbed: [], ml: 0, mergedAt: 0, repaired: 0, pre: [], motif: ""
       };
     });
@@ -2055,7 +2185,7 @@
     evolveColor: evolveColor, cardColor: cardColor, toneOf: toneOf, MOTIFS: MOTIFS, cleanMotif: cleanMotif, applyChoices: applyChoices, pickChoice: pickChoice, isTerminal: isTerminal, otherBranches: otherBranches, hash: hash,
     attachCard: attachCard, cardsFor: cardsFor, summarize: summarize, knownUnder: knownUnder, subjectLabels: subjectLabels,
     subjects: subjects, childrenOf: childrenOf, ancestry: ancestry, depthOf: depthOf, subjectOf: subjectOf, trail: trail, index: index,
-    findSubject: findSubject, findTopic: findTopic, findAny: findAny, norm: norm, cleanLabel: cleanLabel,
+    findSubject: findSubject, findTopic: findTopic, findAny: findAny, findClose: findClose, nearName: nearName, nameScore: nameScore, familyClash: familyClash, closestParent: closestParent, norm: norm, cleanLabel: cleanLabel,
     EASE: EASE, easeOf: easeOf, noteEase: noteEase, FADE: FADE, fadeOf: fadeOf, fadeAfter: fadeAfter, lastActive: lastActive,
     colorOf: colorOf, levelScale: levelScale, layout: layout, serialize: serialize, deserialize: deserialize, trimThread: trimThread
   };

@@ -7,7 +7,7 @@ import { createRequire } from "node:module";
 import {
   LEARN_LIMITS, CLOUD_OPEN, CLOUD_CLOSE, cleanName, cleanLabel, cleanMessages, parseLearnInput, SYSTEM_BASE, companionSystem, noticeSystem, replyLooksComplete, lessonLooksComplete, learnTopicFrom, learnTopicsFrom, affirmSeveral, subjectsOffered, goodChildName, withHealthNote, vaccineMisleads, HEALTH_RULE, junkSubject, toAdult, DISTRACTOR_RULE, realLink,
   buildContents, cardSystem, adjacentSystem, plainReply, parseCloudBlock, parseCard, parseAdjacent, createBlockSplitter,
-  PATH_OPEN, PATH_CLOSE, lessonSystem, lessonContents, pathSystem, PATH_SCHEMA, CARD_SCHEMA, parsePath, parseChoices, parseLessonBlock, parseQuestions, parseBlurb, parseChain, checkSystem,
+  PATH_OPEN, PATH_CLOSE, lessonSystem, lessonContents, pathSystem, PATH_SCHEMA, CARD_SCHEMA, parsePath, parseChoices, parseLessonBlock, parseQuestions, parseBlurb, parseChain, checkSystem, topicDrift, pathTooNarrow,
   parseTest, testSystem, TEST_SCHEMA, parseCheck, createSystem, parseCreate, CREATE_SCHEMA, examplesSystem, parseExamples, EXAMPLES_SCHEMA, EXAMPLE_LIMITS, SIGNALS, parseReading,
 } from "../lib/ikolearn/prompts.ts";
 import { LESSON_PACES } from "../lib/ikolearn/prompts.ts";
@@ -1173,13 +1173,14 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
    * then a little more for a cut lesson's retries, the first-cloud retry, and inking a card on its first right answer).
    * Multi-subject adds, starter children, and tighter cloud labels need about 8 KB raw / 2 KB gzip.
    * Content-quality checks, hands-on safety notes, the topic list and the extra retries need about 8 KB raw / 2 KB gzip.
+   * Honest add lines, near-duplicate placement, subject-bounded paths and the depth cap need about 8 KB raw / 2 KB gzip.
    */
   const files = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js", "rank.js", "orchestrator.js", "camera.js", "profiles.js", "icon.svg"];
   const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
   const bytes = files.reduce((n, f) => n + served(f).length, 0);
   const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
-  ok(bytes < 412_000, "app weight under 412 KB uncompressed (served, minified)", String(bytes));
-  ok(gz < 138_000, "app weight under 138 KB gzipped (served, minified)", String(gz));
+  ok(bytes < 420_000, "app weight under 420 KB uncompressed (served, minified)", String(bytes));
+  ok(gz < 141_000, "app weight under 141 KB gzipped (served, minified)", String(gz));
 }
 
 /* ================= PR 108: QA polish ================= */
@@ -4202,6 +4203,86 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   for (let i = 0; i < 6; i++) C.applyTopics(subA, [{ name: "Step " + i, signal: "explored", under: busy.id }], T0 + 2 + i);
   const layBefore = C.layout(subA)[busy.id];
   ok(layBefore && Number.isFinite(layBefore.x), "giving a busy branch room on screen does not change the saved layout");
+}
+
+/* ---------- honesty, no re-parenting, placement, paths stay in subject, depth cap ---------- */
+{
+  eq(P.addLine("Hat Making", "failed", ""), "I couldn't add Hat Making.", "honesty: a failed add says it could not be added");
+  eq(P.addLine("Hat Making", "new", ""), "Hat Making is a new branch on your cloud.", "honesty: a new subject is described as new");
+  eq(P.addLine("Bird Photography", "new", "Birdwatching"), "Bird Photography is now under Birdwatching.", "honesty: a new child names the parent it actually landed under");
+  eq(P.addLine("Car Maintenance", "existing", ""), "Car Maintenance is already on your cloud.", "honesty: an existing node is described as already there");
+  const lied = P.honestReply("Bird Photography is already on your cloud. Open it whenever you like.", [{ label: "Bird Photography", status: "new", parent: "Birdwatching" }]);
+  ok(/now under Birdwatching/.test(lied) && !/already on your cloud/.test(lied), "honesty: a new add never keeps the model's 'already on your cloud'", lied);
+  const missed = P.honestReply("I've added Particle Collisions to your cloud.", [{ label: "Particle Collisions", status: "failed", parent: "" }]);
+  ok(/couldn't add Particle Collisions/.test(missed) && !/I've added/.test(missed), "honesty: a failed add never keeps a claim that it was added", missed);
+  ok(P.hideInternal("Filled in the steps for Sets. Added a missing step for Sets.").length === 0, "internal restructuring lines are dropped");
+  const appH = fs.readFileSync("public/ikolearn/app.js", "utf8");
+  ok(/P\.honestReply\(m\.text, facts\)/.test(appH) && /failedAdd && \(asked\.length \|\| learn\) && canRetry/.test(appH) && /attempt < 1/.test(appH), "chat: the spoken line comes from the add result, and a failed add is tried once");
+  ok(!/Filled in the steps for/.test(appH) && !/Added a missing step for/.test(appH) && /I tidied your cloud so related topics sit together\./.test(appH), "bridge and repair stay quiet; the learner's tidy line remains");
+  ok(/deeper: "Go deeper"/.test(appH) && /Go deeper\?/.test(appH) && /P\.depthChoices\(/.test(appH) && /P\.capped\(/.test(appH), "depth cap offers Go deeper? without changing the lesson level selector");
+
+  const map = C.create("Sam", T0);
+  C.applyTopics(map, [{ name: "Birdwatching", signal: "curious", asSubject: true }, { name: "Greek Mythology", signal: "curious", asSubject: true }], T0);
+  const beforeParents = {};
+  map.order.forEach((id) => { beforeParents[id] = map.nodes[id].parent; });
+  const bird = C.applyTopics(map, [{ name: "Bird Photography", parent: "Birdwatching", signal: "curious" }], T0 + 1);
+  const photo = C.findTopic(map, "Bird Photography");
+  ok(photo && map.nodes[photo.parent].label === "Birdwatching" && bird.created.includes(photo.id), "Bird Photography lands under Birdwatching");
+  const part = C.applyTopics(map, [{ name: "Particle Collisions", parent: "Greek Mythology", signal: "curious" }], T0 + 2);
+  const collisions = C.findSubject(map, "Particle Collisions");
+  ok(collisions && !collisions.parent && part.parentsCreated.includes(collisions.id) && !C.findTopic(map, "Particle Collisions"), "Particle Collisions is not filed under Greek Mythology");
+  ok(map.order.filter((id) => beforeParents[id] !== undefined).every((id) => map.nodes[id].parent === beforeParents[id]), "adding a node never moves an existing one");
+  const watch = C.findSubject(map, "Birdwatching");
+  ok(P.placeTopic(map, { name: "Bird Photography", parent: "Birdwatching", placement: "child", target: watch.id }, watch.id).how === "reuse", "a second Bird Photography reuses the node");
+  C.applyTopics(map, [{ name: "Car Maintenance", signal: "curious", asSubject: true }], T0 + 3);
+  const again = C.applyTopics(map, [{ name: "Basic Car Maintenance", signal: "curious", asSubject: true }], T0 + 4);
+  ok(again.created.length === 0 && again.parentsCreated.length === 0 && again.strengthened.includes(C.findSubject(map, "Car Maintenance").id) && C.subjects(map).filter((s) => /car maintenance/i.test(s.label)).length === 1, "Basic Car Maintenance reuses Car Maintenance");
+  C.applyTopics(map, [{ name: "Lock Periods", parent: "Car Maintenance", signal: "curious" }], T0 + 5);
+  const locks = C.applyTopics(map, [{ name: "Interest Lock Periods", parent: "Greek Mythology", signal: "curious" }], T0 + 6);
+  ok(locks.created.length === 0 && locks.strengthened.includes(C.findTopic(map, "Lock Periods").id) && map.nodes[C.findTopic(map, "Lock Periods").parent].label === "Car Maintenance", "Interest Lock Periods reuses Lock Periods and leaves it where it is");
+
+  const home = parseLearnInput({ mode: "notice", name: "Mia", messages: [], kind: "next", focus: "Gods", subject: "Greek Mythology", interest: "greek myths", known: ["Zeus"] });
+  const nextPrompt = createSystem(home);
+  ok(/Stay inside the subject "Greek Mythology"/.test(nextPrompt) && /original interest is "greek myths"/.test(nextPrompt) && /not only motor oil/.test(nextPrompt), "next-topic prompt carries the subject, the original interest, and the breadth rule");
+  const pathPrompt = pathSystem(home);
+  ok(/Greek Mythology/.test(pathPrompt) && /greek myths/.test(pathPrompt), "path prompt carries the same subject and interest");
+  const cloud = C.create("Mia", T0);
+  C.setProfile(cloud, { interests: ["greek myths"] }, T0);
+  C.applyTopics(cloud, [{ name: "Greek Mythology", signal: "curious", asSubject: true }], T0);
+  const gods = C.applyTopics(cloud, [{ name: "Gods", parent: "Greek Mythology", signal: "curious" }], T0 + 1);
+  const godsNode = C.findTopic(cloud, "Gods");
+  const req = P.createRequest(cloud, "next", godsNode.id);
+  ok(req.subject === "Greek Mythology" && req.interest === "greek myths" && req.focus === "Gods", "createRequest(next) sends the subject and the learner's original interest", JSON.stringify(req));
+  ok(topicDrift("Storm Physics", "Greek Mythology", "greek myths") && topicDrift("Volume Basics", "Thai Cooking", "thai cooking") && !topicDrift("Olympian Gods", "Greek Mythology", "greek myths"), "known drifts leave the subject; a real part does not");
+  ok(pathTooNarrow("Car Maintenance", ["Motor Oil", "Oil Changes"]) && !pathTooNarrow("Car Maintenance", ["Motor Oil", "Brake Checks", "Tire Care"]), "car maintenance does not collapse to only motor oil");
+  ok(parsePath({ steps: ["Storm Physics", "Lightning"], next: "Storm Physics" }, "Mia", "Gods", { subject: "Greek Mythology", interest: "greek myths" }) === null, "a drifted path is rejected so it can be written again");
+  ok(parseCreate({ items: [{ node: { name: "Gods", chain: [] }, card: { title: "Gods", blurb: "The gods of the old stories.", goal: "Name the gods." }, children: [{ name: "Storm Physics", order: 1, score: 0.9, role: "core" }, { name: "Heroes", order: 2, score: 0.8, role: "core" }] }] }, "next", "Mia", "Gods", [], { subject: "Greek Mythology", interest: "greek myths" }) === null, "a drifted next-topic set is rejected");
+  ok(parseCreate({ items: [{ node: { name: "Car Maintenance", chain: [] }, card: { title: "Car Maintenance", blurb: "Keeping a car in working order.", goal: "Service a car." }, children: [{ name: "Motor Oil", order: 1, score: 0.9, role: "core" }, { name: "Oil Changes", order: 2, score: 0.8, role: "core" }] }] }, "next", "Mia", "Car Maintenance", [], { subject: "Car Maintenance", interest: "car maintenance" }) === null, "an oil-only car maintenance path is rejected");
+  const goodNext = { items: [{ node: { name: "Gods", chain: [] }, card: { title: "Gods", blurb: "The gods of the old stories.", goal: "Name the gods." }, children: [{ name: "Olympian Gods", order: 1, score: 0.9, role: "core" }, { name: "Heroes", order: 2, score: 0.8, role: "core" }] }] };
+  const driftNext = { items: [{ node: { name: "Gods", chain: [] }, card: { title: "Gods", blurb: "The gods of the old stories.", goal: "Name the gods." }, children: [{ name: "Storm Physics", order: 1, score: 0.9, role: "core" }, { name: "Heroes", order: 2, score: 0.8, role: "core" }] }] };
+  const gjn = (obj) => () => res(200, { candidates: [{ content: { parts: [{ text: JSON.stringify(obj) }] } }] });
+  let nf = fakeFetch([gjn(driftNext), gjn(goodNext)]);
+  let no = await createFor(home, ENV, nf);
+  ok(no.status === 200 && nf.calls.length === 2 && no.body.items[0].children.map((c) => c.name).join() === "Olympian Gods,Heroes", "createFor(next): a drifted answer is generated again once", JSON.stringify(no.body).slice(0, 240));
+  const goodPath = { steps: ["Olympian Gods", "Heroes"], next: "Olympian Gods" };
+  const badPath = { steps: ["Storm Physics"], next: "Storm Physics" };
+  nf = fakeFetch([gjn(badPath), gjn(goodPath)]);
+  no = await pathFor(home, ENV, nf);
+  ok(no.status === 200 && nf.calls.length === 2 && no.body.path.steps.join() === "Olympian Gods,Heroes", "pathFor: a drifted path is generated again once", JSON.stringify(no.body.path));
+  ok(gods.created.includes(godsNode.id), "the depth fixture kept Gods");
+
+  let parent = "Greek Mythology";
+  ["Titans", "Olympians", "Zeus"].forEach((name, i) => { C.applyTopics(cloud, [{ name, parent, signal: "curious" }], T0 + 2 + i); parent = name; });
+  C.applyTopics(cloud, [{ name: "Hera", parent: "Olympians", signal: "curious" }], T0 + 6);
+  const zeus = C.findTopic(cloud, "Zeus");
+  ok(C.depthOf(cloud, zeus.id) === 4 && P.levelsBelow(cloud, zeus.id) === 3 && P.capped(cloud, zeus.id) === "soft" && !P.wantChildren(cloud, zeus.id) && !P.needsNext(cloud, zeus.id), "at 3 levels below a subject, another level is not generated");
+  const choice = P.depthChoices(cloud, zeus.id);
+  ok(choice && choice.test === C.findSubject(cloud, "Greek Mythology").id && choice.deeper && choice.sibling === C.findTopic(cloud, "Hera").id, "at the cap the offer is a subject test, a sibling, or Go deeper?", JSON.stringify(choice));
+  ok(P.goDeeper(cloud, zeus.id) && !P.capped(cloud, zeus.id) && P.wantChildren(cloud, zeus.id), "Go deeper? allows one more level");
+  C.applyTopics(cloud, [{ name: "Temples", parent: "Zeus", signal: "curious" }], T0 + 8);
+  const temples = C.findTopic(cloud, "Temples");
+  ok(P.levelsBelow(cloud, temples.id) === 4 && P.capped(cloud, temples.id) === "hard" && !P.depthChoices(cloud, temples.id).deeper && !P.goDeeper(cloud, temples.id), "4 levels below a subject is the hard cap");
+  ok(C.deserialize(C.serialize(cloud)).nodes[zeus.id].deeper === true, "Go deeper? is kept with the cloud");
 }
 
 if (fails.length) {
