@@ -36,6 +36,8 @@
     cloud: $("cloud"), cloudCanvas: $("cloud-canvas"), cloudDeck: $("cloud-deck"), cloudRet: $("cloud-ret"), barRet: $("bar-ret"), cloudWho: $("cloud-who"), chatBack: $("chat-back"),
     ageLink: $("age-link"),
     cs: $("cloud-start"), csName: $("cs-name"), csAges: $("cs-ages"), csHi: $("cs-hi"), csQ: $("cs-q"), csFew: $("cs-few"), csForm: $("cs-form"), csIn: $("cs-in"), csEx: $("cs-ex"), csStatus: $("cs-status"),
+    youHint: $("you-hint"), nameEdit: $("name-edit"), nameEditIn: $("name-edit-in"), addSub: $("add-sub"), addIn: $("add-sub-in"), addStatus: $("add-status"),
+    zoomList: $("zoom-list"), zoomKicker: $("zoom-kicker"), zoomTitle: $("zoom-title"), zoomItems: $("zoom-items"),
     ikoWrap: $("iko-wrap"), iko: $("iko"), ikoLine: $("iko-line"), ikoSheet: $("iko-sheet"), ikoAbout: $("iko-about"), ikoX: $("iko-x"), ikoSay: $("iko-say"), ikoActs: $("iko-acts"), ikoGot: $("iko-got"), ikoBody: $("iko-body"), ikoSlot: $("iko-slot"), ikoLog: $("iko-log"), ikoForm: $("iko-form"), ikoIn: $("iko-in"), ikoAll: $("iko-all"), zin: $("zin"), zout: $("zout"), zreset: $("zreset"),
     panel: $("panel"), cloudTop: document.querySelector(".cloud-top"), pKicker: $("p-kicker"), pTitle: $("p-title"), pDesc: $("p-desc"), pNote: $("p-note"), pLesson: $("p-lesson"), pCard: $("p-card"), pAdj: $("p-adj"),
     pChat: $("p-chat"), pPath: $("p-path"), pClose: $("p-close"),
@@ -51,7 +53,7 @@
   };
   var reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
 
-  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], queued: null, pick: null, glide: null, view: null, dirForm: null, dirText: "", allDone: false, seen: { c: {}, ev: 0 }, ex: { list: [], growth: [], at: 0, gat: 0, status: "idle" } };
+  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], queued: null, pick: null, glide: null, view: null, dirForm: null, dirText: "", allDone: false, seen: { c: {}, ev: 0 }, ex: { list: [], growth: [], at: 0, gat: 0, status: "idle" }, zoomId: null, zoomAt: 0 };
   var mini = null, big = null;
 
   /* ---------- storage ---------- */
@@ -811,6 +813,8 @@
     if (hn) return { kind: "hints", on: /\b(talk more|unmute|turn hints? on|show hints?)\b/.test(t) };
     var ag = ageIntent(t);
     if (ag) return ag;
+    var rn = t.match(/^(?:please\s+)?(?:my name is|call me|rename me(?: to)?|change my name to)\s+([a-z][a-z'’ -]{0,28})$/);
+    if (rn) return { kind: "rename", name: rn[1] };
     var d = t.match(/^(?:please\s+)?(?:(?:can|could|would) you\s+)?(?:delete|remove|get rid of|erase)\s+(?:the\s+|my\s+)?(.+?)(?:\s+(?:branch|topic|subject|node))?(?:\s+from\s+(?:my\s+|the\s+)?cloud)?(?:\s+please)?$/);
     if (d && d[1]) return { kind: "delete", name: d[1].trim() };
     return null;
@@ -831,6 +835,11 @@
     if (it.kind === "sound") {
       if (window.IkoSound) { IkoSound.set(it.on); if (it.on && !el.cloud.hidden) IkoSound.ambient(true); }
       push({ role: "model", local: true, text: it.on ? "Sounds are back on, kept quiet." : "Sounds are off. Ask me any time to turn them back on." });
+      save(); return;
+    }
+    if (it.kind === "rename") {
+      var named = renameLearner(it.name);
+      push({ role: "model", local: true, text: named ? "You're " + state.cloud.name + " on your cloud now." : "Tell me \"call me\" and the name you'd like on your cloud." });
       save(); return;
     }
     if (it.kind === "theme") {
@@ -915,7 +924,7 @@
   function deleteBranch(m) {
     var n = nodeOf(m.target);
     if (m.done || !n) return;
-    var gone = C.removeBranch(state.cloud, n.id), was = function (x) { return x && gone.indexOf(x) >= 0; };
+    var gone = dropGhost(n.id), was = function (x) { return x && gone.indexOf(x) >= 0; };
     if (was(state.lessonNode)) showLesson(false);
     if (was(state.panelNode)) closeCard();
     if (was(state.focus)) setFocus(null);
@@ -1397,6 +1406,8 @@
           var names = ids.map(function (x) { return nodeOf(x) && nodeOf(x).label; }).filter(Boolean);
           /* what they enjoy, as the model read it: the new parents become the profile's interests (later asks build on them) */
           C.setProfile(state.cloud, { interests: names.slice(0, 5) });
+          C.setProfile(state.cloud, { onboarded: true });
+          trimOffers(ids);
           /* start: ideas past the intake's caps wait as "Also on your mind" (each one a direction to add, one call each) */
           if (kind === "start" && laterOf) C.setLater(state.cloud, laterOf);
           m.streaming = false;
@@ -3060,6 +3071,7 @@
    */
   function home(id) {
     if (state.lessonNode) showLesson(false);
+    if (state.zoomId) { state.zoomId = null; if (el.zoomList) el.zoomList.hidden = true; if (big) big.recentre(); }
     el.deck.hidden = true; el.hub.hidden = true; state.hubNode = null; el.thread.hidden = false; el.dock.hidden = false;
     renderRet();
     openPanel.keep = true;
@@ -3111,6 +3123,11 @@
    */
   function renderStart() {
     if (!el.cs) return;
+    /* The cloud is the start. The old question column stays in the page for older markup, and is never shown. */
+    el.cs.hidden = true;
+    intakeMode(!el.cs.hidden);
+    renderYouHint();
+    if (el.cs.hidden) return;
     var empty = Boolean(state.cloud) && !C.subjects(state.cloud).length;
     var wasStart = !el.cs.hidden;
     el.cs.hidden = !empty || el.cloud.hidden;
@@ -3297,6 +3314,14 @@
     var t = intakeText();
     if (!t || state.busy) return;
     startFromCloud(t);
+  });
+  if (el.nameEdit) el.nameEdit.addEventListener("submit", function (e) {
+    e.preventDefault();
+    if (renameLearner(el.nameEditIn.value)) { el.nameEdit.hidden = true; el.nameEditIn.blur(); }
+  });
+  if (el.addSub) el.addSub.addEventListener("submit", function (e) {
+    e.preventDefault();
+    submitAdd(el.addIn.value);
   });
   el.cloudDeck.addEventListener("click", function () { closeCloud(true); showDeck(true); });
   /* Back on the cloud: a slim row of the suggested cards and Draw along the bottom (hidden while a panel is open). */
@@ -3495,10 +3520,205 @@
     if (!keepView && !state.lessonNode) { renderDraw(); el.input.focus(); }
   }
 
+  function wantsNameHint() {
+    var c = state.cloud;
+    return Boolean(c) && !c.named && c.name === "You" && !C.subjects(c).length;
+  }
+  function renderYouHint() {
+    if (!el.youHint) return;
+    el.youHint.hidden = !(wantsNameHint() && el.nameEdit && el.nameEdit.hidden && !el.cloud.hidden);
+    if (!el.youHint.hidden) placeYouHint();
+  }
+  function placeYouHint() {
+    if (!big || !el.youHint || el.youHint.hidden) return;
+    var q = big.project("root");
+    if (!q) return;
+    el.youHint.style.left = q.x + "px";
+    el.youHint.style.top = (q.y + 24) + "px";
+  }
+  function placeFloat(node, x, y) {
+    if (!node) return;
+    node.style.left = x + "px";
+    node.style.top = y + "px";
+  }
+  function cleanPerson(v) { return C.cleanLabel(v).replace(/[^\p{L}\p{M}' -]/gu, "").trim().slice(0, 30); }
+  function renameLearner(raw) {
+    var n = cleanPerson(raw);
+    if (!n || !state.cloud) return false;
+    state.name = n;
+    state.cloud.name = n;
+    state.cloud.named = true;
+    store(LS.name, n);
+    if (PR) { try { var ix = PR.current(localStorage); if (ix && !ix.implicit && ix.active) PR.rename(localStorage, ix.active, n); } catch (e) { /* the cloud name is still kept */ } }
+    save();
+    if (big) big.setCloud(state.cloud);
+    if (mini) mini.setCloud(state.cloud);
+    renderHomeNav();
+    renderYouHint();
+    if (state.panelNode === "root" && !el.panel.hidden) el.pTitle.textContent = n;
+    return true;
+  }
+  function startRename() {
+    if (!state.cloud || !el.nameEdit) return;
+    el.nameEdit.hidden = false;
+    el.nameEditIn.value = state.cloud.named ? state.cloud.name : "";
+    renderYouHint();
+    var q = big && big.project("root");
+    if (q) placeFloat(el.nameEdit, q.x, q.y + 16);
+    el.nameEditIn.focus();
+  }
+  function openAddSubject() {
+    if (state.busy || !el.addSub) return;
+    el.addSub.hidden = false;
+    if (el.addStatus) el.addStatus.textContent = state.busy ? "Growing your cloud…" : "";
+    var a = big && big.addAt && big.addAt();
+    if (a) placeFloat(el.addSub, a.x, a.y + 36);
+    el.addIn.focus();
+  }
+  function submitAdd(text) {
+    var t = cleanAbout(text);
+    if (!t || state.busy) return;
+    el.addIn.value = "";
+    el.addSub.hidden = true;
+    if (!C.subjects(state.cloud).length) buildCloud("start", splitInterests(t), t);
+    else buildCloud("more", [], t, "", true);
+  }
+  /* One removal path. The Delete button is the only place a learner's branch is removed; unpicked ghosts use it too. */
+  function dropGhost(id) { return C.removeBranch(state.cloud, id); }
+  /* The first subject's model children stay ghosts (2–3). They are not real nodes and are not counted. */
+  function trimOffers(ids) {
+    (ids || []).forEach(function (id) {
+      if (!nodeOf(id)) return;
+      var kids = C.childrenOf(state.cloud, id);
+      if (kids.some(function (c) { return !c.ghost; })) return;
+      kids.filter(function (c) { return c.ghost; }).slice(3).forEach(function (c) {
+        if (!C.childrenOf(state.cloud, c.id).length) dropGhost(c.id);
+      });
+    });
+  }
+  /* Tapping a ghost uses the same placement and near-duplicate rules as a typed topic. Unpicked siblings fade. */
+  function settleGhost(id) {
+    var n = nodeOf(id);
+    if (!n || !n.ghost) return id;
+    var exact = C.findTopic(state.cloud, n.label), close = C.findClose(state.cloud, n.label);
+    var other = exact && exact.id !== id ? exact : close && close.id !== id ? close : null;
+    var parentId = n.parent;
+    if (!other) {
+      var tp = { name: n.label, signal: "curious", placement: parentId ? "child" : "parent", target: parentId || "", parent: parentId && nodeOf(parentId) ? nodeOf(parentId).label : "" };
+      var plan = P.placeTopic(state.cloud, tp, parentId);
+      if (plan && plan.how === "reuse" && plan.id !== id) other = nodeOf(plan.id);
+      else if (plan && plan.how === "parent") {
+        var gr = C.applyTopics(state.cloud, [P.placedTopic(tp, plan)]);
+        var nid = gr.parentsCreated[0] || gr.created[0] || gr.promoted[0] || id;
+        if (nid !== id && nodeOf(id) && nodeOf(id).ghost && !C.childrenOf(state.cloud, id).length) dropGhost(id);
+        fadeUnpicked(parentId, nid);
+        save();
+        if (big) big.setCloud(state.cloud);
+        return nid;
+      }
+    }
+    if (other) {
+      fadeUnpicked(parentId, other.id);
+      if (nodeOf(id) && nodeOf(id).ghost && !C.childrenOf(state.cloud, id).length) dropGhost(id);
+      if (other.ghost) { other.ghost = false; other.weight = Math.max(other.weight || 0, 1); }
+      save();
+      if (big) big.setCloud(state.cloud);
+      return other.id;
+    }
+    n.ghost = false;
+    n.weight = Math.max(n.weight || 0, 1);
+    n.born = Date.now();
+    fadeUnpicked(parentId, id);
+    save();
+    if (big) big.setCloud(state.cloud);
+    return id;
+  }
+  function fadeUnpicked(parentId, keep) {
+    if (!parentId) return;
+    var gone = C.childrenOf(state.cloud, parentId).filter(function (c) {
+      return c.id !== keep && c.ghost && !c.opened && !(c.engaged > 0) && !C.childrenOf(state.cloud, c.id).length;
+    });
+    gone.forEach(function (c) { c.leaving = 1; });
+    if (big) big.setCloud(state.cloud);
+    setTimeout(function () {
+      var changed = false;
+      gone.forEach(function (c) { if (nodeOf(c.id) && nodeOf(c.id).ghost) { dropGhost(c.id); changed = true; } });
+      if (!changed) return;
+      save();
+      if (big) big.setCloud(state.cloud);
+      if (state.zoomId) renderZoom();
+    }, reduceMotion && reduceMotion.matches ? 0 : 640);
+  }
+  function zoomKids(id) { return id === "root" ? C.subjects(state.cloud) : C.childrenOf(state.cloud, id); }
+  function renderZoom() {
+    if (!el.zoomList) return;
+    var id = state.zoomId;
+    if (!id || el.cloud.hidden) { el.zoomList.hidden = true; return; }
+    el.zoomList.hidden = false;
+    var parent = id === "root" ? null : nodeOf(id);
+    if (id !== "root" && !parent) { state.zoomId = null; el.zoomList.hidden = true; return; }
+    el.zoomTitle.textContent = parent ? parent.label : state.cloud.name;
+    el.zoomKicker.textContent = parent ? (parent.parent ? "Topic" : "Subject") : "Your cloud";
+    el.zoomItems.textContent = "";
+    var kids = zoomKids(id);
+    var addOpt = function (i, label, ghost, go) {
+      var li = mk("li"), b = mk("button", ghost ? "ghost" : "", label);
+      b.type = "button"; b.id = "zoom-opt-" + i; b.setAttribute("role", "option");
+      b.setAttribute("aria-selected", i === state.zoomAt ? "true" : "false");
+      b.addEventListener("click", go);
+      li.appendChild(b); el.zoomItems.appendChild(li);
+    };
+    if (!kids.length) addOpt(0, id === "root" ? "+ add a subject" : "Open the lesson", false, function () { if (id === "root") openAddSubject(); else openLesson(id); });
+    kids.forEach(function (n, i) { addOpt(i, n.label, n.ghost, function () { state.zoomAt = i; activateZoom(n.id); }); });
+    var cur = el.zoomItems.querySelector('[aria-selected="true"]');
+    if (cur) el.zoomItems.setAttribute("aria-activedescendant", cur.id);
+  }
+  /* A pinch or scroll that comes in close opens the list. The + button does the same. Phones hide + and −. */
+  function maybeZoomList() {
+    if (state.zoomId || state.zoomLock || !big) return;
+    var st = big.state();
+    if (!st || st.zoom < 1.55) return;
+    var id = state.panelNode && (state.panelNode === "root" || nodeOf(state.panelNode)) ? state.panelNode : (st.focus && (st.focus === "root" || nodeOf(st.focus)) ? st.focus : "root");
+    state.zoomLock = true;
+    enterZoom(id);
+    setTimeout(function () { state.zoomLock = false; }, 900);
+  }
+  function enterZoom(id) {
+    if (!big || (id !== "root" && !nodeOf(id))) return;
+    state.zoomId = id;
+    state.zoomAt = 0;
+    if (!el.panel.hidden) closeCard();
+    renderZoom();
+    var cw = el.cloudCanvas.clientWidth, ch = el.cloudCanvas.clientHeight, wide = cw >= 700, top = cloudTop();
+    big.focusNode(id, wide
+      ? { cx: Math.round(cw * 0.22), cy: Math.round(top + (ch - top) * 0.42), aw: Math.round(cw * 0.32), ah: Math.round((ch - top) * 0.62), keepYaw: false }
+      : { cx: Math.round(Math.min(cw * 0.28, 120)), cy: Math.round(top + 64), aw: Math.round(cw * 0.46), ah: 110, keepYaw: false });
+    if (el.zoomItems) el.zoomItems.focus();
+  }
+  function exitZoom() {
+    if (!state.zoomId) return;
+    state.zoomId = null;
+    if (el.zoomList) el.zoomList.hidden = true;
+    if (big) big.recentre();
+  }
+  function activateZoom(id) {
+    var n = nodeOf(id);
+    if (!n) return;
+    if (n.ghost) id = settleGhost(id);
+    n = nodeOf(id);
+    if (!n) return;
+    if (C.childrenOf(state.cloud, id).length) enterZoom(id);
+    else openLesson(id);
+  }
   function pick(hit) {
+    if (hit.add) { openAddSubject(); return; }
     if (hit.node && !hintSeen("cloud")) { dismissHint("cloud"); renderCloudHint(); } /* they found it: the tip has done its job */
     if (hit.test) openTest(hit.test);
-    else if (hit.root) openPanel("root");
+    else if (hit.root) {
+      if (wantsNameHint()) startRename();
+      else if (state.panelNode === "root" && !el.panel.hidden) startRename();
+      else openPanel("root");
+    } else if (hit.node && hit.node.ghost) openPanel(settleGhost(hit.node.id));
     else if (hit.node) openPanel(hit.node.id);
   }
 
@@ -3674,6 +3894,9 @@
    */
   var cardSig = "";
   function placeCard() {
+    placeYouHint();
+    if (el.nameEdit && !el.nameEdit.hidden && big) { var qn = big.project("root"); if (qn) placeFloat(el.nameEdit, qn.x, qn.y + 16); }
+    if (el.addSub && !el.addSub.hidden && big && big.addAt) { var qa = big.addAt(); if (qa) placeFloat(el.addSub, qa.x, qa.y + 36); }
     if (!big || el.panel.hidden || !state.panelNode) return;
     var q = big.project(state.panelNode === "root" ? "root" : state.panelNode);
     if (!q) return;
@@ -3811,13 +4034,33 @@
   el.pClose.addEventListener("click", closeCard);
   /* a click on any control over the cloud (zoom, Recentre, the card's actions, the suggestions) pauses the spin a moment */
   el.cloud.addEventListener("click", function (e) { if (big && e.target.closest && e.target.closest("button, a")) big.pause(); });
-  el.zin.addEventListener("click", function () { big.zoomBy(1.35); moved("zoom"); });
-  el.zout.addEventListener("click", function () { big.zoomBy(1 / 1.35); moved("zoom"); });
-  el.zreset.addEventListener("click", function () { big.recentre(); });
+  el.zin.addEventListener("click", function () {
+    moved("zoom");
+    if (state.zoomId) {
+      var kids = zoomKids(state.zoomId), cur = kids[state.zoomAt];
+      if (cur) activateZoom(cur.id);
+      return;
+    }
+    var id = state.panelNode && (state.panelNode === "root" || nodeOf(state.panelNode)) ? state.panelNode : "root";
+    enterZoom(id);
+  });
+  el.zout.addEventListener("click", function () { moved("zoom"); if (state.zoomId) { exitZoom(); return; } big.zoomBy(1 / 1.35); });
+  el.zreset.addEventListener("click", function () { if (state.zoomId) state.zoomId = null; if (el.zoomList) el.zoomList.hidden = true; big.recentre(); });
   /* one faint line documents the input map, for touch or for a mouse */
   renderCloudHint();
   document.addEventListener("keydown", function (e) {
+    if (state.zoomId && el.zoomList && !el.zoomList.hidden && el.zoomList.contains(document.activeElement) && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter")) {
+      var kids = zoomKids(state.zoomId), n = Math.max(1, kids.length);
+      if (e.key === "Enter") { e.preventDefault(); var b = el.zoomItems.querySelector('[aria-selected="true"]'); if (b) b.click(); return; }
+      e.preventDefault();
+      state.zoomAt = (state.zoomAt + (e.key === "ArrowDown" ? 1 : n - 1)) % n;
+      renderZoom();
+      return;
+    }
     if (e.key !== "Escape") return;
+    if (el.nameEdit && !el.nameEdit.hidden) { el.nameEdit.hidden = true; renderYouHint(); return; }
+    if (el.addSub && !el.addSub.hidden) { el.addSub.hidden = true; return; }
+    if (state.zoomId) { exitZoom(); return; }
     if (el.ikc && !el.ikc.hidden) { confirmDone(false); return; } /* a confirm: Escape is Cancel */
     if (iko.open) { closeIko(); if (!el.ikoWrap.hidden) el.iko.focus(); return; }
     if (!el.cloud.hidden) { if (!el.panel.hidden) closeCard(); return; } /* the cloud is home: Escape only closes its card */
@@ -4457,6 +4700,7 @@
   function moves() { try { return JSON.parse(localStorage.getItem("ikolearn-moves") || "{}") || {}; } catch { return {}; } }
   function movesDone() { var m = moves(); return Boolean(m.x || (m.drag && m.zoom)); }
   function moved(k) {
+    if (k === "zoom") maybeZoomList(); /* a pinch or scroll that comes in close opens the list (phones hide + and −) */
     var m = moves();
     if (m[k]) return;
     m[k] = 1;
@@ -4842,7 +5086,8 @@
     renderThread();
     renderDeckButton();
     countVisit();
-    if (P.needsOnboarding(state.cloud)) { if (!state.thread.some(function (m) { return m.role === "user"; })) state.thread = []; renderThread(); runOnboarding(); }
+    if (P.needsOnboarding(state.cloud) && !C.subjects(state.cloud).length) { C.setProfile(state.cloud, { onboarded: true }); save(); } /* the cloud is the start: no intake question */
+    else if (P.needsOnboarding(state.cloud)) { if (!state.thread.some(function (m) { return m.role === "user"; })) state.thread = []; renderThread(); runOnboarding(); }
     else if (!state.thread.length) greet();
     startSession();
     openCloud(true); /* home: the cloud, with the name in the centre (a first visit, a guide's learner, a return) */
@@ -4909,7 +5154,16 @@
   (function boot() {
     if (PR) { try { PR.reconcile(localStorage); } catch { /* keep going with what is there */ } }
     state.name = (load(LS.name) || "").trim();
-    if (!state.name) { showWelcome(); return; }
+    if (!state.name) {
+      state.name = "You";
+      store(LS.name, "You");
+      if (PR) { try { PR.begin(localStorage, "self", "You"); } catch (e) { /* a full store still opens this cloud */ } }
+      showWho();
+      state.cloud = C.create("You");
+      state.thread = [];
+      startChat();
+      return;
+    }
     showWho();
     state.cloud = C.deserialize(load(LS.cloud)) || C.create(state.name);
     try { state.thread = C.trimThread(JSON.parse(load(LS.thread) || "[]")); } catch { state.thread = []; }

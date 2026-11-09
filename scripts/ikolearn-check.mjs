@@ -62,7 +62,7 @@ const seeded = (name, t) => {
   eq(ss.map((p) => p.label), STARTERS.map((s) => s.label), "fixture: subjects in order");
   ok(new Set(ss.map((p) => p.hue)).size === ss.length, "starters: each subject has its own hue");
   eq(c.name, "Maya", "create keeps name");
-  ok(C.create("", T0).name === "Me", "create: empty name -> Me");
+  ok(C.create("", T0).name === "You" && C.create("", T0).named === false, "create: empty name -> You, until the learner renames it");
   // Math is the worked example: foundational topics, seeded deeper, with ordered paths
   const math = C.findSubject(c, "Math");
   eq(math.path.ids.map((id) => c.nodes[id].label), ["Counting", "Number Sense", "Addition", "Subtraction", "Multiplication", "Fractions"], "Math seed: ordered foundational path");
@@ -1113,7 +1113,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     // the featured app on the homepage (Oct 22): IkoLearn leads, IkoAgent stays a normal featured project
     const home = fs.readFileSync("app/page.tsx", "utf8"), projTs = fs.readFileSync("lib/projects.ts", "utf8");
     ok(/FEATURED_LEAD_SLUG = "ikolearn"/.test(projTs) && /featured:\s*true/.test(fs.readFileSync("content/projects/ikoagent.mdx", "utf8")), "homepage: IkoLearn is the featured lead; IkoAgent stays featured in the grid");
-    ok(/Featured app/.test(home) && /<h2[^>]*>IkoLearn<\/h2>/.test(home) && /href="https:\/\/ikolearn\.com"/.test(home) && /href="\/projects\/ikolearn"/.test(home) && /src="\/projects\/ikolearn\/cover\.png"/.test(home), "homepage: the featured section links to ikolearn.com and the project page, with the cover");
+    ok(/Featured app/.test(home) && /<h2[^>]*>IkoLearn<\/h2>/.test(home) && /href="https:\/\/ikolearn\.com"/.test(home) && /href="\/projects\/ikolearn"/.test(home) && /cover="\/projects\/ikolearn\/cover\.png"/.test(home), "homepage: the featured section links to ikolearn.com and the project page, with the cover");
     ok(/A calm learning app for curious learners\. Say what you enjoy, and Iko grows a learning/.test(home) && !/homeschool|parents/i.test(home.slice(home.indexOf("Featured app"), home.indexOf("Featured Projects"))) && !/We at Ikosagon/.test(home.slice(home.indexOf("Featured app"), home.indexOf("Featured Projects"))) && !/\b(kids?|children|age \d)/i.test(home.slice(home.indexOf("Featured app"), home.indexOf("Featured Projects"))), "homepage (PR 114): neutral copy for curious learners, no parent or homeschool wording");
     ok(!/Maya|Minecraft|Redstone/.test(mdx), "project page copy names no sample learner or niche topic");
     const imgs = [...mdx.matchAll(/!\[([^\]]*)\]\((\/projects\/ikolearn\/[^)]+)\)/g)];
@@ -1151,7 +1151,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/kind === "earn" \|\| reactWanted\(n\)/.test(app) && /var GAP = 90000;/.test(app) && /x\.n && \(n >= NUDGE_MAX \|\| nudged\)/.test(app), "guidance on every stage (a pause between repeats, never the same line twice), every card earned acknowledged, nudges still light");
   /* PR 105 */
   ok(/var it = localIntent\(text\);\s*if \(it\) \{ doIntent\(text, it\); return; \}/.test(app) && /TH\.set\(it\.mode\)/.test(app) && /role: "del", local: true/.test(app), "Iko's controls: light/dark and delete are recognised on the device before any call");
-  ok(/linkBtn\("Keep it"/.test(app) && /linkBtn\("Delete " \+ n\.label, function \(\) \{ deleteBranch\(m\); \}/.test(app) && /C\.removeBranch\(state\.cloud, n\.id\)/.test(app) && (app.match(/C\.removeBranch\(/g) || []).length === 1, "delete: a gentle word first; the branch goes only from the Delete button");
+  ok(/linkBtn\("Keep it"/.test(app) && /linkBtn\("Delete " \+ n\.label, function \(\) \{ deleteBranch\(m\); \}/.test(app) && /dropGhost\(n\.id\)/.test(app) && /function dropGhost\(id\) \{ return C\.removeBranch\(state\.cloud, id\); \}/.test(app) && (app.match(/C\.removeBranch\(/g) || []).length === 1, "delete: a gentle word first; the branch goes only from the Delete button (unpicked ghosts use the same removal)");
   ok(/if \(t && ms !== 0\) iko\.lineT = setTimeout/.test(app) && /tipLine\(tip\.text, tip\.id\)/.test(app) && /past its step: the hint goes/.test(app) && !/tip-x/.test(css + app) && /el\.ikoLine\.addEventListener\("click", dismissLine\)/.test(app) && /id="iko-line" class="iko-line" role="button" tabindex="0"/.test(html) && /"Dismiss hint: " \+ t/.test(app), "hints stay until tapped away (no × of their own; Enter/Space too) or moved past; reactions still fold away");
   ok((html.match(/href="https:\/\/ikosagon\.com\/contact\?subject=IkoLearn%20Feedback" class="sup-link fb-link" target="_blank" rel="noopener"/g) || []).length === 4 && !/mailto:shawn@ikosagon\.com\?subject=IkoLearn/.test(html) && !/x\.com\/IkosagonAI|Follow on X/.test(html) && !/donat|ko-fi|patreon|buymeacoffee/i.test(html), "support link on every screen, no Follow on X: the welcome, the cloud, the chat and the page foot (PR 110; no donate link until a real page exists)");
   {
@@ -1174,13 +1174,14 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
    * Multi-subject adds, starter children, and tighter cloud labels need about 8 KB raw / 2 KB gzip.
    * Content-quality checks, hands-on safety notes, the topic list and the extra retries need about 8 KB raw / 2 KB gzip.
    * Honest add lines, near-duplicate placement, subject-bounded paths and the depth cap need about 8 KB raw / 2 KB gzip.
+   * Cloud-first start, ghost placeholders and the zoom list need about 10 KB raw / 2 KB gzip.
    */
   const files = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js", "rank.js", "orchestrator.js", "camera.js", "profiles.js", "icon.svg"];
   const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
   const bytes = files.reduce((n, f) => n + served(f).length, 0);
   const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
-  ok(bytes < 420_000, "app weight under 420 KB uncompressed (served, minified)", String(bytes));
-  ok(gz < 141_000, "app weight under 141 KB gzipped (served, minified)", String(gz));
+  ok(bytes < 432_000, "app weight under 432 KB uncompressed (served, minified)", String(bytes));
+  ok(gz < 145_000, "app weight under 145 KB gzipped (served, minified)", String(gz));
 }
 
 /* ================= PR 108: QA polish ================= */
@@ -4283,6 +4284,36 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const temples = C.findTopic(cloud, "Temples");
   ok(P.levelsBelow(cloud, temples.id) === 4 && P.capped(cloud, temples.id) === "hard" && !P.depthChoices(cloud, temples.id).deeper && !P.goDeeper(cloud, temples.id), "4 levels below a subject is the hard cap");
   ok(C.deserialize(C.serialize(cloud)).nodes[zeus.id].deeper === true, "Go deeper? is kept with the cloud");
+}
+
+/* ---------- cloud-first start, ghost placeholders, zoom list (PR C) ---------- */
+{
+  const fresh = C.create("", T0);
+  ok(fresh.name === "You" && fresh.named === false && fresh.order.length === 0, "a new learner starts on You, with an empty cloud");
+  const plain = C.serialize(C.create("Maya", T0));
+  ok(!/"nm"/.test(plain), "an unnamed save omits the rename flag (older clouds stay the same size)");
+  const named = C.create("You", T0);
+  named.named = true;
+  named.name = "Maya";
+  C.applyTopics(named, [{ name: "Ocean Life", signal: "curious", asSubject: true }], T0 + 1);
+  const back = C.deserialize(C.serialize(named));
+  ok(back.name === "Maya" && back.named === true && C.subjects(back).length === 1 && C.subjects(back)[0].label === "Ocean Life", "renaming and a subject round-trip; the cloud is not dropped");
+  const ghosts = C.create("You", T0);
+  C.applyCreate(ghosts, { items: [{ node: { name: "Volcanoes", chain: [] }, card: { title: "Volcanoes", blurb: "Mountains that erupt.", goal: "Name a part." }, children: [{ name: "Magma", order: 1, score: 0.9, role: "core" }, { name: "Lava", order: 2, score: 0.8, role: "core" }, { name: "Ash", order: 3, score: 0.7, role: "core" }, { name: "Craters", order: 4, score: 0.4, role: "core" }] }] }, { t: T0 });
+  const kids = C.childrenOf(ghosts, C.findSubject(ghosts, "Volcanoes").id);
+  ok(kids.length === 4 && kids.every((k) => k.ghost) && C.topicCount(ghosts) === 0 && C.subjects(ghosts).every((s) => !s.ghost), "creation children arrive as ghosts and do not count as topics");
+  const dupCloud = C.create("You", T0);
+  C.applyTopics(dupCloud, [{ name: "Car Maintenance", signal: "curious", asSubject: true }], T0);
+  ok(C.findClose(dupCloud, "Basic Car Maintenance").label === "Car Maintenance" && C.topicCount(dupCloud) === 0, "a near-duplicate name finds the node already on the cloud and does not count as a new topic");
+  const old = C.deserialize(fs.readFileSync("scripts/fixtures/ikolearn-cloud-v1.json", "utf8"));
+  ok(old && old.name && old.order.length > 0 && C.subjects(old).length > 0, "an older saved cloud still loads with its subjects");
+  const appC = fs.readFileSync("public/ikolearn/app.js", "utf8"), htmlC = fs.readFileSync("public/ikolearn/index.html", "utf8"), viewC = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8");
+  ok(/id="you-hint" class="you-hint" hidden>tap to add your name</.test(htmlC) && /function wantsNameHint\(\)/.test(appC) && /c\.name === "You" && !C\.subjects\(c\)\.length/.test(appC), "first visit: a faint hint under You, hidden once renamed or a subject is added");
+  ok(/state\.name = "You"/.test(appC) && /C\.create\("You"\)/.test(appC) && /el\.cs\.hidden = true/.test(appC) && /\+ add a subject/.test(viewC) && /aria-label="Add a subject, in your own words"/.test(htmlC) && !/id="cs-ex"[^>]*>[^<]/.test(htmlC), "empty cloud: land on the cloud, You plus one add-a-subject ghost, no static chips");
+  ok(/function settleGhost\(id\)/.test(appC) && /C\.findClose\(state\.cloud, n\.label\)/.test(appC) && /P\.placeTopic\(state\.cloud, tp, parentId\)/.test(appC) && /c\.leaving = 1/.test(appC) && /function trimOffers\(ids\)/.test(appC) && /kids\.filter\(function \(c\) \{ return c\.ghost; \}\)\.slice\(3\)/.test(appC), "a tapped ghost uses placement and near-duplicate rules; unpicked ghosts fade and extras past three are not kept");
+  ok(/id="zoom-list"/.test(htmlC) && /role="listbox" aria-label="Topics"/.test(htmlC) && /function enterZoom\(id\)/.test(appC) && /cw \* 0\.22/.test(appC) && /function activateZoom\(id\)/.test(appC) && /C\.childrenOf\(state\.cloud, id\)\.length\) enterZoom\(id\)/.test(appC) && /else openLesson\(id\)/.test(appC) && /if \(state\.zoomId\) \{ exitZoom\(\); return; \}/.test(appC) && /ArrowDown/.test(appC), "zoom: the node moves left, children are a keyboard list, a choice opens the lesson or zooms in, zoom out returns to the cloud");
+  ok(/function ensureTopicList\(\)/.test(appC) && /aria-label", "Topics"/.test(appC) && /Lesson level/.test(appC) && /subject=IkoLearn%20Feedback/.test(htmlC) && !/openPanel\(state\.lessonNode\)/.test(appC), "the Topics list, the lesson level and the feedback link stay; returning still does not open a topic card");
+  ok(/kind: "rename"/.test(appC) && /call me/.test(appC) && /function renameLearner\(raw\)/.test(appC), "the centre node can be renamed by asking Iko");
 }
 
 if (fails.length) {

@@ -140,6 +140,10 @@
         
         <p id="cs-status" class="cs-status" aria-live="polite"></p>
       </div>
+      <p id="you-hint" class="you-hint" hidden>tap to add your name</p>
+      <form id="name-edit" class="name-edit" hidden autocomplete="off"><input id="name-edit-in" maxlength="30" autocomplete="given-name" aria-label="Your name" placeholder="Your name"><button type="submit" class="btn sm">Save</button></form>
+      <form id="add-sub" class="add-sub" hidden autocomplete="off"><input id="add-sub-in" maxlength="300" placeholder="In your own words" aria-label="Add a subject, in your own words"><button type="submit" class="btn sm">Add</button><p id="add-status" class="add-status" role="status"></p></form>
+      <aside id="zoom-list" class="zoom-list" hidden><p id="zoom-kicker" class="kicker"></p><h2 id="zoom-title"></h2><ul id="zoom-items" role="listbox" aria-label="Topics" tabindex="0"></ul></aside>
       <p class="cloud-foot fine" data-theme-slot><span class="ft-more"><a href="/ikolearn/learners">Learners</a> · </span><a href="/ikolearn/privacy">Privacy</a><span class="sup" data-sup> · <a href="https://ikosagon.com/contact?subject=IkoLearn%20Feedback" class="sup-link fb-link" target="_blank" rel="noopener">Support &amp; feedback</a></span></p>
       <aside id="panel" class="node-card" hidden aria-labelledby="p-title">
         <div class="panel-in">

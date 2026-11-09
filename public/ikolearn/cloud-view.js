@@ -51,7 +51,7 @@
     var tests = {}, testMarks = [];
     /* a cloud of any size: the camera stands further back (camD) and Recentre frames the whole cloud (home) once
        subjects reach the outer shells; a cloud of up to 12 subjects is exactly as before (camD 3.2, zoom 1) */
-    var camD = 3.2, home = mini ? Object.assign({}, HOME, { panY: 0 }) : HOME, zfloor = ZMIN, colors = {}, done = {}, rootBox = null, hideRoot = false, rootLit = false; /* PR 111: rootLit while the name's card is open */
+    var camD = 3.2, home = mini ? Object.assign({}, HOME, { panY: 0 }) : HOME, zfloor = ZMIN, colors = {}, done = {}, rootBox = null, hideRoot = false, rootLit = false, addMark = null; /* PR 111: rootLit while the name's card is open */
     /* PR 103: a little more life as the cloud grows: vivid (0..1, from how many topics are finished), each subject's fill (its
        finished share: a soft halo of its own colour that warms as the branch fills in), and fadeK, a branch left alone
        for weeks drawn a little quieter (C.fadeOf; never removed, back at once with any activity) */
@@ -311,7 +311,7 @@
           ctx.globalAlpha = 0.6 * sk; ctx.strokeStyle = INK; ctx.lineWidth = 1.2;
           ctx.beginPath(); ctx.arc(p.x, p.y, r + 4 + 3 * (1 - sk), 0, Math.PI * 2); ctx.stroke();
         }
-        ctx.globalAlpha = Math.min(1, 0.45 + 0.55 * p.f) * (absorbed ? 0.85 : 1) * (n.ghost ? 0.7 : 1) * quiet;
+        ctx.globalAlpha = Math.min(1, 0.45 + 0.55 * p.f) * (absorbed ? 0.85 : 1) * (n.ghost ? (n.leaving ? 0.16 : 0.4) : 1) * quiet;
         ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
         if (n.ghost) { ctx.setLineDash([1.5, 2]); ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.stroke(); ctx.setLineDash([]); }
         else { ctx.fillStyle = col; ctx.fill(); }
@@ -447,6 +447,22 @@
       }
       ctx.restore();
 
+      /* An empty cloud: one faint ghost, "+ add a subject". It is not a saved node. */
+      addMark = null;
+      if (!mini && cloud && !hideRoot && !C.subjects(cloud).length) {
+        var ax = Math.round(rootP.x + Math.min(128, w * 0.22)), ay = Math.round(rootP.y + 36);
+        ctx.save();
+        ctx.globalAlpha = 0.38; ctx.setLineDash([1.5, 2.5]); ctx.strokeStyle = INK; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(ax, ay, 7, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+        ctx.font = "italic 13px " + FONT; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        var al = "+ add a subject", atw = ctx.measureText(al).width;
+        ctx.globalAlpha = 0.92; ctx.fillStyle = PAPER;
+        pill(ax - atw / 2 - 8, ay + 10, atw + 16, 20); ctx.fill();
+        ctx.globalAlpha = 0.45; ctx.fillStyle = INK; ctx.fillText(al, ax, ay + 21);
+        ctx.restore();
+        addMark = { x: ax, y: ay, r: 28 };
+      }
+
       if (idleSpin) yaw += 0.00015 * (lastFrame ? Math.max(0, Math.min(50, now - lastFrame)) : 16); /* PR 109: by time, not by frame (a 120 Hz screen spun it twice as fast) */
       var sp = { on: false, wait: Infinity };
       if (!mini) {
@@ -474,6 +490,7 @@
     }
 
     function pick(x, y) {
+      if (addMark && Math.hypot(addMark.x - x, addMark.y - y) < addMark.r) return { add: true };
       var rp = project(pos.root);
       /* the whole name plate picks the root, except right on a node peeking out from under it */
       var onPlate = hideRoot ? false : rootBox ? Math.abs(rp.x - x) <= rootBox.hw + 6 && Math.abs(rp.y - y) <= rootBox.hh + 6 : Math.hypot(rp.x - x, rp.y - y) < 22;
@@ -742,7 +759,8 @@
       focusNode: focusNode,
       clearFocus: function () { setFocus(null); request(); },
       /* the name plate off the canvas (the opening question shows the name in the page, above the question) */
-      rootHidden: function (on) { if (hideRoot === Boolean(on)) return; hideRoot = Boolean(on); request(); }
+      rootHidden: function (on) { if (hideRoot === Boolean(on)) return; hideRoot = Boolean(on); request(); },
+      addAt: function () { return addMark; }
     };
   }
 
