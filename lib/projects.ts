@@ -29,6 +29,10 @@ export type ProjectMeta = {
    * art drawn at the card ratio (≈1.9:1, safe centre band); default "contain".
    */
   coverFit?: "contain" | "cover";
+  /** Optional muted autoplay loop shown on the project card (public/ path). */
+  coverLoop?: string;
+  /** Poster for coverLoop / reduced-motion fallback (public/ path). */
+  coverLoopPoster?: string;
   /** Optional 1200x630 social preview (PNG/JPEG under public/). Pages without one use the site image. */
   ogImage?: string;
   featured: boolean;
@@ -114,6 +118,11 @@ export async function getAllProjects(): Promise<Project[]> {
         tags: Array.isArray(data.tags) ? data.tags.map(String) : [],
         cover: String(data.cover),
         coverFit: data.coverFit === "cover" ? "cover" : undefined,
+        coverLoop: typeof data.coverLoop === "string" && data.coverLoop.startsWith("/") ? data.coverLoop : undefined,
+        coverLoopPoster:
+          typeof data.coverLoopPoster === "string" && data.coverLoopPoster.startsWith("/")
+            ? data.coverLoopPoster
+            : undefined,
         ogImage: typeof data.ogImage === "string" && data.ogImage.startsWith("/") ? data.ogImage : undefined,
         featured: Boolean(data.featured),
         unlisted: data.unlisted === true ? true : undefined,
