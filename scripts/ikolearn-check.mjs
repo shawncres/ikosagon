@@ -5,7 +5,7 @@ import fs from "node:fs";
 import zlib from "node:zlib";
 import { createRequire } from "node:module";
 import {
-  LEARN_LIMITS, CLOUD_OPEN, CLOUD_CLOSE, cleanName, cleanLabel, cleanMessages, parseLearnInput, SYSTEM_BASE, companionSystem, noticeSystem, replyLooksComplete, lessonLooksComplete, learnTopicFrom, learnTopicsFrom, affirmSeveral, subjectsOffered, goodChildName, withHealthNote, vaccineMisleads, HEALTH_RULE, junkSubject, toAdult, DISTRACTOR_RULE,
+  LEARN_LIMITS, CLOUD_OPEN, CLOUD_CLOSE, cleanName, cleanLabel, cleanMessages, parseLearnInput, SYSTEM_BASE, companionSystem, noticeSystem, replyLooksComplete, lessonLooksComplete, learnTopicFrom, learnTopicsFrom, affirmSeveral, subjectsOffered, goodChildName, withHealthNote, vaccineMisleads, HEALTH_RULE, junkSubject, toAdult, DISTRACTOR_RULE, realLink,
   buildContents, cardSystem, adjacentSystem, plainReply, parseCloudBlock, parseCard, parseAdjacent, createBlockSplitter,
   PATH_OPEN, PATH_CLOSE, lessonSystem, lessonContents, pathSystem, PATH_SCHEMA, CARD_SCHEMA, parsePath, parseChoices, parseLessonBlock, parseQuestions, parseBlurb, parseChain, checkSystem,
   parseTest, testSystem, TEST_SCHEMA, parseCheck, createSystem, parseCreate, CREATE_SCHEMA, examplesSystem, parseExamples, EXAMPLES_SCHEMA, EXAMPLE_LIMITS, SIGNALS, parseReading,
@@ -1172,13 +1172,14 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
    * for Iko's guidance on every stage, Back from the whole conversation and the movement line that learns: about 0.7 KB;
    * then a little more for a cut lesson's retries, the first-cloud retry, and inking a card on its first right answer).
    * Multi-subject adds, starter children, and tighter cloud labels need about 8 KB raw / 2 KB gzip.
+   * Content-quality checks, hands-on safety notes, the topic list and the extra retries need about 8 KB raw / 2 KB gzip.
    */
   const files = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js", "rank.js", "orchestrator.js", "camera.js", "profiles.js", "icon.svg"];
   const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
   const bytes = files.reduce((n, f) => n + served(f).length, 0);
   const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
-  ok(bytes < 404_000, "app weight under 404 KB uncompressed (served, minified)", String(bytes));
-  ok(gz < 136_000, "app weight under 136 KB gzipped (served, minified)", String(gz));
+  ok(bytes < 412_000, "app weight under 412 KB uncompressed (served, minified)", String(bytes));
+  ok(gz < 138_000, "app weight under 138 KB gzipped (served, minified)", String(gz));
 }
 
 /* ================= PR 108: QA polish ================= */
@@ -3446,7 +3447,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const sc = app.slice(app.indexOf("  function startChat() {"), app.indexOf("  function countVisit() {"));
   ok(/openCloud\(true\); \/\* home: the cloud/.test(sc) && !/el\.input\.focus\(\)/.test(sc), "home: every start (a first name, a guide's learner, a returning visit) lands on the cloud, with no focus jump");
   ok(/if \(landing !== true && !el\.ikoWrap\.hidden\) el\.iko\.focus\(\);/.test(app), "home: landing moves no focus (no keyboard on phones); coming back focuses Iko");
-  ok(/function home\(id\) \{\s*if \(state\.lessonNode\) showLesson\(false\);[\s\S]{0,200}openCloud\(\);\s*if \(id && nodeOf\(id\)\) openPanel\(id\);/.test(app), "home(): closes the lesson, deck or card view and returns to the cloud, on the topic when there is one");
+  ok(/function home\(id\) \{\s*if \(state\.lessonNode\) showLesson\(false\);[\s\S]{0,500}if \(!el\.panel\.hidden\) closeCard\(\);\s*openCloud\(\);/.test(app) && !/openCloud\(\);\s*if \(id && nodeOf\(id\)\) openPanel\(id\);/.test(app), "home(): closes the lesson, deck or card view and returns to the cloud without opening a topic card");
   ok(/if \(back && nodeOf\(back\)\) \{ showLesson\(false\); openHub\(back, null, "deck"\); return; \}\s*home\(id\);/.test(app) && /"Back to its card" : "Back to your cloud"/.test(app), "lesson: Back returns to the card it came from, else to the cloud on its topic");
   ok(/el\.dBack\.addEventListener\("click", function \(\) \{ home\(\); \}\)/.test(app) && /id="d-back" class="link back" hidden>Back to your cloud</.test(html), "deck: Back returns to the cloud (PR 110: hidden; the cloud widget is beside it)");
   ok(!/to-cloud|toCloud/.test(app + html + css) && /id="chat-back" class="link chat-back" hidden>Back</.test(html) && /el\.chatBack\.addEventListener\("click", goBack\)/.test(app) && /else if \(state\.back\) goBack\(\);/.test(app) && /class="chat-name" aria-hidden="true">Iko</.test(html), "PR 106: no '< Your cloud' link (the cloud preview covers it); the whole conversation has Back (and Escape) to where it was opened");
@@ -3954,9 +3955,11 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const li = (o) => parseLearnInput(Object.assign({ name: "Maya", mode: "notice", focus: "Magma" }, o));
   ok(li({ pace: "gentle" }).pace === "gentle" && li({ pace: "fast!" }).pace === "" && li({ again: true }).again === true && li({ again: "yes" }).again === false, "pace: only a known pace is taken; again only as true");
   ok(/gentle/i.test(lessonSystem(li({ pace: "gentle" }))) && /more clearly/i.test(lessonSystem(li({ again: true }))) && lessonSystem(li({})) !== lessonSystem(li({ pace: "stretch" })), "pace: the lesson's prompt follows the pace, and a missed check asks for a clearer telling");
-  const qs = (k) => [1, 2, 3].map((i) => ({ q: k + " question " + i + "?", options: ["a " + i, "b " + i, "c " + i], answer: 0 }));
+  const qs = (k) => ["recall", "apply", "mistake"].map((kind, i) => ({ kind, q: k + " question " + (i + 1) + "?", options: ["a " + i, "b " + i, "c " + i], answer: 0 }));
   const blk = parseLessonBlock(JSON.stringify({ steps: [], next: "", choices: [], questions: qs("First"), retry: qs("Fresh"), tricky: "" }));
-  ok(blk && Array.isArray(blk.retry) && blk.retry.length === 3 && /Fresh/.test(blk.retry[0].q), "lesson block: a spare set of questions comes with the lesson (fresh questions after a miss, 0 calls)", JSON.stringify(blk && blk.retry));
+  ok(blk && Array.isArray(blk.retry) && blk.retry.length === 3 && blk.retry.every((q) => q.options.length === 3 && q.kind) && /Fresh/.test(blk.retry[0].q), "lesson block: a spare set is a full check (3 options, a valid kind) for a fresh try after a miss", JSON.stringify(blk && blk.retry));
+  const thinRetry = parseLessonBlock(JSON.stringify({ steps: [], next: "", choices: [], questions: qs("First"), retry: [1, 2, 3].map((i) => ({ q: "Bare question " + i + "?", options: ["a " + i, "b " + i], answer: 0 })), tricky: "" }));
+  ok(thinRetry && !thinRetry.retry, "lesson block: a spare set that is not a full check is dropped, so the refresh is written again");
   const nob = parseLessonBlock(JSON.stringify({ steps: [], next: "", choices: [], questions: [], retry: qs("Fresh"), tricky: "" }));
   ok(!nob || !nob.retry, "lesson block: no spare set without a check");
   // the difficulty signal: per subject, additive in v9
@@ -4140,7 +4143,17 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const offered = subjectsOffered("Would you like ancient Rome or a website?");
   ok(offered.join("|") === "ancient Rome|website", "an offer of two subjects can be accepted together", offered.join("|"));
   ok(!goodChildName("Simple Jointery", "Woodwork") && !goodChildName("Fitness App Logic", "Vaccines") && goodChildName("Roman Army", "Ancient Rome") && goodChildName("Daily Life", "Ancient Rome"), "odd names and a topic from another subject are rejected; a real part of the subject stays");
+  ok(!goodChildName("Deeper Posture", "Health") && !goodChildName("Scaling Fractions Deeper", "Fractions") && !goodChildName("Overview", "Fractions") && !goodChildName("The Overview", "Fractions") && goodChildName("Posture", "Health") && goodChildName("First steps", "Cooking"), "awkward topic names are rejected; a clear name stays");
   ok(/checked by a doctor/.test(withHealthNote("Fever", "INTRO: A fever is the body turning up the heat.\nEXPLAIN: It fights germs.")) && /doctor/.test(withHealthNote("Volcanoes", "INTRO: No fever here.")) === false && /doctor/.test(withHealthNote("Fever", "EXPLAIN: A high fever should be checked by a doctor.")), "fever text gains one doctor note; other lessons and careful text stay as they are");
+  ok(/never open the cap on a hot engine/i.test(withHealthNote("Coolant", "INTRO: Check the tank.\nEXPLAIN: The level sits between the marks.")) && !/cap on a hot engine/i.test(withHealthNote("Volcanoes", "INTRO: No fever here.")) && /wash your hands/i.test(withHealthNote("Food Handling", "INTRO: Keep the kitchen clean.")) && /switch the power off/i.test(withHealthNote("Household Wiring", "INTRO: A circuit needs a complete path.")) && /unplug a power tool/i.test(withHealthNote("Power Tools", "INTRO: A drill turns a bit.")) && /do not mix/i.test(withHealthNote("Household Chemicals", "INTRO: Read the bottle.")) && withHealthNote("Coolant", "Never open the cap on a hot engine. Wait until it has cooled.").split(/hot engine/i).length === 2, "hands-on lessons gain one safety note; a careful coolant lesson and a volcano lesson are left as they are");
+  ok(realLink("Ancient Rome", "Roman Army") && realLink("Japanese cooking", "Cooking") && !realLink("Fractions", "Baking") && !realLink("Posture", "Astronomy"), "a lesson connects another interest only when they share a real idea");
+  const fracLesson = lessonSystem(parseLearnInput({ mode: "notice", name: "Sam", focus: "Fractions", messages: [], earned: ["Astronomy"] }));
+  const romeLesson = lessonSystem(parseLearnInput({ mode: "notice", name: "Sam", focus: "Ancient Rome", messages: [], earned: ["Roman Army"] }));
+  ok(/everyday example/.test(fracLesson) && /do not mention them/i.test(fracLesson) && /truly connect here/.test(romeLesson) && !/do not mention them/i.test(romeLesson), "an unrelated earned card stays out of the lesson; a real link may be named");
+  const longQ = (kind, q) => ({ kind, q, options: ["right answer here now", "short one", "also short"], answer: 0, why: ["", "close", "also"] });
+  ok(parseCheck(JSON.stringify({ key_idea: "A set keeps one of each thing you put in.", questions: [longQ("recall", "What does a set keep inside it?"), longQ("apply", "Which group works as a set here now?"), longQ("mistake", "Sam counted a repeat twice here?")], retry: [longQ("recall", "Retry recall question here?"), longQ("apply", "Retry apply question here now?"), longQ("mistake", "Retry mistake question here?")] })) === null, "parseCheck: a set whose right option is the longest every time is written again");
+  const retryBad = parseCheck(JSON.stringify({ key_idea: "A set keeps one of each thing you put in.", questions: ["recall", "apply", "mistake"].map((kind, i) => ({ kind, q: "Good question " + (i + 1) + " here?", options: ["a " + i, "b " + i, "c " + i], answer: 0, why: ["", "x", "y"] })), retry: [{ q: "Only two options here?", options: ["one", "two"], answer: 0 }] }));
+  ok(retryBad && retryBad.questions.length === 3 && retryBad.retry.length === 0, "parseCheck: a retry that is not a full check is dropped; the first check can still stand");
   eq(parseQuestions([{ q: "What is a vaccine made from?", options: ["Some use a weakened live virus", "They never use a live virus", "Only sugar"], answer: 1 }]), [], "a vaccine question that marks a weakened live version wrong is dropped");
   eq(parseQuestions([{ q: "What is a fever?", options: ["The body running hotter than usual", "Your friend's shoe size", "A normal temperature"], answer: 0 }]), [], "a shoe-size joke that leaves fewer than 3 options drops the question");
   eq(parseQuestions([{ q: "What is a fever?", options: ["The body running hotter than usual", "An illness caused by drinking cold water", "A normal temperature"], answer: 0 }]), [], "a cold-water nonsense option that leaves fewer than 3 options drops the question");
@@ -4166,6 +4179,12 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(C.addStarters(bare, cook.id, ["Simple Jointery"]).length === 3 && C.childrenOf(bare, cook.id).every((c) => !/jointery/i.test(c.label)), "fewer than 3 real names falls back to a clean placeholder set");
   const appG = fs.readFileSync("public/ikolearn/app.js", "utf8"), cssG = fs.readFileSync("public/ikolearn/styles.css", "utf8"), viewG = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8");
   ok(/function ensureAsked\(/.test(appG) && /function fillStarter\(/.test(appG) && /wantedSubjects\(text\)/.test(appG) && /replyThin\(/.test(appG) && /attempt < 1/.test(appG), "chat: missing subjects are added on the device, and a thin reply is tried once");
+  ok(/function lessonLinks\(/.test(appG) && /opens: made\.slice\(\)/.test(appG) && /opens: opens/.test(appG) && /Open a lesson on /.test(appG), "subjects added through Iko, including two at once, each get an Open a lesson link in the thread and in Iko");
+  ok(/function fullCheck\(/.test(appG) && /fullCheck\(les\.rq\)/.test(appG) && /fullCheck\(j\.retry\)/.test(appG) && /longestTell\(qs\)/.test(appG), "a retried or refreshed check must be three questions, each with 3 options and a valid kind, and the right option is not always the longest");
+  ok(/Here's an example instead/.test(appG) && /function echoesOption\(/.test(appG) && /everyday example instead/.test(fs.readFileSync("lib/ikolearn/prompts.ts", "utf8")), "a definition hint that echoes the correct option is replaced with an example");
+  ok(/askTest = function/.test(appG) && /askNext = function/.test(appG) && /wrap\.retried/.test(appG) && /return pull\(true\)/.test(appG), "lessons, the lesson written ahead, tests and next topics each retry once before the calm line");
+  ok(/topicNav\.id = "topic-list"/.test(appG) && /setAttribute\("aria-label", "Topics"\)/.test(appG) && /Open the lesson on /.test(appG) && /openLesson\(n\.id\)/.test(appG) && /\.topic-list button:focus-visible/.test(cssG), "topics can be reached from a labelled, focusable list, and choosing one opens that node's lesson");
+  ok(/Never open the cap on a hot engine/.test(appG) && /openPanel\.keep = false/.test(appG) && !/openPanel\(state\.lessonNode\)/.test(appG) && !/if \(id && nodeOf\(id\)\) openPanel\(id\)/.test(appG) && !/openCloud\(\); openPanel\(id\); return/.test(appG), "hands-on safety is applied on the device, and returning to the cloud does not open a topic card");
   ok(/n < 1\) ensureCheck\(id, 1\)/.test(appG) && /function clarifyingNow\(/.test(appG) && /clarifyingNow\(text\)\) return/.test(appG) && /nextCtx\.view === iko\.ctx\.view/.test(appG), "a filtered check is tried once, a check clarification does not grow the cloud, and Iko stays open on the same view");
   const hc = C.create("Sam", T0);
   C.applyTopics(hc, [{ name: "Health", signal: "curious", asSubject: true }, { name: "Handle One", signal: "curious", asSubject: true }], T0);

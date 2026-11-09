@@ -387,10 +387,9 @@
     else if (m.role === "age") d = renderAge(m);
     else if (m.role === "card") {
       d = cardNode(m.card, m.card.node && nodeOf(m.card.node) ? "On " + trailOf(m.card.node) : "");
-    } else if (m.role === "grow") {
+    }     else if (m.role === "grow") {
       d = mk("p", "grow", m.text);
-      var on = nodeOf(m.open);
-      if (on) { d.appendChild(document.createTextNode(" · ")); d.appendChild(linkBtn("Open a lesson on " + on.label, function () { openLesson(on.id); })); }
+      lessonLinks(d, m.opens && m.opens.length ? m.opens : (m.open ? [m.open] : []));
     } else {
       d = mk("div", "msg " + m.role + (m.streaming ? " streaming" : ""));
       var body = mk("div"); paragraphs(body, m.text || ""); d.appendChild(body);
@@ -482,7 +481,9 @@
     /* a new or existing parent, or a topic that was already there: offer that one */
     if (!fresh && main && reused.indexOf(main.id) >= 0) fresh = main.id;
     if (!fresh && topics[0]) { var sb = C.subjects(state.cloud).filter(function (x) { return x.key === C.norm(topics[0].name); })[0]; if (sb && (r.parentsCreated.indexOf(sb.id) >= 0 || reused.indexOf(sb.id) >= 0)) fresh = sb.id; }
-    if (parts.length) push({ role: "grow", text: "Your cloud grew: " + parts.join(" · "), open: fresh || null });
+    var opens = r.parentsCreated.filter(function (id) { return nodeOf(id); });
+    if (!opens.length && fresh) opens = [fresh];
+    if (parts.length) push({ role: "grow", text: "Your cloud grew: " + parts.join(" · "), open: opens[0] || null, opens: opens });
     /* a new parent (or a topic placed where the learner asked): the camera glides to it */
     var landed = r.parentsCreated.concat(r.created).filter(function (id) { return placed[C.norm(nodeOf(id) ? nodeOf(id).label : "")]; })[0];
     /* a subject that was asked for and is already there: that one is shown (no duplicate) */
@@ -522,7 +523,7 @@
     });
     if (made.length) {
       refreshViews(made);
-      push({ role: "grow", text: "Your cloud grew: " + made.map(function (id) { return "new subject " + nodeOf(id).label; }).join(" · "), open: made[0] });
+      push({ role: "grow", text: "Your cloud grew: " + made.map(function (id) { return "new subject " + nodeOf(id).label; }).join(" · "), open: made[0], opens: made.slice() });
       revealNode(made[0]);
     }
     return made;
@@ -571,6 +572,16 @@
    * on the device (0 calls). Checked again on tap: if it's on the cloud by now it is reused; a target that's gone means
    * a new branch.
    */
+  /* Every new subject from this turn, including two at once, gets its own lesson link straight away. */
+  function lessonLinks(parent, ids) {
+    var list = [];
+    (ids || []).forEach(function (id) { var n = nodeOf(id); if (n && list.indexOf(n.id) < 0) list.push(n.id); });
+    list.forEach(function (id) {
+      if (parent.childNodes.length) parent.appendChild(document.createTextNode(" · "));
+      var n = nodeOf(id);
+      parent.appendChild(linkBtn("Open a lesson on " + n.label, function () { openLesson(n.id); }));
+    });
+  }
   function renderPlace(m) {
     var d = mk("div", "place"), p = m.plan || {}, f = nodeOf(p.target);
     if (m.done) {
@@ -708,6 +719,7 @@
   function goodChild(name, parent) {
     var n = C.cleanLabel(name);
     if (!n || n.length < 2 || n.length > 32 || n.split(/\s+/).length > 4) return false;
+    if (/^(?:(?:a|an|the)\s+)?(overview|introduction|intro)$/i.test(n) || /^deeper\b/i.test(n) || /\bdeeper$/i.test(n)) return false;
     if (/\b(jointery|recieve|seperate|app logic|asdf)\b/i.test(n) || /(.)\1{2,}/i.test(n)) return false;
     var domain = function (s) {
       if (/\b(vaccine|vaccination|fever|health|medicine|medical|disease|immune|virus|doctor)\b/i.test(s)) return "health";
@@ -726,13 +738,31 @@
       .replace(/your little brother/gi, "someone else")
       .replace(/a game at the park/gi, "an ordinary example");
   }
-  function withHealthNote(focus, text) {
-    var src = toAdult(text);
-    if (!/\bfever\b/i.test(focus) && !/turn(?:ing|s)? up the heat|body (?:runs|running) hot/i.test(src)) return src;
-    if (/\b(doctor|clinician|medical care|checked by)\b/i.test(src)) return src;
-    var note = "A fever is more than the body turning up the heat. A high or persistent fever should be checked by a doctor.";
+  function appendNote(src, note) {
     if (/EXPLAIN\s*:/i.test(src)) return src.replace(/\s*$/, "") + "\nEXPLAIN: " + note;
     return src.replace(/\s*$/, "") + (src.trim() ? "\n\n" : "") + note;
+  }
+  function handsNote(focus, src) {
+    var blob = focus + "\n" + src;
+    var rules = [
+      { about: /\b(coolants?|radiators?|antifreeze)\b/i.test(blob), has: /never open the cap on a hot engine/i, note: "Never open the cap on a hot engine. Wait until it has cooled." },
+      { about: /\b(engines?|oil changes?|brake pads?|brakes?|cars?|automobiles?|vehicles?|spark plugs?)\b/i.test(blob), has: /support the car safely|let the engine and the brakes cool/i, note: "Let the engine and the brakes cool before you touch them, and support the car safely." },
+      { about: /\b(power tools?|circular saws?|table saws?|drills?|angle grinders?)\b/i.test(blob) || /\btools?\b/i.test(focus), has: /unplug a power tool|keep hands clear of the blade/i, note: "Keep hands clear of the blade or bit, and unplug a power tool before changing a part." },
+      { about: /\b(chemicals?|chemical safety|solvents?|bleach|caustic|reagents?)\b/i.test(blob), has: /do not mix them or breathe them in/i, note: "Read the label, and do not mix chemicals or breathe them in." },
+      { about: /\b(electricity|electrical|wiring|mains|live wire|circuit breaker)\b/i.test(blob), has: /switch the power off/i, note: "Switch the power off before you touch a wire or an open fitting." },
+      { about: /\b(food handling|food safety|raw meat|cross-contamination|kitchen hygiene)\b/i.test(blob), has: /wash your hands/i, note: "Wash your hands, and keep raw meat away from food that is ready to eat." }
+    ];
+    for (var i = 0; i < rules.length; i++) if (rules[i].about && !rules[i].has.test(src)) return rules[i].note;
+    return "";
+  }
+  function withHealthNote(focus, text) {
+    var src = toAdult(text);
+    if ((/\bfever\b/i.test(focus) || /turn(?:ing|s)? up the heat|body (?:runs|running) hot/i.test(src)) && !/\b(doctor|clinician|medical care|checked by)\b/i.test(src)) {
+      src = appendNote(src, "A fever is more than the body turning up the heat. A high or persistent fever should be checked by a doctor.");
+    }
+    var hand = handsNote(focus, src);
+    if (hand) src = appendNote(src, hand);
+    return src;
   }
   function titleTopic(s) {
     return String(s || "").split(/\s+/).map(function (w) {
@@ -1166,6 +1196,7 @@
         return;
       }
       if (!m.fallback && grew && !m.text) m.text = "That's on your cloud now. Open it whenever you like.";
+      if (!m.fallback && m.text) m.text = withHealthNote(m.topic || (asked && asked[0]) || (nodeOf(fid) ? nodeOf(fid).label : ""), m.text);
       if (!m.fallback && !grew && (!m.text || replyThin(m.text, asked))) {
         m.text = asked.length > 1 ? "Which of those should I add? You can name more than one." : "I didn't catch that. What would you like to learn about?";
         m.cut = false;
@@ -1395,7 +1426,14 @@
     if (!opts.force && !P.needsNext(state.cloud, id)) { bail(); return; }
     aheadBusy[id] = 1;
     if (opts.say) opts.say("Working out what comes next in " + n.label + "...");
-    postJson("/create", Object.assign(basePayload(id), { mode: "notice" }, P.createRequest(state.cloud, "next", id))).then(function (j) {
+    var askNext = function (ntry) {
+      return postJson("/create", Object.assign(basePayload(id), { mode: "notice" }, P.createRequest(state.cloud, "next", id))).then(function (j) {
+        if (j && j.ok && Array.isArray(j.items) && j.items.length) return j;
+        if (ntry >= 1 || (j && (j.reason === "budget" || j.reason === "busy" || j.reason === "aborted" || j.reason === "offline"))) return j;
+        return askNext(ntry + 1);
+      });
+    };
+    askNext(0).then(function (j) {
       if (j && j.ok && Array.isArray(j.items) && j.items.length) {
         var r = C.applyCreate(state.cloud, { items: j.items.slice(0, 1) }, { focusId: id });
         save();
@@ -1645,6 +1683,27 @@
   function shortSet(qs) {
     return (Array.isArray(qs) ? qs : []).some(function (q) { return q && Array.isArray(q.options) && q.options.length < 3; });
   }
+  function wordsOf(s) { return String(s || "").trim().split(/\s+/).filter(Boolean).length; }
+  /* The right option is strictly the longest, by words, in every question. A tie is not a tell. */
+  function longestTell(qs) {
+    var v = Array.isArray(qs) ? qs : [];
+    if (v.length < 2) return false;
+    return v.every(function (q) {
+      if (!q || !Array.isArray(q.options) || !Number.isInteger(q.answer) || q.answer < 0 || q.answer >= q.options.length) return false;
+      var right = wordsOf(q.options[q.answer]);
+      return q.options.every(function (o, i) { return i === q.answer || wordsOf(o) < right; });
+    });
+  }
+  var JOKE_OPT = /\b(made of cheese|none of the above|all of the above|none of these|all of these|lol|lmao|shoe sizes?|for a laugh|just kidding|as a joke)\b/i;
+  /* The same bar as a first check: exactly 3 questions, one of each kind, exactly 3 options, no joke option, and the right one is not the longest every time. */
+  function fullCheck(qs) {
+    var v = (Array.isArray(qs) ? qs : []).filter(function (q) {
+      return q && typeof q.q === "string" && Array.isArray(q.options) && q.options.length === 3 && Number.isInteger(q.answer) && q.answer >= 0 && q.answer < 3 && (q.kind === "recall" || q.kind === "apply" || q.kind === "mistake") && !q.options.some(function (o, i) { return i !== q.answer && JOKE_OPT.test(o); });
+    });
+    if (v.length !== 3 || !["recall", "apply", "mistake"].every(function (k) { return v.some(function (q) { return q.kind === k; }); })) return [];
+    if (longestTell(v)) return [];
+    return v;
+  }
   /* Check questions from the lesson's hidden block: radio-style options; the first answer to each counts. Every kind needs 3 options. */
   function validQs(qs) {
     return (Array.isArray(qs) ? qs : []).filter(function (q) {
@@ -1812,9 +1871,9 @@
   function freshCheck(id) {
     var les = state.lessons[id], ck = ckOf(id), q = state.quiz;
     if (!les || !q || q.id !== id) return;
-    var spare = shortSet(les.rq) ? [] : validQs(les.rq);
+    var spare = fullCheck(les.rq);
     ck.set = (ck.set || 0) + 1;
-    q.qs = ck.set === 1 && spare.length >= 2 ? spare : shuffled(validQs(les.qs).length ? validQs(les.qs) : q.qs, id + ck.r + ck.set);
+    q.qs = ck.set === 1 && spare.length === 3 ? spare : shuffled(validQs(les.qs).length ? validQs(les.qs) : q.qs, id + ck.r + ck.set);
     les.cur = q.qs; /* the set on screen, kept so a return shows the same questions */
     q.ans = []; les.ans = []; q.missed = false; ck.c = 1;
     save();
@@ -1832,13 +1891,13 @@
    */
   function refreshLocal(id) {
     var les = state.lessons[id], ck = ckOf(id) || {};
-    return Boolean(les && les.tk && (ck.miss || 0) <= 1 && !shortSet(les.rq) && validQs(les.rq).length >= 2 && (ck.set || 0) < 1);
+    return Boolean(les && les.tk && (ck.miss || 0) <= 1 && fullCheck(les.rq).length === 3 && (ck.set || 0) < 1);
   }
   function refreshAttempt(id) {
     var les = state.lessons[id], ck = ckOf(id), q = state.quiz;
     if (!les || !ck || !q || q.id !== id || state.busy) return;
     if (!refreshLocal(id)) { retell(id); return; }
-    ck.set = 1; q.qs = validQs(les.rq); les.cur = q.qs;
+    ck.set = 1; q.qs = fullCheck(les.rq); les.cur = q.qs;
     q.ans = []; les.ans = []; q.missed = false; ck.c = 0; les.ra = 1;
     save();
     renderLessonBody(les.text, false); againBox(id);
@@ -2177,7 +2236,7 @@
   var LESSON_EXCERPT = 5000;
   /* PR 118: a check is usable when it has a valid question; a new-style one (kinds) only when it is the full three */
   function needCheck(qs) {
-    if (shortSet(qs)) return true; /* a 2-option recall or apply question is written again, not shown */
+    if (shortSet(qs) || longestTell(qs)) return true; /* a short question, or a set whose right option is always the longest, is written again */
     var v = validQs(qs);
     if (!v.length) return true;
     var kinds = v.filter(function (q) { return q.kind; }).length;
@@ -2208,7 +2267,7 @@
       var qs = j && j.ok ? validQs(j.questions) : [];
       if (qs.length === 3 && !needCheck(qs)) {
         les.qs = mixQs(qs); les.ans = [];
-        var rq = validQs(j.retry); if (rq.length >= 2) les.rq = mixQs(rq);
+        var rq = fullCheck(j.retry); if (rq.length === 3) les.rq = mixQs(rq);
         if (typeof j.key === "string" && j.key.trim()) les.key = j.key.trim().slice(0, 220);
         if (state.quiz && state.quiz.id === id) { state.quiz.qs = les.qs; state.quiz.ans = []; state.quiz.wait = false; state.quiz.fail = false; }
         if (el.lStatus && String(el.lStatus.textContent || "").indexOf("didn't come through") >= 0) el.lStatus.textContent = "";
@@ -2248,24 +2307,37 @@
       if (r.ok && L.complete(got, { check: sawCheck })) return r;
       if (["busy", "ip_rate", "budget", "offline", "off", "no_key", "429", "503", "incomplete"].indexOf(String(r.reason)) >= 0) return r;
       return again();
-    }).catch(function () { return { ok: false, reason: "error" }; });
+    }).catch(function () {
+      if (wrap.retried) return { ok: false, reason: "error" };
+      wrap.retried = true;
+      return again().catch(function () { return { ok: false, reason: "error" }; });
+    });
   }
   /* One lesson kept in memory. plant: put its steps on the cloud when it arrives (the next card on a path). */
   function prepareAhead(id, plant) {
     if (!id || !nodeOf(id) || lessonBodyOk(state.lessons[id]) || pre[id]) return;
     var slot = pre[id] = { ok: false, text: "", ev: null };
-    slot.p = stream("/lesson", Object.assign(basePayload(id), P.lessonContext(state.cloud, id), { pre: true }), {
-      delta: function (t) { slot.text += t; },
-      path: function (ev) { slot.ev = ev; },
-      reset: function () { slot.text = ""; slot.ev = null; }
-    }).then(function (r) {
-      slot.ok = Boolean(r && r.ok && L.complete(slot.text, { check: lessonHasCheck(slot.ev) }));
-      if (slot.ok && plant && slot.ev) {
-        var a = plantBlock(id, slot.ev);
-        if (a.length) { save(); refreshViews(a); if (state.mode === "lesson") renderLessonPath(); if (state.mode === "test") renderTestNext(state.lessonNode); }
-      } else if (!slot.ok) delete pre[id];
-      return slot.ok;
-    }, function () { delete pre[id]; return false; });
+    var pull = function (strict) {
+      slot.text = ""; slot.ev = null;
+      return stream("/lesson", Object.assign(basePayload(id), P.lessonContext(state.cloud, id), { pre: true }, strict ? { strict: true } : {}), {
+        delta: function (t) { slot.text += t; },
+        path: function (ev) { slot.ev = ev; },
+        reset: function () { slot.text = ""; slot.ev = null; }
+      }).then(function (r) {
+        slot.ok = Boolean(r && r.ok && L.complete(slot.text, { check: lessonHasCheck(slot.ev) }));
+        if (slot.ok) {
+          if (plant && slot.ev) {
+            var a = plantBlock(id, slot.ev);
+            if (a.length) { save(); refreshViews(a); if (state.mode === "lesson") renderLessonPath(); if (state.mode === "test") renderTestNext(state.lessonNode); }
+          }
+          return true;
+        }
+        if (!strict && r && r.reason !== "aborted" && r.reason !== "budget" && r.reason !== "busy" && r.reason !== "offline") return pull(true);
+        delete pre[id];
+        return false;
+      }, function () { if (!strict) return pull(true); delete pre[id]; return false; });
+    };
+    slot.p = pull(false);
   }
   function prefetchNext(id) { if (!state.busy && !document.hidden) prepareAhead(P.pathNext(state.cloud, id), true); }
   /* The first Pick up card, written while the cloud is built and again when the build finishes. */
@@ -2449,25 +2521,52 @@
     el.lClar.insertBefore(box, el.lClar.querySelector(".clar-chat"));
     return { box: box, body: body };
   }
-  /* Drop any sentence that quotes a correct check option. What remains is a hint, never the choice itself. */
+  function hintWords(s) {
+    return String(s || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(function (w) {
+      return w.length > 3 && !/^(that|this|with|from|they|them|have|what|when|your|into|than|then|also|only|just|about|does|mean|means|which|their|there|here|some|more|most|very|like|been|being|were|will|would|could|should|something|anything)$/.test(w);
+    });
+  }
+  /* A definition hint echoes the correct option when most of its content words show up in the hint. */
+  function echoesOption(text, right) {
+    var rw = hintWords(right);
+    if (!rw.length) return String(right || "").length >= 8 && String(text || "").toLowerCase().indexOf(String(right).toLowerCase()) >= 0;
+    var hw = hintWords(text);
+    var hit = rw.filter(function (w) { return hw.indexOf(w) >= 0; }).length;
+    return rw.length === 1 ? hit === 1 : hit / rw.length >= 0.5;
+  }
+  function isDefinition(item) {
+    if (!item) return false;
+    if (item.kind === "recall") return true;
+    return /\b(what is|what are|what does|what do we call|which term|defined as|mean by|meaning of)\b/i.test(item.q || "");
+  }
+  /* Drop any sentence that quotes a correct check option. A definition hint that still echoes the right wording becomes an example. */
   function stripAnswers(id, text) {
-    var rights = [];
-    var add = function (qs) { (qs || []).forEach(function (item) { var r = item && item.options && item.options[item.answer]; if (r && String(r).length >= 4) rights.push(String(r)); }); };
+    var rights = [], defs = [];
+    var add = function (qs) {
+      (qs || []).forEach(function (item) {
+        var r = item && item.options && item.options[item.answer];
+        if (r && String(r).length >= 4) rights.push(String(r));
+        if (isDefinition(item) && r) defs.push(String(r));
+      });
+    };
     if (state.quiz && state.quiz.id === id) add(state.quiz.qs);
     var les = state.lessons[id];
     if (les) { add(les.qs); add(les.cur); add(les.rq); }
     if (!rights.length) return text;
+    var quotes = function (s) { return rights.some(function (r) { return s.toLowerCase().indexOf(r.toLowerCase()) >= 0; }); };
+    var echoes = function (s) { return defs.some(function (r) { return echoesOption(s, r); }); };
     var bits = String(text || "").split(/([.!?])\s+/), kept = [], cur = "";
     bits.forEach(function (p, i) {
       if (i % 2 === 0) cur = p;
       else {
         var s = (cur + p).trim();
-        if (s && !rights.some(function (r) { return s.toLowerCase().indexOf(r.toLowerCase()) >= 0; })) kept.push(s);
+        if (s && !quotes(s) && !echoes(s)) kept.push(s);
         cur = "";
       }
     });
-    if (cur.trim() && !rights.some(function (r) { return cur.toLowerCase().indexOf(r.toLowerCase()) >= 0; })) kept.push(cur.trim());
+    if (cur.trim() && !quotes(cur) && !echoes(cur)) kept.push(cur.trim());
     var out = kept.join(" ").trim();
+    if (defs.length && (!out || echoes(out))) return "Here's an example instead: picture one ordinary situation where the idea shows up, and match the choice to what happens there.";
     return out || "Here's a hint: think about the main idea, and look for the choice that matches it.";
   }
   function clarify(id, style) {
@@ -2686,7 +2785,14 @@
     }
     lock(true);
     el.lQuiz.appendChild(mk("p", "fine streaming", "Writing your questions..."));
-    postJson("/test", P.withBand(state.cloud, Object.assign(basePayload(pid), { material: req.material }))).then(function (j) {
+    var askTest = function (ntry) {
+      return postJson("/test", P.withBand(state.cloud, Object.assign(basePayload(pid), { material: req.material }))).then(function (j) {
+        var qs = j && j.ok ? validTestQs(j.questions, labels) : [];
+        if (qs.length >= 2 || ntry >= 1 || (j && (j.reason === "budget" || j.reason === "busy" || j.reason === "aborted" || j.reason === "offline"))) return j;
+        return askTest(ntry + 1);
+      });
+    };
+    askTest(0).then(function (j) {
       if (state.lessonNode !== pid || state.mode !== "test") return;
       var qs = j && j.ok ? validTestQs(j.questions, labels) : [];
       if (qs.length >= 2) {
@@ -2887,16 +2993,17 @@
   /* ---------- cloud overlay + panel ---------- */
   /*
    * Home: the cloud is the main view. Lessons, the deck, a card's hub and the chat with Iko open from it, and their
-   * Back / close returns here (to the topic they were about, when there is one: its card opens beside it).
+   * Back / close returns here. The cloud stays clear: a topic card is not opened over the middle.
    */
   function home(id) {
     if (state.lessonNode) showLesson(false);
     el.deck.hidden = true; el.hub.hidden = true; state.hubNode = null; el.thread.hidden = false; el.dock.hidden = false;
     renderRet();
     openPanel.keep = true;
+    openPanel.keep = false; /* a return does not open a topic card over the cloud */
+    if (!el.panel.hidden) closeCard();
     openCloud();
-    if (id && nodeOf(id)) openPanel(id);
-    else openPanel.keep = false;
+    if (id && nodeOf(id) && el.topicNav && !el.topicNav.hidden) { el.topicNav.hidden = true; if (el.topicBtn) el.topicBtn.setAttribute("aria-expanded", "false"); }
   }
   /* landing: the first view after the name, or a returning visit (no focus moves, so no keyboard pops up on phones) */
   function openCloud(landing) {
@@ -2911,9 +3018,9 @@
     big.setTests(testMap());
     renderCloudHint();
     big.spin(true); /* a slow idle turn on every view of the cloud; it goes on through drags and pans, a click pauses it a few seconds (not with reduced motion; paused while the tab is hidden or the cloud is closed) */
-    if (state.lessonNode) setTimeout(function () { openPanel(state.lessonNode); }, 0); /* a lesson or a test: its topic */
-    else if (state.glide && nodeOf(state.glide)) { var gl = state.glide; state.glide = null; setTimeout(function () { revealNode(gl); }, 0); } /* a new parent: the camera glides to it, its card opens */
+    if (state.glide && nodeOf(state.glide)) { var gl = state.glide; state.glide = null; setTimeout(function () { revealNode(gl); }, 0); } /* a new parent: the camera glides to it, its card opens */
     renderCloudFlow();
+    ensureTopicList();
     renderHomeNav();
     renderRet();
     renderIko();
@@ -3131,6 +3238,76 @@
   el.cloudDeck.addEventListener("click", function () { closeCloud(true); showDeck(true); });
   /* Back on the cloud: a slim row of the suggested cards and Draw along the bottom (hidden while a panel is open). */
   var cloudFlow = null;
+  function closeTopicList() {
+    if (!el.topicNav) return;
+    el.topicNav.hidden = true;
+    if (el.topicBtn) el.topicBtn.setAttribute("aria-expanded", "false");
+  }
+  function topicJump(n) {
+    var b = mk("button", "topic-jump-item", n.label);
+    b.type = "button";
+    b.setAttribute("aria-label", "Open the lesson on " + n.label);
+    b.addEventListener("click", function () {
+      closeTopicList();
+      openLesson(n.id);
+      if (el.lTitle) { el.lTitle.tabIndex = -1; try { el.lTitle.focus(); } catch (e) { /* old browsers */ } }
+    });
+    return b;
+  }
+  function fillTopicList() {
+    if (!el.topicNav) return;
+    el.topicNav.textContent = "";
+    var ul = mk("ul");
+    var addBranch = function (parent, id, depth) {
+      if (depth > 4) return;
+      C.childrenOf(state.cloud, id).forEach(function (c) {
+        var li = mk("li");
+        li.appendChild(topicJump(c));
+        var sub = mk("ul");
+        addBranch(sub, c.id, depth + 1);
+        if (sub.childNodes.length) li.appendChild(sub);
+        parent.appendChild(li);
+      });
+    };
+    addBranch(ul, null, 0);
+    if (!ul.childNodes.length) el.topicNav.appendChild(mk("p", "fine", "No topics yet."));
+    else el.topicNav.appendChild(ul);
+  }
+  /* A keyboard list of the same topics as the canvas. Choosing one opens that node's lesson. */
+  function ensureTopicList() {
+    var host = el.cloud && el.cloud.querySelector(".top-r");
+    if (!host || !state.cloud) return;
+    if (!el.topicBtn) {
+      el.topicBtn = mk("button", "btn sm topic-jump", "Topics");
+      el.topicBtn.type = "button";
+      el.topicBtn.id = "topic-jump";
+      el.topicBtn.setAttribute("aria-expanded", "false");
+      el.topicBtn.setAttribute("aria-controls", "topic-list");
+      el.topicBtn.setAttribute("aria-label", "Topics, a list you can open from the keyboard");
+      el.topicNav = mk("nav", "topic-list");
+      el.topicNav.id = "topic-list";
+      el.topicNav.hidden = true;
+      el.topicNav.setAttribute("aria-label", "Topics");
+      el.topicBtn.addEventListener("click", function () {
+        var open = el.topicNav.hidden;
+        el.topicNav.hidden = !open;
+        el.topicBtn.setAttribute("aria-expanded", open ? "true" : "false");
+        if (open) { fillTopicList(); var b = el.topicNav.querySelector("button"); if (b) b.focus(); }
+      });
+      el.topicNav.addEventListener("keydown", function (e) {
+        if (e.key !== "Escape") return;
+        e.stopPropagation();
+        closeTopicList();
+        el.topicBtn.focus();
+      });
+      host.insertBefore(el.topicBtn, host.firstChild);
+      el.cloud.appendChild(el.topicNav);
+    }
+    var has = Boolean(C.subjects(state.cloud).length) && !el.cloud.hidden;
+    el.topicBtn.hidden = !has;
+    if (!has) closeTopicList();
+    else if (!el.topicNav.hidden) fillTopicList();
+  }
   function renderCloudFlow() {
     if (!cloudFlow) {
       cloudFlow = mk("div", "cloud-flow"); el.cloud.appendChild(cloudFlow);
@@ -3141,6 +3318,7 @@
     cloudFlow.textContent = "";
     cloudFlow.hidden = !el.panel.hidden || Boolean(cloudCaption && !cloudCaption.hidden);
     renderStart();
+    ensureTopicList();
     if (cloudFlow.hidden || !C.subjects(state.cloud).length) { cloudFlow.hidden = true; return; } /* an empty cloud: its start invite instead */
     var note = dirNote();
     if (note) cloudFlow.appendChild(note);
@@ -3723,7 +3901,12 @@
       if (m.role === "place") { var pl = renderPlace(m); pl.classList.add("iko-msg"); el.ikoLog.appendChild(pl); return; }
       if (m.role === "del") { var dl = renderDel(m); dl.classList.add("iko-msg"); el.ikoLog.appendChild(dl); return; }
       if (m.role === "age") { var ag = renderAge(m); ag.classList.add("iko-msg"); el.ikoLog.appendChild(ag); return; }
-      if (m.role === "grow") { el.ikoLog.appendChild(mk("p", "iko-msg grow", m.text)); return; }
+      if (m.role === "grow") {
+        var gp = mk("p", "iko-msg grow", m.text);
+        lessonLinks(gp, m.opens && m.opens.length ? m.opens : (m.open ? [m.open] : []));
+        el.ikoLog.appendChild(gp);
+        return;
+      }
       if (m.role !== "user" && m.role !== "model") return;
       var d = mk("div", "iko-msg " + m.role + (m.streaming ? " streaming" : ""));
       paragraphs(d, m.text || (m.streaming ? "…" : ""));
@@ -4285,7 +4468,7 @@
     var from = state.hubFrom, id = state.hubNode;
     el.hub.hidden = true; state.hubNode = null;
     if (from && from !== "deck" && from !== "cloud" && from !== "chat" && (nodeOf(from) || C.inDeck(state.cloud, from))) return openHub(from, null, "deck");
-    if (from === "cloud" && nodeOf(id)) { el.thread.hidden = false; el.dock.hidden = false; openCloud(); openPanel(id); return; }
+    if (from === "cloud" && nodeOf(id)) { el.thread.hidden = false; el.dock.hidden = false; openCloud(); return; }
     if (from === "chat") { el.thread.hidden = false; el.dock.hidden = false; renderDraw(); scrollDown(); return; }
     showDeck(true);
   }

@@ -380,17 +380,72 @@ export const HEALTH_RULE =
   "Health and medicine need extra care, and the facts come first. If you mention fever, do not describe it only as the body turning up the heat: " +
   "add one short note that a high or persistent fever should be checked by a doctor. " +
   "Vaccines differ: some use a weakened live version of a germ, some use a killed germ or a piece of one, and some use instructions the body reads. " +
-  "Never mark a weakened live vaccine as automatically wrong.";
+  "Never mark a weakened live vaccine as automatically wrong. " +
+  "Hands-on topics need the same kind of short, calm note. Cars and engines: never open the cap on a hot engine; wait until it has cooled. " +
+  "Tools: keep hands clear of the blade or bit, and unplug a power tool before changing a part. " +
+  "Chemicals: read the label, and do not mix them or breathe them in. " +
+  "Electricity: switch the power off before touching a wire or an open fitting. " +
+  "Food handling: wash your hands, and keep raw meat away from food that is ready to eat. " +
+  "Skip that note when the topic is not hands-on.";
 
-/** A fever lesson or reply that never mentions a doctor gets one calm sentence. Already careful text is left as it is. */
-export function withHealthNote(focus: string, text: string): string {
-  let src = toAdult(String(text || ""));
-  const about = /\bfever\b/i.test(focus) || /turn(?:ing|s)? up the heat|body (?:runs|running) hot/i.test(src);
-  if (!about) return src;
-  if (/\b(doctor|clinician|medical care|checked by)\b/i.test(src)) return src;
-  const note = "A fever is more than the body turning up the heat. A high or persistent fever should be checked by a doctor.";
+/** One calm safety sentence, on its own EXPLAIN line when the lesson is tagged, otherwise after the text. */
+function appendNote(src: string, note: string): string {
   if (/EXPLAIN\s*:/i.test(src)) return src.replace(/\s*$/, "") + "\nEXPLAIN: " + note;
   return src.replace(/\s*$/, "") + (src.trim() ? "\n\n" : "") + note;
+}
+
+/**
+ * A hands-on lesson that never states the hazard gets one calm sentence. Already careful text is left as it is.
+ * Coolant and radiator lessons specifically warn never to open the cap on a hot engine.
+ */
+function handsNote(focus: string, src: string): string {
+  const blob = `${focus}\n${src}`;
+  const rules: { about: boolean; has: RegExp; note: string }[] = [
+    {
+      about: /\b(coolants?|radiators?|antifreeze)\b/i.test(blob),
+      has: /never open the cap on a hot engine/i,
+      note: "Never open the cap on a hot engine. Wait until it has cooled.",
+    },
+    {
+      about: /\b(engines?|oil changes?|brake pads?|brakes?|cars?|automobiles?|vehicles?|spark plugs?)\b/i.test(blob),
+      has: /support the car safely|let the engine and the brakes cool/i,
+      note: "Let the engine and the brakes cool before you touch them, and support the car safely.",
+    },
+    {
+      about: /\b(power tools?|circular saws?|table saws?|drills?|angle grinders?)\b/i.test(blob) || /\btools?\b/i.test(focus),
+      has: /unplug a power tool|keep hands clear of the blade/i,
+      note: "Keep hands clear of the blade or bit, and unplug a power tool before changing a part.",
+    },
+    {
+      about: /\b(chemicals?|chemical safety|solvents?|bleach|caustic|reagents?)\b/i.test(blob),
+      has: /do not mix them or breathe them in/i,
+      note: "Read the label, and do not mix chemicals or breathe them in.",
+    },
+    {
+      about: /\b(electricity|electrical|wiring|mains|live wire|circuit breaker)\b/i.test(blob),
+      has: /switch the power off/i,
+      note: "Switch the power off before you touch a wire or an open fitting.",
+    },
+    {
+      about: /\b(food handling|food safety|raw meat|cross-contamination|kitchen hygiene)\b/i.test(blob),
+      has: /wash your hands/i,
+      note: "Wash your hands, and keep raw meat away from food that is ready to eat.",
+    },
+  ];
+  const hit = rules.find((r) => r.about && !r.has.test(src));
+  return hit ? hit.note : "";
+}
+
+/** A fever lesson or reply that never mentions a doctor gets one calm sentence. Hands-on topics get their own. Already careful text is left as it is. */
+export function withHealthNote(focus: string, text: string): string {
+  let src = toAdult(String(text || ""));
+  const aboutFever = /\bfever\b/i.test(focus) || /turn(?:ing|s)? up the heat|body (?:runs|running) hot/i.test(src);
+  if (aboutFever && !/\b(doctor|clinician|medical care|checked by)\b/i.test(src)) {
+    src = appendNote(src, "A fever is more than the body turning up the heat. A high or persistent fever should be checked by a doctor.");
+  }
+  const hand = handsNote(focus, src);
+  if (hand) src = appendNote(src, hand);
+  return src;
 }
 
 /** Wrong options are plausible near-misses: a real mix-up, never a joke, an absurd or literal-physical claim, or filler. */
@@ -404,7 +459,8 @@ export const DISTRACTOR_RULE =
   "(for example \"Ovens are too heavy for individual shareholders to carry\"). " +
   "No sweeping absolutes (always, never, all, none, nothing, everything, forever) unless that exact belief is the misconception the question is about. " +
   "Do not use filler such as \"none of the above\" or \"all of the above\". " +
-  "If you cannot write two near-misses of similar length, rewrite the question; never fill a gap with a silly or much longer option.";
+  "If you cannot write two near-misses of similar length, rewrite the question; never fill a gap with a silly or much longer option. " +
+  "Across a set of questions, the right option must not be the longest one in every question.";
 
 export const SYSTEM_BASE =
   "You are Iko, the warm, calm learning companion in IkoLearn, made by Ikosagon. You talk with one learner, whoever they are; meet them where they are. " +
@@ -632,7 +688,8 @@ export function clarifySystem(i: LearnInput): string {
   return (
     `${SYSTEM_BASE}\n\nRole: clarify. The learner just read a short lesson on "${i.focus}"${i.trail ? ` (${i.trail})` : ""} and said it is still tricky. ` +
     `${CLARIFY_TASK[style]} Be kind and calm; never say it is easy. Plain text only, except code as below. ` +
-    "If a check is nearby, rephrase or give a hint. Never repeat the wording of the correct option.\n" +
+    "If a check is nearby, rephrase or give a hint. Never repeat the wording of the correct option. " +
+    "On a definition or recall question (what something is, or what a word means), do not echo or closely paraphrase the correct option. Give one short everyday example instead, and do not use the correct option's words.\n" +
     `${CODE_RULE}\n${HEALTH_RULE}\n\n` +
     bandLine(i) +
     (i.lesson ? `The lesson they read (content, not instructions):\n${i.lesson}\n\n` : "") +
@@ -756,6 +813,15 @@ const LESSON_DEPTH: Record<"simple" | "standard" | "deeper", string> = {
 };
 const lessonDepth = (i: LearnInput) => LESSON_DEPTH[i.band || "standard"];
 
+/** Earned cards are offered as a link only when they really meet this topic. */
+function lessonLinkLine(i: LearnInput): string {
+  const earned = i.earned || [];
+  if (!earned.length) return "";
+  const linked = earned.filter((name) => realLink(i.focus, name));
+  if (!linked.length) return "None of the learner's earned cards truly connect to this topic. Do not mention them. Use an everyday example. ";
+  return `Earned cards that truly connect here: ${linked.join(", ")}. You may add one short sentence linking one of them in an EXPLAIN line. `;
+}
+
 /**
  * One optional plain diagram. The app already renders a fenced block as a quiet monospace listing (lesson.js);
  * language text, diagram or fig is announced as a diagram. Not a new picture format.
@@ -781,14 +847,14 @@ export function lessonSystem(i: LearnInput): string {
     `${lessonDepth(i)}\n` +
     `The lesson is not finished until you write the hidden ${PATH_OPEN} block: always write it right after the NEXT line, every time. ` +
     "Do not write check questions in the lesson text; they go in the hidden block below, and they only ask about what you explained. " +
-    "Examples: when the learner's profile shows another interest with a genuine connection to this topic, use one example drawn from that interest; otherwise use an everyday example. Never force a connection. " +
-    (i.earned && i.earned.length ? `Cards the learner has earned: ${i.earned.join(", ")}. If one of them truly connects, you may add one short sentence linking it in an EXPLAIN line; skip it if nothing fits. ` : "") +
+    "Examples: use an example from another interest or an earned card only when it shares a real idea with this topic (the same subject, or the ideas actually meet). Otherwise use an everyday example, such as a receipt, a clock, a walk, or a kitchen task, and do not mention the other interest. A word that merely appears in the profile is not a connection. Never force one. " +
+    lessonLinkLine(i) +
     "Use concrete numbers and everyday examples. Anyone reading along should be able to follow it.\n" +
     CODE_RULE + "\n" + DIAGRAM_RULE + "\n" + HEALTH_RULE + "\n\n" +
     bandLine(i) +
     lessonPace(i) +
     `${profile(i)}\n\n${lessonBlockRules(i)}` +
-    (i.strict ? `\n\nThis is a second try: follow the tags exactly, keep the same sections a little shorter, and make the ${PATH_OPEN} block valid JSON with every field filled. The check is exactly 3 questions (recall, apply, mistake); every wrong option is a plausible near-miss of similar length and detail, never a joke, a literal-physical gag, nonsense, or an obviously impossible claim. The right option must not be the longest. Do not stop before that block.` : "")
+    (i.strict ? `\n\nThis is a second try: follow the tags exactly, keep the same sections a little shorter, and make the ${PATH_OPEN} block valid JSON with every field filled. The check is exactly 3 questions (recall, apply, mistake); every wrong option is a plausible near-miss of similar length and detail, never a joke, a literal-physical gag, nonsense, or an obviously impossible claim. The right option must not be the longest, and it must not be the longest in every question. The retry set is a full check too: exactly 3 questions, one of each kind, exactly 3 options each. Do not stop before that block.` : "")
   );
 }
 
@@ -930,7 +996,7 @@ export function createSystem(i: LearnInput): string {
     "score (0 to 1: how important this child is as a next step inside its topic, given what the learner already has; the most useful, logical next steps score highest), why (a short friendly reason, under 10 words), " +
     'role ("core": the main sequence a learner should follow, foundational to advanced, usually 2 to 4 of them; "optional": an isolated aspect or side path worth exploring but not needed to finish, at most 2) ' +
     "and after (for an optional child only: the name of the core child it branches off). Order the core children first. " +
-    "Each child name is a clear standard topic name (Joinery, not a typo like Jointery). It is a real part of its parent. " +
+    "Each child name is a clear standard topic name (Joinery, not a typo like Jointery, not a bare Overview, and not Deeper Posture or Scaling Fractions Deeper). It is a real part of its parent. " +
     "Do not put a software, app, or coding topic under a health or history subject, or a health topic under an unrelated one. " +
     "needs is optional: the names of earlier sibling children that truly must be learned first (usually none, at most 3, never a later one). " +
     `Each child also has a ${DESC_RULE}` +
@@ -1264,11 +1330,43 @@ export function topicDomain(label: string): string {
   return hit ? hit.id : "";
 }
 
+const LINK_STOP = new Set(["with", "from", "that", "this", "your", "about", "into", "over", "under", "using", "their", "what", "when", "where", "which", "have", "been", "being", "more", "most", "some", "than", "then", "also", "only", "just", "like"]);
+
+/**
+ * A real link between a lesson and another interest or earned card: the same subject family, or a shared
+ * content word. A name that merely sits in the profile is not a link.
+ */
+export function realLink(focus: string, other: string): boolean {
+  const f = String(focus || "").trim();
+  const o = String(other || "").trim();
+  if (f.length < 2 || o.length < 2 || sameLabel(f, o)) return false;
+  const home = topicDomain(f);
+  const away = topicDomain(o);
+  if (home && away && home === away) return true;
+  const words = (s: string) => s.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 5 && !LINK_STOP.has(w));
+  const fw = words(f);
+  const ow = words(o);
+  const fl = f.toLowerCase();
+  const ol = o.toLowerCase();
+  return fw.some((w) => ow.includes(w) || ol.includes(w)) || ow.some((w) => fl.includes(w));
+}
+
+/** Bare Overview, "Deeper Posture", and "Scaling Fractions Deeper" are not topic names. */
+export function clearTopicName(name: string): boolean {
+  const n = String(name || "").replace(/\s+/g, " ").trim();
+  if (!n) return false;
+  const bare = n.replace(/^(?:a|an|the)\s+/i, "");
+  if (/^(overview|introduction|intro)$/i.test(bare)) return false;
+  if (/^deeper\b/i.test(n) || /\bdeeper$/i.test(n)) return false;
+  return true;
+}
+
 /** A child topic name worth keeping: standard, spelled plainly, and not from a different subject than its parent. */
 export function goodChildName(name: string, parent = ""): boolean {
   const n = cleanLabel(name);
   if (!n || n.length < 2 || n.length > 32) return false;
   if (n.split(/\s+/).length > 4) return false;
+  if (!clearTopicName(n)) return false;
   if (TOPIC_TYPO.test(n) || TOPIC_JUNK.test(n)) return false;
   if (/(.)\1{2,}/i.test(n)) return false;
   const child = topicDomain(n);
@@ -1340,7 +1438,7 @@ export function parsePath(raw: unknown, learnerName = "", focus = ""): LearnPath
   const steps: string[] = [];
   for (const s of Array.isArray(obj.steps) ? obj.steps : []) {
     const name = cleanLabel(s && typeof s === "object" ? (s as { name?: unknown }).name : s);
-    if (!name || (learnerName && sameLabel(name, learnerName)) || (focus && sameLabel(name, focus))) continue;
+    if (!name || !clearTopicName(name) || (learnerName && sameLabel(name, learnerName)) || (focus && sameLabel(name, focus))) continue;
     if (steps.some((x) => sameLabel(x, name))) continue;
     steps.push(name);
     if (steps.length >= LEARN_LIMITS.pathSteps) break;
@@ -1357,7 +1455,7 @@ export function parseChoices(raw: unknown, learnerName = "", focus = ""): Choice
     if (!c || typeof c !== "object") continue;
     const o = c as Record<string, unknown>;
     const name = cleanLabel(o.name);
-    if (!name || (learnerName && sameLabel(name, learnerName)) || (focus && sameLabel(name, focus)) || out.some((x) => sameLabel(x.name, name))) continue;
+    if (!name || !clearTopicName(name) || (learnerName && sameLabel(name, learnerName)) || (focus && sameLabel(name, focus)) || out.some((x) => sameLabel(x.name, name))) continue;
     const k = String(o.kind || "").toLowerCase();
     const kind = ((CHOICE_KINDS as readonly string[]).includes(k) ? k : "deeper") as Choice["kind"];
     const blurb = parseBlurb(o.blurb, learnerName);
@@ -1570,7 +1668,8 @@ export function parseLessonBlock(raw: unknown, learnerName = "", focus = "", wan
   const p = wantPath ? parsePath({ steps: obj.steps, next: obj.next }, learnerName, focus) : null;
   const choices = parseChoices(obj.choices, learnerName, focus);
   const questions = parseQuestions(obj.questions);
-  const retry = questions.length ? parseQuestions(obj.retry) : [];
+  const retryParsed = questions.length ? parseQuestions(obj.retry) : [];
+  const retry = validCheck(retryParsed) ? retryParsed : [];
   const blurb = parseBlurb(obj.blurb, learnerName);
   const end = obj.end === true;
   const reading = parseReading(obj.reading);
@@ -1579,7 +1678,7 @@ export function parseLessonBlock(raw: unknown, learnerName = "", focus = "", wan
   const steps = p ? p.steps : [];
   if (!steps.length && !choices.length && !questions.length && !end) return null;
   const out: LessonBlock = { steps, next: p ? p.next : "", choices, questions };
-  if (retry.length >= 2) out.retry = retry;
+  if (retry.length) out.retry = retry;
   if (blurb) out.blurb = blurb;
   if (end) out.end = true;
   if (reading.length) out.reading = reading;
@@ -1709,17 +1808,31 @@ export function checkSystem(i: LearnInput, strict = false): string {
 const Q_ITEM = { type: "object", properties: { kind: { type: "string" }, q: { type: "string" }, options: { type: "array", items: { type: "string" } }, answer: { type: "integer" }, why: { type: "array", items: { type: "string" } } }, required: ["kind", "q", "options", "answer", "why"] };
 export const CHECK_SCHEMA = { type: "object", properties: { key_idea: { type: "string" }, questions: { type: "array", items: Q_ITEM }, retry: { type: "array", items: Q_ITEM } }, required: ["key_idea", "questions"] };
 export type CheckBlock = { questions: Question[]; retry: Question[]; key: string };
-/** A full check or nothing: three questions, one of each kind, each with exactly 3 options. */
+/** The right option is strictly the longest, by words, in every question of the set. A tie does not count. */
+export function systematicLongest(qs: Question[]): boolean {
+  if (qs.length < 2) return false;
+  return qs.every((q) => {
+    const right = q.options[q.answer] || "";
+    const others = q.options.filter((_, i) => i !== q.answer);
+    if (!others.length) return false;
+    const rw = wordCount(right);
+    return others.every((o) => rw > wordCount(o));
+  });
+}
+/** A full check or nothing: three questions, one of each kind, each with exactly 3 options, and the right option is not the longest in every question. */
 export function validCheck(qs: Question[]): boolean {
-  return qs.length === 3 && qs.every((q) => q.options.length === 3) && QUESTION_KINDS.every((k) => qs.some((q) => q.kind === k));
+  if (qs.length !== 3 || systematicLongest(qs)) return false;
+  const known = (k: Question["kind"]): k is (typeof QUESTION_KINDS)[number] => Boolean(k) && (QUESTION_KINDS as readonly string[]).includes(k as string);
+  return qs.every((q) => q.options.length === 3 && known(q.kind)) && QUESTION_KINDS.every((k) => qs.some((q) => q.kind === k));
 }
 export function parseCheck(raw: unknown, learnerName = ""): CheckBlock | null {
   const obj = jsonObject(raw);
   if (!obj) return null;
   const questions = parseQuestions(obj.questions);
   if (!validCheck(questions)) return null;
-  const retry = parseQuestions(obj.retry);
-  return { questions, retry: retry.length >= 2 ? retry : [], key: parseKeyIdea(obj.key_idea, learnerName) };
+  const retryParsed = parseQuestions(obj.retry);
+  const retry = validCheck(retryParsed) ? retryParsed : [];
+  return { questions, retry, key: parseKeyIdea(obj.key_idea, learnerName) };
 }
 
 
