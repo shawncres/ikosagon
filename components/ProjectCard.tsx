@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import type { ProjectMeta } from "@/lib/projects";
+import { ProjectCardCover } from "@/components/ProjectCardCover";
 
 type ProjectCardProps = {
   project: ProjectMeta;
@@ -13,15 +14,12 @@ export function ProjectCard({ project }: ProjectCardProps) {
     <article className="card-surface group relative rounded-2xl p-5 transition hover:-translate-y-1 hover:border-accent/50">
       {project.cover ? (
         <div className="mb-4 overflow-hidden rounded-xl border border-border/80 bg-black/40">
-          {/* eslint-disable-next-line @next/next/no-img-element -- SVG covers + static public assets */}
-          <img
-            src={project.cover}
-            alt=""
-            width={project.coverFit === "cover" ? 1600 : 800}
-            height={project.coverFit === "cover" ? 840 : 480}
-            className={`h-40 w-full transition group-hover:scale-[1.02] ${
-              project.coverFit === "cover" ? "object-cover object-center" : "object-contain object-top"
-            }`}
+          <ProjectCardCover
+            cover={project.cover}
+            coverFit={project.coverFit}
+            coverLoop={project.coverLoop}
+            coverLoopPoster={project.coverLoopPoster}
+            title={project.title}
           />
         </div>
       ) : null}

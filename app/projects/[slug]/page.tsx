@@ -5,6 +5,7 @@ import { MDXRemote } from "next-mdx-remote/rsc";
 import { AudioPlaylist } from "@/components/AudioPlaylist";
 import { TalentIntakeChat } from "@/components/TalentIntakeChat";
 import { IkoAgentDemo } from "@/components/IkoAgentDemo";
+import { ProjectTrailer } from "@/components/ProjectTrailer";
 import { getAllProjects, getProjectBySlug, getProjects } from "@/lib/projects";
 
 type Params = { slug: string };
@@ -45,6 +46,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<Pa
   const next = index >= 0 && index < projects.length - 1 ? projects[index + 1] : null;
   const isIkoArtist = project.slug === "ikoartist";
   const isIkoAgent = project.slug === "ikoagent";
+  const isIkoLearn = project.slug === "ikolearn";
 
   return (
     <article className="container-shell section-block">
@@ -65,6 +67,16 @@ export default async function ProjectDetailPage({ params }: { params: Promise<Pa
         <AudioPlaylist
           tracks={project.tracks}
           heading={isIkoArtist ? "Leaderboard playlist · ranked by views" : "Demo playlist"}
+        />
+      ) : null}
+
+
+      {isIkoLearn ? (
+        <ProjectTrailer
+          src="/projects/ikolearn/trailer.mp4"
+          poster="/projects/ikolearn/trailer-poster.webp"
+          title="Watch the 1-minute trailer"
+          description="A short tour of IkoLearn: the curiosity prompt, the learning cloud, lessons and cards, dark mode, and the deck."
         />
       ) : null}
 
