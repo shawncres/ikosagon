@@ -555,7 +555,7 @@
   /* Calm names used only when a new subject arrives with no usable children after one try. */
   function starterFill() {
     var names = [];
-    names.push("Overview");
+    names.push("First steps");
     names.push("Main ideas");
     names.push("Try it");
     return names;
@@ -573,6 +573,7 @@
       label = cleanLabel(label);
       if (!label || norm(label) === n.key || norm(label) === norm(cloud.name)) return;
       if (/\b(jointery|recieve|seperate|app logic|asdf)\b/i.test(label) || /(.)\1{2,}/i.test(label)) return;
+      if (/^(?:(?:a|an|the)\s+)?(overview|introduction|intro)$/i.test(label) || /^deeper\b/i.test(label) || /\bdeeper$/i.test(label)) return;
       if (clean.some(function (y) { return norm(y) === norm(label); })) return;
       if (findAny(cloud, label) || findClose(cloud, label)) return;
       if (clean.length >= 4) return;
