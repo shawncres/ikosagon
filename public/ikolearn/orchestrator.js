@@ -76,19 +76,13 @@
     return (n.correct || 0) >= E.correct || n.mastery >= C.MASTERED || (n.engaged || 0) >= E.visits || (n.spent || 0) >= E.seconds;
   }
   /* Ask the lesson call for child topics when the topic has none yet, isn't an end, and nothing is already waiting. */
-  /* Levels below a subject (the subject itself is 0). Automatic next topics stop at 3; "Go deeper?" allows a 4th. */
-  var DEPTH_CAP = { soft: 3, hard: 4 };
+  /* Levels below a subject (the subject itself is 0). There is no depth cap. From the third level down, offer a sibling or Continue deeper; generation is not stopped. */
+  var DEPTH_CAP = { soft: 0, hard: 0 };
   function levelsBelow(cloud, id) { var d = C.depthOf(cloud, id); return d ? d - 1 : 0; }
-  function capped(cloud, id) {
-    var n = nodeOf(cloud, id), below = levelsBelow(cloud, id);
-    if (!n) return "";
-    if (below >= DEPTH_CAP.hard) return "hard";
-    if (below >= DEPTH_CAP.soft && !n.deeper) return "soft";
-    return "";
-  }
+  function capped() { return ""; }
   function depthChoices(cloud, id) {
-    var cap = capped(cloud, id), n = nodeOf(cloud, id);
-    if (!cap || !n) return null;
+    var n = nodeOf(cloud, id);
+    if (!n || levelsBelow(cloud, id) < 3) return null;
     var subj = C.subjectOf(cloud, id), sib = null;
     if (n.parent) {
       C.childrenOf(cloud, n.parent).some(function (c) {
@@ -96,18 +90,18 @@
         return false;
       });
     }
-    return { capped: true, hard: cap === "hard", test: subj ? subj.id : id, sibling: sib, deeper: cap !== "hard" };
+    return { capped: false, hard: false, test: subj ? subj.id : id, sibling: sib, deeper: true };
   }
   function goDeeper(cloud, id) {
     var n = nodeOf(cloud, id);
-    if (!n || levelsBelow(cloud, id) >= DEPTH_CAP.hard) return false;
+    if (!n) return false;
     n.deeper = true;
     cloud.rev = (cloud.rev || 0) + 1;
     return true;
   }
   function wantChildren(cloud, id) {
     var n = nodeOf(cloud, id);
-    return Boolean(n && !n.path && !n.end && !n.pending && !capped(cloud, id) && C.depthOf(cloud, id) < PLAN.depth);
+    return Boolean(n && !n.path && !n.end && !n.pending);
   }
   function childrenReady(cloud, id) { var n = nodeOf(cloud, id); return Boolean(n && n.pending && engaged(cloud, id)); }
 
@@ -256,7 +250,7 @@
    */
   function needsNext(cloud, id) {
     var n = nodeOf(cloud, id);
-    if (!n || (!n.parent && !n.path) || n.ghost || n.end || n.pending || capped(cloud, id)) return false; /* a subject qualifies once it has its own path (made by a creation call); at the depth cap, offer a test, a sibling, or Go deeper? */
+    if (!n || (!n.parent && !n.path) || n.ghost || n.end || n.pending || capped(cloud, id)) return false; /* a subject qualifies once it has its own path (made by a creation call) */
     var kids = C.coreChildren(cloud, id), done = C.doneCore(cloud, id).length; /* only the core sequence counts: side paths never block */
     if (kids.some(function (c) { return !C.isDone(cloud, c.id) && !c.end; })) return false;
     if (!kids.length && !engaged(cloud, id)) return false;
@@ -1147,8 +1141,35 @@
     return { lines: lines.slice(0, 5), empty: false, strongest: basis ? basis.id : null, next: nn ? nx : null };
   }
 
+  /*
+   * The topics list (the focused view's children, or every topic when all is set). Search, sort and the completed
+   * filter happen here so the cloud data is never reordered. page/size paginate a large set. -> { total, page, pages, items }
+   */
+  function listTopics(cloud, parentId, opts) {
+    opts = opts || {};
+    var list = [];
+    if (!cloud || !cloud.nodes) return { total: 0, page: 0, pages: 1, items: [] };
+    if (opts.all) cloud.order.forEach(function (id) { var n = cloud.nodes[id]; if (n && n.parent) list.push(n); });
+    else if (!parentId || parentId === "root") list = C.subjects(cloud).slice();
+    else list = C.childrenOf(cloud, parentId).slice();
+    var q = String(opts.q || "").trim().toLowerCase();
+    if (q) list = list.filter(function (n) { return String(n.label || "").toLowerCase().indexOf(q) >= 0; });
+    if (opts.done === "open") list = list.filter(function (n) { return !C.isDone(cloud, n.id); });
+    else if (opts.done === "done") list = list.filter(function (n) { return C.isDone(cloud, n.id); });
+    var sort = opts.sort || "recent";
+    list.sort(function (a, b) {
+      if (sort === "alpha") return String(a.label).localeCompare(String(b.label)) || String(a.id).localeCompare(String(b.id));
+      if (sort === "progress") return (b.mastery || 0) - (a.mastery || 0) || String(a.label).localeCompare(String(b.label));
+      return (b.touched || b.born || 0) - (a.touched || a.born || 0) || String(a.label).localeCompare(String(b.label));
+    });
+    var size = Math.max(1, Number(opts.size) || 20);
+    var pages = Math.max(1, Math.ceil(list.length / size) || 1);
+    var page = Math.min(Math.max(0, Number(opts.page) || 0), pages - 1);
+    return { total: list.length, page: page, pages: pages, items: list.slice(page * size, page * size + size) };
+  }
+
   var api = {
-    PLAN: PLAN, DEPTH_CAP: DEPTH_CAP, levelsBelow: levelsBelow, capped: capped, depthChoices: depthChoices, goDeeper: goDeeper, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, needsRepair: needsRepair, repairRequest: repairRequest,
+    PLAN: PLAN, DEPTH_CAP: DEPTH_CAP, levelsBelow: levelsBelow, capped: capped, depthChoices: depthChoices, goDeeper: goDeeper, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, needsRepair: needsRepair, repairRequest: repairRequest, listTopics: listTopics,
     MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild, nextStep: nextStep,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
     weekRecap: weekRecap, neoState: neoState, neoGated: neoGated, neoOpen: neoOpen, neoDue: neoDue, neoThemes: neoThemes, neoAdd: neoAdd, neoTaken: neoTaken, neoLine: neoLine, NEO_THEMES: NEO_THEMES, suggest: suggest, draw: draw, lessonContext: lessonContext, withBand: withBand, areaOf: areaOf, starterIdeas: starterIdeas, mixStarters: mixStarters, STARTER: STARTER, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, unfinished: unfinished, fresh: fresh, PACE: PACE, paceOf: paceOf, placeTopic: placeTopic, placedTopic: placedTopic, related: related, DESCRIBE: DESCRIBE, describeBatch: describeBatch, isBroad: isBroad,

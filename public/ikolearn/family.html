@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#f3ead8">
   <meta name="color-scheme" content="light dark">
   <!-- light or dark before the first paint (no flash): the learner's choice on this device, else the device's (theme.js) -->
-  <script>(function(){var m;try{m=localStorage.getItem("ikolearn-theme")}catch(e){}if(m!=="dark"&&m!=="light")m=window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";document.documentElement.setAttribute("data-theme",m);var t=document.querySelector('meta[name="theme-color"]');if(t)t.setAttribute("content",m==="dark"?"#1e1712":"#f3ead8")})()</script>
+  <script>(function(){var m,f,d=document.documentElement;try{m=localStorage.getItem("ikolearn-theme")}catch(e){}if(m!=="dark"&&m!=="light"&&m!=="ikosagon")m=window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";d.setAttribute("data-theme",m);var t=document.querySelector('meta[name="theme-color"]');if(t)t.setAttribute("content",m==="ikosagon"?"#000000":m==="dark"?"#1e1712":"#f3ead8");try{f=localStorage.getItem("ikolearn-font")}catch(e){}if(f==="futura")d.style.setProperty("--font-ui","Futura,'Century Gothic','Avenir Next',Avenir,sans-serif");else if(f==="sans")d.style.setProperty("--font-ui","system-ui,'Segoe UI',sans-serif");else if(f==="palatino")d.style.setProperty("--font-ui","'Palatino Linotype',Palatino,Georgia,serif")})()</script>
   <title>IkoLearn for parents &amp; teachers</title>
   <link rel="icon" href="/ikolearn/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/ikolearn/styles.css">

@@ -5,7 +5,7 @@ import fs from "node:fs";
 import zlib from "node:zlib";
 import { createRequire } from "node:module";
 import {
-  LEARN_LIMITS, CLOUD_OPEN, CLOUD_CLOSE, cleanName, cleanLabel, cleanMessages, parseLearnInput, SYSTEM_BASE, companionSystem, noticeSystem, replyLooksComplete, lessonLooksComplete, learnTopicFrom, learnTopicsFrom, affirmSeveral, subjectsOffered, goodChildName, withHealthNote, vaccineMisleads, HEALTH_RULE, junkSubject, toAdult, DISTRACTOR_RULE, realLink,
+  LEARN_LIMITS, CLOUD_OPEN, CLOUD_CLOSE, cleanName, cleanLabel, cleanMessages, parseLearnInput, SYSTEM_BASE, companionSystem, noticeSystem, replyLooksComplete, lessonLooksComplete, learnTopicFrom, learnTopicsFrom, affirmSeveral, subjectsOffered, goodChildName, clarifyTopicName, withHealthNote, vaccineMisleads, HEALTH_RULE, junkSubject, toAdult, DISTRACTOR_RULE, realLink,
   buildContents, cardSystem, adjacentSystem, plainReply, parseCloudBlock, parseCard, parseAdjacent, createBlockSplitter,
   PATH_OPEN, PATH_CLOSE, lessonSystem, lessonContents, pathSystem, PATH_SCHEMA, CARD_SCHEMA, parsePath, parseChoices, parseLessonBlock, parseQuestions, parseBlurb, parseChain, checkSystem, topicDrift, pathTooNarrow,
   parseTest, testSystem, TEST_SCHEMA, parseCheck, createSystem, parseCreate, CREATE_SCHEMA, examplesSystem, parseExamples, EXAMPLES_SCHEMA, EXAMPLE_LIMITS, SIGNALS, parseReading,
@@ -164,7 +164,8 @@ const seeded = (name, t) => {
   ok(c.order.every((id) => pos[id] && Number.isFinite(pos[id].x + pos[id].y + pos[id].z) && pos[id].d === C.depthOf(c, id)), "layout: every node has a finite 3D position and depth");
   eq(C.layout(c)[halves.id], pos[halves.id], "layout is deterministic");
   const dist = (a, b) => Math.hypot(pos[a].x - pos[b].x, pos[a].y - pos[b].y, pos[a].z - pos[b].z);
-  ok(dist(halves.id, fr.id) < dist(fr.id, math.id), "layout: deeper levels sit closer to their parent");
+  const rad = (id) => Math.hypot(pos[id].x, pos[id].y, pos[id].z);
+  ok(rad(halves.id) > rad(fr.id) && rad(fr.id) > rad(math.id), "layout: deeper levels sit further from the centre than their parent");
   ok(C.levelScale(1) === 1 && C.levelScale(3) < C.levelScale(2), "levelScale shrinks per level");
 
   // caps and pruning
@@ -1176,13 +1177,14 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
    * Honest add lines, near-duplicate placement, subject-bounded paths and the depth cap need about 8 KB raw / 2 KB gzip.
    * Cloud-first start, ghost placeholders and the zoom list need about 10 KB raw / 2 KB gzip.
    * The optional start layer (a greeting, a name, and a few interests on the cloud) needs about 10 KB raw / 3 KB gzip.
+   * Outward rings, the focus list, the settings menu, Ikosagon and the font picker need about 8 KB raw / 2 KB gzip.
    */
   const files = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js", "rank.js", "orchestrator.js", "camera.js", "profiles.js", "icon.svg"];
   const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
   const bytes = files.reduce((n, f) => n + served(f).length, 0);
   const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
-  ok(bytes < 444_000, "app weight under 444 KB uncompressed (served, minified)", String(bytes));
-  ok(gz < 148_000, "app weight under 148 KB gzipped (served, minified)", String(gz));
+  ok(bytes < 452_000, "app weight under 452 KB uncompressed (served, minified)", String(bytes));
+  ok(gz < 150_000, "app weight under 150 KB gzipped (served, minified)", String(gz));
 }
 
 /* ================= PR 108: QA polish ================= */
@@ -2326,7 +2328,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(pkg.scripts.prebuild === "node scripts/ikolearn-minify.mjs" && /^\^?0\.\d+/.test(pkg.devDependencies.esbuild || ""), "minify: runs before next build (prebuild), esbuild is a dev dependency");
   const mjs = fs.readFileSync("scripts/ikolearn-minify.mjs", "utf8");
   ok(/process\.env\.VERCEL === "1" \|\| process\.env\.IKOLEARN_MINIFY === "1"/.test(mjs) && !/mangleProps|keepNames: false|bundle: true/.test(mjs) && /sourcesContent: true/.test(mjs), "minify: in place only on Vercel's build (or when asked), no property mangling, no bundling, readable source in the maps");
-  eq(minTargets(), ["app.js", "camera.js", "cloud-model.js", "cloud-view.js", "deck.js", "family.css", "family.js", "learners.js", "lesson.js", "orchestrator.js", "profiles.js", "rank.js", "sound.js", "styles.css", "theme.js", "transfer.js", "usage.js"], "minify: every app script and stylesheet (the parents & teachers view and learners too)");
+  eq(minTargets(), ["app.js", "camera.js", "cloud-model.js", "cloud-view.js", "deck.js", "enhance.js", "family.css", "family.js", "learners.js", "lesson.js", "orchestrator.js", "profiles.js", "rank.js", "sound.js", "styles.css", "theme.js", "transfer.js", "usage.js"], "minify: every app script and stylesheet (the parents & teachers view and learners too)");
   const min = {}, src = {};
   minTargets().forEach((f) => { src[f] = fs.readFileSync("public/ikolearn/" + f, "utf8"); min[f] = minifyFile(f, src[f]); });
   ok(Object.keys(min).every((f) => min[f].code.length < src[f].length * 0.85 && min[f].code.endsWith(`sourceMappingURL=${f}.map${f.endsWith(".css") ? " */" : ""}\n`)), "minify: every file is smaller and links its source map");
@@ -2544,7 +2546,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(fold.tag === "details" && !fold.attrs.open && all(fold).some((n) => n.tag === "summary" && n.textContent === "Further reading & viewing"), "further reading: a collapsed fold, \u201cFurther reading & viewing\u201d");
   ok(anchors.length === 8 && anchors.every((a) => L.allowedHref(a.href) && a.rel === "noopener noreferrer nofollow" && /^Search /.test(a.textContent)) && !all(fold).some((n) => /evil/.test(n.href || "") || /evil/.test(n.textContent || "")), "no model URL is ever rendered: every link is an allowlisted search", String(anchors.length));
   ok(L.renderReading(fdoc, []) === null && L.renderReading(fdoc, [{ title: "x", q: "https://a.b" }]) === null, "nothing to show: no fold");
-  ok((app.match(/\.href\s*=/g) || []).length === 2 && /a\.href = feedbackHref\(\);/.test(app) && /return "https:\/\/ikosagon\.com\/contact\?subject=IkoLearn%20Feedback";/.test(app) && !/name=/.test(app.slice(app.indexOf("function feedbackHref"), app.indexOf("function renderHomeNav"))) && /var url = URL\.createObjectURL\(new Blob\(\[f\.text\], \{ type: "application\/json" \}\)\), a = mk\("a"\);\s*a\.href = url;/.test(app) && (lessonJs.match(/\.href\s*=/g) || []).length === 1 && /if \(!allowedHref\(l\.href\)\) return;/.test(lessonJs), "only lesson.js sets a link, after the allowlist check; the app's only one is the cloud file's own download (a blob made on the device). Support & feedback keeps the subject and does not add the name");
+  ok((app.match(/\.href\s*=/g) || []).length === 3 && /a\.href = feedbackHref\(\);/.test(app) && /return "https:\/\/ikosagon\.com\/contact\?subject=IkoLearn%20Feedback";/.test(app) && !/name=/.test(app.slice(app.indexOf("function feedbackHref"), app.indexOf("function renderHomeNav"))) && /var url = URL\.createObjectURL\(new Blob\(\[f\.text\], \{ type: "application\/json" \}\)\), a = mk\("a"\);\s*a\.href = url;/.test(app) && /new Blob\(\[out\.text\]/.test(app) && (lessonJs.match(/\.href\s*=/g) || []).length === 1 && /if \(!allowedHref\(l\.href\)\) return;/.test(lessonJs), "only lesson.js sets a link, after the allowlist check; the app's downloads are the cloud file and an enhanced file (blobs made on the device). Support & feedback keeps the subject and does not add the name");
   ok(/reading = L\.cleanReading\(ev\.reading\)/.test(app) && /state\.lessons\[id\]\.rd = reading/.test(app) && /showReading\(cached\.rd\)/.test(app), "the reading list is cached with the lesson (no new call to show it again)");
 
   // newcomer hints: three, exact copy, remembered in ikolearn.v1.seen
@@ -3910,18 +3912,18 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const css = fs.readFileSync("public/ikolearn/styles.css", "utf8"), th = fs.readFileSync("public/ikolearn/theme.js", "utf8");
   const block = (sel) => { const i = css.indexOf(sel + " {"); return i < 0 ? "" : css.slice(i, css.indexOf("}", i)); };
   const vars = (b) => Object.fromEntries([...b.matchAll(/--([\w-]+):\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
-  const light = vars(block(":root")), dark = vars(block('html[data-theme="dark"]'));
+  const light = vars(block(":root")), dark = vars(block('html[data-theme="dark"]')), iko = vars(block('html[data-theme="ikosagon"]'));
   const lum = (hex) => { const h = hex.replace("#", ""), c = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
   const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
   const pairs = [["ink", "paper"], ["ink", "sheet"], ["soft", "paper"], ["soft", "sheet"], ["paper", "ink"]];
-  for (const [nm, v] of [["light", light], ["dark", dark]]) {
+  for (const [nm, v] of [["light", light], ["dark", dark], ["ikosagon", iko]]) {
     const low = pairs.map(([a, b]) => [a + "/" + b, ratio(v[a], v[b])]).filter((p) => p[1] < 4.5);
     ok(low.length === 0, `theme ${nm}: text pairs (ink and soft on paper and sheet, a pressed chip) pass WCAG AA 4.5:1`, JSON.stringify(low));
   }
   ok(ratio(dark.ink, dark.paper) >= 4.5 && /who-opt\.on:hover/.test(css) && /\.btn\.on:hover:not\(:disabled\)[\s\S]{0,220}background-color: var\(--ink\)/.test(css), "theme dark: a selected pill (Learning for yourself) keeps ink on paper when hovered, WCAG AA", ratio(dark.ink, dark.paper).toFixed(2));
-  ok(["paper", "sheet", "ink", "soft", "rule", "fold", "ink-rgb", "shadow-rgb", "pebble", "pebble-face", "scrim"].every((k) => light[k] && dark[k]), "theme: every colour has a light and a dark value (custom properties)");
+  ok(["paper", "sheet", "ink", "soft", "rule", "fold", "ink-rgb", "shadow-rgb", "pebble", "pebble-face", "scrim"].every((k) => light[k] && dark[k] && iko[k]), "theme: every colour has a light, a dark and an Ikosagon value (custom properties)");
   ok(lum(dark.paper) > 0.004 && lum(dark.paper) < 0.02 && /^#(?!000)/.test(dark.paper), "theme dark: a deep warm brown paper, not black");
-  ok(!/#[0-9a-f]{3,8}\b/i.test(css.replace(block(":root"), "").replace(block('html[data-theme="dark"]'), "").replace(/rgba\((255, 255, 255|0, 0, 0|150, 110, 60)[^)]*\)/g, "")), "theme: no colour is written outside the two palettes (bar white and black washes)");
+  ok(!/#[0-9a-f]{3,8}\b/i.test(css.replace(block(":root"), "").replace(block('html[data-theme="dark"]'), "").replace(block('html[data-theme="ikosagon"]'), "").replace(/rgba\((255, 255, 255|0, 0, 0|150, 110, 60)[^)]*\)/g, "")), "theme: no colour is written outside the three palettes (bar white and black washes)");
   for (const f of ["index.html", "learners.html", "family.html", "privacy.html"]) {
     const h = fs.readFileSync("public/ikolearn/" + f, "utf8"), i = h.indexOf('setAttribute("data-theme"'), j = h.indexOf('<link rel="stylesheet"');
     ok(i > 0 && i < j && /localStorage\.getItem\("ikolearn-theme"\)/.test(h) && /prefers-color-scheme: dark/.test(h) && /<meta name="theme-color" content="#f3ead8">/.test(h) && /"#1e1712":"#f3ead8"/.test(h) && /<script src="\/ikolearn\/theme\.js"><\/script>/.test(h), `theme ${f}: set before the first paint (the saved choice, else the device), theme-color for both, theme.js loaded`);
@@ -3946,6 +3948,18 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(TH.forDark("hsla(120, 35%, 55%, 0.55)").startsWith("hsla(120, 26%,") && TH.forDark("#123456") === "#123456", "theme dark: placeholders keep their alpha; other colours pass through");
   TH.set(null);
   ok(!("ikolearn-theme" in store) && attrs["data-theme"] === "light", "theme: clearing the choice follows the device again");
+  TH.set("ikosagon");
+  ok(store["ikolearn-theme"] === "ikosagon" && attrs["data-theme"] === "ikosagon" && TH.night() && !TH.dark() && TH.BAR.ikosagon === "#000000", "theme: Ikosagon is a saved choice, neon on black, and can sit beside light and dark");
+  const fontStyle = {};
+  fake.document.documentElement.style = { setProperty: (k, v) => { fontStyle[k] = v; }, removeProperty: (k) => { delete fontStyle[k]; } };
+  TH.setFont("futura");
+  ok(store["ikolearn-font"] === "futura" && /Futura/.test(fontStyle["--font-ui"] || "") && TH.font() === "futura", "font: Futura is saved on this device and applied at once");
+  TH.setFont("palatino");
+  ok(store["ikolearn-font"] === "palatino" && /Palatino/.test(fontStyle["--font-ui"] || ""), "font: another face replaces Futura immediately");
+  TH.setFont("current");
+  ok(!("ikolearn-font" in store) && !fontStyle["--font-ui"] && TH.font() === "current", "font: Current clears the choice and returns to the default");
+  ok(/var FONT = "'Avenir Next'/.test(fs.readFileSync("public/ikolearn/cloud-view.js", "utf8")) && !/var\(--font-ui\)/.test(fs.readFileSync("public/ikolearn/cloud-view.js", "utf8")), "font: the cloud canvas keeps its own face");
+  ok(/id="settings-btn"/.test(fs.readFileSync("public/ikolearn/index.html", "utf8")) && /aria-label="Settings"/.test(fs.readFileSync("public/ikolearn/index.html", "utf8")) && /function fillSettings\(/.test(fs.readFileSync("public/ikolearn/app.js", "utf8")) && /Card and button sounds/.test(fs.readFileSync("public/ikolearn/app.js", "utf8")) && /IkoSound\.set\(v === "on"\)/.test(fs.readFileSync("public/ikolearn/app.js", "utf8")) && /Save \.ikolearn/.test(fs.readFileSync("public/ikolearn/app.js", "utf8")) && /cloneNode\(true\)/.test(fs.readFileSync("public/ikolearn/app.js", "utf8")) && !/name=/.test(fs.readFileSync("public/ikolearn/app.js", "utf8").slice(fs.readFileSync("public/ikolearn/app.js", "utf8").indexOf("function feedbackHref"), fs.readFileSync("public/ikolearn/app.js", "utf8").indexOf("function renderHomeNav"))), "settings: rename, sounds, a .ikolearn file, and feedback copied without the learner's name");
 }
 
 /* ================= PR 103: Iko at the bottom, read -> check -> earn, the deck, onboarding, the cloud ================= */
@@ -4221,7 +4235,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const appH = fs.readFileSync("public/ikolearn/app.js", "utf8");
   ok(/P\.honestReply\(m\.text, facts\)/.test(appH) && /failedAdd && \(asked\.length \|\| learn\) && canRetry/.test(appH) && /attempt < 1/.test(appH), "chat: the spoken line comes from the add result, and a failed add is tried once");
   ok(!/Filled in the steps for/.test(appH) && !/Added a missing step for/.test(appH) && /I tidied your cloud so related topics sit together\./.test(appH), "bridge and repair stay quiet; the learner's tidy line remains");
-  ok(/deeper: "Go deeper"/.test(appH) && /Go deeper\?/.test(appH) && /P\.depthChoices\(/.test(appH) && /P\.capped\(/.test(appH), "depth cap offers Go deeper? without changing the lesson level selector");
+  ok(/deeper: "Go deeper"/.test(appH) && /Continue deeper/.test(appH) && /P\.depthChoices\(/.test(appH) && /P\.capped\(/.test(appH) && /function capped\(\) \{ return ""; \}/.test(fs.readFileSync("public/ikolearn/orchestrator.js", "utf8")), "there is no depth cap; a deep branch offers Continue deeper, and the lesson level selector is unchanged");
 
   const map = C.create("Sam", T0);
   C.applyTopics(map, [{ name: "Birdwatching", signal: "curious", asSubject: true }, { name: "Greek Mythology", signal: "curious", asSubject: true }], T0);
@@ -4277,14 +4291,19 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ["Titans", "Olympians", "Zeus"].forEach((name, i) => { C.applyTopics(cloud, [{ name, parent, signal: "curious" }], T0 + 2 + i); parent = name; });
   C.applyTopics(cloud, [{ name: "Hera", parent: "Olympians", signal: "curious" }], T0 + 6);
   const zeus = C.findTopic(cloud, "Zeus");
-  ok(C.depthOf(cloud, zeus.id) === 4 && P.levelsBelow(cloud, zeus.id) === 3 && P.capped(cloud, zeus.id) === "soft" && !P.wantChildren(cloud, zeus.id) && !P.needsNext(cloud, zeus.id), "at 3 levels below a subject, another level is not generated");
+  ok(C.depthOf(cloud, zeus.id) === 4 && P.levelsBelow(cloud, zeus.id) === 3 && P.capped(cloud, zeus.id) === "" && P.wantChildren(cloud, zeus.id), "three levels below a subject does not stop another level");
   const choice = P.depthChoices(cloud, zeus.id);
-  ok(choice && choice.test === C.findSubject(cloud, "Greek Mythology").id && choice.deeper && choice.sibling === C.findTopic(cloud, "Hera").id, "at the cap the offer is a subject test, a sibling, or Go deeper?", JSON.stringify(choice));
-  ok(P.goDeeper(cloud, zeus.id) && !P.capped(cloud, zeus.id) && P.wantChildren(cloud, zeus.id), "Go deeper? allows one more level");
-  C.applyTopics(cloud, [{ name: "Temples", parent: "Zeus", signal: "curious" }], T0 + 8);
-  const temples = C.findTopic(cloud, "Temples");
-  ok(P.levelsBelow(cloud, temples.id) === 4 && P.capped(cloud, temples.id) === "hard" && !P.depthChoices(cloud, temples.id).deeper && !P.goDeeper(cloud, temples.id), "4 levels below a subject is the hard cap");
-  ok(C.deserialize(C.serialize(cloud)).nodes[zeus.id].deeper === true, "Go deeper? is kept with the cloud");
+  ok(choice && choice.capped === false && choice.deeper && choice.sibling === C.findTopic(cloud, "Hera").id, "a deep topic offers a sibling and continue deeper", JSON.stringify(choice));
+  ok(P.goDeeper(cloud, zeus.id) && P.capped(cloud, zeus.id) === "" && P.wantChildren(cloud, zeus.id), "Continue deeper is remembered and does not lock the branch");
+  let deepParent = "Zeus";
+  for (let i = 0; i < 4; i++) {
+    const name = "Depth " + (i + 5);
+    C.applyTopics(cloud, [{ name, parent: deepParent, signal: "curious" }], T0 + 8 + i);
+    deepParent = name;
+  }
+  const far = C.findTopic(cloud, "Depth 8");
+  ok(far && C.depthOf(cloud, far.id) >= 8 && P.capped(cloud, far.id) === "" && P.depthChoices(cloud, far.id).deeper && P.goDeeper(cloud, far.id), "there is no hard depth cap");
+  ok(C.deserialize(C.serialize(cloud)).nodes[zeus.id].deeper === true, "Continue deeper is kept with the cloud");
 }
 
 /* ---------- cloud-first start, ghost placeholders, zoom list (PR C) ---------- */
@@ -4312,7 +4331,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/id="you-hint" class="you-hint" hidden>tap to add your name</.test(htmlC) && /function wantsNameHint\(\)/.test(appC) && /c\.name === "You" && !C\.subjects\(c\)\.length/.test(appC), "first visit: a faint hint under You, hidden once renamed or a subject is added");
   ok(/state\.name = "You"/.test(appC) && /C\.create\("You"\)/.test(appC) && /el\.cs\.hidden = true/.test(appC) && /\+ add a subject/.test(viewC) && /aria-label="Add a subject, in your own words"/.test(htmlC) && !/id="cs-ex"[^>]*>[^<]/.test(htmlC), "empty cloud: land on the cloud, You plus one add-a-subject ghost, no static chips");
   ok(/function settleGhost\(id\)/.test(appC) && /C\.findClose\(state\.cloud, n\.label\)/.test(appC) && /P\.placeTopic\(state\.cloud, tp, parentId\)/.test(appC) && /c\.leaving = 1/.test(appC) && /function trimOffers\(ids\)/.test(appC) && /kids\.filter\(function \(c\) \{ return c\.ghost; \}\)\.slice\(3\)/.test(appC), "a tapped ghost uses placement and near-duplicate rules; unpicked ghosts fade and extras past three are not kept");
-  ok(/id="zoom-list"/.test(htmlC) && /role="listbox" aria-label="Topics"/.test(htmlC) && /function enterZoom\(id\)/.test(appC) && /cw \* 0\.22/.test(appC) && /function activateZoom\(id\)/.test(appC) && /C\.childrenOf\(state\.cloud, id\)\.length\) enterZoom\(id\)/.test(appC) && /else openLesson\(id\)/.test(appC) && /if \(state\.zoomId\) \{ exitZoom\(\); return; \}/.test(appC) && /ArrowDown/.test(appC), "zoom: the node moves left, children are a keyboard list, a choice opens the lesson or zooms in, zoom out returns to the cloud");
+  ok(/id="zoom-list"/.test(htmlC) && /role="listbox" aria-label="Topics"/.test(htmlC) && /function enterZoom\(id\)/.test(appC) && /parent on the left/.test(appC) && /pinParent\(/.test(appC) && /function activateZoom\(id\)/.test(appC) && /enterZoom\(id\); \/\* the same parent-left/.test(appC) && /openLesson\(id\)/.test(appC) && /if \(state\.zoomId\) \{ exitZoom\(\); return; \}/.test(appC) && /ArrowDown/.test(appC), "focus view: parent on the left, the selected node in focus, children are a keyboard list, zoom out returns to the cloud");
   ok(/function ensureTopicList\(\)/.test(appC) && /aria-label", "Topics"/.test(appC) && /Lesson level/.test(appC) && /subject=IkoLearn%20Feedback/.test(htmlC) && !/openPanel\(state\.lessonNode\)/.test(appC), "the Topics list, the lesson level and the feedback link stay; returning still does not open a topic card");
   ok(/kind: "rename"/.test(appC) && /call me/.test(appC) && /function renameLearner\(raw\)/.test(appC), "the centre node can be renamed by asking Iko");
   ok(/id="start-layer" class="start-layer" hidden role="region" aria-labelledby="sl-hi"/.test(htmlC) && /id="sl-hi" class="sl-hi">Hi\. I'm Iko\.</.test(htmlC) && /Keep it as You/.test(htmlC) && /id="sl-skip"/.test(htmlC) && /id="sl-ex" class="sl-ex" role="group" aria-label="Suggestions"><\/div>/.test(htmlC) && /id="sl-begin"/.test(htmlC), "start layer: one calm step on the cloud, a name, keep-as-You, interests, and empty suggestion chips");
@@ -4325,6 +4344,84 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/function cycleChips\(\)/.test(appC) && /slAt = \(slAt \+ 1\) % list\.length/.test(appC) && /aria-label", "Add " \+ t/.test(appC) && /el\.slIn\.value = \(v \? v \+ ", " : ""\) \+ t/.test(appC), "suggestion chips cycle gently and only add their words to the field");
   ok(/function closeStart\(opts\)/.test(appC) && /id="sl-skip"/.test(htmlC) && /localStorage\.setItem\(startLearnerKey\(\), "1"\)/.test(appC) && /C\.deserialize\(load\(LS\.cloud\)\)/.test(appC), "skip dismisses the layer without rewriting a saved cloud on load");
   ok(/\.start-layer \{/.test(cssC) && /@media \(max-width: 420px\) \{\n  \.start-layer \{ left: 8px; right: 64px;/.test(cssC) && /#sl-keep, #sl-skip, #sl-begin, \.sl-ex \.ex-chip \{ min-height: 44px; \}/.test(cssC) && /@media \(prefers-reduced-motion: reduce\) \{ \.sl-ex \.ex-chip \{ transition: none; \} \}/.test(cssC), "start layer fits a narrow screen, keeps 44px targets, and stays still when motion is reduced");
+}
+
+/* ---------- outward rings, focused list search / sort / filter ---------- */
+{
+  const ring = C.create("Sam", T0);
+  C.applyTopics(ring, [{ name: "Myths", signal: "curious", asSubject: true }], T0);
+  ["Gods", "Heroes", "Temples", "Rites"].forEach((name, i) => C.applyTopics(ring, [{ name, parent: "Myths", signal: "explored" }], T0 + 1 + i));
+  let parent = "Gods";
+  for (let i = 0; i < 5; i++) {
+    const name = "Step " + (i + 1);
+    C.applyTopics(ring, [{ name, parent, signal: "explored" }], T0 + 20 + i);
+    parent = name;
+  }
+  const parents = {};
+  ring.order.forEach((id) => { parents[id] = ring.nodes[id].parent; });
+  const lay = C.layout(ring);
+  const radius = (id) => Math.hypot(lay[id].x, lay[id].y, lay[id].z);
+  ok(ring.order.every((id) => ring.nodes[id].parent === parents[id]), "ring layout does not change the data's parent ids");
+  ok(ring.order.every((id) => {
+    const n = ring.nodes[id];
+    return !n.parent || !lay[n.parent] || radius(id) > radius(n.parent) + 0.02;
+  }), "ring layout keeps every child outward of its parent");
+  const myth = C.findSubject(ring, "Myths");
+  const sib = C.childrenOf(ring, myth.id);
+  const dists = sib.map((s) => Math.hypot(lay[s.id].x - lay[myth.id].x, lay[s.id].y - lay[myth.id].y, lay[s.id].z - lay[myth.id].z));
+  const mean = dists.reduce((a, b) => a + b, 0) / dists.length;
+  ok(sib.length === 4 && dists.every((d) => Math.abs(d - mean) < 0.05), "siblings share one ring", dists.map((d) => d.toFixed(3)).join(","));
+  ok(C.depthOf(ring, C.findTopic(ring, "Step 5").id) >= 6, "the fixture reaches five levels below the subject");
+  const gods = C.findTopic(ring, "Gods");
+  gods.touched = T0 + 50; C.findTopic(ring, "Heroes").touched = T0 + 10;
+  C.findTopic(ring, "Temples").mastery = 0.9; C.findTopic(ring, "Rites").mastery = 0.1;
+  const recent = P.listTopics(ring, myth.id, { sort: "recent" });
+  eq(recent.items.map((n) => n.label).slice(0, 2), ["Gods", "Heroes"], "listTopics recent: newest touch first");
+  const alpha = P.listTopics(ring, myth.id, { sort: "alpha" });
+  eq(alpha.items.map((n) => n.label), ["Gods", "Heroes", "Rites", "Temples"], "listTopics alphabetical");
+  const prog = P.listTopics(ring, myth.id, { sort: "progress" });
+  eq(prog.items[0].label, "Temples", "listTopics progress: the furthest along leads");
+  const found = P.listTopics(ring, myth.id, { q: "her" });
+  eq(found.items.map((n) => n.label), ["Heroes"], "listTopics search matches the label");
+  eq(P.listTopics(ring, myth.id, { q: "zzzz" }).items, [], "listTopics search with no matches is an empty list");
+  const page = P.listTopics(ring, null, { all: true, size: 3, page: 1, sort: "alpha" });
+  ok(page.total > 3 && page.items.length === 3 && page.page === 1 && page.pages > 1, "listTopics paginates a large set", JSON.stringify({ total: page.total, n: page.items.length, pages: page.pages }));
+  const deep = C.findTopic(ring, "Step 5");
+  const all = P.listTopics(ring, null, { all: true, q: "step 5" });
+  ok(all.items.some((n) => n.id === deep.id), "listTopics can reach a node five levels down");
+  const appL = fs.readFileSync("public/ikolearn/app.js", "utf8");
+  ok(/No matches\./.test(appL) && /No topics yet\./.test(appL) && /Search topics/.test(appL) && /Completed filter/.test(appL) && /P\.listTopics\(/.test(appL), "the topics panel and the focus list share search, sort, the completed filter, and empty states");
+}
+
+/* ---------- no depth cap, validator parity, clear names, enhance stub ---------- */
+{
+  eq(clarifyTopicName("Deeper Posture"), "Posture", "an awkward Deeper name is rewritten to the clear topic");
+  eq(clarifyTopicName("Scaling Fractions Deeper"), "Scaling Fractions", "a trailing Deeper is removed");
+  eq(clarifyTopicName("Overview"), "", "Overview is not kept as a topic name");
+  eq(clarifyTopicName("The Overview"), "", "The Overview is not kept as a topic name");
+  const renamed = parseCloudBlock(JSON.stringify({ topics: [{ name: "Health", parent: "", signal: "curious", children: ["Deeper Posture", "Daily Care", "Rest", "Overview"] }] }), "Sam");
+  ok(renamed.topics[0].children.join("|") === "Posture|Daily Care|Rest", "awkward starter names are regenerated and Overview is dropped", JSON.stringify(renamed.topics[0].children));
+  const appV = fs.readFileSync("public/ikolearn/app.js", "utf8");
+  ok(/fullCheck\(j\.questions\)/.test(appV) && /fullCheck\(j\.retry\)/.test(appV) && /fullCheck\(les\.rq\)/.test(appV) && /fullCheck\(les\.qs\)/.test(appV), "a retried check and a refreshed check use the same fullCheck validator");
+  const E = require("../public/ikolearn/enhance.js");
+  const src = C.create("Sam", T0);
+  C.applyTopics(src, [{ name: "Car Maintenance", signal: "curious", asSubject: true }], T0);
+  C.applyTopics(src, [{ name: "Coolant", parent: "Car Maintenance", signal: "explored" }], T0 + 1);
+  const ghost = C.applyTopics(src, [{ name: "Basic Car Maintenance", signal: "curious", asSubject: true }], T0 + 2);
+  if (ghost.parentsCreated[0]) src.nodes[ghost.parentsCreated[0]].ghost = true;
+  const dup = C.findSubject(src, "Basic Car Maintenance") || C.findTopic(src, "Basic Car Maintenance");
+  if (dup && dup.id !== C.findSubject(src, "Car Maintenance").id) { dup.ghost = true; }
+  const before = src.order.length;
+  const report = E.enhanceCloud(src);
+  ok(report.cleaned.length >= 0 && report.notice && !/INTRO|EXPLAIN|lesson text/i.test(report.notice), "enhance notice does not include lesson text", report.notice);
+  ok(report.safety.some((s) => /coolant/i.test(s)) && /hot engine/i.test(C.findTopic(src, "Coolant").blurb || ""), "enhance adds a hands-on safety note");
+  ok(report.siblings.some((s) => s.parent === "Car Maintenance" && s.beside === "Coolant"), "enhance notices a subject with only one branch");
+  const file = { format: "ikolearn", version: 1, data: { name: "Sam", cloud: JSON.parse(C.serialize(src)) } };
+  const back = E.enhanceText(JSON.stringify(file));
+  ok(back.ok && back.name.endsWith(".ikolearn") && back.text && !back.text.includes("console.log") && back.notice, "enhance returns a .ikolearn file and does not log the body");
+  ok(E.enhanceText("{").ok === false, "a bad file gets a quiet failure");
+  ok(/not logged/.test(fs.readFileSync("app/api/ikolearn/enhance/route.ts", "utf8")) && /enhanceText/.test(fs.readFileSync("app/api/ikolearn/enhance/route.ts", "utf8")), "the enhance endpoint is ephemeral and says it does not log");
+  ok(src.order.length <= before, "enhance does not grow the cloud with a made-up topic");
 }
 
 /* ---------- cloud audio off by default (the bed stays in sound.js; nothing plays) ---------- */

@@ -54,7 +54,7 @@
   };
   var reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
 
-  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], queued: null, pick: null, glide: null, view: null, dirForm: null, dirText: "", allDone: false, seen: { c: {}, ev: 0 }, ex: { list: [], growth: [], at: 0, gat: 0, status: "idle" }, zoomId: null, zoomAt: 0 };
+  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], queued: null, pick: null, glide: null, view: null, dirForm: null, dirText: "", allDone: false, seen: { c: {}, ev: 0 }, ex: { list: [], growth: [], at: 0, gat: 0, status: "idle" }, zoomId: null, zoomAt: 0, zoomQ: "", zoomSort: "recent", zoomDone: "", zoomPage: 0, topicQ: "", topicSort: "recent", topicDone: "", topicPage: 0 };
   var mini = null, big = null;
 
   /* ---------- storage ---------- */
@@ -1477,7 +1477,7 @@
     var n = nodeOf(id);
     var bail = function () { if (opts.unlock) lock(false); };
     if (!n || aheadBusy[id]) { bail(); return; }
-    if (P.capped(state.cloud, id) && !opts.deeper) { bail(); return; } /* at the depth cap: a test, a sibling, or Go deeper? */
+    if (P.capped(state.cloud, id) && !opts.deeper) { bail(); return; } /* capped() is empty: depth never stops a next topic */
     if (!opts.force && !P.needsNext(state.cloud, id)) { bail(); return; }
     aheadBusy[id] = 1;
     if (opts.say) opts.say("Working out what comes next in " + n.label + "...");
@@ -1927,8 +1927,10 @@
     var les = state.lessons[id], ck = ckOf(id), q = state.quiz;
     if (!les || !q || q.id !== id) return;
     var spare = fullCheck(les.rq);
+    var base = fullCheck(les.qs);
     ck.set = (ck.set || 0) + 1;
-    q.qs = ck.set === 1 && spare.length === 3 ? spare : shuffled(validQs(les.qs).length ? validQs(les.qs) : q.qs, id + ck.r + ck.set);
+    var again = base.length === 3 ? shuffled(base, id + ":" + ck.r + ":" + ck.set) : [];
+    q.qs = ck.set === 1 && spare.length === 3 ? spare : again.length === 3 ? again : spare;
     les.cur = q.qs; /* the set on screen, kept so a return shows the same questions */
     q.ans = []; les.ans = []; q.missed = false; ck.c = 1;
     save();
@@ -2101,14 +2103,14 @@
     if (cap) {
       var subj = nodeOf(cap.test), sib = nodeOf(cap.sibling);
       var box = mk("div", "others");
-      box.appendChild(mk("p", "l-head", "This branch is deep enough for now"));
-      box.appendChild(mk("p", null, "You can take a subject test, try a sibling branch, or choose to go deeper."));
+      box.appendChild(mk("p", "l-head", "This branch can keep going"));
+      box.appendChild(mk("p", null, "You can try a sibling, or continue deeper. Nothing stops you."));
       var ul = mk("ul");
       if (subj) { var li = mk("li"); li.appendChild(linkBtn("Test on " + subj.label, function () { openTest(subj.id); })); ul.appendChild(li); }
       if (sib) { var sli = mk("li"); sli.appendChild(linkBtn(sib.label, function () { openLesson(sib.id); })); ul.appendChild(sli); }
       if (cap.deeper) {
         var dli = mk("li");
-        dli.appendChild(linkBtn("Go deeper?", function () {
+        dli.appendChild(linkBtn("Continue deeper", function () {
           if (!P.goDeeper(state.cloud, id)) return;
           save();
           placeNext(id, { deeper: true, force: true });
@@ -2118,7 +2120,6 @@
       }
       box.appendChild(ul);
       el.lFork.appendChild(box);
-      return;
     }
     if (C.isTerminal(state.cloud, id) && nextOpen(id)) {
       var others = C.otherBranches(state.cloud, id, 3, topIds()).map(nodeOf).filter(Boolean);
@@ -2342,7 +2343,7 @@
     if (state.quiz && state.quiz.id === id) { state.quiz.qs = []; state.quiz.wait = true; state.quiz.fail = false; renderQuiz(true); applyPhase(); }
     postJson("/check", Object.assign(basePayload(id), P.withBand(state.cloud, {}), { mode: "notice", messages: [], lesson: String(les.text).slice(0, LESSON_EXCERPT) })).then(function (j) {
       delete les.ckWait;
-      var qs = j && j.ok ? validQs(j.questions) : [];
+      var qs = j && j.ok ? fullCheck(j.questions) : [];
       if (qs.length === 3 && !needCheck(qs)) {
         les.qs = mixQs(qs); les.ans = [];
         var rq = fullCheck(j.retry); if (rq.length === 3) les.rq = mixQs(rq);
@@ -3100,6 +3101,7 @@
     if (state.glide && nodeOf(state.glide)) { var gl = state.glide; state.glide = null; setTimeout(function () { revealNode(gl); }, 0); } /* a new parent: the camera glides to it, its card opens */
     renderCloudFlow();
     ensureTopicList();
+    ensureSettings();
     renderHomeNav();
     renderRet();
     renderIko();
@@ -3546,8 +3548,50 @@
     el.topicNav.hidden = true;
     if (el.topicBtn) el.topicBtn.setAttribute("aria-expanded", "false");
   }
+  /* Search, sort and the completed filter. The caret stays put while the field is being typed in. */
+  function listTools(prefix, st, redraw) {
+    var bar = mk("div", "list-tools");
+    var typing = document.activeElement && document.activeElement.id === prefix + "-q";
+    var caret = typing ? document.activeElement.selectionStart : 0;
+    var s = mk("input", "list-q");
+    s.type = "search"; s.id = prefix + "-q"; s.placeholder = "Search"; s.setAttribute("aria-label", "Search topics"); s.value = st.q || "";
+    s.addEventListener("input", function () { st.q = s.value; st.page = 0; redraw(); });
+    var sort = mk("select", "list-sort");
+    sort.id = prefix + "-sort"; sort.setAttribute("aria-label", "Sort topics");
+    [["recent", "Recent"], ["alpha", "Alphabetical"], ["progress", "Progress"]].forEach(function (x) {
+      var o = document.createElement("option"); o.value = x[0]; o.textContent = x[1]; if ((st.sort || "recent") === x[0]) o.selected = true; sort.appendChild(o);
+    });
+    sort.addEventListener("change", function () { st.sort = sort.value; st.page = 0; redraw(); });
+    var filt = mk("select", "list-filt");
+    filt.id = prefix + "-filt"; filt.setAttribute("aria-label", "Completed filter");
+    [["", "All"], ["open", "In progress"], ["done", "Finished"]].forEach(function (x) {
+      var o = document.createElement("option"); o.value = x[0]; o.textContent = x[1]; if ((st.done || "") === x[0]) o.selected = true; filt.appendChild(o);
+    });
+    filt.addEventListener("change", function () { st.done = filt.value; st.page = 0; redraw(); });
+    bar.appendChild(s); bar.appendChild(sort); bar.appendChild(filt);
+    bar.restore = function () { if (!typing) return; var inp = document.getElementById(prefix + "-q"); if (inp) { inp.focus(); try { inp.setSelectionRange(caret, caret); } catch (e) { /* old browsers */ } } };
+    return bar;
+  }
+  function topicQuery(parentId, st, all) {
+    var res = P.listTopics(state.cloud, parentId, { q: st.q, sort: st.sort || "recent", done: st.done || "", page: st.page || 0, size: 20, all: all });
+    st.page = res.page;
+    return res;
+  }
+  function listEmpty(st, res) {
+    return mk("p", "fine list-empty", (st.q || st.done) && !res.total ? "No matches." : "No topics yet.");
+  }
+  function listPager(st, res, redraw) {
+    if (res.pages < 2) return null;
+    var row = mk("div", "list-pager");
+    var prev = mk("button", "btn sm", "Previous"); prev.type = "button"; prev.disabled = res.page < 1;
+    prev.addEventListener("click", function () { st.page = Math.max(0, res.page - 1); redraw(); });
+    var next = mk("button", "btn sm", "More"); next.type = "button"; next.disabled = res.page >= res.pages - 1;
+    next.addEventListener("click", function () { st.page = res.page + 1; redraw(); });
+    row.appendChild(prev); row.appendChild(mk("span", "fine", (res.page + 1) + " of " + res.pages)); row.appendChild(next);
+    return row;
+  }
   function topicJump(n) {
-    var b = mk("button", "topic-jump-item", n.label);
+    var b = mk("button", "topic-open", "Open");
     b.type = "button";
     b.setAttribute("aria-label", "Open the lesson on " + n.label);
     b.addEventListener("click", function () {
@@ -3559,24 +3603,29 @@
   }
   function fillTopicList() {
     if (!el.topicNav) return;
+    var st = { q: state.topicQ, sort: state.topicSort, done: state.topicDone, page: state.topicPage };
     el.topicNav.textContent = "";
-    var ul = mk("ul");
-    var addBranch = function (parent, id, depth) {
-      if (depth > 4) return;
-      C.childrenOf(state.cloud, id).forEach(function (c) {
-        var li = mk("li");
-        li.appendChild(topicJump(c));
-        var sub = mk("ul");
-        addBranch(sub, c.id, depth + 1);
-        if (sub.childNodes.length) li.appendChild(sub);
-        parent.appendChild(li);
+    var tools = listTools("topic", st, function () { state.topicQ = st.q; state.topicSort = st.sort; state.topicDone = st.done; state.topicPage = st.page; fillTopicList(); });
+    el.topicNav.appendChild(tools);
+    var res = topicQuery(null, st, true);
+    state.topicPage = st.page;
+    if (!res.total) el.topicNav.appendChild(listEmpty(st, res));
+    else {
+      var ul = mk("ul");
+      res.items.forEach(function (n, i) {
+        var li = mk("li", "topic-row");
+        var name = mk("button", "topic-jump-item", n.label);
+        name.type = "button"; name.tabIndex = i === 0 ? 0 : -1;
+        name.addEventListener("click", function () { closeTopicList(); enterZoom(n.id); });
+        li.appendChild(name); li.appendChild(topicJump(n)); ul.appendChild(li);
       });
-    };
-    addBranch(ul, null, 0);
-    if (!ul.childNodes.length) el.topicNav.appendChild(mk("p", "fine", "No topics yet."));
-    else el.topicNav.appendChild(ul);
+      el.topicNav.appendChild(ul);
+      var pager = listPager(st, res, function () { state.topicPage = st.page; fillTopicList(); });
+      if (pager) el.topicNav.appendChild(pager);
+    }
+    tools.restore();
   }
-  /* A keyboard list of the same topics as the canvas. Choosing one opens that node's lesson. */
+  /* A keyboard list of the same topics as the canvas, with search, sort and a completed filter. Choosing a name focuses it; Open starts its lesson. */
   function ensureTopicList() {
     var host = el.cloud && el.cloud.querySelector(".top-r");
     if (!host || !state.cloud) return;
@@ -3598,10 +3647,17 @@
         if (open) { fillTopicList(); var b = el.topicNav.querySelector("button"); if (b) b.focus(); }
       });
       el.topicNav.addEventListener("keydown", function (e) {
-        if (e.key !== "Escape") return;
-        e.stopPropagation();
-        closeTopicList();
-        el.topicBtn.focus();
+        if (e.key === "Escape") { e.stopPropagation(); closeTopicList(); el.topicBtn.focus(); return; }
+        var items = [].slice.call(el.topicNav.querySelectorAll(".topic-jump-item"));
+        if (!items.length || (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Enter")) return;
+        var field = document.activeElement && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "SELECT");
+        if (field && e.key !== "ArrowDown") return;
+        e.preventDefault();
+        if (e.key === "Enter") { if (document.activeElement && document.activeElement.click) document.activeElement.click(); return; }
+        var i = Math.max(0, items.indexOf(document.activeElement));
+        var n = items[(i + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length];
+        if (field) n = items[0];
+        if (n) n.focus();
       });
       host.insertBefore(el.topicBtn, host.firstChild);
       el.cloud.appendChild(el.topicNav);
@@ -3735,6 +3791,81 @@
     if (!keepView && !state.lessonNode) { renderDraw(); el.input.focus(); }
   }
 
+  function closeSettings() {
+    if (!el.settings) return;
+    el.settings.hidden = true;
+    if (el.settingsBtn) el.settingsBtn.setAttribute("aria-expanded", "false");
+  }
+  function choiceRow(label, opts, current, onPick) {
+    var g = mk("div", "place-opts"), paint;
+    g.setAttribute("role", "group"); g.setAttribute("aria-label", label);
+    opts.forEach(function (x) {
+      var b = linkBtn(x[1], function () { onPick(x[0]); paint(); }, "btn sm age-opt");
+      b.setAttribute("data-v", String(x[0]));
+      g.appendChild(b);
+    });
+    paint = function () { var cur = String(current()); g.querySelectorAll("button").forEach(function (b) { var on = b.getAttribute("data-v") === cur; b.setAttribute("aria-pressed", String(on)); b.classList.toggle("on", on); }); };
+    paint();
+    return g;
+  }
+  function fillSettings() {
+    var box = el.settings;
+    if (!box) return;
+    box.textContent = "";
+    box.appendChild(mk("h2", null, "Settings"));
+    box.appendChild(mk("p", "hc-ph", "Your name"));
+    box.appendChild(linkBtn("Rename " + ((state.cloud && state.cloud.name) || "You"), function () { closeSettings(); startRename(); }, "btn sm"));
+    box.appendChild(mk("p", "hc-ph", "Lesson level"));
+    box.appendChild(bandRow(function (b) { setBand(b); fillSettings(); }));
+    if (TH) {
+      box.appendChild(mk("p", "hc-ph", "Theme"));
+      box.appendChild(choiceRow("Theme", [["light", "Light"], ["dark", "Dark"], ["ikosagon", "Ikosagon"]], function () { return TH.saved() || TH.mode(); }, function (v) { TH.set(v); }));
+      box.appendChild(mk("p", "hc-ph", "Font"));
+      box.appendChild(choiceRow("Font", [["current", "Current"], ["futura", "Futura"], ["sans", "System"], ["palatino", "Palatino"]], function () { return TH.font(); }, function (v) { TH.setFont(v); }));
+      box.appendChild(mk("p", "hc-hint fine", "Futura, or the closest geometric sans on this device. Cloud labels stay as they are."));
+    }
+    box.appendChild(mk("p", "hc-ph", "Sounds"));
+    box.appendChild(choiceRow("Card and button sounds", [["on", "On"], ["off", "Off"]], function () { return window.IkoSound && IkoSound.on() ? "on" : "off"; }, function (v) { if (window.IkoSound) IkoSound.set(v === "on"); }));
+    box.appendChild(mk("p", "hc-hint fine", "Card and button sounds. The cloud stays quiet."));
+    box.appendChild(mk("p", "hc-ph", "Iko"));
+    box.appendChild(choiceRow("Iko verbosity", [["off", "Quiet"], ["on", "Brief"], ["more", "Chatty"]], hintsMode, setHints));
+    var st = mk("p", "fine ct-status"); st.setAttribute("role", "status"); st.setAttribute("aria-live", "polite");
+    box.appendChild(mk("p", "hc-ph", "Your file"));
+    var file = mk("p");
+    file.appendChild(linkBtn("Save .ikolearn", function () { exportCloud(st, ".ikolearn"); }, "btn sm"));
+    file.appendChild(document.createTextNode(" "));
+    file.appendChild(linkBtn("Open .ikolearn", function () { pickCloud(st); }, "btn sm"));
+    file.appendChild(document.createTextNode(" "));
+    file.appendChild(linkBtn("Enhance this file", function () { enhanceFile(st); }, "btn sm"));
+    box.appendChild(file); box.appendChild(st);
+    box.appendChild(mk("p", "hc-ph", "About"));
+    var links = mk("p"), priv = document.querySelector('.cloud-foot a[href="/ikolearn/privacy"]'), fb = document.querySelector("a.fb-link");
+    if (priv) links.appendChild(priv.cloneNode(true));
+    links.appendChild(document.createTextNode(" · "));
+    if (fb) links.appendChild(fb.cloneNode(true));
+    box.appendChild(links);
+  }
+  function ensureSettings() {
+    if (el.settingsBtn) return;
+    el.settingsBtn = $("settings-btn");
+    if (!el.settingsBtn || !el.cloud) return;
+    el.settings = mk("div", "settings-menu");
+    el.settings.id = "settings-menu"; el.settings.hidden = true;
+    el.settings.setAttribute("role", "dialog"); el.settings.setAttribute("aria-label", "Settings");
+    el.cloud.appendChild(el.settings);
+    el.settingsBtn.addEventListener("click", function () {
+      if (!el.settings.hidden) { closeSettings(); return; }
+      closeTopicList();
+      fillSettings();
+      el.settings.hidden = false;
+      el.settingsBtn.setAttribute("aria-expanded", "true");
+      var b = el.settings.querySelector("button, a"); if (b) b.focus();
+    });
+    el.settings.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape") return;
+      e.stopPropagation(); closeSettings(); el.settingsBtn.focus();
+    });
+  }
   function wantsNameHint() {
     var c = state.cloud;
     return Boolean(c) && !c.named && c.name === "You" && !C.subjects(c).length && !startLayerOpen();
@@ -3865,6 +3996,7 @@
     }, reduceMotion && reduceMotion.matches ? 0 : 640);
   }
   function zoomKids(id) { return id === "root" ? C.subjects(state.cloud) : C.childrenOf(state.cloud, id); }
+  function zoomState() { return { q: state.zoomQ, sort: state.zoomSort, done: state.zoomDone, page: state.zoomPage }; }
   function renderZoom() {
     if (!el.zoomList) return;
     var id = state.zoomId;
@@ -3873,20 +4005,38 @@
     var parent = id === "root" ? null : nodeOf(id);
     if (id !== "root" && !parent) { state.zoomId = null; el.zoomList.hidden = true; return; }
     el.zoomTitle.textContent = parent ? parent.label : state.cloud.name;
-    el.zoomKicker.textContent = parent ? (parent.parent ? "Topic" : "Subject") : "Your cloud";
+    el.zoomKicker.textContent = parent && parent.parent && nodeOf(parent.parent) ? nodeOf(parent.parent).label : parent ? "You" : "Your cloud";
+    var oldTools = el.zoomList.querySelector(".list-tools"); if (oldTools) oldTools.remove();
+    var oldEmpty = el.zoomList.querySelector(".list-empty"); if (oldEmpty) oldEmpty.remove();
+    var oldOpen = el.zoomList.querySelector(".zoom-open"); if (oldOpen) oldOpen.remove();
+    var oldPager = el.zoomList.querySelector(".list-pager"); if (oldPager) oldPager.remove();
+    var st = zoomState();
+    var tools = listTools("zoom", st, function () { state.zoomQ = st.q; state.zoomSort = st.sort; state.zoomDone = st.done; state.zoomPage = st.page; state.zoomAt = 0; renderZoom(); });
+    el.zoomTitle.insertAdjacentElement("afterend", tools);
+    if (id !== "root") {
+      var open = mk("button", "btn sm zoom-open", state.lessons[id] ? "Open lesson" : "Start a lesson");
+      open.type = "button";
+      open.addEventListener("click", function () { openLesson(id); });
+      var about = linkBtn("About", function () { var keep = id; exitZoom(); openPanel(keep); }, "link zoom-about");
+      var row = mk("div", "zoom-open"); row.appendChild(open); row.appendChild(about);
+      tools.insertAdjacentElement("afterend", row);
+    }
     el.zoomItems.textContent = "";
-    var kids = zoomKids(id);
-    var addOpt = function (i, label, ghost, go) {
-      var li = mk("li"), b = mk("button", ghost ? "ghost" : "", label);
-      b.type = "button"; b.id = "zoom-opt-" + i; b.setAttribute("role", "option");
+    var res = topicQuery(id, st, false);
+    state.zoomQ = st.q; state.zoomSort = st.sort; state.zoomDone = st.done; state.zoomPage = st.page;
+    if (!res.total) el.zoomItems.insertAdjacentElement("beforebegin", listEmpty(st, res));
+    else res.items.forEach(function (n, i) {
+      var li = mk("li"), b = mk("button", n.ghost ? "ghost" : "", n.label);
+      b.type = "button"; b.id = "zoom-opt-" + i; b.setAttribute("role", "option"); b.tabIndex = i === state.zoomAt ? 0 : -1;
       b.setAttribute("aria-selected", i === state.zoomAt ? "true" : "false");
-      b.addEventListener("click", go);
+      b.addEventListener("click", function () { state.zoomAt = i; activateZoom(n.id); });
       li.appendChild(b); el.zoomItems.appendChild(li);
-    };
-    if (!kids.length) addOpt(0, id === "root" ? "+ add a subject" : "Open the lesson", false, function () { if (id === "root") openAddSubject(); else openLesson(id); });
-    kids.forEach(function (n, i) { addOpt(i, n.label, n.ghost, function () { state.zoomAt = i; activateZoom(n.id); }); });
+    });
+    var pager = listPager(st, res, function () { state.zoomPage = st.page; state.zoomAt = 0; renderZoom(); });
+    if (pager) el.zoomList.appendChild(pager);
     var cur = el.zoomItems.querySelector('[aria-selected="true"]');
     if (cur) el.zoomItems.setAttribute("aria-activedescendant", cur.id);
+    tools.restore();
   }
   /* A pinch or scroll that comes in close opens the list. The + button does the same. Phones hide + and −. */
   function maybeZoomList() {
@@ -3900,14 +4050,18 @@
   }
   function enterZoom(id) {
     if (!big || (id !== "root" && !nodeOf(id))) return;
+    if (state.zoomId !== id) { state.zoomQ = ""; state.zoomPage = 0; state.zoomAt = 0; }
     state.zoomId = id;
-    state.zoomAt = 0;
     if (!el.panel.hidden) closeCard();
     renderZoom();
+    /* parent on the left, this node in focus, its children in the list. The camera eases. */
     var cw = el.cloudCanvas.clientWidth, ch = el.cloudCanvas.clientHeight, wide = cw >= 700, top = cloudTop();
+    var node = id === "root" ? null : nodeOf(id);
+    var parentId = node && node.parent ? node.parent : id === "root" ? null : "root";
     big.focusNode(id, wide
-      ? { cx: Math.round(cw * 0.22), cy: Math.round(top + (ch - top) * 0.42), aw: Math.round(cw * 0.32), ah: Math.round((ch - top) * 0.62), keepYaw: false }
-      : { cx: Math.round(Math.min(cw * 0.28, 120)), cy: Math.round(top + 64), aw: Math.round(cw * 0.46), ah: 110, keepYaw: false });
+      ? { cx: Math.round(cw * 0.34), cy: Math.round(top + (ch - top) * 0.46), aw: Math.round(cw * 0.34), ah: Math.round((ch - top) * 0.55), keepYaw: false }
+      : { cx: Math.round(Math.min(cw * 0.42, 150)), cy: Math.round(top + 78), aw: Math.round(cw * 0.5), ah: 120, keepYaw: false });
+    if (big.pinParent) big.pinParent(parentId);
     if (el.zoomItems) el.zoomItems.focus();
   }
   function exitZoom() {
@@ -3922,8 +4076,7 @@
     if (n.ghost) id = settleGhost(id);
     n = nodeOf(id);
     if (!n) return;
-    if (C.childrenOf(state.cloud, id).length) enterZoom(id);
-    else openLesson(id);
+    enterZoom(id); /* the same parent-left / children-right view, including a topic with no children yet */
   }
   function pick(hit) {
     if (hit.add) { openAddSubject(); return; }
@@ -3933,8 +4086,8 @@
       if (wantsNameHint()) startRename();
       else if (state.panelNode === "root" && !el.panel.hidden) startRename();
       else openPanel("root");
-    } else if (hit.node && hit.node.ghost) openPanel(settleGhost(hit.node.id));
-    else if (hit.node) openPanel(hit.node.id);
+    }     else if (hit.node && hit.node.ghost) enterZoom(settleGhost(hit.node.id));
+    else if (hit.node) enterZoom(hit.node.id);
   }
 
   /* keepNote: leave the note as is; keepView: don't move the camera. The note is never written by opening a panel (see below). */
@@ -4062,7 +4215,7 @@
       panes.prefs.appendChild(mk("p", "hc-ph", "Appearance"));
       var tr = mk("div", "place-opts hc-theme"); tr.setAttribute("role", "group"); tr.setAttribute("aria-label", "Appearance");
       var paintTheme = function () { tr.querySelectorAll("button").forEach(function (b) { var on = (TH.saved() || "") === b.getAttribute("data-mode"); b.setAttribute("aria-pressed", String(on)); b.classList.toggle("on", on); }); };
-      [["light", "Light"], ["dark", "Dark"], ["", "Match device"]].forEach(function (x) {
+      [["light", "Light"], ["dark", "Dark"], ["ikosagon", "Ikosagon"], ["", "Match device"]].forEach(function (x) {
         var b = linkBtn(x[1], function () { TH.set(x[0] || null); paintTheme(); }, "btn sm age-opt"); b.setAttribute("data-mode", x[0]); tr.appendChild(b);
       });
       paintTheme(); panes.prefs.appendChild(tr);
@@ -4265,14 +4418,20 @@
   renderCloudHint();
   document.addEventListener("keydown", function (e) {
     if (state.zoomId && el.zoomList && !el.zoomList.hidden && el.zoomList.contains(document.activeElement) && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter")) {
-      var kids = zoomKids(state.zoomId), n = Math.max(1, kids.length);
+      var opts = [].slice.call(el.zoomItems.querySelectorAll('[role="option"]'));
+      var field = document.activeElement && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "SELECT");
+      if (field && e.key !== "ArrowDown") return;
+      if (!opts.length) return;
       if (e.key === "Enter") { e.preventDefault(); var b = el.zoomItems.querySelector('[aria-selected="true"]'); if (b) b.click(); return; }
       e.preventDefault();
-      state.zoomAt = (state.zoomAt + (e.key === "ArrowDown" ? 1 : n - 1)) % n;
+      if (field) { opts[0].focus(); return; }
+      state.zoomAt = (state.zoomAt + (e.key === "ArrowDown" ? 1 : opts.length - 1)) % opts.length;
       renderZoom();
+      var nxt = document.getElementById("zoom-opt-" + state.zoomAt); if (nxt) nxt.focus();
       return;
     }
     if (e.key !== "Escape") return;
+    if (el.settings && !el.settings.hidden) { closeSettings(); return; }
     if (el.nameEdit && !el.nameEdit.hidden) { el.nameEdit.hidden = true; renderYouHint(); return; }
     if (el.addSub && !el.addSub.hidden) { el.addSub.hidden = true; return; }
     if (state.zoomId) { exitZoom(); return; }
@@ -4300,8 +4459,13 @@
   var iko = { open: false, ctx: null, from: 0, lineT: 0, tipKey: "", tipT: 0, pendingReact: null, quietAt: Date.now(), poolT: 0, poolN: 0, poolLast: "" };
   /* PR 126: mute Iko's proactive hints (pebble and chat stay). Preferences or "be quiet" / "mute hints". */
   var IKO_HINTS = "ikolearn-iko-hints";
-  function hintsOn() { try { return localStorage.getItem(IKO_HINTS) !== "off"; } catch (e) { return true; } }
-  function setHints(on) { try { localStorage.setItem(IKO_HINTS, on ? "on" : "off"); } catch (e) {} if (!on) { clearTimeout(iko.tipT); clearTimeout(iko.poolT); if (!el.ikoLine.hidden) ikoLine(""); } }
+  function hintsMode() { try { var v = localStorage.getItem(IKO_HINTS); return v === "off" || v === "more" ? v : "on"; } catch (e) { return "on"; } }
+  function hintsOn() { return hintsMode() !== "off"; }
+  function setHints(on) {
+    var v = on === "more" ? "more" : on === "off" || on === false ? "off" : "on";
+    try { localStorage.setItem(IKO_HINTS, v); } catch (e) {}
+    if (v === "off") { clearTimeout(iko.tipT); clearTimeout(iko.poolT); if (!el.ikoLine.hidden) ikoLine(""); }
+  }
   function ikoPop(kind) {
     if (!motionOK() || el.ikoWrap.hidden) return;
     var cls = kind === "earn" ? "react-earn" : kind === "grow" ? "react-grow" : "pop";
@@ -4617,7 +4781,7 @@
     lesson: { k: "aboutLesson", t: "This is a lesson: read it, check yourself with a few questions, then earn its card." },
     deck: { k: "aboutDeck", t: "This is your deck: every card you earn lives here, and it keeps growing as you learn." }
   };
-  function tipFresh(k) { return Date.now() - (Number(tipsShown()[k]) || 0) >= GAP; }
+  function tipFresh(k) { return Date.now() - (Number(tipsShown()[k]) || 0) >= (hintsMode() === "more" ? 30000 : GAP); }
   function tipAgain() { var k = iko.tipKey; if (k && !iko.open && tipFresh(k)) { clearTimeout(iko.tipT); iko.tipT = setTimeout(function () { showTip(k); }, 700); } }
   /* a hint stays until it is tapped away or the learner moves past its step (PR 105, PR 106) */
   function tipLine(t, id) {
@@ -5244,13 +5408,13 @@
     return d;
   }
   /* Save IkoCloud: this learner's whole cloud as [firstname].ikocloud (application/json, safe to email), made here and downloaded (0 calls) */
-  function exportCloud(st) {
+  function exportCloud(st, ext) {
     if (!T || !state.cloud) return;
     save();
     var f = T.build(localStorage, Date.now());
     if (!f) { st.textContent = "Your IkoCloud couldn't be saved just now."; return; }
     var url = URL.createObjectURL(new Blob([f.text], { type: "application/json" })), a = mk("a");
-    a.href = url; a.download = f.name; a.hidden = true;
+    a.href = url; a.download = ext ? f.name.replace(/\.ikocloud$/, ext) : f.name; a.hidden = true;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
     st.textContent = T.MSG.saved(f.name);
@@ -5259,6 +5423,28 @@
   }
   var ctStatus = null;
   function pickCloud(st) { if (!T || !el.ctFile) return; el.ctFile.accept = T.ACCEPT; ctStatus = st; if (st) st.textContent = ""; el.ctFile.value = ""; el.ctFile.click(); }
+  /* Enhance stays on this device: the file is read here and a new file is downloaded. Nothing is sent or logged. */
+  function enhanceFile(st) {
+    if (!window.IkoEnhance) { if (st) st.textContent = "Couldn't enhance that file."; return; }
+    var input = document.createElement("input");
+    input.type = "file"; input.accept = ".ikolearn,.ikocloud,.json,application/json";
+    input.addEventListener("change", function () {
+      var f = input.files && input.files[0];
+      if (!f) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        var out = window.IkoEnhance.enhanceText(String(reader.result || ""));
+        if (st) st.textContent = out && out.notice ? out.notice : "Couldn't enhance that file.";
+        if (!out || !out.ok || !out.text) return;
+        var url = URL.createObjectURL(new Blob([out.text], { type: "application/json" })), a = mk("a");
+        a.href = url; a.download = out.name || "enhanced.ikolearn"; a.hidden = true;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+      };
+      reader.readAsText(f);
+    });
+    input.click();
+  }
   function ctSay(t) { if (ctStatus) ctStatus.textContent = t; placeCard(); }
   if (el.ctFile) el.ctFile.addEventListener("change", function () {
     var f = el.ctFile.files && el.ctFile.files[0];

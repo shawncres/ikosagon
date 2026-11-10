@@ -7,13 +7,22 @@
  */
 (function (root) {
   "use strict";
-  var KEY = "ikolearn-theme", doc = root.document;
-  var BAR = { light: "#f3ead8", dark: "#1e1712" }; /* the browser's bar: the page's own paper */
+  var KEY = "ikolearn-theme", FONT_KEY = "ikolearn-font", doc = root.document;
+  var THEMES = ["light", "dark", "ikosagon"]; /* more names can be added here, with a matching html[data-theme] palette */
+  var BAR = { light: "#f3ead8", dark: "#1e1712", ikosagon: "#000000" }; /* the browser's bar: the page's own paper */
+  var FONTS = {
+    current: "",
+    futura: "Futura, 'Century Gothic', 'Avenir Next', Avenir, 'Trebuchet MS', sans-serif",
+    sans: "system-ui, 'Segoe UI', sans-serif",
+    palatino: "'Palatino Linotype', Palatino, 'Iowan Old Style', Georgia, serif"
+  };
   var mq = root.matchMedia ? root.matchMedia("(prefers-color-scheme: dark)") : null;
-  function saved() { try { var v = root.localStorage.getItem(KEY); return v === "dark" || v === "light" ? v : null; } catch { return null; } }
+  function saved() { try { var v = root.localStorage.getItem(KEY); return THEMES.indexOf(v) >= 0 ? v : null; } catch { return null; } }
   function system() { return mq && mq.matches ? "dark" : "light"; }
   function mode() { return saved() || system(); }
   function dark() { return doc.documentElement.getAttribute("data-theme") === "dark"; }
+  function night() { var t = doc.documentElement.getAttribute("data-theme"); return t === "dark" || t === "ikosagon"; }
+  function fontName() { try { var v = root.localStorage.getItem(FONT_KEY); return v && FONTS[v] ? v : "current"; } catch { return "current"; } }
 
   /* a colour made for paper, toned for the dark page: the same hue, a little quieter, light enough to read (WCAG AA) */
   var HSL = /^hsla?\(\s*(-?[\d.]+)(?:deg)?[\s,]+([\d.]+)%[\s,]+([\d.]+)%(?:\s*[,/]\s*([\d.]+%?))?\s*\)$/i;
@@ -23,7 +32,7 @@
     var h = +m[1], s = Math.round(+m[2] * 0.75), l = Math.round(Math.min(84, Math.max(66, 94 - +m[3] * 0.5)));
     return m[4] != null ? "hsla(" + h + ", " + s + "%, " + l + "%, " + m[4] + ")" : "hsl(" + h + ", " + s + "%, " + l + "%)";
   }
-  function tone(c) { return dark() ? forDark(c) : c; }
+  function tone(c) { return night() ? forDark(c) : c; }
   /* set colour custom properties from script, remembered so a change of theme re-tones them in place */
   function paint(el, props) {
     if (!el) return;
@@ -41,8 +50,16 @@
   /* the cloud canvas reads these: ink for lines and labels, paper for the plates under them */
   function inks() { var cs = root.getComputedStyle(doc.documentElement); return { ink: cs.getPropertyValue("--ink").trim() || "#2b2118", paper: cs.getPropertyValue("--paper").trim() || "#f3ead8", line: cs.getPropertyValue("--line").trim() || cs.getPropertyValue("--ink").trim() || "#2b2118" }; }
 
-  function bar(m) { doc.querySelectorAll('meta[name="theme-color"]').forEach(function (t) { if (!t.media) t.setAttribute("content", BAR[m]); }); }
+  function bar(m) { doc.querySelectorAll('meta[name="theme-color"]').forEach(function (t) { if (!t.media) t.setAttribute("content", BAR[m] || BAR.light); }); }
+  function applyFont(name) {
+    var st = doc.documentElement.style;
+    if (!st || !st.setProperty) return;
+    if (!FONTS[name]) name = "current";
+    if (!FONTS[name]) st.removeProperty("--font-ui");
+    else st.setProperty("--font-ui", FONTS[name]);
+  }
   function apply(m) {
+    if (THEMES.indexOf(m) < 0) m = system();
     var was = doc.documentElement.getAttribute("data-theme");
     doc.documentElement.setAttribute("data-theme", m);
     bar(m);
@@ -52,7 +69,13 @@
   var easeT = 0;
   function set(m) {
     var de = doc.documentElement; de.classList.add("theme-easing"); clearTimeout(easeT); easeT = setTimeout(function () { de.classList.remove("theme-easing"); }, 400); /* a quiet cross-fade (none with reduced motion) */
+    if (m && THEMES.indexOf(m) < 0) m = null;
     try { if (m) root.localStorage.setItem(KEY, m); else root.localStorage.removeItem(KEY); } catch { /* private mode: this visit only */ } apply(m || system()); }
+  function setFont(name) {
+    if (!name || name === "current" || !FONTS[name]) name = "current";
+    try { if (name === "current") root.localStorage.removeItem(FONT_KEY); else root.localStorage.setItem(FONT_KEY, name); } catch { /* this visit only */ }
+    applyFont(name);
+  }
   function toggle() { set(dark() ? "light" : "dark"); }
 
   var SUN = '<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="3.6" fill="none" stroke="currentColor" stroke-width="1.4"/><g stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M10 1.8v2.2M10 16v2.2M1.8 10H4M16 10h2.2M4.2 4.2l1.5 1.5M14.3 14.3l1.5 1.5M4.2 15.8l1.5-1.5M14.3 5.7l1.5-1.5"/></g></svg>';
@@ -84,8 +107,9 @@
   if (mq) { var follow = function () { if (!saved()) apply(system()); }; if (mq.addEventListener) mq.addEventListener("change", follow); else if (mq.addListener) mq.addListener(follow); }
   root.addEventListener("storage", function (e) { if (e.key === KEY) apply(mode()); }); /* another tab changed it */
   apply(mode());
+  applyFont(fontName());
   if (doc.readyState === "loading") doc.addEventListener("DOMContentLoaded", function () { mount("[data-theme-slot]"); });
   else mount("[data-theme-slot]");
 
-  root.IkoTheme = { KEY: KEY, BAR: BAR, mode: mode, saved: saved, dark: dark, set: set, toggle: toggle, tone: tone, forDark: forDark, paint: paint, inks: inks, button: button, mount: mount };
+  root.IkoTheme = { KEY: KEY, FONT_KEY: FONT_KEY, BAR: BAR, THEMES: THEMES, FONTS: FONTS, mode: mode, saved: saved, dark: dark, night: night, font: fontName, set: set, setFont: setFont, toggle: toggle, tone: tone, forDark: forDark, paint: paint, inks: inks, button: button, mount: mount };
 })(typeof window !== "undefined" ? window : globalThis);

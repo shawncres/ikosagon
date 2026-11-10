@@ -30,7 +30,8 @@
   --accent: #9a5a2a; --accent-ink: #fffaf0; /* the one accent: primary actions only (AA on paper and as a fill) */
   --state-sketch: #8a7a66; --state-inked: #3b2e22; --state-tinted: #a86b3c; --state-achieved: #7a4a22;
   --ease: cubic-bezier(.2, .7, .3, 1); --t-fast: 120ms; --t-med: 160ms;
-  font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+  --font-ui: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+  font-family: var(--font-ui);
 }
 /* dark: deep warm brown paper (never black), soft cream ink, the same quiet sepia; text pairs pass WCAG AA */
 html[data-theme="dark"] {
@@ -55,6 +56,30 @@ html[data-theme="dark"] {
   --accent: #e0a36a; --accent-ink: #1e1712; --state-sketch: #a8957a; --state-inked: #eee2cb; --state-tinted: #d89a62;
   color-scheme: dark;
 }
+/* Ikosagon: neon on black, the same colours as ikosagon.com. Text stays light on black so it keeps AA. */
+html[data-theme="ikosagon"] {
+  --paper: #000000;
+  --sheet: #0a0a0a;
+  --ink: #f4fffd;
+  --soft: #c5d4d1;
+  --rule: #2f6f68;
+  --fold: #143632;
+  --ink-rgb: 244, 255, 253;
+  --soft-rgb: 197, 212, 209;
+  --shadow-rgb: 0, 0, 0;
+  --paper-rgb: 0, 0, 0;
+  --sheet-rgb: 10, 10, 10;
+  --hi-rgb: 210, 255, 248;
+  --tray: #12332f; --tray-a: #16403b; --tray-b: #0c2422; --tray-foot: rgba(0, 0, 0, .45);
+  --pebble: #102624; --pebble-hover: #163330; --pebble-edge: #2bffe8; --pebble-shine: #d9fff8; --pebble-face: #e8fffb;
+  --glow-a: 43, 255, 232; --glow-b: 120, 255, 244;
+  --scrim: rgba(0, 0, 0, .72);
+  --art-paper: #f3ead8;
+  --art-turn: invert(.9) hue-rotate(180deg) saturate(.7);
+  --accent: #2bffe8; --accent-ink: #00211e;
+  --state-sketch: #8aa8a4; --state-inked: #f4fffd; --state-tinted: #2bffe8;
+  color-scheme: dark;
+}
 /* a change of theme eases (the first paint never does: the theme is set before it) */
 html.theme-easing, html.theme-easing body, html.theme-easing .iko-sheet, html.theme-easing .node-card, html.theme-easing .gcard { transition: background-color .3s ease, color .3s ease, border-color .3s ease; }
 @media (prefers-reduced-motion: reduce) { html.theme-easing, html.theme-easing * { transition: none !important; } }
@@ -62,6 +87,16 @@ html.theme-easing, html.theme-easing body, html.theme-easing .iko-sheet, html.th
 .theme-tg { display: inline-grid; place-items: center; width: 44px; height: 44px; margin: -14px -12px -14px -12px; padding: 0; vertical-align: middle; color: var(--soft); background: none; border: 0; border-radius: 50%; cursor: pointer; }
 .theme-tg:hover { color: var(--ink); }
 .theme-tg svg { display: block; }
+.burger { display: inline-grid; place-items: center; width: 44px; height: 44px; margin: 0; padding: 0; color: var(--ink); background: transparent; border: 0; border-radius: 50%; cursor: pointer; }
+.burger span, .burger span:before, .burger span:after { display: block; width: 16px; height: 1.5px; background: currentColor; border-radius: 1px; }
+.burger span { position: relative; }
+.burger span:before, .burger span:after { content: ""; position: absolute; left: 0; }
+.burger span:before { top: -5px; }
+.burger span:after { top: 5px; }
+.settings-menu { position: absolute; z-index: 6; top: 58px; right: 12px; box-sizing: border-box; width: min(320px, calc(100vw - 24px)); max-height: min(78vh, 640px); overflow: auto; background: var(--paper); color: var(--ink); border: 1px solid var(--rule); border-radius: 14px; padding: 12px 14px 16px; box-shadow: 0 8px 28px rgba(var(--shadow-rgb), .16); }
+.settings-menu h2 { margin: 0 0 8px; font-size: 18px; }
+.settings-menu .hc-ph { margin: 12px 0 4px; }
+.settings-menu a { display: inline-flex; align-items: center; min-height: 44px; }
 /* the art on cards is drawn for paper: on the dark page it is turned to light lines on dark, keeping its hues */
 .gc-art .art, .md-card .art { filter: var(--art-turn); }
 html[data-theme="dark"] .gc-art .art, html[data-theme="dark"] .md-card .art { background: var(--art-paper); } /* drawn on light paper, then turned as one (--art-turn): warm stays warm */
@@ -506,6 +541,15 @@ body.start-open .cloud-hint { visibility: hidden; }
 .zoom-list [role="option"] { display: block; width: 100%; min-height: 44px; margin: 0; padding: 8px 12px; text-align: left; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .zoom-list [role="option"].ghost { font-style: italic; opacity: .72; }
 .zoom-list [role="option"][aria-selected="true"], .zoom-list [role="option"]:focus-visible { background: rgba(var(--ink-rgb), .08); outline: 2px solid var(--ink); outline-offset: -2px; }
+.list-tools { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.list-tools input, .list-tools select { font: inherit; font-size: 14px; color: var(--ink); background: var(--sheet); border: 1px solid var(--rule); border-radius: 8px; min-height: 44px; padding: 6px 8px; }
+.list-tools input { flex: 1 1 120px; min-width: 0; }
+.list-empty { margin: 8px 2px; color: var(--soft); }
+.list-pager { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.zoom-open { display: flex; align-items: center; gap: 12px; margin: 0 0 10px; }
+.topic-row { display: flex; align-items: center; gap: 4px; }
+.topic-row .topic-jump-item { flex: 1; }
+.topic-row .topic-open { flex: 0 0 auto; width: auto; min-height: 44px; padding: 8px 10px; }
 @media (max-width: 699px) { .zoom-list { left: 8px; right: 8px; top: auto; width: auto; max-height: 42vh; bottom: calc(18px + var(--foot-h, 44px) + var(--flow-h, 0px) + env(safe-area-inset-bottom)); } }
 /* the opening question (body.intake, placed by app.js placeStart): a still column; the name on its plate above the question */
 .cs-name { display: none; }

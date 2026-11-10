@@ -1253,7 +1253,7 @@ export function createItems(list: unknown[], kind: LearnInput["kind"], learnerNa
     (Array.isArray(o.children) ? o.children : []).forEach((c, i) => {
       if (!c || typeof c !== "object" || kids.length >= LEARN_LIMITS.createChildren) return;
       const k = c as Record<string, unknown>;
-      const cn = cleanLabel(k.name);
+      const cn = clarifyTopicName(cleanLabel(k.name));
       if (!cn || !goodChildName(cn, name) || sameLabel(cn, name) || taken(cn) || kids.some((x) => sameLabel(x.name, cn)) || chain.some((x) => sameLabel(x, cn))) return;
       if (kind === "next" && known.some((x) => sameLabel(x, cn))) return;
       let score = Number(k.score);
@@ -1397,6 +1397,15 @@ export function realLink(focus: string, other: string): boolean {
   return fw.some((w) => ow.includes(w) || ol.includes(w)) || ow.some((w) => fl.includes(w));
 }
 
+/** "Deeper Posture" becomes Posture. Overview is dropped. A typo is left for goodChildName to reject. */
+export function clarifyTopicName(name: string): string {
+  let n = cleanLabel(name);
+  const bare = n.replace(/^(?:a|an|the)\s+/i, "");
+  if (/^(overview|introduction|intro)$/i.test(bare)) return "";
+  n = n.replace(/^deeper\s+/i, "").replace(/\s+deeper$/i, "").replace(/\s+/g, " ").trim();
+  return n ? cleanLabel(n) : "";
+}
+
 /** Bare Overview, "Deeper Posture", and "Scaling Fractions Deeper" are not topic names. */
 export function clearTopicName(name: string): boolean {
   const n = String(name || "").replace(/\s+/g, " ").trim();
@@ -1460,7 +1469,7 @@ export function parseCloudBlock(raw: unknown, learnerName = "", ctx?: PlaceCtx):
     }
     const tb = parseBlurb((t as Topic).blurb, learnerName);
     if (tb) topic.blurb = tb;
-    const kids = labelList((t as { children?: unknown }).children).filter((cn) => goodChildName(cn, name) && !sameLabel(cn, name));
+    const kids = labelList((t as { children?: unknown }).children).map((cn) => clarifyTopicName(cn)).filter((cn) => cn && goodChildName(cn, name) && !sameLabel(cn, name));
     if (kids.length >= 3) topic.children = kids.slice(0, 4);
     out.topics.push(ctx ? checkPlacement(topic, ctx) : topic);
     if (out.topics.length >= LEARN_LIMITS.topicsPerTurn) break;
@@ -1483,7 +1492,7 @@ export function parsePath(raw: unknown, learnerName = "", focus = "", scope?: { 
   if (!obj) return null;
   const steps: string[] = [];
   for (const s of Array.isArray(obj.steps) ? obj.steps : []) {
-    const name = cleanLabel(s && typeof s === "object" ? (s as { name?: unknown }).name : s);
+    const name = clarifyTopicName(cleanLabel(s && typeof s === "object" ? (s as { name?: unknown }).name : s));
     if (!name || !clearTopicName(name) || (learnerName && sameLabel(name, learnerName)) || (focus && sameLabel(name, focus))) continue;
     if (steps.some((x) => sameLabel(x, name))) continue;
     steps.push(name);
@@ -1503,7 +1512,7 @@ export function parseChoices(raw: unknown, learnerName = "", focus = ""): Choice
   for (const c of Array.isArray(raw) ? raw : []) {
     if (!c || typeof c !== "object") continue;
     const o = c as Record<string, unknown>;
-    const name = cleanLabel(o.name);
+    const name = clarifyTopicName(cleanLabel(o.name));
     if (!name || !clearTopicName(name) || (learnerName && sameLabel(name, learnerName)) || (focus && sameLabel(name, focus)) || out.some((x) => sameLabel(x.name, name))) continue;
     const k = String(o.kind || "").toLowerCase();
     const kind = ((CHOICE_KINDS as readonly string[]).includes(k) ? k : "deeper") as Choice["kind"];
