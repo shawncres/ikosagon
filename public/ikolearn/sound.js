@@ -2,9 +2,14 @@
    download and nothing loads until the first sound is used. Default on but very soft; one switch in Preferences, or ask
    Iko to "turn sounds off". Three sounds only: a warm confirmation when a card is earned (<300 ms), a gentle tap on
    primary actions, and a barely-audible looping ambient bed on the cloud view that fades in and out. Silent under
-   prefers-reduced-motion, while the tab is hidden, and when the device is muted (the AudioContext follows it). */
+   prefers-reduced-motion, while the tab is hidden, and when the device is muted (the AudioContext follows it).
+   Cloud audio is off for now (CLOUD_AUDIO). While it is false the ambient bed never starts, so the cloud plays nothing
+   and no AudioContext is created for it. The bed below is unchanged; set the flag true to bring it (and its Preferences
+   switch) back. Card chimes and button taps are separate and stay as they are. */
 (function (root) {
   "use strict";
+  /* Single switch for every sound the cloud plays (the ambient bed; node taps, growth, zoom and drift add none of their own). */
+  var CLOUD_AUDIO = false;
   var KEY = "ikolearn-sound", ctx = null, master = null, amb = null, lastTap = 0;
   function on() { try { return localStorage.getItem(KEY) !== "off"; } catch (e) { return true; } }
   function quiet() { return (root.matchMedia && root.matchMedia("(prefers-reduced-motion: reduce)").matches) || document.hidden; }
@@ -24,6 +29,7 @@
   function earn() { tone([523.25, 659.25, 783.99], 0.28, 0.06); } /* C-E-G, soft, 280 ms */
   function tap() { var n = Date.now(); if (n - lastTap < 120) return; lastTap = n; tone([880], 0.07, 0.018); }
   function ambient(want) {
+    if (!CLOUD_AUDIO) return; /* off: leave the bed unstarted, and do not open an AudioContext for the cloud */
     if (want && (!on() || quiet())) want = false;
     if (want && amb) return;
     if (!want) { if (amb) { var a = amb; amb = null; var t0 = ctx.currentTime; a.g.gain.cancelScheduledValues(t0); a.g.gain.setTargetAtTime(0.0001, t0, 0.4); setTimeout(function () { try { a.src.stop(); a.g.disconnect(); } catch (e) {} }, 2000); } return; }
@@ -42,7 +48,7 @@
   if (typeof document !== "undefined") document.addEventListener("visibilitychange", function () { if (document.hidden) ambient(false); else if (SND.cloudOn) ambient(true); });
   /* tap: primary actions only (never text input, scrolling or routine navigation) */
   if (typeof document !== "undefined") document.addEventListener("click", function (e) { var b = e.target && e.target.closest && e.target.closest(".btn.draw, .btn.primary, [data-snd=tap]"); if (b && !b.disabled) tap(); }, true);
-  var SND = { on: on, set: set, earn: earn, tap: tap, ambient: function (w) { SND.cloudOn = Boolean(w); ambient(w); }, cloudOn: false };
+  var SND = { on: on, set: set, earn: earn, tap: tap, ambient: function (w) { if (!CLOUD_AUDIO) { SND.cloudOn = false; return; } SND.cloudOn = Boolean(w); ambient(w); }, cloudOn: false, cloudAudio: CLOUD_AUDIO };
   root.IkoSound = SND;
   if (typeof module !== "undefined") module.exports = SND;
 })(typeof window !== "undefined" ? window : globalThis);

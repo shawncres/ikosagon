@@ -3861,7 +3861,7 @@
       tidyCloud(true, function (ok, why) { tb.disabled = false; var ts = document.querySelector(".tidy-status") || tst; ts.textContent = ok ? "Done. Related topics now sit together." : why === "small" ? "Your cloud is still small and neat." : why === "neat" ? "Your cloud is already tidy." : "Your cloud stays as it is for now."; });
     }, "btn sm tidy-btn");
     panes.prefs.appendChild(tb); panes.prefs.appendChild(tst);
-    if (window.IkoSound) {
+    if (window.IkoSound && IkoSound.cloudAudio) {
       panes.prefs.appendChild(mk("p", "hc-ph", "Sound"));
       var sr = mk("div", "place-opts hc-sound"); sr.setAttribute("role", "group"); sr.setAttribute("aria-label", "Sound");
       var paintSnd = function () { sr.querySelectorAll("button").forEach(function (b) { var v = b.getAttribute("data-snd-v") === "on", p = v === IkoSound.on(); b.setAttribute("aria-pressed", String(p)); b.classList.toggle("on", p); }); };

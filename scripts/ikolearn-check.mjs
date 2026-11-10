@@ -4316,6 +4316,54 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/kind: "rename"/.test(appC) && /call me/.test(appC) && /function renameLearner\(raw\)/.test(appC), "the centre node can be renamed by asking Iko");
 }
 
+/* ---------- cloud audio off by default (the bed stays in sound.js; nothing plays) ---------- */
+{
+  const src = fs.readFileSync("public/ikolearn/sound.js", "utf8");
+  const app = fs.readFileSync("public/ikolearn/app.js", "utf8");
+  const view = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8");
+  ok(/var CLOUD_AUDIO = false;/.test(src) && /cloudAudio: CLOUD_AUDIO/.test(src), "cloud audio: one flag, default off, still named for turning back on");
+  ok(/soft brown noise/.test(src) && /createBufferSource/.test(src) && /lp\.frequency\.value = 420/.test(src) && /523\.25, 659\.25, 783\.99/.test(src), "cloud audio: the bed and the other tones stay in the file");
+  ok(!/AudioContext|webkitAudioContext|createOscillator|createBufferSource|createBuffer\(|new Audio\(/.test(view), "cloud view: node taps, growth, zoom and drift start no audio of their own");
+  ok(/if \(window\.IkoSound && IkoSound\.cloudAudio\)/.test(app) && /aria-label", "Sound"/.test(app) && /Quiet sounds/.test(app), "the cloud sound switch stays in Preferences and is built only while cloud audio is on");
+  let contexts = 0, started = 0;
+  function Gain() {
+    this.gain = { value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {}, setTargetAtTime() {}, cancelScheduledValues() {} };
+    this.connect = function () {};
+  }
+  class FakeAC {
+    constructor() { contexts += 1; this.state = "running"; this.currentTime = 0; this.sampleRate = 8000; this.destination = {}; }
+    resume() { return Promise.resolve(); }
+    createGain() { return new Gain(); }
+    createOscillator() { return { type: "sine", frequency: { setValueAtTime() {} }, connect() {}, start() { started += 1; }, stop() {} }; }
+    createBuffer() { return { getChannelData: () => new Float32Array(8) }; }
+    createBufferSource() { return { buffer: null, loop: false, loopEnd: 0, connect() {}, start() { started += 1; }, stop() {} }; }
+    createBiquadFilter() { return { type: "", frequency: { value: 0 }, connect() {} }; }
+  }
+  const store = {}, listeners = {};
+  const sandbox = {
+    localStorage: { getItem: (k) => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = String(v); } },
+    document: { hidden: false, addEventListener(type, fn) { (listeners[type] = listeners[type] || []).push(fn); } },
+    matchMedia: () => ({ matches: false }),
+    AudioContext: FakeAC,
+    webkitAudioContext: FakeAC,
+    setTimeout: () => 0,
+    clearTimeout() {},
+    Date, Math, JSON, Object, String, Boolean, Number, Array, Promise, Float32Array,
+  };
+  sandbox.window = sandbox;
+  vm.runInNewContext(src, sandbox, { filename: "sound.js" });
+  const SND = sandbox.IkoSound;
+  const showCloud = () => { SND.ambient(true); SND.set(true); SND.ambient(true); sandbox.document.hidden = true; (listeners.visibilitychange || []).forEach((fn) => fn()); sandbox.document.hidden = false; (listeners.visibilitychange || []).forEach((fn) => fn()); };
+  showCloud();
+  ok(SND && SND.cloudAudio === false && SND.cloudOn === false && contexts === 0 && started === 0, "cloud audio off: opening the cloud, turning sounds on, and returning to the tab create no AudioContext and play nothing");
+  const afterBed = started;
+  SND.earn();
+  ok(contexts === 1 && started > afterBed, "other sounds: a card still chimes when cloud audio is off");
+  const afterEarn = started;
+  SND.ambient(true);
+  ok(started === afterEarn && contexts === 1, "cloud audio off: the bed stays silent even after another sound has opened a context");
+}
+
 if (fails.length) {
   console.error(`ikolearn checks: ${pass} passed, ${fails.length} FAILED`);
   for (const f of fails) console.error("  x " + f);
