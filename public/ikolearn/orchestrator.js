@@ -76,19 +76,13 @@
     return (n.correct || 0) >= E.correct || n.mastery >= C.MASTERED || (n.engaged || 0) >= E.visits || (n.spent || 0) >= E.seconds;
   }
   /* Ask the lesson call for child topics when the topic has none yet, isn't an end, and nothing is already waiting. */
-  /* Levels below a subject (the subject itself is 0). Automatic next topics stop at 3; "Go deeper?" allows a 4th. */
-  var DEPTH_CAP = { soft: 3, hard: 4 };
+  /* Levels below a subject (the subject itself is 0). There is no depth cap. From the third level down, offer a sibling or Continue deeper; generation is not stopped. */
+  var DEPTH_CAP = { soft: 0, hard: 0 };
   function levelsBelow(cloud, id) { var d = C.depthOf(cloud, id); return d ? d - 1 : 0; }
-  function capped(cloud, id) {
-    var n = nodeOf(cloud, id), below = levelsBelow(cloud, id);
-    if (!n) return "";
-    if (below >= DEPTH_CAP.hard) return "hard";
-    if (below >= DEPTH_CAP.soft && !n.deeper) return "soft";
-    return "";
-  }
+  function capped() { return ""; }
   function depthChoices(cloud, id) {
-    var cap = capped(cloud, id), n = nodeOf(cloud, id);
-    if (!cap || !n) return null;
+    var n = nodeOf(cloud, id);
+    if (!n || levelsBelow(cloud, id) < 3) return null;
     var subj = C.subjectOf(cloud, id), sib = null;
     if (n.parent) {
       C.childrenOf(cloud, n.parent).some(function (c) {
@@ -96,18 +90,18 @@
         return false;
       });
     }
-    return { capped: true, hard: cap === "hard", test: subj ? subj.id : id, sibling: sib, deeper: cap !== "hard" };
+    return { capped: false, hard: false, test: subj ? subj.id : id, sibling: sib, deeper: true };
   }
   function goDeeper(cloud, id) {
     var n = nodeOf(cloud, id);
-    if (!n || levelsBelow(cloud, id) >= DEPTH_CAP.hard) return false;
+    if (!n) return false;
     n.deeper = true;
     cloud.rev = (cloud.rev || 0) + 1;
     return true;
   }
   function wantChildren(cloud, id) {
     var n = nodeOf(cloud, id);
-    return Boolean(n && !n.path && !n.end && !n.pending && !capped(cloud, id) && C.depthOf(cloud, id) < PLAN.depth);
+    return Boolean(n && !n.path && !n.end && !n.pending);
   }
   function childrenReady(cloud, id) { var n = nodeOf(cloud, id); return Boolean(n && n.pending && engaged(cloud, id)); }
 
@@ -256,7 +250,7 @@
    */
   function needsNext(cloud, id) {
     var n = nodeOf(cloud, id);
-    if (!n || (!n.parent && !n.path) || n.ghost || n.end || n.pending || capped(cloud, id)) return false; /* a subject qualifies once it has its own path (made by a creation call); at the depth cap, offer a test, a sibling, or Go deeper? */
+    if (!n || (!n.parent && !n.path) || n.ghost || n.end || n.pending || capped(cloud, id)) return false; /* a subject qualifies once it has its own path (made by a creation call) */
     var kids = C.coreChildren(cloud, id), done = C.doneCore(cloud, id).length; /* only the core sequence counts: side paths never block */
     if (kids.some(function (c) { return !C.isDone(cloud, c.id) && !c.end; })) return false;
     if (!kids.length && !engaged(cloud, id)) return false;

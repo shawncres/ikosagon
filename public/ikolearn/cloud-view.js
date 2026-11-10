@@ -435,7 +435,7 @@
         if (!mini) {
           /* PR 111: a calm sepia glow under a soft glass-like plate (a light edge on top, a fine ink rim), a little
              warmer while its card is open: the pane it opens is made of the same stuff. One gradient, no canvas blur. */
-          var dk = Boolean(TH && TH.dark && TH.dark()), gr = bw / 2 + 30, glow = ctx.createRadialGradient(rootP.x, rootP.y, ph * 0.6, rootP.x, rootP.y, gr);
+          var dk = Boolean(TH && (TH.night ? TH.night() : TH.dark && TH.dark())), gr = bw / 2 + 30, glow = ctx.createRadialGradient(rootP.x, rootP.y, ph * 0.6, rootP.x, rootP.y, gr);
           var gc = dk ? "214, 176, 120" : "176, 128, 72", ga = (rootLit ? 0.3 : 0.17) * (dk ? 0.8 : 1);
           glow.addColorStop(0, "rgba(" + gc + "," + ga + ")"); glow.addColorStop(1, "rgba(" + gc + ",0)");
           ctx.globalAlpha = 1; ctx.fillStyle = glow;
@@ -446,7 +446,7 @@
         if (!mini) {
           var sheen = ctx.createLinearGradient(0, rootP.y - ph, 0, rootP.y + ph);
           sheen.addColorStop(0, "rgba(255, 250, 238, 0.42)"); sheen.addColorStop(0.5, "rgba(255, 250, 238, 0)");
-          ctx.globalAlpha = TH && TH.dark && TH.dark() ? 0.35 : 1; ctx.fillStyle = sheen;
+          ctx.globalAlpha = TH && (TH.night ? TH.night() : TH.dark && TH.dark()) ? 0.35 : 1; ctx.fillStyle = sheen;
           pill(rootP.x - bw / 2, rootP.y - ph, bw, 2 * ph); ctx.fill();
         }
         ctx.globalAlpha = mini ? 0.62 : rootLit ? 0.55 : 0.42; ctx.strokeStyle = INK; ctx.lineWidth = mini ? 0.8 : 1.1;
@@ -553,7 +553,7 @@
       if (!due && key !== fogKey && !fogLate) fogLate = setTimeout(function () { fogLate = 0; request(); }, FOG.every); /* the last view of a drag still gets its fog */
       if (due) {
         fogKey = key; fogAt = now;
-        var t = reduce ? 0 : now, grow = Math.min(1, nTopics / 60), base = 0.09 + 0.09 * grow, dark = Boolean(TH && TH.dark && TH.dark());
+        var t = reduce ? 0 : now, grow = Math.min(1, nTopics / 60), base = 0.09 + 0.09 * grow, dark = Boolean(TH && (TH.night ? TH.night() : TH.dark && TH.dark()));
         if (dark) base *= 0.8;
         else base = Math.min(FOG_LIGHT.cap, base * FOG_LIGHT.alpha); /* PR 109: clearly there on paper (was x1.5); dark mode as it was */
         var fogCol = dark ? colorOf : function (n) { return vividOf(colorOf(n)); }, rk = dark ? 1 : FOG_LIGHT.radius;

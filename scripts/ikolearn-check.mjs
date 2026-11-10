@@ -5,7 +5,7 @@ import fs from "node:fs";
 import zlib from "node:zlib";
 import { createRequire } from "node:module";
 import {
-  LEARN_LIMITS, CLOUD_OPEN, CLOUD_CLOSE, cleanName, cleanLabel, cleanMessages, parseLearnInput, SYSTEM_BASE, companionSystem, noticeSystem, replyLooksComplete, lessonLooksComplete, learnTopicFrom, learnTopicsFrom, affirmSeveral, subjectsOffered, goodChildName, withHealthNote, vaccineMisleads, HEALTH_RULE, junkSubject, toAdult, DISTRACTOR_RULE, realLink,
+  LEARN_LIMITS, CLOUD_OPEN, CLOUD_CLOSE, cleanName, cleanLabel, cleanMessages, parseLearnInput, SYSTEM_BASE, companionSystem, noticeSystem, replyLooksComplete, lessonLooksComplete, learnTopicFrom, learnTopicsFrom, affirmSeveral, subjectsOffered, goodChildName, clarifyTopicName, withHealthNote, vaccineMisleads, HEALTH_RULE, junkSubject, toAdult, DISTRACTOR_RULE, realLink,
   buildContents, cardSystem, adjacentSystem, plainReply, parseCloudBlock, parseCard, parseAdjacent, createBlockSplitter,
   PATH_OPEN, PATH_CLOSE, lessonSystem, lessonContents, pathSystem, PATH_SCHEMA, CARD_SCHEMA, parsePath, parseChoices, parseLessonBlock, parseQuestions, parseBlurb, parseChain, checkSystem, topicDrift, pathTooNarrow,
   parseTest, testSystem, TEST_SCHEMA, parseCheck, createSystem, parseCreate, CREATE_SCHEMA, examplesSystem, parseExamples, EXAMPLES_SCHEMA, EXAMPLE_LIMITS, SIGNALS, parseReading,
@@ -2328,7 +2328,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(pkg.scripts.prebuild === "node scripts/ikolearn-minify.mjs" && /^\^?0\.\d+/.test(pkg.devDependencies.esbuild || ""), "minify: runs before next build (prebuild), esbuild is a dev dependency");
   const mjs = fs.readFileSync("scripts/ikolearn-minify.mjs", "utf8");
   ok(/process\.env\.VERCEL === "1" \|\| process\.env\.IKOLEARN_MINIFY === "1"/.test(mjs) && !/mangleProps|keepNames: false|bundle: true/.test(mjs) && /sourcesContent: true/.test(mjs), "minify: in place only on Vercel's build (or when asked), no property mangling, no bundling, readable source in the maps");
-  eq(minTargets(), ["app.js", "camera.js", "cloud-model.js", "cloud-view.js", "deck.js", "family.css", "family.js", "learners.js", "lesson.js", "orchestrator.js", "profiles.js", "rank.js", "sound.js", "styles.css", "theme.js", "transfer.js", "usage.js"], "minify: every app script and stylesheet (the parents & teachers view and learners too)");
+  eq(minTargets(), ["app.js", "camera.js", "cloud-model.js", "cloud-view.js", "deck.js", "enhance.js", "family.css", "family.js", "learners.js", "lesson.js", "orchestrator.js", "profiles.js", "rank.js", "sound.js", "styles.css", "theme.js", "transfer.js", "usage.js"], "minify: every app script and stylesheet (the parents & teachers view and learners too)");
   const min = {}, src = {};
   minTargets().forEach((f) => { src[f] = fs.readFileSync("public/ikolearn/" + f, "utf8"); min[f] = minifyFile(f, src[f]); });
   ok(Object.keys(min).every((f) => min[f].code.length < src[f].length * 0.85 && min[f].code.endsWith(`sourceMappingURL=${f}.map${f.endsWith(".css") ? " */" : ""}\n`)), "minify: every file is smaller and links its source map");
@@ -2546,7 +2546,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(fold.tag === "details" && !fold.attrs.open && all(fold).some((n) => n.tag === "summary" && n.textContent === "Further reading & viewing"), "further reading: a collapsed fold, \u201cFurther reading & viewing\u201d");
   ok(anchors.length === 8 && anchors.every((a) => L.allowedHref(a.href) && a.rel === "noopener noreferrer nofollow" && /^Search /.test(a.textContent)) && !all(fold).some((n) => /evil/.test(n.href || "") || /evil/.test(n.textContent || "")), "no model URL is ever rendered: every link is an allowlisted search", String(anchors.length));
   ok(L.renderReading(fdoc, []) === null && L.renderReading(fdoc, [{ title: "x", q: "https://a.b" }]) === null, "nothing to show: no fold");
-  ok((app.match(/\.href\s*=/g) || []).length === 2 && /a\.href = feedbackHref\(\);/.test(app) && /return "https:\/\/ikosagon\.com\/contact\?subject=IkoLearn%20Feedback";/.test(app) && !/name=/.test(app.slice(app.indexOf("function feedbackHref"), app.indexOf("function renderHomeNav"))) && /var url = URL\.createObjectURL\(new Blob\(\[f\.text\], \{ type: "application\/json" \}\)\), a = mk\("a"\);\s*a\.href = url;/.test(app) && (lessonJs.match(/\.href\s*=/g) || []).length === 1 && /if \(!allowedHref\(l\.href\)\) return;/.test(lessonJs), "only lesson.js sets a link, after the allowlist check; the app's only one is the cloud file's own download (a blob made on the device). Support & feedback keeps the subject and does not add the name");
+  ok((app.match(/\.href\s*=/g) || []).length === 3 && /a\.href = feedbackHref\(\);/.test(app) && /return "https:\/\/ikosagon\.com\/contact\?subject=IkoLearn%20Feedback";/.test(app) && !/name=/.test(app.slice(app.indexOf("function feedbackHref"), app.indexOf("function renderHomeNav"))) && /var url = URL\.createObjectURL\(new Blob\(\[f\.text\], \{ type: "application\/json" \}\)\), a = mk\("a"\);\s*a\.href = url;/.test(app) && /new Blob\(\[out\.text\]/.test(app) && (lessonJs.match(/\.href\s*=/g) || []).length === 1 && /if \(!allowedHref\(l\.href\)\) return;/.test(lessonJs), "only lesson.js sets a link, after the allowlist check; the app's downloads are the cloud file and an enhanced file (blobs made on the device). Support & feedback keeps the subject and does not add the name");
   ok(/reading = L\.cleanReading\(ev\.reading\)/.test(app) && /state\.lessons\[id\]\.rd = reading/.test(app) && /showReading\(cached\.rd\)/.test(app), "the reading list is cached with the lesson (no new call to show it again)");
 
   // newcomer hints: three, exact copy, remembered in ikolearn.v1.seen
@@ -4235,7 +4235,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const appH = fs.readFileSync("public/ikolearn/app.js", "utf8");
   ok(/P\.honestReply\(m\.text, facts\)/.test(appH) && /failedAdd && \(asked\.length \|\| learn\) && canRetry/.test(appH) && /attempt < 1/.test(appH), "chat: the spoken line comes from the add result, and a failed add is tried once");
   ok(!/Filled in the steps for/.test(appH) && !/Added a missing step for/.test(appH) && /I tidied your cloud so related topics sit together\./.test(appH), "bridge and repair stay quiet; the learner's tidy line remains");
-  ok(/deeper: "Go deeper"/.test(appH) && /Go deeper\?/.test(appH) && /P\.depthChoices\(/.test(appH) && /P\.capped\(/.test(appH), "depth cap offers Go deeper? without changing the lesson level selector");
+  ok(/deeper: "Go deeper"/.test(appH) && /Continue deeper/.test(appH) && /P\.depthChoices\(/.test(appH) && /P\.capped\(/.test(appH) && /function capped\(\) \{ return ""; \}/.test(fs.readFileSync("public/ikolearn/orchestrator.js", "utf8")), "there is no depth cap; a deep branch offers Continue deeper, and the lesson level selector is unchanged");
 
   const map = C.create("Sam", T0);
   C.applyTopics(map, [{ name: "Birdwatching", signal: "curious", asSubject: true }, { name: "Greek Mythology", signal: "curious", asSubject: true }], T0);
@@ -4291,14 +4291,19 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ["Titans", "Olympians", "Zeus"].forEach((name, i) => { C.applyTopics(cloud, [{ name, parent, signal: "curious" }], T0 + 2 + i); parent = name; });
   C.applyTopics(cloud, [{ name: "Hera", parent: "Olympians", signal: "curious" }], T0 + 6);
   const zeus = C.findTopic(cloud, "Zeus");
-  ok(C.depthOf(cloud, zeus.id) === 4 && P.levelsBelow(cloud, zeus.id) === 3 && P.capped(cloud, zeus.id) === "soft" && !P.wantChildren(cloud, zeus.id) && !P.needsNext(cloud, zeus.id), "at 3 levels below a subject, another level is not generated");
+  ok(C.depthOf(cloud, zeus.id) === 4 && P.levelsBelow(cloud, zeus.id) === 3 && P.capped(cloud, zeus.id) === "" && P.wantChildren(cloud, zeus.id), "three levels below a subject does not stop another level");
   const choice = P.depthChoices(cloud, zeus.id);
-  ok(choice && choice.test === C.findSubject(cloud, "Greek Mythology").id && choice.deeper && choice.sibling === C.findTopic(cloud, "Hera").id, "at the cap the offer is a subject test, a sibling, or Go deeper?", JSON.stringify(choice));
-  ok(P.goDeeper(cloud, zeus.id) && !P.capped(cloud, zeus.id) && P.wantChildren(cloud, zeus.id), "Go deeper? allows one more level");
-  C.applyTopics(cloud, [{ name: "Temples", parent: "Zeus", signal: "curious" }], T0 + 8);
-  const temples = C.findTopic(cloud, "Temples");
-  ok(P.levelsBelow(cloud, temples.id) === 4 && P.capped(cloud, temples.id) === "hard" && !P.depthChoices(cloud, temples.id).deeper && !P.goDeeper(cloud, temples.id), "4 levels below a subject is the hard cap");
-  ok(C.deserialize(C.serialize(cloud)).nodes[zeus.id].deeper === true, "Go deeper? is kept with the cloud");
+  ok(choice && choice.capped === false && choice.deeper && choice.sibling === C.findTopic(cloud, "Hera").id, "a deep topic offers a sibling and continue deeper", JSON.stringify(choice));
+  ok(P.goDeeper(cloud, zeus.id) && P.capped(cloud, zeus.id) === "" && P.wantChildren(cloud, zeus.id), "Continue deeper is remembered and does not lock the branch");
+  let deepParent = "Zeus";
+  for (let i = 0; i < 4; i++) {
+    const name = "Depth " + (i + 5);
+    C.applyTopics(cloud, [{ name, parent: deepParent, signal: "curious" }], T0 + 8 + i);
+    deepParent = name;
+  }
+  const far = C.findTopic(cloud, "Depth 8");
+  ok(far && C.depthOf(cloud, far.id) >= 8 && P.capped(cloud, far.id) === "" && P.depthChoices(cloud, far.id).deeper && P.goDeeper(cloud, far.id), "there is no hard depth cap");
+  ok(C.deserialize(C.serialize(cloud)).nodes[zeus.id].deeper === true, "Continue deeper is kept with the cloud");
 }
 
 /* ---------- cloud-first start, ghost placeholders, zoom list (PR C) ---------- */
@@ -4386,6 +4391,37 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(all.items.some((n) => n.id === deep.id), "listTopics can reach a node five levels down");
   const appL = fs.readFileSync("public/ikolearn/app.js", "utf8");
   ok(/No matches\./.test(appL) && /No topics yet\./.test(appL) && /Search topics/.test(appL) && /Completed filter/.test(appL) && /P\.listTopics\(/.test(appL), "the topics panel and the focus list share search, sort, the completed filter, and empty states");
+}
+
+/* ---------- no depth cap, validator parity, clear names, enhance stub ---------- */
+{
+  eq(clarifyTopicName("Deeper Posture"), "Posture", "an awkward Deeper name is rewritten to the clear topic");
+  eq(clarifyTopicName("Scaling Fractions Deeper"), "Scaling Fractions", "a trailing Deeper is removed");
+  eq(clarifyTopicName("Overview"), "", "Overview is not kept as a topic name");
+  eq(clarifyTopicName("The Overview"), "", "The Overview is not kept as a topic name");
+  const renamed = parseCloudBlock(JSON.stringify({ topics: [{ name: "Health", parent: "", signal: "curious", children: ["Deeper Posture", "Daily Care", "Rest", "Overview"] }] }), "Sam");
+  ok(renamed.topics[0].children.join("|") === "Posture|Daily Care|Rest", "awkward starter names are regenerated and Overview is dropped", JSON.stringify(renamed.topics[0].children));
+  const appV = fs.readFileSync("public/ikolearn/app.js", "utf8");
+  ok(/fullCheck\(j\.questions\)/.test(appV) && /fullCheck\(j\.retry\)/.test(appV) && /fullCheck\(les\.rq\)/.test(appV) && /fullCheck\(les\.qs\)/.test(appV), "a retried check and a refreshed check use the same fullCheck validator");
+  const E = require("../public/ikolearn/enhance.js");
+  const src = C.create("Sam", T0);
+  C.applyTopics(src, [{ name: "Car Maintenance", signal: "curious", asSubject: true }], T0);
+  C.applyTopics(src, [{ name: "Coolant", parent: "Car Maintenance", signal: "explored" }], T0 + 1);
+  const ghost = C.applyTopics(src, [{ name: "Basic Car Maintenance", signal: "curious", asSubject: true }], T0 + 2);
+  if (ghost.parentsCreated[0]) src.nodes[ghost.parentsCreated[0]].ghost = true;
+  const dup = C.findSubject(src, "Basic Car Maintenance") || C.findTopic(src, "Basic Car Maintenance");
+  if (dup && dup.id !== C.findSubject(src, "Car Maintenance").id) { dup.ghost = true; }
+  const before = src.order.length;
+  const report = E.enhanceCloud(src);
+  ok(report.cleaned.length >= 0 && report.notice && !/INTRO|EXPLAIN|lesson text/i.test(report.notice), "enhance notice does not include lesson text", report.notice);
+  ok(report.safety.some((s) => /coolant/i.test(s)) && /hot engine/i.test(C.findTopic(src, "Coolant").blurb || ""), "enhance adds a hands-on safety note");
+  ok(report.siblings.some((s) => s.parent === "Car Maintenance" && s.beside === "Coolant"), "enhance notices a subject with only one branch");
+  const file = { format: "ikolearn", version: 1, data: { name: "Sam", cloud: JSON.parse(C.serialize(src)) } };
+  const back = E.enhanceText(JSON.stringify(file));
+  ok(back.ok && back.name.endsWith(".ikolearn") && back.text && !back.text.includes("console.log") && back.notice, "enhance returns a .ikolearn file and does not log the body");
+  ok(E.enhanceText("{").ok === false, "a bad file gets a quiet failure");
+  ok(/not logged/.test(fs.readFileSync("app/api/ikolearn/enhance/route.ts", "utf8")) && /enhanceText/.test(fs.readFileSync("app/api/ikolearn/enhance/route.ts", "utf8")), "the enhance endpoint is ephemeral and says it does not log");
+  ok(src.order.length <= before, "enhance does not grow the cloud with a made-up topic");
 }
 
 /* ---------- cloud audio off by default (the bed stays in sound.js; nothing plays) ---------- */

@@ -1477,7 +1477,7 @@
     var n = nodeOf(id);
     var bail = function () { if (opts.unlock) lock(false); };
     if (!n || aheadBusy[id]) { bail(); return; }
-    if (P.capped(state.cloud, id) && !opts.deeper) { bail(); return; } /* at the depth cap: a test, a sibling, or Go deeper? */
+    if (P.capped(state.cloud, id) && !opts.deeper) { bail(); return; } /* capped() is empty: depth never stops a next topic */
     if (!opts.force && !P.needsNext(state.cloud, id)) { bail(); return; }
     aheadBusy[id] = 1;
     if (opts.say) opts.say("Working out what comes next in " + n.label + "...");
@@ -1927,8 +1927,10 @@
     var les = state.lessons[id], ck = ckOf(id), q = state.quiz;
     if (!les || !q || q.id !== id) return;
     var spare = fullCheck(les.rq);
+    var base = fullCheck(les.qs);
     ck.set = (ck.set || 0) + 1;
-    q.qs = ck.set === 1 && spare.length === 3 ? spare : shuffled(validQs(les.qs).length ? validQs(les.qs) : q.qs, id + ck.r + ck.set);
+    var again = base.length === 3 ? shuffled(base, id + ":" + ck.r + ":" + ck.set) : [];
+    q.qs = ck.set === 1 && spare.length === 3 ? spare : again.length === 3 ? again : spare;
     les.cur = q.qs; /* the set on screen, kept so a return shows the same questions */
     q.ans = []; les.ans = []; q.missed = false; ck.c = 1;
     save();
@@ -2101,14 +2103,14 @@
     if (cap) {
       var subj = nodeOf(cap.test), sib = nodeOf(cap.sibling);
       var box = mk("div", "others");
-      box.appendChild(mk("p", "l-head", "This branch is deep enough for now"));
-      box.appendChild(mk("p", null, "You can take a subject test, try a sibling branch, or choose to go deeper."));
+      box.appendChild(mk("p", "l-head", "This branch can keep going"));
+      box.appendChild(mk("p", null, "You can try a sibling, or continue deeper. Nothing stops you."));
       var ul = mk("ul");
       if (subj) { var li = mk("li"); li.appendChild(linkBtn("Test on " + subj.label, function () { openTest(subj.id); })); ul.appendChild(li); }
       if (sib) { var sli = mk("li"); sli.appendChild(linkBtn(sib.label, function () { openLesson(sib.id); })); ul.appendChild(sli); }
       if (cap.deeper) {
         var dli = mk("li");
-        dli.appendChild(linkBtn("Go deeper?", function () {
+        dli.appendChild(linkBtn("Continue deeper", function () {
           if (!P.goDeeper(state.cloud, id)) return;
           save();
           placeNext(id, { deeper: true, force: true });
@@ -2118,7 +2120,6 @@
       }
       box.appendChild(ul);
       el.lFork.appendChild(box);
-      return;
     }
     if (C.isTerminal(state.cloud, id) && nextOpen(id)) {
       var others = C.otherBranches(state.cloud, id, 3, topIds()).map(nodeOf).filter(Boolean);
@@ -2342,7 +2343,7 @@
     if (state.quiz && state.quiz.id === id) { state.quiz.qs = []; state.quiz.wait = true; state.quiz.fail = false; renderQuiz(true); applyPhase(); }
     postJson("/check", Object.assign(basePayload(id), P.withBand(state.cloud, {}), { mode: "notice", messages: [], lesson: String(les.text).slice(0, LESSON_EXCERPT) })).then(function (j) {
       delete les.ckWait;
-      var qs = j && j.ok ? validQs(j.questions) : [];
+      var qs = j && j.ok ? fullCheck(j.questions) : [];
       if (qs.length === 3 && !needCheck(qs)) {
         les.qs = mixQs(qs); les.ans = [];
         var rq = fullCheck(j.retry); if (rq.length === 3) les.rq = mixQs(rq);
@@ -3834,6 +3835,8 @@
     file.appendChild(linkBtn("Save .ikolearn", function () { exportCloud(st, ".ikolearn"); }, "btn sm"));
     file.appendChild(document.createTextNode(" "));
     file.appendChild(linkBtn("Open .ikolearn", function () { pickCloud(st); }, "btn sm"));
+    file.appendChild(document.createTextNode(" "));
+    file.appendChild(linkBtn("Enhance this file", function () { enhanceFile(st); }, "btn sm"));
     box.appendChild(file); box.appendChild(st);
     box.appendChild(mk("p", "hc-ph", "About"));
     var links = mk("p"), priv = document.querySelector('.cloud-foot a[href="/ikolearn/privacy"]'), fb = document.querySelector("a.fb-link");
@@ -5420,6 +5423,28 @@
   }
   var ctStatus = null;
   function pickCloud(st) { if (!T || !el.ctFile) return; el.ctFile.accept = T.ACCEPT; ctStatus = st; if (st) st.textContent = ""; el.ctFile.value = ""; el.ctFile.click(); }
+  /* Enhance stays on this device: the file is read here and a new file is downloaded. Nothing is sent or logged. */
+  function enhanceFile(st) {
+    if (!window.IkoEnhance) { if (st) st.textContent = "Couldn't enhance that file."; return; }
+    var input = document.createElement("input");
+    input.type = "file"; input.accept = ".ikolearn,.ikocloud,.json,application/json";
+    input.addEventListener("change", function () {
+      var f = input.files && input.files[0];
+      if (!f) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        var out = window.IkoEnhance.enhanceText(String(reader.result || ""));
+        if (st) st.textContent = out && out.notice ? out.notice : "Couldn't enhance that file.";
+        if (!out || !out.ok || !out.text) return;
+        var url = URL.createObjectURL(new Blob([out.text], { type: "application/json" })), a = mk("a");
+        a.href = url; a.download = out.name || "enhanced.ikolearn"; a.hidden = true;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+      };
+      reader.readAsText(f);
+    });
+    input.click();
+  }
   function ctSay(t) { if (ctStatus) ctStatus.textContent = t; placeCard(); }
   if (el.ctFile) el.ctFile.addEventListener("change", function () {
     var f = el.ctFile.files && el.ctFile.files[0];
