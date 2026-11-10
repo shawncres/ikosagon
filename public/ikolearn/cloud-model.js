@@ -937,7 +937,8 @@
   function create(name, t) {
     t = now_(t);
     /* nothing pre-seeded: the orchestrator asks a few questions and the creation call builds the first parents */
-    return { v: VERSION, name: cleanLabel(name) || "Me", seq: 0, rev: 0, nodes: {}, order: [], cards: [], created: t, next: null, deck: [], draws: [], sessions: 0, tests: {}, suggest: null, active: null, profile: newProfile(), events: [] };
+    /* A new cloud is centred on "You" until the learner renames it. An older save keeps the name it stored. */
+    return { v: VERSION, name: cleanLabel(name) || "You", seq: 0, rev: 0, nodes: {}, order: [], cards: [], created: t, next: null, deck: [], draws: [], sessions: 0, tests: {}, suggest: null, active: null, profile: newProfile(), events: [], named: false };
   }
 
   /* ---------- the learner's profile (v6) ---------- */
@@ -1932,7 +1933,7 @@
     return JSON.stringify({ v: VERSION, name: cloud.name, seq: cloud.seq, rev: cloud.rev, created: cloud.created, next: cloud.next || 0, n: n, p: paths, f: forks, cards: cloud.cards,
       k: (cloud.deck || []).map(function (e) { var r = [e.id, e.label, e.subject, e.hue, s(e.at), e.best || 0, e.chain || [], e.blurb || "", s(e.ach)]; if (e.tb || e.ml || e.inn || (e.co && e.co.length)) r.push(e.tb || 0, e.ml || 0, e.inn || 0, e.co && e.co.length ? e.co : 0); return r; }), g: cloud.draws || [], ss: cloud.sessions || 0,
       t: tests, sg: sg, fl: cloud.active || 0, pr: profileRow(cloud.profile),
-      ev: (cloud.events || []).map(function (e) { return [s(e.t), e.k, e.id, e.lv || 0, e.ids || [], e.why || ""]; }), mo: motifMap(cloud), ez: easeMap(cloud), rs: rsRow(cloud) });
+      ev: (cloud.events || []).map(function (e) { return [s(e.t), e.k, e.id, e.lv || 0, e.ids || [], e.why || ""]; }), mo: motifMap(cloud), ez: easeMap(cloud), rs: rsRow(cloud), nm: cloud.named ? 1 : undefined });
   }
   /*
    * How easily the learner answers in a branch (PR 103): one number per subject, -1 (finding the checks hard) .. 1 (answering
@@ -2113,6 +2114,7 @@
       if (c.mo && typeof c.mo === "object") Object.keys(c.mo).forEach(function (id) { if (out.nodes[id]) out.nodes[id].motif = cleanMotif(c.mo[id]); });
       if (c.ez && typeof c.ez === "object") Object.keys(c.ez).forEach(function (id) { var x = out.nodes[id], v = Number(c.ez[id]); if (x && !x.parent && Number.isFinite(v)) x.ez = Math.max(-1, Math.min(1, Math.round(v) / 100)); });
       if (c.rs) rsRead(out, c.rs);
+      if (c.nm) out.named = true; /* the learner renamed the centre node; older saves omit this and keep their name */
       var nowS = Math.round(Date.now() / 1000) * 1000; /* whole seconds, as stored, so a migrated cloud round-trips exactly */
       if (c.v < 5) adoptComputerScience(out, nowS); /* v4 and older: Computer Science becomes its own subject */
       if (c.v < 6) { pruneSeeds(out); joinDeck(out, nowS); } /* v5 and older: untouched starter seeds go; everything learned stays */

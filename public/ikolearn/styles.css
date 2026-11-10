@@ -466,6 +466,18 @@ button.gcard:hover { border-color: var(--soft); }
 .cs-row .btn, .cs-row input { min-height: 44px; }
 .cloud-start.busy .cs-ex { display: none; }
 .cs-status { margin: 8px 0 0; font-size: 14px; font-style: italic; color: var(--soft); }
+.you-hint { position: absolute; z-index: 2; margin: 0; transform: translate(-50%, 0); font-size: 13px; font-style: italic; color: var(--soft); opacity: .55; pointer-events: none; white-space: nowrap; }
+.name-edit, .add-sub { position: absolute; z-index: 4; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; transform: translate(-50%, 0); width: min(340px, calc(100% - 24px)); }
+.name-edit input, .add-sub input { font: inherit; font-size: 16px; min-height: 44px; min-width: 0; flex: 1; padding: 8px 14px; border: 1px solid var(--rule); border-radius: 999px; background: var(--sheet); color: var(--ink); }
+.add-status { flex-basis: 100%; margin: 0; text-align: center; font-size: 13px; font-style: italic; color: var(--soft); }
+.add-status:empty { display: none; }
+.zoom-list { position: absolute; z-index: 3; top: 64px; right: 12px; bottom: 78px; box-sizing: border-box; width: min(440px, 56vw); overflow: auto; background: var(--paper); border: 1px solid var(--rule); border-radius: 14px; padding: 12px 14px 16px; box-shadow: 0 8px 28px rgba(var(--shadow-rgb), .12); }
+.zoom-list h2 { margin: 0 0 8px; font-size: 20px; }
+.zoom-list ul { list-style: none; margin: 0; padding: 0; }
+.zoom-list [role="option"] { display: block; width: 100%; min-height: 44px; margin: 0; padding: 8px 12px; text-align: left; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.zoom-list [role="option"].ghost { font-style: italic; opacity: .72; }
+.zoom-list [role="option"][aria-selected="true"], .zoom-list [role="option"]:focus-visible { background: rgba(var(--ink-rgb), .08); outline: 2px solid var(--ink); outline-offset: -2px; }
+@media (max-width: 699px) { .zoom-list { left: 8px; right: 8px; top: auto; width: auto; max-height: 42vh; bottom: calc(18px + var(--foot-h, 44px) + var(--flow-h, 0px) + env(safe-area-inset-bottom)); } }
 /* the opening question (body.intake, placed by app.js placeStart): a still column; the name on its plate above the question */
 .cs-name { display: none; }
 body.intake .cs-name { display: block; width: fit-content; margin: 4px auto 14px; padding: 4px 15px; font-size: 20px; font-weight: 600; line-height: 28px; letter-spacing: 0; color: var(--ink); background: var(--paper); border: 1.3px solid rgba(var(--ink-rgb), .62); border-radius: 999px; box-shadow: 0 0 0 3px var(--paper), 0 0 0 4px rgba(var(--ink-rgb), .2); }

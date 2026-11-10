@@ -56,7 +56,7 @@
     opts = opts || {};
     var now = opts.now || Date.now(), lessons = opts.lessons || {};
     if (!cloud || !cloud.nodes) return { empty: true, name: "", lede: lede({ empty: true }) };
-    var ix = C.index(cloud), name = cloud.name && cloud.name !== "Me" ? cloud.name : "";
+    var ix = C.index(cloud), name = cloud.name && cloud.name !== "Me" && cloud.name !== "You" ? cloud.name : "";
     var all = cloud.order.filter(function (x) { var n = live(cloud, x); return n && n.parent; });
 
     /* subjects (the learner's own parents) and their branches: covered of known, as the album counts them */
