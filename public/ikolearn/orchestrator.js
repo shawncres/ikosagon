@@ -1147,8 +1147,35 @@
     return { lines: lines.slice(0, 5), empty: false, strongest: basis ? basis.id : null, next: nn ? nx : null };
   }
 
+  /*
+   * The topics list (the focused view's children, or every topic when all is set). Search, sort and the completed
+   * filter happen here so the cloud data is never reordered. page/size paginate a large set. -> { total, page, pages, items }
+   */
+  function listTopics(cloud, parentId, opts) {
+    opts = opts || {};
+    var list = [];
+    if (!cloud || !cloud.nodes) return { total: 0, page: 0, pages: 1, items: [] };
+    if (opts.all) cloud.order.forEach(function (id) { var n = cloud.nodes[id]; if (n && n.parent) list.push(n); });
+    else if (!parentId || parentId === "root") list = C.subjects(cloud).slice();
+    else list = C.childrenOf(cloud, parentId).slice();
+    var q = String(opts.q || "").trim().toLowerCase();
+    if (q) list = list.filter(function (n) { return String(n.label || "").toLowerCase().indexOf(q) >= 0; });
+    if (opts.done === "open") list = list.filter(function (n) { return !C.isDone(cloud, n.id); });
+    else if (opts.done === "done") list = list.filter(function (n) { return C.isDone(cloud, n.id); });
+    var sort = opts.sort || "recent";
+    list.sort(function (a, b) {
+      if (sort === "alpha") return String(a.label).localeCompare(String(b.label)) || String(a.id).localeCompare(String(b.id));
+      if (sort === "progress") return (b.mastery || 0) - (a.mastery || 0) || String(a.label).localeCompare(String(b.label));
+      return (b.touched || b.born || 0) - (a.touched || a.born || 0) || String(a.label).localeCompare(String(b.label));
+    });
+    var size = Math.max(1, Number(opts.size) || 20);
+    var pages = Math.max(1, Math.ceil(list.length / size) || 1);
+    var page = Math.min(Math.max(0, Number(opts.page) || 0), pages - 1);
+    return { total: list.length, page: page, pages: pages, items: list.slice(page * size, page * size + size) };
+  }
+
   var api = {
-    PLAN: PLAN, DEPTH_CAP: DEPTH_CAP, levelsBelow: levelsBelow, capped: capped, depthChoices: depthChoices, goDeeper: goDeeper, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, needsRepair: needsRepair, repairRequest: repairRequest,
+    PLAN: PLAN, DEPTH_CAP: DEPTH_CAP, levelsBelow: levelsBelow, capped: capped, depthChoices: depthChoices, goDeeper: goDeeper, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, needsRepair: needsRepair, repairRequest: repairRequest, listTopics: listTopics,
     MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild, nextStep: nextStep,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
     weekRecap: weekRecap, neoState: neoState, neoGated: neoGated, neoOpen: neoOpen, neoDue: neoDue, neoThemes: neoThemes, neoAdd: neoAdd, neoTaken: neoTaken, neoLine: neoLine, NEO_THEMES: NEO_THEMES, suggest: suggest, draw: draw, lessonContext: lessonContext, withBand: withBand, areaOf: areaOf, starterIdeas: starterIdeas, mixStarters: mixStarters, STARTER: STARTER, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, unfinished: unfinished, fresh: fresh, PACE: PACE, paceOf: paceOf, placeTopic: placeTopic, placedTopic: placedTopic, related: related, DESCRIBE: DESCRIBE, describeBatch: describeBatch, isBroad: isBroad,

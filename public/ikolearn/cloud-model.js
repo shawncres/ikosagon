@@ -810,13 +810,10 @@
     "compass", "bulb", "puzzle", "ball", "bowl", "cup", "globe", "voice", "people", "code", "scale", "feather", "key", "boat", "paw"];
   function cleanMotif(v) { var m = String(v == null ? "" : v).trim().toLowerCase(); return MOTIFS.indexOf(m) >= 0 ? m : ""; }
 
-  /* Size of a level in the layout: each level down is 0.6x the one above, so the tree can keep branching. */
+  /* On-screen size of a level: each level down reads smaller, so a zoomed-out cloud stays on subjects and major branches. */
   function levelScale(depth) { return Math.pow(0.6, Math.max(0, depth - 1)); }
 
-  /*
-   * Deterministic 3D layout: subjects on a sphere; every child sits on a small cone pointing away from its parent,
-   * one level smaller each step. Path steps fan out in their learning order.
-   */
+  /* Deterministic 3D layout: subjects keep their slots. Children share an outward ring; deeper levels sit further out. Parent ids are never touched. */
   /*
    * A subject's fixed slot round the root, by its place among the subjects (creation order). The first 6 are the
    * original golden spiral; subjects 7-12 take their own in-between spiral. Past 12 there is no cap: subjects fill
@@ -866,7 +863,6 @@
       var n = cloud.nodes[cur.id];
       var order = n.path ? n.path.ids.filter(function (x) { return kidsIds.indexOf(x) >= 0; }) : [];
       var basis = perp(cur.dir);
-      var step = 0.42 * levelScale(P.d + 1) / 0.6;
       var a0 = hash(n.key + "fan") * Math.PI * 2;
       var rank = {};
       kidsIds.forEach(function (x, ri) { rank[x] = ri; }); /* creation order among siblings: append-only, so rings never reshuffle */
@@ -874,30 +870,34 @@
       kidsIds.forEach(function (cid) {
         var c = cloud.nodes[cid];
         if (c.role === "optional" && c.off && pos[c.off] && kidsIds.indexOf(c.off) >= 0) {
-          /* a side path sits just off its core step, a little further out */
-          var O = pos[c.off], dir = unit({ x: O.x - P.x, y: O.y - P.y, z: O.z - P.z }), b2 = perp(dir), a2 = hash(c.key + "side") * Math.PI * 2, sd = step * 0.55 * (c.absorbedInto === cur.id ? 0.5 : 1);
-          var so = { x: dir.x * 0.5 + (b2[0].x * Math.cos(a2) + b2[1].x * Math.sin(a2)) * 0.85, y: dir.y * 0.5 + (b2[0].y * Math.cos(a2) + b2[1].y * Math.sin(a2)) * 0.85, z: dir.z * 0.5 + (b2[0].z * Math.cos(a2) + b2[1].z * Math.sin(a2)) * 0.85 };
-          var sq = { x: O.x + so.x * sd, y: O.y + so.y * sd, z: O.z + so.z * sd, d: P.d + 1 };
+          /* a side path sits just beside its core step, a little further out along the same branch */
+          var O = pos[c.off], u = unit(O), b2 = perp(u), a2 = hash(c.key + "side") * Math.PI * 2, sd = 0.32 * (c.absorbedInto === cur.id ? 0.55 : 1);
+          var sq = {
+            x: O.x + u.x * 0.2 + (b2[0].x * Math.cos(a2) + b2[1].x * Math.sin(a2)) * sd,
+            y: O.y + u.y * 0.2 + (b2[0].y * Math.cos(a2) + b2[1].y * Math.sin(a2)) * sd,
+            z: O.z + u.z * 0.2 + (b2[0].z * Math.cos(a2) + b2[1].z * Math.sin(a2)) * sd,
+            d: P.d + 1
+          };
           pos[cid] = sq;
-          stack.push({ id: cid, dir: unit({ x: sq.x - P.x, y: sq.y - P.y, z: sq.z - P.z }) });
+          stack.push({ id: cid, dir: unit(sq) });
           return;
         }
-        var oi = order.indexOf(cid);
-        /* no cap on children: every RING more (by creation rank) sits on a wider, further ring of the cone, spread by the
-           golden angle of its rank (the first ring keeps its old placement, so old saves look the same) */
+        /* no cap on children: every RING more (by creation rank) sits on the next larger ring, still outward.
+           The golden angle of the rank keeps each sibling on that shared ring, and a new one never moves the rest. */
         var ring = Math.floor(rank[cid] / RING);
-        var a = oi >= 0 ? a0 + oi * (Math.PI * 2 / Math.max(order.length + 1, 5)) : ring ? a0 + rank[cid] * 2.39996323 : hash(c.key + "a") * Math.PI * 2;
-        var theta = 0.7 + (c.ghost ? 0.2 : 0) + hash(c.key + "t") * 0.25 + Math.min(0.35, ring * 0.12);
-        /* absorbed into this (merged) parent: a tighter constellation round it */
-        var s = step * (c.ghost ? 1.12 : 1) * (c.absorbedInto === cur.id ? 0.45 : 1) * (1 + 0.55 * ring);
-        var off = {
-          x: cur.dir.x * Math.cos(theta) + (basis[0].x * Math.cos(a) + basis[1].x * Math.sin(a)) * Math.sin(theta),
-          y: cur.dir.y * Math.cos(theta) + (basis[0].y * Math.cos(a) + basis[1].y * Math.sin(a)) * Math.sin(theta),
-          z: cur.dir.z * Math.cos(theta) + (basis[0].z * Math.cos(a) + basis[1].z * Math.sin(a)) * Math.sin(theta)
+        var a = a0 + (order.indexOf(cid) >= 0 ? order.indexOf(cid) : rank[cid]) * 2.39996323;
+        var ringR = 0.36 * (1 + 0.12 * ring);
+        var out = 0.58 + 0.08 * P.d + ring * 0.5;
+        if (c.absorbedInto === cur.id) { out *= 0.42; ringR *= 0.42; }
+        else if (c.ghost) { out *= 1.06; ringR *= 1.04; }
+        var q = {
+          x: P.x + cur.dir.x * out + (basis[0].x * Math.cos(a) + basis[1].x * Math.sin(a)) * ringR,
+          y: P.y + cur.dir.y * out + (basis[0].y * Math.cos(a) + basis[1].y * Math.sin(a)) * ringR,
+          z: P.z + cur.dir.z * out + (basis[0].z * Math.cos(a) + basis[1].z * Math.sin(a)) * ringR,
+          d: P.d + 1
         };
-        var q = { x: P.x + off.x * s, y: P.y + off.y * s, z: P.z + off.z * s, d: P.d + 1 };
         pos[cid] = q;
-        stack.push({ id: cid, dir: unit({ x: q.x - P.x, y: q.y - P.y, z: q.z - P.z }) });
+        stack.push({ id: cid, dir: unit(q) }); /* the next level continues away from the centre */
       });
     }
     return pos;

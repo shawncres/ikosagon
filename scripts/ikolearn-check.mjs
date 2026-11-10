@@ -164,7 +164,8 @@ const seeded = (name, t) => {
   ok(c.order.every((id) => pos[id] && Number.isFinite(pos[id].x + pos[id].y + pos[id].z) && pos[id].d === C.depthOf(c, id)), "layout: every node has a finite 3D position and depth");
   eq(C.layout(c)[halves.id], pos[halves.id], "layout is deterministic");
   const dist = (a, b) => Math.hypot(pos[a].x - pos[b].x, pos[a].y - pos[b].y, pos[a].z - pos[b].z);
-  ok(dist(halves.id, fr.id) < dist(fr.id, math.id), "layout: deeper levels sit closer to their parent");
+  const rad = (id) => Math.hypot(pos[id].x, pos[id].y, pos[id].z);
+  ok(rad(halves.id) > rad(fr.id) && rad(fr.id) > rad(math.id), "layout: deeper levels sit further from the centre than their parent");
   ok(C.levelScale(1) === 1 && C.levelScale(3) < C.levelScale(2), "levelScale shrinks per level");
 
   // caps and pruning
@@ -1176,12 +1177,13 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
    * Honest add lines, near-duplicate placement, subject-bounded paths and the depth cap need about 8 KB raw / 2 KB gzip.
    * Cloud-first start, ghost placeholders and the zoom list need about 10 KB raw / 2 KB gzip.
    * The optional start layer (a greeting, a name, and a few interests on the cloud) needs about 10 KB raw / 3 KB gzip.
+   * Outward rings plus the focus list's search, sort and filter need about 2 KB raw. Gzip stays inside 148 KB.
    */
   const files = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js", "rank.js", "orchestrator.js", "camera.js", "profiles.js", "icon.svg"];
   const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
   const bytes = files.reduce((n, f) => n + served(f).length, 0);
   const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
-  ok(bytes < 444_000, "app weight under 444 KB uncompressed (served, minified)", String(bytes));
+  ok(bytes < 446_000, "app weight under 446 KB uncompressed (served, minified)", String(bytes));
   ok(gz < 148_000, "app weight under 148 KB gzipped (served, minified)", String(gz));
 }
 
@@ -4312,7 +4314,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/id="you-hint" class="you-hint" hidden>tap to add your name</.test(htmlC) && /function wantsNameHint\(\)/.test(appC) && /c\.name === "You" && !C\.subjects\(c\)\.length/.test(appC), "first visit: a faint hint under You, hidden once renamed or a subject is added");
   ok(/state\.name = "You"/.test(appC) && /C\.create\("You"\)/.test(appC) && /el\.cs\.hidden = true/.test(appC) && /\+ add a subject/.test(viewC) && /aria-label="Add a subject, in your own words"/.test(htmlC) && !/id="cs-ex"[^>]*>[^<]/.test(htmlC), "empty cloud: land on the cloud, You plus one add-a-subject ghost, no static chips");
   ok(/function settleGhost\(id\)/.test(appC) && /C\.findClose\(state\.cloud, n\.label\)/.test(appC) && /P\.placeTopic\(state\.cloud, tp, parentId\)/.test(appC) && /c\.leaving = 1/.test(appC) && /function trimOffers\(ids\)/.test(appC) && /kids\.filter\(function \(c\) \{ return c\.ghost; \}\)\.slice\(3\)/.test(appC), "a tapped ghost uses placement and near-duplicate rules; unpicked ghosts fade and extras past three are not kept");
-  ok(/id="zoom-list"/.test(htmlC) && /role="listbox" aria-label="Topics"/.test(htmlC) && /function enterZoom\(id\)/.test(appC) && /cw \* 0\.22/.test(appC) && /function activateZoom\(id\)/.test(appC) && /C\.childrenOf\(state\.cloud, id\)\.length\) enterZoom\(id\)/.test(appC) && /else openLesson\(id\)/.test(appC) && /if \(state\.zoomId\) \{ exitZoom\(\); return; \}/.test(appC) && /ArrowDown/.test(appC), "zoom: the node moves left, children are a keyboard list, a choice opens the lesson or zooms in, zoom out returns to the cloud");
+  ok(/id="zoom-list"/.test(htmlC) && /role="listbox" aria-label="Topics"/.test(htmlC) && /function enterZoom\(id\)/.test(appC) && /parent on the left/.test(appC) && /pinParent\(/.test(appC) && /function activateZoom\(id\)/.test(appC) && /enterZoom\(id\); \/\* the same parent-left/.test(appC) && /openLesson\(id\)/.test(appC) && /if \(state\.zoomId\) \{ exitZoom\(\); return; \}/.test(appC) && /ArrowDown/.test(appC), "focus view: parent on the left, the selected node in focus, children are a keyboard list, zoom out returns to the cloud");
   ok(/function ensureTopicList\(\)/.test(appC) && /aria-label", "Topics"/.test(appC) && /Lesson level/.test(appC) && /subject=IkoLearn%20Feedback/.test(htmlC) && !/openPanel\(state\.lessonNode\)/.test(appC), "the Topics list, the lesson level and the feedback link stay; returning still does not open a topic card");
   ok(/kind: "rename"/.test(appC) && /call me/.test(appC) && /function renameLearner\(raw\)/.test(appC), "the centre node can be renamed by asking Iko");
   ok(/id="start-layer" class="start-layer" hidden role="region" aria-labelledby="sl-hi"/.test(htmlC) && /id="sl-hi" class="sl-hi">Hi\. I'm Iko\.</.test(htmlC) && /Keep it as You/.test(htmlC) && /id="sl-skip"/.test(htmlC) && /id="sl-ex" class="sl-ex" role="group" aria-label="Suggestions"><\/div>/.test(htmlC) && /id="sl-begin"/.test(htmlC), "start layer: one calm step on the cloud, a name, keep-as-You, interests, and empty suggestion chips");
@@ -4325,6 +4327,53 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/function cycleChips\(\)/.test(appC) && /slAt = \(slAt \+ 1\) % list\.length/.test(appC) && /aria-label", "Add " \+ t/.test(appC) && /el\.slIn\.value = \(v \? v \+ ", " : ""\) \+ t/.test(appC), "suggestion chips cycle gently and only add their words to the field");
   ok(/function closeStart\(opts\)/.test(appC) && /id="sl-skip"/.test(htmlC) && /localStorage\.setItem\(startLearnerKey\(\), "1"\)/.test(appC) && /C\.deserialize\(load\(LS\.cloud\)\)/.test(appC), "skip dismisses the layer without rewriting a saved cloud on load");
   ok(/\.start-layer \{/.test(cssC) && /@media \(max-width: 420px\) \{\n  \.start-layer \{ left: 8px; right: 64px;/.test(cssC) && /#sl-keep, #sl-skip, #sl-begin, \.sl-ex \.ex-chip \{ min-height: 44px; \}/.test(cssC) && /@media \(prefers-reduced-motion: reduce\) \{ \.sl-ex \.ex-chip \{ transition: none; \} \}/.test(cssC), "start layer fits a narrow screen, keeps 44px targets, and stays still when motion is reduced");
+}
+
+/* ---------- outward rings, focused list search / sort / filter ---------- */
+{
+  const ring = C.create("Sam", T0);
+  C.applyTopics(ring, [{ name: "Myths", signal: "curious", asSubject: true }], T0);
+  ["Gods", "Heroes", "Temples", "Rites"].forEach((name, i) => C.applyTopics(ring, [{ name, parent: "Myths", signal: "explored" }], T0 + 1 + i));
+  let parent = "Gods";
+  for (let i = 0; i < 5; i++) {
+    const name = "Step " + (i + 1);
+    C.applyTopics(ring, [{ name, parent, signal: "explored" }], T0 + 20 + i);
+    parent = name;
+  }
+  const parents = {};
+  ring.order.forEach((id) => { parents[id] = ring.nodes[id].parent; });
+  const lay = C.layout(ring);
+  const radius = (id) => Math.hypot(lay[id].x, lay[id].y, lay[id].z);
+  ok(ring.order.every((id) => ring.nodes[id].parent === parents[id]), "ring layout does not change the data's parent ids");
+  ok(ring.order.every((id) => {
+    const n = ring.nodes[id];
+    return !n.parent || !lay[n.parent] || radius(id) > radius(n.parent) + 0.02;
+  }), "ring layout keeps every child outward of its parent");
+  const myth = C.findSubject(ring, "Myths");
+  const sib = C.childrenOf(ring, myth.id);
+  const dists = sib.map((s) => Math.hypot(lay[s.id].x - lay[myth.id].x, lay[s.id].y - lay[myth.id].y, lay[s.id].z - lay[myth.id].z));
+  const mean = dists.reduce((a, b) => a + b, 0) / dists.length;
+  ok(sib.length === 4 && dists.every((d) => Math.abs(d - mean) < 0.05), "siblings share one ring", dists.map((d) => d.toFixed(3)).join(","));
+  ok(C.depthOf(ring, C.findTopic(ring, "Step 5").id) >= 6, "the fixture reaches five levels below the subject");
+  const gods = C.findTopic(ring, "Gods");
+  gods.touched = T0 + 50; C.findTopic(ring, "Heroes").touched = T0 + 10;
+  C.findTopic(ring, "Temples").mastery = 0.9; C.findTopic(ring, "Rites").mastery = 0.1;
+  const recent = P.listTopics(ring, myth.id, { sort: "recent" });
+  eq(recent.items.map((n) => n.label).slice(0, 2), ["Gods", "Heroes"], "listTopics recent: newest touch first");
+  const alpha = P.listTopics(ring, myth.id, { sort: "alpha" });
+  eq(alpha.items.map((n) => n.label), ["Gods", "Heroes", "Rites", "Temples"], "listTopics alphabetical");
+  const prog = P.listTopics(ring, myth.id, { sort: "progress" });
+  eq(prog.items[0].label, "Temples", "listTopics progress: the furthest along leads");
+  const found = P.listTopics(ring, myth.id, { q: "her" });
+  eq(found.items.map((n) => n.label), ["Heroes"], "listTopics search matches the label");
+  eq(P.listTopics(ring, myth.id, { q: "zzzz" }).items, [], "listTopics search with no matches is an empty list");
+  const page = P.listTopics(ring, null, { all: true, size: 3, page: 1, sort: "alpha" });
+  ok(page.total > 3 && page.items.length === 3 && page.page === 1 && page.pages > 1, "listTopics paginates a large set", JSON.stringify({ total: page.total, n: page.items.length, pages: page.pages }));
+  const deep = C.findTopic(ring, "Step 5");
+  const all = P.listTopics(ring, null, { all: true, q: "step 5" });
+  ok(all.items.some((n) => n.id === deep.id), "listTopics can reach a node five levels down");
+  const appL = fs.readFileSync("public/ikolearn/app.js", "utf8");
+  ok(/No matches\./.test(appL) && /No topics yet\./.test(appL) && /Search topics/.test(appL) && /Completed filter/.test(appL) && /P\.listTopics\(/.test(appL), "the topics panel and the focus list share search, sort, the completed filter, and empty states");
 }
 
 /* ---------- cloud audio off by default (the bed stays in sound.js; nothing plays) ---------- */

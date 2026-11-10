@@ -54,7 +54,7 @@
   };
   var reduceMotion = window.matchMedia ? window.matchMedia("(prefers-reduced-motion: reduce)") : null;
 
-  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], queued: null, pick: null, glide: null, view: null, dirForm: null, dirText: "", allDone: false, seen: { c: {}, ev: 0 }, ex: { list: [], growth: [], at: 0, gat: 0, status: "idle" }, zoomId: null, zoomAt: 0 };
+  var state = { name: "", cloud: null, thread: [], notes: {}, lessons: {}, busy: false, focus: null, panelNode: null, lessonNode: null, lessonAt: 0, revealed: false, lifted: 0, session: null, quiz: null, tests: {}, test: null, mode: "lesson", bridgeQueue: [], queued: null, pick: null, glide: null, view: null, dirForm: null, dirText: "", allDone: false, seen: { c: {}, ev: 0 }, ex: { list: [], growth: [], at: 0, gat: 0, status: "idle" }, zoomId: null, zoomAt: 0, zoomQ: "", zoomSort: "recent", zoomDone: "", zoomPage: 0, topicQ: "", topicSort: "recent", topicDone: "", topicPage: 0 };
   var mini = null, big = null;
 
   /* ---------- storage ---------- */
@@ -3546,8 +3546,50 @@
     el.topicNav.hidden = true;
     if (el.topicBtn) el.topicBtn.setAttribute("aria-expanded", "false");
   }
+  /* Search, sort and the completed filter. The caret stays put while the field is being typed in. */
+  function listTools(prefix, st, redraw) {
+    var bar = mk("div", "list-tools");
+    var typing = document.activeElement && document.activeElement.id === prefix + "-q";
+    var caret = typing ? document.activeElement.selectionStart : 0;
+    var s = mk("input", "list-q");
+    s.type = "search"; s.id = prefix + "-q"; s.placeholder = "Search"; s.setAttribute("aria-label", "Search topics"); s.value = st.q || "";
+    s.addEventListener("input", function () { st.q = s.value; st.page = 0; redraw(); });
+    var sort = mk("select", "list-sort");
+    sort.id = prefix + "-sort"; sort.setAttribute("aria-label", "Sort topics");
+    [["recent", "Recent"], ["alpha", "Alphabetical"], ["progress", "Progress"]].forEach(function (x) {
+      var o = document.createElement("option"); o.value = x[0]; o.textContent = x[1]; if ((st.sort || "recent") === x[0]) o.selected = true; sort.appendChild(o);
+    });
+    sort.addEventListener("change", function () { st.sort = sort.value; st.page = 0; redraw(); });
+    var filt = mk("select", "list-filt");
+    filt.id = prefix + "-filt"; filt.setAttribute("aria-label", "Completed filter");
+    [["", "All"], ["open", "In progress"], ["done", "Finished"]].forEach(function (x) {
+      var o = document.createElement("option"); o.value = x[0]; o.textContent = x[1]; if ((st.done || "") === x[0]) o.selected = true; filt.appendChild(o);
+    });
+    filt.addEventListener("change", function () { st.done = filt.value; st.page = 0; redraw(); });
+    bar.appendChild(s); bar.appendChild(sort); bar.appendChild(filt);
+    bar.restore = function () { if (!typing) return; var inp = document.getElementById(prefix + "-q"); if (inp) { inp.focus(); try { inp.setSelectionRange(caret, caret); } catch (e) { /* old browsers */ } } };
+    return bar;
+  }
+  function topicQuery(parentId, st, all) {
+    var res = P.listTopics(state.cloud, parentId, { q: st.q, sort: st.sort || "recent", done: st.done || "", page: st.page || 0, size: 20, all: all });
+    st.page = res.page;
+    return res;
+  }
+  function listEmpty(st, res) {
+    return mk("p", "fine list-empty", (st.q || st.done) && !res.total ? "No matches." : "No topics yet.");
+  }
+  function listPager(st, res, redraw) {
+    if (res.pages < 2) return null;
+    var row = mk("div", "list-pager");
+    var prev = mk("button", "btn sm", "Previous"); prev.type = "button"; prev.disabled = res.page < 1;
+    prev.addEventListener("click", function () { st.page = Math.max(0, res.page - 1); redraw(); });
+    var next = mk("button", "btn sm", "More"); next.type = "button"; next.disabled = res.page >= res.pages - 1;
+    next.addEventListener("click", function () { st.page = res.page + 1; redraw(); });
+    row.appendChild(prev); row.appendChild(mk("span", "fine", (res.page + 1) + " of " + res.pages)); row.appendChild(next);
+    return row;
+  }
   function topicJump(n) {
-    var b = mk("button", "topic-jump-item", n.label);
+    var b = mk("button", "topic-open", "Open");
     b.type = "button";
     b.setAttribute("aria-label", "Open the lesson on " + n.label);
     b.addEventListener("click", function () {
@@ -3559,24 +3601,29 @@
   }
   function fillTopicList() {
     if (!el.topicNav) return;
+    var st = { q: state.topicQ, sort: state.topicSort, done: state.topicDone, page: state.topicPage };
     el.topicNav.textContent = "";
-    var ul = mk("ul");
-    var addBranch = function (parent, id, depth) {
-      if (depth > 4) return;
-      C.childrenOf(state.cloud, id).forEach(function (c) {
-        var li = mk("li");
-        li.appendChild(topicJump(c));
-        var sub = mk("ul");
-        addBranch(sub, c.id, depth + 1);
-        if (sub.childNodes.length) li.appendChild(sub);
-        parent.appendChild(li);
+    var tools = listTools("topic", st, function () { state.topicQ = st.q; state.topicSort = st.sort; state.topicDone = st.done; state.topicPage = st.page; fillTopicList(); });
+    el.topicNav.appendChild(tools);
+    var res = topicQuery(null, st, true);
+    state.topicPage = st.page;
+    if (!res.total) el.topicNav.appendChild(listEmpty(st, res));
+    else {
+      var ul = mk("ul");
+      res.items.forEach(function (n, i) {
+        var li = mk("li", "topic-row");
+        var name = mk("button", "topic-jump-item", n.label);
+        name.type = "button"; name.tabIndex = i === 0 ? 0 : -1;
+        name.addEventListener("click", function () { closeTopicList(); enterZoom(n.id); });
+        li.appendChild(name); li.appendChild(topicJump(n)); ul.appendChild(li);
       });
-    };
-    addBranch(ul, null, 0);
-    if (!ul.childNodes.length) el.topicNav.appendChild(mk("p", "fine", "No topics yet."));
-    else el.topicNav.appendChild(ul);
+      el.topicNav.appendChild(ul);
+      var pager = listPager(st, res, function () { state.topicPage = st.page; fillTopicList(); });
+      if (pager) el.topicNav.appendChild(pager);
+    }
+    tools.restore();
   }
-  /* A keyboard list of the same topics as the canvas. Choosing one opens that node's lesson. */
+  /* A keyboard list of the same topics as the canvas, with search, sort and a completed filter. Choosing a name focuses it; Open starts its lesson. */
   function ensureTopicList() {
     var host = el.cloud && el.cloud.querySelector(".top-r");
     if (!host || !state.cloud) return;
@@ -3598,10 +3645,17 @@
         if (open) { fillTopicList(); var b = el.topicNav.querySelector("button"); if (b) b.focus(); }
       });
       el.topicNav.addEventListener("keydown", function (e) {
-        if (e.key !== "Escape") return;
-        e.stopPropagation();
-        closeTopicList();
-        el.topicBtn.focus();
+        if (e.key === "Escape") { e.stopPropagation(); closeTopicList(); el.topicBtn.focus(); return; }
+        var items = [].slice.call(el.topicNav.querySelectorAll(".topic-jump-item"));
+        if (!items.length || (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Enter")) return;
+        var field = document.activeElement && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "SELECT");
+        if (field && e.key !== "ArrowDown") return;
+        e.preventDefault();
+        if (e.key === "Enter") { if (document.activeElement && document.activeElement.click) document.activeElement.click(); return; }
+        var i = Math.max(0, items.indexOf(document.activeElement));
+        var n = items[(i + (e.key === "ArrowDown" ? 1 : items.length - 1)) % items.length];
+        if (field) n = items[0];
+        if (n) n.focus();
       });
       host.insertBefore(el.topicBtn, host.firstChild);
       el.cloud.appendChild(el.topicNav);
@@ -3865,6 +3919,7 @@
     }, reduceMotion && reduceMotion.matches ? 0 : 640);
   }
   function zoomKids(id) { return id === "root" ? C.subjects(state.cloud) : C.childrenOf(state.cloud, id); }
+  function zoomState() { return { q: state.zoomQ, sort: state.zoomSort, done: state.zoomDone, page: state.zoomPage }; }
   function renderZoom() {
     if (!el.zoomList) return;
     var id = state.zoomId;
@@ -3873,20 +3928,38 @@
     var parent = id === "root" ? null : nodeOf(id);
     if (id !== "root" && !parent) { state.zoomId = null; el.zoomList.hidden = true; return; }
     el.zoomTitle.textContent = parent ? parent.label : state.cloud.name;
-    el.zoomKicker.textContent = parent ? (parent.parent ? "Topic" : "Subject") : "Your cloud";
+    el.zoomKicker.textContent = parent && parent.parent && nodeOf(parent.parent) ? nodeOf(parent.parent).label : parent ? "You" : "Your cloud";
+    var oldTools = el.zoomList.querySelector(".list-tools"); if (oldTools) oldTools.remove();
+    var oldEmpty = el.zoomList.querySelector(".list-empty"); if (oldEmpty) oldEmpty.remove();
+    var oldOpen = el.zoomList.querySelector(".zoom-open"); if (oldOpen) oldOpen.remove();
+    var oldPager = el.zoomList.querySelector(".list-pager"); if (oldPager) oldPager.remove();
+    var st = zoomState();
+    var tools = listTools("zoom", st, function () { state.zoomQ = st.q; state.zoomSort = st.sort; state.zoomDone = st.done; state.zoomPage = st.page; state.zoomAt = 0; renderZoom(); });
+    el.zoomTitle.insertAdjacentElement("afterend", tools);
+    if (id !== "root") {
+      var open = mk("button", "btn sm zoom-open", state.lessons[id] ? "Open lesson" : "Start a lesson");
+      open.type = "button";
+      open.addEventListener("click", function () { openLesson(id); });
+      var about = linkBtn("About", function () { var keep = id; exitZoom(); openPanel(keep); }, "link zoom-about");
+      var row = mk("div", "zoom-open"); row.appendChild(open); row.appendChild(about);
+      tools.insertAdjacentElement("afterend", row);
+    }
     el.zoomItems.textContent = "";
-    var kids = zoomKids(id);
-    var addOpt = function (i, label, ghost, go) {
-      var li = mk("li"), b = mk("button", ghost ? "ghost" : "", label);
-      b.type = "button"; b.id = "zoom-opt-" + i; b.setAttribute("role", "option");
+    var res = topicQuery(id, st, false);
+    state.zoomQ = st.q; state.zoomSort = st.sort; state.zoomDone = st.done; state.zoomPage = st.page;
+    if (!res.total) el.zoomItems.insertAdjacentElement("beforebegin", listEmpty(st, res));
+    else res.items.forEach(function (n, i) {
+      var li = mk("li"), b = mk("button", n.ghost ? "ghost" : "", n.label);
+      b.type = "button"; b.id = "zoom-opt-" + i; b.setAttribute("role", "option"); b.tabIndex = i === state.zoomAt ? 0 : -1;
       b.setAttribute("aria-selected", i === state.zoomAt ? "true" : "false");
-      b.addEventListener("click", go);
+      b.addEventListener("click", function () { state.zoomAt = i; activateZoom(n.id); });
       li.appendChild(b); el.zoomItems.appendChild(li);
-    };
-    if (!kids.length) addOpt(0, id === "root" ? "+ add a subject" : "Open the lesson", false, function () { if (id === "root") openAddSubject(); else openLesson(id); });
-    kids.forEach(function (n, i) { addOpt(i, n.label, n.ghost, function () { state.zoomAt = i; activateZoom(n.id); }); });
+    });
+    var pager = listPager(st, res, function () { state.zoomPage = st.page; state.zoomAt = 0; renderZoom(); });
+    if (pager) el.zoomList.appendChild(pager);
     var cur = el.zoomItems.querySelector('[aria-selected="true"]');
     if (cur) el.zoomItems.setAttribute("aria-activedescendant", cur.id);
+    tools.restore();
   }
   /* A pinch or scroll that comes in close opens the list. The + button does the same. Phones hide + and −. */
   function maybeZoomList() {
@@ -3900,14 +3973,18 @@
   }
   function enterZoom(id) {
     if (!big || (id !== "root" && !nodeOf(id))) return;
+    if (state.zoomId !== id) { state.zoomQ = ""; state.zoomPage = 0; state.zoomAt = 0; }
     state.zoomId = id;
-    state.zoomAt = 0;
     if (!el.panel.hidden) closeCard();
     renderZoom();
+    /* parent on the left, this node in focus, its children in the list. The camera eases. */
     var cw = el.cloudCanvas.clientWidth, ch = el.cloudCanvas.clientHeight, wide = cw >= 700, top = cloudTop();
+    var node = id === "root" ? null : nodeOf(id);
+    var parentId = node && node.parent ? node.parent : id === "root" ? null : "root";
     big.focusNode(id, wide
-      ? { cx: Math.round(cw * 0.22), cy: Math.round(top + (ch - top) * 0.42), aw: Math.round(cw * 0.32), ah: Math.round((ch - top) * 0.62), keepYaw: false }
-      : { cx: Math.round(Math.min(cw * 0.28, 120)), cy: Math.round(top + 64), aw: Math.round(cw * 0.46), ah: 110, keepYaw: false });
+      ? { cx: Math.round(cw * 0.34), cy: Math.round(top + (ch - top) * 0.46), aw: Math.round(cw * 0.34), ah: Math.round((ch - top) * 0.55), keepYaw: false }
+      : { cx: Math.round(Math.min(cw * 0.42, 150)), cy: Math.round(top + 78), aw: Math.round(cw * 0.5), ah: 120, keepYaw: false });
+    if (big.pinParent) big.pinParent(parentId);
     if (el.zoomItems) el.zoomItems.focus();
   }
   function exitZoom() {
@@ -3922,8 +3999,7 @@
     if (n.ghost) id = settleGhost(id);
     n = nodeOf(id);
     if (!n) return;
-    if (C.childrenOf(state.cloud, id).length) enterZoom(id);
-    else openLesson(id);
+    enterZoom(id); /* the same parent-left / children-right view, including a topic with no children yet */
   }
   function pick(hit) {
     if (hit.add) { openAddSubject(); return; }
@@ -3933,8 +4009,8 @@
       if (wantsNameHint()) startRename();
       else if (state.panelNode === "root" && !el.panel.hidden) startRename();
       else openPanel("root");
-    } else if (hit.node && hit.node.ghost) openPanel(settleGhost(hit.node.id));
-    else if (hit.node) openPanel(hit.node.id);
+    }     else if (hit.node && hit.node.ghost) enterZoom(settleGhost(hit.node.id));
+    else if (hit.node) enterZoom(hit.node.id);
   }
 
   /* keepNote: leave the note as is; keepView: don't move the camera. The note is never written by opening a panel (see below). */
@@ -4265,11 +4341,16 @@
   renderCloudHint();
   document.addEventListener("keydown", function (e) {
     if (state.zoomId && el.zoomList && !el.zoomList.hidden && el.zoomList.contains(document.activeElement) && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter")) {
-      var kids = zoomKids(state.zoomId), n = Math.max(1, kids.length);
+      var opts = [].slice.call(el.zoomItems.querySelectorAll('[role="option"]'));
+      var field = document.activeElement && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "SELECT");
+      if (field && e.key !== "ArrowDown") return;
+      if (!opts.length) return;
       if (e.key === "Enter") { e.preventDefault(); var b = el.zoomItems.querySelector('[aria-selected="true"]'); if (b) b.click(); return; }
       e.preventDefault();
-      state.zoomAt = (state.zoomAt + (e.key === "ArrowDown" ? 1 : n - 1)) % n;
+      if (field) { opts[0].focus(); return; }
+      state.zoomAt = (state.zoomAt + (e.key === "ArrowDown" ? 1 : opts.length - 1)) % opts.length;
       renderZoom();
+      var nxt = document.getElementById("zoom-opt-" + state.zoomAt); if (nxt) nxt.focus();
       return;
     }
     if (e.key !== "Escape") return;

@@ -41,7 +41,7 @@
       return false;
     }
     function slowNow(now) { return !mini && (now < nearUntil || Boolean(hoverAt && !gesture && nearAt(hoverAt.x, hoverAt.y))); }
-    var focusId = null, focusSet = {}, selectAt = 0; /* selectAt: when the focused node was picked (its ring eases in) */
+    var focusId = null, focusSet = {}, selectAt = 0, pairLeft = null, drawnRoot = null; /* selectAt: when the focused node was picked. pairLeft: drawn to the left of the focus. */
     /* the big cloud's idle spin (camera.js spinState): on only while the overlay is open (spinOn) and nothing covers it (spinHeld) */
     var spinOn = false, spinHeld = false, lastInput = 0, lastFrame = 0, spinning = false, spinFrom = 0, resumeTimer = 0;
     var doc = root.document;
@@ -153,7 +153,7 @@
       if (!best || bestN < 40) return null;
       var p = pos[best.id];
       if (!p) return;
-      var dx = p.x * 0.22, dy = p.y * 0.22, dz = p.z * 0.22;
+      var dx = p.x * 0.28, dy = p.y * 0.28, dz = p.z * 0.28;
       var ids = {};
       ids[best.id] = 1;
       c.order.forEach(function (id) { if (C.ancestry(c, id).indexOf(best.id) >= 0) ids[id] = 1; });
@@ -163,7 +163,7 @@
         q.x += dx; q.y += dy; q.z += dz;
         if (id !== best.id && c.nodes[id] && c.nodes[id].parent === best.id) {
           var ox = q.x - (p.x + dx), oy = q.y - (p.y + dy), oz = q.z - (p.z + dz);
-          q.x += ox * 0.18; q.y += oy * 0.18; q.z += oz * 0.18;
+          q.x += ox * 0.28; q.y += oy * 0.28; q.z += oz * 0.28;
         }
       });
       return best.id;
@@ -180,7 +180,7 @@
       focusId = id && cloud && cloud.nodes[id] ? id : null;
       if (focusId && focusId !== was) selectAt = performance.now();
       focusSet = {};
-      if (!focusId) return;
+      if (!focusId) { pairLeft = null; return; }
       C.ancestry(cloud, focusId).forEach(function (x) { focusSet[x] = 1; });
       var ix = C.index(cloud), level = [focusId];
       for (var d = 0; d < 2; d++) {
@@ -207,14 +207,16 @@
     /* How big a node's level reads on screen right now (1 = a subject at zoom 1). */
     function reads(id) { return zoom * C.levelScale(depth[id] || 1); }
 
-    /* Which nodes to draw: subjects and topics always (thumbnail: those only), deeper ones once their level is legible. */
+    /* Which nodes to draw. Zoomed out: subjects and their major branches. Finer topics appear once you zoom in or focus.
+       The focused view draws only the parent and the selected node; its children are the list beside the cloud. */
     function visibleIds(now) {
-      var cand = [];
+      var cand = [], zoomedOut = !mini && zoom <= 1.15;
       cloud.order.forEach(function (id) {
         var n = cloud.nodes[id], d = depth[id];
         if (!n || !pos[id]) return;
+        if (pairLeft && focusId && id !== focusId && id !== pairLeft) return;
         var fresh = highlight[id] && now - highlight[id] < 6000;
-        var show = mini ? d <= 2 || fresh : d <= 2 || reads(id) >= 0.3 || focusSet[id] || fresh || id === cloud.next;
+        var show = mini ? d <= 2 || fresh : (zoomedOut ? d <= 2 : d <= 2 || reads(id) >= 0.34) || focusSet[id] || fresh || id === cloud.next || id === pairLeft;
         if (!show) return;
         cand.push({ id: id, pri: (focusSet[id] ? 0 : 10) + (fresh ? 0 : 1) + d * 2 - Math.min(1.5, (n.weight || 0) / 10) });
       });
@@ -253,6 +255,13 @@
       var rootP = project(pos.root);
       var vis = visibleIds(now), items = [], at = { root: rootP };
       Object.keys(vis).forEach(function (id) { var p = project(pos[id]); at[id] = p; items.push({ n: cloud.nodes[id], p: p }); });
+      /* parent on the left of the selected node: screen placement only, the saved layout is unchanged */
+      if (pairLeft && focusId && at[focusId]) {
+        var fp = at[focusId], gap = Math.max(108, Math.min(180, w * 0.16));
+        var host = pairLeft === "root" ? rootP : at[pairLeft];
+        if (host) { host.x = fp.x - gap; host.y = fp.y; host.z = (fp.z || 0) + 12; }
+      }
+      drawnRoot = { x: rootP.x, y: rootP.y };
       extent = 0; for (var ei = 0; ei < items.length; ei++) extent = Math.max(extent, Math.hypot(items[ei].p.x - rootP.x, items[ei].p.y - rootP.y)); /* PR 109: the cloud's on-screen radius (caps the spin) */
       items.sort(function (a, b) { return b.p.z - a.p.z; });
       projected = items;
@@ -491,7 +500,7 @@
 
     function pick(x, y) {
       if (addMark && Math.hypot(addMark.x - x, addMark.y - y) < addMark.r) return { add: true };
-      var rp = project(pos.root);
+      var rp = drawnRoot || project(pos.root);
       /* the whole name plate picks the root, except right on a node peeking out from under it */
       var onPlate = hideRoot ? false : rootBox ? Math.abs(rp.x - x) <= rootBox.hw + 6 && Math.abs(rp.y - y) <= rootBox.hh + 6 : Math.hypot(rp.x - x, rp.y - y) < 22;
       for (var t = 0; t < testMarks.length; t++) if (Math.hypot(testMarks[t].x - x, testMarks[t].y - y) < 11) return { test: testMarks[t].id };
@@ -750,14 +759,16 @@
       lightRoot: function (on) { if (rootLit === Boolean(on)) return; rootLit = Boolean(on); request(); },
       /* the zoom buttons: a short eased zoom about the centre */
       zoomBy: function (k) { var v = view(), z = CAM.zoomAbout(v, k, null, w, h); animateTo({ zoom: z.zoom, panX: v.panX * (z.zoom / v.zoom), panY: v.panY * (z.zoom / v.zoom), yaw: v.yaw, pitch: v.pitch }, CAM.CAM.zoomMs); },
-      reset: function () { apply(Object.assign({ pivot: CAM.ORIGIN }, home)); tween = null; glideV = null; setFocus(null); request(); changed(); },
+      reset: function () { pairLeft = null; apply(Object.assign({ pivot: CAM.ORIGIN }, home)); tween = null; glideV = null; setFocus(null); request(); changed(); },
       /* Recentre: ease back to the whole cloud, the pivot back to the origin, and let go of the focus */
       recentre: function () { setFocus(null); animateTo(Object.assign({ pivot: CAM.ORIGIN }, home), CAM.CAM.focusMs); },
       state: function () { return { yaw: yaw, pitch: pitch, zoom: zoom, panX: panX, panY: panY, pivot: { x: pivot.x, y: pivot.y, z: pivot.z }, focus: focusId, drawn: projected.length, drawMs: drawMs, moving: Boolean(tween || glideV), spinning: spinning, near: slowNow(performance.now()), slow: slowK, extent: extent, held: spinHeld, vivid: vivid, fill: Object.assign({}, fill), fade: Object.assign({}, fadeK) }; },
       setView: function (v) { if (v.zoom) setZoom(v.zoom); if (v.yaw != null) yaw = v.yaw; if (v.pitch != null) pitch = v.pitch; if (v.panX != null) panX = v.panX; if (v.panY != null) panY = v.panY; if (v.pivot && isFinite(v.pivot.x) && isFinite(v.pivot.y) && isFinite(v.pivot.z)) pivot = { x: v.pivot.x, y: v.pivot.y, z: v.pivot.z }; if (v.focus !== undefined) setFocus(v.focus); request(); },
       project: function (id) { return pos[id] ? project(pos[id]) : null; },
       focusNode: focusNode,
-      clearFocus: function () { setFocus(null); request(); },
+      /* Focused view: draw this node (or the name) to the left of the node focusNode pinned. Null clears it. */
+      pinParent: function (id) { pairLeft = id && (id === "root" || pos[id]) ? id : null; request(); },
+      clearFocus: function () { pairLeft = null; setFocus(null); request(); },
       /* the name plate off the canvas (the opening question shows the name in the page, above the question) */
       rootHidden: function (on) { if (hideRoot === Boolean(on)) return; hideRoot = Boolean(on); request(); },
       addAt: function () { return addMark; }

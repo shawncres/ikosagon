@@ -506,6 +506,15 @@ body.start-open .cloud-hint { visibility: hidden; }
 .zoom-list [role="option"] { display: block; width: 100%; min-height: 44px; margin: 0; padding: 8px 12px; text-align: left; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .zoom-list [role="option"].ghost { font-style: italic; opacity: .72; }
 .zoom-list [role="option"][aria-selected="true"], .zoom-list [role="option"]:focus-visible { background: rgba(var(--ink-rgb), .08); outline: 2px solid var(--ink); outline-offset: -2px; }
+.list-tools { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.list-tools input, .list-tools select { font: inherit; font-size: 14px; color: var(--ink); background: var(--sheet); border: 1px solid var(--rule); border-radius: 8px; min-height: 44px; padding: 6px 8px; }
+.list-tools input { flex: 1 1 120px; min-width: 0; }
+.list-empty { margin: 8px 2px; color: var(--soft); }
+.list-pager { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.zoom-open { display: flex; align-items: center; gap: 12px; margin: 0 0 10px; }
+.topic-row { display: flex; align-items: center; gap: 4px; }
+.topic-row .topic-jump-item { flex: 1; }
+.topic-row .topic-open { flex: 0 0 auto; width: auto; min-height: 44px; padding: 8px 10px; }
 @media (max-width: 699px) { .zoom-list { left: 8px; right: 8px; top: auto; width: auto; max-height: 42vh; bottom: calc(18px + var(--foot-h, 44px) + var(--flow-h, 0px) + env(safe-area-inset-bottom)); } }
 /* the opening question (body.intake, placed by app.js placeStart): a still column; the name on its plate above the question */
 .cs-name { display: none; }
