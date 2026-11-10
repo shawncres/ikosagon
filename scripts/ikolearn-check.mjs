@@ -1175,13 +1175,14 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
    * Content-quality checks, hands-on safety notes, the topic list and the extra retries need about 8 KB raw / 2 KB gzip.
    * Honest add lines, near-duplicate placement, subject-bounded paths and the depth cap need about 8 KB raw / 2 KB gzip.
    * Cloud-first start, ghost placeholders and the zoom list need about 10 KB raw / 2 KB gzip.
+   * The optional start layer (a greeting, a name, and a few interests on the cloud) needs about 10 KB raw / 3 KB gzip.
    */
   const files = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js", "rank.js", "orchestrator.js", "camera.js", "profiles.js", "icon.svg"];
   const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
   const bytes = files.reduce((n, f) => n + served(f).length, 0);
   const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
-  ok(bytes < 432_000, "app weight under 432 KB uncompressed (served, minified)", String(bytes));
-  ok(gz < 145_000, "app weight under 145 KB gzipped (served, minified)", String(gz));
+  ok(bytes < 444_000, "app weight under 444 KB uncompressed (served, minified)", String(bytes));
+  ok(gz < 148_000, "app weight under 148 KB gzipped (served, minified)", String(gz));
 }
 
 /* ================= PR 108: QA polish ================= */
@@ -4307,13 +4308,23 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(C.findClose(dupCloud, "Basic Car Maintenance").label === "Car Maintenance" && C.topicCount(dupCloud) === 0, "a near-duplicate name finds the node already on the cloud and does not count as a new topic");
   const old = C.deserialize(fs.readFileSync("scripts/fixtures/ikolearn-cloud-v1.json", "utf8"));
   ok(old && old.name && old.order.length > 0 && C.subjects(old).length > 0, "an older saved cloud still loads with its subjects");
-  const appC = fs.readFileSync("public/ikolearn/app.js", "utf8"), htmlC = fs.readFileSync("public/ikolearn/index.html", "utf8"), viewC = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8");
+  const appC = fs.readFileSync("public/ikolearn/app.js", "utf8"), htmlC = fs.readFileSync("public/ikolearn/index.html", "utf8"), viewC = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8"), cssC = fs.readFileSync("public/ikolearn/styles.css", "utf8");
   ok(/id="you-hint" class="you-hint" hidden>tap to add your name</.test(htmlC) && /function wantsNameHint\(\)/.test(appC) && /c\.name === "You" && !C\.subjects\(c\)\.length/.test(appC), "first visit: a faint hint under You, hidden once renamed or a subject is added");
   ok(/state\.name = "You"/.test(appC) && /C\.create\("You"\)/.test(appC) && /el\.cs\.hidden = true/.test(appC) && /\+ add a subject/.test(viewC) && /aria-label="Add a subject, in your own words"/.test(htmlC) && !/id="cs-ex"[^>]*>[^<]/.test(htmlC), "empty cloud: land on the cloud, You plus one add-a-subject ghost, no static chips");
   ok(/function settleGhost\(id\)/.test(appC) && /C\.findClose\(state\.cloud, n\.label\)/.test(appC) && /P\.placeTopic\(state\.cloud, tp, parentId\)/.test(appC) && /c\.leaving = 1/.test(appC) && /function trimOffers\(ids\)/.test(appC) && /kids\.filter\(function \(c\) \{ return c\.ghost; \}\)\.slice\(3\)/.test(appC), "a tapped ghost uses placement and near-duplicate rules; unpicked ghosts fade and extras past three are not kept");
   ok(/id="zoom-list"/.test(htmlC) && /role="listbox" aria-label="Topics"/.test(htmlC) && /function enterZoom\(id\)/.test(appC) && /cw \* 0\.22/.test(appC) && /function activateZoom\(id\)/.test(appC) && /C\.childrenOf\(state\.cloud, id\)\.length\) enterZoom\(id\)/.test(appC) && /else openLesson\(id\)/.test(appC) && /if \(state\.zoomId\) \{ exitZoom\(\); return; \}/.test(appC) && /ArrowDown/.test(appC), "zoom: the node moves left, children are a keyboard list, a choice opens the lesson or zooms in, zoom out returns to the cloud");
   ok(/function ensureTopicList\(\)/.test(appC) && /aria-label", "Topics"/.test(appC) && /Lesson level/.test(appC) && /subject=IkoLearn%20Feedback/.test(htmlC) && !/openPanel\(state\.lessonNode\)/.test(appC), "the Topics list, the lesson level and the feedback link stay; returning still does not open a topic card");
   ok(/kind: "rename"/.test(appC) && /call me/.test(appC) && /function renameLearner\(raw\)/.test(appC), "the centre node can be renamed by asking Iko");
+  ok(/id="start-layer" class="start-layer" hidden role="region" aria-labelledby="sl-hi"/.test(htmlC) && /id="sl-hi" class="sl-hi">Hi\. I'm Iko\.</.test(htmlC) && /Keep it as You/.test(htmlC) && /id="sl-skip"/.test(htmlC) && /id="sl-ex" class="sl-ex" role="group" aria-label="Suggestions"><\/div>/.test(htmlC) && /id="sl-begin"/.test(htmlC), "start layer: one calm step on the cloud, a name, keep-as-You, interests, and empty suggestion chips");
+  const sl = htmlC.slice(htmlC.indexOf('id="start-layer"'), htmlC.indexOf('id="you-hint"'));
+  ok(sl.length > 80 && !/\b(age|years old|parent|kid|child|grade)\b/i.test(sl), "start layer: no age question and no parent framing");
+  ok(/function wantsStartLayer\(\)/.test(appC) && /c\.named \|\| c\.name !== "You"/.test(appC) && /if \(C\.subjects\(c\)\.length\) return false;/.test(appC) && /function startDismissed\(\)/.test(appC), "start layer: hidden for a learner who already has a name, a subject, or who skipped");
+  ok(/!startLayerOpen\(\)/.test(appC) && /function wantsNameHint\(\)/.test(appC), "the name hint stays hidden while the start layer is open");
+  ok(/function submitStart\(/.test(appC) && /renameLearner\(name\)/.test(appC) && /buildCloud\("start", interests, interests\.join\(", "\)\)/.test(appC) && /P\.placeTopic\(state\.cloud, \{ name: label, signal: "curious", placement: "parent", target: "" \}, null\)/.test(appC) && /C\.findClose\(state\.cloud, label\)/.test(appC) && /n\.ghost = true;\n      n\.awaiting = 1;/.test(appC), "submit: the centre updates at once, interests show as pending nodes, then the existing creation step with placement and near-duplicate rules");
+  ok(/function onStartSettled\(ok\)/.test(appC) && /startTry < 1/.test(appC) && /buildCloud\("start", asked, asked\.join\(", "\)\)/.test(appC) && /P\.addLine\(l, "failed", ""\)/.test(appC), "a failed start says what was not added and retries once");
+  ok(/function cycleChips\(\)/.test(appC) && /slAt = \(slAt \+ 1\) % list\.length/.test(appC) && /aria-label", "Add " \+ t/.test(appC) && /el\.slIn\.value = \(v \? v \+ ", " : ""\) \+ t/.test(appC), "suggestion chips cycle gently and only add their words to the field");
+  ok(/function closeStart\(opts\)/.test(appC) && /id="sl-skip"/.test(htmlC) && /localStorage\.setItem\(startLearnerKey\(\), "1"\)/.test(appC) && /C\.deserialize\(load\(LS\.cloud\)\)/.test(appC), "skip dismisses the layer without rewriting a saved cloud on load");
+  ok(/\.start-layer \{/.test(cssC) && /@media \(max-width: 420px\) \{\n  \.start-layer \{ left: 8px; right: 64px;/.test(cssC) && /#sl-keep, #sl-skip, #sl-begin, \.sl-ex \.ex-chip \{ min-height: 44px; \}/.test(cssC) && /@media \(prefers-reduced-motion: reduce\) \{ \.sl-ex \.ex-chip \{ transition: none; \} \}/.test(cssC), "start layer fits a narrow screen, keeps 44px targets, and stays still when motion is reduced");
 }
 
 /* ---------- cloud audio off by default (the bed stays in sound.js; nothing plays) ---------- */

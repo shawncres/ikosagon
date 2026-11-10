@@ -467,6 +467,35 @@ button.gcard:hover { border-color: var(--soft); }
 .cloud-start.busy .cs-ex { display: none; }
 .cs-status { margin: 8px 0 0; font-size: 14px; font-style: italic; color: var(--soft); }
 .you-hint { position: absolute; z-index: 2; margin: 0; transform: translate(-50%, 0); font-size: 13px; font-style: italic; color: var(--soft); opacity: .55; pointer-events: none; white-space: nowrap; }
+/* a thin first moment on the cloud: Iko's greeting, a name, and one to three interests. The cloud stays underneath. */
+.start-layer { position: absolute; z-index: 6; left: calc(50% - 28px); bottom: calc(58px + env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(440px, calc(100% - 76px)); max-height: min(58vh, 430px); overflow: auto; -webkit-overflow-scrolling: touch; }
+.start-layer[hidden] { display: none; }
+body.start-open .cloud-hint { visibility: hidden; }
+.sl-card { box-sizing: border-box; padding: 12px 14px 10px; background: color-mix(in srgb, var(--paper) 94%, transparent); border: 1px solid var(--rule); border-radius: 16px; box-shadow: 0 10px 28px rgba(var(--shadow-rgb), .14); }
+.sl-ask { margin: 0 0 8px; }
+.sl-ask .say { min-width: 0; flex: 1; margin-bottom: 0; }
+.sl-hi { margin: 0 0 2px; font-size: 15px; }
+.sl-q { margin: 0; font-size: 15px; line-height: 1.4; }
+.sl-card label { display: block; margin: 8px 0 4px; font-size: 13px; color: var(--soft); }
+.sl-name { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+.sl-name label { flex: 1 0 100%; }
+.sl-card input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; font: inherit; font-size: 16px; padding: 8px 14px; border: 1px solid var(--rule); border-radius: 999px; background: var(--sheet); color: var(--ink); }
+.sl-name input { flex: 1 1 140px; width: auto; }
+.sl-name input:disabled { opacity: .55; }
+#sl-keep, #sl-skip, #sl-begin, .sl-ex .ex-chip { min-height: 44px; }
+#sl-keep.on { color: var(--ink); }
+.sl-hint, .sl-status { margin: 6px 0 0; font-size: 13px; font-style: italic; color: var(--soft); }
+.sl-status:empty { display: none; }
+.sl-ex { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.sl-ex .ex-chip { transition: opacity .45s ease; }
+.sl-ex.sl-dim .ex-chip { opacity: .35; }
+.sl-acts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; position: sticky; bottom: 0; padding-top: 6px; background: color-mix(in srgb, var(--paper) 96%, transparent); }
+@media (max-width: 420px) {
+  .start-layer { left: 8px; right: 64px; width: auto; transform: none; max-height: min(70vh, 560px); }
+  .sl-card { padding: 10px 12px 8px; }
+  .sl-q { font-size: 14.5px; }
+}
+@media (prefers-reduced-motion: reduce) { .sl-ex .ex-chip { transition: none; } }
 .name-edit, .add-sub { position: absolute; z-index: 4; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; transform: translate(-50%, 0); width: min(340px, calc(100% - 24px)); }
 .name-edit input, .add-sub input { font: inherit; font-size: 16px; min-height: 44px; min-width: 0; flex: 1; padding: 8px 14px; border: 1px solid var(--rule); border-radius: 999px; background: var(--sheet); color: var(--ink); }
 .add-status { flex-basis: 100%; margin: 0; text-align: center; font-size: 13px; font-style: italic; color: var(--soft); }

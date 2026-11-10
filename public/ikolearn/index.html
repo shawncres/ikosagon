@@ -140,6 +140,33 @@
         
         <p id="cs-status" class="cs-status" aria-live="polite"></p>
       </div>
+      <div id="start-layer" class="start-layer" hidden role="region" aria-labelledby="sl-hi">
+        <div class="sl-card">
+          <div class="iko-ask sl-ask">
+            <span class="iko-still" aria-hidden="true"><svg class="iko-pebble" viewBox="0 0 64 56" width="36" height="32" aria-hidden="true" focusable="false"><path class="iko-body" d="M32 4C49 4 60 14 60 29C60 44 48 52 31 52C15 52 4 44 4 30C4 15 16 4 32 4Z"/><path class="iko-shine" d="M17 15C21 11 26 10 30 10"/><g class="iko-face"><circle class="iko-eye" cx="24" cy="28" r="2.4"/><circle class="iko-eye" cx="40" cy="28" r="2.4"/><path class="iko-mouth" d="M28 36Q32 39 36 36"/></g></svg></span>
+            <div class="say">
+              <p id="sl-hi" class="sl-hi">Hi. I'm Iko.</p>
+              <p id="sl-q" class="sl-q">Your cloud is open, with you in the centre. A first name, if you'd like one, and one to three things to start with.</p>
+            </div>
+          </div>
+          <form id="sl-form" class="sl-form" autocomplete="off">
+            <div class="sl-name">
+              <label for="sl-name" id="sl-name-lab">First name</label>
+              <input id="sl-name" maxlength="30" autocomplete="given-name" placeholder="Your first name" aria-describedby="sl-keep">
+              <button type="button" id="sl-keep" class="link" aria-pressed="false">Keep it as You</button>
+            </div>
+            <label for="sl-in" id="sl-in-lab">Starting interests</label>
+            <input id="sl-in" maxlength="120" placeholder="In your own words" aria-describedby="sl-hint">
+            <p id="sl-hint" class="sl-hint">One to three is plenty. Type your own, or tap a suggestion.</p>
+            <div id="sl-ex" class="sl-ex" role="group" aria-label="Suggestions"></div>
+            <div class="sl-acts">
+              <button type="submit" id="sl-begin" class="btn sm">Begin</button>
+              <button type="button" id="sl-skip" class="link">Skip for now</button>
+            </div>
+          </form>
+          <p id="sl-status" class="sl-status" role="status" aria-live="polite"></p>
+        </div>
+      </div>
       <p id="you-hint" class="you-hint" hidden>tap to add your name</p>
       <form id="name-edit" class="name-edit" hidden autocomplete="off"><input id="name-edit-in" maxlength="30" autocomplete="given-name" aria-label="Your name" placeholder="Your name"><button type="submit" class="btn sm">Save</button></form>
       <form id="add-sub" class="add-sub" hidden autocomplete="off"><input id="add-sub-in" maxlength="300" placeholder="In your own words" aria-label="Add a subject, in your own words"><button type="submit" class="btn sm">Add</button><p id="add-status" class="add-status" role="status"></p></form>
