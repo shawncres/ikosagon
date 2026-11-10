@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // The enhance route loads these with require() at runtime. Trace them into the function so a real file can be enhanced.
+  outputFileTracingIncludes: {
+    "/api/ikolearn/enhance": ["./public/ikolearn/enhance.js", "./public/ikolearn/cloud-model.js"],
+  },
   // IkoReadTube is a standalone static page in public/ikoreadtube/ (no site nav/chrome). Make the bare folder URLs serve its index.
   async rewrites() {
     return [
