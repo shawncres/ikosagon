@@ -1177,14 +1177,14 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
    * Honest add lines, near-duplicate placement, subject-bounded paths and the depth cap need about 8 KB raw / 2 KB gzip.
    * Cloud-first start, ghost placeholders and the zoom list need about 10 KB raw / 2 KB gzip.
    * The optional start layer (a greeting, a name, and a few interests on the cloud) needs about 10 KB raw / 3 KB gzip.
-   * Outward rings plus the focus list's search, sort and filter need about 2 KB raw. Gzip stays inside 148 KB.
+   * Outward rings, the focus list, the settings menu, Ikosagon and the font picker need about 8 KB raw / 2 KB gzip.
    */
   const files = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js", "rank.js", "orchestrator.js", "camera.js", "profiles.js", "icon.svg"];
   const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
   const bytes = files.reduce((n, f) => n + served(f).length, 0);
   const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
-  ok(bytes < 446_000, "app weight under 446 KB uncompressed (served, minified)", String(bytes));
-  ok(gz < 148_000, "app weight under 148 KB gzipped (served, minified)", String(gz));
+  ok(bytes < 452_000, "app weight under 452 KB uncompressed (served, minified)", String(bytes));
+  ok(gz < 150_000, "app weight under 150 KB gzipped (served, minified)", String(gz));
 }
 
 /* ================= PR 108: QA polish ================= */
@@ -3912,18 +3912,18 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const css = fs.readFileSync("public/ikolearn/styles.css", "utf8"), th = fs.readFileSync("public/ikolearn/theme.js", "utf8");
   const block = (sel) => { const i = css.indexOf(sel + " {"); return i < 0 ? "" : css.slice(i, css.indexOf("}", i)); };
   const vars = (b) => Object.fromEntries([...b.matchAll(/--([\w-]+):\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
-  const light = vars(block(":root")), dark = vars(block('html[data-theme="dark"]'));
+  const light = vars(block(":root")), dark = vars(block('html[data-theme="dark"]')), iko = vars(block('html[data-theme="ikosagon"]'));
   const lum = (hex) => { const h = hex.replace("#", ""), c = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
   const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
   const pairs = [["ink", "paper"], ["ink", "sheet"], ["soft", "paper"], ["soft", "sheet"], ["paper", "ink"]];
-  for (const [nm, v] of [["light", light], ["dark", dark]]) {
+  for (const [nm, v] of [["light", light], ["dark", dark], ["ikosagon", iko]]) {
     const low = pairs.map(([a, b]) => [a + "/" + b, ratio(v[a], v[b])]).filter((p) => p[1] < 4.5);
     ok(low.length === 0, `theme ${nm}: text pairs (ink and soft on paper and sheet, a pressed chip) pass WCAG AA 4.5:1`, JSON.stringify(low));
   }
   ok(ratio(dark.ink, dark.paper) >= 4.5 && /who-opt\.on:hover/.test(css) && /\.btn\.on:hover:not\(:disabled\)[\s\S]{0,220}background-color: var\(--ink\)/.test(css), "theme dark: a selected pill (Learning for yourself) keeps ink on paper when hovered, WCAG AA", ratio(dark.ink, dark.paper).toFixed(2));
-  ok(["paper", "sheet", "ink", "soft", "rule", "fold", "ink-rgb", "shadow-rgb", "pebble", "pebble-face", "scrim"].every((k) => light[k] && dark[k]), "theme: every colour has a light and a dark value (custom properties)");
+  ok(["paper", "sheet", "ink", "soft", "rule", "fold", "ink-rgb", "shadow-rgb", "pebble", "pebble-face", "scrim"].every((k) => light[k] && dark[k] && iko[k]), "theme: every colour has a light, a dark and an Ikosagon value (custom properties)");
   ok(lum(dark.paper) > 0.004 && lum(dark.paper) < 0.02 && /^#(?!000)/.test(dark.paper), "theme dark: a deep warm brown paper, not black");
-  ok(!/#[0-9a-f]{3,8}\b/i.test(css.replace(block(":root"), "").replace(block('html[data-theme="dark"]'), "").replace(/rgba\((255, 255, 255|0, 0, 0|150, 110, 60)[^)]*\)/g, "")), "theme: no colour is written outside the two palettes (bar white and black washes)");
+  ok(!/#[0-9a-f]{3,8}\b/i.test(css.replace(block(":root"), "").replace(block('html[data-theme="dark"]'), "").replace(block('html[data-theme="ikosagon"]'), "").replace(/rgba\((255, 255, 255|0, 0, 0|150, 110, 60)[^)]*\)/g, "")), "theme: no colour is written outside the three palettes (bar white and black washes)");
   for (const f of ["index.html", "learners.html", "family.html", "privacy.html"]) {
     const h = fs.readFileSync("public/ikolearn/" + f, "utf8"), i = h.indexOf('setAttribute("data-theme"'), j = h.indexOf('<link rel="stylesheet"');
     ok(i > 0 && i < j && /localStorage\.getItem\("ikolearn-theme"\)/.test(h) && /prefers-color-scheme: dark/.test(h) && /<meta name="theme-color" content="#f3ead8">/.test(h) && /"#1e1712":"#f3ead8"/.test(h) && /<script src="\/ikolearn\/theme\.js"><\/script>/.test(h), `theme ${f}: set before the first paint (the saved choice, else the device), theme-color for both, theme.js loaded`);
@@ -3948,6 +3948,18 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(TH.forDark("hsla(120, 35%, 55%, 0.55)").startsWith("hsla(120, 26%,") && TH.forDark("#123456") === "#123456", "theme dark: placeholders keep their alpha; other colours pass through");
   TH.set(null);
   ok(!("ikolearn-theme" in store) && attrs["data-theme"] === "light", "theme: clearing the choice follows the device again");
+  TH.set("ikosagon");
+  ok(store["ikolearn-theme"] === "ikosagon" && attrs["data-theme"] === "ikosagon" && TH.night() && !TH.dark() && TH.BAR.ikosagon === "#000000", "theme: Ikosagon is a saved choice, neon on black, and can sit beside light and dark");
+  const fontStyle = {};
+  fake.document.documentElement.style = { setProperty: (k, v) => { fontStyle[k] = v; }, removeProperty: (k) => { delete fontStyle[k]; } };
+  TH.setFont("futura");
+  ok(store["ikolearn-font"] === "futura" && /Futura/.test(fontStyle["--font-ui"] || "") && TH.font() === "futura", "font: Futura is saved on this device and applied at once");
+  TH.setFont("palatino");
+  ok(store["ikolearn-font"] === "palatino" && /Palatino/.test(fontStyle["--font-ui"] || ""), "font: another face replaces Futura immediately");
+  TH.setFont("current");
+  ok(!("ikolearn-font" in store) && !fontStyle["--font-ui"] && TH.font() === "current", "font: Current clears the choice and returns to the default");
+  ok(/var FONT = "'Avenir Next'/.test(fs.readFileSync("public/ikolearn/cloud-view.js", "utf8")) && !/var\(--font-ui\)/.test(fs.readFileSync("public/ikolearn/cloud-view.js", "utf8")), "font: the cloud canvas keeps its own face");
+  ok(/id="settings-btn"/.test(fs.readFileSync("public/ikolearn/index.html", "utf8")) && /aria-label="Settings"/.test(fs.readFileSync("public/ikolearn/index.html", "utf8")) && /function fillSettings\(/.test(fs.readFileSync("public/ikolearn/app.js", "utf8")) && /Card and button sounds/.test(fs.readFileSync("public/ikolearn/app.js", "utf8")) && /IkoSound\.set\(v === "on"\)/.test(fs.readFileSync("public/ikolearn/app.js", "utf8")) && /Save \.ikolearn/.test(fs.readFileSync("public/ikolearn/app.js", "utf8")) && /cloneNode\(true\)/.test(fs.readFileSync("public/ikolearn/app.js", "utf8")) && !/name=/.test(fs.readFileSync("public/ikolearn/app.js", "utf8").slice(fs.readFileSync("public/ikolearn/app.js", "utf8").indexOf("function feedbackHref"), fs.readFileSync("public/ikolearn/app.js", "utf8").indexOf("function renderHomeNav"))), "settings: rename, sounds, a .ikolearn file, and feedback copied without the learner's name");
 }
 
 /* ================= PR 103: Iko at the bottom, read -> check -> earn, the deck, onboarding, the cloud ================= */

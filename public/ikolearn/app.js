@@ -3100,6 +3100,7 @@
     if (state.glide && nodeOf(state.glide)) { var gl = state.glide; state.glide = null; setTimeout(function () { revealNode(gl); }, 0); } /* a new parent: the camera glides to it, its card opens */
     renderCloudFlow();
     ensureTopicList();
+    ensureSettings();
     renderHomeNav();
     renderRet();
     renderIko();
@@ -3789,6 +3790,79 @@
     if (!keepView && !state.lessonNode) { renderDraw(); el.input.focus(); }
   }
 
+  function closeSettings() {
+    if (!el.settings) return;
+    el.settings.hidden = true;
+    if (el.settingsBtn) el.settingsBtn.setAttribute("aria-expanded", "false");
+  }
+  function choiceRow(label, opts, current, onPick) {
+    var g = mk("div", "place-opts"), paint;
+    g.setAttribute("role", "group"); g.setAttribute("aria-label", label);
+    opts.forEach(function (x) {
+      var b = linkBtn(x[1], function () { onPick(x[0]); paint(); }, "btn sm age-opt");
+      b.setAttribute("data-v", String(x[0]));
+      g.appendChild(b);
+    });
+    paint = function () { var cur = String(current()); g.querySelectorAll("button").forEach(function (b) { var on = b.getAttribute("data-v") === cur; b.setAttribute("aria-pressed", String(on)); b.classList.toggle("on", on); }); };
+    paint();
+    return g;
+  }
+  function fillSettings() {
+    var box = el.settings;
+    if (!box) return;
+    box.textContent = "";
+    box.appendChild(mk("h2", null, "Settings"));
+    box.appendChild(mk("p", "hc-ph", "Your name"));
+    box.appendChild(linkBtn("Rename " + ((state.cloud && state.cloud.name) || "You"), function () { closeSettings(); startRename(); }, "btn sm"));
+    box.appendChild(mk("p", "hc-ph", "Lesson level"));
+    box.appendChild(bandRow(function (b) { setBand(b); fillSettings(); }));
+    if (TH) {
+      box.appendChild(mk("p", "hc-ph", "Theme"));
+      box.appendChild(choiceRow("Theme", [["light", "Light"], ["dark", "Dark"], ["ikosagon", "Ikosagon"]], function () { return TH.saved() || TH.mode(); }, function (v) { TH.set(v); }));
+      box.appendChild(mk("p", "hc-ph", "Font"));
+      box.appendChild(choiceRow("Font", [["current", "Current"], ["futura", "Futura"], ["sans", "System"], ["palatino", "Palatino"]], function () { return TH.font(); }, function (v) { TH.setFont(v); }));
+      box.appendChild(mk("p", "hc-hint fine", "Futura, or the closest geometric sans on this device. Cloud labels stay as they are."));
+    }
+    box.appendChild(mk("p", "hc-ph", "Sounds"));
+    box.appendChild(choiceRow("Card and button sounds", [["on", "On"], ["off", "Off"]], function () { return window.IkoSound && IkoSound.on() ? "on" : "off"; }, function (v) { if (window.IkoSound) IkoSound.set(v === "on"); }));
+    box.appendChild(mk("p", "hc-hint fine", "Card and button sounds. The cloud stays quiet."));
+    box.appendChild(mk("p", "hc-ph", "Iko"));
+    box.appendChild(choiceRow("Iko verbosity", [["off", "Quiet"], ["on", "Brief"], ["more", "Chatty"]], hintsMode, setHints));
+    var st = mk("p", "fine ct-status"); st.setAttribute("role", "status"); st.setAttribute("aria-live", "polite");
+    box.appendChild(mk("p", "hc-ph", "Your file"));
+    var file = mk("p");
+    file.appendChild(linkBtn("Save .ikolearn", function () { exportCloud(st, ".ikolearn"); }, "btn sm"));
+    file.appendChild(document.createTextNode(" "));
+    file.appendChild(linkBtn("Open .ikolearn", function () { pickCloud(st); }, "btn sm"));
+    box.appendChild(file); box.appendChild(st);
+    box.appendChild(mk("p", "hc-ph", "About"));
+    var links = mk("p"), priv = document.querySelector('.cloud-foot a[href="/ikolearn/privacy"]'), fb = document.querySelector("a.fb-link");
+    if (priv) links.appendChild(priv.cloneNode(true));
+    links.appendChild(document.createTextNode(" · "));
+    if (fb) links.appendChild(fb.cloneNode(true));
+    box.appendChild(links);
+  }
+  function ensureSettings() {
+    if (el.settingsBtn) return;
+    el.settingsBtn = $("settings-btn");
+    if (!el.settingsBtn || !el.cloud) return;
+    el.settings = mk("div", "settings-menu");
+    el.settings.id = "settings-menu"; el.settings.hidden = true;
+    el.settings.setAttribute("role", "dialog"); el.settings.setAttribute("aria-label", "Settings");
+    el.cloud.appendChild(el.settings);
+    el.settingsBtn.addEventListener("click", function () {
+      if (!el.settings.hidden) { closeSettings(); return; }
+      closeTopicList();
+      fillSettings();
+      el.settings.hidden = false;
+      el.settingsBtn.setAttribute("aria-expanded", "true");
+      var b = el.settings.querySelector("button, a"); if (b) b.focus();
+    });
+    el.settings.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape") return;
+      e.stopPropagation(); closeSettings(); el.settingsBtn.focus();
+    });
+  }
   function wantsNameHint() {
     var c = state.cloud;
     return Boolean(c) && !c.named && c.name === "You" && !C.subjects(c).length && !startLayerOpen();
@@ -4138,7 +4212,7 @@
       panes.prefs.appendChild(mk("p", "hc-ph", "Appearance"));
       var tr = mk("div", "place-opts hc-theme"); tr.setAttribute("role", "group"); tr.setAttribute("aria-label", "Appearance");
       var paintTheme = function () { tr.querySelectorAll("button").forEach(function (b) { var on = (TH.saved() || "") === b.getAttribute("data-mode"); b.setAttribute("aria-pressed", String(on)); b.classList.toggle("on", on); }); };
-      [["light", "Light"], ["dark", "Dark"], ["", "Match device"]].forEach(function (x) {
+      [["light", "Light"], ["dark", "Dark"], ["ikosagon", "Ikosagon"], ["", "Match device"]].forEach(function (x) {
         var b = linkBtn(x[1], function () { TH.set(x[0] || null); paintTheme(); }, "btn sm age-opt"); b.setAttribute("data-mode", x[0]); tr.appendChild(b);
       });
       paintTheme(); panes.prefs.appendChild(tr);
@@ -4354,6 +4428,7 @@
       return;
     }
     if (e.key !== "Escape") return;
+    if (el.settings && !el.settings.hidden) { closeSettings(); return; }
     if (el.nameEdit && !el.nameEdit.hidden) { el.nameEdit.hidden = true; renderYouHint(); return; }
     if (el.addSub && !el.addSub.hidden) { el.addSub.hidden = true; return; }
     if (state.zoomId) { exitZoom(); return; }
@@ -4381,8 +4456,13 @@
   var iko = { open: false, ctx: null, from: 0, lineT: 0, tipKey: "", tipT: 0, pendingReact: null, quietAt: Date.now(), poolT: 0, poolN: 0, poolLast: "" };
   /* PR 126: mute Iko's proactive hints (pebble and chat stay). Preferences or "be quiet" / "mute hints". */
   var IKO_HINTS = "ikolearn-iko-hints";
-  function hintsOn() { try { return localStorage.getItem(IKO_HINTS) !== "off"; } catch (e) { return true; } }
-  function setHints(on) { try { localStorage.setItem(IKO_HINTS, on ? "on" : "off"); } catch (e) {} if (!on) { clearTimeout(iko.tipT); clearTimeout(iko.poolT); if (!el.ikoLine.hidden) ikoLine(""); } }
+  function hintsMode() { try { var v = localStorage.getItem(IKO_HINTS); return v === "off" || v === "more" ? v : "on"; } catch (e) { return "on"; } }
+  function hintsOn() { return hintsMode() !== "off"; }
+  function setHints(on) {
+    var v = on === "more" ? "more" : on === "off" || on === false ? "off" : "on";
+    try { localStorage.setItem(IKO_HINTS, v); } catch (e) {}
+    if (v === "off") { clearTimeout(iko.tipT); clearTimeout(iko.poolT); if (!el.ikoLine.hidden) ikoLine(""); }
+  }
   function ikoPop(kind) {
     if (!motionOK() || el.ikoWrap.hidden) return;
     var cls = kind === "earn" ? "react-earn" : kind === "grow" ? "react-grow" : "pop";
@@ -4698,7 +4778,7 @@
     lesson: { k: "aboutLesson", t: "This is a lesson: read it, check yourself with a few questions, then earn its card." },
     deck: { k: "aboutDeck", t: "This is your deck: every card you earn lives here, and it keeps growing as you learn." }
   };
-  function tipFresh(k) { return Date.now() - (Number(tipsShown()[k]) || 0) >= GAP; }
+  function tipFresh(k) { return Date.now() - (Number(tipsShown()[k]) || 0) >= (hintsMode() === "more" ? 30000 : GAP); }
   function tipAgain() { var k = iko.tipKey; if (k && !iko.open && tipFresh(k)) { clearTimeout(iko.tipT); iko.tipT = setTimeout(function () { showTip(k); }, 700); } }
   /* a hint stays until it is tapped away or the learner moves past its step (PR 105, PR 106) */
   function tipLine(t, id) {
@@ -5325,13 +5405,13 @@
     return d;
   }
   /* Save IkoCloud: this learner's whole cloud as [firstname].ikocloud (application/json, safe to email), made here and downloaded (0 calls) */
-  function exportCloud(st) {
+  function exportCloud(st, ext) {
     if (!T || !state.cloud) return;
     save();
     var f = T.build(localStorage, Date.now());
     if (!f) { st.textContent = "Your IkoCloud couldn't be saved just now."; return; }
     var url = URL.createObjectURL(new Blob([f.text], { type: "application/json" })), a = mk("a");
-    a.href = url; a.download = f.name; a.hidden = true;
+    a.href = url; a.download = ext ? f.name.replace(/\.ikocloud$/, ext) : f.name; a.hidden = true;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
     st.textContent = T.MSG.saved(f.name);
