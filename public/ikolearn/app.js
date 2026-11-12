@@ -3616,7 +3616,7 @@
         var li = mk("li", "topic-row");
         var name = mk("button", "topic-jump-item", n.label);
         name.type = "button"; name.tabIndex = i === 0 ? 0 : -1;
-        name.addEventListener("click", function () { closeTopicList(); enterZoom(n.id); });
+        name.addEventListener("click", function () { closeTopicList(); openPanel(n.id); });
         li.appendChild(name); li.appendChild(topicJump(n)); ul.appendChild(li);
       });
       el.topicNav.appendChild(ul);
@@ -3992,91 +3992,7 @@
       if (!changed) return;
       save();
       if (big) big.setCloud(state.cloud);
-      if (state.zoomId) renderZoom();
     }, reduceMotion && reduceMotion.matches ? 0 : 640);
-  }
-  function zoomKids(id) { return id === "root" ? C.subjects(state.cloud) : C.childrenOf(state.cloud, id); }
-  function zoomState() { return { q: state.zoomQ, sort: state.zoomSort, done: state.zoomDone, page: state.zoomPage }; }
-  function renderZoom() {
-    if (!el.zoomList) return;
-    var id = state.zoomId;
-    if (!id || el.cloud.hidden) { el.zoomList.hidden = true; return; }
-    el.zoomList.hidden = false;
-    var parent = id === "root" ? null : nodeOf(id);
-    if (id !== "root" && !parent) { state.zoomId = null; el.zoomList.hidden = true; return; }
-    el.zoomTitle.textContent = parent ? parent.label : state.cloud.name;
-    el.zoomKicker.textContent = parent && parent.parent && nodeOf(parent.parent) ? nodeOf(parent.parent).label : parent ? "You" : "Your cloud";
-    var oldTools = el.zoomList.querySelector(".list-tools"); if (oldTools) oldTools.remove();
-    var oldEmpty = el.zoomList.querySelector(".list-empty"); if (oldEmpty) oldEmpty.remove();
-    var oldOpen = el.zoomList.querySelector(".zoom-open"); if (oldOpen) oldOpen.remove();
-    var oldPager = el.zoomList.querySelector(".list-pager"); if (oldPager) oldPager.remove();
-    var st = zoomState();
-    var tools = listTools("zoom", st, function () { state.zoomQ = st.q; state.zoomSort = st.sort; state.zoomDone = st.done; state.zoomPage = st.page; state.zoomAt = 0; renderZoom(); });
-    el.zoomTitle.insertAdjacentElement("afterend", tools);
-    if (id !== "root") {
-      var open = mk("button", "btn sm zoom-open", state.lessons[id] ? "Open lesson" : "Start a lesson");
-      open.type = "button";
-      open.addEventListener("click", function () { openLesson(id); });
-      var about = linkBtn("About", function () { var keep = id; exitZoom(); openPanel(keep); }, "link zoom-about");
-      var row = mk("div", "zoom-open"); row.appendChild(open); row.appendChild(about);
-      tools.insertAdjacentElement("afterend", row);
-    }
-    el.zoomItems.textContent = "";
-    var res = topicQuery(id, st, false);
-    state.zoomQ = st.q; state.zoomSort = st.sort; state.zoomDone = st.done; state.zoomPage = st.page;
-    if (!res.total) el.zoomItems.insertAdjacentElement("beforebegin", listEmpty(st, res));
-    else res.items.forEach(function (n, i) {
-      var li = mk("li"), b = mk("button", n.ghost ? "ghost" : "", n.label);
-      b.type = "button"; b.id = "zoom-opt-" + i; b.setAttribute("role", "option"); b.tabIndex = i === state.zoomAt ? 0 : -1;
-      b.setAttribute("aria-selected", i === state.zoomAt ? "true" : "false");
-      b.addEventListener("click", function () { state.zoomAt = i; activateZoom(n.id); });
-      li.appendChild(b); el.zoomItems.appendChild(li);
-    });
-    var pager = listPager(st, res, function () { state.zoomPage = st.page; state.zoomAt = 0; renderZoom(); });
-    if (pager) el.zoomList.appendChild(pager);
-    var cur = el.zoomItems.querySelector('[aria-selected="true"]');
-    if (cur) el.zoomItems.setAttribute("aria-activedescendant", cur.id);
-    tools.restore();
-  }
-  /* A pinch or scroll that comes in close opens the list. The + button does the same. Phones hide + and −. */
-  function maybeZoomList() {
-    if (state.zoomId || state.zoomLock || !big) return;
-    var st = big.state();
-    if (!st || st.zoom < 1.55) return;
-    var id = state.panelNode && (state.panelNode === "root" || nodeOf(state.panelNode)) ? state.panelNode : (st.focus && (st.focus === "root" || nodeOf(st.focus)) ? st.focus : "root");
-    state.zoomLock = true;
-    enterZoom(id);
-    setTimeout(function () { state.zoomLock = false; }, 900);
-  }
-  function enterZoom(id) {
-    if (!big || (id !== "root" && !nodeOf(id))) return;
-    if (state.zoomId !== id) { state.zoomQ = ""; state.zoomPage = 0; state.zoomAt = 0; }
-    state.zoomId = id;
-    if (!el.panel.hidden) closeCard();
-    renderZoom();
-    /* parent on the left, this node in focus, its children in the list. The camera eases. */
-    var cw = el.cloudCanvas.clientWidth, ch = el.cloudCanvas.clientHeight, wide = cw >= 700, top = cloudTop();
-    var node = id === "root" ? null : nodeOf(id);
-    var parentId = node && node.parent ? node.parent : id === "root" ? null : "root";
-    big.focusNode(id, wide
-      ? { cx: Math.round(cw * 0.34), cy: Math.round(top + (ch - top) * 0.46), aw: Math.round(cw * 0.34), ah: Math.round((ch - top) * 0.55), keepYaw: false }
-      : { cx: Math.round(Math.min(cw * 0.42, 150)), cy: Math.round(top + 78), aw: Math.round(cw * 0.5), ah: 120, keepYaw: false });
-    if (big.pinParent) big.pinParent(parentId);
-    if (el.zoomItems) el.zoomItems.focus();
-  }
-  function exitZoom() {
-    if (!state.zoomId) return;
-    state.zoomId = null;
-    if (el.zoomList) el.zoomList.hidden = true;
-    if (big) big.recentre();
-  }
-  function activateZoom(id) {
-    var n = nodeOf(id);
-    if (!n) return;
-    if (n.ghost) id = settleGhost(id);
-    n = nodeOf(id);
-    if (!n) return;
-    enterZoom(id); /* the same parent-left / children-right view, including a topic with no children yet */
   }
   function pick(hit) {
     if (hit.add) { openAddSubject(); return; }
@@ -4086,8 +4002,8 @@
       if (wantsNameHint()) startRename();
       else if (state.panelNode === "root" && !el.panel.hidden) startRename();
       else openPanel("root");
-    }     else if (hit.node && hit.node.ghost) enterZoom(settleGhost(hit.node.id));
-    else if (hit.node) enterZoom(hit.node.id);
+    } else if (hit.node && hit.node.ghost) openPanel(settleGhost(hit.node.id));
+    else if (hit.node) openPanel(hit.node.id);
   }
 
   /* keepNote: leave the note as is; keepView: don't move the camera. The note is never written by opening a panel (see below). */
@@ -4402,39 +4318,16 @@
   el.pClose.addEventListener("click", closeCard);
   /* a click on any control over the cloud (zoom, Recentre, the card's actions, the suggestions) pauses the spin a moment */
   el.cloud.addEventListener("click", function (e) { if (big && e.target.closest && e.target.closest("button, a")) big.pause(); });
-  el.zin.addEventListener("click", function () {
-    moved("zoom");
-    if (state.zoomId) {
-      var kids = zoomKids(state.zoomId), cur = kids[state.zoomAt];
-      if (cur) activateZoom(cur.id);
-      return;
-    }
-    var id = state.panelNode && (state.panelNode === "root" || nodeOf(state.panelNode)) ? state.panelNode : "root";
-    enterZoom(id);
-  });
-  el.zout.addEventListener("click", function () { moved("zoom"); if (state.zoomId) { exitZoom(); return; } big.zoomBy(1 / 1.35); });
-  el.zreset.addEventListener("click", function () { if (state.zoomId) state.zoomId = null; if (el.zoomList) el.zoomList.hidden = true; big.recentre(); });
+  el.zin.addEventListener("click", function () { moved("zoom"); big.zoomBy(1.35); });
+  el.zout.addEventListener("click", function () { moved("zoom"); big.zoomBy(1 / 1.35); });
+  el.zreset.addEventListener("click", function () { big.recentre(); });
   /* one faint line documents the input map, for touch or for a mouse */
   renderCloudHint();
   document.addEventListener("keydown", function (e) {
-    if (state.zoomId && el.zoomList && !el.zoomList.hidden && el.zoomList.contains(document.activeElement) && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter")) {
-      var opts = [].slice.call(el.zoomItems.querySelectorAll('[role="option"]'));
-      var field = document.activeElement && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "SELECT");
-      if (field && e.key !== "ArrowDown") return;
-      if (!opts.length) return;
-      if (e.key === "Enter") { e.preventDefault(); var b = el.zoomItems.querySelector('[aria-selected="true"]'); if (b) b.click(); return; }
-      e.preventDefault();
-      if (field) { opts[0].focus(); return; }
-      state.zoomAt = (state.zoomAt + (e.key === "ArrowDown" ? 1 : opts.length - 1)) % opts.length;
-      renderZoom();
-      var nxt = document.getElementById("zoom-opt-" + state.zoomAt); if (nxt) nxt.focus();
-      return;
-    }
     if (e.key !== "Escape") return;
     if (el.settings && !el.settings.hidden) { closeSettings(); return; }
     if (el.nameEdit && !el.nameEdit.hidden) { el.nameEdit.hidden = true; renderYouHint(); return; }
     if (el.addSub && !el.addSub.hidden) { el.addSub.hidden = true; return; }
-    if (state.zoomId) { exitZoom(); return; }
     if (startLayerOpen()) { closeStart(); return; }
     if (el.ikc && !el.ikc.hidden) { confirmDone(false); return; } /* a confirm: Escape is Cancel */
     if (iko.open) { closeIko(); if (!el.ikoWrap.hidden) el.iko.focus(); return; }
@@ -5082,7 +4975,6 @@
   function moves() { try { return JSON.parse(localStorage.getItem("ikolearn-moves") || "{}") || {}; } catch { return {}; } }
   function movesDone() { var m = moves(); return Boolean(m.x || (m.drag && m.zoom)); }
   function moved(k) {
-    if (k === "zoom") maybeZoomList(); /* a pinch or scroll that comes in close opens the list (phones hide + and −) */
     var m = moves();
     if (m[k]) return;
     m[k] = 1;

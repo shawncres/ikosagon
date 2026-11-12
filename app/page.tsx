@@ -4,6 +4,7 @@ import { Hero } from "@/components/Hero";
 import { ProjectCard } from "@/components/ProjectCard";
 import { ProjectCardCover } from "@/components/ProjectCardCover";
 import { StartSmall } from "@/components/StartSmall";
+import { SHOW_IKOLEARN_TRAILER } from "@/lib/ikolearn-trailer";
 import { getFeaturedProjects } from "@/lib/projects";
 
 /** Title and description come from the root layout; the home page only sets its own canonical. */
@@ -64,15 +65,26 @@ export default async function Home() {
               </div>
             </div>
             <a href="https://ikolearn.com" aria-label="Open IkoLearn" className="group block overflow-hidden rounded-xl border border-border transition hover:border-accent">
-              <ProjectCardCover
-                cover="/projects/ikolearn/cover.png"
-                coverFit="cover"
-                coverLoop="/projects/ikolearn/card-loop.mp4"
-                coverLoopPoster="/projects/ikolearn/card-loop-poster.jpg"
-                title="IkoLearn"
-                className="aspect-[1600/840] h-auto w-full"
-                alt="IkoLearn: a short lesson with its card, a few cards to pick up next, and a learning cloud with subjects like Ocean Life, Astronomy, Music, Cooking and History."
-              />
+              {SHOW_IKOLEARN_TRAILER ? (
+                <ProjectCardCover
+                  cover="/projects/ikolearn/cover.png"
+                  coverFit="cover"
+                  coverLoop="/projects/ikolearn/card-loop.mp4"
+                  coverLoopPoster="/projects/ikolearn/card-loop-poster.jpg"
+                  title="IkoLearn"
+                  className="aspect-[1600/840] h-auto w-full"
+                  alt="IkoLearn: a short lesson with its card, a few cards to pick up next, and a learning cloud with subjects like Ocean Life, Astronomy, Music, Cooking and History."
+                />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element -- static public asset, same as project cards
+                <img
+                  src="/projects/ikolearn/cover.png"
+                  alt="IkoLearn: a short lesson with its card, a few cards to pick up next, and a learning cloud with subjects like Ocean Life, Astronomy, Music, Cooking and History."
+                  width={1600}
+                  height={840}
+                  className="h-auto w-full"
+                />
+              )}
             </a>
           </article>
         </div>

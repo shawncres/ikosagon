@@ -6,6 +6,7 @@ import { AudioPlaylist } from "@/components/AudioPlaylist";
 import { TalentIntakeChat } from "@/components/TalentIntakeChat";
 import { IkoAgentDemo } from "@/components/IkoAgentDemo";
 import { ProjectTrailer } from "@/components/ProjectTrailer";
+import { SHOW_IKOLEARN_TRAILER } from "@/lib/ikolearn-trailer";
 import { getAllProjects, getProjectBySlug, getProjects } from "@/lib/projects";
 
 type Params = { slug: string };
@@ -71,7 +72,7 @@ export default async function ProjectDetailPage({ params }: { params: Promise<Pa
       ) : null}
 
 
-      {isIkoLearn ? (
+      {isIkoLearn && SHOW_IKOLEARN_TRAILER ? (
         <ProjectTrailer
           src="/projects/ikolearn/trailer.mp4"
           poster="/projects/ikolearn/trailer-poster.webp"
