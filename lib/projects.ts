@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import matter from "gray-matter";
+import { SHOW_IKOLEARN_TRAILER } from "@/lib/ikolearn-trailer";
 
 const projectsDir = path.join(process.cwd(), "content", "projects");
 
@@ -118,9 +119,12 @@ export async function getAllProjects(): Promise<Project[]> {
         tags: Array.isArray(data.tags) ? data.tags.map(String) : [],
         cover: String(data.cover),
         coverFit: data.coverFit === "cover" ? "cover" : undefined,
-        coverLoop: typeof data.coverLoop === "string" && data.coverLoop.startsWith("/") ? data.coverLoop : undefined,
+        coverLoop:
+          SHOW_IKOLEARN_TRAILER && typeof data.coverLoop === "string" && data.coverLoop.startsWith("/")
+            ? data.coverLoop
+            : undefined,
         coverLoopPoster:
-          typeof data.coverLoopPoster === "string" && data.coverLoopPoster.startsWith("/")
+          SHOW_IKOLEARN_TRAILER && typeof data.coverLoopPoster === "string" && data.coverLoopPoster.startsWith("/")
             ? data.coverLoopPoster
             : undefined,
         ogImage: typeof data.ogImage === "string" && data.ogImage.startsWith("/") ? data.ogImage : undefined,
