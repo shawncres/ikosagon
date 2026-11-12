@@ -4419,8 +4419,29 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const file = { format: "ikolearn", version: 1, data: { name: "Sam", cloud: JSON.parse(C.serialize(src)) } };
   const back = E.enhanceText(JSON.stringify(file));
   ok(back.ok && back.name.endsWith(".ikolearn") && back.text && !back.text.includes("console.log") && back.notice, "enhance returns a .ikolearn file and does not log the body");
-  ok(E.enhanceText("{").ok === false, "a bad file gets a quiet failure");
-  ok(/not logged/.test(fs.readFileSync("app/api/ikolearn/enhance/route.ts", "utf8")) && /enhanceText/.test(fs.readFileSync("app/api/ikolearn/enhance/route.ts", "utf8")), "the enhance endpoint is ephemeral and says it does not log");
+  ok(E.enhanceText("{").ok === false && E.enhanceText("{}").ok === false && E.enhanceText("").ok === false, "a bad, empty, or object-only file gets a quiet failure");
+  const routeSrc = fs.readFileSync("app/api/ikolearn/enhance/route.ts", "utf8");
+  ok(/not logged/.test(routeSrc) && /enhanceText/.test(routeSrc) && !/console\.(log|error|warn|info|debug)/.test(routeSrc), "the enhance endpoint is ephemeral, says it does not log, and has no console logging");
+  const { POST, MAX_BYTES } = await import("../app/api/ikolearn/enhance/route.ts");
+  const ask = async (body, headers) => {
+    const res = await POST(new Request("https://ikosagon.com/api/ikolearn/enhance", { method: "POST", headers, body }));
+    const json = await res.json();
+    return { status: res.status, json };
+  };
+  const emptyObj = await ask("{}", { "content-type": "application/json" });
+  ok(emptyObj.status === 400 && emptyObj.json.ok === false && typeof emptyObj.json.error === "string" && emptyObj.json.error.length < 80 && !JSON.stringify(emptyObj.json).includes("{}"), "enhance POST {}: 400 and a short JSON error, not the body", JSON.stringify(emptyObj));
+  const empty = await ask("");
+  ok(empty.status === 400 && empty.json.ok === false && /empty/i.test(empty.json.error), "enhance POST empty body: 400");
+  const broken = await ask("{");
+  ok(broken.status === 400 && broken.json.ok === false && broken.json.error && !broken.json.stack, "enhance POST malformed JSON: 400");
+  const none = await ask("null");
+  ok(none.status === 400 && none.json.ok === false, "enhance POST null: 400");
+  const hugeHeader = await ask("{}", { "content-length": String(MAX_BYTES + 1), "content-type": "application/json" });
+  ok(hugeHeader.status === 413 && hugeHeader.json.ok === false && /large/i.test(hugeHeader.json.error), "enhance POST oversized content-length: 413", JSON.stringify(hugeHeader));
+  const hugeBody = await ask("x".repeat(MAX_BYTES + 1));
+  ok(hugeBody.status === 413 && hugeBody.json.ok === false, "enhance POST oversized body: 413");
+  const good = await ask(JSON.stringify(file));
+  ok(good.status === 200 && good.json.ok === true && typeof good.json.text === "string" && !/console\./.test(JSON.stringify({ notice: good.json.notice })), "enhance POST of a real file still returns the enhanced file");
   ok(src.order.length <= before, "enhance does not grow the cloud with a made-up topic");
 }
 
