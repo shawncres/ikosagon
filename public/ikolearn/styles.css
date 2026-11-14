@@ -383,6 +383,13 @@ button.gcard:hover { border-color: var(--soft); }
 /* PR 103: Check yourself in its own pane, after the reading; a missed round's clearer telling inside it */
 #l-quiz[hidden] { display: none; }
 #l-quiz.l-pane-on .quiz { margin: 22px 0 6px; padding: 2px 18px 12px; background: var(--sheet); border: 1px solid var(--rule); border-radius: 14px; }
+@media (max-width: 699px) {
+  #lesson.game { padding-left: 8px; padding-right: 8px; }
+  #l-quiz, #lesson .l-main { overflow: visible; max-height: none; }
+  #l-quiz.l-pane-on .quiz { margin: 8px 0 4px; padding: 8px 8px 10px; }
+  #lesson .q { margin-left: 0; margin-right: 0; padding-left: 0; }
+  #lesson .opt { min-height: 44px; padding: 8px 2px; align-items: center; }
+}
 #l-quiz.l-pane-on .phase-head { margin-top: 14px; padding-top: 0; border-top: 0; }
 .q-miss { margin: 14px 0 4px; padding: 12px 0 0; border-top: 1px solid var(--rule); }
 .q-miss .l-head { margin-top: 0; }
@@ -488,7 +495,7 @@ button.gcard:hover { border-color: var(--soft); }
   .cloud-top { gap: 6px; padding-left: calc(8px + env(safe-area-inset-left)); padding-right: calc(8px + env(safe-area-inset-right)); }
   .top-r { gap: 6px; }
   .topic-jump { margin-right: 0; flex: none; }
-  .ret { max-width: 92px; padding: 0 8px; font-size: 12px; height: 32px; }
+  .ret { max-width: 132px; padding: 0 8px; font-size: 13px; height: 32px; }
   .minideck { width: 42px; }
   .cloud-top > .iko-line { max-width: min(280px, calc(100vw - 24px)); }
 }
@@ -549,14 +556,16 @@ body.start-kbd .sl-form { min-height: 0; display: flex; flex-direction: column; 
 body.start-kbd .sl-ex { overflow: auto; max-height: 88px; }
 body.start-kbd .sl-acts { flex: none; }
 @media (prefers-reduced-motion: reduce) { .sl-ex .ex-chip { transition: none; } }
-.name-edit, .add-sub { position: absolute; z-index: 4; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; transform: translate(-50%, 0); width: min(340px, calc(100% - 24px)); }
+.name-edit[hidden], .add-sub[hidden], .add-quiet[hidden], .d-next[hidden] { display: none !important; }
+.name-edit:not([hidden]), .add-sub:not([hidden]) { position: absolute; z-index: 4; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; transform: translate(-50%, 0); width: min(340px, calc(100% - 24px)); }
 .name-edit input, .add-sub input { font: inherit; font-size: 16px; min-height: 44px; min-width: 0; flex: 1; padding: 8px 14px; border: 1px solid var(--rule); border-radius: 999px; background: var(--sheet); color: var(--ink); }
 .add-status { flex-basis: 100%; margin: 0; text-align: center; font-size: 13px; font-style: italic; color: var(--soft); }
 .add-status:empty { display: none; }
 .add-quiet { position: absolute; z-index: 4; margin: 0; transform: translate(-50%, 0); padding: 2px 8px; border: 0; background: none; color: var(--soft); font: inherit; font-size: 13px; font-style: italic; opacity: .62; cursor: pointer; }
 .add-quiet:hover, .add-quiet:focus-visible { opacity: 1; color: var(--ink); }
 .name-quiet { margin: 0 0 8px; }
-.name-quiet-btn { font-size: 13px; font-style: italic; color: var(--soft); min-height: 32px; padding: 0; }
+.name-quiet-btn, .add-topics { font-size: 13px; font-style: italic; color: var(--soft); min-height: 32px; padding: 0; }
+.add-topics { display: inline-block; margin: 0 0 8px; }
 .name-inline { display: flex; gap: 8px; align-items: center; }
 .name-inline input { font: inherit; font-size: 16px; min-height: 44px; min-width: 0; flex: 1; padding: 8px 14px; border: 1px solid var(--rule); border-radius: 999px; background: var(--sheet); color: var(--ink); }
 body.name-kbd #panel.is-root { z-index: 8; }
@@ -973,7 +982,9 @@ body.intake.kbd .cs-few { display: none; } /* the keyboard up: Iko's question st
 /* PR 107: the optional age range (the opening's quiet line, Iko's chooser, the footer) */
 .age-opts { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 6px; }
 .age-opts .age-opt { font-size: 13px; min-height: 40px; padding: 4px 12px; border-color: var(--rule); color: var(--soft); }
-.age-opts .age-opt.on { color: var(--ink); border-color: var(--ink); }
+.age-opts .age-opt.on, .font-opts .font-opt.on { color: var(--ink); border-color: var(--ink); }
+.font-opts { justify-content: flex-start; }
+.font-preview { font-size: 17px; line-height: 1.45; }
 .age-q { flex-basis: 100%; text-align: center; font-size: 13px; color: var(--soft); }
 .cloud-foot .age-link { font: inherit; color: inherit; display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; }
 /* PR 107: code in lessons, checks and clarifications: a quiet sepia monospace block (no bright syntax theme); it keeps
@@ -993,7 +1004,7 @@ fieldset.q { min-width: 0; }
    takes the place of the screen's own widget (the cloud's on the cloud, the deck's on the deck) */
 .top-r { display: flex; align-items: center; gap: 14px; margin-left: auto; flex: 1 1 auto; justify-content: flex-end; min-width: 0; }
 .home-nav { flex: 0 0 auto; }
-.ret { max-width: min(46vw, 220px); height: 34px; padding: 0 12px; border: 1px solid var(--rule); border-radius: 17px; background: var(--sheet); color: var(--ink); font: inherit; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; opacity: .85; flex: 0 1 auto; min-width: 0; }
+.ret { max-width: min(42vw, 168px); height: 34px; padding: 0 10px; border: 1px solid var(--rule); border-radius: 17px; background: var(--sheet); color: var(--ink); font: inherit; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; opacity: .85; flex: 0 1 auto; min-width: 0; }
 .ret:hover, .ret:focus-visible { opacity: 1; border-color: var(--ink); }
 .ret[hidden], .minideck[hidden] { display: none; }
 .cloud-top { padding-right: calc(16px + env(safe-area-inset-right)); }
@@ -1068,7 +1079,7 @@ html:not([data-theme="dark"]) .cloud-fog { mix-blend-mode: multiply; }
 .gc-title { overflow-wrap: break-word; word-break: normal; -webkit-hyphens: auto; hyphens: auto; }
 .gcard.size-tile .gc-title { font-size: clamp(11.5px, 10.5cqi, 15px); margin-top: 4px; }
 .gcard > .gc-chain { flex-shrink: 0; min-height: calc(1.35em + 1px); }
-.gcard > .gc-art { flex-shrink: 1; min-height: 24px; }
+.gcard > .gc-art { flex-shrink: 0; min-height: 44px; aspect-ratio: 3 / 2; }
 .gc-foot { min-width: 0; }
 .gc-mark { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .gc-pips { flex: none; }

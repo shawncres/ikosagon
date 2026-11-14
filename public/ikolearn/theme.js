@@ -14,7 +14,10 @@
   var FONTS = {
     current: "",
     futura: "Futura, 'Century Gothic', 'Avenir Next', Avenir, 'Trebuchet MS', sans-serif",
-    sans: "system-ui, 'Segoe UI', sans-serif",
+    sans: "system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif",
+    inter: "Inter, system-ui, 'Segoe UI', sans-serif",
+    georgia: "Georgia, 'Iowan Old Style', 'Palatino Linotype', serif",
+    serif: "'Source Serif 4', 'Source Serif Pro', 'Iowan Old Style', Georgia, serif",
     palatino: "'Palatino Linotype', Palatino, 'Iowan Old Style', Georgia, serif"
   };
   var mq = root.matchMedia ? root.matchMedia("(prefers-color-scheme: dark)") : null;

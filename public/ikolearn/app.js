@@ -3150,7 +3150,7 @@
   function openCloud(landing) {
     el.cloud.hidden = false; if (window.IkoSound) IkoSound.ambient(true);
     var fresh = !big;
-    if (!big) big = V.create(el.cloudCanvas, { onPick: pick, onLong: function () { if (!startLayerOpen()) openAddSubject(); }, onView: saveView, onDraw: placeCard, onEmpty: closeCard, onGesture: moved });
+    if (!big) big = V.create(el.cloudCanvas, { onPick: pick, onLong: function () { if (!startLayerOpen()) openIko({ ready: "topics" }); }, onView: saveView, onDraw: placeCard, onEmpty: closeCard, onGesture: moved });
     big.resize();
     big.setCloud(state.cloud);
     /* every load (a visit, a learner switched in, a cloud opened from a file, after Start over) begins at home: the name in
@@ -3166,7 +3166,7 @@
     renderHomeNav();
     renderRet();
     renderIko();
-    if (landing === true) setTimeout(function () { maybeQuiet([]); }, 700);
+    /* opening or returning to the cloud only looks: a merge waits for a real change, such as a new topic or a finished lesson */
     if (landing !== true && !el.ikoWrap.hidden) el.iko.focus();
   }
   /* Support & feedback opens the contact form with the subject filled in. The name stays on this device. */
@@ -3893,6 +3893,31 @@
     el.settings.hidden = true;
     if (el.settingsBtn) el.settingsBtn.setAttribute("aria-expanded", "false");
   }
+  function fontChoices() {
+    var faces = [
+      ["current", "Current", "Georgia, 'Iowan Old Style', 'Palatino Linotype', serif"],
+      ["sans", "System", TH.FONTS.sans],
+      ["inter", "Inter", TH.FONTS.inter],
+      ["futura", "Futura", TH.FONTS.futura],
+      ["georgia", "Georgia", TH.FONTS.georgia],
+      ["serif", "Source Serif", TH.FONTS.serif],
+      ["palatino", "Palatino", TH.FONTS.palatino]
+    ];
+    var g = mk("div", "place-opts font-opts");
+    g.setAttribute("role", "group"); g.setAttribute("aria-label", "Font");
+    function paint() {
+      var cur = TH.font();
+      g.querySelectorAll("button").forEach(function (b) { var on = b.getAttribute("data-v") === cur; b.setAttribute("aria-pressed", String(on)); b.classList.toggle("on", on); });
+    }
+    faces.forEach(function (x) {
+      var b = linkBtn(x[1], function () { TH.setFont(x[0]); paint(); }, "btn sm age-opt font-opt");
+      b.setAttribute("data-v", x[0]);
+      b.style.fontFamily = x[2];
+      g.appendChild(b);
+    });
+    paint();
+    return g;
+  }
   function choiceRow(label, opts, current, onPick) {
     var g = mk("div", "place-opts"), paint;
     g.setAttribute("role", "group"); g.setAttribute("aria-label", label);
@@ -3918,12 +3943,12 @@
       box.appendChild(mk("p", "hc-ph", "Theme"));
       box.appendChild(choiceRow("Theme", [["light", "Light"], ["dark", "Dark"], ["ikosagon", "Ikosagon"]], function () { return TH.saved() || TH.mode(); }, function (v) { TH.set(v); }));
       box.appendChild(mk("p", "hc-ph", "Font"));
-      box.appendChild(choiceRow("Font", [["current", "Current"], ["futura", "Futura"], ["sans", "System"], ["palatino", "Palatino"]], function () { return TH.font(); }, function (v) { TH.setFont(v); }));
+      box.appendChild(fontChoices());
       box.appendChild(mk("p", "hc-ph", "Size"));
       box.appendChild(choiceRow("Text size", [["small", "Small"], ["default", "Default"], ["large", "Large"]], function () { return TH.size ? TH.size() : "default"; }, function (v) { if (TH.setSize) TH.setSize(v); }));
-      var preview = mk("p", "font-preview", "Lessons, checks and Iko use this size.");
+      var preview = mk("p", "font-preview", "Lessons, checks and Iko use this face.");
       box.appendChild(preview);
-      box.appendChild(mk("p", "hc-hint fine", "Futura, or the closest geometric sans on this device. Cloud labels stay as they are."));
+      box.appendChild(mk("p", "hc-hint fine", "The face used for lessons, checks and Iko. Cloud labels stay as they are."));
     }
     box.appendChild(mk("p", "hc-ph", "Sounds"));
     box.appendChild(choiceRow("Card and button sounds", [["on", "On"], ["off", "Off"]], function () { return window.IkoSound && IkoSound.on() ? "on" : "off"; }, function (v) { if (window.IkoSound) IkoSound.set(v === "on"); }));
@@ -3937,7 +3962,7 @@
     file.appendChild(document.createTextNode(" "));
     file.appendChild(linkBtn("Open .ikolearn", function () { pickCloud(st); }, "btn sm"));
     file.appendChild(document.createTextNode(" "));
-    file.appendChild(linkBtn("Enhance this file", function () { enhanceFile(st); }, "btn sm"));
+    file.appendChild(linkBtn("Enhance", function () { enhanceNow(st); }, "btn sm"));
     box.appendChild(file); box.appendChild(st);
     box.appendChild(mk("p", "hc-ph", "About"));
     var links = mk("p"), priv = document.querySelector('.cloud-foot a[href="/ikolearn/privacy"]'), fb = document.querySelector("a.fb-link");
@@ -3991,7 +4016,8 @@
   }
   function renderYouHint() {
     if (!el.youHint) return;
-    el.youHint.hidden = !(wantsNameHint() && el.nameEdit && el.nameEdit.hidden && !el.cloud.hidden);
+    var naming = el.panel && !el.panel.hidden && el.panel.querySelector(".name-inline");
+    el.youHint.hidden = !(wantsNameHint() && !el.cloud.hidden && !naming);
     if (!el.youHint.hidden) placeYouHint();
   }
   function placeYouHint() {
@@ -4066,36 +4092,9 @@
     row.appendChild(b);
     return row;
   }
-  function renderAddQuiet() {
-    if (!el.addQuiet) return;
-    var naming = el.panel && el.panel.querySelector(".name-inline");
-    var on = state.panelNode === "root" && !el.panel.hidden && !startLayerOpen() && (!el.addSub || el.addSub.hidden) && !naming && !document.body.classList.contains("name-kbd");
-    el.addQuiet.hidden = !on;
-    if (!on || !big) return;
-    var q = big.project("root");
-    if (!q) return;
-    var x = q.x, y = q.y + 30;
-    if (el.panel && !el.panel.hidden) {
-      var pr = el.panel.getBoundingClientRect(), cr = el.cloudCanvas.getBoundingClientRect();
-      var px = pr.left - cr.left, py = pr.top - cr.top, pw = pr.width, ph = pr.height;
-      if (x > px - 8 && x < px + pw + 8 && y > py - 8 && y < py + ph + 8) {
-        var below = py + ph + 10;
-        if (below + 28 < el.cloudCanvas.clientHeight - 36) { x = px + pw / 2; y = below; }
-        else { x = Math.min(px + pw - 36, el.cloudCanvas.clientWidth - 72); y = Math.max(8, py - 28); }
-      }
-    }
-    el.addQuiet.style.left = x + "px";
-    el.addQuiet.style.top = y + "px";
-  }
-  function openAddSubject() {
-    if (state.busy || !el.addSub) return;
-    el.addSub.hidden = false;
-    if (el.addStatus) el.addStatus.textContent = "";
-    var q = big && big.project("root");
-    if (q) placeFloat(el.addSub, q.x, q.y + 36);
-    if (el.addQuiet) el.addQuiet.hidden = true;
-    el.addIn.focus();
-  }
+  function renderAddQuiet() { if (el.addQuiet) el.addQuiet.hidden = true; }
+  /* A new subject is asked of Iko. There is no field on the cloud or on the user card. */
+  function openAddSubject() { if (!state.busy) openIko({ ready: "topics" }); }
   function submitAdd(text) {
     var t = cleanAbout(text);
     if (!t || state.busy) return;
@@ -4247,8 +4246,14 @@
     return { st: st, days: Math.max(pr.days || 0, st.active || 0, st.last || st.cards ? 1 : 0), streak: st.streak, cards: st.cards, topics: st.done, lessons: lessonsDone() };
   }
   function renderStats() {
+    el.pPath.textContent = "";
     var now = Date.now(), num = homeNumbers(now), st = num.st, box = mk("div", "stats home-card");
     box.appendChild(nameQuiet());
+    if (state.cloud && state.cloud.named) {
+      var addTopics = linkBtn("Add topics", function () { openIko({ ready: "topics" }); }, "link add-topics");
+      addTopics.title = "Tell Iko";
+      box.appendChild(addTopics);
+    }
     var tabs = mk("div", "hc-tabs"), panes = {};
     tabs.setAttribute("role", "tablist"); tabs.setAttribute("aria-label", "About your IkoCloud");
     var show = function (k, focus) {
@@ -4371,8 +4376,8 @@
   function placeCard() {
     placeYouHint();
     renderAddQuiet();
-    if (el.nameEdit && !el.nameEdit.hidden) el.nameEdit.hidden = true;
-    if (el.addSub && !el.addSub.hidden && big) { var qa = big.project("root"); if (qa) placeFloat(el.addSub, qa.x, qa.y + 36); }
+    if (el.nameEdit) el.nameEdit.hidden = true;
+    if (el.addSub) el.addSub.hidden = true;
     if (!big || el.panel.hidden || !state.panelNode) return;
     var q = big.project(state.panelNode === "root" ? "root" : state.panelNode);
     if (!q) return;
@@ -4656,7 +4661,8 @@
     if (note) storeInSheet();
     setFocus(c.id || null); /* the screen's node, or none: a node from an earlier screen never stays the focus */
     el.ikoAbout.textContent = ikoAbout(c);
-    el.ikoSay.textContent = ikoGreeting(c, o);
+    el.ikoSay.textContent = o.ready === "topics" ? "What would you like to add?" : ikoGreeting(c, o);
+    if (o.ready === "topics" && el.ikoIn) el.ikoIn.placeholder = "A subject or a topic";
     el.ikoSheet.classList.toggle("tricky", Boolean(o.tricky));
     if (o.tricky) el.ikoSlot.appendChild(el.lClar); /* the lesson's clarification box, moved here (it goes back on close) */
     renderIkoLog();
@@ -4704,6 +4710,7 @@
   function closeIko() {
     if (!iko.open) return;
     iko.open = false;
+    if (el.ikoIn) el.ikoIn.placeholder = "Ask Iko anything";
     el.ikoSheet.hidden = true;
     sideIko();
     fitIko();
@@ -5129,8 +5136,8 @@
     if (!el.barRet) return;
     var r = retTarget(), onDeck = !el.deck.hidden;
     [el.cloudRet, el.barRet].forEach(function (b) {
-      b.textContent = r ? "Return to " + r.label : "";
-      if (r) { b.title = "Return to " + r.label; b.setAttribute("aria-label", "Return to " + r.label + (r.card ? " (its card)" : " (its lesson)")); }
+      b.textContent = r ? "\u2190 " + r.label : "";
+      if (r) { b.title = r.label; b.setAttribute("aria-label", "\u2190 " + r.label); }
     });
     el.cloudRet.hidden = !r;
     el.barRet.hidden = !(r && onDeck);
@@ -5389,10 +5396,8 @@
   });
   function renderDeck(opening) {
     var ids = deckIds();
-    refreshSuggest();
     el.dSuggest.textContent = "";
-    /* (the deck's own lede says what cards are: no second tip here, PR 104) */
-    el.dSuggest.appendChild(flowBlock("deck"));
+    if (el.dSuggest.parentElement) el.dSuggest.parentElement.hidden = true;
     var held = (state.cloud.deck || []).length - ids.length;
     el.dLede.textContent = (ids.length === 1 ? "1 card you've earned" : ids.length + " cards you've earned") + (held ? " (plus " + held + " merged into parent cards)" : "") + ", by subject. Cards move from Sketch to Inked, Tinted and Achieved as you learn, and finished subtopics merge into their parent.";
     renderAlbum(opening);
@@ -5435,16 +5440,8 @@
         row.appendChild(rh);
         var g = mk("div", "ap-grid");
         r.cards.forEach(function (cid, k) {
-          var sp = D.cardSpec(state.cloud, cid);
-          if (!sp) {
-            var miss = mk("button", "gcard size-tile");
-            miss.type = "button";
-            miss.setAttribute("data-thumb", "1");
-            miss.textContent = (C.deckEntry(state.cloud, cid) || {}).label || "Card";
-            miss.addEventListener("click", function () { go(cid, miss); });
-            g.appendChild(miss);
-            return;
-          }
+          var sp = D.cardFace ? D.cardFace(state.cloud, cid) : D.cardSpec(state.cloud, cid);
+          if (!sp) return;
           var c = D.render(document, sp, { onOpen: go });
           c.setAttribute("data-thumb", "1");
           if (k === 0 && r.lead && sp.level && r.cards.length >= 4) c.classList.add("prominent");
@@ -5565,27 +5562,100 @@
   }
   var ctStatus = null;
   function pickCloud(st) { if (!T || !el.ctFile) return; el.ctFile.accept = T.ACCEPT; ctStatus = st; if (st) st.textContent = ""; el.ctFile.value = ""; el.ctFile.click(); }
-  /* Enhance stays on this device: the file is read here and a new file is downloaded. Nothing is sent or logged. */
-  function enhanceFile(st) {
-    if (!window.IkoEnhance) { if (st) st.textContent = "Couldn't enhance that file."; return; }
-    var input = document.createElement("input");
-    input.type = "file"; input.accept = ".ikolearn,.ikocloud,.json,application/json";
-    input.addEventListener("change", function () {
-      var f = input.files && input.files[0];
-      if (!f) return;
-      var reader = new FileReader();
-      reader.onload = function () {
-        var out = window.IkoEnhance.enhanceText(String(reader.result || ""));
-        if (st) st.textContent = out && out.notice ? out.notice : "Couldn't enhance that file.";
-        if (!out || !out.ok || !out.text) return;
-        var url = URL.createObjectURL(new Blob([out.text], { type: "application/json" })), a = mk("a");
-        a.href = url; a.download = out.name || "enhanced.ikolearn"; a.hidden = true;
-        document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
-      };
-      reader.readAsText(f);
+  function snapAll() {
+    return {
+      cloud: JSON.parse(JSON.stringify(state.cloud)),
+      lessons: JSON.parse(JSON.stringify(state.lessons || {})),
+      notes: JSON.parse(JSON.stringify(state.notes || {})),
+      tests: JSON.parse(JSON.stringify(state.tests || {})),
+      seen: JSON.parse(JSON.stringify(state.seen || {}))
+    };
+  }
+  function restoreAll(s) {
+    if (!s || !s.cloud) return false;
+    Object.keys(state.cloud).forEach(function (k) { delete state.cloud[k]; });
+    Object.keys(s.cloud).forEach(function (k) { state.cloud[k] = s.cloud[k]; });
+    state.lessons = s.lessons || {}; state.notes = s.notes || {}; state.tests = s.tests || {}; state.seen = s.seen || state.seen;
+    save();
+    if (big) big.setCloud(state.cloud);
+    if (mini) mini.setCloud(state.cloud);
+    renderHomeNav();
+    renderDeckButton();
+    if (!el.deck.hidden) renderDeck(false);
+    if (state.panelNode === "root" && !el.panel.hidden) { cardSig = ""; renderStats(); placeCard(); }
+    return true;
+  }
+  function liveFile() {
+    save();
+    return JSON.stringify({
+      format: "ikolearn", version: 1, app: "IkoLearn",
+      data: { name: state.name || state.cloud.name, cloud: JSON.parse(C.serialize(state.cloud)), lessons: state.lessons || {}, notes: state.notes || {}, tests: state.tests || {}, seen: state.seen || {} }
     });
-    input.click();
+  }
+  function applyEnhanced(text) {
+    var raw;
+    try { raw = JSON.parse(text); } catch (e) { return false; }
+    if (!raw || !raw.data || !raw.data.cloud) return false;
+    var cloud = C.deserialize(typeof raw.data.cloud === "string" ? raw.data.cloud : JSON.stringify(raw.data.cloud));
+    if (!cloud) return false;
+    Object.keys(state.cloud).forEach(function (k) { delete state.cloud[k]; });
+    Object.keys(cloud).forEach(function (k) { state.cloud[k] = cloud[k]; });
+    if (raw.data.lessons && typeof raw.data.lessons === "object") state.lessons = raw.data.lessons;
+    if (raw.data.notes && typeof raw.data.notes === "object") state.notes = raw.data.notes;
+    if (raw.data.tests && typeof raw.data.tests === "object") state.tests = raw.data.tests;
+    if (raw.data.seen && typeof raw.data.seen === "object") state.seen = raw.data.seen;
+    save();
+    if (big) big.setCloud(state.cloud);
+    if (mini) mini.setCloud(state.cloud);
+    renderHomeNav();
+    renderDeckButton();
+    if (!el.deck.hidden) renderDeck(false);
+    if (state.panelNode && !el.panel.hidden) { cardSig = ""; if (state.panelNode === "root") renderStats(); placeCard(); }
+    return true;
+  }
+  function sayEnhance(st, text, snap) {
+    if (!st) return;
+    st.textContent = "";
+    st.appendChild(document.createTextNode(text + " "));
+    var u = mk("button", "link quiet-undo", "Undo");
+    u.type = "button";
+    u.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (restoreAll(snap)) st.textContent = "Restored.";
+    });
+    st.appendChild(u);
+  }
+  function localEnhance(st, snap) {
+    if (!window.IkoEnhance) { if (st) st.textContent = "Couldn't enhance just now."; return; }
+    var pack = { lessons: state.lessons, notes: state.notes, tests: state.tests, seen: state.seen };
+    var report = window.IkoEnhance.enhanceCloud(state.cloud, pack);
+    save();
+    if (big) big.setCloud(state.cloud);
+    if (mini) mini.setCloud(state.cloud);
+    renderHomeNav();
+    if (!el.deck.hidden) renderDeck(false);
+    sayEnhance(st, "Enhanced on this device. " + ((report && report.notice) || ""), snap);
+  }
+  /* One pass over the cloud that is open. No file picker. If the request fails, the same pass runs here. */
+  function enhanceNow(st) {
+    if (!state.cloud || state.enhancing) return;
+    var snap = snapAll();
+    state.enhancing = true;
+    if (st) st.textContent = "Enhancing\u2026";
+    var body = liveFile();
+    fetch("/api/ikolearn/enhance", { method: "POST", headers: { "content-type": "application/json" }, body: body })
+      .then(function (res) { return res.text().then(function (t) { return { status: res.status, t: t }; }); })
+      .then(function (r) {
+        state.enhancing = false;
+        var j = {}; try { j = JSON.parse(r.t); } catch (e) { j = null; }
+        if (r.status === 400 || r.status === 413) { if (st) st.textContent = (j && j.error) || "Couldn't enhance just now."; return; }
+        if (r.status === 200 && j && j.ok && j.text && applyEnhanced(j.text)) {
+          sayEnhance(st, (j.fallback ? "Enhanced on this device. " : "") + (j.notice || "Enhanced."), snap);
+          return;
+        }
+        localEnhance(st, snap);
+      })
+      .catch(function () { state.enhancing = false; localEnhance(st, snap); });
   }
   function ctSay(t) { if (ctStatus) ctStatus.textContent = t; placeCard(); }
   if (el.ctFile) el.ctFile.addEventListener("change", function () {
@@ -5726,6 +5796,6 @@
     try { var sn = JSON.parse(load(LS.seen) || "null"); if (sn && sn.c && typeof sn.c === "object") state.seen = { c: sn.c, ev: Number(sn.ev) || 0, h: sn.h && typeof sn.h === "object" ? { cloud: sn.h.cloud ? 1 : 0, card: sn.h.card ? 1 : 0, deck: sn.h.deck ? 1 : 0, iko: sn.h.iko ? 1 : 0, grow: sn.h.grow ? 1 : 0, aboutCloud: sn.h.aboutCloud ? 1 : 0, aboutLesson: sn.h.aboutLesson ? 1 : 0, aboutDeck: sn.h.aboutDeck ? 1 : 0, askAge: sn.h.askAge ? 1 : 0, ageAsked: sn.h.ageAsked ? 1 : 0 } : {} }; } catch { /* keep the empty default */ }
     save(); /* writes a migrated (older -> v9) cloud back in the compact format, with the deck backfilled */
     startChat();
-    settleMerges(); /* existing completion data can already form parent cards (0 calls) */
+    /* a parent card forms after a lesson or a check, not because the cloud was opened */
   })();
 })();

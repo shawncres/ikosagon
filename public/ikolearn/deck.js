@@ -202,6 +202,21 @@
   }
 
   /* Everything a card shows, from the cloud. Works for deck cards whose topic is gone too (from the stored entry). */
+  /* A face for every earned card: the usual spec, or a drawn plate when the entry is thin. */
+  function cardFace(cloud, id) {
+    var sp = cardSpec(cloud, id);
+    if (sp && sp.art && sp.color) return sp;
+    var n = cloud.nodes && cloud.nodes[id], e = C.deckEntry(cloud, id);
+    var label = (n && n.label) || (e && e.label) || "Card";
+    var color = { hue: 28, sat: 32, light: 42, mix: 0.2, base: 28, ink: "hsl(28, 32%, 28%)", wash: "hsla(28, 32%, 28%, 0.14)", soft: "hsl(28, 18%, 46%)" };
+    try { var got = C.cardColor(cloud, id); if (got && got.ink) color = got; } catch (err) { /* the sepia plate still draws */ }
+    return {
+      id: id, label: label, subject: (e && e.subject) || "", chain: (e && e.chain && e.chain.length) ? e.chain : [label],
+      blurb: "", goal: "", stage: 1, detail: 1, stageName: "Sketch", achieved: false, toNext: 0, inDeck: true, live: Boolean(n),
+      tier: 0, tierKey: "sketch", tierName: "Sketch", level: 0, progress: 0, pips: 0,
+      corpus: [], absorbedInto: null, after: [], color: color, art: landscape(id || label, 1, "")
+    };
+  }
   function cardSpec(cloud, id) {
     var g = C.growthOf(cloud, id);
     if (!g) return null;
@@ -257,13 +272,14 @@
   }
   function placeholderSvg(doc) {
     var svg = svgEl(doc, "svg", { viewBox: "0 0 120 80", preserveAspectRatio: "xMidYMid slice", "aria-hidden": "true", focusable: "false", class: "art art-ph" });
-    svg.appendChild(svgEl(doc, "rect", { x: 0, y: 0, width: 120, height: 80, fill: "rgba(120,90,60,.06)" }));
-    svg.appendChild(svgEl(doc, "circle", { cx: 46, cy: 36, r: 16, fill: "none", stroke: "rgba(90,70,50,.55)", "stroke-width": 1 }));
-    svg.appendChild(svgEl(doc, "rect", { x: 58, y: 44, width: 36, height: 6, fill: "none", stroke: "rgba(90,70,50,.55)", "stroke-width": 1 }));
+    svg.appendChild(svgEl(doc, "rect", { x: 0, y: 0, width: 120, height: 80, fill: "rgba(120,90,60,.16)" }));
+    svg.appendChild(svgEl(doc, "circle", { cx: 46, cy: 36, r: 16, fill: "rgba(120,90,60,.22)", stroke: "rgba(70,50,30,.75)", "stroke-width": 1.2 }));
+    svg.appendChild(svgEl(doc, "rect", { x: 58, y: 44, width: 36, height: 6, fill: "rgba(120,90,60,.28)", stroke: "rgba(70,50,30,.75)", "stroke-width": 1.2 }));
     return svg;
   }
   function artSvg(doc, spec) {
-    try { return artSvgInner(doc, spec); } catch (e) { return placeholderSvg(doc); }
+    try { if (spec && spec.art && spec.color) return artSvgInner(doc, spec); } catch (e) { /* a plate is drawn below */ }
+    return placeholderSvg(doc);
   }
   function artSvgInner(doc, spec) {
     var a = spec.art, c = spec.color, t = c.mix || 0;
@@ -581,7 +597,7 @@
 
   var api = {
     DETAIL: DETAIL, REVIEW_DAYS: REVIEW_DAYS, DRAW: DRAW,
-    seedOf: seedOf, rng: rng, landscape: landscape, motifFor: motifFor, motifPlace: motifPlace, MOTIF_ART: MOTIF_ART, cardSpec: cardSpec, listOf: listOf, chainText: chainText, chainLinks: chainLinks, render: render, artSvg: artSvg,
+    seedOf: seedOf, rng: rng, landscape: landscape, motifFor: motifFor, motifPlace: motifPlace, MOTIF_ART: MOTIF_ART, cardSpec: cardSpec, cardFace: cardFace, listOf: listOf, chainText: chainText, chainLinks: chainLinks, render: render, artSvg: artSvg,
     renderCorpus: renderCorpus, pipsFor: pipsFor, evolveKey: evolveKey,
     coverage: coverage, subtree: subtree, albumModel: albumModel, hubChildren: hubChildren, renderSlot: renderSlot, ALBUM: ALBUM,
     dayOf: dayOf, weigh: weigh, drawSession: drawSession, balance: balance
