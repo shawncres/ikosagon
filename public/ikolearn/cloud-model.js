@@ -2261,11 +2261,14 @@
       delete cloud.tests[from];
     }
   }
+  /* The name a learner would read. "Music" and "music" are the same; "Basic Car Maintenance" is not "Car Maintenance". */
+  function shownName(n) { return cleanLabel(n && n.label).toLowerCase(); }
   function mergeNodes(cloud, keepId, dropId) {
     var keep = node(cloud, keepId), drop = node(cloud, dropId);
-    /* a subject or topic is never merged into itself */
+    /* a subject or topic is never merged into itself, or into another node that has the same name */
     if (!keep || !drop || keepId === dropId || keep === drop) return false;
     if (isAncestor(cloud, keepId, dropId) || isAncestor(cloud, dropId, keepId)) return false;
+    if (shownName(keep) && shownName(keep) === shownName(drop)) return false;
     childrenOf(cloud, dropId).slice().forEach(function (c) { if (c.id !== keepId) moveUnder(cloud, c.id, keepId); });
     if (childrenOf(cloud, dropId).length) return false;
     retarget(cloud, dropId, keepId);
@@ -2276,95 +2279,12 @@
     cloud.rev += 1;
     return true;
   }
-  /* A full copy of the cloud, so Undo can put every field back, not only the tree. */
-  function cloneState(cloud) {
-    return JSON.parse(JSON.stringify(cloud));
-  }
-  function restoreState(cloud, snap) {
-    if (!snap) return false;
-    Object.keys(cloud).forEach(function (k) { delete cloud[k]; });
-    Object.keys(snap).forEach(function (k) { cloud[k] = snap[k]; });
-    return true;
-  }
-  function rich(cloud, n) {
-    return (n.ghost ? 0 : 4) + (n.mastery || 0) * 6 + (n.correct || 0) + ((n.cards && n.cards.length) || 0) * 2 + (inDeck(cloud, n.id) ? 3 : 0) + (n.doneAt || n.achievedAt ? 2 : 0) + (n.opened ? 0.4 : 0);
-  }
-  /* A same-family node that can hold a clearly misplaced topic. Shallowest match wins. */
-  function clearHome(cloud, n) {
-    if (!n || !n.parent) return null;
-    var cur = node(cloud, n.parent);
-    if (!cur || !familyClash(n.label, cur.label)) return null;
-    var home = closestParent(cloud, n.label);
-    if (home && home.id !== cur.id && !familyClash(n.label, home.label) && !isAncestor(cloud, n.id, home.id) && !isAncestor(cloud, home.id, n.id)) return home;
-    var fam = familiesOf(n.label);
-    if (!fam.length) return null;
-    var best = null, bestD = 99;
-    all(cloud).forEach(function (m) {
-      if (!m || m.id === n.id || m.id === cur.id || isAncestor(cloud, n.id, m.id)) return;
-      var mf = familiesOf(m.label);
-      if (!fam.some(function (f) { return mf.indexOf(f) >= 0; })) return;
-      var d = m.parent ? depthOf(cloud, m.id) : 0;
-      if (d < bestD) { bestD = d; best = m; }
-    });
-    return best && !isAncestor(cloud, best.id, n.id) ? best : null;
-  }
   /*
-   * One obvious correction, for ordinary use (a topic was just added, or the cloud was opened). Exact or near-exact
-   * duplicates merge. A child whose field clashes with its parent moves under the clearest same-field node. At most
-   * one change, and not again for a short while, so the cloud does not jump. The focused node is left where it is.
-   * Undo puts that one change back. Enhance is a separate, full pass.
+   * Ordinary use never merges or moves a node. A duplicate or a misplaced topic stays where the learner put it until
+   * they run Enhance. Kept so an older caller cannot rearrange the cloud by accident.
    */
-  var QUIET_GAP = 45000;
-  function quietFix(cloud, opts) {
-    opts = opts || {};
-    if (!cloud || !cloud.order) return { changed: false };
-    /* looking at the cloud, or moving around it, never rearranges it */
-    if (opts.view) return { changed: false, why: "view" };
-    var now = now_(opts.now), protect = {}, skip = cloud.qfSkip || {};
-    if (opts.focusId) protect[opts.focusId] = 1;
-    (opts.protect || []).forEach(function (id) { if (id) protect[id] = 1; });
-    if (cloud.qfAt && now - cloud.qfAt < QUIET_GAP) return { changed: false, why: "rate" };
-    var nodes = all(cloud).slice(), i, n;
-    for (i = 0; i < nodes.length; i++) {
-      n = nodes[i];
-      if (!n || skip[n.id]) continue;
-      var hits = all(cloud).filter(function (m) {
-        return m.id !== n.id && !skip[m.id] && (m.key === n.key || nearName(m.label, n.label)) && !isAncestor(cloud, n.id, m.id) && !isAncestor(cloud, m.id, n.id);
-      });
-      if (!hits.length) continue;
-      var pool = hits.concat([n]);
-      var keep = pool.slice().sort(function (a, b) { return rich(cloud, b) - rich(cloud, a); })[0];
-      var drop = null;
-      pool.sort(function (a, b) { return rich(cloud, a) - rich(cloud, b); });
-      for (var j = 0; j < pool.length; j++) { if (pool[j].id !== keep.id && !protect[pool[j].id]) { drop = pool[j]; break; } }
-      if (!drop || drop.id === keep.id) continue;
-      var snap = cloneState(cloud);
-      if (!mergeNodes(cloud, keep.id, drop.id)) { restoreState(cloud, snap); continue; }
-      cloud.qfUndo = { snap: snap, skip: drop.id };
-      cloud.qfAt = now;
-      cloud.qfSkip = skip;
-      return { changed: true, kind: "merge", from: drop.id, to: keep.id, fromLabel: drop.label, intoLabel: keep.label };
-    }
-    for (i = 0; i < nodes.length; i++) {
-      n = nodes[i];
-      if (!n || !n.parent || protect[n.id] || skip[n.id]) continue;
-      var home = clearHome(cloud, n);
-      if (!home || home.id === n.parent) continue;
-      var snapM = cloneState(cloud);
-      if (!moveUnder(cloud, n.id, home.id)) continue;
-      cloud.rev += 1;
-      cloud.qfUndo = { snap: snapM, skip: n.id };
-      cloud.qfAt = now;
-      cloud.qfSkip = skip;
-      return { changed: true, kind: "move", id: n.id, label: n.label, under: home.label };
-    }
-    return { changed: false };
-  }
-  function undoQuiet(cloud) {
-    var u = cloud && cloud.qfUndo;
-    if (!u || !u.snap) return false;
-    return restoreState(cloud, u.snap);
-  }
+  function quietFix() { return { changed: false, why: "off" }; }
+  function undoQuiet() { return false; }
 
   var api = {
     VERSION: VERSION, LIMITS: LIMITS, STORE: STORE, subjectSlot: subjectSlot, promptSubjects: promptSubjects, promptView: promptView, prune: prune, removeBranch: removeBranch, MASTERED: MASTERED, OLD_SEEDS: OLD_SEEDS, HUES: HUES, subjectHue: subjectHue, plant: plant,
@@ -2384,7 +2304,7 @@
     attachCard: attachCard, cardsFor: cardsFor, summarize: summarize, knownUnder: knownUnder, subjectLabels: subjectLabels,
     subjects: subjects, childrenOf: childrenOf, ancestry: ancestry, depthOf: depthOf, subjectOf: subjectOf, trail: trail, index: index,
     findSubject: findSubject, findTopic: findTopic, findAny: findAny, findClose: findClose, nearName: nearName, nameScore: nameScore, familyClash: familyClash, familiesOf: familiesOf, closestParent: closestParent, norm: norm, cleanLabel: cleanLabel,
-    mergeNodes: mergeNodes, quietFix: quietFix, undoQuiet: undoQuiet, clearHome: clearHome,
+    mergeNodes: mergeNodes, quietFix: quietFix, undoQuiet: undoQuiet,
     EASE: EASE, easeOf: easeOf, noteEase: noteEase, FADE: FADE, fadeOf: fadeOf, fadeAfter: fadeAfter, lastActive: lastActive,
     colorOf: colorOf, levelScale: levelScale, layout: layout, serialize: serialize, deserialize: deserialize, trimThread: trimThread
   };

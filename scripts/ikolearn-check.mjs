@@ -4552,17 +4552,19 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(!/x-vercel-ip-country/.test(fs.readFileSync("public/ikolearn/app.js", "utf8")) && /\/api\/ikolearn\/starters/.test(appU) && /Cache-Control": "private, no-store"/.test(fs.readFileSync("app/api/ikolearn/starters/route.ts", "utf8")), "starters: the page does not read or store a country; the route answers from the request header and does not cache it");
 }
 
-/* ---------- rename on tap, full enhance, quiet corrections ---------- */
+/* ---------- rename on tap, full enhance, no passive correction ---------- */
 {
   const appR = fs.readFileSync("public/ikolearn/app.js", "utf8");
   const cssR = fs.readFileSync("public/ikolearn/styles.css", "utf8");
   const camR = fs.readFileSync("public/ikolearn/camera.js", "utf8");
   const viewR = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8");
-  ok(/Add your name/.test(appR) && /"Rename"/.test(appR) && /function expandName\(/.test(appR) && /name-inline/.test(appR) && /name-kbd/.test(appR) && !/openPanel\("root"\);\s*startRename\(\)/.test(appR), "rename: the user card offers Add your name or Rename, and the field opens only after that tap");
+  const nameFn = appR.slice(appR.indexOf("function nameQuiet("), appR.indexOf("function renderAddQuiet("));
+  ok(/Add your name/.test(nameFn) && !/Rename/.test(nameFn) && /c\.name !== "You"/.test(nameFn) && /function expandName\(/.test(appR) && /name-inline/.test(appR) && /name-kbd/.test(appR) && !/openPanel\("root"\);\s*startRename\(\)/.test(appR), "the user card offers Add your name only while the node is still You");
+  ok(/if \(state\.cloud && state\.cloud\.named\) \{\s*var addTopics = linkBtn\("Add topics"/.test(appR), "Add topics stays once a name is set");
   ok(/visualViewport/.test(appR) && /nameTall/.test(appR) && /body\.name-kbd #panel\.is-root/.test(cssR), "rename: while the name is edited the card stays in the visible screen, above the keyboard");
   ok(/fold\.open = true/.test(appR) && /cw - 16/.test(appR) && /#panel\[data-side="sheet"\] \{ width: calc\(100% - 16px\)/.test(cssR) && /min-height: 44px/.test(cssR.slice(cssR.indexOf('#panel[data-side="sheet"] .actions'))), "mobile card: wider sheet, Your path open, buttons stay 44px");
   ok(/tighten: wide \? 1 : 0\.6/.test(camR) && /branchWant \* o\.tighten/.test(viewR) && /\.zoom \{ opacity: \.32; \}/.test(cssR), "mobile: a selected branch is drawn closer, and Recentre stays available but quieter");
-  ok(/function maybeQuiet\(/.test(appR) && /C\.quietFix\(/.test(appR) && /quiet-undo/.test(appR) && !/maybeQuiet\(\[\]\); \}, 700\)/.test(appR) && /maybeQuiet\(landed \? \[landed\] : \[\]\)/.test(appR), "ordinary use: a quiet correction after a real add, with Undo, and not while the cloud is only being viewed");
+  ok(!/function maybeQuiet\(/.test(appR) && !/C\.quietFix\(/.test(appR) && !/quiet-note/.test(appR) && !/Merged " \+ r\.fromLabel/.test(appR), "ordinary use never merges or moves a node on its own");
 
   const E = require("../public/ikolearn/enhance.js");
   const moved = C.create("Sam", T0);
@@ -4633,27 +4635,32 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   C.plant(quiet, "Zeus", C.findSubject(quiet, "Cooking").id, T0 + 1);
   const qZeus = C.findTopic(quiet, "Zeus");
   qZeus.mastery = 0.7; qZeus.cards = ["card-q"];
+  const beforeQuiet = C.serialize(quiet);
   const held = C.quietFix(quiet, { focusId: qZeus.id, now: T0 });
-  ok(!held.changed && quiet.nodes[qZeus.id].parent === C.findSubject(quiet, "Cooking").id, "quiet fix does not move the focused node");
   const q2 = C.quietFix(quiet, { now: T0 });
-  ok(q2.changed && q2.kind === "move" && quiet.nodes[qZeus.id].parent === C.findSubject(quiet, "Greek Mythology").id && quiet.nodes[qZeus.id].mastery === 0.7 && quiet.nodes[qZeus.id].cards.includes("card-q"), "quiet fix moves one clear mis-parent and keeps its progress", JSON.stringify(q2));
-  const q3 = C.quietFix(quiet, { now: T0 + 1000 });
-  ok(!q3.changed && q3.why === "rate", "quiet fix waits, so one open does not keep rearranging the cloud");
-  ok(C.undoQuiet(quiet) && quiet.nodes[qZeus.id].parent === C.findSubject(quiet, "Cooking").id, "quiet fix can be undone");
+  ok(!held.changed && held.why === "off" && !q2.changed && q2.why === "off" && C.serialize(quiet) === beforeQuiet && quiet.nodes[qZeus.id].parent === C.findSubject(quiet, "Cooking").id, "ordinary use does not move a misplaced topic", JSON.stringify(q2));
+  ok(C.undoQuiet(quiet) === false && quiet.nodes[qZeus.id].mastery === 0.7, "there is no quiet undo, because nothing was rearranged");
   const again = C.create("Sam", T0);
   C.applyTopics(again, [{ name: "Car Maintenance", signal: "curious", asSubject: true }], T0);
   C.plant(again, "Basic Car Maintenance", null, T0 + 1);
   const basic = C.findSubject(again, "Basic Car Maintenance");
   basic.mastery = 0.6; basic.cards = ["card-b"];
   again.deck = [{ id: basic.id, label: basic.label, subject: "", hue: 20, at: T0, best: 1, chain: [], blurb: "", ach: 0, tb: 0, ml: 0, inn: null, co: [] }];
-  const deckBefore = again.deck.length;
+  const beforeAgain = C.serialize(again);
   const qm = C.quietFix(again, { now: T0 });
-  const left = C.findAny(again, "Basic Car Maintenance") || C.findAny(again, "Car Maintenance");
-  ok(qm.changed && qm.kind === "merge" && again.order.length === 1 && left.mastery === 0.6 && left.cards.includes("card-b") && again.deck.length >= deckBefore, "quiet fix merges a near-duplicate without losing mastery or the card", JSON.stringify({ kind: qm.kind, n: again.order.length, deck: again.deck.length, m: left && left.mastery }));
+  ok(!qm.changed && again.order.length === 2 && C.serialize(again) === beforeAgain, "ordinary use does not merge a near-duplicate", JSON.stringify({ kind: qm.kind, n: again.order.length }));
   const parents = {};
   again.order.forEach((id) => { parents[id] = again.nodes[id].parent; });
-  C.applyTopics(again, [{ name: "Brakes", under: left.id, signal: "curious" }], T0 + 5);
+  C.applyTopics(again, [{ name: "Brakes", under: basic.id, signal: "curious" }], T0 + 5);
   ok(again.order.filter((id) => parents[id] !== undefined).every((id) => again.nodes[id].parent === parents[id]), "adding a topic still does not move an existing one");
+
+  const twin = C.create("Sam", T0);
+  const music = C.plant(twin, "Music", null, T0);
+  const art = C.plant(twin, "Art", null, T0);
+  const music2 = C.plant(twin, "Music", art.id, T0);
+  ok(music && music2 && music.id !== music2.id && C.mergeNodes(twin, music.id, music2.id) === false && C.mergeNodes(twin, music2.id, music.id) === false && C.mergeNodes(twin, music.id, music.id) === false, "a node never merges into itself or into another node with the same name");
+  const twinReport = E.enhanceCloud(twin, { lessons: {}, notes: {}, tests: {}, seen: {} });
+  ok(twin.nodes[music.id] && twin.nodes[music2.id] && twin.nodes[music2.id].label === "Music" && !/Music into Music/.test(twinReport.notice || ""), "enhance does not merge Music into Music", twinReport.notice);
 }
 
 /* ---------- post-deploy QA: merges, enhance in place, return label ---------- */
@@ -4670,15 +4677,15 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   for (let i = 0; i < 4; i++) C.confirm(self, one.id, true, T0 + 10);
   ok(P.mergePlan(self, algebra.id) === null && P.settleMerges(self, T0 + 20).length === 0 && algebra.absorbed.length === 0, "one finished child is not a sufficient set, so the parent does not merge");
   const viewed = C.serialize(self);
-  ok(C.quietFix(self, { view: true, now: T0 + 30 }).changed === false && C.quietFix(self, { view: true, now: T0 + 30 }).why === "view" && C.serialize(self) === viewed, "viewing the cloud does not merge or move anything");
+  ok(C.quietFix(self, { view: true, now: T0 + 30 }).changed === false && C.quietFix(self, { now: T0 + 30 }).why === "off" && C.serialize(self) === viewed, "opening or using the cloud does not merge or move anything");
 
   const q = C.create("Sam", T0);
   C.applyTopics(q, [{ name: "Cooking", signal: "curious", asSubject: true }, { name: "Greek Mythology", signal: "curious", asSubject: true }], T0);
   C.plant(q, "Zeus", C.findSubject(q, "Cooking").id, T0 + 1);
   const before = C.serialize(q);
   const moved = C.quietFix(q, { now: T0 });
-  ok(moved.changed && moved.kind === "move" && q.nodes[C.findTopic(q, "Zeus").id].parent === C.findSubject(q, "Greek Mythology").id, "a real change can still correct one clear mis-parent");
-  ok(C.undoQuiet(q) && C.serialize(q) === before, "undo restores an exact snapshot of the cloud");
+  ok(!moved.changed && moved.why === "off" && q.nodes[C.findTopic(q, "Zeus").id].parent === C.findSubject(q, "Cooking").id, "a misplaced topic stays put until Enhance");
+  ok(C.undoQuiet(q) === false && C.serialize(q) === before, "nothing was rearranged, so there is nothing to put back");
 
   const appQ = fs.readFileSync("public/ikolearn/app.js", "utf8");
   const htmlQ = fs.readFileSync("public/ikolearn/index.html", "utf8");
@@ -4688,7 +4695,9 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(!/id="add-quiet"/.test(htmlQ) && !/id="add-sub"/.test(htmlQ) && !/id="name-edit"/.test(htmlQ) && /Add topics/.test(appQ) && /Tell Iko/.test(appQ) && /function expandName\(/.test(appQ), "adding a subject goes through Iko; rename stays a quiet option inside the card");
   const themeQ = fs.readFileSync("public/ikolearn/theme.js", "utf8");
   ok(/inter:/.test(themeQ) && /georgia:/.test(themeQ) && /serif:/.test(themeQ) && /futura:/.test(themeQ) && !/fonts\.google|@font-face|url\(https?:/.test(themeQ + htmlQ), "more readable faces, and none of them are fetched");
-  ok(/#lesson\.game \{ padding-left: 8px;/.test(fs.readFileSync("public/ikolearn/styles.css", "utf8")) && /d-next\[hidden\]/.test(fs.readFileSync("public/ikolearn/styles.css", "utf8")), "checks use more of a phone's width, and the deck's extra suggestion block can stay hidden");
+  const cssCheck = fs.readFileSync("public/ikolearn/styles.css", "utf8");
+  ok(/#lesson\.game \{ padding-left: 8px;/.test(cssCheck) && /d-next\[hidden\]/.test(cssCheck), "checks use more of a phone's width, and the deck's extra suggestion block can stay hidden");
+  ok(/#l-quiz \.q \{ padding: 14px 14px 16px 16px; \}/.test(cssCheck) && /#l-quiz \.opt \{ gap: 16px; padding: 8px 0; line-height: 1\.45; \}/.test(cssCheck) && /#l-quiz \.q > legend \{ line-height: 1\.5; margin: 0 0 12px; \}/.test(cssCheck) && !/#lesson \.q \{[^}]*padding-left: 0/.test(cssCheck), "check yourself: question cards have inner padding, radios sit clear of their text, and the lines have room");
 }
 
 if (fails.length) {

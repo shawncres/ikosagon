@@ -1,6 +1,6 @@
 /*
  * Enhance a .ikolearn file on demand. Nothing is stored and nothing is logged: the file is read, revised in memory,
- * and handed back. This is the full pass (ordinary adds only make the small, obvious corrections in cloud-model.js).
+ * and handed back. This is the only pass that merges or moves nodes, and it runs when the learner asks for Enhance.
  * Nodes are topics. Edges are parent/child, plus an optional next step and a few related links.
  * The pass merges near-duplicates, re-parents misplaced topics, lifts an over-long chain into siblings, reorders,
  * repairs next and related links, adds a hands-on safety note, and names a few next topics. Progress, cards and
@@ -59,7 +59,8 @@
     var les = pack && pack.lessons && pack.lessons[n.id];
     return (n.ghost ? 0 : 4) + (n.mastery || 0) * 6 + (n.correct || 0) + ((n.cards && n.cards.length) || 0) * 2 + (C.inDeck(cloud, n.id) ? 3 : 0) + (n.doneAt || n.achievedAt ? 3 : 0) + (les && (les.earned || les.got) ? 4 : 0) + (les && les.text ? 1 : 0);
   }
-  /* Every near-duplicate pair. The richer node stays; the other is merged into it, progress and lessons included. */
+  function shownName(n) { return C.cleanLabel(n && n.label).toLowerCase(); }
+  /* Every near-duplicate pair whose names actually differ. The richer node stays; the other is merged into it. */
   function mergeDupes(cloud, pack, cleaned, merged) {
     var guard = 0;
     while (guard++ < 40) {
@@ -68,13 +69,13 @@
         var n = cloud.nodes[nodes[i]];
         if (!n) continue;
         var hits = cloud.order.map(function (id) { return cloud.nodes[id]; }).filter(function (m) {
-          return m && m.id !== n.id && (m.key === n.key || C.nearName(m.label, n.label)) && C.ancestry(cloud, m.id).indexOf(n.id) < 0 && C.ancestry(cloud, n.id).indexOf(m.id) < 0;
+          return m && m.id !== n.id && shownName(m) !== shownName(n) && (m.key === n.key || C.nearName(m.label, n.label)) && C.ancestry(cloud, m.id).indexOf(n.id) < 0 && C.ancestry(cloud, n.id).indexOf(m.id) < 0;
         });
         if (!hits.length) continue;
         var pool = hits.concat([n]);
         var keep = pool.slice().sort(function (a, b) { return rich(cloud, b, pack) - rich(cloud, a, pack); })[0];
-        var drop = pool.filter(function (m) { return m.id !== keep.id; }).sort(function (a, b) { return rich(cloud, a, pack) - rich(cloud, b, pack); })[0];
-        if (!drop || drop.id === keep.id) continue;
+        var drop = pool.filter(function (m) { return m.id !== keep.id && shownName(m) !== shownName(keep); }).sort(function (a, b) { return rich(cloud, a, pack) - rich(cloud, b, pack); })[0];
+        if (!drop || drop.id === keep.id || shownName(drop) === shownName(keep)) continue;
         var ghost = drop.ghost, label = drop.label, into = keep.label, from = drop.id, to = keep.id;
         if (from === to || !C.mergeNodes(cloud, to, from)) continue;
         carryMaps(pack, from, to);

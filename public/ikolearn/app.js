@@ -511,7 +511,6 @@
       var hit = C.findTopic(state.cloud, tp.name);
       if (hit && grown.indexOf(hit.id) >= 0 && P.needsBridge(state.cloud, hit.id, (tp.chain || []).length) && state.bridgeQueue.indexOf(hit.id) < 0) state.bridgeQueue.push(hit.id);
     });
-    maybeQuiet(landed ? [landed] : []);
     return { topic: topics[0] || (asks[0] && asks[0].tp) || null, parents: r.parentsCreated.slice(), facts: facts };
   }
   /* Subjects the learner named that the reply did not add. Each one is a parent. A name already anywhere is left as it is. */
@@ -1011,66 +1010,7 @@
     return true;
   }
   window.__ikoTidy = { run: tidyCloud, undo: undoTidy, say: tidySay }; /* tests */
-  /*
-   * A small correction while the cloud is in use, for people who never run Enhance. One obvious mis-parent or
-   * near-duplicate, never the node they are on, and not again for a short while. The notice can be undone.
-   */
-  var quietUndo = null;
-  function quietHost() {
-    var n = document.getElementById("quiet-note");
-    if (!n) {
-      n = mk("p", "quiet-note"); n.id = "quiet-note"; n.hidden = true; n.setAttribute("role", "status");
-      if (el.cloud) el.cloud.appendChild(n);
-    }
-    return n;
-  }
-  function carryLearn(from, to) {
-    var les = state.lessons[from];
-    if (les) {
-      if (!state.lessons[to]) state.lessons[to] = les;
-      else {
-        var a = state.lessons[to];
-        if (les.text && a.text && les.text !== a.text) a.text = a.text + "\n\n" + les.text;
-        else if (les.text && !a.text) a.text = les.text;
-        if (les.earned && !a.earned) a.earned = les.earned;
-        if (les.got && !a.got) a.got = les.got;
-      }
-      delete state.lessons[from];
-    }
-    if (state.notes[from] && !state.notes[to]) state.notes[to] = state.notes[from];
-    delete state.notes[from];
-    if (state.tests[from] && !state.tests[to]) state.tests[to] = state.tests[from];
-    delete state.tests[from];
-  }
-  function maybeQuiet(protect) {
-    if (!state.cloud || !C.quietFix) return;
-    var list = (protect || []).slice();
-    if (state.panelNode && state.panelNode !== "root") list.push(state.panelNode);
-    if (state.lessonNode) list.push(state.lessonNode);
-    if (state.focus) list.push(state.focus);
-    var snap = { lessons: JSON.parse(JSON.stringify(state.lessons || {})), notes: JSON.parse(JSON.stringify(state.notes || {})), tests: JSON.parse(JSON.stringify(state.tests || {})) };
-    var r = C.quietFix(state.cloud, { protect: list, now: Date.now() });
-    if (!r || !r.changed) return;
-    quietUndo = snap;
-    if (r.kind === "merge" && r.from) carryLearn(r.from, r.to);
-    save();
-    if (big) big.setCloud(state.cloud);
-    if (mini) mini.setCloud(state.cloud);
-    var host = quietHost();
-    if (!host) return;
-    host.textContent = "";
-    host.appendChild(document.createTextNode((r.kind === "merge" ? "Merged " + r.fromLabel + " into " + r.intoLabel : "Moved " + r.label + " under " + r.under) + ". "));
-    var u = mk("button", "link quiet-undo", "Undo");
-    u.type = "button";
-    u.addEventListener("click", function (e) {
-      e.stopPropagation();
-      if (C.undoQuiet(state.cloud) && quietUndo) { state.lessons = quietUndo.lessons; state.notes = quietUndo.notes; state.tests = quietUndo.tests; save(); if (big) big.setCloud(state.cloud); if (mini) mini.setCloud(state.cloud); }
-      host.hidden = true;
-    });
-    host.appendChild(u);
-    host.hidden = false;
-  }
-  /* Paths and mastery show in several places; redraw them all after a change. */
+  /* Paths and mastery show in several places; redraw them all after a change. Merges and moves wait for Enhance. */
   function refreshAll(flashIds) {
     refreshViews(flashIds);
     maybeTidy();
@@ -1487,7 +1427,7 @@
       m.text = reasonLead(j && (j.reason || j.error)) + (kind === "start" ? " So I couldn't build your first topics yet. Try again in a moment, or type something you'd like to learn about below." : " Let's try that again a little later.");
       m.retry = { kind: kind, about: about || "", grow: grow || "" };
       upsert(m);
-    }).then(function () { prefetchFirstLesson(); save(); maybeQuiet([]); lock(false); refreshEx(); renderDraw(); if (!el.cloud.hidden && !el.cloud.querySelector(".cloud-caption:not([hidden])")) renderCloudFlow(); if (state.offerGrow) { state.offerGrow = false; offerGrow(); } onStartSettled(startBuildOk); });
+    }).then(function () { prefetchFirstLesson(); save(); lock(false); refreshEx(); renderDraw(); if (!el.cloud.hidden && !el.cloud.querySelector(".cloud-caption:not([hidden])")) renderCloudFlow(); if (state.offerGrow) { state.offerGrow = false; offerGrow(); } onStartSettled(startBuildOk); });
   }
   /*
    * The second, optional question ("something you'd like to grow in yourself"): no longer part of the opening. Once the
@@ -3561,7 +3501,6 @@
     if (mini) mini.setCloud(state.cloud);
     renderYouHint();
     renderCloudFlow();
-    maybeQuiet([]);
   }
   function beginEmpty() {
     closeStart({ quiet: true });
@@ -4084,10 +4023,12 @@
     cardSig = "";
     placeCard();
   }
+  /* Add your name only while the centre node is still the default You. A name that is set has no Rename link here. */
   function nameQuiet() {
     var row = mk("div", "name-quiet");
-    var named = Boolean(state.cloud && state.cloud.named);
-    var b = linkBtn(named ? "Rename" : "Add your name", function () { expandName(row); }, "link name-quiet-btn");
+    var c = state.cloud;
+    if (!c || c.named || (c.name && c.name !== "You")) return row;
+    var b = linkBtn("Add your name", function () { expandName(row); }, "link name-quiet-btn");
     b.setAttribute("aria-expanded", "false");
     row.appendChild(b);
     return row;
