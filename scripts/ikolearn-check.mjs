@@ -1179,13 +1179,14 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
    * The optional start layer (a greeting, a name, and a few interests on the cloud) needs about 10 KB raw / 3 KB gzip.
    * Outward rings, the focus list, the settings menu, Ikosagon and the font picker need about 8 KB raw / 2 KB gzip.
    * Intake without a name, branch framing, the type size, deck thumbnails and the usage note need about 8 KB raw / 2 KB gzip.
+   * Rename inside the user card, a wider phone card, and the quiet one-step correction need about 8 KB raw / 2 KB gzip.
    */
   const files = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js", "rank.js", "orchestrator.js", "camera.js", "profiles.js", "icon.svg"];
   const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
   const bytes = files.reduce((n, f) => n + served(f).length, 0);
   const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
-  ok(bytes < 460_000, "app weight under 460 KB uncompressed (served, minified)", String(bytes));
-  ok(gz < 152_000, "app weight under 152 KB gzipped (served, minified)", String(gz));
+  ok(bytes < 472_000, "app weight under 472 KB uncompressed (served, minified)", String(bytes));
+  ok(gz < 156_000, "app weight under 156 KB gzipped (served, minified)", String(gz));
 }
 
 /* ================= PR 108: QA polish ================= */
@@ -4549,6 +4550,110 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   eq(starterTopics("CA"), ["Science", "Music", "Nature"], "starters: a coarse country code picks that list");
   eq(starterTopics("zz"), ["Science", "Music", "Artificial Intelligence"], "starters: an unknown country falls back to the default set");
   ok(!/x-vercel-ip-country/.test(fs.readFileSync("public/ikolearn/app.js", "utf8")) && /\/api\/ikolearn\/starters/.test(appU) && /Cache-Control": "private, no-store"/.test(fs.readFileSync("app/api/ikolearn/starters/route.ts", "utf8")), "starters: the page does not read or store a country; the route answers from the request header and does not cache it");
+}
+
+/* ---------- rename on tap, full enhance, quiet corrections ---------- */
+{
+  const appR = fs.readFileSync("public/ikolearn/app.js", "utf8");
+  const cssR = fs.readFileSync("public/ikolearn/styles.css", "utf8");
+  const camR = fs.readFileSync("public/ikolearn/camera.js", "utf8");
+  const viewR = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8");
+  ok(/Add your name/.test(appR) && /"Rename"/.test(appR) && /function expandName\(/.test(appR) && /name-inline/.test(appR) && /name-kbd/.test(appR) && !/openPanel\("root"\);\s*startRename\(\)/.test(appR), "rename: the user card offers Add your name or Rename, and the field opens only after that tap");
+  ok(/visualViewport/.test(appR) && /nameTall/.test(appR) && /body\.name-kbd #panel\.is-root/.test(cssR), "rename: while the name is edited the card stays in the visible screen, above the keyboard");
+  ok(/fold\.open = true/.test(appR) && /cw - 16/.test(appR) && /#panel\[data-side="sheet"\] \{ width: calc\(100% - 16px\)/.test(cssR) && /min-height: 44px/.test(cssR.slice(cssR.indexOf('#panel[data-side="sheet"] .actions'))), "mobile card: wider sheet, Your path open, buttons stay 44px");
+  ok(/tighten: wide \? 1 : 0\.72/.test(camR) && /branchWant \* o\.tighten/.test(viewR) && /\.zoom \{ opacity: \.32; \}/.test(cssR), "mobile: a selected branch is drawn closer, and Recentre stays available but quieter");
+  ok(/function maybeQuiet\(/.test(appR) && /C\.quietFix\(/.test(appR) && /quiet-undo/.test(appR) && /if \(landing === true\) setTimeout\(function \(\) \{ maybeQuiet\(\[\]\); \}/.test(appR), "ordinary use: one quiet correction on load and after an add, with Undo");
+
+  const E = require("../public/ikolearn/enhance.js");
+  const moved = C.create("Sam", T0);
+  C.applyTopics(moved, [{ name: "Cooking", signal: "curious", asSubject: true }, { name: "Greek Mythology", signal: "curious", asSubject: true }], T0);
+  C.plant(moved, "Zeus", C.findSubject(moved, "Cooking").id, T0 + 1);
+  const zeus = C.findTopic(moved, "Zeus");
+  zeus.mastery = 0.8; zeus.correct = 4; zeus.cards = ["card-zeus"]; zeus.doneAt = T0 + 5;
+  moved.deck = [{ id: zeus.id, label: "Zeus", subject: "Cooking", hue: 28, at: T0, best: 2, chain: [], blurb: "", ach: 0, tb: 0, ml: 0, inn: null, co: [] }];
+  const lesson = { text: "Zeus is a god of the sky.", earned: T0 + 6, ck: { r: 1, p: T0 + 6, miss: 0, c: 1, set: 0 } };
+  const pack = { lessons: { [zeus.id]: lesson }, notes: { [zeus.id]: "A short note." }, tests: {}, seen: {} };
+  let parent = "Zeus";
+  for (let i = 0; i < 5; i++) {
+    const name = "Bolt " + (i + 1);
+    C.applyTopics(moved, [{ name, parent, signal: "explored" }], T0 + 10 + i);
+    parent = name;
+  }
+  const bolt = C.findTopic(moved, "Bolt 5");
+  bolt.mastery = 0.4;
+  const beforeIds = moved.order.slice();
+  const report = E.enhanceCloud(moved, pack);
+  ok(moved.nodes[zeus.id] && moved.nodes[zeus.id].parent && moved.nodes[moved.nodes[zeus.id].parent].label === "Greek Mythology", "enhance re-parents a misplaced topic under the field it belongs to", C.trail(moved, zeus.id));
+  ok(moved.nodes[zeus.id].mastery === 0.8 && moved.nodes[zeus.id].cards.includes("card-zeus") && moved.deck.some((e) => e.id === zeus.id), "enhance keeps mastery and cards on a moved topic");
+  ok(pack.lessons[zeus.id] && pack.lessons[zeus.id].text === "Zeus is a god of the sky." && pack.lessons[zeus.id].earned === T0 + 6 && !/Zeus is a god/.test(report.notice), "enhance keeps the lesson and does not put lesson text in the notice");
+  ok(C.depthOf(moved, bolt.id) <= 4 && moved.nodes[bolt.id].mastery === 0.4 && beforeIds.every((id) => moved.nodes[id]), "enhance lifts a long chain into siblings and does not drop a node or its progress", String(C.depthOf(moved, bolt.id)));
+  ok(report.moved.length > 0 && /Moved /.test(report.notice), "enhance lists what it moved", report.notice);
+
+  const dup = C.create("Sam", T0);
+  C.applyTopics(dup, [{ name: "Car Maintenance", signal: "curious", asSubject: true }], T0);
+  C.plant(dup, "Basic Car Maintenance", null, T0 + 1);
+  const keep = C.findSubject(dup, "Car Maintenance"), extra = C.findSubject(dup, "Basic Car Maintenance");
+  extra.mastery = 0.9; extra.cards = ["card-basic"]; extra.doneAt = T0 + 3;
+  const carLesson = { text: "How to look after a car.", earned: T0 + 4 };
+  const dpack = { lessons: { [keep.id]: carLesson }, notes: {}, tests: {}, seen: {} };
+  const dreport = E.enhanceCloud(dup, dpack);
+  const survivor = C.findSubject(dup, "Basic Car Maintenance") || C.findAny(dup, "Car Maintenance");
+  ok(dup.order.length === 1 && survivor && survivor.mastery === 0.9 && survivor.cards.includes("card-basic"), "enhance merges a near-duplicate and keeps the progress", JSON.stringify({ n: dup.order.length, m: survivor && survivor.mastery, cards: survivor && survivor.cards }));
+  ok(dpack.lessons[survivor.id] && dpack.lessons[survivor.id].earned === T0 + 4 && !dpack.lessons[keep.id], "enhance carries the lesson onto the node that stays");
+  ok(/Merged /.test(dreport.notice), "enhance names the merge in the notice", dreport.notice);
+
+  const freshSkill = E.skillOf(C.create("Sam", T0), {});
+  ok(freshSkill.level === "beginner" && freshSkill.evidence === false, "skill: no finished lessons or checks is a beginner, with nothing to apply yet");
+  const skilled = C.create("Sam", T0);
+  C.applyTopics(skilled, [{ name: "Music", signal: "curious", asSubject: true }], T0);
+  const titles = ["Scales", "Rhythm", "Harmony", "Melody", "Form", "Tempo", "Dynamics", "Timbre"];
+  const les = {};
+  titles.forEach((name, i) => {
+    C.applyTopics(skilled, [{ name, parent: "Music", signal: "explored" }], T0 + i);
+    const n = C.findTopic(skilled, name);
+    n.mastery = 0.9; n.doneAt = T0 + 20 + i; n.correct = 3;
+    skilled.tests[n.id] = { at: T0 + 30, n: 1, best: 1, attempts: 1, offeredAt: T0, passAt: T0 + 30 };
+    les[n.id] = { earned: T0 + 30, ck: { r: 1, p: T0 + 30, miss: 0, c: 1, set: 0 } };
+  });
+  const sk = E.applySkill(skilled, les);
+  ok(sk.level === "advanced" && sk.evidence && C.profileOf(skilled).band === "deeper" && C.subjects(skilled)[0].ez >= 0.55, "skill: finished lessons and passed checks raise later lessons", JSON.stringify(sk));
+  C.setProfile(skilled, { band: "simple" }, T0);
+  skilled.subjects = null;
+  C.subjects(skilled).forEach((s) => { delete s.ez; });
+  E.applySkill(skilled, les);
+  ok(C.profileOf(skilled).band === "simple", "skill: a level the learner already chose is left as it is");
+  const scales = C.findTopic(skilled, "Scales"), rhythm = C.findTopic(skilled, "Rhythm");
+  scales.rel = [rhythm.id];
+  const round = C.deserialize(C.serialize(skilled));
+  ok(round.skill === "advanced" && round.nodes[scales.id].rel && round.nodes[scales.id].rel[0] === rhythm.id, "skill and related links round-trip in the save");
+
+  const quiet = C.create("Sam", T0);
+  C.applyTopics(quiet, [{ name: "Cooking", signal: "curious", asSubject: true }, { name: "Greek Mythology", signal: "curious", asSubject: true }], T0);
+  C.applyTopics(quiet, [{ name: "Hera", parent: "Greek Mythology", signal: "explored" }], T0 + 1);
+  C.plant(quiet, "Zeus", C.findSubject(quiet, "Cooking").id, T0 + 1);
+  const qZeus = C.findTopic(quiet, "Zeus");
+  qZeus.mastery = 0.7; qZeus.cards = ["card-q"];
+  const held = C.quietFix(quiet, { focusId: qZeus.id, now: T0 });
+  ok(!held.changed && quiet.nodes[qZeus.id].parent === C.findSubject(quiet, "Cooking").id, "quiet fix does not move the focused node");
+  const q2 = C.quietFix(quiet, { now: T0 });
+  ok(q2.changed && q2.kind === "move" && quiet.nodes[qZeus.id].parent === C.findSubject(quiet, "Greek Mythology").id && quiet.nodes[qZeus.id].mastery === 0.7 && quiet.nodes[qZeus.id].cards.includes("card-q"), "quiet fix moves one clear mis-parent and keeps its progress", JSON.stringify(q2));
+  const q3 = C.quietFix(quiet, { now: T0 + 1000 });
+  ok(!q3.changed && q3.why === "rate", "quiet fix waits, so one open does not keep rearranging the cloud");
+  ok(C.undoQuiet(quiet) && quiet.nodes[qZeus.id].parent === C.findSubject(quiet, "Cooking").id, "quiet fix can be undone");
+  const again = C.create("Sam", T0);
+  C.applyTopics(again, [{ name: "Car Maintenance", signal: "curious", asSubject: true }], T0);
+  C.plant(again, "Basic Car Maintenance", null, T0 + 1);
+  const basic = C.findSubject(again, "Basic Car Maintenance");
+  basic.mastery = 0.6; basic.cards = ["card-b"];
+  again.deck = [{ id: basic.id, label: basic.label, subject: "", hue: 20, at: T0, best: 1, chain: [], blurb: "", ach: 0, tb: 0, ml: 0, inn: null, co: [] }];
+  const deckBefore = again.deck.length;
+  const qm = C.quietFix(again, { now: T0 });
+  const left = C.findAny(again, "Basic Car Maintenance") || C.findAny(again, "Car Maintenance");
+  ok(qm.changed && qm.kind === "merge" && again.order.length === 1 && left.mastery === 0.6 && left.cards.includes("card-b") && again.deck.length >= deckBefore, "quiet fix merges a near-duplicate without losing mastery or the card", JSON.stringify({ kind: qm.kind, n: again.order.length, deck: again.deck.length, m: left && left.mastery }));
+  const parents = {};
+  again.order.forEach((id) => { parents[id] = again.nodes[id].parent; });
+  C.applyTopics(again, [{ name: "Brakes", under: left.id, signal: "curious" }], T0 + 5);
+  ok(again.order.filter((id) => parents[id] !== undefined).every((id) => again.nodes[id].parent === parents[id]), "adding a topic still does not move an existing one");
 }
 
 if (fails.length) {

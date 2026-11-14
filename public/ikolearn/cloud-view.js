@@ -630,6 +630,7 @@
       var fit = (!isRoot && pts.length) ? CAM.fitBranch(box, { aw: o.aw || w, ah: o.ah || h }, lo, hi) : null;
       var z = o.zoom || (fit ? fit.zoom : CAM.fitAround(box, o.aw || w, o.ah || h, lo, hi));
       branchWant = fit ? fit.scale : 1;
+      if (o.tighten && o.tighten < 1) branchWant = Math.max(0.52, branchWant * o.tighten); /* a phone draws the selected branch closer, so it stays readable without a long pan */
       if (!isRoot) markBranch(id); else branchIds = {};
       if (reduce) branchScale = branchWant;
       var cx = o.cx == null ? w / 2 : o.cx, cy = o.cy == null ? h / 2 : o.cy;

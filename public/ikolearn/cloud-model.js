@@ -1933,7 +1933,23 @@
     return JSON.stringify({ v: VERSION, name: cloud.name, seq: cloud.seq, rev: cloud.rev, created: cloud.created, next: cloud.next || 0, n: n, p: paths, f: forks, cards: cloud.cards,
       k: (cloud.deck || []).map(function (e) { var r = [e.id, e.label, e.subject, e.hue, s(e.at), e.best || 0, e.chain || [], e.blurb || "", s(e.ach)]; if (e.tb || e.ml || e.inn || (e.co && e.co.length)) r.push(e.tb || 0, e.ml || 0, e.inn || 0, e.co && e.co.length ? e.co : 0); return r; }), g: cloud.draws || [], ss: cloud.sessions || 0,
       t: tests, sg: sg, fl: cloud.active || 0, pr: profileRow(cloud.profile),
-      ev: (cloud.events || []).map(function (e) { return [s(e.t), e.k, e.id, e.lv || 0, e.ids || [], e.why || ""]; }), mo: motifMap(cloud), ez: easeMap(cloud), rs: rsRow(cloud), nm: cloud.named ? 1 : undefined });
+      ev: (cloud.events || []).map(function (e) { return [s(e.t), e.k, e.id, e.lv || 0, e.ids || [], e.why || ""]; }), mo: motifMap(cloud), ez: easeMap(cloud), rs: rsRow(cloud), nm: cloud.named ? 1 : undefined,
+      lk: linkMap(cloud), sk: cloud.skill || undefined, qf: cloud.qfAt ? Math.round(cloud.qfAt / 1000) : undefined, qs: skipList(cloud) });
+  }
+  /* Optional related-topic ids (enhance). Omitted when empty so older saves stay the same size. */
+  function linkMap(cloud) {
+    var m = {};
+    cloud.order.forEach(function (id) {
+      var n = cloud.nodes[id];
+      if (!n || !n.rel || !n.rel.length) return;
+      var rel = n.rel.filter(function (x) { return cloud.nodes[x] && x !== id; }).slice(0, 4);
+      if (rel.length) m[id] = rel;
+    });
+    return Object.keys(m).length ? m : undefined;
+  }
+  function skipList(cloud) {
+    var ids = Object.keys(cloud.qfSkip || {}).filter(function (id) { return cloud.nodes[id]; }).slice(0, 24);
+    return ids.length ? ids : undefined;
   }
   /*
    * How easily the learner answers in a branch (PR 103): one number per subject, -1 (finding the checks hard) .. 1 (answering
@@ -2115,6 +2131,14 @@
       if (c.ez && typeof c.ez === "object") Object.keys(c.ez).forEach(function (id) { var x = out.nodes[id], v = Number(c.ez[id]); if (x && !x.parent && Number.isFinite(v)) x.ez = Math.max(-1, Math.min(1, Math.round(v) / 100)); });
       if (c.rs) rsRead(out, c.rs);
       if (c.nm) out.named = true; /* the learner renamed the centre node; older saves omit this and keep their name */
+      if (c.lk && typeof c.lk === "object") Object.keys(c.lk).forEach(function (id) {
+        var n = out.nodes[id];
+        if (!n || !Array.isArray(c.lk[id])) return;
+        n.rel = c.lk[id].filter(function (x) { return typeof x === "string" && out.nodes[x] && x !== id; }).slice(0, 4);
+      });
+      if (typeof c.sk === "string" && /^(beginner|developing|comfortable|advanced)$/.test(c.sk)) out.skill = c.sk;
+      if (c.qf) out.qfAt = (Number(c.qf) || 0) * 1000;
+      if (Array.isArray(c.qs)) { out.qfSkip = {}; c.qs.forEach(function (id) { if (typeof id === "string" && out.nodes[id]) out.qfSkip[id] = 1; }); }
       var nowS = Math.round(Date.now() / 1000) * 1000; /* whole seconds, as stored, so a migrated cloud round-trips exactly */
       if (c.v < 5) adoptComputerScience(out, nowS); /* v4 and older: Computer Science becomes its own subject */
       if (c.v < 6) { pruneSeeds(out); joinDeck(out, nowS); } /* v5 and older: untouched starter seeds go; everything learned stays */
@@ -2170,6 +2194,176 @@
     return (Array.isArray(msgs) ? msgs : []).filter(function (m) { return m && typeof m.text === "string" && (/^(user|model|card|grow)$/.test(m.role) || (m.role === "ask" && m.done)); }).slice(-max); /* answered questions stay; open ones are asked again */
   }
 
+  /*
+   * Fold one node's progress into another, then remove the duplicate. Children move first. Cards, mastery, checks and
+   * deck entries are carried onto the node that stays (a deck entry whose topic is gone is put back, so a card is not
+   * dropped). The caller remaps lessons, which live outside the cloud. Nothing here runs during an ordinary add.
+   */
+  function foldProgress(keep, drop) {
+    keep.mastery = Math.max(keep.mastery || 0, drop.mastery || 0);
+    keep.correct = Math.max(keep.correct || 0, drop.correct || 0);
+    keep.weight = Math.max(keep.weight || 0, drop.weight || 0);
+    keep.spent = (keep.spent || 0) + (drop.spent || 0);
+    keep.engaged = (keep.engaged || 0) + (drop.engaged || 0);
+    keep.heat = Math.max(keep.heat || 0, drop.heat || 0);
+    if ((drop.heatAt || 0) > (keep.heatAt || 0)) keep.heatAt = drop.heatAt;
+    if (drop.opened) keep.opened = true;
+    if (drop.inked) keep.inked = true;
+    if (drop.doneAt && (!keep.doneAt || drop.doneAt < keep.doneAt)) keep.doneAt = drop.doneAt;
+    if (drop.achievedAt && (!keep.achievedAt || drop.achievedAt < keep.achievedAt)) keep.achievedAt = drop.achievedAt;
+    keep.cards = (keep.cards || []).concat(drop.cards || []).filter(function (x, i, a) { return x && a.indexOf(x) === i; });
+    if (drop.blurb && !keep.blurb) keep.blurb = drop.blurb;
+    if (drop.goal && !keep.goal) keep.goal = drop.goal;
+    if (!keep.ghost || !drop.ghost) keep.ghost = false;
+  }
+  function carryDeck(cloud, from, to) {
+    var a = deckEntry(cloud, from), b = deckEntry(cloud, to);
+    if (!a) return null;
+    if (!b) {
+      var copy = JSON.parse(JSON.stringify(a));
+      copy.id = to;
+      copy.label = cloud.nodes[to] ? cloud.nodes[to].label : copy.label;
+      cloud.deck.push(copy);
+    } else {
+      b.best = Math.max(b.best || 0, a.best || 0);
+      b.ml = Math.max(b.ml || 0, a.ml || 0);
+      b.co = (b.co || []).concat([[a.id, a.label || "Card"]]);
+    }
+    return JSON.parse(JSON.stringify(a));
+  }
+  function retarget(cloud, from, to) {
+    all(cloud).forEach(function (m) {
+      if (m.path) {
+        m.path.ids = m.path.ids.map(function (x) { return x === from ? to : x; }).filter(function (x, i, a) { return x !== m.id && cloud.nodes[x] && a.indexOf(x) === i; });
+        if (m.path.next === from) m.path.next = cloud.nodes[to] ? to : null;
+      }
+      if (m.fork && m.fork.ids) {
+        var ids = [], why = [];
+        m.fork.ids.forEach(function (x, i) {
+          var y = x === from ? to : x;
+          if (y !== m.id && cloud.nodes[y] && ids.indexOf(y) < 0) { ids.push(y); why.push((m.fork.why || [])[i] || ""); }
+        });
+        m.fork.ids = ids; m.fork.why = why;
+        if (m.fork.picked === from) m.fork.picked = ids.indexOf(to) >= 0 ? to : null;
+        if (m.fork.ids.length < 2) delete m.fork;
+      }
+      if (m.pre) m.pre = m.pre.map(function (x) { return x === from ? to : x; }).filter(function (x, i, a) { return x !== m.id && cloud.nodes[x] && a.indexOf(x) === i; });
+      if (m.off === from) m.off = to;
+      if (m.rel) m.rel = m.rel.map(function (x) { return x === from ? to : x; }).filter(function (x, i, a) { return x !== m.id && cloud.nodes[x] && a.indexOf(x) === i; });
+    });
+    if (cloud.next === from) cloud.next = to;
+    if (cloud.active === from) cloud.active = to;
+    if (cloud.tests && cloud.tests[from]) {
+      var a = cloud.tests[from], b = cloud.tests[to];
+      if (!b) cloud.tests[to] = a;
+      else cloud.tests[to] = { at: Math.max(a.at || 0, b.at || 0), n: Math.max(a.n || 0, b.n || 0), best: Math.max(a.best || 0, b.best || 0), attempts: (a.attempts || 0) + (b.attempts || 0), offeredAt: a.offeredAt || b.offeredAt || 0, passAt: Math.max(a.passAt || 0, b.passAt || 0) };
+      delete cloud.tests[from];
+    }
+  }
+  function mergeNodes(cloud, keepId, dropId) {
+    var keep = node(cloud, keepId), drop = node(cloud, dropId);
+    if (!keep || !drop || keepId === dropId) return false;
+    if (isAncestor(cloud, keepId, dropId) || isAncestor(cloud, dropId, keepId)) return false;
+    childrenOf(cloud, dropId).slice().forEach(function (c) { if (c.id !== keepId) moveUnder(cloud, c.id, keepId); });
+    if (childrenOf(cloud, dropId).length) return false;
+    retarget(cloud, dropId, keepId);
+    foldProgress(keep, drop);
+    var keptCard = carryDeck(cloud, dropId, keepId);
+    removeBranch(cloud, dropId);
+    if (keptCard && !deckEntry(cloud, keptCard.id)) cloud.deck.push(keptCard);
+    cloud.rev += 1;
+    return true;
+  }
+  function treeSnap(cloud) {
+    return { nodes: JSON.parse(JSON.stringify(cloud.nodes)), order: cloud.order.slice(), deck: JSON.parse(JSON.stringify(cloud.deck || [])), tests: JSON.parse(JSON.stringify(cloud.tests || {})), next: cloud.next, active: cloud.active };
+  }
+  function treeRestore(cloud, s) {
+    cloud.nodes = s.nodes; cloud.order = s.order; cloud.deck = s.deck || []; cloud.tests = s.tests || {}; cloud.next = s.next || null; cloud.active = s.active || null;
+    cloud.rev += 1;
+  }
+  function rich(cloud, n) {
+    return (n.ghost ? 0 : 4) + (n.mastery || 0) * 6 + (n.correct || 0) + ((n.cards && n.cards.length) || 0) * 2 + (inDeck(cloud, n.id) ? 3 : 0) + (n.doneAt || n.achievedAt ? 2 : 0) + (n.opened ? 0.4 : 0);
+  }
+  /* A same-family node that can hold a clearly misplaced topic. Shallowest match wins. */
+  function clearHome(cloud, n) {
+    if (!n || !n.parent) return null;
+    var cur = node(cloud, n.parent);
+    if (!cur || !familyClash(n.label, cur.label)) return null;
+    var home = closestParent(cloud, n.label);
+    if (home && home.id !== cur.id && !familyClash(n.label, home.label) && !isAncestor(cloud, n.id, home.id) && !isAncestor(cloud, home.id, n.id)) return home;
+    var fam = familiesOf(n.label);
+    if (!fam.length) return null;
+    var best = null, bestD = 99;
+    all(cloud).forEach(function (m) {
+      if (!m || m.id === n.id || m.id === cur.id || isAncestor(cloud, n.id, m.id)) return;
+      var mf = familiesOf(m.label);
+      if (!fam.some(function (f) { return mf.indexOf(f) >= 0; })) return;
+      var d = m.parent ? depthOf(cloud, m.id) : 0;
+      if (d < bestD) { bestD = d; best = m; }
+    });
+    return best && !isAncestor(cloud, best.id, n.id) ? best : null;
+  }
+  /*
+   * One obvious correction, for ordinary use (a topic was just added, or the cloud was opened). Exact or near-exact
+   * duplicates merge. A child whose field clashes with its parent moves under the clearest same-field node. At most
+   * one change, and not again for a short while, so the cloud does not jump. The focused node is left where it is.
+   * Undo puts that one change back. Enhance is a separate, full pass.
+   */
+  var QUIET_GAP = 45000;
+  function quietFix(cloud, opts) {
+    opts = opts || {};
+    if (!cloud || !cloud.order) return { changed: false };
+    var now = now_(opts.now), protect = {}, skip = cloud.qfSkip || {};
+    if (opts.focusId) protect[opts.focusId] = 1;
+    (opts.protect || []).forEach(function (id) { if (id) protect[id] = 1; });
+    if (cloud.qfAt && now - cloud.qfAt < QUIET_GAP) return { changed: false, why: "rate" };
+    var nodes = all(cloud).slice(), i, n;
+    for (i = 0; i < nodes.length; i++) {
+      n = nodes[i];
+      if (!n || skip[n.id]) continue;
+      var hits = all(cloud).filter(function (m) {
+        return m.id !== n.id && !skip[m.id] && (m.key === n.key || nearName(m.label, n.label)) && !isAncestor(cloud, n.id, m.id) && !isAncestor(cloud, m.id, n.id);
+      });
+      if (!hits.length) continue;
+      var pool = hits.concat([n]);
+      var keep = pool.slice().sort(function (a, b) { return rich(cloud, b) - rich(cloud, a); })[0];
+      var drop = null;
+      pool.sort(function (a, b) { return rich(cloud, a) - rich(cloud, b); });
+      for (var j = 0; j < pool.length; j++) { if (pool[j].id !== keep.id && !protect[pool[j].id]) { drop = pool[j]; break; } }
+      if (!drop) continue;
+      var snap = treeSnap(cloud);
+      if (!mergeNodes(cloud, keep.id, drop.id)) { treeRestore(cloud, snap); continue; }
+      cloud.qfUndo = { snap: snap, skip: drop.id };
+      cloud.qfAt = now;
+      cloud.qfSkip = skip;
+      return { changed: true, kind: "merge", from: drop.id, to: keep.id, fromLabel: drop.label, intoLabel: keep.label };
+    }
+    for (i = 0; i < nodes.length; i++) {
+      n = nodes[i];
+      if (!n || !n.parent || protect[n.id] || skip[n.id]) continue;
+      var home = clearHome(cloud, n);
+      if (!home || home.id === n.parent) continue;
+      var snapM = treeSnap(cloud);
+      if (!moveUnder(cloud, n.id, home.id)) continue;
+      cloud.rev += 1;
+      cloud.qfUndo = { snap: snapM, skip: n.id };
+      cloud.qfAt = now;
+      cloud.qfSkip = skip;
+      return { changed: true, kind: "move", id: n.id, label: n.label, under: home.label };
+    }
+    return { changed: false };
+  }
+  function undoQuiet(cloud) {
+    var u = cloud.qfUndo;
+    if (!u || !u.snap) return false;
+    treeRestore(cloud, u.snap);
+    cloud.qfSkip = cloud.qfSkip || {};
+    if (u.skip) cloud.qfSkip[u.skip] = 1;
+    cloud.qfUndo = null;
+    cloud.qfAt = Date.now();
+    return true;
+  }
+
   var api = {
     VERSION: VERSION, LIMITS: LIMITS, STORE: STORE, subjectSlot: subjectSlot, promptSubjects: promptSubjects, promptView: promptView, prune: prune, removeBranch: removeBranch, MASTERED: MASTERED, OLD_SEEDS: OLD_SEEDS, HUES: HUES, subjectHue: subjectHue, plant: plant,
     newProfile: newProfile, profileOf: profileOf, BANDS: BANDS, LEVELS: LEVELS, bandOf: bandOf, levelOf: levelOf, setLast: setLast, lastOf: lastOf, dirOf: dirOf, setLater: setLater, setProfile: setProfile, topicCount: topicCount,
@@ -2187,7 +2381,8 @@
     evolveColor: evolveColor, cardColor: cardColor, toneOf: toneOf, MOTIFS: MOTIFS, cleanMotif: cleanMotif, applyChoices: applyChoices, pickChoice: pickChoice, isTerminal: isTerminal, otherBranches: otherBranches, hash: hash,
     attachCard: attachCard, cardsFor: cardsFor, summarize: summarize, knownUnder: knownUnder, subjectLabels: subjectLabels,
     subjects: subjects, childrenOf: childrenOf, ancestry: ancestry, depthOf: depthOf, subjectOf: subjectOf, trail: trail, index: index,
-    findSubject: findSubject, findTopic: findTopic, findAny: findAny, findClose: findClose, nearName: nearName, nameScore: nameScore, familyClash: familyClash, closestParent: closestParent, norm: norm, cleanLabel: cleanLabel,
+    findSubject: findSubject, findTopic: findTopic, findAny: findAny, findClose: findClose, nearName: nearName, nameScore: nameScore, familyClash: familyClash, familiesOf: familiesOf, closestParent: closestParent, norm: norm, cleanLabel: cleanLabel,
+    mergeNodes: mergeNodes, quietFix: quietFix, undoQuiet: undoQuiet, clearHome: clearHome,
     EASE: EASE, easeOf: easeOf, noteEase: noteEase, FADE: FADE, fadeOf: fadeOf, fadeAfter: fadeAfter, lastActive: lastActive,
     colorOf: colorOf, levelScale: levelScale, layout: layout, serialize: serialize, deserialize: deserialize, trimThread: trimThread
   };
