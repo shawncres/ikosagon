@@ -37,7 +37,7 @@
     ageLink: $("age-link"),
     cs: $("cloud-start"), csName: $("cs-name"), csAges: $("cs-ages"), csHi: $("cs-hi"), csQ: $("cs-q"), csFew: $("cs-few"), csForm: $("cs-form"), csIn: $("cs-in"), csEx: $("cs-ex"), csStatus: $("cs-status"),
     youHint: $("you-hint"), nameEdit: $("name-edit"), nameEditIn: $("name-edit-in"), addSub: $("add-sub"), addIn: $("add-sub-in"), addStatus: $("add-status"),
-    start: $("start-layer"), slHi: $("sl-hi"), slForm: $("sl-form"), slName: $("sl-name"), slKeep: $("sl-keep"), slIn: $("sl-in"), slEx: $("sl-ex"), slSkip: $("sl-skip"), slStatus: $("sl-status"),
+    start: $("start-layer"), slHi: $("sl-hi"), slForm: $("sl-form"), slIn: $("sl-in"), slEx: $("sl-ex"), slSkip: $("sl-skip"), slStatus: $("sl-status"), addQuiet: $("add-quiet"),
     zoomList: $("zoom-list"), zoomKicker: $("zoom-kicker"), zoomTitle: $("zoom-title"), zoomItems: $("zoom-items"),
     ikoWrap: $("iko-wrap"), iko: $("iko"), ikoLine: $("iko-line"), ikoSheet: $("iko-sheet"), ikoAbout: $("iko-about"), ikoX: $("iko-x"), ikoSay: $("iko-say"), ikoActs: $("iko-acts"), ikoGot: $("iko-got"), ikoBody: $("iko-body"), ikoSlot: $("iko-slot"), ikoLog: $("iko-log"), ikoForm: $("iko-form"), ikoIn: $("iko-in"), ikoAll: $("iko-all"), zin: $("zin"), zout: $("zout"), zreset: $("zreset"),
     panel: $("panel"), cloudTop: document.querySelector(".cloud-top"), pKicker: $("p-kicker"), pTitle: $("p-title"), pDesc: $("p-desc"), pNote: $("p-note"), pLesson: $("p-lesson"), pCard: $("p-card"), pAdj: $("p-adj"),
@@ -470,7 +470,7 @@
     var g = C.addGhosts(state.cloud, ghosts, Date.now(), focusId);
     var facts = topics.map(function (tp) { return P.addFact(tp.name, r, state.cloud); });
     var parts = [];
-    r.parentsCreated.forEach(function (id) { parts.push("new subject " + state.cloud.nodes[id].label); });
+    r.parentsCreated.forEach(function (id) { var lab = state.cloud.nodes[id].label; parts.push("new subject " + lab); if (window.IkoUsage && IkoUsage.noteSubject) IkoUsage.noteSubject(lab); });
     /* a new chain is named once, at its deepest new link: "Making & Coding → Programming → Python → Sets (new)" */
     r.created.filter(function (id) { return !r.created.some(function (o) { return o !== id && C.ancestry(state.cloud, o).indexOf(id) >= 0; }); })
       .forEach(function (id) { parts.push(C.trail(state.cloud, id, " → ") + " (new)"); });
@@ -1980,7 +1980,7 @@
   function renderConf(id) {
     if (state.mode === "test") { el.lConf.hidden = true; el.lConf.textContent = ""; return; }
     var dn = lessonDone(id);
-    if (dn && confWas[id] === false) { if (window.IkoUsage) window.IkoUsage.bump("lessons_completed"); } /* counted once, as it turns done */
+    if (dn && confWas[id] === false) { if (window.IkoUsage) { window.IkoUsage.bump("lessons_completed"); if (IkoUsage.noteDone) IkoUsage.noteDone(); } } /* counted once, as it turns done */
     confWas[id] = dn;
     el.lConf.hidden = !dn;
     if (!dn) { el.lConf.textContent = ""; return; }
@@ -2156,6 +2156,7 @@
     state.lessonNode = id;
     state.lessonFrom = state.pendingFrom || null; state.pendingFrom = null; /* opened from a card's hub: Back returns there */
     state.mode = "lesson"; state.test = null;
+    if (window.IkoUsage && IkoUsage.noteLesson) IkoUsage.noteLesson(n.label);
     if (!C.isDone(state.cloud, id)) state.cloud.active = id; /* "Continue" brings the learner back here */
     markLast(id, "lesson"); /* PR 107: "Return to" */
     C.profileOf(state.cloud).lessonVisit = C.profileOf(state.cloud).visits || 0; /* not stuck: a lesson was opened this visit */
@@ -3089,7 +3090,7 @@
   function openCloud(landing) {
     el.cloud.hidden = false; if (window.IkoSound) IkoSound.ambient(true);
     var fresh = !big;
-    if (!big) big = V.create(el.cloudCanvas, { onPick: pick, onView: saveView, onDraw: placeCard, onEmpty: closeCard, onGesture: moved });
+    if (!big) big = V.create(el.cloudCanvas, { onPick: pick, onLong: function () { if (!startLayerOpen()) openAddSubject(); }, onView: saveView, onDraw: placeCard, onEmpty: closeCard, onGesture: moved });
     big.resize();
     big.setCloud(state.cloud);
     /* every load (a visit, a learner switched in, a cloud opened from a file, after Start over) begins at home: the name in
@@ -3286,12 +3287,8 @@
   /* one intake: the typed words first, then the picked ideas ("the ocean, Rain, Stars") */
   /* PR 113: several interests at once ("octopuses, music, and how volcanoes work"): split on commas and "and", trimmed, de-duplicated, up to 5 */
   function splitInterests(text) {
-    var out = [];
-    String(text || "").split(/\s*(?:,|;|\/|\band\b|&|\+)\s*/i).forEach(function (x) {
-      x = x.replace(/^(i like|i love|i enjoy|about|also)\s+/i, "").replace(/[.!?]+$/, "").trim().slice(0, 40);
-      if (x.length >= 2 && !out.some(function (y) { return y.toLowerCase() === x.toLowerCase(); })) out.push(x);
-    });
-    return out.length > 1 ? out.slice(0, 5) : [];
+    var parsed = P.parseTopics ? P.parseTopics(text) : [];
+    return parsed.length > 1 ? parsed.slice(0, 5) : [];
   }
   function intakeText() { return cleanAbout(el.csIn.value.replace(/[,\s]+$/, "")); }
   /* an idea chip tapped (PR 103): it goes into the field, in the learner's own list, and the chip moves on to another idea */
@@ -3344,16 +3341,10 @@
     return true;
   }
   function splitStart(text) {
-    var out = [];
-    String(text || "").split(/\s*(?:,|;|\/|\band\b|&|\+)\s*/i).forEach(function (x) {
-      x = x.replace(/^(i like|i love|i enjoy|about|also)\s+/i, "").replace(/[.!?]+$/, "").trim().slice(0, 40);
-      if (x.length >= 2 && !out.some(function (y) { return y.toLowerCase() === x.toLowerCase(); })) out.push(x);
-    });
-    if (!out.length) {
-      var one = cleanAbout(text).replace(/[.!?]+$/, "").trim().slice(0, 40);
-      if (one.length >= 2) out.push(one);
-    }
-    return out;
+    var parsed = P.parseTopics ? P.parseTopics(text) : [];
+    if (parsed.length) return parsed;
+    var one = cleanAbout(text).replace(/[.!?]+$/, "").trim().slice(0, 40);
+    return one.length >= 2 ? [one] : [];
   }
   function startInterests(text) { return splitStart(text).slice(0, 3); }
   function startIdeas() {
@@ -3412,16 +3403,18 @@
     big.focusNode("root", { cx: Math.round(cw / 2), cy: cy, aw: Math.round(Math.max(160, cw * 0.62)), ah: Math.max(120, ch - card - 72), keepYaw: true });
   }
   function placeStartLayer() {
-    if (!el.start || !startLayerOpen()) { if (el.start) el.start.style.bottom = ""; if (el.start) el.start.style.maxHeight = ""; return; }
+    if (!el.start || !startLayerOpen()) { if (el.start) el.start.style.bottom = ""; if (el.start) el.start.style.maxHeight = ""; document.body.classList.remove("start-kbd"); return; }
     var vv = window.visualViewport;
-    if (!vv) { el.start.style.bottom = ""; el.start.style.maxHeight = ""; return; }
+    if (!vv) { el.start.style.bottom = ""; el.start.style.maxHeight = ""; document.body.classList.remove("start-kbd"); return; }
     var below = Math.max(0, window.innerHeight - (vv.offsetTop + vv.height));
     var kbd = below > 80;
-    var base = window.innerWidth < 430 ? 80 : 56;
+    document.body.classList.toggle("start-kbd", kbd);
+    var base = window.innerWidth < 430 ? 72 : 56;
     el.start.style.bottom = (kbd ? below + 8 : base) + "px";
-    /* leave the centre node in view; on a phone the actions stay inside this height */
-    var room = Math.max(240, vv.height - (kbd ? 20 : 176));
-    el.start.style.maxHeight = Math.max(220, Math.min(room, 560)) + "px";
+    /* the pane stays inside the visible screen, so the field and the chips are not pushed under the keyboard or off the top */
+    var room = Math.max(168, vv.height - (kbd ? 12 : 88));
+    el.start.style.maxHeight = Math.max(168, Math.min(room, kbd ? vv.height - 8 : 560)) + "px";
+    if (kbd && el.slIn && document.activeElement === el.slIn) { try { el.slIn.scrollIntoView({ block: "nearest", inline: "nearest" }); } catch (e) { /* older browsers */ } }
   }
   function closeStart(opts) {
     opts = opts || {};
@@ -3440,14 +3433,12 @@
     el.start.hidden = !show;
     document.body.classList.toggle("start-open", show);
     if (show && !was) {
-      if (el.slKeep) { el.slKeep.setAttribute("aria-pressed", "false"); el.slKeep.classList.remove("on"); }
-      if (el.slName) el.slName.disabled = false;
       if (el.slStatus) el.slStatus.textContent = "";
       cycleChips();
       requestAnimationFrame(function () {
         liftYou();
         placeStartLayer();
-        if (startLayerOpen() && !coarse() && el.slName) { try { el.slName.focus({ preventScroll: true }); } catch (e) { el.slName.focus(); } }
+        if (startLayerOpen() && !coarse() && el.slIn) { try { el.slIn.focus({ preventScroll: true }); } catch (e) { el.slIn.focus(); } }
       });
     }
     if (!show) stopChips();
@@ -3497,35 +3488,41 @@
     startTry = 0;
     ikoLine(asked.map(function (l) { return P.addLine(l, "failed", ""); }).join(" "));
   }
+  function defaultStarters() { return ["Science"].concat(["Music"]).concat(["Artificial Intelligence"]); }
+  function plantStarters(names) {
+    if (!state.cloud || C.subjects(state.cloud).length) return;
+    var labels = (Array.isArray(names) && names.length ? names : defaultStarters()).map(function (n) { return C.cleanLabel(n); }).filter(Boolean).slice(0, 4);
+    if (!labels.length) labels = defaultStarters();
+    C.applyTopics(state.cloud, labels.map(function (name) { return { name: name, signal: "curious", asSubject: true }; }));
+    labels.forEach(function (n) { if (window.IkoUsage && IkoUsage.noteSubject) IkoUsage.noteSubject(n); });
+    save();
+    if (big) big.setCloud(state.cloud);
+    if (mini) mini.setCloud(state.cloud);
+    renderYouHint();
+    renderCloudFlow();
+  }
+  function beginEmpty() {
+    closeStart({ quiet: true });
+    var planted = false;
+    var finish = function (names) { if (planted) return; planted = true; plantStarters(names); };
+    var timer = setTimeout(function () { finish(null); }, 2500);
+    fetch("/api/ikolearn/starters", { credentials: "omit" }).then(function (r) { return r.json(); }).then(function (j) {
+      clearTimeout(timer);
+      finish(j && j.ok && Array.isArray(j.topics) ? j.topics : null);
+    }).catch(function () { clearTimeout(timer); finish(null); });
+  }
   function submitStart(e) {
     if (e) e.preventDefault();
     if (!el.slIn || state.busy) return;
-    var keep = el.slKeep && el.slKeep.getAttribute("aria-pressed") === "true";
-    var name = keep ? "" : cleanPerson(el.slName.value);
     var all = splitStart(el.slIn.value), interests = all.slice(0, 3), extra = all.slice(3);
-    if (!name && !keep && !interests.length) {
-      if (el.slStatus) el.slStatus.textContent = "Add a first name, an interest, or skip for now.";
-      if (el.slName) el.slName.focus();
-      return;
-    }
-    if (name) renameLearner(name);
+    if (!interests.length) { beginEmpty(); return; }
     if (extra.length && state.cloud) C.setLater(state.cloud, extra);
-    closeStart({ quiet: interests.length > 0 });
-    if (!interests.length) return;
+    closeStart({ quiet: true });
     plantPending(interests);
     buildCloud("start", interests, interests.join(", "));
   }
   if (el.slForm) el.slForm.addEventListener("submit", submitStart);
-  if (el.slSkip) el.slSkip.addEventListener("click", function () { closeStart(); });
-  if (el.slKeep) el.slKeep.addEventListener("click", function () {
-    var on = el.slKeep.getAttribute("aria-pressed") !== "true";
-    el.slKeep.setAttribute("aria-pressed", on ? "true" : "false");
-    el.slKeep.classList.toggle("on", on);
-    if (el.slName) { el.slName.disabled = on; if (on) el.slName.value = ""; else el.slName.focus(); }
-  });
-  if (el.slName) el.slName.addEventListener("input", function () {
-    if (el.slName.value.trim() && el.slKeep) { el.slKeep.setAttribute("aria-pressed", "false"); el.slKeep.classList.remove("on"); el.slName.disabled = false; }
-  });
+  if (el.slSkip) el.slSkip.addEventListener("click", function () { beginEmpty(); });
   if (el.slIn) el.slIn.addEventListener("input", function () { if (el.slStatus) el.slStatus.textContent = ""; paintChips(); });
   if (el.start) el.start.addEventListener("keydown", function (e) {
     if (e.key !== "Escape") return;
@@ -3540,6 +3537,26 @@
     e.preventDefault();
     submitAdd(el.addIn.value);
   });
+  if (el.addQuiet) el.addQuiet.addEventListener("click", function () { openAddSubject(); });
+  if (el.panel && !el.panel.querySelector(".sheet-handle")) {
+    var handle = mk("button", "sheet-handle");
+    handle.type = "button";
+    handle.setAttribute("aria-label", "Drag to resize");
+    el.panel.insertBefore(handle, el.panel.firstChild);
+    handle.addEventListener("pointerdown", function (e) {
+      if (el.panel.getAttribute("data-side") !== "sheet") return;
+      e.preventDefault();
+      var startY = e.clientY, startH = el.panel.offsetHeight;
+      function move(ev) {
+        el.panel.dataset.sheetH = String(Math.max(120, Math.min(window.innerHeight * 0.7, startH + (startY - ev.clientY))));
+        cardSig = "";
+        placeCard();
+      }
+      function up() { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); }
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+    });
+  }
   el.cloudDeck.addEventListener("click", function () { closeCloud(true); showDeck(true); });
   /* Back on the cloud: a slim row of the suggested cards and Draw along the bottom (hidden while a panel is open). */
   var cloudFlow = null;
@@ -3601,15 +3618,32 @@
     });
     return b;
   }
+  function topicParentId() {
+    if (!state.panelNode || state.panelNode === "root" || el.panel.hidden) return null;
+    var scope = P.topicScope(state.cloud, state.panelNode);
+    return scope ? scope.parentId : null;
+  }
   function fillTopicList() {
     if (!el.topicNav) return;
     var st = { q: state.topicQ, sort: state.topicSort, done: state.topicDone, page: state.topicPage };
     el.topicNav.textContent = "";
     var tools = listTools("topic", st, function () { state.topicQ = st.q; state.topicSort = st.sort; state.topicDone = st.done; state.topicPage = st.page; fillTopicList(); });
     el.topicNav.appendChild(tools);
-    var res = topicQuery(null, st, true);
+    var pid = topicParentId(), scope = pid && P.topicScope(state.cloud, pid);
+    if (scope) el.topicNav.appendChild(mk("p", "topic-scope", scope.label));
+    var res = topicQuery(pid, st, !pid);
     state.topicPage = st.page;
-    if (!res.total) el.topicNav.appendChild(listEmpty(st, res));
+    if (scope) {
+      var parent = nodeOf(scope.parentId), q = (st.q || "").trim().toLowerCase();
+      var showP = parent && (!q || parent.label.toLowerCase().indexOf(q) >= 0);
+      if (showP && st.done === "open" && C.isDone(state.cloud, parent.id)) showP = false;
+      if (showP && st.done === "done" && !C.isDone(state.cloud, parent.id)) showP = false;
+      if (showP && !res.items.some(function (n) { return n.id === parent.id; })) {
+        res.items = [parent].concat(res.items);
+        res.total += 1;
+      }
+    }
+    if (!res.total && !(res.items && res.items.length)) el.topicNav.appendChild(listEmpty(st, res));
     else {
       var ul = mk("ul");
       res.items.forEach(function (n, i) {
@@ -3786,6 +3820,7 @@
   }
   function closeCloud(keepView) {
     if (window.IkoSound) IkoSound.ambient(false);
+    closeTopicList();
     el.cloud.hidden = true; el.panel.hidden = true; state.panelNode = null; cardSig = ""; if (big && big.lightRoot) big.lightRoot(false);
     if (big) { big.spin(false); big.hold(false); }
     if (!keepView && !state.lessonNode) { renderDraw(); el.input.focus(); }
@@ -3822,6 +3857,10 @@
       box.appendChild(choiceRow("Theme", [["light", "Light"], ["dark", "Dark"], ["ikosagon", "Ikosagon"]], function () { return TH.saved() || TH.mode(); }, function (v) { TH.set(v); }));
       box.appendChild(mk("p", "hc-ph", "Font"));
       box.appendChild(choiceRow("Font", [["current", "Current"], ["futura", "Futura"], ["sans", "System"], ["palatino", "Palatino"]], function () { return TH.font(); }, function (v) { TH.setFont(v); }));
+      box.appendChild(mk("p", "hc-ph", "Size"));
+      box.appendChild(choiceRow("Text size", [["small", "Small"], ["default", "Default"], ["large", "Large"]], function () { return TH.size ? TH.size() : "default"; }, function (v) { if (TH.setSize) TH.setSize(v); }));
+      var preview = mk("p", "font-preview", "Lessons, checks and Iko use this size.");
+      box.appendChild(preview);
       box.appendChild(mk("p", "hc-hint fine", "Futura, or the closest geometric sans on this device. Cloud labels stay as they are."));
     }
     box.appendChild(mk("p", "hc-ph", "Sounds"));
@@ -3866,6 +3905,24 @@
       e.stopPropagation(); closeSettings(); el.settingsBtn.focus();
     });
   }
+  function typingNow() {
+    var a = document.activeElement;
+    if (!a) return false;
+    var tag = a.tagName;
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || a.isContentEditable;
+  }
+  function panelHolds(node) {
+    if (!node || !node.closest) return false;
+    return !!node.closest("#topic-list, #settings-menu, #iko-sheet");
+  }
+  function outsideClose(e) {
+    var t = e.target;
+    if (!P.panelDismiss({ typing: typingNow(), inside: panelHolds(t) })) return;
+    if (el.topicNav && !el.topicNav.hidden && el.topicBtn && !el.topicNav.contains(t) && t !== el.topicBtn && !el.topicBtn.contains(t)) closeTopicList();
+    if (el.settings && !el.settings.hidden && el.settingsBtn && !el.settings.contains(t) && t !== el.settingsBtn && !el.settingsBtn.contains(t)) closeSettings();
+    if (iko.open && el.ikoSheet && !el.ikoSheet.contains(t) && !(el.iko && (t === el.iko || el.iko.contains(t))) && !(el.ikoWrap && el.ikoWrap.contains(t))) closeIko();
+  }
+  document.addEventListener("pointerdown", outsideClose);
   function wantsNameHint() {
     var c = state.cloud;
     return Boolean(c) && !c.named && c.name === "You" && !C.subjects(c).length && !startLayerOpen();
@@ -3913,12 +3970,23 @@
     if (q) placeFloat(el.nameEdit, q.x, q.y + 16);
     el.nameEditIn.focus();
   }
+  function renderAddQuiet() {
+    if (!el.addQuiet) return;
+    var on = state.panelNode === "root" && !el.panel.hidden && !startLayerOpen() && (!el.addSub || el.addSub.hidden);
+    el.addQuiet.hidden = !on;
+    if (!on || !big) return;
+    var q = big.project("root");
+    if (!q) return;
+    el.addQuiet.style.left = q.x + "px";
+    el.addQuiet.style.top = (q.y + 30) + "px";
+  }
   function openAddSubject() {
     if (state.busy || !el.addSub) return;
     el.addSub.hidden = false;
-    if (el.addStatus) el.addStatus.textContent = state.busy ? "Growing your cloud…" : "";
-    var a = big && big.addAt && big.addAt();
-    if (a) placeFloat(el.addSub, a.x, a.y + 36);
+    if (el.addStatus) el.addStatus.textContent = "";
+    var q = big && big.project("root");
+    if (q) placeFloat(el.addSub, q.x, q.y + 36);
+    if (el.addQuiet) el.addQuiet.hidden = true;
     el.addIn.focus();
   }
   function submitAdd(text) {
@@ -3999,9 +4067,9 @@
     if (hit.node && !hintSeen("cloud")) { dismissHint("cloud"); renderCloudHint(); } /* they found it: the tip has done its job */
     if (hit.test) openTest(hit.test);
     else if (hit.root) {
-      if (wantsNameHint()) startRename();
-      else if (state.panelNode === "root" && !el.panel.hidden) startRename();
-      else openPanel("root");
+      if (startLayerOpen()) return;
+      openPanel("root");
+      startRename();
     } else if (hit.node && hit.node.ghost) openPanel(settleGhost(hit.node.id));
     else if (hit.node) openPanel(hit.node.id);
   }
@@ -4037,7 +4105,15 @@
     if (big && big.lightRoot) big.lightRoot(isRoot); /* PR 111: the name glows a little warmer while its card is open */
     if (isRoot) renderStats();
     /* compact: the title, its description, the main actions and a short path (no cards, no long lists: its card has those) */
-    else el.pPath.appendChild(pathBlock(id, { offer: true, short: true, onStep: function (sid) { openPanel(sid); } }));
+    else {
+      var path = pathBlock(id, { offer: true, short: true, onStep: function (sid) { openPanel(sid); } });
+      if (window.innerWidth < 700) {
+        var fold = mk("details", "path-fold"), sum = mk("summary", null, "Your path");
+        var head = path.querySelector(".l-head"); if (head) head.hidden = true;
+        fold.appendChild(sum); fold.appendChild(path); el.pPath.appendChild(fold);
+      } else el.pPath.appendChild(path);
+    }
+    if (el.topicNav && !el.topicNav.hidden) fillTopicList();
     /* the note is never written by a tap: shown when already written for this stage; offered as a link only where there
        is no description (a description that could not be written). The name (the root) has its stats instead. */
     if (isRoot) { el.pNote.className = "note"; el.pNote.textContent = ""; }
@@ -4177,19 +4253,43 @@
    * the cloud turns, pans or zooms. Dismissed by its close control, a tap on empty sky, or Escape.
    */
   var cardSig = "";
+  function childPoints(id) {
+    if (!big || !id || id === "root" || !state.cloud) return [];
+    return C.childrenOf(state.cloud, id).map(function (c) { return big.project(c.id); }).filter(Boolean);
+  }
+  function coversNode(rect, p, pad) {
+    return p && p.x >= rect.x - pad && p.x <= rect.x + rect.w + pad && p.y >= rect.y - pad && p.y <= rect.y + rect.h + pad;
+  }
   function placeCard() {
     placeYouHint();
+    renderAddQuiet();
     if (el.nameEdit && !el.nameEdit.hidden && big) { var qn = big.project("root"); if (qn) placeFloat(el.nameEdit, qn.x, qn.y + 16); }
-    if (el.addSub && !el.addSub.hidden && big && big.addAt) { var qa = big.addAt(); if (qa) placeFloat(el.addSub, qa.x, qa.y + 36); }
+    if (el.addSub && !el.addSub.hidden && big) { var qa = big.project("root"); if (qa) placeFloat(el.addSub, qa.x, qa.y + 36); }
     if (!big || el.panel.hidden || !state.panelNode) return;
     var q = big.project(state.panelNode === "root" ? "root" : state.panelNode);
     if (!q) return;
-    var cw = el.cloudCanvas.clientWidth, ch = el.cloudCanvas.clientHeight, box = el.panel.firstElementChild;
+    var cw = el.cloudCanvas.clientWidth, ch = el.cloudCanvas.clientHeight, box = el.panel.querySelector(".panel-in") || el.panel.firstElementChild;
     var pw = el.panel.offsetWidth, ph = (box ? box.offsetHeight : el.panel.scrollHeight) + 2;
     /* Iko's chat open as a panel at the left (PR 104): the card is placed in the sky to its right */
     var off = document.body.classList.contains("iko-side") && !el.ikoSheet.hidden ? Math.max(0, Math.round(el.ikoSheet.getBoundingClientRect().right + 12 - el.cloudCanvas.getBoundingClientRect().left)) : 0;
-    var at = CAM.cardPlace(q.x - off, q.y, pw, ph, cw - off, ch, cloudTop());
-    at.x += off;
+    var narrow = cw < 700 && state.panelNode !== "root";
+    var at;
+    if (narrow) {
+      var sheetH = Math.min(Math.max(150, ph), Math.round(ch * 0.36));
+      var custom = Number(el.panel.dataset.sheetH);
+      if (custom) sheetH = Math.max(120, Math.min(ch * 0.62, custom));
+      at = { side: "sheet", x: 8, y: ch - sheetH - 8, maxH: sheetH };
+    } else {
+      at = CAM.cardPlace(q.x - off, q.y, pw, ph, cw - off, ch, cloudTop());
+      at.x += off;
+      var rect = { x: at.x, y: at.y, w: pw, h: Math.min(ph, at.maxH) };
+      var pts = [q].concat(childPoints(state.panelNode));
+      if (pts.some(function (p) { return coversNode(rect, p, 20); })) {
+        var frame = CAM.focusFrame(cw, ch, { wide: cw >= 900, top: cloudTop() });
+        var y2 = Math.max(cloudTop() + 8, Math.min(ch - 180, q.y - 20));
+        at = { side: "right", x: Math.max(frame.right || cw - pw - 12, cw - pw - 12), y: y2, maxH: Math.max(140, ch - y2 - 12) };
+      }
+    }
     var x = Math.max(CAM.CARD.margin + off, Math.min(cw - CAM.CARD.margin - pw, at.x)), y = Math.max(CAM.CARD.margin, at.y);
     var sig = x + "," + y + "," + at.maxH + "," + at.side;
     if (sig === cardSig) return;
@@ -4203,6 +4303,8 @@
     cancelCall("notice");
     el.panel.hidden = true; state.panelNode = null; cardSig = ""; if (big && big.lightRoot) big.lightRoot(false);
     if (big) big.clearFocus();
+    closeTopicList();
+    if (el.addQuiet) el.addQuiet.hidden = true;
     renderCloudFlow();
   }
   if (window.ResizeObserver) new ResizeObserver(function () { cardSig = ""; placeCard(); }).observe(el.panel);
@@ -4320,7 +4422,7 @@
   el.cloud.addEventListener("click", function (e) { if (big && e.target.closest && e.target.closest("button, a")) big.pause(); });
   el.zin.addEventListener("click", function () { moved("zoom"); big.zoomBy(1.35); });
   el.zout.addEventListener("click", function () { moved("zoom"); big.zoomBy(1 / 1.35); });
-  el.zreset.addEventListener("click", function () { big.recentre(); });
+    el.zreset.addEventListener("click", function () { closeTopicList(); big.recentre(); });
   /* one faint line documents the input map, for touch or for a mouse */
   renderCloudHint();
   document.addEventListener("keydown", function (e) {
@@ -5195,9 +5297,18 @@
         var g = mk("div", "ap-grid");
         r.cards.forEach(function (cid, k) {
           var sp = D.cardSpec(state.cloud, cid);
-          if (!sp) return;
+          if (!sp) {
+            var miss = mk("button", "gcard size-tile");
+            miss.type = "button";
+            miss.setAttribute("data-thumb", "1");
+            miss.textContent = (C.deckEntry(state.cloud, cid) || {}).label || "Card";
+            miss.addEventListener("click", function () { go(cid, miss); });
+            g.appendChild(miss);
+            return;
+          }
           var c = D.render(document, sp, { onOpen: go });
-          if (k === 0 && r.lead && sp.level) c.classList.add("prominent");
+          c.setAttribute("data-thumb", "1");
+          if (k === 0 && r.lead && sp.level && r.cards.length >= 4) c.classList.add("prominent");
           c.style.setProperty("--i", String(Math.min(i, 6))); c.style.setProperty("--j", String(Math.min(j++, 14)));
           markEvolve(c, sp);
           g.appendChild(c);

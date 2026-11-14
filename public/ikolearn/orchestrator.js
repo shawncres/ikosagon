@@ -1168,12 +1168,81 @@
     return { total: list.length, page: page, pages: pages, items: list.slice(page * size, page * size + size) };
   }
 
+  /*
+   * Intake topics. Commas, "and" and "or" split a list. A run of words with no commas still splits:
+   * a known phrase ("first aid", "jazz piano") stays whole, and a how/why/what clause is its own topic
+   * ("jazz piano how bridges stay up first aid" -> three subjects). A short single interest stays one.
+   */
+  var TOPIC_PHRASES = ["first aid", "jazz piano", "artificial intelligence", "machine learning", "black holes", "solar system", "plate tectonics", "climate change", "ancient rome", "ancient egypt", "human body", "northern lights", "space travel"];
+  function phraseLen(words, i) {
+    var best = 0;
+    TOPIC_PHRASES.forEach(function (ph) {
+      var ws = ph.split(" ");
+      if (ws.length <= best || i + ws.length > words.length) return;
+      for (var k = 0; k < ws.length; k++) if (words[i + k] !== ws[k]) return;
+      best = ws.length;
+    });
+    return best;
+  }
+  function pushTopic(out, p) {
+    p = String(p || "").replace(/^(?:a|an|the)\s+/i, "").replace(/[.!?]+$/g, "").replace(/\s+/g, " ").trim().slice(0, 40);
+    if (p.length < 2 || p.split(" ").length > 7) return;
+    if (/^(something|anything|everything|this|that|it|please|yes|both)$/i.test(p)) return;
+    if (!out.some(function (y) { return y.toLowerCase() === p.toLowerCase(); })) out.push(p);
+  }
+  function looseChunk(chunk) {
+    var words = String(chunk || "").split(/\s+/).filter(Boolean);
+    if (!words.length) return [];
+    if (words.length <= 3 && !/^(how|why|what|when|where)$/i.test(words[0])) return [chunk];
+    var lower = words.map(function (w) { return w.toLowerCase(); }), i = 0, parts = [];
+    while (i < words.length) {
+      var n = phraseLen(lower, i);
+      if (n) { parts.push(words.slice(i, i + n).join(" ")); i += n; continue; }
+      if (/^(how|why|what|when|where)$/i.test(words[i]) && i + 1 < words.length) {
+        var j = i + 1, end = Math.min(words.length, i + 6);
+        while (j < end && !phraseLen(lower, j)) j++;
+        if (j === i + 1) j = Math.min(words.length, i + 2);
+        parts.push(words.slice(i, j).join(" "));
+        i = j;
+        continue;
+      }
+      var j2 = i + 1;
+      while (j2 < words.length && j2 - i < 3 && !/^(how|why|what|when|where)$/i.test(words[j2]) && !phraseLen(lower, j2)) j2++;
+      parts.push(words.slice(i, j2).join(" "));
+      i = j2;
+    }
+    return parts.length ? parts : [chunk];
+  }
+  function parseTopics(text) {
+    var raw = String(text || "").replace(/[\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim();
+    raw = raw.replace(/^(?:i like|i love|i enjoy|i'm into|im into|about|also)\s+/i, "");
+    if (!raw) return [];
+    var out = [];
+    raw.split(/\s*(?:,|;|\/|&|\+|\band\b|\bor\b)\s*/i).forEach(function (chunk) {
+      chunk = chunk.replace(/[.!?]+$/g, "").trim();
+      if (!chunk) return;
+      looseChunk(chunk).forEach(function (p) { pushTopic(out, p); });
+    });
+    return out.slice(0, 6);
+  }
+  /* The focused Topics list: the selected node's parent, plus that parent's immediate children. Null on the whole cloud. */
+  function topicScope(cloud, selectedId) {
+    if (!cloud || !cloud.nodes || !selectedId || selectedId === "root") return null;
+    var n = cloud.nodes[selectedId];
+    if (!n) return null;
+    var pid = n.parent || selectedId, parent = cloud.nodes[pid];
+    if (!parent) return null;
+    return { parentId: pid, label: parent.label, ids: [pid].concat(C.childrenOf(cloud, pid).map(function (c) { return c.id; })) };
+  }
+  /* An outside tap closes Topics, Settings or Iko. Not while a field in that panel is being typed in, and not for a tap inside it. */
+  function panelDismiss(s) { return !(s && (s.typing || s.inside)); }
+
   var api = {
     PLAN: PLAN, DEPTH_CAP: DEPTH_CAP, levelsBelow: levelsBelow, capped: capped, depthChoices: depthChoices, goDeeper: goDeeper, engaged: engaged, wantChildren: wantChildren, childrenReady: childrenReady, orderedChildren: orderedChildren, sidePaths: sidePaths, needsBridge: needsBridge, bridgeRequest: bridgeRequest, needsRepair: needsRepair, repairRequest: repairRequest, listTopics: listTopics,
     MERGE: MERGE, mergePlan: mergePlan, mergePlans: mergePlans, settleMerges: settleMerges, nextChild: nextChild, nextStep: nextStep,
     orderChoices: orderChoices, testState: testState, readyTests: readyTests, testRequest: testRequest, nextSteps: nextSteps, explore: explore, exploreAll: exploreAll,
     weekRecap: weekRecap, neoState: neoState, neoGated: neoGated, neoOpen: neoOpen, neoDue: neoDue, neoThemes: neoThemes, neoAdd: neoAdd, neoTaken: neoTaken, neoLine: neoLine, NEO_THEMES: NEO_THEMES, suggest: suggest, draw: draw, lessonContext: lessonContext, withBand: withBand, areaOf: areaOf, starterIdeas: starterIdeas, mixStarters: mixStarters, STARTER: STARTER, aheadOf: aheadOf, whereNext: whereNext, pathNext: pathNext, treeDist: treeDist, finished: finished, unfinished: unfinished, fresh: fresh, PACE: PACE, paceOf: paceOf, placeTopic: placeTopic, placedTopic: placedTopic, related: related, DESCRIBE: DESCRIBE, describeBatch: describeBatch, isBroad: isBroad,
-    onboarding: onboarding, openQuestion: openQuestion, examples: examples, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics, directions: directions, homeStats: homeStats, homeStory: homeStory, SKILLS: SKILLS,
+    onboarding: onboarding, openQuestion: openQuestion, examples: examples, hasStarted: hasStarted, needsOnboarding: needsOnboarding, reask: reask, openTopics: openTopics, directions: directions, homeStats: homeStats, homeStory: homeStory, SKILLS: SKILLS, parseTopics: parseTopics, topicScope: topicScope, panelDismiss: panelDismiss,
     needsNext: needsNext, readyNext: readyNext, createRequest: createRequest, interestFor: interestFor, addLine: addLine, addFact: addFact, honestReply: honestReply, hideInternal: hideInternal, OPENING: OPENING
   };
   if (node_) module.exports = api;

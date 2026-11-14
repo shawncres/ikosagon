@@ -79,13 +79,38 @@
    * (card.js-free maths, see cardPlace). Wide screens: the node sits left of centre (38%) so the card fits to its right.
    * Phones: the node sits in the upper part of the view, below the top controls, so the card fits under it.
    */
-  var CARD = { gap: 18, gapX: 44, margin: 12, wideAt: 0.38, phoneAt: 0.3, minH: 150 };
+  var CARD = { gap: 18, gapX: 44, margin: 12, wideAt: 0.22, phoneAt: 0.36, minH: 150 };
+  /*
+   * Focus framing: the selected parent sits toward the left. Its children use the room to its right.
+   * On a wide screen a strip stays free at the right for the subject pane. On a phone the pane is a short
+   * sheet, so the branch is framed in the space above it. aw/ah are that free area (not a locked view).
+   */
   function focusFrame(w, h, o) {
     o = o || {};
-    var top = o.top || 64;
-    if (o.wide) { var cx = Math.round(w * CARD.wideAt); return { cx: cx, cy: Math.round(top + (h - top) / 2), aw: 2 * (cx - 24), ah: h - top - 60 }; }
-    var free = Math.max(120, h - top), cy = Math.round(top + free * CARD.phoneAt);
-    return { cx: w / 2, cy: cy, aw: w - 24, ah: Math.max(100, 2 * (cy - top) - 16) };
+    var top = o.top || 64, wide = Boolean(o.wide);
+    var paneW = wide ? Math.min(300, Math.round(w * 0.24)) : 0;
+    var paneH = wide ? 0 : Math.round(Math.min(220, Math.max(140, h * 0.32)));
+    var cx = Math.round(Math.max(78, Math.min(w * (wide ? CARD.wideAt : 0.26), w * 0.32)));
+    var floor = h - (wide ? 28 : paneH + 12);
+    var cy = wide ? Math.round(top + (floor - top) / 2) : Math.round(top + (floor - top) * CARD.phoneAt);
+    var right = w - paneW - 12;
+    return { cx: cx, cy: cy, aw: Math.max(96, right - cx - 36), ah: Math.max(96, floor - top - 16), right: right, paneH: paneH, top: top };
+  }
+  /* Yaw that lays a parent's children out to its right (their centroid on +x around the parent). Null when there is nothing to fan. */
+  function branchYaw(parent, children) {
+    if (!parent || !children || !children.length) return null;
+    var dx = 0, dz = 0, n = 0;
+    children.forEach(function (p) { if (!p) return; dx += p.x - parent.x; dz += p.z - parent.z; n++; });
+    if (!n || Math.hypot(dx, dz) < 1e-4) return null;
+    return Math.atan2(-dz, dx);
+  }
+  /* Zoom that fits a box of screen offsets (zoom 1, relative to the parent) inside aw x ah. scale < 1 tightens the branch when the screen is too small for a readable zoom. */
+  function fitBranch(box, frame, lo, hi) {
+    var bw = Math.max(48, (box.x1 || 0) - Math.min(0, box.x0 || 0)), bh = Math.max(48, (box.y1 || 0) - (box.y0 || 0));
+    var aw = Math.max(80, (frame && frame.aw) || 200), ah = Math.max(80, (frame && frame.ah) || 200);
+    var z = Math.min(aw / bw, ah / bh), scale = 1, loZ = lo || CAM.zmin;
+    if (z < loZ) { scale = Math.max(0.42, z / loZ); z = loZ; }
+    return { zoom: clamp(z, loZ, hi || CAM.zmax), scale: scale };
   }
   /*
    * Where the selection card goes, next to the node at (nx, ny) on screen: to its right, else its left, else below, else
@@ -148,7 +173,7 @@
   /* One wheel notch, kept deliberate: a capped factor per event (a trackpad pinch sends ctrlKey and a small delta). */
   function wheelFactor(deltaY, ctrl) { return clamp(Math.exp(-deltaY * CAM.wheel * (ctrl ? 4 : 1)), CAM.wheelStep[0], CAM.wheelStep[1]); }
 
-  var api = { CAM: CAM, SPIN: SPIN, spinState: spinState, spinStep: spinStep, spinCap: spinCap, spinEase: spinEase, gestureFor: gestureFor, hint: hint, easeInOutCubic: easeInOutCubic, wrap: wrap, lerpView: lerpView, lerpPoint: lerpPoint, ORIGIN: ORIGIN, fitAround: fitAround, focusFrame: focusFrame, cardPlace: cardPlace, CARD: CARD, forwardYaw: forwardYaw, fitZoom: fitZoom, glide: glide, velocity: velocity, twist: twist, dragging: dragging, pinchMode: pinchMode, TAP: TAP, PINCH: PINCH, zoomAbout: zoomAbout, wheelFactor: wheelFactor };
+  var api = { CAM: CAM, SPIN: SPIN, spinState: spinState, spinStep: spinStep, spinCap: spinCap, spinEase: spinEase, gestureFor: gestureFor, hint: hint, easeInOutCubic: easeInOutCubic, wrap: wrap, lerpView: lerpView, lerpPoint: lerpPoint, ORIGIN: ORIGIN, fitAround: fitAround, focusFrame: focusFrame, branchYaw: branchYaw, fitBranch: fitBranch, cardPlace: cardPlace, CARD: CARD, forwardYaw: forwardYaw, fitZoom: fitZoom, glide: glide, velocity: velocity, twist: twist, dragging: dragging, pinchMode: pinchMode, TAP: TAP, PINCH: PINCH, zoomAbout: zoomAbout, wheelFactor: wheelFactor };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.IkoCamera = api;
 })(typeof window !== "undefined" ? window : this);

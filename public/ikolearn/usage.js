@@ -30,6 +30,42 @@
     if (typeof u._s === "number") u.subjects_added += Math.max(0, subj - u._s);
     u._d = deck; u._s = subj;
     write(u);
+    var v = visitOf();
+    if (!v.saw) {
+      v.saw = true;
+      var topics = 0;
+      Object.keys(nodes).forEach(function (id) { if (nodes[id] && !nodes[id].ghost) topics++; });
+      v.returning = topics > 0 || deck > 0;
+      v.topics = topics;
+    }
+  }
+  /* This visit only, in memory: subject names and coarse device facts. Never a learner name, lesson text, or identifier. */
+  var visit = null;
+  function visitOf() {
+    if (!visit) visit = { t0: Date.now(), subjects: [], lessons: {}, done: 0, returning: false, topics: 0, saw: false };
+    return visit;
+  }
+  function noteName(list, name) {
+    var s = String(name || "").replace(/\s+/g, " ").trim().slice(0, 40);
+    if (s.length < 2 || list.length >= 8 || list.some(function (x) { return x.toLowerCase() === s.toLowerCase(); })) return;
+    list.push(s);
+  }
+  function noteSubject(name) { noteName(visitOf().subjects, name); }
+  function noteLesson(name) {
+    var s = String(name || "").replace(/\s+/g, " ").trim().slice(0, 40);
+    if (s.length < 2) return;
+    var bag = visitOf().lessons;
+    bag[s] = (bag[s] || 0) + 1;
+  }
+  function noteDone() { visitOf().done += 1; }
+  function widthBucket(w) { return w < 400 ? "under 400" : w <= 800 ? "400 to 800" : "over 800"; }
+  function lengthBucket(ms) {
+    if (ms < 60000) return "short";
+    if (ms < 5 * 60000) return "few";
+    if (ms < 20 * 60000) return "ten";
+    if (ms < 45 * 60000) return "half";
+    if (ms < 90 * 60000) return "hour";
+    return "long";
   }
   function send() {
     try {
@@ -38,8 +74,20 @@
       var last = Number(localStorage.getItem(SENT)) || 0;
       if (Date.now() - last < MIN_GAP) return;
       localStorage.setItem(SENT, String(Date.now()));
-      var u = read(), body = { level_chosen: u.level_chosen };
+      var u = read(), v = visitOf(), body = { level_chosen: u.level_chosen };
       NUMS.forEach(function (k) { body[k] = u[k]; });
+      var w = 0;
+      try { w = window.innerWidth || 0; } catch { w = 0; }
+      var coarse = false;
+      try { coarse = window.matchMedia && window.matchMedia("(pointer: coarse)").matches; } catch { coarse = false; }
+      body.session_length = lengthBucket(Date.now() - v.t0);
+      body.device = (coarse || w < 700) ? "mobile" : "desktop";
+      body.width_bucket = widthBucket(w);
+      body.subjects = v.subjects.slice();
+      body.returning = v.returning ? 1 : 0;
+      if (v.returning) body.topic_count = v.topics;
+      body.low_activity = v.subjects.length === 0 && v.done === 0 ? 1 : 0;
+      body.top_subjects = Object.keys(v.lessons).sort(function (a, b) { return v.lessons[b] - v.lessons[a]; }).slice(0, 3);
       fetch("/api/ikolearn/usage", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), keepalive: true, credentials: "omit" }).catch(function () {});
     } catch { /* silent */ }
   }
@@ -47,6 +95,6 @@
     try { if (!sessionStorage.getItem(KEY)) { sessionStorage.setItem(KEY, "1"); bump("sessions"); } } catch { /* silent */ }
     setTimeout(send, 4000);
   }
-  window.IkoUsage = { bump: bump, level: level, sync: sync, send: send };
+  window.IkoUsage = { bump: bump, level: level, sync: sync, send: send, noteSubject: noteSubject, noteLesson: noteLesson, noteDone: noteDone };
   start();
 })();
