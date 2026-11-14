@@ -2161,7 +2161,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
     ok(/<link rel="icon" href="\/ikolearn\/icon\.svg" type="image\/svg\+xml">/.test(html) && fs.existsSync("public/ikolearn/icon.svg") && /<svg/.test(fs.readFileSync("public/ikolearn/icon.svg", "utf8")), "the 404 on open: the page has its own icon, so the browser never asks for /favicon.ico");
     ok(/mk\("details", "h-fold"\)/.test(app) && /mk\("summary", "h-sum"\)/.test(app) && /window\.innerWidth >= 900/.test(app) && /\.h-lists \{ max-height: 44vh; overflow: auto;/.test(css) && !/\.h-kids \{[^}]*text-overflow: ellipsis/.test(css), "phone branches: a disclosure with a readable summary (core, side paths, next), opening to a scrollable list (no ellipsis cut)");
     ok((app.match(/D\.renderCorpus\(/g) || []).length >= 2 && /el\.hubCorpus\.appendChild\(D\.renderCorpus\(/.test(app) && /\.corpus-row/.test(css), "corpus view under the holder card and in the card's hub");
-    ok((app.match(/settleMerges\(\)[;.]/g) || []).length >= 5 && /var merged = settleMerges\(\)/.test(app) && /function settleMerges\(\) \{\s*var done = P\.settleMerges\(state\.cloud\)/.test(app), "merges settle after answers, I've got it, lesson ready, tests and on load (0 calls)");
+    ok((app.match(/settleMerges\(\)[;.]/g) || []).length >= 4 && /var merged = settleMerges\(\)/.test(app) && /function settleMerges\(\) \{\s*var done = P\.settleMerges\(state\.cloud\)/.test(app) && !/startChat\(\);\s*settleMerges\(\)/.test(app), "merges settle after answers, I've got it, lesson ready and tests, not merely because the cloud was opened (0 calls)");
     ok(/function markEvolve/.test(app) && /D\.evolveKey\(/.test(app) && /ikolearn\.v1\.seen/.test(app) && /@keyframes ink-bleed/.test(css) && /prefers-reduced-motion[\s\S]*\.gcard\.evolve \.gc-bleed/.test(css), "the evolution transition: an ink wash, once per rise, still under reduced motion");
     ok(/\.gcard\.tier-merged/.test(css) && /\.gcard\.tier-achieved/.test(css) && /\.gc-sheen/.test(css) && /\.gc-pips \.pip/.test(css) && !/<img|icon-/.test(fs.readFileSync("public/ikolearn/deck.js", "utf8")), "tiers: frame weight, paper texture, sheen, pips; no icons");
     ok(/C\.absorbedInto\(state\.cloud, e\.id\)/.test(app), "the deck grid shows absorbed cards inside their parent");
@@ -2550,7 +2550,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(fold.tag === "details" && !fold.attrs.open && all(fold).some((n) => n.tag === "summary" && n.textContent === "Further reading & viewing"), "further reading: a collapsed fold, \u201cFurther reading & viewing\u201d");
   ok(anchors.length === 8 && anchors.every((a) => L.allowedHref(a.href) && a.rel === "noopener noreferrer nofollow" && /^Search /.test(a.textContent)) && !all(fold).some((n) => /evil/.test(n.href || "") || /evil/.test(n.textContent || "")), "no model URL is ever rendered: every link is an allowlisted search", String(anchors.length));
   ok(L.renderReading(fdoc, []) === null && L.renderReading(fdoc, [{ title: "x", q: "https://a.b" }]) === null, "nothing to show: no fold");
-  ok((app.match(/\.href\s*=/g) || []).length === 3 && /a\.href = feedbackHref\(\);/.test(app) && /return "https:\/\/ikosagon\.com\/contact\?subject=IkoLearn%20Feedback";/.test(app) && !/name=/.test(app.slice(app.indexOf("function feedbackHref"), app.indexOf("function renderHomeNav"))) && /var url = URL\.createObjectURL\(new Blob\(\[f\.text\], \{ type: "application\/json" \}\)\), a = mk\("a"\);\s*a\.href = url;/.test(app) && /new Blob\(\[out\.text\]/.test(app) && (lessonJs.match(/\.href\s*=/g) || []).length === 1 && /if \(!allowedHref\(l\.href\)\) return;/.test(lessonJs), "only lesson.js sets a link, after the allowlist check; the app's downloads are the cloud file and an enhanced file (blobs made on the device). Support & feedback keeps the subject and does not add the name");
+  ok((app.match(/\.href\s*=/g) || []).length === 2 && /a\.href = feedbackHref\(\);/.test(app) && /return "https:\/\/ikosagon\.com\/contact\?subject=IkoLearn%20Feedback";/.test(app) && !/name=/.test(app.slice(app.indexOf("function feedbackHref"), app.indexOf("function renderHomeNav"))) && /var url = URL\.createObjectURL\(new Blob\(\[f\.text\], \{ type: "application\/json" \}\)\), a = mk\("a"\);\s*a\.href = url;/.test(app) && !/new Blob\(\[out\.text\]/.test(app) && (lessonJs.match(/\.href\s*=/g) || []).length === 1 && /if \(!allowedHref\(l\.href\)\) return;/.test(lessonJs), "only lesson.js sets a link, after the allowlist check; the app's download is the cloud file (a blob made on the device). Enhance replaces the open cloud and does not download a file. Support & feedback keeps the subject and does not add the name");
   ok(/reading = L\.cleanReading\(ev\.reading\)/.test(app) && /state\.lessons\[id\]\.rd = reading/.test(app) && /showReading\(cached\.rd\)/.test(app), "the reading list is cached with the lesson (no new call to show it again)");
 
   // newcomer hints: three, exact copy, remembered in ikolearn.v1.seen
@@ -4333,7 +4333,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(old && old.name && old.order.length > 0 && C.subjects(old).length > 0, "an older saved cloud still loads with its subjects");
   const appC = fs.readFileSync("public/ikolearn/app.js", "utf8"), htmlC = fs.readFileSync("public/ikolearn/index.html", "utf8"), viewC = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8"), cssC = fs.readFileSync("public/ikolearn/styles.css", "utf8");
   ok(/id="you-hint" class="you-hint" hidden>tap to add your name</.test(htmlC) && /function wantsNameHint\(\)/.test(appC) && /c\.name === "You" && !C\.subjects\(c\)\.length/.test(appC), "first visit: a faint hint under You, hidden once renamed or a subject is added");
-  ok(/state\.name = "You"/.test(appC) && /C\.create\("You"\)/.test(appC) && /el\.cs\.hidden = true/.test(appC) && !/\+ add a subject/.test(viewC) && /id="add-quiet"/.test(htmlC) && /aria-label="Add a subject, in your own words"/.test(htmlC) && !/id="cs-ex"[^>]*>[^<]/.test(htmlC), "empty cloud: land on the cloud as You, no permanent add box, a quiet add control only, no static chips");
+  ok(/state\.name = "You"/.test(appC) && /C\.create\("You"\)/.test(appC) && /el\.cs\.hidden = true/.test(appC) && !/\+ add a subject/.test(viewC) && !/id="add-quiet"/.test(htmlC) && !/id="add-sub"/.test(htmlC) && !/id="name-edit"/.test(htmlC) && !/id="cs-ex"[^>]*>[^<]/.test(htmlC), "empty cloud: land on the cloud as You, no floating add field and no always-open name field, no static chips");
   ok(/function settleGhost\(id\)/.test(appC) && /C\.findClose\(state\.cloud, n\.label\)/.test(appC) && /P\.placeTopic\(state\.cloud, tp, parentId\)/.test(appC) && /c\.leaving = 1/.test(appC) && /function trimOffers\(ids\)/.test(appC) && /kids\.filter\(function \(c\) \{ return c\.ghost; \}\)\.slice\(3\)/.test(appC), "a tapped ghost uses placement and near-duplicate rules; unpicked ghosts fade and extras past three are not kept");
   ok(/else if \(hit\.node\) openPanel\(hit\.node\.id\)/.test(appC) && /openPanel\(n\.id\)/.test(appC) && /function focusInView\(/.test(appC) && /openLesson\(n\.id\)/.test(appC) && /ArrowDown/.test(appC) && !/function enterZoom\(/.test(appC) && !/pinParent\(/.test(appC) && !/parent on the left/.test(appC), "selecting a node or a topic row opens that node's card and zooms to it; the focus pane is gone");
   ok(/nearIds/.test(viewC) && /zoomed in, neighbours stay a readable size/.test(viewC) && !/pairLeft/.test(viewC), "zoomed in, neighbouring nodes stay in their real places with readable labels");
@@ -4561,8 +4561,8 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/Add your name/.test(appR) && /"Rename"/.test(appR) && /function expandName\(/.test(appR) && /name-inline/.test(appR) && /name-kbd/.test(appR) && !/openPanel\("root"\);\s*startRename\(\)/.test(appR), "rename: the user card offers Add your name or Rename, and the field opens only after that tap");
   ok(/visualViewport/.test(appR) && /nameTall/.test(appR) && /body\.name-kbd #panel\.is-root/.test(cssR), "rename: while the name is edited the card stays in the visible screen, above the keyboard");
   ok(/fold\.open = true/.test(appR) && /cw - 16/.test(appR) && /#panel\[data-side="sheet"\] \{ width: calc\(100% - 16px\)/.test(cssR) && /min-height: 44px/.test(cssR.slice(cssR.indexOf('#panel[data-side="sheet"] .actions'))), "mobile card: wider sheet, Your path open, buttons stay 44px");
-  ok(/tighten: wide \? 1 : 0\.72/.test(camR) && /branchWant \* o\.tighten/.test(viewR) && /\.zoom \{ opacity: \.32; \}/.test(cssR), "mobile: a selected branch is drawn closer, and Recentre stays available but quieter");
-  ok(/function maybeQuiet\(/.test(appR) && /C\.quietFix\(/.test(appR) && /quiet-undo/.test(appR) && /if \(landing === true\) setTimeout\(function \(\) \{ maybeQuiet\(\[\]\); \}/.test(appR), "ordinary use: one quiet correction on load and after an add, with Undo");
+  ok(/tighten: wide \? 1 : 0\.6/.test(camR) && /branchWant \* o\.tighten/.test(viewR) && /\.zoom \{ opacity: \.32; \}/.test(cssR), "mobile: a selected branch is drawn closer, and Recentre stays available but quieter");
+  ok(/function maybeQuiet\(/.test(appR) && /C\.quietFix\(/.test(appR) && /quiet-undo/.test(appR) && !/maybeQuiet\(\[\]\); \}, 700\)/.test(appR) && /maybeQuiet\(landed \? \[landed\] : \[\]\)/.test(appR), "ordinary use: a quiet correction after a real add, with Undo, and not while the cloud is only being viewed");
 
   const E = require("../public/ikolearn/enhance.js");
   const moved = C.create("Sam", T0);
@@ -4654,6 +4654,41 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   again.order.forEach((id) => { parents[id] = again.nodes[id].parent; });
   C.applyTopics(again, [{ name: "Brakes", under: left.id, signal: "curious" }], T0 + 5);
   ok(again.order.filter((id) => parents[id] !== undefined).every((id) => again.nodes[id].parent === parents[id]), "adding a topic still does not move an existing one");
+}
+
+/* ---------- post-deploy QA: merges, enhance in place, return label ---------- */
+{
+  const self = C.create("Sam", T0);
+  C.applyTopics(self, [{ name: "Math", signal: "curious", asSubject: true }], T0);
+  const math = C.findSubject(self, "Math");
+  C.applyTopics(self, [{ name: "Algebra", parent: "Math", signal: "explored" }], T0 + 1);
+  const algebra = C.findTopic(self, "Algebra");
+  ok(C.mergeNodes(self, math.id, math.id) === false && C.mergeInto(self, math.id, [math.id], T0) === null, "a subject is never merged into itself");
+  ok(C.mergeNodes(self, algebra.id, algebra.id) === false && C.mergeInto(self, algebra.id, [algebra.id], T0) === null, "a topic is never merged into itself");
+  ["Equations", "Graphs", "Proofs", "Functions"].forEach((name, i) => C.applyTopics(self, [{ name, parent: "Algebra", signal: "explored" }], T0 + 2 + i));
+  const one = C.findTopic(self, "Equations");
+  for (let i = 0; i < 4; i++) C.confirm(self, one.id, true, T0 + 10);
+  ok(P.mergePlan(self, algebra.id) === null && P.settleMerges(self, T0 + 20).length === 0 && algebra.absorbed.length === 0, "one finished child is not a sufficient set, so the parent does not merge");
+  const viewed = C.serialize(self);
+  ok(C.quietFix(self, { view: true, now: T0 + 30 }).changed === false && C.quietFix(self, { view: true, now: T0 + 30 }).why === "view" && C.serialize(self) === viewed, "viewing the cloud does not merge or move anything");
+
+  const q = C.create("Sam", T0);
+  C.applyTopics(q, [{ name: "Cooking", signal: "curious", asSubject: true }, { name: "Greek Mythology", signal: "curious", asSubject: true }], T0);
+  C.plant(q, "Zeus", C.findSubject(q, "Cooking").id, T0 + 1);
+  const before = C.serialize(q);
+  const moved = C.quietFix(q, { now: T0 });
+  ok(moved.changed && moved.kind === "move" && q.nodes[C.findTopic(q, "Zeus").id].parent === C.findSubject(q, "Greek Mythology").id, "a real change can still correct one clear mis-parent");
+  ok(C.undoQuiet(q) && C.serialize(q) === before, "undo restores an exact snapshot of the cloud");
+
+  const appQ = fs.readFileSync("public/ikolearn/app.js", "utf8");
+  const htmlQ = fs.readFileSync("public/ikolearn/index.html", "utf8");
+  const enhFn = appQ.slice(appQ.indexOf("function enhanceNow("), appQ.indexOf("function ctSay("));
+  ok(/function enhanceNow\(/.test(appQ) && !/Enhance this file/.test(appQ) && !/type = "file"/.test(enhFn) && /\/api\/ikolearn\/enhance/.test(enhFn) && /localEnhance\(/.test(enhFn), "enhance works on the open cloud, with no file picker, and falls back on this device");
+  ok(/textContent = r \? "\\u2190 " \+ r\.label/.test(appQ) && !/textContent = r \? "Return to "/.test(appQ), "the return control is the compact arrow and the topic");
+  ok(!/id="add-quiet"/.test(htmlQ) && !/id="add-sub"/.test(htmlQ) && !/id="name-edit"/.test(htmlQ) && /Add topics/.test(appQ) && /Tell Iko/.test(appQ) && /function expandName\(/.test(appQ), "adding a subject goes through Iko; rename stays a quiet option inside the card");
+  const themeQ = fs.readFileSync("public/ikolearn/theme.js", "utf8");
+  ok(/inter:/.test(themeQ) && /georgia:/.test(themeQ) && /serif:/.test(themeQ) && /futura:/.test(themeQ) && !/fonts\.google|@font-face|url\(https?:/.test(themeQ + htmlQ), "more readable faces, and none of them are fetched");
+  ok(/#lesson\.game \{ padding-left: 8px;/.test(fs.readFileSync("public/ikolearn/styles.css", "utf8")) && /d-next\[hidden\]/.test(fs.readFileSync("public/ikolearn/styles.css", "utf8")), "checks use more of a phone's width, and the deck's extra suggestion block can stay hidden");
 }
 
 if (fails.length) {

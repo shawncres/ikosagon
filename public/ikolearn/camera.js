@@ -94,7 +94,7 @@
     var floor = h - (wide ? 28 : paneH + 12);
     var cy = wide ? Math.round(top + (floor - top) / 2) : Math.round(top + (floor - top) * CARD.phoneAt);
     var right = w - paneW - 12;
-    return { cx: cx, cy: cy, aw: Math.max(96, right - cx - 36), ah: Math.max(96, floor - top - 16), right: right, paneH: paneH, top: top, tighten: wide ? 1 : 0.72 };
+    return { cx: cx, cy: cy, aw: Math.max(96, right - cx - 36), ah: Math.max(96, floor - top - 16), right: right, paneH: paneH, top: top, tighten: wide ? 1 : 0.6 };
   }
   /* Yaw that lays a parent's children out to its right (their centroid on +x around the parent). Null when there is nothing to fan. */
   function branchYaw(parent, children) {

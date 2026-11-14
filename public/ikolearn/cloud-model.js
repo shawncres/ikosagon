@@ -1478,7 +1478,8 @@
     var fresh = [];
     (Array.isArray(ids) ? ids : []).forEach(function (x) {
       var c = cloud.nodes[x];
-      if (c && x !== pid && c.parent === pid && !c.absorbedInto && fresh.indexOf(x) < 0) fresh.push(x);
+      /* a topic never absorbs itself, and only a real child of this parent can join */
+      if (c && x !== pid && c.id !== pid && c.parent === pid && !c.absorbedInto && fresh.indexOf(x) < 0) fresh.push(x);
     });
     if (!fresh.length) return null;
     fresh.forEach(function (x) { cloud.nodes[x].absorbedInto = pid; if (p.absorbed.indexOf(x) < 0) p.absorbed.push(x); });
@@ -2262,7 +2263,8 @@
   }
   function mergeNodes(cloud, keepId, dropId) {
     var keep = node(cloud, keepId), drop = node(cloud, dropId);
-    if (!keep || !drop || keepId === dropId) return false;
+    /* a subject or topic is never merged into itself */
+    if (!keep || !drop || keepId === dropId || keep === drop) return false;
     if (isAncestor(cloud, keepId, dropId) || isAncestor(cloud, dropId, keepId)) return false;
     childrenOf(cloud, dropId).slice().forEach(function (c) { if (c.id !== keepId) moveUnder(cloud, c.id, keepId); });
     if (childrenOf(cloud, dropId).length) return false;
@@ -2274,12 +2276,15 @@
     cloud.rev += 1;
     return true;
   }
-  function treeSnap(cloud) {
-    return { nodes: JSON.parse(JSON.stringify(cloud.nodes)), order: cloud.order.slice(), deck: JSON.parse(JSON.stringify(cloud.deck || [])), tests: JSON.parse(JSON.stringify(cloud.tests || {})), next: cloud.next, active: cloud.active };
+  /* A full copy of the cloud, so Undo can put every field back, not only the tree. */
+  function cloneState(cloud) {
+    return JSON.parse(JSON.stringify(cloud));
   }
-  function treeRestore(cloud, s) {
-    cloud.nodes = s.nodes; cloud.order = s.order; cloud.deck = s.deck || []; cloud.tests = s.tests || {}; cloud.next = s.next || null; cloud.active = s.active || null;
-    cloud.rev += 1;
+  function restoreState(cloud, snap) {
+    if (!snap) return false;
+    Object.keys(cloud).forEach(function (k) { delete cloud[k]; });
+    Object.keys(snap).forEach(function (k) { cloud[k] = snap[k]; });
+    return true;
   }
   function rich(cloud, n) {
     return (n.ghost ? 0 : 4) + (n.mastery || 0) * 6 + (n.correct || 0) + ((n.cards && n.cards.length) || 0) * 2 + (inDeck(cloud, n.id) ? 3 : 0) + (n.doneAt || n.achievedAt ? 2 : 0) + (n.opened ? 0.4 : 0);
@@ -2313,6 +2318,8 @@
   function quietFix(cloud, opts) {
     opts = opts || {};
     if (!cloud || !cloud.order) return { changed: false };
+    /* looking at the cloud, or moving around it, never rearranges it */
+    if (opts.view) return { changed: false, why: "view" };
     var now = now_(opts.now), protect = {}, skip = cloud.qfSkip || {};
     if (opts.focusId) protect[opts.focusId] = 1;
     (opts.protect || []).forEach(function (id) { if (id) protect[id] = 1; });
@@ -2330,9 +2337,9 @@
       var drop = null;
       pool.sort(function (a, b) { return rich(cloud, a) - rich(cloud, b); });
       for (var j = 0; j < pool.length; j++) { if (pool[j].id !== keep.id && !protect[pool[j].id]) { drop = pool[j]; break; } }
-      if (!drop) continue;
-      var snap = treeSnap(cloud);
-      if (!mergeNodes(cloud, keep.id, drop.id)) { treeRestore(cloud, snap); continue; }
+      if (!drop || drop.id === keep.id) continue;
+      var snap = cloneState(cloud);
+      if (!mergeNodes(cloud, keep.id, drop.id)) { restoreState(cloud, snap); continue; }
       cloud.qfUndo = { snap: snap, skip: drop.id };
       cloud.qfAt = now;
       cloud.qfSkip = skip;
@@ -2343,7 +2350,7 @@
       if (!n || !n.parent || protect[n.id] || skip[n.id]) continue;
       var home = clearHome(cloud, n);
       if (!home || home.id === n.parent) continue;
-      var snapM = treeSnap(cloud);
+      var snapM = cloneState(cloud);
       if (!moveUnder(cloud, n.id, home.id)) continue;
       cloud.rev += 1;
       cloud.qfUndo = { snap: snapM, skip: n.id };
@@ -2354,14 +2361,9 @@
     return { changed: false };
   }
   function undoQuiet(cloud) {
-    var u = cloud.qfUndo;
+    var u = cloud && cloud.qfUndo;
     if (!u || !u.snap) return false;
-    treeRestore(cloud, u.snap);
-    cloud.qfSkip = cloud.qfSkip || {};
-    if (u.skip) cloud.qfSkip[u.skip] = 1;
-    cloud.qfUndo = null;
-    cloud.qfAt = Date.now();
-    return true;
+    return restoreState(cloud, u.snap);
   }
 
   var api = {

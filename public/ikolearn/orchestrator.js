@@ -305,7 +305,7 @@
   function mergePlan(cloud, pid) {
     var p = nodeOf(cloud, pid);
     if (!p || !p.parent || p.ghost) return null;
-    var fresh = C.childrenOf(cloud, pid).filter(function (c) { return !c.ghost && !c.absorbedInto && C.isDone(cloud, c.id); });
+    var fresh = C.childrenOf(cloud, pid).filter(function (c) { return c && c.id !== pid && c.parent === pid && !c.ghost && !c.absorbedInto && C.isDone(cloud, c.id); });
     if (!fresh.length) return null;
     var ids = fresh.map(function (c) { return c.id; });
     var t = C.testOf(cloud, pid), tested = Boolean(t && t.passAt && t.passAt > (p.mergedAt || 0));

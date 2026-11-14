@@ -74,9 +74,9 @@
         var pool = hits.concat([n]);
         var keep = pool.slice().sort(function (a, b) { return rich(cloud, b, pack) - rich(cloud, a, pack); })[0];
         var drop = pool.filter(function (m) { return m.id !== keep.id; }).sort(function (a, b) { return rich(cloud, a, pack) - rich(cloud, b, pack); })[0];
-        if (!drop) continue;
+        if (!drop || drop.id === keep.id) continue;
         var ghost = drop.ghost, label = drop.label, into = keep.label, from = drop.id, to = keep.id;
-        if (!C.mergeNodes(cloud, to, from)) continue;
+        if (from === to || !C.mergeNodes(cloud, to, from)) continue;
         carryMaps(pack, from, to);
         if (ghost) cleaned.push(label); else merged.push(label + " into " + into);
         did = true;
@@ -260,10 +260,22 @@
     if (items.length <= max) return items.join(", ");
     return items.slice(0, max).join(", ") + " and " + (items.length - max) + " more";
   }
-  function enhanceCloud(cloud, pack) {
+  /* A suggested re-parent from the model. Only existing ids, never a node under itself, never a cycle. */
+  function applyMoves(cloud, moves) {
+    (Array.isArray(moves) ? moves : []).slice(0, 40).forEach(function (m) {
+      if (!m) return;
+      var id = m.id, pid = m.parent;
+      if (!cloud.nodes[id] || !cloud.nodes[pid] || id === pid) return;
+      if (C.ancestry(cloud, pid).indexOf(id) >= 0) return;
+      if (cloud.nodes[id].parent === pid) return;
+      C.moveUnder(cloud, id, pid);
+    });
+  }
+  function enhanceCloud(cloud, pack, advice) {
     var cleaned = [], siblings = [], safety = [], moved = [], merged = [], lifted = [], reordered = [], linked = [];
     pack = pack || {};
     if (!cloud || !cloud.order) return { cleaned: cleaned, siblings: siblings, safety: safety, next: [], notice: "Couldn't read that file." };
+    if (advice && advice.moves) applyMoves(cloud, advice.moves);
     mergeDupes(cloud, pack, cleaned, merged);
     reparentAll(cloud, moved);
     liftLong(cloud, lifted);
@@ -300,21 +312,32 @@
     if (skill.evidence) bits.push("Lesson level from what you've finished: " + skill.level + ".");
     return { cleaned: cleaned, siblings: siblings, safety: safety, next: labels, moved: moved, merged: merged, lifted: lifted, skill: skill, notice: bits.length ? bits.join(" ") : "Nothing to add. This file is already in good shape." };
   }
-  function enhanceText(text) {
+  function outlineOf(text) {
+    var raw;
+    try { raw = JSON.parse(text); } catch (e) { return null; }
+    if (!raw || !raw.data || !raw.data.cloud) return null;
+    var cloud = C.deserialize(typeof raw.data.cloud === "string" ? raw.data.cloud : JSON.stringify(raw.data.cloud));
+    if (!cloud) return null;
+    return cloud.order.slice(0, 80).map(function (id) {
+      var n = cloud.nodes[id];
+      return n ? { id: n.id, t: n.label, p: n.parent || "" } : null;
+    }).filter(Boolean);
+  }
+  function enhanceText(text, advice) {
     var raw;
     try { raw = JSON.parse(text); } catch (e) { return { ok: false, notice: "Couldn't read that file." }; }
     if (!raw || !raw.data || !raw.data.cloud) return { ok: false, notice: "Couldn't read that file." };
     var cloud = C.deserialize(JSON.stringify(raw.data.cloud));
     if (!cloud) return { ok: false, notice: "Couldn't read that file." };
     var pack = { lessons: raw.data.lessons || {}, notes: raw.data.notes || {}, tests: raw.data.tests || {}, seen: raw.data.seen || {} };
-    var report = enhanceCloud(cloud, pack);
+    var report = enhanceCloud(cloud, pack, advice);
     raw.data.cloud = JSON.parse(C.serialize(cloud));
     raw.data.lessons = pack.lessons; raw.data.notes = pack.notes; raw.data.tests = pack.tests; raw.data.seen = pack.seen;
     if (!raw.format) raw.format = "ikolearn";
     var name = String(raw.data.name || "IkoLearn").replace(/\s+/g, "-").replace(/[^\w.'-]+/g, "").slice(0, 40) || "IkoLearn";
     return { ok: true, notice: report.notice, name: name + ".ikolearn", text: JSON.stringify(raw), next: report.next, cleaned: report.cleaned, safety: report.safety, siblings: report.siblings, moved: report.moved, merged: report.merged, skill: report.skill };
   }
-  var api = { enhanceCloud: enhanceCloud, enhanceText: enhanceText, skillOf: skillOf, applySkill: applySkill };
+  var api = { enhanceCloud: enhanceCloud, enhanceText: enhanceText, outlineOf: outlineOf, skillOf: skillOf, applySkill: applySkill };
   if (node_) module.exports = api;
   else root.IkoEnhance = api;
 })(typeof window !== "undefined" ? window : globalThis);

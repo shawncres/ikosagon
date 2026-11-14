@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#f3ead8">
   <meta name="color-scheme" content="light dark">
   <!-- light or dark before the first paint (no flash): the learner's choice on this device, else the device's (theme.js) -->
-  <script>(function(){var m,f,d=document.documentElement;try{m=localStorage.getItem("ikolearn-theme")}catch(e){}if(m!=="dark"&&m!=="light"&&m!=="ikosagon")m=window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";d.setAttribute("data-theme",m);var t=document.querySelector('meta[name="theme-color"]');if(t)t.setAttribute("content",m==="ikosagon"?"#000000":m==="dark"?"#1e1712":"#f3ead8");try{f=localStorage.getItem("ikolearn-font")}catch(e){}if(f==="futura")d.style.setProperty("--font-ui","Futura,'Century Gothic','Avenir Next',Avenir,sans-serif");else if(f==="sans")d.style.setProperty("--font-ui","system-ui,'Segoe UI',sans-serif");else if(f==="palatino")d.style.setProperty("--font-ui","'Palatino Linotype',Palatino,Georgia,serif");try{f=localStorage.getItem("ikolearn-size")}catch(e){}if(f==="small"||f==="large"){d.setAttribute("data-size",f);d.style.setProperty("--text-scale",f==="small"?"0.88":"1.16")}})()</script>
+  <script>(function(){var m,f,d=document.documentElement;try{m=localStorage.getItem("ikolearn-theme")}catch(e){}if(m!=="dark"&&m!=="light"&&m!=="ikosagon")m=window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";d.setAttribute("data-theme",m);var t=document.querySelector('meta[name="theme-color"]');if(t)t.setAttribute("content",m==="ikosagon"?"#000000":m==="dark"?"#1e1712":"#f3ead8");try{f=localStorage.getItem("ikolearn-font")}catch(e){}var F={futura:"Futura,'Century Gothic','Avenir Next',Avenir,'Trebuchet MS',sans-serif",sans:"system-ui,'Segoe UI',Roboto,'Helvetica Neue',sans-serif",inter:"Inter,system-ui,'Segoe UI',sans-serif",georgia:"Georgia,'Iowan Old Style','Palatino Linotype',serif",serif:"'Source Serif 4','Source Serif Pro','Iowan Old Style',Georgia,serif",palatino:"'Palatino Linotype',Palatino,'Iowan Old Style',Georgia,serif"};if(F[f])d.style.setProperty("--font-ui",F[f]);try{f=localStorage.getItem("ikolearn-size")}catch(e){}if(f==="small"||f==="large"){d.setAttribute("data-size",f);d.style.setProperty("--text-scale",f==="small"?"0.88":"1.16")}})()</script>
   <title>IkoLearn</title>
   <link rel="icon" href="/ikolearn/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/ikolearn/styles.css">
@@ -52,7 +52,7 @@
         <p id="d-lede" class="d-lede"></p>
         <div id="d-album" class="album" aria-label="Your cards by subject"></div>
         <p id="d-balance" class="fine"></p>
-        <section id="d-next" class="d-next" aria-labelledby="d-next-t"><h3 id="d-next-t" class="d-sec">Pick up next</h3><div id="d-suggest" class="flow"></div></section>
+        <section id="d-next" class="d-next" aria-labelledby="d-next-t" hidden><h3 id="d-next-t" class="d-sec">Pick up next</h3><div id="d-suggest" class="flow"></div></section>
         <section id="d-collect" class="d-collect" hidden aria-labelledby="d-collect-t"><h3 id="d-collect-t" class="d-sec">Still to collect</h3><p class="fine">Topics on your cloud that aren't cards yet. Open one to start it.</p><div id="d-slots"></div></section>
         <section id="top" class="top10" hidden aria-labelledby="t-title">
           <h3 id="t-title">Your top 10</h3>
@@ -163,9 +163,6 @@
         </div>
       </div>
       <p id="you-hint" class="you-hint" hidden>tap to add your name</p>
-      <button type="button" id="add-quiet" class="add-quiet" hidden>add a subject</button>
-      <form id="name-edit" class="name-edit" hidden autocomplete="off"><input id="name-edit-in" maxlength="30" autocomplete="given-name" aria-label="Your name" placeholder="Your name"><button type="submit" class="btn sm">Save</button></form>
-      <form id="add-sub" class="add-sub" hidden autocomplete="off"><input id="add-sub-in" maxlength="300" placeholder="In your own words" aria-label="Add a subject, in your own words"><button type="submit" class="btn sm">Add</button><p id="add-status" class="add-status" role="status"></p></form>
       <aside id="zoom-list" class="zoom-list" hidden><p id="zoom-kicker" class="kicker"></p><h2 id="zoom-title"></h2><ul id="zoom-items" role="listbox" aria-label="Topics" tabindex="0"></ul></aside>
       <p class="cloud-foot fine" data-theme-slot><span class="ft-more"><a href="/ikolearn/learners">Learners</a> · </span><a href="/ikolearn/privacy">Privacy</a><span class="sup" data-sup> · <a href="https://ikosagon.com/contact?subject=IkoLearn%20Feedback" class="sup-link fb-link" target="_blank" rel="noopener">Support &amp; feedback</a></span></p>
       <aside id="panel" class="node-card" hidden aria-labelledby="p-title">

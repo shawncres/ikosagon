@@ -1,5 +1,6 @@
 import path from "node:path";
 import { createRequire } from "node:module";
+import { generateJson, llmReady } from "@/lib/ikolearn/llm";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,7 +12,23 @@ export const dynamic = "force-dynamic";
  */
 export const MAX_BYTES = 8_000_000;
 
-type EnhanceOut = { ok: boolean; notice?: string; name?: string; text?: string; next?: string[] };
+type EnhanceOut = { ok: boolean; notice?: string; name?: string; text?: string; next?: string[]; outlineOf?: (text: string) => { id: string; t: string; p: string }[] | null; enhanceText: (text: string, advice?: { moves: { id: string; parent: string }[] } | null) => { ok: boolean; notice?: string; name?: string; text?: string; next?: string[] } };
+type Move = { id: string; parent: string };
+
+const MOVE_SCHEMA = {
+  type: "object",
+  properties: {
+    moves: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { id: { type: "string" }, parent: { type: "string" } },
+        required: ["id", "parent"],
+      },
+    },
+  },
+  required: ["moves"],
+};
 
 function fail(status: 400 | 413, error: string) {
   return Response.json({ ok: false, error }, { status });
@@ -61,10 +78,37 @@ function fileShape(text: string): boolean {
   }
 }
 
-function loadEnhance(): { enhanceText: (text: string) => EnhanceOut } {
+function loadEnhance(): EnhanceOut {
   const file = path.join(process.cwd(), "public/ikolearn/enhance.js");
   const require = createRequire(file);
   return require("./enhance.js");
+}
+
+/** One structured pass over the names already on the cloud. A miss returns null and the local pass runs instead. */
+async function askMoves(text: string): Promise<{ moves: Move[] } | null> {
+  if (!llmReady(process.env)) return null;
+  const outline = loadEnhance().outlineOf?.(text) || null;
+  if (!outline || outline.length < 2) return null;
+  const allowed = new Set(outline.map((n) => n.id));
+  const system = "You tidy a learner's topic map. Reply with JSON only: {\"moves\":[{\"id\":\"n1\",\"parent\":\"n2\"}]}. Use only the given ids. Leave a node where it is when the parent is already right. Never put a topic under itself. Do not invent nodes. Do not include lesson text.";
+  const user = "Re-parent a topic only when it clearly belongs somewhere else. Nodes: " + JSON.stringify(outline);
+  const r = await generateJson<{ moves: Move[] }>(system, user, MOVE_SCHEMA, (raw) => {
+    try {
+      const parsed = JSON.parse(raw) as { moves?: { id?: unknown; parent?: unknown }[] };
+      if (!parsed || !Array.isArray(parsed.moves)) return null;
+      const moves: Move[] = [];
+      for (const m of parsed.moves) {
+        if (!m || typeof m.id !== "string" || typeof m.parent !== "string") continue;
+        if (!allowed.has(m.id) || !allowed.has(m.parent) || m.id === m.parent) continue;
+        moves.push({ id: m.id, parent: m.parent });
+        if (moves.length >= 40) break;
+      }
+      return { moves };
+    } catch {
+      return null;
+    }
+  }, process.env, fetch, { route: "enhance", timeoutMs: 12000 });
+  return r.ok ? r.value : null;
 }
 
 export async function POST(request: Request) {
@@ -79,10 +123,21 @@ export async function POST(request: Request) {
   if (!text.trim()) return fail(400, "That file is empty.");
   if (text.length > MAX_BYTES) return fail(413, "That file is too large.");
   if (!fileShape(text)) return fail(400, "That file could not be read.");
+  let advice: { moves: Move[] } | null = null;
+  let fallback = !llmReady(process.env);
+  if (!fallback) {
+    try {
+      advice = await askMoves(text);
+      if (!advice) fallback = true;
+    } catch {
+      advice = null;
+      fallback = true;
+    }
+  }
   try {
-    const out = loadEnhance().enhanceText(text);
+    const out = loadEnhance().enhanceText(text, advice);
     if (!out || !out.ok) return fail(400, "That file could not be read.");
-    return Response.json({ ok: true, notice: out.notice, name: out.name, text: out.text, next: out.next });
+    return Response.json({ ok: true, notice: out.notice, name: out.name, text: out.text, next: out.next, fallback });
   } catch {
     return fail(400, "That file could not be read.");
   }
