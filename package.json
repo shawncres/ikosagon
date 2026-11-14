@@ -13,7 +13,10 @@
     "check:ikoagent": "npx tsx --tsconfig tsconfig.json scripts/ikoagent-lang-check.mjs",
     "check:ikoartist": "npx tsx --tsconfig tsconfig.json scripts/ikoartist-taste-check.mjs",
     "check:ikoreadtube": "npx tsx --tsconfig tsconfig.json scripts/ikoreadtube-check.mjs",
-    "check:ikolearn": "npx tsx --tsconfig tsconfig.json scripts/ikolearn-check.mjs"
+    "check:ikolearn": "npx tsx --tsconfig tsconfig.json scripts/ikolearn-check.mjs",
+    "test:e2e": "playwright test --config e2e/playwright.config.ts",
+    "test:e2e:smoke": "playwright test --config e2e/playwright.config.ts --grep @smoke",
+    "test:e2e:report": "playwright show-report playwright-report"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
@@ -29,6 +32,7 @@
     "webgl-fluid-enhanced": "^0.8.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

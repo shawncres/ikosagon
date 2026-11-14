@@ -65,6 +65,13 @@ Without a key the route still returns matching notes. Rate limit is 20 requests 
 - `npm run lint` - run ESLint
 - `npm run build` - production build
 - `npm run format` - format code with Prettier
+- `npm run test:e2e:smoke` - IkoLearn offline Playwright smoke
+- `npm run test:e2e` - all IkoLearn Playwright tests
+- `npm run test:e2e:report` - open the last Playwright HTML report
+
+## IkoLearn browser tests
+
+The static app in `public/ikolearn` has an offline Playwright harness under `e2e/`. Setup, fixtures, tags, and how to read CI artifacts are in [docs/e2e.md](docs/e2e.md). The older `scripts/ikolearn-*-e2e.mjs` files stay in place while each flow moves over.
 
 ## IkoArtist audio
 
