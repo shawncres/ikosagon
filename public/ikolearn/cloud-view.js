@@ -41,7 +41,8 @@
       return false;
     }
     function slowNow(now) { return !mini && (now < nearUntil || Boolean(hoverAt && !gesture && nearAt(hoverAt.x, hoverAt.y))); }
-    var focusId = null, focusSet = {}, nearIds = {}, selectAt = 0, drawnRoot = null; /* selectAt: when the focused node was picked. nearIds: parent, siblings and children, kept visible when zoomed in. */
+    var focusId = null, focusSet = {}, nearIds = {}, selectAt = 0, drawnRoot = null, holdT = 0; /* selectAt: when the focused node was picked. nearIds: parent, siblings and children, kept visible when zoomed in. */
+    var branchIds = {}, branchScale = 1, branchWant = 1;
     /* the big cloud's idle spin (camera.js spinState): on only while the overlay is open (spinOn) and nothing covers it (spinHeld) */
     var spinOn = false, spinHeld = false, lastInput = 0, lastFrame = 0, spinning = false, spinFrom = 0, resumeTimer = 0;
     var doc = root.document;
@@ -180,7 +181,7 @@
       focusId = id && cloud && cloud.nodes[id] ? id : null;
       if (focusId && focusId !== was) selectAt = performance.now();
       focusSet = {}; nearIds = {};
-      if (!focusId) return;
+      if (!focusId) { branchWant = 1; branchIds = {}; return; }
       nearIds[focusId] = 1;
       C.ancestry(cloud, focusId).forEach(function (x) { focusSet[x] = 1; nearIds[x] = 1; });
       var ix = C.index(cloud), level = [focusId], fnode = cloud.nodes[focusId];
@@ -192,10 +193,12 @@
       }
     }
 
-    /* p − pivot, turned (yaw about the vertical axis, then pitch), in perspective; the pivot lands at centre + pan */
-    function project(p) {
+    /* p − pivot, turned (yaw about the vertical axis, then pitch), in perspective; the pivot lands at centre + pan.
+       A focused branch can be drawn a little tighter (branchScale) so it fits the screen. The saved layout is unchanged. */
+    function project(p, id) {
       var cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
       var px = p.x - pivot.x, py = p.y - pivot.y, pz = p.z - pivot.z;
+      if (id && branchScale !== 1 && branchIds[id]) { px *= branchScale; py *= branchScale; pz *= branchScale; }
       var x = px * cy - pz * sy, z = px * sy + pz * cy;
       var y = py * cp - z * sp; z = py * sp + z * cp;
       var f = camD / (camD + Math.max(z, -camD * 0.8));
@@ -257,7 +260,7 @@
       ctx.clearRect(0, 0, w, h);
       var rootP = project(pos.root);
       var vis = visibleIds(now), items = [], at = { root: rootP };
-      Object.keys(vis).forEach(function (id) { var p = project(pos[id]); at[id] = p; items.push({ n: cloud.nodes[id], p: p }); });
+      Object.keys(vis).forEach(function (id) { var p = project(pos[id], id); at[id] = p; items.push({ n: cloud.nodes[id], p: p }); });
       drawnRoot = { x: rootP.x, y: rootP.y };
       extent = 0; for (var ei = 0; ei < items.length; ei++) extent = Math.max(extent, Math.hypot(items[ei].p.x - rootP.x, items[ei].p.y - rootP.y)); /* PR 109: the cloud's on-screen radius (caps the spin) */
       items.sort(function (a, b) { return b.p.z - a.p.z; });
@@ -456,22 +459,10 @@
       }
       ctx.restore();
 
-      /* An empty cloud: one faint ghost, "+ add a subject". It is not a saved node. */
+      /* No permanent add box. A subject is added by telling Iko, or from the quiet control when You is focused. */
       addMark = null;
-      if (!mini && cloud && !hideRoot && !C.subjects(cloud).length) {
-        var ax = Math.round(rootP.x + Math.min(128, w * 0.22)), ay = Math.round(rootP.y + 36);
-        ctx.save();
-        ctx.globalAlpha = 0.38; ctx.setLineDash([1.5, 2.5]); ctx.strokeStyle = INK; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(ax, ay, 7, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
-        ctx.font = "italic 13px " + FONT; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        var al = "+ add a subject", atw = ctx.measureText(al).width;
-        ctx.globalAlpha = 0.92; ctx.fillStyle = PAPER;
-        pill(ax - atw / 2 - 8, ay + 10, atw + 16, 20); ctx.fill();
-        ctx.globalAlpha = 0.45; ctx.fillStyle = INK; ctx.fillText(al, ax, ay + 21);
-        ctx.restore();
-        addMark = { x: ax, y: ay, r: 28 };
-      }
 
+      if (branchScale !== branchWant) branchScale += (branchWant - branchScale) * (reduce ? 1 : 0.18); /* a quiet tighten into the focused branch, and back out */
       if (idleSpin) yaw += 0.00015 * (lastFrame ? Math.max(0, Math.min(50, now - lastFrame)) : 16); /* PR 109: by time, not by frame (a 120 Hz screen spun it twice as fast) */
       var sp = { on: false, wait: Infinity };
       if (!mini) {
@@ -485,7 +476,7 @@
       spinning = sp.on; lastFrame = now;
       drawMs = performance.now() - t0;
       if (opts.onDraw) opts.onDraw(); /* the app keeps the selection card attached to its node */
-      if (pulsing || idleSpin || sp.on || gesture || tween || glideV || morph) request();
+      if (pulsing || idleSpin || sp.on || gesture || tween || glideV || morph || Math.abs(branchScale - branchWant) > 0.004) request();
       else if (sp.wait !== Infinity && !resumeTimer) resumeTimer = setTimeout(function () { resumeTimer = 0; request(); }, sp.wait + 30);
     }
 
@@ -618,19 +609,34 @@
      * (cx, cy) and any later turn orbits it. The zoom fits its children around it inside the free area aw x ah, kept
      * where their labels are legible. The tween eases yaw, zoom (log space), pan and the pivot together (cubic in-out).
      */
+    function markBranch(id) {
+      branchIds = {};
+      var ix = C.index(cloud), walk = function (pid) { (ix[pid] || []).forEach(function (k) { branchIds[k] = 1; walk(k); }); };
+      walk(id);
+    }
     function focusNode(id, o) {
       o = o || {};
       if (!cloud || !pos[id]) return;
       setFocus(id);
       var d = depth[id] || 1, saved = view();
-      var fy = o.keepYaw ? null : CAM.forwardYaw(pos[id]);
-      yaw = fy == null ? yaw : fy; zoom = 1; panX = 0; panY = 0; pivot = pointOf(id);
+      var kidPts = (C.index(cloud)[id] || []).map(function (k) { return pos[k]; }).filter(Boolean);
+      var aim = o.keepYaw ? null : (CAM.branchYaw(pointOf(id), kidPts) || CAM.forwardYaw(pos[id]));
+      yaw = aim == null ? yaw : aim; zoom = 1; panX = 0; panY = 0; pivot = pointOf(id);
+      branchScale = 1;
       /* the root (the learner's name): its subjects are framed around it, never closer than the home view */
       var isRoot = id === "root", pts = (isRoot ? C.subjects(cloud).map(function (x) { return x.id; }) : C.index(cloud)[id] || []).filter(function (k) { return pos[k]; }), box = { x0: 0, x1: 0, y0: 0, y1: 0 };
-      pts.forEach(function (k) { var q = project(pos[k]), x = q.x - w / 2, y = q.y - h / 2; box.x0 = Math.min(box.x0, x); box.x1 = Math.max(box.x1, x); box.y0 = Math.min(box.y0, y); box.y1 = Math.max(box.y1, y); });
+      pts.forEach(function (k) { var q = project(pos[k], k), x = q.x - w / 2, y = q.y - h / 2; box.x0 = Math.min(box.x0, x); box.x1 = Math.max(box.x1, x); box.y0 = Math.min(box.y0, y); box.y1 = Math.max(box.y1, y); });
       var lo = isRoot ? zfloor : Math.max(1, 0.75 / C.levelScale(d + 1)), hi = isRoot ? Math.max(home.zoom, 1) : Math.max(lo, 1.6 / C.levelScale(d + 1));
-      var z = o.zoom || CAM.fitAround(box, o.aw || w, o.ah || h, lo, hi);
+      var fit = (!isRoot && pts.length) ? CAM.fitBranch(box, { aw: o.aw || w, ah: o.ah || h }, lo, hi) : null;
+      var z = o.zoom || (fit ? fit.zoom : CAM.fitAround(box, o.aw || w, o.ah || h, lo, hi));
+      branchWant = fit ? fit.scale : 1;
+      if (!isRoot) markBranch(id); else branchIds = {};
+      if (reduce) branchScale = branchWant;
       var cx = o.cx == null ? w / 2 : o.cx, cy = o.cy == null ? h / 2 : o.cy;
+      if (pts.length && o.top != null) {
+        var vis = z * branchWant, y0 = box.y0 * vis, y1 = box.y1 * vis, low = o.top + 12, high = h - (o.paneH || 16) - 12;
+        if (y1 - y0 <= high - low) cy = Math.max(low - y0, Math.min(high - y1, cy));
+      }
       var to = { zoom: z, panX: cx - w / 2, panY: cy - h / 2, yaw: yaw, pitch: saved.pitch, pivot: pivot };
       apply(saved);
       animateTo(to, o.instant ? 0 : CAM.CAM.focusMs);
@@ -671,7 +677,15 @@
         pointers[e.pointerId] = local(e);
         if (e.pointerType !== "mouse") { var lp0 = local(e); if (nearAt(lp0.x, lp0.y)) nearUntil = performance.now() + NEAR.holdMs; }
         var ids = Object.keys(pointers);
-        if (ids.length === 1) gesture = { type: CAM.gestureFor({ pointers: 1, button: e.button, shift: e.shiftKey, alt: e.altKey }), start: local(e), last: local(e), t: performance.now(), vx: 0, vy: 0, moved: 0, far: 0, touch: e.pointerType !== "mouse" };
+        if (ids.length === 1) {
+          gesture = { type: CAM.gestureFor({ pointers: 1, button: e.button, shift: e.shiftKey, alt: e.altKey }), start: local(e), last: local(e), t: performance.now(), vx: 0, vy: 0, moved: 0, far: 0, touch: e.pointerType !== "mouse" };
+          clearTimeout(holdT);
+          holdT = setTimeout(function () {
+            if (!gesture || CAM.dragging(gesture) || !opts.onLong) return;
+            var hit = pick(gesture.start.x, gesture.start.y);
+            if (hit && hit.root) { gesture.held = 1; opts.onLong(hit); }
+          }, 520);
+        }
         else if (ids.length === 2) {
           var a = pointers[ids[0]], b = pointers[ids[1]];
           gesture = { type: "pinch", dist: Math.hypot(a.x - b.x, a.y - b.y), mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, zoom: zoom, a: a, b: b, moved: 99, far: 99, mode: "", twAll: 0 };
@@ -703,6 +717,7 @@
           /* PR 110: a finger's tap wobbles a few pixels: until it has clearly left its start, nothing moves (no jitter);
              then the whole way from the start is applied at once, so the cloud stays under the finger */
           if (!CAM.dragging(gesture)) return;
+          clearTimeout(holdT);
           gesture.last = p;
           if (gesture.type === "pan") { panX += dx; panY += dy; gesture.vx = CAM.velocity(gesture.vx, dx, dt); gesture.vy = CAM.velocity(gesture.vy, dy, dt); gesture.t = t; }
           else { yaw += dx * 0.008; pitch = Math.max(-1.3, Math.min(1.3, pitch + dy * 0.008)); }
@@ -714,9 +729,11 @@
         delete pointers[e.pointerId];
         if (g && opts.onGesture && (g.type === "pinch" || (g.type === "pan" && CAM.dragging(g)))) opts.onGesture(g.type === "pinch" ? "zoom" : "drag"); /* the movement hint learns what's been tried */
         if (g && opts.onGesture && ((g.type === "pinch" && g.tw > 0.15) || (g.type === "rotate" && CAM.dragging(g)))) opts.onGesture("turn"); /* PR 107: a twist or a turn */
+        clearTimeout(holdT);
         if (!Object.keys(pointers).length) {
           gesture = null;
           canvas.classList.remove("turning");
+          if (g && g.held) { request(); return; } /* a long-press already opened add; it is not also a tap */
           if (g && g.type !== "pinch" && !CAM.dragging(g) && opts.onPick) {
             /* PR 110: a tap is judged by how far the finger got from where it went down (a few px of wobble on a phone),
                not by the sum of every tiny move, which a real finger on an iPhone always passed: taps read as drags */
@@ -764,7 +781,7 @@
       recentre: function () { setFocus(null); animateTo(Object.assign({ pivot: CAM.ORIGIN }, home), CAM.CAM.focusMs); },
       state: function () { return { yaw: yaw, pitch: pitch, zoom: zoom, panX: panX, panY: panY, pivot: { x: pivot.x, y: pivot.y, z: pivot.z }, focus: focusId, drawn: projected.length, drawMs: drawMs, moving: Boolean(tween || glideV), spinning: spinning, near: slowNow(performance.now()), slow: slowK, extent: extent, held: spinHeld, vivid: vivid, fill: Object.assign({}, fill), fade: Object.assign({}, fadeK) }; },
       setView: function (v) { if (v.zoom) setZoom(v.zoom); if (v.yaw != null) yaw = v.yaw; if (v.pitch != null) pitch = v.pitch; if (v.panX != null) panX = v.panX; if (v.panY != null) panY = v.panY; if (v.pivot && isFinite(v.pivot.x) && isFinite(v.pivot.y) && isFinite(v.pivot.z)) pivot = { x: v.pivot.x, y: v.pivot.y, z: v.pivot.z }; if (v.focus !== undefined) setFocus(v.focus); request(); },
-      project: function (id) { return pos[id] ? project(pos[id]) : null; },
+      project: function (id) { return pos[id] ? project(pos[id], id) : null; },
       focusNode: focusNode,
       clearFocus: function () { setFocus(null); request(); },
       /* the name plate off the canvas (the opening question shows the name in the page, above the question) */

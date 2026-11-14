@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#f3ead8">
   <meta name="color-scheme" content="light dark">
   <!-- light or dark before the first paint (no flash): the learner's choice on this device, else the device's (theme.js) -->
-  <script>(function(){var m,f,d=document.documentElement;try{m=localStorage.getItem("ikolearn-theme")}catch(e){}if(m!=="dark"&&m!=="light"&&m!=="ikosagon")m=window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";d.setAttribute("data-theme",m);var t=document.querySelector('meta[name="theme-color"]');if(t)t.setAttribute("content",m==="ikosagon"?"#000000":m==="dark"?"#1e1712":"#f3ead8");try{f=localStorage.getItem("ikolearn-font")}catch(e){}if(f==="futura")d.style.setProperty("--font-ui","Futura,'Century Gothic','Avenir Next',Avenir,sans-serif");else if(f==="sans")d.style.setProperty("--font-ui","system-ui,'Segoe UI',sans-serif");else if(f==="palatino")d.style.setProperty("--font-ui","'Palatino Linotype',Palatino,Georgia,serif")})()</script>
+  <script>(function(){var m,f,d=document.documentElement;try{m=localStorage.getItem("ikolearn-theme")}catch(e){}if(m!=="dark"&&m!=="light"&&m!=="ikosagon")m=window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";d.setAttribute("data-theme",m);var t=document.querySelector('meta[name="theme-color"]');if(t)t.setAttribute("content",m==="ikosagon"?"#000000":m==="dark"?"#1e1712":"#f3ead8");try{f=localStorage.getItem("ikolearn-font")}catch(e){}if(f==="futura")d.style.setProperty("--font-ui","Futura,'Century Gothic','Avenir Next',Avenir,sans-serif");else if(f==="sans")d.style.setProperty("--font-ui","system-ui,'Segoe UI',sans-serif");else if(f==="palatino")d.style.setProperty("--font-ui","'Palatino Linotype',Palatino,Georgia,serif");try{f=localStorage.getItem("ikolearn-size")}catch(e){}if(f==="small"||f==="large"){d.setAttribute("data-size",f);d.style.setProperty("--text-scale",f==="small"?"0.88":"1.16")}})()</script>
   <title>IkoLearn</title>
   <link rel="icon" href="/ikolearn/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/ikolearn/styles.css">
@@ -145,19 +145,14 @@
           <div class="iko-ask sl-ask">
             <span class="iko-still" aria-hidden="true"><svg class="iko-pebble" viewBox="0 0 64 56" width="36" height="32" aria-hidden="true" focusable="false"><path class="iko-body" d="M32 4C49 4 60 14 60 29C60 44 48 52 31 52C15 52 4 44 4 30C4 15 16 4 32 4Z"/><path class="iko-shine" d="M17 15C21 11 26 10 30 10"/><g class="iko-face"><circle class="iko-eye" cx="24" cy="28" r="2.4"/><circle class="iko-eye" cx="40" cy="28" r="2.4"/><path class="iko-mouth" d="M28 36Q32 39 36 36"/></g></svg></span>
             <div class="say">
-              <p id="sl-hi" class="sl-hi">Hi. I'm Iko.</p>
-              <p id="sl-q" class="sl-q">Your cloud is open, with you in the centre. A first name, if you'd like one, and one to three things to start with.</p>
+              <p id="sl-hi" class="sl-hi">Hi. I'm Iko, your learning companion.</p>
+              <p id="sl-q" class="sl-q">Type or pick a few topics you're curious about.</p>
             </div>
           </div>
           <form id="sl-form" class="sl-form" autocomplete="off">
-            <div class="sl-name">
-              <label for="sl-name" id="sl-name-lab">First name</label>
-              <input id="sl-name" maxlength="30" autocomplete="given-name" placeholder="Your first name" aria-describedby="sl-keep">
-              <button type="button" id="sl-keep" class="link" aria-pressed="false">Keep it as You</button>
-            </div>
-            <label for="sl-in" id="sl-in-lab">Starting interests</label>
-            <input id="sl-in" maxlength="120" placeholder="In your own words" aria-describedby="sl-hint">
-            <p id="sl-hint" class="sl-hint">One to three is plenty. Type your own, or tap a suggestion.</p>
+            <label for="sl-in" id="sl-in-lab">Topics</label>
+            <input id="sl-in" maxlength="160" placeholder="In your own words" aria-describedby="sl-hint">
+            <p id="sl-hint" class="sl-hint">A few is plenty. Type your own, or tap a suggestion.</p>
             <div id="sl-ex" class="sl-ex" role="group" aria-label="Suggestions"></div>
             <div class="sl-acts">
               <button type="submit" id="sl-begin" class="btn sm">Begin</button>
@@ -168,6 +163,7 @@
         </div>
       </div>
       <p id="you-hint" class="you-hint" hidden>tap to add your name</p>
+      <button type="button" id="add-quiet" class="add-quiet" hidden>add a subject</button>
       <form id="name-edit" class="name-edit" hidden autocomplete="off"><input id="name-edit-in" maxlength="30" autocomplete="given-name" aria-label="Your name" placeholder="Your name"><button type="submit" class="btn sm">Save</button></form>
       <form id="add-sub" class="add-sub" hidden autocomplete="off"><input id="add-sub-in" maxlength="300" placeholder="In your own words" aria-label="Add a subject, in your own words"><button type="submit" class="btn sm">Add</button><p id="add-status" class="add-status" role="status"></p></form>
       <aside id="zoom-list" class="zoom-list" hidden><p id="zoom-kicker" class="kicker"></p><h2 id="zoom-title"></h2><ul id="zoom-items" role="listbox" aria-label="Topics" tabindex="0"></ul></aside>

@@ -31,8 +31,11 @@
   --state-sketch: #8a7a66; --state-inked: #3b2e22; --state-tinted: #a86b3c; --state-achieved: #7a4a22;
   --ease: cubic-bezier(.2, .7, .3, 1); --t-fast: 120ms; --t-med: 160ms;
   --font-ui: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+  --text-scale: 1;
   font-family: var(--font-ui);
 }
+html[data-size="small"] { --text-scale: 0.88; }
+html[data-size="large"] { --text-scale: 1.16; }
 /* dark: deep warm brown paper (never black), soft cream ink, the same quiet sepia; text pairs pass WCAG AA */
 html[data-theme="dark"] {
   --paper: #1e1712;
@@ -440,7 +443,7 @@ button.gcard:hover { border-color: var(--soft); }
 #cloud-canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: grab; }
 #cloud-canvas:active { cursor: grabbing; }
 #cloud-canvas.turning { cursor: move; }
-.cloud-top { position: absolute; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: calc(14px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right)) 14px calc(20px + env(safe-area-inset-left)); }
+.cloud-top { position: absolute; z-index: 5; top: 0; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: calc(14px + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right)) 14px calc(20px + env(safe-area-inset-left)); background: linear-gradient(var(--paper) 0%, var(--paper) 72%, transparent 100%); }
 .zoom { position: absolute; z-index: 3; right: calc(12px + env(safe-area-inset-right)); bottom: calc(max(128px, 18px + var(--foot-h, 44px) + var(--flow-h, 0px)) + env(safe-area-inset-bottom)); top: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; } /* PR 106: bottom-right, clear of the header (Iko, the deck), above the Pick up row, outside the sphere */
 .zoom .btn { background: var(--paper); min-width: 34px; }
 .zoom #zin, .zoom #zout { font-size: 18px; line-height: 1; }
@@ -448,7 +451,7 @@ button.gcard:hover { border-color: var(--soft); }
 /* the selection card: a quiet rounded card next to its node (placed by app.js placeCard / camera.js cardPlace) */
 #panel { position: absolute; left: 12px; top: 72px; z-index: 3; box-sizing: border-box; width: min(320px, calc(100vw - 24px)); max-height: calc(100% - 84px); overflow: auto; overscroll-behavior: contain; background: var(--paper); border: 1px solid var(--rule); border-radius: 12px; box-shadow: 0 8px 28px rgba(var(--shadow-rgb), .12), 0 1px 3px rgba(var(--shadow-rgb), .06); }
 .topic-jump { margin-right: 8px; }
-.topic-list { position: absolute; z-index: 4; top: 58px; right: 12px; box-sizing: border-box; width: min(280px, calc(100vw - 24px)); max-height: min(46vh, 380px); overflow: auto; background: var(--paper); border: 1px solid var(--rule); border-radius: 12px; padding: 8px 10px 10px; box-shadow: 0 8px 28px rgba(var(--shadow-rgb), .12); }
+.topic-list { position: absolute; z-index: 6; top: 58px; right: 12px; box-sizing: border-box; width: min(280px, calc(100vw - 24px)); max-height: min(46vh, 380px); overflow: auto; background: var(--paper); border: 1px solid var(--rule); border-radius: 12px; padding: 8px 10px 10px; box-shadow: 0 8px 28px rgba(var(--shadow-rgb), .12); }
 .topic-list ul { list-style: none; margin: 0; padding: 0 0 0 12px; }
 .topic-list > ul { padding-left: 0; }
 .topic-list button { display: block; width: 100%; min-height: 44px; margin: 0; padding: 8px 10px; text-align: left; background: transparent; border: 0; border-radius: 8px; color: inherit; font: inherit; cursor: pointer; }
@@ -480,7 +483,15 @@ button.gcard:hover { border-color: var(--soft); }
 .home-brand { font-size: 14px; letter-spacing: .04em; color: var(--soft); opacity: .7; }
 .home-nav > :is(button, a) { font-size: 14px; color: var(--ink); }
 .home-nav .who-now { margin-left: 0; color: var(--soft); }
-@media (max-width: 699px) { .home-brand { display: none; } .home-nav { gap: 2px 14px; } }
+@media (max-width: 699px) { .home-brand { display: none; } .home-nav { gap: 2px 8px; } }
+@media (max-width: 699px) {
+  .cloud-top { gap: 6px; padding-left: calc(8px + env(safe-area-inset-left)); padding-right: calc(8px + env(safe-area-inset-right)); }
+  .top-r { gap: 6px; }
+  .topic-jump { margin-right: 0; flex: none; }
+  .ret { max-width: 92px; padding: 0 8px; font-size: 12px; height: 32px; }
+  .minideck { width: 42px; }
+  .cloud-top > .iko-line { max-width: min(280px, calc(100vw - 24px)); }
+}
 .cloud-foot { position: absolute; left: 0; right: 0; bottom: calc(2px + env(safe-area-inset-bottom)); margin: 0; text-align: center; font-size: 12px; opacity: .5; transition: opacity .2s; z-index: 1; }
 .cloud-foot a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; }
 .cloud-foot:hover, .cloud-foot:focus-within { opacity: 1; }
@@ -517,7 +528,7 @@ body.start-open .cloud-hint { visibility: hidden; }
 .sl-card input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; font: inherit; font-size: 16px; padding: 8px 14px; border: 1px solid var(--rule); border-radius: 999px; background: var(--sheet); color: var(--ink); }
 .sl-name input { flex: 1 1 140px; width: auto; }
 .sl-name input:disabled { opacity: .55; }
-#sl-keep, #sl-skip, #sl-begin, .sl-ex .ex-chip { min-height: 44px; }
+#sl-skip, #sl-begin, .sl-ex .ex-chip { min-height: 44px; }
 #sl-keep.on { color: var(--ink); }
 .sl-hint, .sl-status { margin: 6px 0 0; font-size: 13px; font-style: italic; color: var(--soft); }
 .sl-status:empty { display: none; }
@@ -526,15 +537,34 @@ body.start-open .cloud-hint { visibility: hidden; }
 .sl-ex.sl-dim .ex-chip { opacity: .35; }
 .sl-acts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; position: sticky; bottom: 0; padding-top: 6px; background: color-mix(in srgb, var(--paper) 96%, transparent); }
 @media (max-width: 420px) {
-  .start-layer { left: 8px; right: 64px; width: auto; transform: none; max-height: min(70vh, 560px); }
+  .start-layer { left: 8px; right: 8px; width: auto; transform: none; max-height: min(70vh, 560px); }
   .sl-card { padding: 10px 12px 8px; }
   .sl-q { font-size: 14.5px; }
 }
+/* the keyboard is up: the pane stays inside the visible screen, and the field stays in view */
+body.start-kbd .start-layer { overflow: hidden; }
+body.start-kbd .sl-card { display: flex; flex-direction: column; max-height: 100%; overflow: hidden; }
+body.start-kbd .sl-hi, body.start-kbd .sl-hint { display: none; }
+body.start-kbd .sl-form { min-height: 0; display: flex; flex-direction: column; }
+body.start-kbd .sl-ex { overflow: auto; max-height: 88px; }
+body.start-kbd .sl-acts { flex: none; }
 @media (prefers-reduced-motion: reduce) { .sl-ex .ex-chip { transition: none; } }
 .name-edit, .add-sub { position: absolute; z-index: 4; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; transform: translate(-50%, 0); width: min(340px, calc(100% - 24px)); }
 .name-edit input, .add-sub input { font: inherit; font-size: 16px; min-height: 44px; min-width: 0; flex: 1; padding: 8px 14px; border: 1px solid var(--rule); border-radius: 999px; background: var(--sheet); color: var(--ink); }
 .add-status { flex-basis: 100%; margin: 0; text-align: center; font-size: 13px; font-style: italic; color: var(--soft); }
 .add-status:empty { display: none; }
+.add-quiet { position: absolute; z-index: 4; margin: 0; transform: translate(-50%, 0); padding: 2px 8px; border: 0; background: none; color: var(--soft); font: inherit; font-size: 13px; font-style: italic; opacity: .62; cursor: pointer; }
+.add-quiet:hover, .add-quiet:focus-visible { opacity: 1; color: var(--ink); }
+.topic-scope { margin: 0 0 6px; font-size: 13px; letter-spacing: .04em; color: var(--soft); }
+.path-fold { margin-top: 4px; }
+.path-fold > summary { cursor: pointer; font-size: 13px; color: var(--soft); }
+.sheet-handle { display: none; width: 36px; height: 4px; margin: 4px auto 0; padding: 0; border: 0; border-radius: 4px; background: var(--rule); cursor: ns-resize; }
+#panel[data-side="sheet"] .sheet-handle { display: block; }
+@media (max-width: 699px) {
+  #panel[data-side="sheet"] { border-radius: 16px 16px 10px 10px; }
+  #panel[data-side="sheet"] .panel-in { padding: 6px 12px 8px; }
+  #panel[data-side="sheet"] .actions .btn { min-height: 36px; padding: 4px 10px; }
+}
 .zoom-list { position: absolute; z-index: 3; top: 64px; right: 12px; bottom: 78px; box-sizing: border-box; width: min(440px, 56vw); overflow: auto; background: var(--paper); border: 1px solid var(--rule); border-radius: 14px; padding: 12px 14px 16px; box-shadow: 0 8px 28px rgba(var(--shadow-rgb), .12); }
 .zoom-list h2 { margin: 0 0 8px; font-size: 20px; }
 .zoom-list ul { list-style: none; margin: 0; padding: 0; }
@@ -663,6 +693,7 @@ button.gslot { cursor: pointer; }
 .ap-row-head .link { font-size: 14px; letter-spacing: 0; font-variant: normal; color: var(--ink); }
 .ap-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; grid-auto-flow: row dense; }
 .ap-grid > .gcard { width: auto; min-width: 0; }
+.ap-grid > .gcard .gc-art { min-height: 42px; flex-shrink: 0; }
 /* a merged parent leads its row at double size (2 x 2 slots keeps the 5:7 shape) */
 .ap-grid > .gcard.prominent { grid-column: span 2; grid-row: span 2; aspect-ratio: auto; height: 100%; padding: 14px; }
 .ap-grid > .gcard.prominent .gc-title { font-size: max(15px, 9.5cqi); }
@@ -745,7 +776,7 @@ button.gcard:active, button.gslot:active { transform: translateY(-1px) scale(.97
 .md-card.merged { border: 3px double var(--ink); }
 .md-slot { border-style: dashed; background: transparent; box-shadow: none; transform: none; }
 .minideck.empty .md-fan { animation: none; }
-.md-n { position: absolute; right: -4px; top: 2px; min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--paper); border: 1px solid var(--rule); font-size: 11px; line-height: 15px; color: var(--soft); }
+.md-n { position: absolute; right: 0; top: 0; min-width: 16px; padding: 0 4px; border-radius: 8px; background: var(--paper); border: 1px solid var(--rule); font-size: 11px; line-height: 15px; color: var(--soft); z-index: 1; }
 .minideck:hover .md-card, .minideck:focus-visible .md-card { border-color: var(--ink); }
 .minideck.pulse .md-fan { animation: md-pulse 1.4s ease-out 1, md-drift 7s ease-in-out 1.4s infinite; }
 .minideck.pulse::after { content: ""; position: absolute; inset: 4px 2px 2px; border-radius: 6px; animation: md-ring 1.4s ease-out 1; pointer-events: none; }
@@ -952,8 +983,9 @@ fieldset.q { min-width: 0; }
 .cloud-fog { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; display: block; }
 /* PR 107: the widgets keep their places: the cloud (thumbnail) then the deck at the far right of every screen; "Return to"
    takes the place of the screen's own widget (the cloud's on the cloud, the deck's on the deck) */
-.top-r { display: flex; align-items: center; gap: 14px; margin-left: auto; flex: none; min-width: 0; }
-.ret { max-width: min(46vw, 220px); height: 34px; padding: 0 12px; border: 1px solid var(--rule); border-radius: 17px; background: var(--sheet); color: var(--ink); font: inherit; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; opacity: .85; flex: none; }
+.top-r { display: flex; align-items: center; gap: 14px; margin-left: auto; flex: 1 1 auto; justify-content: flex-end; min-width: 0; }
+.home-nav { flex: 0 0 auto; }
+.ret { max-width: min(46vw, 220px); height: 34px; padding: 0 12px; border: 1px solid var(--rule); border-radius: 17px; background: var(--sheet); color: var(--ink); font: inherit; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; opacity: .85; flex: 0 1 auto; min-width: 0; }
 .ret:hover, .ret:focus-visible { opacity: 1; border-color: var(--ink); }
 .ret[hidden], .minideck[hidden] { display: none; }
 .cloud-top { padding-right: calc(16px + env(safe-area-inset-right)); }
@@ -1089,10 +1121,12 @@ html:not([data-theme="dark"]) .cloud-fog { mix-blend-mode: multiply; }
    ============================================================================================================ */
 /* type: the interface in the sans, reading in the serif; headings in full ink, secondary labels a step quieter */
 body, .btn, .link, input, textarea, select, .kicker, .l-head, .hc-ph, .fine, .tabs, nav { font-family: var(--ui-sans); }
-#l-body, .l-body, .lesson, .clar, .q legend, .q label, .conf-take, .hc-story, .iko-msg { font-family: var(--read-serif); }
-/* lesson reading: #l-body.lesson keeps Georgia/--read-serif. "Small content" meant lesson length, so stay at the post PR 134 size (18px, 19px from 900px). */
-#l-body.lesson, #l-body { font-size: 18px; line-height: 1.65; }
-@media (min-width: 900px) { #l-body.lesson, #l-body { font-size: 19px; } }
+/* the chosen face and size: lessons, checks, Iko, the subject pane and settings. Cloud node labels stay on the canvas face. */
+#l-body, .l-body, .lesson, .clar, .q legend, .q label, .conf-take, .hc-story, .iko-msg, .iko-say, .settings-menu, #panel, .topic-list, .font-preview { font-family: var(--font-ui); }
+#l-body.lesson, #l-body { font-size: calc(18px * var(--text-scale)); line-height: 1.65; }
+#l-quiz, .q legend, .q label, .iko-msg, .iko-say, .settings-menu, #panel, .topic-list, .font-preview { font-size: calc(1em * var(--text-scale)); }
+@media (min-width: 900px) { #l-body.lesson, #l-body { font-size: calc(19px * var(--text-scale)); } }
+.font-preview { margin: 4px 0 8px; color: var(--ink); }
 h1 { font-size: var(--t-2xl); font-weight: 600; letter-spacing: -.01em; line-height: 1.15; }
 h2 { font-size: var(--t-xl); font-weight: 600; letter-spacing: -.005em; line-height: 1.2; }
 .kicker, .fine, .q-topic, .q-why, .q-fb { color: var(--soft); }

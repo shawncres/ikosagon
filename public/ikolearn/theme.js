@@ -7,7 +7,8 @@
  */
 (function (root) {
   "use strict";
-  var KEY = "ikolearn-theme", FONT_KEY = "ikolearn-font", doc = root.document;
+  var KEY = "ikolearn-theme", FONT_KEY = "ikolearn-font", SIZE_KEY = "ikolearn-size", doc = root.document;
+  var SIZES = { small: "0.88", "default": "1", large: "1.16" };
   var THEMES = ["light", "dark", "ikosagon"]; /* more names can be added here, with a matching html[data-theme] palette */
   var BAR = { light: "#f3ead8", dark: "#1e1712", ikosagon: "#000000" }; /* the browser's bar: the page's own paper */
   var FONTS = {
@@ -23,6 +24,7 @@
   function dark() { return doc.documentElement.getAttribute("data-theme") === "dark"; }
   function night() { var t = doc.documentElement.getAttribute("data-theme"); return t === "dark" || t === "ikosagon"; }
   function fontName() { try { var v = root.localStorage.getItem(FONT_KEY); return v && FONTS[v] ? v : "current"; } catch { return "current"; } }
+  function sizeName() { try { var v = root.localStorage.getItem(SIZE_KEY); return SIZES[v] ? v : "default"; } catch { return "default"; } }
 
   /* a colour made for paper, toned for the dark page: the same hue, a little quieter, light enough to read (WCAG AA) */
   var HSL = /^hsla?\(\s*(-?[\d.]+)(?:deg)?[\s,]+([\d.]+)%[\s,]+([\d.]+)%(?:\s*[,/]\s*([\d.]+%?))?\s*\)$/i;
@@ -76,6 +78,18 @@
     try { if (name === "current") root.localStorage.removeItem(FONT_KEY); else root.localStorage.setItem(FONT_KEY, name); } catch { /* this visit only */ }
     applyFont(name);
   }
+  function applySize(name) {
+    if (!SIZES[name]) name = "default";
+    var de = doc.documentElement;
+    if (name === "default") { if (de.removeAttribute) de.removeAttribute("data-size"); }
+    else if (de.setAttribute) de.setAttribute("data-size", name);
+    if (de.style && de.style.setProperty) de.style.setProperty("--text-scale", SIZES[name]);
+  }
+  function setSize(name) {
+    if (!SIZES[name] || name === "default") name = "default";
+    try { if (name === "default") root.localStorage.removeItem(SIZE_KEY); else root.localStorage.setItem(SIZE_KEY, name); } catch { /* this visit only */ }
+    applySize(name);
+  }
   function toggle() { set(dark() ? "light" : "dark"); }
 
   var SUN = '<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="3.6" fill="none" stroke="currentColor" stroke-width="1.4"/><g stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M10 1.8v2.2M10 16v2.2M1.8 10H4M16 10h2.2M4.2 4.2l1.5 1.5M14.3 14.3l1.5 1.5M4.2 15.8l1.5-1.5M14.3 5.7l1.5-1.5"/></g></svg>';
@@ -108,8 +122,9 @@
   root.addEventListener("storage", function (e) { if (e.key === KEY) apply(mode()); }); /* another tab changed it */
   apply(mode());
   applyFont(fontName());
+  applySize(sizeName());
   if (doc.readyState === "loading") doc.addEventListener("DOMContentLoaded", function () { mount("[data-theme-slot]"); });
   else mount("[data-theme-slot]");
 
-  root.IkoTheme = { KEY: KEY, FONT_KEY: FONT_KEY, BAR: BAR, THEMES: THEMES, FONTS: FONTS, mode: mode, saved: saved, dark: dark, night: night, font: fontName, set: set, setFont: setFont, toggle: toggle, tone: tone, forDark: forDark, paint: paint, inks: inks, button: button, mount: mount };
+  root.IkoTheme = { KEY: KEY, FONT_KEY: FONT_KEY, SIZE_KEY: SIZE_KEY, SIZES: SIZES, BAR: BAR, THEMES: THEMES, FONTS: FONTS, mode: mode, saved: saved, dark: dark, night: night, font: fontName, size: sizeName, set: set, setFont: setFont, setSize: setSize, toggle: toggle, tone: tone, forDark: forDark, paint: paint, inks: inks, button: button, mount: mount };
 })(typeof window !== "undefined" ? window : globalThis);

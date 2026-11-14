@@ -1178,13 +1178,14 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
    * Cloud-first start, ghost placeholders and the zoom list need about 10 KB raw / 2 KB gzip.
    * The optional start layer (a greeting, a name, and a few interests on the cloud) needs about 10 KB raw / 3 KB gzip.
    * Outward rings, the focus list, the settings menu, Ikosagon and the font picker need about 8 KB raw / 2 KB gzip.
+   * Intake without a name, branch framing, the type size, deck thumbnails and the usage note need about 8 KB raw / 2 KB gzip.
    */
   const files = ["index.html", "styles.css", "app.js", "cloud-model.js", "cloud-view.js", "lesson.js", "deck.js", "rank.js", "orchestrator.js", "camera.js", "profiles.js", "icon.svg"];
   const served = (f) => (/\.(js|css)$/.test(f) ? Buffer.from(minifyFile(f, fs.readFileSync("public/ikolearn/" + f, "utf8")).code) : fs.readFileSync("public/ikolearn/" + f));
   const bytes = files.reduce((n, f) => n + served(f).length, 0);
   const gz = files.reduce((n, f) => n + zlib.gzipSync(served(f), { level: 9 }).length, 0);
-  ok(bytes < 452_000, "app weight under 452 KB uncompressed (served, minified)", String(bytes));
-  ok(gz < 150_000, "app weight under 150 KB gzipped (served, minified)", String(gz));
+  ok(bytes < 460_000, "app weight under 460 KB uncompressed (served, minified)", String(bytes));
+  ok(gz < 152_000, "app weight under 152 KB gzipped (served, minified)", String(gz));
 }
 
 /* ================= PR 108: QA polish ================= */
@@ -2273,9 +2274,11 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   eq(CAM.lerpView(b, a, 1).pivot, { x: 0, y: 0, z: 0 }, "pivot: Recentre's tween ends at the origin");
   ok(CAM.fitAround({ x0: -10, x1: 100, y0: -5, y1: 5 }, 400, 400, 0.1, 50) === CAM.fitZoom({ x0: -100, x1: 100, y0: -5, y1: 5 }, 400, 400, 0.1, 50), "fitAround: the node stays put, so the far side of its branch sets the zoom");
   const ph = CAM.focusFrame(390, 760, { top: 60 });
-  ok(ph.cx === 195 && ph.cy === Math.round(60 + 700 * CAM.CARD.phoneAt) && ph.cy - ph.ah / 2 >= 60 - 8, "phone focus: the node sits in the upper part of the view (room for its card below), below the top controls", JSON.stringify(ph));
+  ok(ph.cx < 390 * 0.34 && ph.cx > 70 && ph.paneH >= 140 && ph.right > ph.cx + 80 && ph.cy < 760 * 0.62, "phone focus: the parent sits toward the left, children have room to the right, and a short pane is reserved below", JSON.stringify(ph));
   const wd = CAM.focusFrame(1280, 720, { wide: true, top: 60 });
-  ok(wd.cx === Math.round(1280 * CAM.CARD.wideAt) && wd.cy === 390 && wd.cx + CAM.CARD.gapX + 320 <= 1280 - CAM.CARD.margin, "wide focus: the node sits left of centre, so its card fits to its right", JSON.stringify(wd));
+  ok(wd.cx < 1280 * 0.34 && wd.cx > 70 && wd.paneH === 0 && wd.right > wd.cx + 280 && wd.aw > 200, "wide focus: the parent sits toward the left, with room for its children and a strip kept clear for the pane", JSON.stringify(wd));
+  const yaw = CAM.branchYaw({ x: 0, y: 0, z: 0 }, [{ x: -1, y: 0, z: 0.2 }, { x: -0.4, y: 0.2, z: -0.8 }]);
+  ok(yaw != null && Math.cos(yaw) * -1.4 - Math.sin(yaw) * -0.6 > 0, "branch yaw turns a parent's children toward the right", String(yaw));
   // the selection card (camera.js cardPlace): next to the node, inside the view, never over the node
   {
     const P = CAM.cardPlace;
@@ -4329,7 +4332,7 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(old && old.name && old.order.length > 0 && C.subjects(old).length > 0, "an older saved cloud still loads with its subjects");
   const appC = fs.readFileSync("public/ikolearn/app.js", "utf8"), htmlC = fs.readFileSync("public/ikolearn/index.html", "utf8"), viewC = fs.readFileSync("public/ikolearn/cloud-view.js", "utf8"), cssC = fs.readFileSync("public/ikolearn/styles.css", "utf8");
   ok(/id="you-hint" class="you-hint" hidden>tap to add your name</.test(htmlC) && /function wantsNameHint\(\)/.test(appC) && /c\.name === "You" && !C\.subjects\(c\)\.length/.test(appC), "first visit: a faint hint under You, hidden once renamed or a subject is added");
-  ok(/state\.name = "You"/.test(appC) && /C\.create\("You"\)/.test(appC) && /el\.cs\.hidden = true/.test(appC) && /\+ add a subject/.test(viewC) && /aria-label="Add a subject, in your own words"/.test(htmlC) && !/id="cs-ex"[^>]*>[^<]/.test(htmlC), "empty cloud: land on the cloud, You plus one add-a-subject ghost, no static chips");
+  ok(/state\.name = "You"/.test(appC) && /C\.create\("You"\)/.test(appC) && /el\.cs\.hidden = true/.test(appC) && !/\+ add a subject/.test(viewC) && /id="add-quiet"/.test(htmlC) && /aria-label="Add a subject, in your own words"/.test(htmlC) && !/id="cs-ex"[^>]*>[^<]/.test(htmlC), "empty cloud: land on the cloud as You, no permanent add box, a quiet add control only, no static chips");
   ok(/function settleGhost\(id\)/.test(appC) && /C\.findClose\(state\.cloud, n\.label\)/.test(appC) && /P\.placeTopic\(state\.cloud, tp, parentId\)/.test(appC) && /c\.leaving = 1/.test(appC) && /function trimOffers\(ids\)/.test(appC) && /kids\.filter\(function \(c\) \{ return c\.ghost; \}\)\.slice\(3\)/.test(appC), "a tapped ghost uses placement and near-duplicate rules; unpicked ghosts fade and extras past three are not kept");
   ok(/else if \(hit\.node\) openPanel\(hit\.node\.id\)/.test(appC) && /openPanel\(n\.id\)/.test(appC) && /function focusInView\(/.test(appC) && /openLesson\(n\.id\)/.test(appC) && /ArrowDown/.test(appC) && !/function enterZoom\(/.test(appC) && !/pinParent\(/.test(appC) && !/parent on the left/.test(appC), "selecting a node or a topic row opens that node's card and zooms to it; the focus pane is gone");
   ok(/nearIds/.test(viewC) && /zoomed in, neighbours stay a readable size/.test(viewC) && !/pairLeft/.test(viewC), "zoomed in, neighbouring nodes stay in their real places with readable labels");
@@ -4339,16 +4342,16 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   ok(/SHOW_IKOLEARN_TRAILER = process\.env\.SHOW_IKOLEARN_TRAILER === "true"/.test(trailerFlag) && /SHOW_IKOLEARN_TRAILER \?/.test(homeSrc) && /isIkoLearn && SHOW_IKOLEARN_TRAILER/.test(projectSrc) && /SHOW_IKOLEARN_TRAILER && typeof data\.coverLoop/.test(fs.readFileSync("lib/projects.ts", "utf8")) && !/og:video/.test(homeSrc + projectSrc), "the IkoLearn trailer stays off unless SHOW_IKOLEARN_TRAILER=true, with no og:video tag");
   ok(/function ensureTopicList\(\)/.test(appC) && /aria-label", "Topics"/.test(appC) && /Lesson level/.test(appC) && /subject=IkoLearn%20Feedback/.test(htmlC) && !/openPanel\(state\.lessonNode\)/.test(appC), "the Topics list, the lesson level and the feedback link stay; returning still does not open a topic card");
   ok(/kind: "rename"/.test(appC) && /call me/.test(appC) && /function renameLearner\(raw\)/.test(appC), "the centre node can be renamed by asking Iko");
-  ok(/id="start-layer" class="start-layer" hidden role="region" aria-labelledby="sl-hi"/.test(htmlC) && /id="sl-hi" class="sl-hi">Hi\. I'm Iko\.</.test(htmlC) && /Keep it as You/.test(htmlC) && /id="sl-skip"/.test(htmlC) && /id="sl-ex" class="sl-ex" role="group" aria-label="Suggestions"><\/div>/.test(htmlC) && /id="sl-begin"/.test(htmlC), "start layer: one calm step on the cloud, a name, keep-as-You, interests, and empty suggestion chips");
+  ok(/id="start-layer" class="start-layer" hidden role="region" aria-labelledby="sl-hi"/.test(htmlC) && /Hi\. I'm Iko, your learning companion\./.test(htmlC) && /Type or pick a few topics you're curious about\./.test(htmlC) && !/id="sl-name"/.test(htmlC) && !/Keep it as You/.test(htmlC) && /id="sl-skip"/.test(htmlC) && /id="sl-ex" class="sl-ex" role="group" aria-label="Suggestions"><\/div>/.test(htmlC) && /id="sl-begin"/.test(htmlC), "start layer: Iko's greeting, topics, no first-name field, and empty suggestion chips");
   const sl = htmlC.slice(htmlC.indexOf('id="start-layer"'), htmlC.indexOf('id="you-hint"'));
   ok(sl.length > 80 && !/\b(age|years old|parent|kid|child|grade)\b/i.test(sl), "start layer: no age question and no parent framing");
   ok(/function wantsStartLayer\(\)/.test(appC) && /c\.named \|\| c\.name !== "You"/.test(appC) && /if \(C\.subjects\(c\)\.length\) return false;/.test(appC) && /function startDismissed\(\)/.test(appC), "start layer: hidden for a learner who already has a name, a subject, or who skipped");
   ok(/!startLayerOpen\(\)/.test(appC) && /function wantsNameHint\(\)/.test(appC), "the name hint stays hidden while the start layer is open");
-  ok(/function submitStart\(/.test(appC) && /renameLearner\(name\)/.test(appC) && /buildCloud\("start", interests, interests\.join\(", "\)\)/.test(appC) && /P\.placeTopic\(state\.cloud, \{ name: label, signal: "curious", placement: "parent", target: "" \}, null\)/.test(appC) && /C\.findClose\(state\.cloud, label\)/.test(appC) && /n\.ghost = true;\n      n\.awaiting = 1;/.test(appC), "submit: the centre updates at once, interests show as pending nodes, then the existing creation step with placement and near-duplicate rules");
+  ok(/function submitStart\(/.test(appC) && /function beginEmpty\(/.test(appC) && /buildCloud\("start", interests, interests\.join\(", "\)\)/.test(appC) && /P\.placeTopic\(state\.cloud, \{ name: label, signal: "curious", placement: "parent", target: "" \}, null\)/.test(appC) && /C\.findClose\(state\.cloud, label\)/.test(appC) && /n\.ghost = true;\n      n\.awaiting = 1;/.test(appC) && /function startRename\(/.test(appC), "submit: interests show as pending nodes, then the existing creation step; an empty begin seeds starters; the name is offered later");
   ok(/function onStartSettled\(ok\)/.test(appC) && /startTry < 1/.test(appC) && /buildCloud\("start", asked, asked\.join\(", "\)\)/.test(appC) && /P\.addLine\(l, "failed", ""\)/.test(appC), "a failed start says what was not added and retries once");
   ok(/function cycleChips\(\)/.test(appC) && /slAt = \(slAt \+ 1\) % list\.length/.test(appC) && /aria-label", "Add " \+ t/.test(appC) && /el\.slIn\.value = \(v \? v \+ ", " : ""\) \+ t/.test(appC), "suggestion chips cycle gently and only add their words to the field");
   ok(/function closeStart\(opts\)/.test(appC) && /id="sl-skip"/.test(htmlC) && /localStorage\.setItem\(startLearnerKey\(\), "1"\)/.test(appC) && /C\.deserialize\(load\(LS\.cloud\)\)/.test(appC), "skip dismisses the layer without rewriting a saved cloud on load");
-  ok(/\.start-layer \{/.test(cssC) && /@media \(max-width: 420px\) \{\n  \.start-layer \{ left: 8px; right: 64px;/.test(cssC) && /#sl-keep, #sl-skip, #sl-begin, \.sl-ex \.ex-chip \{ min-height: 44px; \}/.test(cssC) && /@media \(prefers-reduced-motion: reduce\) \{ \.sl-ex \.ex-chip \{ transition: none; \} \}/.test(cssC), "start layer fits a narrow screen, keeps 44px targets, and stays still when motion is reduced");
+  ok(/\.start-layer \{/.test(cssC) && /@media \(max-width: 420px\) \{\n  \.start-layer \{ left: 8px; right: 8px;/.test(cssC) && /#sl-skip, #sl-begin, \.sl-ex \.ex-chip \{ min-height: 44px; \}/.test(cssC) && /body\.start-kbd \.sl-form/.test(cssC) && /@media \(prefers-reduced-motion: reduce\) \{ \.sl-ex \.ex-chip \{ transition: none; \} \}/.test(cssC), "start layer fits a narrow screen, keeps the field in view when the keyboard is up, keeps 44px targets, and stays still when motion is reduced");
 }
 
 /* ---------- outward rings, focused list search / sort / filter ---------- */
@@ -4496,6 +4499,56 @@ const collect = async (gen) => { const out = []; for await (const e of gen) out.
   const afterEarn = started;
   SND.ambient(true);
   ok(started === afterEarn && contexts === 1, "cloud audio off: the bed stays silent even after another sound has opened a context");
+}
+
+/* ---------- intake topics, panels, type size, deck thumbnails, anonymous usage ---------- */
+{
+  eq(P.parseTopics("jazz piano how bridges stay up first aid"), ["jazz piano", "how bridges stay up", "first aid"], "comma-less topics: a how-clause and known phrases become separate subjects");
+  eq(P.parseTopics("I like jazz piano, first aid and music"), ["jazz piano", "first aid", "music"], "topics: commas and 'and' still split, and a leading 'I like' is dropped");
+  eq(P.parseTopics("volcanoes"), ["volcanoes"], "topics: one interest stays one subject");
+  ok(P.parseTopics("").length === 0 && P.parseTopics("jazz piano how bridges stay up first aid").length === 3, "comma-less parsing does not invent a subject from an empty field");
+  const scoped = C.create("Sam", T0);
+  C.applyTopics(scoped, [{ name: "Volcanoes", signal: "curious", asSubject: true }], T0);
+  ["Magma", "Lava", "Ash"].forEach((name, i) => C.applyTopics(scoped, [{ name, parent: "Volcanoes", signal: "explored" }], T0 + i));
+  C.applyTopics(scoped, [{ name: "Music", signal: "curious", asSubject: true }], T0 + 9);
+  const vol = C.findSubject(scoped, "Volcanoes"), magma = C.findTopic(scoped, "Magma");
+  const scope = P.topicScope(scoped, magma.id);
+  ok(scope && scope.label === "Volcanoes" && scope.ids[0] === vol.id && scope.ids.slice(1).every((id) => scoped.nodes[id].parent === vol.id) && !scope.ids.includes(C.findSubject(scoped, "Music").id), "Topics scope: a selected node shows its parent and that parent's immediate children only", JSON.stringify(scope));
+  ok(P.topicScope(scoped, "root") === null && P.topicScope(scoped, vol.id).label === "Volcanoes", "Topics scope: the whole cloud is unscoped; a subject is its own parent");
+  const found = P.listTopics(scoped, vol.id, { q: "la" });
+  ok(found.items.length === 1 && found.items[0].label === "Lava", "Topics search stays inside the scoped children");
+  ok(P.panelDismiss({ typing: true, inside: false }) === false && P.panelDismiss({ typing: false, inside: true }) === false && P.panelDismiss({ typing: false, inside: false }) === true, "outside click closes a panel, but not while typing and not for a tap inside it");
+  const appU = fs.readFileSync("public/ikolearn/app.js", "utf8");
+  ok(/function typingNow\(\)/.test(appU) && /P\.panelDismiss\(/.test(appU) && /function outsideClose\(/.test(appU) && /closeTopicList\(\)/.test(appU) && /closeSettings\(\)/.test(appU) && /closeIko\(\)/.test(appU), "Topics, Settings and Iko close on an outside tap, and the typing guard is the one the page uses");
+  ok(/TH\.setSize/.test(appU) && /data-size/.test(fs.readFileSync("public/ikolearn/styles.css", "utf8")) && /--text-scale/.test(fs.readFileSync("public/ikolearn/theme.js", "utf8")) && /font-family: var\(--font-ui\)/.test(fs.readFileSync("public/ikolearn/styles.css", "utf8")), "font size scales lesson, check, Iko and panel text; the chosen face is the same one");
+  const loose = (c) => (c.deck || []).filter((e) => { const p = C.absorbedInto(c, e.id); return !(p && C.inDeck(c, p)); });
+  const thumbs = (c) => D.albumModel(c).flatMap((p) => p.rows.flatMap((r) => r.cards));
+  const deckCloud = C.create("Sam", T0);
+  C.applyTopics(deckCloud, [{ name: "Volcanoes", signal: "curious", asSubject: true }], T0);
+  ["Magma", "Lava", "Ash", "Craters"].forEach((name, i) => C.applyTopics(deckCloud, [{ name, parent: "Volcanoes", signal: "explored" }], T0 + i));
+  const parent = C.findSubject(deckCloud, "Volcanoes");
+  C.childrenOf(deckCloud, parent.id).forEach((k) => { for (let i = 0; i < 3; i++) C.confirm(deckCloud, k.id, true, T0); });
+  C.joinDeck(deckCloud);
+  ok(loose(deckCloud).length > 0 && thumbs(deckCloud).length === loose(deckCloud).length, "deck thumbnails: one preview per earned card", thumbs(deckCloud).length + " vs " + loose(deckCloud).length);
+  const albumFn = appU.slice(appU.indexOf("function renderAlbum("), appU.indexOf("function renderCollect("));
+  ok(/data-thumb/.test(albumFn) && !/renderSlot\(/.test(albumFn), "the deck overview marks every earned card and does not leave empty slots in that grid");
+  const { usageText } = await import("../app/api/ikolearn/usage/route.ts");
+  const mailed = usageText({
+    sessions: 2, lessons_completed: 0, cards_earned: 0, subjects_added: 0, iko_opened: 1, exports: 0, generation_retries: 0,
+    level_chosen: "simple", session_length: "few", device: "mobile", width_bucket: "under 400",
+    subjects: [], returning: 1, topic_count: 4, low_activity: 1, top_subjects: ["Volcanoes"],
+    name: "Maya", id: "learner-99", email: "maya@example.com", ip: "203.0.113.8", lesson: "A fever is the body running hot.", chat: "hello there",
+  }, new Date("2026-11-14T18:33:00Z"));
+  ok(/18:33 UTC/.test(mailed) && /America\/Toronto/.test(mailed) && /a few minutes/.test(mailed) && /mobile, viewport under 400/.test(mailed), "usage email: UTC and Toronto, coarse session, device and width bucket", mailed);
+  ok(/Subjects added: none/.test(mailed) && /Cloud: returning, 4 topics/.test(mailed) && /low-activity \/ possible test/.test(mailed) && /Top subjects: Volcanoes/.test(mailed), "usage email: subjects, returning cloud, and the low-activity flag");
+  ok(!/Maya|learner-99|maya@example\.com|203\.0\.113\.8|running hot|hello there|\bname\b|\bemail\b|\bip\b/i.test(mailed), "usage email has no learner name, lesson text, chat, or identifier", mailed);
+  const quiet = usageText({ subjects: ["Science", "Music"], returning: 0, low_activity: 0, session_length: "short", device: "desktop", width_bucket: "over 800" }, new Date("2026-11-14T18:33:00Z"));
+  ok(/Subjects added: Science, Music/.test(quiet) && /Cloud: new/.test(quiet) && !/low-activity/.test(quiet) && !/Maya/.test(quiet), "usage email: named subjects when some were added, a new cloud, and no activity flag");
+  const { starterTopics } = await import("../app/api/ikolearn/starters/route.ts");
+  eq(starterTopics(""), ["Science", "Music", "Artificial Intelligence"], "starters: no country uses the default set");
+  eq(starterTopics("CA"), ["Science", "Music", "Nature"], "starters: a coarse country code picks that list");
+  eq(starterTopics("zz"), ["Science", "Music", "Artificial Intelligence"], "starters: an unknown country falls back to the default set");
+  ok(!/x-vercel-ip-country/.test(fs.readFileSync("public/ikolearn/app.js", "utf8")) && /\/api\/ikolearn\/starters/.test(appU) && /Cache-Control": "private, no-store"/.test(fs.readFileSync("app/api/ikolearn/starters/route.ts", "utf8")), "starters: the page does not read or store a country; the route answers from the request header and does not cache it");
 }
 
 if (fails.length) {
