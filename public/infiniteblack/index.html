@@ -3,7 +3,11 @@
 <head><meta name="robots" content="noindex">
 <meta charset=utf-8>
 <title>Infinite Black</title>
-<meta name=viewport content="width=device-width,initial-scale=1">
+<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name=apple-mobile-web-app-capable content=yes>
+<meta name=mobile-web-app-capable content=yes>
+<meta name=apple-mobile-web-app-status-bar-style content=black-translucent>
+<meta name=apple-mobile-web-app-title content="Infinite Black">
 <meta name=theme-color content=#04050a>
 <link rel=preconnect href=https://fonts.googleapis.com>
 <link rel=stylesheet href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600&family=Syncopate:wght@400;700&display=swap">
@@ -148,6 +152,7 @@ h1 span + span { color: #0000; -webkit-text-stroke: 1.5px var(--t); letter-spaci
       <dt>J</dt><dd>Warp gate (fly into one): other places, other systems</dd>
       <dt>T / F</dt><dd>Next target · hail, dock or open what you are pointing at</dd>
       <dt>B / N</dt><dd>Journal · star map</dd>
+      <dt>G / R</dt><dd>Light drift (cross the system, reach planets) · change weapon</dd>
       <dt>, . /</dt><dd>Glance left, right, behind</dd>
       <dt>C · V</dt><dd>Cockpit · VR</dd>
       <dt>L</dt><dd>Log: task here, signal, hold, places visited</dd>
@@ -250,9 +255,9 @@ const ARC = [
 const SYLL = ['ka', 'zu', 'ren', 'vo', 'ix', 'tal', 'mer', 'yth', 'ano', 'bel', 'qua', 'dri', 'sol', 'ven', 'ur', 'eth'];
 // The seed hierarchy. MASTER + sector coordinates give a system's seed; the system seed and a place's index give
 // that place's salt; the salt enters the hash of every cell, so rocks, ore, creatures and traffic all follow from it.
-const MASTER = 0x5EEDE5;
+let MASTER = 0x5EEDE5, HOME = 12;                            // set per player once the save is read: every new game is its own universe
 const mulberry32 = (a) => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
-const sysIdAt = (x, y, z) => (x | y | z) === 0 ? 12 : h3(x, y, z, MASTER) >>> 0;            // the home sector is fixed; the rest is hashed
+const sysIdAt = (x, y, z) => (x | y | z) === 0 ? HOME : h3(x, y, z, MASTER) >>> 0;            // the home sector is fixed; the rest is hashed
 // gates link a sector to some of its six neighbours; a link is the same seen from either end
 const DIRS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 function linked(a, b) { const f = a[0] < b[0] || a[0] === b[0] && (a[1] < b[1] || a[1] === b[1] && a[2] < b[2]), p = f ? a : b, q = f ? b : a; return a[1] === b[1] && a[2] === b[2] || h3(p[0], p[1], p[2], h3(q[0], q[1], q[2], MASTER)) % 100 < 45; }
@@ -304,7 +309,9 @@ function mkSys(id) {
 // stand in one of a system's places: it decides what is around you and which world looms in the sky
 function setLoc(s, i) {
   const L = s.locs[s.loc = i % s.locs.length];
-  s.t = L.t; s.a = L.atm ? Object.assign({}, ARC[L.t], { rock: .22, ti: 0, mega: 0, deb: 0, cry: 0, ten: 0, geo: .04, fog: .5, st: .25, life: [0, 0, 0, L.atm > 1 ? .2 : 0, 0, 0] }) : ARC[L.t]; s.atm = L.atm || 0; s.mat = REGT[L.t]; s.salt = hs(s.id ^ 0x5bd1e995 ^ Math.imul(s.loc + 1, 0x9E3779B1)) | 0;
+  s.t = L.t; s.a = L.atm ? Object.assign({}, ARC[L.t], { rock: .22, ti: 0, mega: 0, deb: 0, cry: 0, ten: 0, geo: .04, fog: .5, st: .25, life: [0, 0, 0, L.atm > 1 ? .2 : 0, 0, 0] }) : (() => { const R = mulberry32(s.id ^ Math.imul(s.loc + 3, 0x9E3779B1)), B = ARC[L.t], o = Object.assign({}, B), X = ARC[R() * 8 | 0];
+    for (const k of ['cry', 'ten', 'deb', 'geo', 'fl', 'fr', 'dr', 'st', 'ti']) { if (typeof B[k] !== 'number') continue; o[k] = B[k] * (.25 + R() * 1.5); if (R() < .28 && typeof X[k] === 'number') o[k] = Math.max(o[k], X[k] * (.5 + R())); }
+    o.deb = 0; o.fog = B.fog * (.35 + R() * R() * 4); o.rock = B.rock + (R() - .25) * .09; o.life = B.life.map((v, i) => R() < .3 ? 0 : Math.max(v, R() < .2 ? X.life[i] : 0) * (.4 + R() * 1.3)); return o; })(); s.atm = L.atm || 0; s.mat = REGT[L.t]; s.salt = hs(s.id ^ 0x5bd1e995 ^ Math.imul(s.loc + 1, 0x9E3779B1)) | 0;
   s.sky[2] = SKYW[L.t][2]; s.sky[3] = SKYW[L.t][3];
   // the place's own look: its kind's colours (turned by the system's hue) laid over the system's, and its own clouds.
   // The star keeps its colour. Places in one system are relatives, not twins.
@@ -394,7 +401,7 @@ const ROCK_V = VI + `
 uniform float uSpin;uniform int uKind;
 out vec3 vP,vN,vO;flat out vec4 vQ,vI,vJ;
 void main(){
- vec3 c=ctr();float sz=iA.w,sd=iB.w;
+ vec3 c=ctr();float sz=iA.w,sd=iB.w;if(uCN.y>.5)sz*=smoothstep(uCN.x*uCN.y*.5,uCN.x*uCN.y*.36,length(c));
  vec4 q=rockQ(sd,uSpin);
  vec3 s=uKind==0?rockS(sd):uKind==2?.05+.95*pow(h3(sd*7.7),vec3(2.2)):vec3(1);
  vec3 o=aP*s*sz;
@@ -430,7 +437,7 @@ void main(){
   vec2 g=vec2(an*28.65+rr*3.,vO.y*26.+rr*18.)*fs,id=floor(g),f=fract(g);
   float ln=step(.05,f.x)*step(.08,f.y)*step(f.x,.97);
   alb=vec3(.13,.14,.17)*(.4+.8*hh(id))*mix(.25,1.,ln)*(.6+.4*hh(floor(g/fs)));
-  float w=step(.74,hh(id+3.7))*step(.25,f.x)*step(f.x,.75)*step(.3,f.y)*step(f.y,.7);
+  float w=step(.7,hh(id+3.7))*step(.25,f.x)*step(f.x,.75)*step(.3,f.y)*step(f.y,.7)*step(.66,hh(vec2(floor(g.y/fs/3.),7.)))*step(.45,hh(floor(g/fs/vec2(7.,3.))+1.3));
   em=mix(uCE.rgb,vec3(1.,.68,.3),step(.5,hh(id+9.1)))*w*6.;sp=.7;gs=70.;
  }else if(uKind==4){                                          // ship hulls: plating, paint, engines, canopy glass, lit windows
   vec3 ln=vQ.xyz,ap=abs(ln),q3=vO*vI.w;float mid=vQ.w,big=step(100.,vI.w),ps=mix(vI.w*.11,max(vI.w*.012,6.),big);
@@ -494,7 +501,7 @@ const CRY_V = VI + `
 uniform float uSpin;
 out vec3 vP,vN;out vec2 vU;flat out vec4 vI;
 void main(){
- vec3 c=ctr();float sz=iA.w,sd=iB.w;
+ vec3 c=ctr();float sz=iA.w,sd=iB.w;if(uCN.y>.5)sz*=smoothstep(uCN.x*uCN.y*.5,uCN.x*uCN.y*.36,length(c));
  vec4 q=rockQ(sd,uSpin);vec3 s=rockS(sd);
  vec3 up=normalize(iC.xyz/s),t=normalize(cross(up,vec3(.31,.9,.23))),b=cross(up,t);
  float cs=sz*(.16+.3*iC.w);
@@ -644,7 +651,7 @@ void main(){
  else if(id>10.5){o=vec4(mix(vec3(.2,.9,1.),vec3(1.,.15,.1),warn)*(.5+.3*step(.5,fract(TIME*.5+vL.x*3.))),0);return;}
  else if(id>9.5){                                             // glass: a tinted pane that mirrors the sky and the cabin, thickest at its frame
   vec3 Ng=faceforward(N,Vd,N),R=reflect(Vd,Ng);float fr=.04+.96*pow(1.-abs(dot(Ng,Vd)),4.),ty=(vL.y+.95)/2.2;
-  float e=abs(vL.x)<mix(1.36,1.01,ty)?min(mix(1.35,1.,ty)-abs(vL.x),min(vL.y+.95,1.25-vL.y)):min(vL.y+1.,1.42-vL.y),edge=smoothstep(0.,.2,e);
+  float e=min(vL.y+.97,1.5-vL.y),edge=smoothstep(0.,.24,e);
   float n=texture(uNz,vL*vec3(2.,7.,2.)).r,n2=texture(uNz,vL*13.).r,sg=pow(max(dot(Vd,L),0.),5.);
   vec2 cg=floor(vec2(vL.x,vL.y-vL.z)*7.);                                                               // the instruments, mirrored faintly
   vec3 c=(neb(R,3.)*1.6+glow(R)*2.)*fr*(1.+1.5*(1.-edge))+uSunC.rgb*sg*.004;
@@ -784,8 +791,9 @@ void main(){
   vec3 at=mix(uOa,uSunC.rgb,.45);float sunH=smoothstep(-.25,.25,L.y+.15);
   if(b>0.&&disc>0.){float t=b-sqrt(disc);vec3 P=d*t,N=normalize(P+vec3(0,cl,0));vec2 s=P.xz+uOrb.zw;
    float big=tn(vec3(s*.000035,.3)),c1=tn(vec3(s*.00011+big*.6,1.7)),c2=tn(vec3(s*.0005,4.1));
+   {float h0=smoothstep(.4,.85,big*.5+c1*.4+c2*.18);vec2 pv=d.xz/max(.18,dot(-d,N))*1400.*h0;s+=pv;big=tn(vec3(s*.000035,.3));c1=tn(vec3(s*.00011+big*.6,1.7));c2=tn(vec3(s*.0005,4.1));}
    float cov=smoothstep(.46,.8,big*.5+c1*.4+c2*.18),cov2=smoothstep(.46,.8,tn(vec3((s+L.xz*900.)*.000035,.3))*.5+tn(vec3((s+L.xz*900.)*.00011+big*.6,1.7))*.4+c2*.18);
-   float ty=uOrb.x,ndl=smoothstep(-.12,.35,dot(N,L)),sh=clamp(1.-(cov2-cov)*1.8,.2,1.),top=.5+.5*c2;if(ty>1.5)cov*=.7;
+   float ty=uOrb.x,ndl=smoothstep(-.12,.35,dot(N,L)),sh=clamp(1.-(cov2-cov)*3.2,.08,1.3),top=.35+.65*c2+.5*(cov-cov2);if(ty>1.5)cov*=.7;
    vec3 warm=mix(vec3(1.,.4,.13),vec3(1.),smoothstep(0.,.6,ndl)),lit=uSunC.rgb*warm*ndl*sh;
    float land=smoothstep(.47,.56,tn(vec3(s*.00006,11.))+.22*tn(vec3(s*.0004,12.))-.08),rg=tn(vec3(s*.0012,5.));
    vec3 band=mix(mix(uOb,uOa.zxy,smoothstep(.3,.7,tn(vec3(s.x*.000012,s.y*.00007,3.)))),uCE.rgb*.6,.3*smoothstep(.55,.8,tn(vec3(s*.00002,9.))));
@@ -861,6 +869,7 @@ void main(){vec2 q=vU-.5;float bs=uCA.w;
   c=mix(c,tc,uJ.y);}
  c*=uCE.w*(1.-dot(q,q)*1.15);
  c=pow(aces(c),vec3(1./2.2));c=mix(c,c*c*(3.-2.*c),.55);c*=mix(vec3(.9,.98,1.1),vec3(1.),smoothstep(0.,.5,dot(c,vec3(.33))));
+ c*=1.-.045*step(fract(gl_FragCoord.y/3.),.34)*step(1e-4,uFx.y);                // faint scanlines: the view as a screen
  c+=(fract(52.9829189*fract(dot(gl_FragCoord.xy+TIME*61.,vec2(.06711056,.00583715))))-.5)*(1./160.+uFx.y*(.6-.45*dot(c,vec3(.33))));
  o=vec4(mix(c,vec3(1.,.97,.95),uCB.w),1);}`;
 // ============================================================================
@@ -1214,11 +1223,7 @@ function cockpitMesh() {
   const PB = [1.35, -.95, -2.9], PT = [1, 1.25, -2.5], RB = [3.4, -1, -1], RT = [3.1, 1.45, -.8];
   for (const s of [-1, 1]) {
     const m = (q, dz = 0) => [s * q[0], q[1], q[2] + dz];
-    beam([m(PB), m(PT)], .05, .1, 12); beam([m(PB, .1), m(PT, .1)], .062, .012, 1);           // pillar: a slim spar with a flange
-    beam([m(PB), m(RB)], .045, .08, 12); beam([m(PT), m(RT)], .055, .09, 12);                 // side sill and roof rail
     const gk = (q, d) => [s * (q[0] + d[0]), q[1] + d[1], q[2] + d[2] + .03];                  // gaskets: the pane's seat in its frame
-    beam([gk(PB, [-.06, .06, 0]), gk(PT, [-.06, -.06, 0])], .012, .012, 7); beam([gk(PB, [.07, .07, .05]), gk(PT, [.07, -.07, .05])], .012, .012, 7);
-    beam([gk(PB, [.07, .07, .05]), gk(RB, [0, .07, 0])], .012, .012, 7); beam([gk(PT, [.07, -.07, .05]), gk(RT, [0, -.08, 0])], .012, .012, 7);
     ob([s * 2.4, -1.5, -1.9], .3, .26, 1.3, s * .82, 0, 0); ob([s * 2.3, -1.235, -1.8], .2, .008, 1.15, s * .82, 0, 9);   // side console
     ob([s * 2.62, -1.12, -1.72], .02, .1, 1.2, s * .82, 0, 9);
     ob([s * 1.5, 1.5, -1.75], .34, .05, .45, 0, .18, 0); ob([s * 1.5, 1.44, -1.76], .3, .008, .4, 0, .18, 9);             // overhead side panels
@@ -1269,9 +1274,15 @@ function cockpitMesh() {
   ob([0, -1.5, 5.52], .8, 2.1, .04, 0, 0, 1); ob([0, -1.5, 5.47], .68, 1.95, .02, 0, 0, 0); ob([0, .72, 5.5], .5, .02, .02, 0, 0, 11);   // the hatch
   ob([.95, -1.2, 5.5], .06, .1, .02, 0, 0, 9); ob([.95, -1.02, 5.48], .02, .02, .01, 0, 0, 6);
   ob([-2.2, -.6, 5.5], .8, .9, .05, 0, 0, 9); ob([2.2, -.3, 5.5], .7, .5, .05, 0, 0, 1); ob([2.2, -1.9, 5.45], .7, .7, .1, 0, 0, 0);       // equipment racks
-  const n0 = I.length, g = (q, s) => [s * q[0], q[1], q[2] + .02];
-  face(V, I, [g(PB, -1), g(PB, 1), g(PT, 1), g(PT, -1)], [10, 10, 10, 10]);                                               // glass
-  for (const s of [-1, 1]) face(V, I, [g(PB, s), g(RB, s), g(RT, s), g(PT, s)], [10, 10, 10, 10]);
+  const CN = 28, GJ = 7, cr = (a, v) => { const k = 1 + .07 * Math.sin(Math.PI * v), X = (3.4 - .3 * v) * k, Z = (2.1 - .25 * v) * k; return [X * Math.sin(a), -.97 + 2.47 * v, -1 + .2 * v - Z * Math.cos(a)]; };
+  for (let i = 0; i < CN; i++) {
+    const a0 = -1.5708 + i / CN * 3.1416, a1 = a0 + 3.1416 / CN, b0 = cr(a0, 0), b1 = cr(a1, 0), t0 = cr(a0, 1), t1 = cr(a1, 1);
+    beam([b0, b1], .05, .09, 12); beam([t0, t1], .05, .08, 12); beam([[b0[0] * .985, b0[1] + .09, b0[2] * .985], [b1[0] * .985, b1[1] + .09, b1[2] * .985]], .014, .014, 7);   // sill rail, head rail, gasket
+    face(V, I, [[b0[0], -3.7, b0[2]], [b1[0], -3.7, b1[2]], b1, b0], [0, 0, 0, 0]); face(V, I, [t0, t1, [t1[0], 1.7, t1[2]], [t0[0], 1.7, t0[2]]], [0, 0, 0, 0]);          // hull below the sill and above the head
+  }
+  const n0 = I.length, gs = V.length / 8;                       // the glass: one smooth curved sheet
+  for (let j = 0; j <= GJ; j++) for (let i = 0; i <= CN; i++) { const p = cr(-1.5708 + i / CN * 3.1416, j / GJ), nx = -p[0] / 11.5, nz = -(p[2] + 1) / 4.4, l = Math.hypot(nx, .12, nz); V.push(p[0], p[1], p[2], nx / l, -.12 / l, nz / l, 10, 0); }
+  for (let j = 0; j < GJ; j++) for (let i = 0; i < CN; i++) { const a = gs + j * (CN + 1) + i; I.push(a, a + 1, a + CN + 2, a, a + CN + 2, a + CN + 1); }
   const me = mesh(V, I); me.ng = I.length - n0;
   return me;
 }
@@ -1478,14 +1489,14 @@ function gain(o) {
   if (o.min) cargo[o.min[0]] += o.min[1];
   showCargo(); save();
 }
-const JT = ['Deliver sealed freight', 'Fill a mineral order', 'Survey a place', 'Recover a flight recorder', 'Carry a message'];
+const JT = ['Deliver sealed freight', 'Fill a mineral order', 'Survey a place', 'Recover a flight recorder', 'Carry a message', 'Collect a bounty'];
 function mkJob(R, k) {
-  const ty = R() * 5 | 0, nb = reach(SYS.sec), far = R() < .4 && nb.length > 0, sec = far ? nb[R() * nb.length | 0] : SYS.sec, s = far ? mkSys(sysIdAt(sec[0], sec[1], sec[2])) : SYS;
+  const ty = R() * 6 | 0, tn = NPN[R() * 16 | 0] + '-' + (10 + R() * 89 | 0), nb = reach(SYS.sec), far = R() < .4 && nb.length > 0, sec = far ? nb[R() * nb.length | 0] : SYS.sec, s = far ? mkSys(sysIdAt(sec[0], sec[1], sec[2])) : SYS;
   let loc = R() * s.locs.length | 0; if (!far && loc === SYS.loc) loc = (loc + 1) % s.locs.length;
   const fac = ty === 3 ? 3 : ty === 2 ? (R() < .5 ? 1 : 3) : R() * 4 | 0, tier = 1 + (R() * 3 | 0), n = 3 + (R() * 5 | 0), here = SYS.locs[SYS.loc].name, pl = s.locs[loc].name, wh = pl + (far ? ' in ' + s.name : '');
-  const base = [90, 70, 110, 160, 80][ty] + (far ? 90 : 0) + (ty === 1 ? Math.round(n * TVAL[tier] * 1.5) : 0);
-  const text = [`Take a sealed container to ${wh}.`, `Bring ${n} ${TIERS[tier]} back here to ${here}.`, `Go to ${wh} and scan three things there.`, `A ship went quiet at ${wh}. Find the wreck, pull its recorder and bring it back to ${here}.`, `Find any pilot at ${wh} and hail them with our message.`][ty];
-  return { id: mkey() + ':' + k + ':' + Math.floor(Date.now() / 864e5), ty, fac, title: JT[ty], text, sec: (ty === 1 ? SYS.sec : sec).slice(), loc: ty === 1 ? SYS.loc : loc, pl: ty === 1 ? here : pl, sy: ty === 1 ? SYS.name : s.name,
+  const base = [90, 70, 110, 160, 80, 240][ty] + (far ? 90 : 0) + (ty === 1 ? Math.round(n * TVAL[tier] * 1.5) : 0);
+  const text = [`Take a sealed container to ${wh}.`, `Bring ${n} ${TIERS[tier]} back here to ${here}.`, `Go to ${wh} and scan three things there.`, `A ship went quiet at ${wh}. Find the wreck, pull its recorder and bring it back to ${here}.`, `Find any pilot at ${wh} and hail them with our message.`, `The raider ${tn} has been hitting traffic at ${wh}. Find that ship and end it.`][ty];
+  return { id: mkey() + ':' + k + ':' + Math.floor(Date.now() / 864e5), ty, tn, fac, title: JT[ty], text, sec: (ty === 1 ? SYS.sec : sec).slice(), loc: ty === 1 ? SYS.loc : loc, pl: ty === 1 ? here : pl, sy: ty === 1 ? SYS.name : s.name,
     hsec: SYS.sec.slice(), hloc: SYS.loc, hpl: here, hsy: SYS.name, n, tier, got: 0, stage: 0, pay: Math.round(base * (1 + rp().rep[fac] / 200) / 10) * 10, rep: 4 + (far ? 3 : 0), xp: 30 + (far ? 25 : 0) };
 }
 const jobDest = (j) => j.ty === 1 ? (j.stage ? { sec: j.hsec, loc: j.hloc, pl: j.hpl, sy: j.hsy } : null) : j.ty === 3 && j.stage ? { sec: j.hsec, loc: j.hloc, pl: j.hpl, sy: j.hsy } : { sec: j.sec, loc: j.loc, pl: j.pl, sy: j.sy };
@@ -1519,8 +1530,9 @@ function objective() {                                        // what to do next
   if (j) {
     d = jobDest(j); pre = j.title + ': ';
     if (!d) return { text: `${pre}mine ${TIERS[j.tier]} ${j.got}/${j.n}`, nav: 'rock' };
-    if (isHere(d) && !j.stage) return j.ty === 2 ? { text: `${pre}scan things here ${j.got}/3 (target them and hold them ahead)`, nav: '' } : j.ty === 3 ? { text: pre + 'find the wreck signal', nav: 'wreck' } : j.ty === 4 ? { text: pre + 'target a ship and hail it', nav: 'npc' } : { text: pre + 'arriving', nav: 'gate' };
-  } else if (r.trail < 6) { d = trail()[r.trail]; pre = 'The trail: '; } else return { text: 'No contract. Traders post work on their boards.', nav: '' };
+    if (isHere(d) && !j.stage) return j.ty === 2 ? { text: `${pre}scan things here ${j.got}/3 (target them and hold them ahead)`, nav: '' } : j.ty === 3 ? { text: pre + 'find the wreck signal', nav: 'wreck' } : j.ty === 4 ? { text: pre + 'target a ship and hail it', nav: 'npc' } : j.ty === 5 ? { text: `${pre}hunt down the raider ${j.tn}`, nav: 'bounty' } : { text: pre + 'arriving', nav: 'gate' };
+  } else if (r.course && !sameSec(r.course, SYS.sec)) { const s = mkSys(sysIdAt(r.course[0], r.course[1], r.course[2])); d = { sec: r.course, loc: 0, pl: s.locs[0].name, sy: s.name }; pre = 'Plotted course: '; }
+  else if (r.trail < 6) { d = trail()[r.trail]; pre = 'The trail: '; } else return { text: 'No contract. Traders post work on their boards.', nav: '' };
   if (isHere(d)) return { text: pre + 'you are here', nav: '' };
   if (sameSec(d.sec, SYS.sec)) return { text: `${pre}warp gate → ${d.pl}`, nav: 'gate', loc: d.loc };
   const hop = route(d.sec);
@@ -1533,13 +1545,19 @@ const EV = [
   ['Something has shed cargo near {p}: sealed crates, tumbling, unmarked.', [['Scoop them up', 'Refined metal. No one comes asking.', { min: [3, 2], cr: 40 }], ['Report it to the local office', 'The clerk is surprised by honesty, and generous.', { rep: 9, cr: 70 }], ['Leave them', 'Not your crates.', {}]]],
   ['Static, then a voice: a prospector at {p} offers to sell you the location of a rich seam.', [['Pay 80 credits', 'The seam is real. Your hold fills faster than it ever has.', { cr: -80, min: [4, 2], xp: 20 }], ['Haggle', 'They respect it. You get the seam for a story instead.', { min: [3, 1], xp: 25 }], ['Decline', 'The channel closes with a shrug you can hear.', {}]]],
   ['A micrometeor sings off your hull as you settle in at {p}. A patrol offers to look you over.', [['Accept the inspection', 'They patch a seam you did not know had opened.', { hull: 25, rep: 3 }], ['Wave them off', 'They salute and peel away.', { xp: 5 }]]],
+  ['A pod is tumbling near {p}, its lamp still pulsing. Someone is inside.', [['Bring it aboard', 'A courier, half-frozen and very grateful. Her employers are generous.', { cr: 150, rep: 8, xp: 30 }], ['Tow it to the gate', 'Gate control takes it from there, and notes your name.', { rep: 5, xp: 15 }], ['It is not your business', 'The lamp pulses on behind you for a long time.', { rep: -3 }]]],
+  ['A customs cutter flags you down at {p} for a spot inspection.', [['Submit', 'Twenty minutes of politeness. They stamp your log and wave you on.', { rep: 4, xp: 10 }], ['Offer a consideration', 'The officer looks at the credits, then at you, then pockets them.', { cr: -60, xp: 5 }], ['Run', 'You are fast. They are annoyed.', { rep: -10, xp: 20 }]]],
+  ['Your scanner paints a cold contact at {p}: an old probe, older than the charts.', [['Download its memory', 'Star positions from a thousand years back. A cartographer will weep.', { cr: 110, xp: 40 }], ['Salvage the casing', 'Good alloy, however old.', { min: [3, 3] }], ['Leave it sleeping', 'Some things have earned their rest.', { xp: 15 }]]],
+  ['A convoy at {p} is short a wing pilot and asks if you will ride along to the gate.', [['Fly the wing', 'An hour of holding station. Dull, paid, and they remember faces.', { cr: 90, rep: 7, xp: 20 }], ['Name a higher price', 'They pay it. They do not smile.', { cr: 160, rep: -2 }], ['Decline', 'They find someone else.', {}]]],
+  ['Something large passes under your keel at {p}, and your instruments sing in a key you have not heard.', [['Hold still and listen', 'It circles once and leaves a wake of bright dust. Your hold is heavier.', { min: [4, 1], xp: 35 }], ['Follow it', 'It leads you a long way, to nothing, or to the point of it.', { xp: 50 }], ['Light the engines', 'You are gone before you find out.', {}]]],
+  ['A gambler on the {p} band wants to race you to the gate and back.', [['Take the bet (50)', 'You win by a length. He pays up, laughing.', { cr: 100, xp: 25 }], ['Take the bet and coast', 'He wins. He needed to more than you did.', { cr: -50, rep: 6 }], ['No bets', 'He calls you sensible. It does not sound like praise.', {}]]],
 ];
 function eventPanel() {
   const R = mulberry32(SYS.salt ^ 0xE7E), e = EV[R() * EV.length | 0], f = (s) => s.replace('{p}', SYS.locs[SYS.loc].name).replace('{s}', SYS.name);
   panel('Encounter', SYS.locs[SYS.loc].name + ' · ' + FAC[SYS.fac][0] + ' space', [{ name: 'On arrival', desc: f(e[0]) }].concat(e[1].map((o) => ({ name: o[0], desc: '', run: () => { gain(o[2]); panel('Encounter', SYS.locs[SYS.loc].name, [{ name: o[0], desc: f(o[1]) }, { name: 'Carry on', desc: '', run: () => {} }], 'Press a number · J to close'); } }))), 'Press a number to choose');
 }
 function rpgArrive() {
-  const r = rp(); npcSpawn(); scanned = {}; { const R = mulberry32(SYS.salt ^ 0x5702), a = R() * 6.283, d = 1800 + R() * 2600; STORM = R() < (SYS.atm === 1 ? .85 : .3 + .1 * SYS.danger) ? { x: Math.cos(a) * d, y: (R() - .5) * 900, z: Math.sin(a) * d, r: 900 + R() * 900, warned: 0 } : null; } plBase = [SYS.pl[3], SYS.pl[7], SYS.pl[11]]; scP = -1; scT = 0; scK = 0; scOut = 0; navAuto = 1; navId = ''; scanT = 0; routeK = '';
+  const r = rp(); npcSpawn(); scanned = {}; { const R = mulberry32(SYS.salt ^ 0x5702), a = R() * 6.283, d = 1800 + R() * 2600; STORM = R() < (SYS.atm === 1 ? .85 : .3 + .1 * SYS.danger) ? { x: Math.cos(a) * d, y: (R() - .5) * 900, z: Math.sin(a) * d, r: 900 + R() * 900, warned: 0 } : null; } sysInit(); scK = 0; scOut = 0; navAuto = 1; navId = ''; scanT = 0; routeK = '';
   for (const j of r.jobs.slice()) { const d = jobDest(j); if (!isHere(d)) continue; if (j.ty === 0) jobDone(j); else if (j.stage && (j.ty === 1 || j.ty === 3)) { if (j.ty === 1) cargo[j.tier] = Math.max(0, cargo[j.tier] - j.n); jobDone(j); } }
   const ok = () => flying() && !jpOpen && !jumpTo;
   if (r.trail < 6 && isHere(trail()[r.trail])) { const i = r.trail++; gain({ xp: 80, cr: 100 }); setTimeout(() => { if (ok()) panel('The trail', `Part ${i + 1} of 6 · ${SYS.locs[SYS.loc].name}`, [{ name: 'Found', desc: LORE[i] }, { name: i < 5 ? 'Next' : 'Done', desc: i < 5 ? `It points on, to ${trail()[i + 1].pl} in ${trail()[i + 1].sy}.` : 'There is nothing further to follow. The rest is yours.' }], 'J to close'); }, 3000); }
@@ -1580,6 +1598,7 @@ function hailPanel(a) {
   list.push({ name: 'Ask for news', desc: '', run: () => { const R = mulberry32((a.seed * 1e9) | 0), t = r.trail < 6 && R() < .5 ? `"Odd signal out at ${trail()[r.trail].pl}, ${trail()[r.trail].sy}. Not ours."` : '"' + RUM[R() * RUM.length | 0].replace('{k}', SYS.locs[R() * SYS.locs.length | 0].name).replace('{e}', SYS.econ) + '"'; if (!a.told) { a.told = 1; gain({ xp: 5 }); } panel('Hail', a.name, [{ name: a.name, desc: t }], 'J to close'); } });
   let v = 0; for (let i = 1; i < 6; i++) v += cargo[i] * TVAL[i]; v = Math.round(v * .85);
   if (a.role < 2 && v) list.push({ name: 'Sell them your ore', kind: v + ' cr', desc: 'A little under the trader\'s rate, but they are right here.', run: () => { ST.credits += v; cargo.fill(0); showCargo(); save(); tip(`Sold · +${v} credits`, 4000); } });
+  if (a.role < 2 && !a.px) list.push({ name: 'Ask what is selling elsewhere', desc: '', run: () => { a.px = 1; const li = (SYS.loc + 1 + (a.i % Math.max(1, SYS.locs.length - 1))) % SYS.locs.length, P = GOODS.map((_, q) => priceAt(SYS, li, q)), pm = r.px || (r.px = {}), best = P.map((p, q) => [p / GOODS[q][1], q]).sort((x, y) => y[0] - x[0])[0][1]; pm[SYS.id + ':' + li] = { n: SYS.locs[li].name, p: P, t: Date.now() }; save(); panel('Hail', a.name, [{ name: a.name, desc: `"Just came from ${SYS.locs[li].name}. ${GOODS[best][0]} was fetching ${P[best]} there. I have put their board in your ledger."` }], 'J to close'); } });
   if (!a.asked && r.jobs.length < 3) list.push({ name: 'Ask for work', desc: '', run: () => { a.asked = 1; const j = mkJob(mulberry32((a.seed * 7e8) | 0), 'h' + a.i); r.jobs.push(j); save(); navAuto = 1; panel('Hail', a.name, [{ name: j.title, kind: j.pay + ' cr', desc: '"As it happens, yes." ' + j.text }], 'J to close'); } });
   panel('Hail', `${SYS.locs[SYS.loc].name} · ${(Math.hypot(a.x - px, a.y - py, a.z - pz)) | 0} m`, list, 'Press a number · J to close');
 }
@@ -1609,8 +1628,9 @@ function npcSpawn() {
     if (role === 2) { if (lead && lead.n < 2) { lead.n++; a.lead = lead.a; a.off = [(lead.n === 1 ? -1 : 1) * 30, -4, 34]; a.hue = lead.a.hue; a.x = lead.a.x + a.off[0]; a.y = lead.a.y; a.z = lead.a.z + 30; } else lead = { a, n: 0 }; }
     npcGoal(a); NPCS.push(a);
   }
-  const nr = hostLv === 2 ? 2 + (R() * 3 | 0) : hostLv === 1 && SYS.danger >= 3 ? 1 + (R() * 2 | 0) : 0;
+  const nr = hostLv === 2 ? 2 + (R() * 3 | 0) : SYS.danger >= 2 ? 2 + (R() * 2 | 0) : 0;
   for (let i = 0; i < nr; i++) { const d = dir(), ds = 2500 + R() * 2500; NPCS.push({ i: 100 + i, role: 5, big: 0, x: d[0] * ds, y: d[1] * ds, z: d[2] * ds, vx: 0, vy: 0, vz: 0, fx: -d[0], fy: -d[1], fz: -d[2], ux: 0, uy: 1, uz: 0, sp: 105 + R() * 25, size: 9, st: 0, t: 0, hold: 0, wp: [0, 0, 0], hue: .02, seed: R(), fac: SYS.fac, name: NPN[R() * 16 | 0] + '-' + (10 + R() * 89 | 0), lead: null, k: 0, hp: 1.3, cd: 1, brk: 0 }); }
+  for (const j of rp().jobs) if (j.ty === 5 && !j.stage && isHere(jobDest(j))) { const d = dir(), ds = 1800 + R() * 1800; NPCS.push({ i: 200, role: 5, big: 0, x: d[0] * ds, y: d[1] * ds, z: d[2] * ds, vx: 0, vy: 0, vz: 0, fx: -d[0], fy: -d[1], fz: -d[2], ux: 0, uy: 1, uz: 0, sp: 120, size: 11, st: 0, t: 0, hold: 0, wp: [0, 0, 0], hue: .98, seed: R(), fac: SYS.fac, name: j.tn, lead: null, k: 0, hp: 3.2, cd: 1, brk: 0, bounty: j }); }
   const nb = SYS.a.fr > .1 ? 1 + (R() * 2 | 0) : R() < .35 ? 1 : 0;
   for (let i = 0; i < nb; i++) {
     const d = dir(), s = dir(), o = 1500 + R() * 1500, A = [d[0] * 9000 + s[0] * o, d[1] * 2500 + s[1] * o, d[2] * 9000 + s[2] * o], B = [-d[0] * 9000 + s[0] * o, -d[1] * 2500 + s[1] * o, -d[2] * 9000 + s[2] * o], u = R();
@@ -1625,15 +1645,23 @@ function npcTick(dt) {
   for (let n = NPCS.length - 1; n >= 0; n--) {                 // raiders hunt; anything small can be hit
     const a = NPCS[n]; if (a.big || a.lead) continue;
     const qx = a.x - px, qy = a.y - py, qz = a.z - pz, qd = Math.hypot(qx, qy, qz) || 1;
+    if (!a.greet && qd < 420 && flying()) { a.greet = 1; tip(`${ROLE[a.role]} ${a.name}: ${a.role === 5 ? '"Nice ship. Shame."' : a.role === 1 ? '"Mind the beam."' : a.role === 2 ? '"Patrol here. Fly safe."' : '"Passing on your left."'}  ·  F to answer`, 4500); if (navAuto) { navId = 'n' + a.i; navT = 0; } }
+    if (a.role === 1 && a.hold && !(a.st & 1)) for (let k = 1; k < 9; k++) { const f = k / 9 * 130, w = .5 + .5 * Math.sin(tm * 40 + k); put(DPa, qx + a.fx * f, qy + a.fy * f - k * 1.5, qz + a.fz * f, 2.2 + w * 1.5 + (k === 8 ? 7 : 0), 0, 0, 0, k * .11, 1, .32, .1, 0); }
+    if (a.role === 2) { let en = null, ed = 3500; for (const b of NPCS) if (b.role === 5) { const e = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z); if (e < ed) { ed = e; en = b; } }
+      if (en) { a.hold = 0; a.wp = [en.x, en.y, en.z]; if (ed < 700) { const u = (tm * 2.2 + a.seed) % 1; for (let k = 0; k < 3; k++) { const f = (u + k / 3) % 1; put(DPa, qx + (en.x - a.x) * f, qy + (en.y - a.y) * f, qz + (en.z - a.z) * f, 3.5, 0, 0, 0, k * .3, .3, .8, 1, 0); } en.hp -= dt * .12; en.brk = 2; if (en.hp <= 0) { fxAdd(en.x, en.y, en.z, 60, 1, .6, .3); en.dead = 1; navT = 0; } } } }
+    if (a.role === 2 && wantedT > 0) { a.hold = 0; a.wp = [px + vx * .6, py + vy * .6, pz + vz * .6]; a.cd = (a.cd || 0) - dt; if (flying() && qd < 520 && a.cd <= 0 && -(a.fx * qx + a.fy * qy + a.fz * qz) / qd > .97) { a.cd = .5; hurt(1.2); trauma = Math.min(1, trauma + .15); thud(.2); } }
+    if (a.dead) { NPCS.splice(n, 1); continue; }
     if (a.role === 5) {
-      a.brk -= dt; if (qd < 110 && a.brk <= 0) { a.brk = 3.5; const j = () => (Math.random() - .5) * 1800; a.wp = [px + j(), py + j() * .4, pz + j()]; }
+      const hunt = a.bounty || hostLv === 2 || hostLv === 1 && SYS.danger >= 3;
+      if (!hunt) { a.brk -= dt; if (a.brk <= 0) { let en = null, ed = 4000; for (const b of NPCS) if (b.role === 2) { const e = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z); if (e < ed) { ed = e; en = b; } } if (en) { a.wp = [en.x, en.y, en.z]; if (ed < 600) { const u = (tm * 2 + a.seed) % 1; put(DPa, qx + (en.x - a.x) * u, qy + (en.y - a.y) * u, qz + (en.z - a.z) * u, 3.5, 0, 0, 0, .5, 1, .3, .15, 0); } if (ed < 120) { a.brk = 3; const j = () => (Math.random() - .5) * 2500; a.wp = [a.x + j(), a.y + j() * .3, a.z + j()]; } } } }
+      else { a.brk -= dt; if (qd < 110 && a.brk <= 0) { a.brk = 3.5; const j = () => (Math.random() - .5) * 1800; a.wp = [px + j(), py + j() * .4, pz + j()]; }
       if (a.brk <= 0) a.wp = [px + vx * .8, py + vy * .8, pz + vz * .8];
-      a.cd -= dt; if (flying() && qd < 520 && a.cd <= 0 && -(a.fx * qx + a.fy * qy + a.fz * qz) / qd > .975) { a.cd = .4; hurt(1.4); trauma = Math.min(1, trauma + .2); thud(.2); if (!a.warned) { a.warned = 1; tip('Under fire: ' + a.name + ' is on you', 4000); } }
+      a.cd -= dt; if (flying() && qd < 520 && a.cd <= 0 && -(a.fx * qx + a.fy * qy + a.fz * qz) / qd > .975) { a.cd = .4; hurt(1.4); trauma = Math.min(1, trauma + .2); thud(.2); if (!a.warned) { a.warned = 1; tip('Under fire: ' + a.name + ' is on you', 4000); } } }
     }
-    if (fire && qd < 1500 && (qx * sFx + qy * sFy + qz * sFz) / qd > Math.cos(Math.max(.02, 22 / qd))) {
-      if (a.role !== 5) { if (!a.hit) { a.hit = 1; gain({ rep: -6, fac: a.fac }); tip(`${a.name}: "Hold your fire!" · ${FAC[a.fac][0]} will remember that`, 5000); a.sp *= 1.6; a.hold = 0; a.wp = NPT.far[a.i % 3]; } continue; }
-      a.hp -= dt; a.brk = 2; a.wp = [a.x + a.ux * 900 + qx, a.y + 500, a.z + qz];
-      if (a.hp <= 0) { NPCS.splice(n, 1); boom(40, qd); flash = Math.max(flash, .3); gain({ cr: 80, xp: 25, rep: 3 }); tip('Raider destroyed · 80 credit bounty', 5000); navT = 0; }
+    if (fire && qd < WPN[wpn][5] && (qx * sFx + qy * sFy + qz * sFz) / qd > Math.cos(Math.max(WPN[wpn][1], 22 / qd))) {
+      if (a.role !== 5) { if (!a.hit) { a.hit = 1; wantedT = 75; gain({ rep: -6, fac: a.fac }); tip(`${a.name}: "Hold your fire!" · ${FAC[a.fac][0]} will remember that`, 5000); a.sp *= 1.6; a.hold = 0; a.wp = NPT.far[a.i % 3]; } continue; }
+      a.hp -= dt * WPN[wpn][2]; a.brk = 2; a.wp = [a.x + a.ux * 900 + qx, a.y + 500, a.z + qz];
+      if (a.hp <= 0) { NPCS.splice(n, 1); fxAdd(a.x, a.y, a.z, 70, 1, .6, .3); if (a.bounty) jobDone(a.bounty); boom(40, qd); flash = Math.max(flash, .3); gain({ cr: 80, xp: 25, rep: 3 }); tip('Raider destroyed · 80 credit bounty', 5000); navT = 0; }
     }
   }
   for (const a of NPCS) {
@@ -1662,8 +1690,9 @@ function npcTick(dt) {
     if (!l) {
       if (a.hold) { a.t -= dt; if (a.t <= 0) { a.hold = 0; a.st++; a.k++; npcGoal(a); } }
       else if (d < arr * .6) {
-        if (a.toGate) { const g = NPT.far[(a.i + a.st) % 3], s2 = .85 + Math.random() * .1; a.x = g[0] * s2; a.y = g[1] * s2; a.z = g[2] * s2; a.vx = a.vy = a.vz = 0; a.st++; npcGoal(a); }   // gone through the gate; another comes in from the deep
-        else if (a.role === 2 || a.big) { a.st++; a.k++; npcGoal(a); }
+        if (a.toGate) { fxAdd(a.x, a.y, a.z, 45, .5, .8, 1); const g = NPT.far[(a.i + a.st) % 3], s2 = .85 + Math.random() * .1; a.x = g[0] * s2; a.y = g[1] * s2; a.z = g[2] * s2; a.vx = a.vy = a.vz = 0; a.st++; npcGoal(a); }   // gone through the gate; another comes in from the deep
+        else if (a.big) { fxAdd(a.x, a.y, a.z, a.size * 1.6, .6, .85, 1); const o = a.st & 1 ? a.B : a.A; a.x = o[0]; a.y = o[1]; a.z = o[2]; a.vx = a.vy = a.vz = 0; fxAdd(a.x, a.y, a.z, a.size * 1.6, .6, .85, 1); a.st++; npcGoal(a); if (flying()) tip(`${a.name} has jumped out; another frigate is inbound`, 3500); }
+        else if (a.role === 2) { a.st++; a.k++; npcGoal(a); }
         else { a.hold = 1; a.t = a.role === 1 && !(a.st & 1) ? 15 + Math.random() * 25 : 5 + Math.random() * 10; }
       }
     }
@@ -1690,8 +1719,10 @@ function navBuild() {
   for (let k = 0; k < 3; k++) if (!SYS.atm && SYS.pr[k] > 0) N.push({ id: 'p' + k, name: SYS.planets[k].name.toUpperCase(), kind: 'planet', far: 1, x: px + SYS.pl[k * 4] * 4e6, y: py + SYS.pl[k * 4 + 1] * 4e6, z: pz + SYS.pl[k * 4 + 2] * 4e6 });
   if (STORM) N.push({ id: 'storm', name: 'ION STORM', kind: 'storm', x: STORM.x, y: STORM.y, z: STORM.z });
   if (SYS.atm) N.push({ id: 'settle', name: SYS.atm === 1 ? 'CLOUD HARVESTER' : SYS.atm === 2 ? 'SETTLEMENT' : 'ICE STATION', kind: 'settle', x: 2600, y: -1400, z: 2600 });
+  { const b = NPCS.find((a) => a.bounty); if (b && !N.some((n) => n.npc === b)) N.push({ id: 'n' + b.i, name: ('RAIDER ' + b.name).toUpperCase(), kind: 'ship', x: b.x, y: b.y, z: b.z, npc: b }); }
+  lifeScan(N);
   NAV = N; obj = objective();
-  if (navAuto) { const want = obj.nav === 'npc' ? (N.find((n) => n.npc) || {}).id : obj.nav; navId = N.some((n) => n.id === want) ? want : 'gate'; }
+  if (navAuto) { const want = obj.nav === 'npc' ? (N.find((n) => n.npc) || {}).id : obj.nav === 'bounty' ? (N.find((n) => n.npc && n.npc.bounty) || {}).id : obj.nav; navId = N.some((n) => n.id === want) ? want : 'gate'; }
   else if (!N.some((n) => n.id === navId)) navId = 'gate';
 }
 const navCur = () => { for (const n of NAV) if (n.id === navId) { if (n.npc) { n.x = n.npc.x; n.y = n.npc.y; n.z = n.npc.z; } return n; } return NAV[0]; };
@@ -1717,7 +1748,7 @@ function navTick(dt, fly) {
     if (scanT > 1.6) { scanned[c.id] = 1; scanT = 0; gain({ xp: 4 }); tip('Scanned: ' + c.name + (c.npc ? ` · ${FAC[c.npc.fac][0]}` : ''), 3500); for (const j of rp().jobs) if (j.ty === 2 && isHere(jobDest(j)) && ++j.got >= 3) jobDone(j); }
   } else scanT = Math.max(0, scanT - dt);
 }
-function rpgSim(dt, fly) { npcTick(dt); navTick(dt, fly); cruiseTick(dt, fly); stormTick(dt, fly); if (tm - shHit > 4) shield = Math.min(shMax(), shield + dt * (9 + 5 * upLv('shd'))); }
+function rpgSim(dt, fly) { if (wantedT > 0) { wantedT -= dt; if (wantedT <= 0) tip('The patrols have stood down. They will not forget.', 5000); } npcTick(dt); meteorTick(dt, fly); flareTick(dt, fly); if (!rdList || !CFG.radio) playlistTick(dt, fly); fxTick(dt); droneTick(dt, fly); navTick(dt, fly); cruiseTick(dt, fly); stormTick(dt, fly); if (tm - shHit > 4) shield = Math.min(shMax(), shield + dt * (9 + 5 * upLv('shd'))); }
 
 // ---- controllers in a headset: everything that has a key has a button ----
 let hudForce = 0;
@@ -1731,7 +1762,7 @@ function xrPad(src, gp) {
     return 1;
   }
   if (h === 'right') { if (e[4]) interact(); if (e[5]) navCycle(1); if (e[3]) thr = 0; }
-  else { if (e[0]) navCycle(1); if (e[4]) journalPanel(); if (e[5]) gatePanel(); if (e[3]) setCock(!cockpit); }
+  else { if (e[0]) navCycle(1); if (e[4]) journalPanel(); if (e[5]) driftToggle(); if (e[3]) wpnCycle(); }
   return 0;
 }
 
@@ -1739,28 +1770,29 @@ function xrPad(src, gp) {
 function hudPaint() {
   const c = hc, W = HUDW, [main, dim, amb, cy] = HCOL[CFG.hud][1], red = '#ff5d4f';
   c.clearRect(0, 0, W, HUDH); c.lineCap = 'butt';
-  const T = (s, x, y, sz, al = 'left', col = main, w = 600) => { c.font = `${w} ${sz}px "Segoe UI",system-ui,sans-serif`; c.textAlign = al; c.fillStyle = col; c.fillText(s, x, y); };
+  const T = (s, x, y, sz, al = 'left', col = main, w = 600) => gText(c, s, x, y, sz, al, col, w);
   const line = (pts, col = dim, lw = 2) => { c.strokeStyle = col; c.lineWidth = lw; c.beginPath(); pts.forEach((p, i) => i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])); c.stroke(); };
-  const tag = (s, x, y, al) => { c.font = '700 17px "Segoe UI",system-ui,sans-serif'; const w = c.measureText(s).width + 22, x0 = al === 'right' ? x - w : x; line([[x0, y - 19], [x0 + w, y - 19], [x0 + w, y + 5], [x0 + 8, y + 5], [x0, y - 3], [x0, y - 19]], main, 1.5); T(s, x0 + 11, y, 17, 'left', main, 700); line(al === 'right' ? [[x0 + w, y + 5], [x0 + w, y + 62], [x0 + w - 60, y + 62]] : [[x0, y + 5], [x0, y + 62], [x0 + 60, y + 62]], dim, 1.5); };
+  const tag = (s, x, y, al) => { const w = gW(s, 17) + 22, x0 = al === 'right' ? x - w : x; line([[x0, y - 19], [x0 + w, y - 19], [x0 + w, y + 5], [x0 + 8, y + 5], [x0, y - 3], [x0, y - 19]], main, 1.5); T(s, x0 + 11, y, 17, 'left', main, 700); line(al === 'right' ? [[x0 + w, y + 5], [x0 + w, y + 62], [x0 + w - 60, y + 62]] : [[x0, y + 5], [x0, y + 62], [x0 + 60, y + 62]], dim, 1.5); };
   const bar = (x, y, w, f, col) => { c.fillStyle = 'rgba(160,210,240,.22)'; c.fillRect(x, y, w, 7); c.fillStyle = col; c.fillRect(x, y, w * Math.max(0, Math.min(1, f)), 7); };
   const spd = Math.hypot(vx, vy, vz), hull = ST.hull, cur = navCur();
-  const OX = 300, LX = xr ? 300 : 0, RX = xr ? 300 : 600, at = (o) => c.setTransform(1, 0, 0, 1, o, 0);
+  const nar = !xr && W / H < 1.05, OX = 300, LX = nar ? 300 : 0, RX = nar ? 300 : 600, at = (o) => c.setTransform(1, 0, 0, 1, o, 0);
   at(OX);
   line([[120, 30], [165, 92], [835, 92], [880, 30]]);
   T('SHLD', 178, 74, 12, 'left', dim, 700); bar(232, 66, 190, shield / shMax(), tm - shHit < .4 ? '#ffffff' : cy);
   T('HULL', 178, 56, 15, 'left', dim, 700); bar(232, 46, 190, hull / 100, hull < 35 ? red : main); T((hull | 0) + '%', 430, 56, 15, 'left', hull < 35 ? red : main);
+  T(WPN[wpn][0].toUpperCase(), 822, 76, 12, 'right', amb, 700); if (wantedT > 0) T('WANTED  ' + Math.ceil(wantedT), 500, 228, 17, 'center', red, 700);
   T('THR', 822, 56, 15, 'right', dim, 700); bar(580, 46, 190, Math.abs(thr), thr < 0 ? red : bst > .3 ? amb : main); T(Math.round(thr * 100) + '%', 572, 56, 15, 'right', main);
   const hd = Math.atan2(sFx, -sFz) * 57.29578, CARD = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'], wrap = (a) => ((a + 540) % 360) - 180;
   for (let a = 0; a < 360; a += 5) { const x = 500 + wrap(a - hd) * 6.5; if (x < 250 || x > 750) continue; const m = a % 45 === 0; line([[x, 118], [x, m ? 134 : a % 15 ? 123 : 128]], m ? main : dim, m ? 2 : 1); if (m) T(CARD[a / 45], x, 156, 16, 'center', main, 700); }
   c.fillStyle = main; c.beginPath(); c.moveTo(500, 114); c.lineTo(493, 102); c.lineTo(507, 102); c.fill();
-  T(SYS.locs[SYS.loc].name.toUpperCase() + '  ·  ' + SYS.name.toUpperCase(), 500, 82, 14, 'center', dim, 700);
+  T(SYS.locs[SYS.loc].name + '  ·  ' + SYS.name, 500, 196, 15, 'center', dim, 700);
   let dist = 0;
   if (cur) { const dx = cur.x - px, dy = cur.y - py, dz = cur.z - pz; dist = Math.hypot(dx, dy, dz); const bx = Math.max(250, Math.min(750, 500 + wrap(Math.atan2(dx, -dz) * 57.29578 - hd) * 6.5)); c.fillStyle = amb; c.beginPath(); c.moveTo(bx, 108); c.lineTo(bx + 7, 116); c.lineTo(bx, 124); c.lineTo(bx - 7, 116); c.fill(); }
   // left: speed, hull state. right: target, distance
-  at(LX); tag('SPEED', 92, 236); T(String(spd | 0), 108, 290, 50, 'left', main, 700); T('U/S', 108 + c.measureText(String(spd | 0)).width + 8, 270, 15, 'left', dim, 700);
-  tag(SYS.atm ? 'ALTITUDE' : 'CREDITS', 92, 366); T(SYS.atm ? ((Math.max(700, Math.min(9000, 2600 + py * .5)) / 100 | 0) / 10).toFixed(1) : String(ST.credits), 108, 420, 40, 'left', main, 700); if (SYS.atm) T('KM', 108 + c.measureText('00.0').width + 30, 402, 15, 'left', dim, 700);
+  at(LX); tag('SPEED', 92, 236); T(String(spd | 0), 108, 290, 50, 'left', main, 700); T('U/S', 108 + gW(String(spd | 0), 50) + 10, 270, 15, 'left', dim, 700);
+  tag(SYS.atm ? 'ALTITUDE' : 'CREDITS', 92, 366); T(SYS.atm ? ((Math.max(700, Math.min(9000, 2600 + py * .5)) / 100 | 0) / 10).toFixed(1) : String(ST.credits), 108, 420, 40, 'left', main, 700); if (SYS.atm) T('KM', 108 + gW('00.0', 40) + 12, 402, 15, 'left', dim, 700);
   at(RX); tag('TARGET', 908, 236, 'right'); T(cur ? cur.name : 'NONE', 892, 284, 22, 'right', amb, 700);
-  tag('DISTANCE', 908, 366, 'right'); const ds = dist >= 10000 ? (dist / 1000).toFixed(0) : dist >= 1000 ? (dist / 1000).toFixed(1) : String(dist | 0); T(dist >= 1000 ? 'KM' : 'M', 892, 420, 15, 'right', dim, 700); T(cur && cur.far ? '—' : ds, 860, 420, 40, 'right', main, 700); if (scK > 0 || scT > 1) { T(SYS.atm ? 'CLIMBING OUT' : 'SUPERCRUISE', 892, 500, 15, 'right', amb, 700); bar(742, 508, 150, SYS.atm ? scK : Math.max(scK, scT / 3 * .15), amb); }
+  tag('DISTANCE', 908, 366, 'right'); const ds = dist >= 10000 ? (dist / 1000).toFixed(0) : dist >= 1000 ? (dist / 1000).toFixed(1) : String(dist | 0); T(cur && cur.far ? 'MM' : dist >= 1000 ? 'KM' : 'M', 892, 420, 15, 'right', dim, 700); T(cur && cur.far ? plDist(cur) : ds, 860, 420, 40, 'right', main, 700); if (drift) { T('LIGHT DRIFT  ' + (driftV / 300).toFixed(driftV < 30 ? 3 : 2) + ' c', 892, 500, 15, 'right', amb, 700); bar(742, 508, 150, Math.min(1, driftV / 300), amb); } else if (SYS.atm && scK > 0) { T('TERMINAL VELOCITY', 892, 500, 15, 'right', amb, 700); bar(742, 508, 150, scK, amb); }
   if (cur && scanT > 0) { T('SCANNING', 892, 462, 14, 'right', cy, 700); bar(742, 470, 150, scanT / 1.6, cy); } else if (cur && scanned[cur.id]) T('SCANNED', 892, 462, 14, 'right', dim, 700);
   else if (cur && (cur.npc || cur.id === 'trader' || cur.id === 'gate') && dist < (cur.npc ? scanR() : cur.id === 'gate' ? 2600 : 900)) T(cur.npc ? 'F · HAIL' : 'F · OPEN', 892, 462, 14, 'right', cy, 700);
   // ladders: throttle on the left, pitch on the right
@@ -1779,6 +1811,7 @@ function hudPaint() {
   SYS.locs.forEach((l, i) => { const ring = l.atm ? l.atm - 1 : l.body >= 0 ? l.body : (i % 3), a = i * 2.4 + .6 + (SYS.id & 7), r = 34 + ring * 34, x = mx + Math.cos(a) * r, y = my + Math.sin(a) * r * .42, here = i === SYS.loc, want = obj.loc === i;
     c.beginPath(); c.arc(x, y, here ? 6 : 4.5, 0, 6.3); if (here) { c.fillStyle = cy; c.fill(); } else { c.strokeStyle = want ? amb : main; c.lineWidth = 2; c.stroke(); if (want) { c.fillStyle = amb; c.fill(); } }
     if (here || want) { line([[x, y - 7], [x, y - 20]], here ? cy : amb, 1.5); T(String(i + 1), x, y - 24, 12, 'center', here ? cy : amb, 700); } });
+  if (rdOn && rdName) T('IKOSAGON RADIO · ' + rdName, 300, 848, 12, 'right', cy, 700);
   T(rankName().toUpperCase(), 300, 800, 14, 'right', dim, 700); T(rp().jobs.length + '/3 CONTRACTS', 300, 822, 14, 'right', dim, 700);
   T(ST.credits + ' CR', 700, 800, 14, 'left', dim, 700); T(SYS.star.toUpperCase(), 700, 822, 14, 'left', dim, 700);
   if ((xr || hudForce) && jpOpen) {                                         // in a headset the lists are drawn here, since the page cannot be seen
@@ -1798,8 +1831,8 @@ function hudDraw(k) {
   M3[0] = sRx; M3[1] = sRy; M3[2] = sRz; M3[3] = sUx; M3[4] = sUy; M3[5] = sUz; M3[6] = -sFx; M3[7] = -sFy; M3[8] = -sFz;
   gl.uniformMatrix3fv(P.u.uShip, false, M3); gl.uniform3f(P.u.uEye, eox * k, eoy * k, eoz * k); gl.uniform3f(P.u.uMo, cockpit ? ckx : 0, cockpit ? cky : 0, cockpit ? ckz : 0);
   gl.bindVertexArray(hudVA); gl.activeTexture(gl.TEXTURE8); gl.uniform1i(P.u.uTx, 8);
-  gl.bindTexture(gl.TEXTURE_2D, hudTex); const asp = W / H, hs2 = xr ? 1 : Math.min(1.45, 1.55 * asp / 1.76, cinOn ? 1.5 * asp / 2.39 : 9) * CFG.size, cy0 = xr ? .2 : 0, hw = xr ? 1.1 : 1.76 * hs2;                                   // on a flat screen the display is a visor across the whole view; in a headset it sits on the front glass
-  gl.uniform4f(P.u.uR, 0, cy0, hw, hs2); gl.uniform4f(P.u.uZ, HZ, 0, .8 * hudOp, 0); gl.uniform4f(P.u.uUV, xr ? .1875 : 0, 0, xr ? .8125 : 1, 1); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  gl.bindTexture(gl.TEXTURE_2D, hudTex); const asp = W / H, nar = !xr && asp < 1.05, hs2 = xr ? 1 : (nar ? Math.min(1.45, 1.5 * asp / 1.1) : Math.min(1.45, 1.55 * asp / 1.76, cinOn && asp > 1.6 ? 1.5 * asp / 2.39 : 9)) * CFG.size, cy0 = xr ? .2 : 0, hw = nar ? 1.1 * hs2 : 1.76 * hs2;                                   // on a flat screen the display is a visor across the whole view; in a headset it sits on the front glass
+  gl.uniform4f(P.u.uR, 0, cy0, hw, hs2); gl.uniform4f(P.u.uZ, HZ, 0, .8 * hudOp, 0); gl.uniform4f(P.u.uUV, nar ? .1875 : 0, 0, nar ? .8125 : 1, 1); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   const c = navCur();
   if (c && !((xr || hudForce) && jpOpen)) {
     const dx = c.x - px, dy = c.y - py, dz = c.z - pz, lx = dx * sRx + dy * sRy + dz * sRz, ly = dx * sUx + dy * sUy + dz * sUz, lz = -(dx * sFx + dy * sFy + dz * sFz);
@@ -1813,8 +1846,8 @@ function hudDraw(k) {
 
 // ---- settings: display, flight, and every key. Kept in the browser. ----
 const HCOL = [['Ice', ['#e6f6ff', 'rgba(160,210,240,.62)', '#ffb44a', '#63e2ff']], ['Amber', ['#ffd9a0', 'rgba(255,190,110,.6)', '#ffffff', '#ffb44a']], ['Green', ['#c8ffd8', 'rgba(120,255,170,.55)', '#ffe27a', '#5dffa0']], ['Violet', ['#ffd6f6', 'rgba(255,150,230,.55)', '#7ee8ff', '#ff7ae0']], ['Red', ['#ffd0c8', 'rgba(255,120,100,.6)', '#ffe9a8', '#ff6a5a']]];
-const ACTS = [['KeyW', 'Throttle up'], ['KeyS', 'Throttle down'], ['KeyA', 'Strafe left'], ['KeyD', 'Strafe right'], ['KeyE', 'Rise'], ['KeyQ', 'Sink'], ['ShiftLeft', 'Boost'], ['Space', 'Fire'], ['KeyX', 'Zero throttle'], ['KeyT', 'Next target'], ['KeyF', 'Interact / hail'], ['KeyJ', 'Warp gate'], ['KeyB', 'Journal'], ['KeyL', 'Log'], ['KeyC', 'Cockpit on / off'], ['Comma', 'Glance left'], ['Period', 'Glance right'], ['Slash', 'Glance behind'], ['KeyM', 'Mute'], ['KeyV', 'VR / 3D']];
-const CFG = { hud: 0, op: 1, size: 1, cin: 1, host: 0, inv: 0, sens: 1, fx: 1, keys: {} };
+const ACTS = [['KeyW', 'Throttle up'], ['KeyS', 'Throttle down'], ['KeyA', 'Strafe left'], ['KeyD', 'Strafe right'], ['KeyE', 'Rise'], ['KeyQ', 'Sink'], ['ShiftLeft', 'Boost'], ['Space', 'Fire'], ['KeyX', 'Zero throttle'], ['KeyT', 'Next target'], ['KeyF', 'Interact / hail'], ['KeyJ', 'Warp gate'], ['KeyB', 'Journal'], ['KeyL', 'Log'], ['KeyC', 'Cockpit on / off'], ['Comma', 'Glance left'], ['Period', 'Glance right'], ['Slash', 'Glance behind'], ['KeyG', 'Light drift'], ['KeyP', 'Radio on / off'], ['BracketRight', 'Radio: skip to another song'], ['KeyR', 'Change weapon'], ['KeyN', 'Star map'], ['KeyM', 'Mute'], ['KeyV', 'VR / 3D']];
+const CFG = { hud: 0, op: 1, size: 1, cin: 1, host: 0, inv: 0, sens: 1, fx: 1, pl: 1, radio: 1, keys: {} };
 try { Object.assign(CFG, JSON.parse(localStorage.ibCfg || '{}')); } catch {}
 let wipeArm = 0;
 let hostLv = CFG.host, hudOp = CFG.op, cinOn = !!CFG.cin, rebind = null, mbx = 0, mby = 0, mbs = 0;
@@ -1829,7 +1862,7 @@ function mkIcons(col) {
 }
 const keyName = (k) => k.replace(/^Key|^Digit/, '').replace('ShiftLeft', 'Left Shift').replace('ShiftRight', 'Right Shift');
 let cinH = -1;
-function cinFit() { const h = cinOn && document.body.className[0] === 'g' && document.getElementById('jp').className !== 'on' ? Math.max(0, (innerHeight - innerWidth / 2.39) / 2) : 0; if (h !== cinH) { cinH = h; for (const d of cinB) d.style.height = h + 'px'; } }   // bars only while flying: never over the menu or a panel
+function cinFit() { const h = cinOn && innerWidth / innerHeight > 1.6 && document.body.className[0] === 'g' && document.getElementById('jp').className !== 'on' ? Math.max(0, (innerHeight - innerWidth / 2.39) / 2) : 0; if (h !== cinH) { cinH = h; for (const d of cinB) d.style.height = h + 'px'; } }   // bars only while flying: never over the menu or a panel
 function setUi() {
   hostLv = CFG.host; hudOp = CFG.op; cinOn = !!CFG.cin; keep('ibCfg', JSON.stringify(CFG)); mkIcons(HCOL[CFG.hud][1][2]);
   cinFit();
@@ -1837,7 +1870,7 @@ function setUi() {
   const row = (k, name, val) => `<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(160,210,240,.14);padding:7px 0"><span>${name}</span><button data-k="${k}" style="min-width:150px;padding:6px 14px;background:${rebind === k ? '#ffb44a' : 'transparent'};color:${rebind === k ? '#000' : '#63e2ff'};border:1px solid rgba(99,226,255,.5);font:inherit;cursor:pointer">${val}</button></div>`;
   const hd = (t) => `<h3 style="margin:26px 0 6px;font-weight:600;letter-spacing:.25em;font-size:13px;color:#ffb44a">${t}</h3>`;
   setP.innerHTML = `<div style="max-width:720px;margin:auto"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="font-weight:300;letter-spacing:.3em;margin:0">SETTINGS</h2><button data-k="close" style="background:none;border:1px solid #63e2ff;color:#63e2ff;padding:6px 18px;font:inherit;cursor:pointer">Done</button></div>`
-    + hd('DISPLAY') + row('hud', 'HUD colour', HCOL[CFG.hud][0]) + row('op', 'HUD brightness', Math.round(CFG.op * 100) + '%') + row('size', 'HUD size', Math.round(CFG.size * 100) + '%') + row('cin', 'Cinematic bars', CFG.cin ? 'on' : 'off') + row('fx', 'Lens effects (blur, grain, fringing)', ['off', 'subtle', 'full'][CFG.fx])
+    + hd('DISPLAY') + row('hud', 'HUD colour', HCOL[CFG.hud][0]) + row('op', 'HUD brightness', Math.round(CFG.op * 100) + '%') + row('size', 'HUD size', Math.round(CFG.size * 100) + '%') + row('cin', 'Cinematic bars', CFG.cin ? 'on' : 'off') + row('fx', 'Lens effects (blur, grain, fringing)', ['off', 'subtle', 'full'][CFG.fx]) + row('radio', 'Ikosagon radio', CFG.radio ? 'on' : 'off') + row('pl', 'My playlist (streams now and then)', CFG.pl ? 'on' : 'off') + row('suno', 'Suno playlist page', 'open in a new tab')
     + hd('FLIGHT') + row('inv', 'Invert pitch', CFG.inv ? 'on' : 'off') + row('sens', 'Mouse sensitivity', Math.round(CFG.sens * 100) + '%') + row('host', 'Other pilots', ['peaceful', 'wary', 'hostile'][CFG.host]) + row('wipe', 'Reset game', wipeArm ? 'click again: erases everything' : 'erase the save')
     + hd('KEYS · click one, then press the new key') + ACTS.map(([k, n]) => row('key:' + k, n, rebind === 'key:' + k ? 'press a key…' : keyName(CFG.keys[k] || k))).join('') + row('reset', 'All keys', 'reset to defaults') + '</div>';
 }
@@ -1847,11 +1880,12 @@ setP.onclick = (e) => {
   if (k === 'close') { setP.style.display = 'none'; rebind = null; return; }
   if (k.startsWith('key:')) rebind = rebind === k ? null : k;
   else if (k === 'reset') CFG.keys = {};
+  else if (k === 'suno') window.open('https://suno.com/playlist/12f42e02-78a5-4eb2-bf7e-f605817e4c06', '_blank', 'noopener');
   else if (k === 'wipe') { if (!wipeArm) wipeArm = 1; else { for (const q of Object.keys(ST)) delete ST[q]; Object.assign(ST, { v: 1, hull: 100, cargo: [0, 0, 0, 0, 0, 0], credits: 0, sec: [0, 0, 0], loc: 0, visited: {}, dead: [], missions: {}, found: {}, courier: null }); save(); try { localStorage.removeItem('esState'); } catch {} setTimeout(() => location.reload(), 1600); e.target.textContent = 'erasing…'; return; } }
-  if (k !== 'wipe') wipeArm = 0;
   else if (k === 'hud') CFG.hud = (CFG.hud + 1) % HCOL.length; else if (k === 'op') CFG.op = cyc(CFG.op, [1, .7, .45, .25]); else if (k === 'size') CFG.size = cyc(CFG.size, [1, 1.15, .85]);
-  else if (k === 'cin') CFG.cin = CFG.cin ? 0 : 1; else if (k === 'fx') CFG.fx = (CFG.fx + 1) % 3; else if (k === 'inv') CFG.inv = CFG.inv ? 0 : 1; else if (k === 'sens') CFG.sens = cyc(CFG.sens, [1, 1.3, 1.7, .5, .75]);
+  else if (k === 'cin') CFG.cin = CFG.cin ? 0 : 1; else if (k === 'radio') CFG.radio = CFG.radio ? 0 : 1; else if (k === 'pl') { CFG.pl = CFG.pl ? 0 : 1; if (!CFG.pl && plA) { plA.pause(); plOn = 0; } } else if (k === 'fx') CFG.fx = (CFG.fx + 1) % 3; else if (k === 'inv') CFG.inv = CFG.inv ? 0 : 1; else if (k === 'sens') CFG.sens = cyc(CFG.sens, [1, 1.3, 1.7, .5, .75]);
   else if (k === 'host') { CFG.host = (CFG.host + 1) % 3; hostLv = CFG.host; if (SYS) npcSpawn(); }
+  if (k !== 'wipe') wipeArm = 0;
   setUi();
 };
 $('set').onclick = () => { setP.style.display = 'block'; setUi(); };
@@ -1868,7 +1902,7 @@ const relay = (e) => {
   if (to && !e.repeat) window.dispatchEvent(new KeyboardEvent(e.type, { code: to, key: e.key, shiftKey: e.shiftKey, bubbles: true }));
 };
 addEventListener('keydown', relay, true); addEventListener('keyup', relay, true);
-addEventListener('resize', setUi); setUi();
+addEventListener('resize', () => { cinH = -1; cinFit(); }); setUi();   // never rebuild the settings list on resize: it would be torn down under the pointer
 
 // ---- supercruise: hold a planet ahead at speed and the drive takes over; climb hard out of an atmosphere to leave ----
 let scP = -1, scT = 0, scK = 0, scE = 0, scOut = 0, plBase = [0, 0, 0], scTip = 0, fogX = 0, pYaw = 0, pPit = 0;
@@ -1876,27 +1910,43 @@ function hop(loc) { const sv = [yaw, pitch, thr, vx, vy, vz]; arrive(SYS.sec, lo
 function cruiseTick(dt, fly) {
   { const k = Math.min(1, dt * 8), d = Math.max(.001, dt); let dy = syaw - pYaw; pYaw = syaw; const dp = spit - pPit; pPit = spit; if (Math.abs(dy) > 1) dy = 0;
     mbx += (Math.max(-.03, Math.min(.03, dy / d * .011)) - mbx) * k; mby += (Math.max(-.03, Math.min(.03, -dp / d * .011)) - mby) * k; mbs += ((.01 + .05 * bst) * Math.min(1, Math.hypot(vx, vy, vz) / 300) - mbs) * k; }
-  { const vl = Math.min(1, fogX / .0065); if (vl > .02 && !jumpTo) flash = Math.max(flash, vl * vl * .92); }   // the haze thickens to a veil and thins again: no cut
+  if (veil > .02 && !jumpTo) flash = Math.max(flash, veil * veil * .92);   // the haze thickens to a veil and thins again: no cut
   if (!fly || jumpTo) { scK = scE = 0; return; }
   const sp = Math.hypot(vx, vy, vz), r = rp();
   if (SYS.atm) {
     if (sFy > .42 && thr > .7 && sp > 60) scOut += dt; else scOut = Math.max(0, scOut - dt * 2);
-    scK = Math.min(1, scOut / 13); scE = scK * scK * (3 - 2 * scK); { const want = scE * scE * .0065; fogX += (want - fogX) * Math.min(1, dt * (fogX > want ? .18 : .6)); }
-    if (scOut > 1.2 && tm > scTip) { scTip = tm + 20; tip('Climbing out: hold the nose up to leave the atmosphere', 4000); }
-    if (scOut > 13) { const k = SYS.atm - 1, back = r.from != null && SYS.locs[r.from] && !SYS.locs[r.from].atm ? r.from : 0; hop(back); scBack = k; SYS.pl[k * 4 + 3] = 1; { const dx = -SYS.pl[k * 4], dy = -SYS.pl[k * 4 + 1], dz = -SYS.pl[k * 4 + 2]; pitch = Math.asin(Math.max(-1, Math.min(1, dy))); yaw = Math.atan2(dx, -dz); vx = dx * sp; vy = dy * sp; vz = dz * sp; snap = 1; } tip(`Clear of ${SYS.planets[k].name}`, 4000); }
+    scK = Math.min(1, scOut / 13); scE = scK * scK * (3 - 2 * scK); { const want = scE * scE * .0065; fogX += (want - fogX) * Math.min(1, dt * (fogX > want ? .18 : .6)); veil += (scE * scE - veil) * Math.min(1, dt * (veil > scE * scE ? .3 : 2)); }
+    if (scOut > 1.2 && tm > scTip) { scTip = tm + 20; tip('Terminal velocity: hold the nose up and the throttle open to break out of the atmosphere', 5000); }
+    if (scOut > 13) { const k = SYS.atm - 1, back = r.from != null && SYS.locs[r.from] && !SYS.locs[r.from].atm ? r.from : 0; hop(back); const P = sysP[k];
+      if (P) { const D = Math.hypot(P[0], P[1], P[2]), f = 1 - 1.45 * PR[k] / D, dx = -P[0] / D, dy = -P[1] / D, dz = -P[2] / D; sysS = [P[0] * f, P[1] * f, P[2] * f];
+        pitch = Math.asin(Math.max(-1, Math.min(1, dy))); yaw = Math.atan2(dx, -dz); vx = dx * sp; vy = dy * sp; vz = dz * sp; snap = 1; drift = 1; driftV = 0; veil = 1; }
+      tip(`Clear of ${SYS.planets[k].name}: it is right behind you. Light drift is on; G drops out.`, 7000); }
     return;
   }
-  if (scBack >= 0) { const i = scBack * 4 + 3; fogX += (0 - fogX) * Math.min(1, dt * .25); SYS.pl[i] += (plBase[scBack] - SYS.pl[i]) * Math.min(1, dt * .1); if (Math.abs(SYS.pl[i] - plBase[scBack]) < .003) { SYS.pl[i] = plBase[scBack]; scBack = -1; } return; }   // the world falls away behind, slowly
-  const on = scP >= 0 && scT > 3; let best = -1, bd = on ? .82 : .955;                       // once engaged the drive holds through a wide cone, so the swell never starts over
-  for (let k = 0; k < 3; k++) if (SYS.pr[k] > 0 && (!on || k === scP)) { const d = sFx * SYS.pl[k * 4] + sFy * SYS.pl[k * 4 + 1] + sFz * SYS.pl[k * 4 + 2]; if (d > bd) { bd = d; best = k; } }
-  if (best >= 0 && thr > (on ? .3 : .7) && sp > (on ? 30 : 80)) { if (scP !== best) { scP = best; scT = 0; } scT += dt; } else { scT = Math.max(0, scT - dt * (on ? 1.2 : 5)); if (scT <= 0) scP = -1; }
-  scK = Math.max(0, Math.min(1, (scT - 3) / 30)); scE = scK * scK * (3 - 2 * scK);
-  fogX += (Math.pow(scE, 4) * .0065 - fogX) * Math.min(1, dt * .8);
-  for (let k = 0; k < 3; k++) { const i = k * 4 + 3, want = k === scP ? plBase[k] + (1 - plBase[k]) * scE * scE : plBase[k]; SYS.pl[i] += (want - SYS.pl[i]) * Math.min(1, dt * 1.5); }
-  if (scP >= 0 && scT > 3 && scT - dt <= 3) tip(`Supercruise: holding for ${SYS.planets[scP].name}. Turn away to cancel.`, 5000);
-  if (scK >= 1) { const k = scP, loc = SYS.locs.findIndex((l) => l.atm === k + 1); if (loc < 0) { scT = 0; return; } r.from = SYS.loc; hop(loc); py = 9000; pitch = -.5; { const cp = Math.cos(pitch); vx = Math.sin(yaw) * cp * sp; vy = Math.sin(pitch) * sp; vz = -Math.cos(yaw) * cp * sp; } tip(`${SYS.locs[SYS.loc].name}: dive for the deck, climb to leave`, 7000); }
+  veil += (0 - veil) * Math.min(1, dt * .2); scK = scE = 0;
+  if (!sysP) return;
+  let near = 1e9, nk = -1;
+  for (let k = 0; k < 3; k++) { const P = sysP[k]; if (!P) continue; const x = P[0] - sysS[0], y = P[1] - sysS[1], z = P[2] - sysS[2], d = Math.hypot(x, y, z) || 1; SYS.pl[k * 4] = x / d; SYS.pl[k * 4 + 1] = y / d; SYS.pl[k * 4 + 2] = z / d; SYS.pl[k * 4 + 3] = Math.min(1.35, PR[k] / d); if (d - PR[k] < near) { near = d - PR[k]; nk = k; } }
+  if (!drift) { driftV = 0; let hit = -1;
+    for (let k = 0; k < 3; k++) if (sysP[k] && thr > .7 && sp > 80 && sFx * SYS.pl[k * 4] + sFy * SYS.pl[k * 4 + 1] + sFz * SYS.pl[k * 4 + 2] > Math.cos(Math.max(.05, SYS.pl[k * 4 + 3] * .6))) hit = k;
+    if (hit >= 0 && hit === aimK) aimT += dt; else { aimK = hit; aimT = 0; }
+    if (aimT > 4) { aimT = 0; drift = 1; navId = 'p' + hit; navAuto = 0; navT = 0; tip(`Course held for ${SYS.planets[hit].name}: light drift engaged. G drops out.`, 6000); }
+    return; }
+  // light drift: speed is set by how far the nearest surface is, so an approach eases in by itself and deep space is crossed quickly
+  driftV += (Math.max(.3, Math.min(900, near * .32)) * Math.max(0, thr) - driftV) * Math.min(1, dt * 1.2);
+  sysS[0] += sFx * driftV * dt; sysS[1] += sFy * driftV * dt; sysS[2] += sFz * driftV * dt;
+  scE = Math.min(1, driftV / 40) * .7; fogX = Math.max(fogX, .0032);                           // the field around you streams and thins while the sky holds still
+  if (nk >= 0) { const R = PR[nk], loc = SYS.locs.findIndex((l) => l.atm === nk + 1), u = near / R;
+    if (loc >= 0) { if (u < .5) veil = Math.max(veil, 1 - (u - .1) / .4);                         // the air closes in
+      if (u < .1) { drift = 0; r.from = SYS.loc; hop(loc); py = 9000; pitch = -1.15; { const cp = Math.cos(pitch), s2 = Math.max(sp, 120); vx = Math.sin(yaw) * cp * s2; vy = Math.sin(pitch) * s2; vz = -Math.cos(yaw) * cp * s2; } veil = 1; tip(`${SYS.locs[SYS.loc].name}: dive for the deck. Hold the nose up to climb back out.`, 7000); } }
+    else if (u < .25) { drift = 0; tip(`${SYS.planets[nk].name} has no air to fly in: holding off`, 5000); } }
 }
 let scBack = -1;
+const PR = [70, 6.4, 2.6];                                  // planet radii in thousands of km
+let sysS = [0, 0, 0], sysP = null, drift = 0, driftV = 0, veil = 0, aimK = -1, aimT = 0;
+function sysInit() { sysS = [0, 0, 0]; drift = 0; driftV = 0; sysP = SYS.atm ? null : [0, 1, 2].map((k) => { const w = SYS.pl[k * 4 + 3]; return w > 0 ? [SYS.pl[k * 4] * PR[k] / w, SYS.pl[k * 4 + 1] * PR[k] / w, SYS.pl[k * 4 + 2] * PR[k] / w] : null; }); }
+function driftToggle() { if (SYS.atm) return tip('Climb out of the atmosphere first: hold the nose up at full throttle', 4000); drift = drift ? 0 : 1; tip(drift ? 'Light drift: throttle sets the pace, the sky is the map. Point at a world and hold. G drops out.' : 'Dropped out of light drift', 5000); }
+const plDist = (c) => { const k = +c.id[1], P = sysP && sysP[k]; if (!P) return '—'; const d = Math.hypot(P[0] - sysS[0], P[1] - sysS[1], P[2] - sysS[2]) - PR[k]; return d < 100 ? d.toFixed(1) : String(d | 0); };
 
 // ---- trade: eight goods; what a place makes is cheap there and what it lacks is dear; your own trading moves the price ----
 const GOODS = [['Water ice', 12], ['Ore', 20], ['Alloys', 55], ['Provisions', 30], ['Machinery', 90], ['Medicine', 140], ['Luxuries', 210], ['Data cores', 320]];
@@ -1910,9 +1960,11 @@ function stock(key, g, add) {                                 // how much you ha
 function priceAt(s, loc, g) {
   const key = s.id + ':' + loc, e = ECO[s.econ], kd = KIND[s.locs[loc].t], day = Math.floor(Date.now() / 864e5);
   let m = .8 + .4 * ((hs(s.id ^ Math.imul(loc + 1, 7919) ^ Math.imul(g + 1, 104729) ^ day) >>> 0) % 1000) / 1000;
+  { const ev = mktEvent(s); if (ev[0] === g) m *= ev[1] ? 1.8 : .5; }
   if (e[0].includes(g)) m *= .68; if (e[1].includes(g)) m *= 1.42; if (kd[0].includes(g)) m *= .8; if (kd[1].includes(g)) m *= 1.3;
   return Math.max(2, Math.round(GOODS[g][1] * m * Math.max(.55, Math.min(1.6, 1 - stock(key, g) * .015))));
 }
+const mktEvent = (s) => { const h = hs(s.id ^ Math.imul(Math.floor(Date.now() / 864e5), 0x2545F491)) >>> 0; return [h % 8, (h >> 8) & 1]; };
 function ledger() {
   const px2 = rp().px || {}, ks = Object.keys(px2), out = [];
   for (let g = 0; g < 8; g++) { let lo = null, hi = null; for (const k of ks) { const p = px2[k].p[g]; if (!lo || p < lo[0]) lo = [p, px2[k].n]; if (!hi || p > hi[0]) hi = [p, px2[k].n]; } if (lo && hi && hi[0] * .92 - lo[0] > 4 && lo[1] !== hi[1]) out.push([hi[0] * .92 - lo[0], `${GOODS[g][0]}: ${lo[0]} at ${lo[1]} → ${Math.round(hi[0] * .92)} at ${hi[1]}`]); }
@@ -1922,7 +1974,8 @@ function marketPanel() {
   const r = rp(), h = r.hold || (r.hold = {}), P = GOODS.map((_, g) => priceAt(SYS, SYS.loc, g)), e = ECO[SYS.econ], kd = KIND[SYS.locs[SYS.loc].t];
   const pxm = r.px || (r.px = {}); pxm[mkey()] = { n: SYS.locs[SYS.loc].name, p: P, t: Date.now() }; const ks = Object.keys(pxm); if (ks.length > 14) delete pxm[ks.sort((a, b) => pxm[a].t - pxm[b].t)[0]];
   save();
-  panel('Market', `${SYS.locs[SYS.loc].name} · ${SYS.econ} · ${ST.credits} credits · hold ${holdN()}/${holdMax()}`, GOODS.map(([n], g) => ({ name: n, kind: `${P[g]} cr · you hold ${h[g] || 0}`, desc: (e[0].includes(g) || kd[0].includes(g) ? 'Made here: cheap. ' : e[1].includes(g) || kd[1].includes(g) ? 'Wanted here: sells high. ' : '') + (r.cost && r.cost[g] && h[g] ? `You paid about ${Math.round(r.cost[g])} each.` : ''), run: () => goodPanel(g) })), 'Press a number for a good · J to close');
+  const ev = mktEvent(SYS);
+  panel('Market', `${SYS.econ} · ${ev[1] ? 'shortage of' : 'glut of'} ${GOODS[ev[0]][0]} across ${SYS.name} today · ${ST.credits} cr · hold ${holdN()}/${holdMax()}`, GOODS.map(([n], g) => ({ name: n, kind: `${P[g]} cr · you hold ${h[g] || 0}`, desc: (e[0].includes(g) || kd[0].includes(g) ? 'Made here: cheap. ' : e[1].includes(g) || kd[1].includes(g) ? 'Wanted here: sells high. ' : '') + (r.cost && r.cost[g] && h[g] ? `You paid about ${Math.round(r.cost[g])} each.` : ''), run: () => goodPanel(g) })), 'Press a number for a good · J to close');
 }
 function goodPanel(g) {
   const r = rp(), h = r.hold || (r.hold = {}), c = r.cost || (r.cost = {}), p = priceAt(SYS, SYS.loc, g), sell = Math.round(p * .92), have = h[g] || 0, room = holdMax() - holdN(), key = mkey();
@@ -1974,6 +2027,7 @@ function shieldTake(a) { shHit = tm; const t = Math.min(shield, a); shield -= t;
 // ---- ion storms: lightning that charges your capacitors (credits) and eats your shields ----
 let STORM = null, stT = 2;
 function stormTick(dt, fly) {
+  if (SYS.a.fog > .9 && Math.random() < dt * .22) { const a = Math.random() * 6.283, y = Math.random() - .5, d = 3500 + Math.random() * 3000; fxAdd(px + Math.cos(a) * d, py + y * d * .6, pz + Math.sin(a) * d, 500 + Math.random() * 700, SYS.pal[6] * .12 + .04, SYS.pal[7] * .12 + .04, SYS.pal[8] * .12 + .05); }   // far-off lightning inside the haze
   const S = STORM; if (!S) return;
   const x = S.x - px, y = S.y - py, z = S.z - pz, d = Math.hypot(x, y, z);
   put(DPa, x, y, z, S.r * 1.1, 0, 0, 0, .31, .05, .025, .09, 1); put(DPa, x + S.r * .3, y - S.r * .2, z, S.r * .8, 0, 0, 0, .67, .03, .02, .07, 1);
@@ -1995,6 +2049,7 @@ function hailThing(c, d) {
     if (rp().jobs.length < 3 && !hailed[mkey() + 'pj' + k]) list.push({ name: 'Ask for work', desc: '', run: () => { hailed[mkey() + 'pj' + k] = 1; const j = mkJob(mulberry32(SYS.salt ^ (k * 7717 + 3)), 'p' + k); rp().jobs.push(j); save(); navAuto = 1; panel(p.name, 'Traffic control', [{ name: j.title, kind: j.pay + ' cr', desc: j.text }], 'J to close'); } });
     return panel('Hail', p.name, list, 'Press a number · J to close');
   }
+  if (c.kind === 'life') { const L = LIFEN[c.li]; return panel('Contact', here, [{ name: L[0][0] + L[0].slice(1).toLowerCase(), desc: L[3] }, { name: 'Hold still and listen', desc: 'The sound goes through the hull and through you. Something in the ship settles.', run: () => once('lf' + c.li, { xp: 12, hull: 6 }) }, { name: 'Answer with a scanner ping', desc: 'It answers in kind, and sheds a little bright dust as it turns away.', run: () => once('lp' + c.li, { xp: 8, min: [3, 1] }) }], 'Press a number · J to close'); }
   if (c.kind === 'settle') return tradePanel();
   if (c.kind === 'gate') return panel('Gate authority', here, [{ name: 'Gate control', desc: `"You are ${(d / 1000).toFixed(1)} km out. ${reach(SYS.sec).length} routes open from here, ${SYS.locs.length - 1} local. No toll for ${rankName().toLowerCase()}s."` }, ST.credits >= 25 ? { name: 'Ask for a tow', kind: '25 cr', desc: 'A tug brings you in to the gate.', run: () => { ST.credits -= 25; px = 0; py = 30; pz = 760; vx = vy = vz = 0; showCargo(); save(); } } : { name: 'A tow costs 25 credits', desc: '' }], 'Press a number · J to close');
   if (c.kind === 'rock') { const R = mulberry32((c.x * 13 + c.z * 7) | 0), t = 2 + (R() * 4 | 0); once('rk' + (c.x | 0), { xp: 6 }); return panel('Assay', 'Long-range spectrometer', [{ name: 'Composition', desc: `Strong ${TIERS[t]} lines, with ${TIERS[Math.max(1, t - 1)]} in the crust. ${(d / 1000).toFixed(1)} km. Break the shell and collect what comes out.` }], 'J to close'); }
@@ -2005,7 +2060,8 @@ function hailThing(c, d) {
 
 // ---- the star map grows as you travel: every system you have entered, the routes between them, and where the unknown begins ----
 const mapP = document.createElement('div'); mapP.style.cssText = 'position:fixed;inset:0;z-index:25;display:none;background:rgba(2,5,9,.95)'; document.body.appendChild(mapP);
-const mapC = document.createElement('canvas'); mapC.style.cssText = 'width:100%;height:100%'; mapP.appendChild(mapC); mapP.onclick = () => { mapP.style.display = 'none'; };
+const mapC = document.createElement('canvas'); mapC.style.cssText = 'width:100%;height:100%'; mapP.appendChild(mapC); let mapN = [];
+mapP.onclick = (e) => { let hit = null; for (const n of mapN) if (Math.hypot(e.clientX - n.x, e.clientY - n.y) < 26) hit = n; if (hit && !sameSec(hit.sec, SYS.sec)) { rp().course = hit.sec.slice(); save(); navT = 0; routeK = ''; tip('Course plotted: ' + hit.name, 4000); } mapP.style.display = 'none'; };
 function starMap() {
   if (mapP.style.display !== 'none') { mapP.style.display = 'none'; return; }
   mapP.style.display = 'block'; const w = mapC.width = innerWidth, h = mapC.height = innerHeight, c = mapC.getContext('2d'), key = (s) => s.join(',');
@@ -2016,13 +2072,15 @@ function starMap() {
   const sx = w / (2 * ext + 1), sy = (h - 90) / (2 * ext + 1), P = (s) => [w / 2 + ((s[0] - SYS.sec[0]) + (s[1] - SYS.sec[1]) * .38) * sx, h / 2 + 30 + ((s[2] - SYS.sec[2]) - (s[1] - SYS.sec[1]) * .5) * sy];
   c.clearRect(0, 0, w, h); c.font = '600 13px "Segoe UI",system-ui,sans-serif'; c.textAlign = 'center';
   c.fillStyle = '#ffb44a'; c.font = '300 22px "Segoe UI",system-ui,sans-serif'; c.textAlign = 'left'; c.fillText('S T A R   M A P', 40, 50); c.font = '500 13px "Segoe UI",system-ui,sans-serif'; c.fillStyle = 'rgba(170,215,240,.7)';
-  c.fillText(`${known.size} systems entered · ${[...known.values()].filter((v) => v.charted).length} fully charted · N or click to close`, 40, 74); c.textAlign = 'center';
+  c.fillText(`${known.size} systems entered · ${[...known.values()].filter((v) => v.charted).length} fully charted · click a system to plot a course · N closes`, 40, 74); c.textAlign = 'center';
   const want = []; for (const j of rp().jobs) { const d = jobDest(j); if (d) want.push(key(d.sec)); } if (rp().trail < 6) want.push(key(trail()[rp().trail].sec));
   c.strokeStyle = 'rgba(120,170,200,.25)'; c.lineWidth = 1;
   for (const v of known.values()) for (const n of reach(v.sec)) { const a = P(v.sec), b = P(n); c.setLineDash(known.has(key(n)) ? [] : [3, 5]); c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.stroke(); }
   c.setLineDash([]);
+  mapN = [];
   for (const n of nodes.values()) {
-    const [x, y] = P(n.sec), s = mkSys(sysIdAt(n.sec[0], n.sec[1], n.sec[2])), here = sameSec(n.sec, SYS.sec), col = `rgb(${s.pal[9] * 255 | 0},${s.pal[10] * 255 | 0},${s.pal[11] * 255 | 0})`;
+    const [x, y] = P(n.sec); mapN.push({ x, y, sec: n.sec, name: n.v ? n.v.name : 'an uncharted system' });
+    const s = mkSys(sysIdAt(n.sec[0], n.sec[1], n.sec[2])), here = sameSec(n.sec, SYS.sec), col = `rgb(${s.pal[9] * 255 | 0},${s.pal[10] * 255 | 0},${s.pal[11] * 255 | 0})`;
     if (want.includes(key(n.sec))) { c.strokeStyle = '#ffb44a'; c.lineWidth = 2; c.strokeRect(x - 13, y - 13, 26, 26); }
     c.beginPath(); c.arc(x, y, n.v ? 7 : 4, 0, 6.3); if (n.v) { c.fillStyle = col; c.shadowColor = col; c.shadowBlur = 14; c.fill(); c.shadowBlur = 0; } else { c.strokeStyle = 'rgba(170,215,240,.5)'; c.lineWidth = 1.5; c.stroke(); }
     if (here) { c.strokeStyle = '#63e2ff'; c.lineWidth = 2; c.beginPath(); c.arc(x, y, 13, 0, 6.3); c.stroke(); }
@@ -2030,6 +2088,137 @@ function starMap() {
     if (n.v) { c.fillStyle = 'rgba(170,215,240,.55)'; c.fillText(s.star, x, y + 42); }
   }
 }
+
+// ---- weapons: R (or the left stick click, or WPN on a touch screen) changes what the trigger does to other ships ----
+// name, cone (radians), damage rate, loudness, pitch, range
+const WPN = [['Gatling', .02, 1, .3, 115, 1500], ['Scatter', .09, .55, .34, 80, 800], ['Lance', .012, 2.6, .26, 190, 2600]];
+let wpn = 0;
+function wpnCycle() { wpn = (wpn + 1) % WPN.length; tip(`Weapon: ${WPN[wpn][0]} · ${['amber rounds, steady fire', 'green shot, six at a time, close in', 'violet lance, slow, fast and far'][wpn]}`, 3000); }
+
+// ---- short-lived flashes: jumps and kills ----
+const FXL = [];
+function fxAdd(x, y, z, s, r, g, b) { FXL.push({ x, y, z, s, r, g, b, t: 0 }); }
+function fxTick(dt) { for (let i = FXL.length - 1; i >= 0; i--) { const f = FXL[i]; f.t += dt; const u = f.t / .8; if (u >= 1) { FXL.splice(i, 1); continue; } const k = (1 - u) * (1 - u) * 3; put(DPa, f.x - px, f.y - py, f.z - pz, f.s * (.4 + 2.2 * u), 0, 0, 0, .4, f.r * k, f.g * k, f.b * k, 0); } }
+
+// ---- drone swarms mend the hull if you hold near them ----
+let drT = 0, drNear = 0, drTip = 0;
+function droneTick(dt, fly) {
+  drT -= dt; if (drT <= 0) { drT = .5; const L = LDr, D = L.d; let best = 1e12; for (let i = 0; i < L.n; i++) { const o = i * F, w = (v, m) => ((v - m + L.N * 1.5) % L.N) - L.N * .5, x = (w(D[o], L.mx) + D[o + 4]) * L.C - L.fx, y = (w(D[o + 1], L.my) + D[o + 5]) * L.C - L.fy, z = (w(D[o + 2], L.mz) + D[o + 6]) * L.C - L.fz, d = x * x + y * y + z * z; if (d < best) best = d; } drNear = best < 400 * 400; }
+  if (fly && drNear && ST.hull < 100) { ST.hull = Math.min(100, ST.hull + dt * 3.5); if (tm > drTip) { drTip = tm + 30; tip('Drones are working on your hull: hold here', 5000); } }
+}
+
+// ---- touch screens: the actions that have keys get buttons ----
+if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+  const box = document.createElement('div'); box.style.cssText = 'position:fixed;right:max(10px,env(safe-area-inset-right));top:22%;z-index:6;display:none;flex-direction:column;gap:10px';
+  for (const [t, f] of [['TGT', () => navCycle(1)], ['USE', () => interact()], ['WPN', () => wpnCycle()], ['DRIFT', () => driftToggle()], ['GATE', () => gatePanel()], ['LOG', () => (jpOpen ? closePanel() : journalPanel())], ['MAP', () => starMap()]]) {
+    const b = document.createElement('button'); b.textContent = t; b.style.cssText = 'width:58px;height:44px;border:1px solid rgba(99,226,255,.6);background:rgba(4,10,16,.55);color:#63e2ff;font:600 12px system-ui;letter-spacing:.08em;border-radius:6px;touch-action:manipulation';
+    b.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); f(); }, { passive: false }); b.onclick = f; box.appendChild(b);
+  }
+  document.body.appendChild(box); setInterval(() => { box.style.display = document.body.className[0] === 'g' ? 'flex' : 'none'; }, 400);
+}
+
+// ---- lettering for the display: thin strokes on a 4 x 6 grid, corners rounded, drawn in code (no font file) ----
+const GSRC = { A: '06 00 40 46|03 43', B: '06 00 30 33 03|33 43 46 06', C: '40 00 06 46', D: '00 30 42 44 36 06 00', E: '40 00 06 46|03 33', F: '40 00 06|03 33', G: '40 00 06 46 43 23', H: '00 06|40 46|03 43', I: '20 26', J: '40 46 06 04', K: '00 06|40 03 46', L: '00 06 46', M: '06 00 23 40 46', N: '06 00 46 40', O: '20 40 46 06 00 20', P: '06 00 40 43 03', Q: '20 40 46 06 00 20|25 47', R: '06 00 40 43 03|23 46', S: '40 00 03 43 46 06', T: '00 40|20 26', U: '00 06 46 40', V: '00 26 40', W: '00 06 23 46 40', X: '00 46|40 06', Y: '00 23 40|23 26', Z: '00 40 06 46',
+  0: '20 40 46 06 00 20|23', 1: '10 20 26', 2: '00 40 43 03 06 46', 3: '00 40 46 06|13 43', 4: '00 03 43|40 46', 5: '40 00 03 43 46 06', 6: '40 00 06 46 43 03', 7: '00 40 46', 8: '20 40 46 06 00 20|03 43', 9: '06 46 40 00 03 43',
+  '.': '26', ',': '26 17', ':': '22|25', '-': '13 33', '—': '03 43', '/': '40 06', '+': '13 33|21 25', '·': '23', '%': '40 06|01|45', '→': '03 43|31 43 35', '(': '30 12 14 36', ')': '10 32 34 16', "'": '20 21', '"': '10 11|30 31', '!': '20 24|26', '?': '00 40 43 23 24|26', '=': '02 42|04 44', '✓': '03 16 40', '…': '06|26|46', '<': '40 03 46', '>': '00 43 06', ';': '22|26 17', '&': '46 00 30 06 46' };
+const GL = {}; for (const k in GSRC) GL[k] = GSRC[k].split('|').map((p) => p.split(' ').map((q) => [+q[0], +q[1]]));
+const GNAR = "I1.,:;!'·";
+const gAdv = (ch, u) => ch === ' ' ? 3 * u : GNAR.includes(ch) ? 3 * u : 5.7 * u;
+function gW(s, sz) { s = String(s).toUpperCase(); const u = Math.max(sz, 13) * .118; let w = 0; for (const ch of s) w += gAdv(ch, u); return w - 1.7 * u; }
+function gText(c, s, x, y, sz, al, col, wt) {
+  s = String(s).toUpperCase(); sz = Math.max(sz, 13); const u = sz * .118, w = gW(s, sz); let cx = al === 'center' ? x - w / 2 : al === 'right' ? x - w : x;
+  c.strokeStyle = c.fillStyle = col; c.lineWidth = Math.max(1.25, sz * (wt >= 700 ? .095 : .075)); c.lineCap = c.lineJoin = 'round';
+  for (const ch of s) {
+    const g = GL[ch], ox = cx - (GNAR.includes(ch) ? 1.3 * u : 0);
+    if (g) for (const p of g) {
+      if (p.length === 1) { c.beginPath(); c.arc(ox + p[0][0] * u, y + (p[0][1] - 6) * u, c.lineWidth * .75, 0, 6.3); c.fill(); continue; }
+      c.beginPath(); c.moveTo(ox + p[0][0] * u, y + (p[0][1] - 6) * u);
+      for (let i = 1; i < p.length; i++) { if (i < p.length - 1) c.arcTo(ox + p[i][0] * u, y + (p[i][1] - 6) * u, ox + p[i + 1][0] * u, y + (p[i + 1][1] - 6) * u, u * .95); else c.lineTo(ox + p[i][0] * u, y + (p[i][1] - 6) * u); }
+      c.stroke();
+    } else if (ch !== ' ') { c.font = `600 ${sz}px system-ui,sans-serif`; c.textAlign = 'left'; c.fillText(ch, cx, y); }
+    cx += gAdv(ch, u);
+  }
+  c.lineCap = 'butt';
+}
+
+// ---- meteor showers: now and then a rake of bright streaks crosses the field ----
+const METS = []; let metT = 25, metN = 0, metD = [1, 0, 0];
+function meteorTick(dt, fly) {
+  metT -= dt;
+  if (metT <= 0) { if (metN <= 0) { metN = 6 + Math.random() * 10 | 0; const a = Math.random() * 6.283, y = Math.random() * .6 - .5, c = Math.sqrt(1 - y * y); metD = [Math.cos(a) * c, y, Math.sin(a) * c]; }
+    metN--; metT = metN > 0 ? .15 + Math.random() * .6 : 40 + Math.random() * 80;
+    const j = () => (Math.random() - .5) * 2600; METS.push({ x: px + sFx * 1400 + j() - metD[0] * 900, y: py + sFy * 1400 + j() * .6 - metD[1] * 900, z: pz + sFz * 1400 + j() - metD[2] * 900, t: 0, s: 3 + Math.random() * 5, v: 1300 + Math.random() * 900 }); }
+  for (let i = METS.length - 1; i >= 0; i--) { const m = METS[i]; m.t += dt; if (m.t > 1.5) { METS.splice(i, 1); continue; }
+    m.x += metD[0] * m.v * dt; m.y += metD[1] * m.v * dt; m.z += metD[2] * m.v * dt; const f = Math.sin(Math.min(1, m.t / 1.5) * 3.1416);
+    for (let k = 0; k < 7; k++) { const b = f * (1 - k / 7) * 1.6; put(DPa, m.x - px - metD[0] * k * 22, m.y - py - metD[1] * k * 22, m.z - pz - metD[2] * k * 22, m.s * (1 - k * .1), 0, 0, 0, k * .13, b, b * .85, b * .6, 0); } }
+}
+
+// ---- the owner's own tracks, streamed from where they are hosted: now and then one fades in from a random point, plays a minute, fades out ----
+const TRACKS = ['8bca2649-ef58-4337-99da-96bc09457d8e', 'cab7667f-c12b-4b52-89f8-790cadf115f8', 'a8499c7c-09f5-47a4-82ba-ef1ed1d11704', '98987f77-6a7a-4fff-ab98-d48bdb3035e3', '53a8bb5c-0b30-4a08-85b1-628a4a3b71b8', '6ad0e9ff-0b1c-4904-8a12-44d2e5d90187', '00607acb-f516-4f98-8b2a-4fb7b4afa93c', '0f9a39ab-36f0-4090-91a6-1168566e464c'];
+const PHOST = ['https://cdn1.suno.ai/', 'https://cdn2.suno.ai/'];
+let plA = null, plOn = 0, plNext = 75, plEnd = 0, plVol = 0, plBad = 0, plWant = .3, plLast = -1, plH = 0;
+let plLocal = null; try { fetch('music/tracks.json').then((r) => r.ok ? r.json() : []).then((a) => { plLocal = Array.isArray(a) ? a : []; }).catch(() => { plLocal = []; }); } catch { plLocal = []; }   // drop mp3s in a music folder beside the game and list them in tracks.json
+const plLevel = (v) => { plWant = Math.max(0, Math.min(1, v)); };   // the one place the game sets how loud the stream is: it dips for hails and fights and comes back
+function playlistTick(dt, fly) {
+  if (!CFG.pl || !fly || plBad > 3 || !AC || AC.state !== 'running') return;
+  if (!plOn) {
+    plNext -= dt; if (plNext > 0) return; plNext = 150 + Math.random() * 240;
+    if (!plA) { plA = new Audio(); plA.preload = 'none'; plA.onerror = () => { plBad++; plOn = 0; plH = 1 - plH; plNext = 8; }; }
+    let n = Math.random() * TRACKS.length | 0; if (n === plLast) n = (n + 1) % TRACKS.length; plLast = n; plA.src = plLocal && plLocal.length ? 'music/' + plLocal[n % plLocal.length] : PHOST[plH] + TRACKS[n] + '.mp3'; plA.volume = 0; plVol = 0;
+    plA.onloadedmetadata = () => { try { if (plA.duration > 120) plA.currentTime = Math.random() * (plA.duration - 110); } catch {} };
+    const p = plA.play(); if (p && p.then) p.then(() => { plOn = 1; plEnd = 55 + Math.random() * 50; }).catch(() => { plBad++; });
+    return;
+  }
+  plEnd -= dt; plLevel(jpOpen ? .12 : tm - shHit < 6 ? .15 : .3); plVol += ((plEnd > 7 ? plWant : 0) - plVol) * Math.min(1, dt * .22); try { plA.volume = Math.max(0, Math.min(1, plVol)); } catch {}
+  if (plEnd <= 0 && plVol < .01) { plA.pause(); plOn = 0; }
+}
+
+let wantedT = 0;
+// ---- living things: the big ones show on the target list, notice you when you come close, and can be answered ----
+const LIFEN = [['LEVIATHAN', () => LWh, 900, 'A leviathan turns one eye toward you. The hull hums with its song.'], ['COLOSSUS', () => LQ, 1300, 'A colossal drifter fills the view. Its bell pulses, slow as a tide.'], ['GLIDERS', () => LY, 450, 'A flight of gliders banks round you, curious and unafraid.']];
+const lifeSeen = {};
+function nearInst(L) { const D = L.d; let best = 1e12, bx = 0, by = 0, bz = 0; for (let i = 0; i < L.n; i++) { const o = i * F, w = (v, m) => ((v - m + L.N * 1.5) % L.N) - L.N * .5, x = (w(D[o], L.mx) + D[o + 4]) * L.C - L.fx, y = (w(D[o + 1], L.my) + D[o + 5]) * L.C - L.fy, z = (w(D[o + 2], L.mz) + D[o + 6]) * L.C - L.fz, d = x * x + y * y + z * z; if (d < best) { best = d; bx = x; by = y; bz = z; } } return [best, bx, by, bz]; }
+function lifeScan(N) {
+  LIFEN.forEach((L, i) => { const r = nearInst(L[1]()); if (r[0] > 7000 * 7000) return; N.push({ id: 'life' + i, name: L[0], kind: 'life', li: i, x: px + r[1], y: py + r[2], z: pz + r[3] });
+    if (r[0] < L[2] * L[2] && !lifeSeen[mkey() + i] && flying()) { lifeSeen[mkey() + i] = 1; tip(L[3] + '  ·  T to target, F to answer', 7000); gain({ xp: 8 }); } });
+}
+
+// ---- Ikosagon radio: the same track list the site's own player reads (/api/radio), fetched again before every track,
+// so a song added to the site is on the air the next time one is picked. The game plays the files itself and sets the level.
+const RADIO = 'https://ikosagon.com/api/radio';
+let rdList = null, rdA = null, rdT = 20, rdVol = 0, rdName = '', rdLast = '', rdFetchT = 0, rdBad = 0, rdGap = 0, rdRetry = 0, rdOn = 0;
+function radioLoad() { try { fetch(RADIO, { cache: 'no-store' }).then((r) => r.json()).then((a) => { if (Array.isArray(a)) { const l = a.filter((t) => t && t.url); if (l.length) rdList = l; } }).catch(() => { rdBad++; }); } catch { rdBad++; } }
+function radioNext(seek) {
+  radioLoad(); if (!rdList || !rdA) return;
+  let t = rdList[Math.random() * rdList.length | 0]; if (rdList.length > 1) while (t.url === rdLast) t = rdList[Math.random() * rdList.length | 0];
+  rdLast = t.url; rdName = String(t.title || 'On air').slice(0, 30); rdA.src = t.url; rdVol = Math.min(rdVol, .05); rdA.volume = rdVol;
+  rdA.onloadedmetadata = seek ? () => { try { if (rdA.duration > 60) rdA.currentTime = rdA.duration * (.1 + Math.random() * .65); } catch {} } : null;
+  const p = rdA.play(); if (p && p.catch) p.catch(() => { rdRetry = 1; });
+}
+function radioJump() { if (CFG.radio && rdA && rdList) radioNext(1); }      // launch and every warp: another song, somewhere in its middle
+let rdWas = 0;
+function radioTick(dt) {
+  const fly = document.body.className[0] === 'g'; rdOn = 0;
+  if (!CFG.radio) { if (rdA && !rdA.paused) rdA.pause(); return; }
+  if (!rdList) { rdFetchT -= dt; if (rdFetchT <= 0 && rdBad < 6) { rdFetchT = 8; radioLoad(); } return; }
+  if (!rdA) { rdA = new Audio(); rdA.preload = 'auto'; rdA.onended = () => radioNext(0); rdA.onerror = () => { rdBad++; if (rdBad < 14) setTimeout(() => radioNext(0), 2500); }; radioNext(0); }   // on the air from the loading screen
+  if (fly && !rdWas) radioJump(); rdWas = fly;
+  if (rdA.paused && !rdA.ended) { rdRetry -= dt; if (rdRetry <= 0) { rdRetry = 2; const p = rdA.play(); if (p && p.catch) p.catch(() => {}); } return; }
+  let lv = .34; try { lv = !fly ? .3 : jpOpen ? .14 : tm - shHit < 6 ? .16 : .34; } catch {}
+  plLevel(lv); rdVol += (plWant - rdVol) * Math.min(1, dt * .5); try { rdA.volume = Math.max(0, Math.min(1, rdVol)); } catch {}
+  rdOn = 1; if (plOn && plA) { plA.pause(); plOn = 0; }
+}
+setInterval(() => radioTick(.25), 250);
+for (const ev of ['pointerdown', 'keydown', 'touchend']) addEventListener(ev, () => { if (CFG.radio && rdA && rdA.paused) { const p = rdA.play(); if (p && p.catch) p.catch(() => {}); } }, true);   // browsers hold sound until the first tap or key
+
+// ---- solar flares: a warning, then a wash of light that strips shields. Getting behind something big is not modelled; riding it out is. ----
+let flT = 140 + Math.random() * 160, flW = 0;
+function flareTick(dt, fly) {
+  if (!fly || SYS.atm || jumpTo) return;
+  if (flW > 0) { flW -= dt; if (flW <= 0) { const had = shield; shield = Math.max(0, shield - 75); shHit = tm; flash = Math.max(flash, .55); trauma = Math.min(1, trauma + .4); thud(.4); gain({ xp: had > 75 ? 12 : 4 }); tip(had > 75 ? 'The flare breaks over the hull. Shields held.' : 'The flare breaks over the hull. Shields are down: stay clear of trouble until they return.', 6000); } return; }
+  flT -= dt; if (flT <= 0) { flT = 200 + Math.random() * 260; if ((hs(SYS.salt ^ 0xF1A2E) >>> 0) % 5 < 2) { flW = 12; tip(`Flare warning: ${SYS.star} is throwing a front. Impact in twelve seconds. Keep your shields full.`, 9000); } }
+}
+
 // ============================================================================
 // Build everything (with a loading bar), then fly
 // ============================================================================
@@ -2046,7 +2235,11 @@ async function loadState() {
   if (idb) d = await new Promise((r) => { try { const q = idb.transaction('kv').objectStore('kv').get('state'); q.onsuccess = () => r(q.result); q.onerror = () => r(null); } catch { r(null); } });
   if (!d) try { d = JSON.parse(localStorage.esState || 'null'); } catch {}
   if (d && d.v === 1) Object.assign(ST, d);
+  // each build starts every player somewhere new: a fresh universe seed, a fresh home, a clean record
+  if (ST.build !== BUILD) { for (const q of Object.keys(ST)) delete ST[q]; Object.assign(ST, { v: 1, hull: 100, cargo: [0, 0, 0, 0, 0, 0], credits: 0, sec: [0, 0, 0], loc: 0, visited: {}, dead: [], missions: {}, found: {}, courier: null, build: BUILD, seed: (Math.random() * 4294967296) >>> 0 }); }
+  MASTER = ST.seed >>> 0; HOME = hs(MASTER ^ 0x40E) >>> 0;
 }
+const BUILD = 19;
 function save() { clearTimeout(saveT); saveT = setTimeout(() => { try { if (idb) idb.transaction('kv', 'readwrite').objectStore('kv').put(ST, 'state'); else localStorage.esState = JSON.stringify(ST); } catch {} }, 1000); }
 if (!TEST || QS.has('keep')) await loadState();
 SYS = mkSys(sysIdAt(ST.sec[0], ST.sec[1], ST.sec[2])); SYS.sec = ST.sec;
@@ -2161,7 +2354,7 @@ function arrive(sec, loc, quiet) {
   // this place's quiet furniture, all from its seed: a signal beacon some kilometres out, and sometimes a trader by the gate
   const R = mulberry32(SYS.salt ^ 0xBEAC), a = R() * 6.283, e = (R() - .5) * .8, d = 3000 + 4000 * R();
   bcn = [Math.cos(a) * Math.cos(e) * d, Math.sin(e) * d, Math.sin(a) * Math.cos(e) * d]; bcnN = R() * 8 | 0;
-  trader = SYS.t === 4 || hs(SYS.salt ^ Math.floor(Date.now() / 864e5)) % 3 === 0;          // hubs always; elsewhere on some days
+  trader = 1;          // hubs always; elsewhere on some days
   // the log of where you have been, and anything that completes by arriving
   const v = ST.visited[SYS.id] || (ST.visited[SYS.id] = { name: SYS.name, sec, locs: [], charted: 0 }), first = !v.locs.includes(SYS.loc);
   if (first) v.locs.push(SYS.loc);
@@ -2170,7 +2363,7 @@ function arrive(sec, loc, quiet) {
   const cj = ST.courier;
   if (cj && cj.sec[0] === sec[0] && cj.sec[1] === sec[1] && cj.sec[2] === sec[2] && cj.loc === SYS.loc) { ST.credits += cj.pay; ST.courier = null; note = `Case delivered · +${cj.pay} credits`; }
   mission(); save(); showCargo();
-  if (!quiet) { flash = TEST ? 0 : 1; tip(note || SYS.locs[SYS.loc].name + ' · ' + SYS.name, 6000); cueStop(); swell(); setTimeout(() => cue(note ? 'outro' : 'intro', 1), 9000); }
+  if (!quiet) { radioJump(); flash = TEST ? 0 : 1; tip(note || SYS.locs[SYS.loc].name + ' · ' + SYS.name, 6000); cueStop(); swell(); setTimeout(() => cue(note ? 'outro' : 'intro', 1), 9000); }
   for (const f of hooks) try { f(describe()); } catch (er) { console.error(er); }
 }
 // what a story layer needs to know about where the player is
@@ -2254,6 +2447,10 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyJ' && flying()) jpOpen ? closePanel() : gatePanel();
   if (e.code === 'KeyL' && flying()) jpOpen ? closePanel() : logPanel();
   if (e.code === 'KeyN') starMap();
+  if (e.code === 'KeyP') { CFG.radio = CFG.radio ? 0 : 1; setUi(); tip(CFG.radio ? 'Ikosagon radio on' : 'Radio off: ship\'s score', 3000); }
+  if (e.code === 'BracketRight' && CFG.radio) radioJump();
+  if (e.code === 'KeyG' && flying() && !jpOpen) driftToggle();
+  if (e.code === 'KeyR' && flying() && !jpOpen) wpnCycle();
   if (e.code === 'KeyB' && flying()) jpOpen ? closePanel() : journalPanel();
   if (e.code === 'KeyT' && flying() && !jpOpen) navCycle(e.shiftKey ? -1 : 1);
   if (e.code === 'KeyF' && flying()) interact();
@@ -2343,11 +2540,11 @@ function audio() {
   try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch { return; }
   AG = AC.createGain(); AG.gain.value = 0; AG.gain.setTargetAtTime(muted ? 0 : .5, AC.currentTime, 1.5);
   // everything passes a gentle compressor, then a fast limiter, with headroom left over: nothing should clip
-  const cp = AC.createDynamicsCompressor(), lm = AC.createDynamicsCompressor(), og = AC.createGain();
-  cp.threshold.value = -24; cp.knee.value = 14; cp.ratio.value = 5; cp.attack.value = .004; cp.release.value = .25;
-  lm.threshold.value = -14; lm.knee.value = 0; lm.ratio.value = 20; lm.attack.value = .001; lm.release.value = .08; og.gain.value = .5;
-  const ws = AC.createWaveShaper(), wc = new Float32Array(1024); for (let i = 0; i < 1024; i++) wc[i] = Math.tanh((i / 511.5 - 1) * 1.5) / Math.tanh(1.5); ws.curve = wc; ws.oversample = '2x';   // a soft ceiling: peaks round off instead of clipping
-  AG.connect(cp).connect(lm).connect(ws).connect(og).connect(AC.destination);
+  const pre = AC.createGain(), lm = AC.createDynamicsCompressor(), og = AC.createGain(); pre.gain.value = .55; og.gain.value = .8;
+  lm.threshold.value = -9; lm.knee.value = 6; lm.ratio.value = 8; lm.attack.value = .003; lm.release.value = .15;
+  const ws = AC.createWaveShaper(), wc = new Float32Array(1024); for (let i = 0; i < 1024; i++) { const x = i / 511.5 - 1; wc[i] = Math.tanh(x * 1.1) / Math.tanh(1.1); } ws.curve = wc; ws.oversample = '2x';
+  AG.connect(pre).connect(lm).connect(ws).connect(og).connect(AC.destination);
+  AG.sx = AC.createGain(); AG.sx.gain.value = .9; AG.sx.connect(ws);                      // effects that must always be heard join after the limiter
   DL = AC.createDelay(2); const fb = AC.createGain(), lp = AC.createBiquadFilter();
   DL.delayTime.value = .36; fb.gain.value = .55; lp.frequency.value = 1800; DL.connect(lp).connect(fb).connect(DL); DL.connect(AG);
   padF = AC.createBiquadFilter(); padF.frequency.value = 260; padF.Q.value = 1.5; padG = AC.createGain(); padG.gain.value = .11; padF.connect(padG).connect(AG); loadScore();
@@ -2400,6 +2597,7 @@ function burst(t, dur, v, f0, f1, type) {                    // filtered noise: 
 }
 function sched() {
   if (!AC || AC.state !== 'running' || document.hidden) return;
+  if (rdOn) { mT = Math.max(mT, AC.currentTime + .1); return; }       // the radio has the air: the sequenced score rests and picks up when the song ends
   if (mReg < 0) { mReg = REG; retune(REG, PRG()[bar & 3]); }
   const e = energy, spb = 60 / TMP() / 4, solo = AC.currentTime < cueEnd, pat = PATS[REG & 3], oct = REG & 4 ? 12 : 0;
   if (mT < AC.currentTime) mT = AC.currentTime + .05;
@@ -2419,8 +2617,9 @@ function sched() {
 function gunSnd() {
   if (!AC || AC.state !== 'running') return;
   const t = AC.currentTime, o = AC.createOscillator(), g = AC.createGain(); o.type = 'triangle';
-  o.frequency.setValueAtTime(115, t); o.frequency.exponentialRampToValueAtTime(40, t + .09); g.gain.setValueAtTime(.13, t); g.gain.exponentialRampToValueAtTime(.0001, t + .14);
-  o.connect(g).connect(AG); o.start(t); o.stop(t + .16); burst(t, .07, .04, 600, 150, 'lowpass');
+  o.frequency.setValueAtTime(115, t); o.frequency.exponentialRampToValueAtTime(40, t + .09); g.gain.setValueAtTime(.0001, t); g.gain.linearRampToValueAtTime(WPN[wpn][3], t + .004); g.gain.exponentialRampToValueAtTime(.0001, t + .14);
+  o.frequency.setValueAtTime(WPN[wpn][4], t); o.frequency.exponentialRampToValueAtTime(WPN[wpn][4] * .35, t + .09);
+  o.connect(g).connect(AG.sx || AG); o.start(t); o.stop(t + .16); burst(t, .07, .05, 600, 150, 'lowpass');
 }
 function thud(v) {
   if (!AC || AC.state !== 'running') return;
@@ -2459,15 +2658,19 @@ let muzzle = 0, bCur = 0, nLive = 0, gunSpin = 0, fireAcc = 0, shotN = 0, broken
 const rd = [0, 0, 0];
 const rdir = () => { let x, y, z, l; do { x = Math.random() * 2 - 1; y = Math.random() * 2 - 1; z = Math.random() * 2 - 1; l = x * x + y * y + z * z; } while (l > 1 || l < .01); l = 1 / Math.sqrt(l); rd[0] = x * l; rd[1] = y * l; rd[2] = z * l; };
 
+const bW = new Uint8Array(NBU), WCOL = [[7, 3.6, 1], [1.4, 7, 2.6], [6.5, 1.6, 9]];   // each weapon has its own light: amber rounds, green shot, violet lance
 function shoot() {
   const sd = shotN++ & 1 ? 1 : -1, ox = sRx * sd * 1.1 - sUx * 1.25 + sFx * 4, oy = sRy * sd * 1.1 - sUy * 1.25 + sFy * 4, oz = sRz * sd * 1.1 - sUz * 1.25 + sFz * 4;
-  const sx = (Math.random() - .5) * .007, sy = (Math.random() - .5) * .007;
-  let ax = sFx * 500 - ox, ay = sFy * 500 - oy, az = sFz * 500 - oz; const l = 1 / Math.hypot(ax, ay, az);
-  ax = ax * l + sRx * sx + sUx * sy; ay = ay * l + sRy * sx + sUy * sy; az = az * l + sRz * sx + sUz * sy;
-  const i = bCur; bCur = (bCur + 1) % NBU;
-  bX[i * 3] = px + ox; bX[i * 3 + 1] = py + oy; bX[i * 3 + 2] = pz + oz; bV[i * 3] = ax * 1600 + vx; bV[i * 3 + 1] = ay * 1600 + vy; bV[i * 3 + 2] = az * 1600 + vz; bL[i] = 1.4;
-  spark(px + ox + sFx * .3, py + oy + sFy * .3, pz + oz + sFz * .3, vx, vy, vz, .05, .5, 0, 5, 3, 1.2, 0); muzzle = 1;
-  trauma = Math.min(1, trauma + .035); gunSnd();
+  const n = wpn === 1 ? 6 : 1, spr = wpn === 1 ? .07 : wpn === 2 ? .002 : .007, v0 = wpn === 2 ? 3400 : wpn === 1 ? 1300 : 1600, col = WCOL[wpn];
+  for (let k = 0; k < n; k++) {
+    const sx = (Math.random() - .5) * spr, sy = (Math.random() - .5) * spr;
+    let ax = sFx * 500 - ox, ay = sFy * 500 - oy, az = sFz * 500 - oz; const l = 1 / Math.hypot(ax, ay, az);
+    ax = ax * l + sRx * sx + sUx * sy; ay = ay * l + sRy * sx + sUy * sy; az = az * l + sRz * sx + sUz * sy;
+    const i = bCur; bCur = (bCur + 1) % NBU; bW[i] = wpn;
+    bX[i * 3] = px + ox; bX[i * 3 + 1] = py + oy; bX[i * 3 + 2] = pz + oz; bV[i * 3] = ax * v0 + vx; bV[i * 3 + 1] = ay * v0 + vy; bV[i * 3 + 2] = az * v0 + vz; bL[i] = wpn === 1 ? .45 : wpn === 2 ? 1.7 : 1.4;
+  }
+  spark(px + ox + sFx * .3, py + oy + sFy * .3, pz + oz + sFz * .3, vx, vy, vz, wpn === 2 ? .12 : .05, wpn === 2 ? 1.4 : wpn === 1 ? .9 : .5, 0, col[0] * .7, col[1] * .8, col[2] * 1.2, 0); muzzle = 1;
+  trauma = Math.min(1, trauma + (wpn === 2 ? .12 : wpn === 1 ? .08 : .035)); gunSnd();
 }
 // where a rock was, leave fragments, crumbs, dust, sparks and (if it held any) minerals
 function shatter(x, y, z, size, hue, tier, type, ax, ay, az, ix, iy, iz) {
@@ -2501,7 +2704,7 @@ function simulate(dt, fly) {
   // the gun spins up, then fires 24 rounds a second from alternating barrels
   const firing = fly && (K.Space || mFire || tFire || xFire);
   gunSpin += ((firing ? 1 : 0) - gunSpin) * (1 - Math.exp(-dt * (firing ? 8 : 3)));
-  if (firing) { fireAcc += dt * 11 * gunSpin; while (fireAcc >= 1) { fireAcc -= 1; shoot(); } }
+  if (firing) { fireAcc += dt * 11 * gunSpin * (wpn === 1 ? .32 : wpn === 2 ? .2 : 1); while (fireAcc >= 1) { fireAcc -= 1; shoot(); } }
   combat *= Math.exp(-dt * .35); muzzle *= Math.exp(-dt * 30);
   nLive = 0;
   for (let i = 0; i < NBU; i++) {
@@ -2567,7 +2770,7 @@ function simulate(dt, fly) {
     if (pK[i]) { const k = Math.exp(-dt * 1.2); pV[o] *= k; pV[o + 1] *= k; pV[o + 2] *= k; }
     put(DPa, pX[o] - px, pX[o + 1] - py, pX[o + 2] - pz, pS[i], 0, 0, 0, i * .137, pC[o] * a, pC[o + 1] * a, pC[o + 2] * a, pK[i]);
   }
-  for (let i = 0; i < NBU; i++) if (bL[i] > 0) { const o = i * 3; put(DT, bX[o] - px, bX[o + 1] - py, bX[o + 2] - pz, .22, -bV[o] * .03, -bV[o + 1] * .03, -bV[o + 2] * .03, 0, 7, 3.6, 1, 0); }
+  for (let i = 0; i < NBU; i++) if (bL[i] > 0) { const o = i * 3; const w = bW[i], q = WCOL[w], tl = w === 2 ? .05 : w === 1 ? .018 : .03; put(DT, bX[o] - px, bX[o + 1] - py, bX[o + 2] - pz, w === 2 ? .5 : w === 1 ? .15 : .22, -bV[o] * tl, -bV[o + 1] * tl, -bV[o + 2] * tl, 0, q[0], q[1], q[2], 0); }
   // every geode stands in a beam of its mineral's colour, so a rare one can be spotted from far off
   for (let n = LG.n, o = 0, D = LG.d, N = LG.N, Hh = N / 2; n > 0; n--, o += F) {
     if (!D[o + 3]) continue;
@@ -2583,7 +2786,7 @@ function simulate(dt, fly) {
   // the signal beacon: a small steady light and a thin beam until it has been found
   const bx = bcn[0] - px, by = bcn[1] - py, bz = bcn[2] - pz, bd = Math.hypot(bx, by, bz), fnd = ST.found[mkey()], bl = .5 + .5 * Math.sin(tm * 1.7);
   put(DGm, bx, by, bz, 2.5, 0, 0, 0, .4, 0, 3, 0, 0);
-  if (!fnd) { put(DT, bx, by - 120, bz, 1.2, 0, 240, 0, 0, .1 * bl, .25 * bl, .5 * bl, 0); put(DPa, bx, by, bz, 14, 0, 0, 0, .3, .2 * bl, .45 * bl, .9 * bl, 0); if (fly && bd < 70) discover(); else if (fly && bd < 1800 && (pingT -= dt) < 0 && AC && AC.state === 'running') { pingT = 5; note(660, AC.currentTime, .014 * (1 - bd / 1800), 'sine', 1.4, 1); } }
+  if (!fnd) { { const st = Math.pow(Math.max(0, Math.sin(tm * 2.4)), 24); put(DPa, bx, by, bz, 9, 0, 0, 0, .3, .1 * bl, .22 * bl, .45 * bl, 0); put(DPa, bx, by, bz, 5 + 30 * st, 0, 0, 0, .7, 1.6 * st, 2 * st, 2.6 * st, 0); } if (fly && bd < 70) discover(); else if (fly && bd < 1800 && (pingT -= dt) < 0 && AC && AC.state === 'running') { pingT = 5; note(660, AC.currentTime, .014 * (1 - bd / 1800), 'sine', 1.4, 1); } }
   // the trader, parked off the gate
   DTr.n = 0;
   if (trader) { const tx = 430 - px, ty = -70 - py, tz = 260 - pz, td = Math.hypot(tx, ty, tz); put(DTr, tx, ty, tz, 70, 0, 0, 0, .61, 0, 0, .12, 0); if (fly && td < 190 && !tradeIn && !jumpTo) { tradeIn = 1; tradePanel(); } else if (td > 400) tradeIn = 0; }
@@ -2889,7 +3092,7 @@ function frame(now, xf) {
 arrive(ST.sec, ST.loc, 1);
 resize();
 window.ES = { warpLook: (a, b) => { dbgJ = a; dbgT = b; }, zero: (i) => { const L = LAYERS[i]; L.n = 0; for (const s of L.slaves) s.n = 0; return LAYERS.length; }, dbg: (z) => { if (z) for (let i = 0; i < 3; i++) SYS.pl[i * 4 + 3] = 0; return Array.from(SYS.pl).map((v) => +v.toFixed(2)).concat(Array.from(SYS.pa).map((v) => +v.toFixed(2))); },
-  goto: (sec, loc) => arrive(sec, loc || 0, 1), market: marketPanel, navCur, interact, map: starMap, good: goodPanel, sc: (k, t) => { scP = k; scT = t; }, scOut: (t) => { scOut = t; vy = 120; thr = 1; }, host: (v) => { hostLv = v; npcSpawn(); }, rp: () => ST.rp, head: (y, p) => { hlF = y == null ? null : [y, p || 0]; }, nav: () => NAV.map((n) => n.id), npcs: () => NPCS.length, journal: journalPanel, board: boardPanel, hail: () => hailPanel(NPCS[0]), cycle: navCycle, atm: () => arrive(SYS.sec, SYS.locs.findIndex((l) => l.atm), 1), vrPanel: (v) => { hudForce = v; }, jt: () => [jumpT, !!jumpTo, SYS.loc, SYS.name, slow], system: describe, on: (f) => hooks.push(f), kind: (t) => { for (let x = 1; x < 400; x++) if ((sysIdAt(x, 0, 0) & 7) === t) return arrive([x, 0, 0], 0, 1); }, place: (t) => { const l = SYS.locs.find((q) => q.t === t); if (l) arrive(SYS.sec, l.i, 1); return !!l; }, startJump, gatePanel, logPanel, tradePanel, closePanel, hull: () => ST.hull, beacon: () => { px = bcn[0] + 200; py = bcn[1]; pz = bcn[2]; }, trader: () => trader, go, vr, cock: setCock, thr: (v) => { thr = v; }, key: (c, v) => { K[c] = v; }, look: (y, p) => { yaw = y; pitch = p; }, at: (x, y, z) => { px = x; py = y; pz = z; snap = 1; }, stereo: (v) => { stereo = v; resize(); },
+  goto: (sec, loc) => arrive(sec, loc || 0, 1), market: marketPanel, navCur, interact, map: starMap, drift: driftToggle, near: (k, f) => { const P = sysP[k]; sysS = [P[0] * f, P[1] * f, P[2] * f]; }, dsys: () => [sysS.map((v) => v | 0), driftV | 0, +SYS.pl[3].toFixed(3), SYS.atm, +veil.toFixed(2)], aim: (k, s) => { const d = SYS.pl, q = s || 1; pitch = Math.asin(q * d[k * 4 + 1]); yaw = Math.atan2(q * d[k * 4], -q * d[k * 4 + 2]); snap = 1; }, good: goodPanel, sc: (k, t) => { scP = k; scT = t; }, scOut: (t) => { scOut = t; vy = 120; thr = 1; }, host: (v) => { hostLv = v; npcSpawn(); }, rp: () => ST.rp, head: (y, p) => { hlF = y == null ? null : [y, p || 0]; }, nav: () => NAV.map((n) => n.id), npcs: () => NPCS.length, journal: journalPanel, board: boardPanel, hail: () => hailPanel(NPCS[0]), cycle: navCycle, atm: () => arrive(SYS.sec, SYS.locs.findIndex((l) => l.atm), 1), vrPanel: (v) => { hudForce = v; }, jt: () => [jumpT, !!jumpTo, SYS.loc, SYS.name, slow], system: describe, on: (f) => hooks.push(f), kind: (t) => { for (let x = 1; x < 400; x++) if ((sysIdAt(x, 0, 0) & 7) === t) return arrive([x, 0, 0], 0, 1); }, place: (t) => { const l = SYS.locs.find((q) => q.t === t); if (l) arrive(SYS.sec, l.i, 1); return !!l; }, startJump, gatePanel, logPanel, tradePanel, closePanel, hull: () => ST.hull, beacon: () => { px = bcn[0] + 200; py = bcn[1]; pz = bcn[2]; }, trader: () => trader, go, vr, cock: setCock, thr: (v) => { thr = v; }, key: (c, v) => { K[c] = v; }, look: (y, p) => { yaw = y; pitch = p; }, at: (x, y, z) => { px = x; py = y; pz = z; snap = 1; }, stereo: (v) => { stereo = v; resize(); },
   jelly: (d = 60, s = 0) => seek(LJ, swarmAt, d, s), rock: (d) => seek(LH, hugeAt, d), big: (d) => seek(LB, bigAt, d), titan: (d) => seek(LTi, titanAt, d), geode: (d = 40) => seek(LG, geodeAt, d),
   fleet: (d = 60) => seek(LF, cellHas(20, SYS.a.fl * .6), d), frig: (d = 1) => seek(LFr, cellHas(21, SYS.a.fr * .7), d), drone: (d = 40) => seek(LDr, cellHas(22, SYS.a.dr * .5), d),
   whale: (d = 900) => seek(LWh, cellHas(17, .55), d), serpent: (d = 250) => seek(LSp, cellHas(18, .4), d), colossus: (d = 900) => seek(LQ, cellHas(16, .4), d), ray: (d = 300) => seek(LY, cellHas(7, .65), d),
