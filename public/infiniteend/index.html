@@ -652,8 +652,8 @@ uniform mat3 uShip;uniform vec3 uEye;uniform vec4 uMo,uCk,uSt;uniform float uWd;
 out vec3 vL,vW,vN,vM;out vec2 vU;
 mat2 r2(float a){float c=cos(a),s=sin(a);return mat2(c,-s,s,c);}
 void main(){vec3 l=aP,n=aN;
- if(aU.y>1.5){vec3 pv=vec3(.62,-1.5,-1.95);l-=pv;l.xy=r2(uSt.x)*l.xy;l.yz=r2(uSt.y)*l.yz;n.xy=r2(uSt.x)*n.xy;n.yz=r2(uSt.y)*n.yz;l+=pv;}
- else if(aU.y>.5){vec3 pv=vec3(-.62,-1.5,-1.95);float a=uCk.x*.6-.12;l-=pv;l.yz=r2(a)*l.yz;n.yz=r2(a)*n.yz;l+=pv;}
+ if(aU.y>1.5){vec3 pv=vec3(-.62,-1.5,-1.95);l-=pv;l.xy=r2(uSt.x)*l.xy;l.yz=r2(uSt.y)*l.yz;n.xy=r2(uSt.x)*n.xy;n.yz=r2(uSt.y)*n.yz;l+=pv;}
+ else if(aU.y>.5){vec3 pv=vec3(.62,-1.5,-1.95);float a=uCk.x*.6-.12;l-=pv;l.yz=r2(a)*l.yz;n.yz=r2(a)*n.yz;l+=pv;}
  vL=aP;vM=aN;l.x*=uWd;l.xy=r2(uMo.w)*l.xy;n.xy=r2(uMo.w)*n.xy;l+=uMo.xyz;
  vec3 p=uShip*l-uEye;vW=p;vN=uShip*n;vU=aU;gl_Position=uVP*vec4(p,1);}`;
 // materials: 0 hull, 1 trim, 2-4 screens, 5 lamps, 6 warm lamps, 7 grip, 8 red cap, 9 instrument panel, 10 glass,
@@ -767,9 +767,9 @@ vec3 bigStar(vec3 d,vec4 S,vec4 C){
  else if(ty<3.5){                                             // a white dwarf in the ring of gas it shed: teal inside, red at the edge, clumped
   float Rr=s*6.,dr=(r-Rr)/Rr,cl=.55+.45*n3(vec3(cos(an)*3.,sin(an)*3.,ph*9.)+r/s*.4);
   o=vec3(1.)*exp(-r*r/(s*s*.004))*30.+vec3(.25,.95,.85)*exp(-r*r/(Rr*Rr*.55))*.35+mix(vec3(.3,1.,.8),vec3(1.,.25,.2),smoothstep(-.15,.2,dr))*exp(-dr*dr*28.)*cl*2.;}
- else if(ty<4.5){                                             // a pulsar: a pinprick that flickers, two beams sweeping round it, a faint wind nebula
-  float ba=TIME*.5+ph*6.28,fl=.35+.65*pow(.5+.5*sin(TIME*14.+ph*30.),8.);vec2 ax=vec2(cos(ba),sin(ba));
-  float bm=exp(-abs(dot(v,vec2(-ax.y,ax.x)))/(r*.06+s*.04))*exp(-r/(s*16.));
+ else if(ty<4.5){                                             // a pulsar: a pinprick with a soft pulse, two short beams that drift slowly round it, a faint wind nebula
+  float ba=TIME*.012+ph*6.28,fl=.8+.2*pow(.5+.5*sin(TIME*2.2+ph*30.),6.);vec2 ax=vec2(cos(ba),sin(ba));
+  float bm=exp(-abs(dot(v,vec2(-ax.y,ax.x)))/(r*.06+s*.04))*exp(-r/(s*9.));
   o=vec3(.8,.9,1.)*(exp(-r*r/(s*s*.02))*40.*fl+bm*2.6*fl)+vec3(.35,.5,1.)*exp(-r/(s*4.))*n3(vec3(v/s*1.5,ph))*.8;}
  else if(ty<5.5){                                             // a protostar: a warm glow still wrapped in dust, jets driven out of its poles
   vec2 ax=vec2(cos(ph*6.28),sin(ph*6.28));float al=dot(v,ax),ac=dot(v,vec2(-ax.y,ax.x));
@@ -1439,12 +1439,12 @@ function cockpitMesh() {
   rpan(V, I, [0, -1.2, -2.13], [1, 0, 0], [0, Math.cos(.35), -Math.sin(.35)], 1.42, .21, .012, .08, 9);                    // instrument face, rounded at its ends
   screen([-.62, -1.2, -2.115], .2, .13, 0, -.35, 3); screen([.62, -1.2, -2.115], .2, .13, 0, -.35, 4); screen([0, -1.18, -2.115], .2, .15, 0, -.35, 2);
   ob([0, -1.52, -1.8], .3, .12, .5, 0, -.2, 0); ob([0, -1.4, -1.83], .26, .008, .46, 0, -.2, 9);                          // pedestal
-  // lever and stick: turned parts in rubber boots, a grip with a thumb button
-  lathe(V, I, -.62, -1.95, [[-1.51, .12], [-1.49, .118], [-1.46, .095], [-1.44, .06], [-1.425, .034], [-1.415, .026]], 22, 1); lathe(V, I, .62, -1.95, [[-1.51, .1], [-1.49, .098], [-1.46, .078], [-1.44, .05], [-1.425, .03], [-1.415, .022]], 22, 1);
-  lathe(V, I, -.62, -1.95, [[-1.43, .017], [-1.235, .015]], 12, 12, 1); ob([-.62, -1.2, -1.95], .17, .038, .038, 0, 0, 7, 1); lathe(V, I, -.8, -1.95, [[-1.24, .03], [-1.205, .042], [-1.165, .03]], 16, 6, 1);
-  lathe(V, I, .62, -1.95, [[-1.43, .016], [-1.215, .014]], 12, 12, 2);
-  lathe(V, I, .62, -1.95, [[-1.235, .026], [-1.215, .038], [-1.16, .046], [-1.1, .047], [-1.055, .042], [-1.03, .032], [-1.018, .016]], 20, 7, 2);
-  lathe(V, I, .62, -1.968, [[-1.03, .016], [-1.012, .015], [-1.004, .007]], 14, 8, 2);
+  // stick on the left, throttle lever on the right (Shawn's layout): turned parts in rubber boots, a grip with a thumb button
+  lathe(V, I, .62, -1.95, [[-1.51, .12], [-1.49, .118], [-1.46, .095], [-1.44, .06], [-1.425, .034], [-1.415, .026]], 22, 1); lathe(V, I, -.62, -1.95, [[-1.51, .1], [-1.49, .098], [-1.46, .078], [-1.44, .05], [-1.425, .03], [-1.415, .022]], 22, 1);
+  lathe(V, I, .62, -1.95, [[-1.43, .017], [-1.235, .015]], 12, 12, 1); ob([.62, -1.2, -1.95], .17, .038, .038, 0, 0, 7, 1); lathe(V, I, .8, -1.95, [[-1.24, .03], [-1.205, .042], [-1.165, .03]], 16, 6, 1);
+  lathe(V, I, -.62, -1.95, [[-1.43, .016], [-1.215, .014]], 12, 12, 2);
+  lathe(V, I, -.62, -1.95, [[-1.235, .026], [-1.215, .038], [-1.16, .046], [-1.1, .047], [-1.055, .042], [-1.03, .032], [-1.018, .016]], 20, 7, 2);
+  lathe(V, I, -.62, -1.968, [[-1.03, .016], [-1.012, .015], [-1.004, .007]], 14, 8, 2);
   // density: bezels round each bank of instruments, raised key blocks, ribs, light strips, status lamps
   for (const x of [-.94, -.32, .32, .94]) ob([x, -1.2, -2.118], .012, .215, .02, 0, -.35, 1);
   ob([0, -1.0, -2.19], 1.44, .012, .022, 0, -.35, 1); ob([0, -1.4, -2.05], 1.44, .012, .022, 0, -.35, 1);
@@ -2598,7 +2598,7 @@ function droneTick(dt, fly) {
   }
   // fuel: generous, but not endless. Idle sips, throttle drinks, boost and drift gulp.
   if (fly) {
-    const use = bst * (.035 + .05 * bRamp);                              // only boost (and the drift it carries you into) burns fuel, and slowly
+    const use = bst * (.035 + .05 * bRamp + .04 * bOd);                              // only boost (and the drift it carries you into) burns fuel, and slowly
     const was = ST.fuel; ST.fuel = Math.max(0, ST.fuel - use * dt);
     if (was > 0 && ST.fuel <= 0) { tip('Fuel dry · emergency thrusters only · find a siphon swarm, or hold on: your beacon is calling a tug', 8000); strandT = 0; }
     if (ST.fuel <= 0) { strandT += dt; if (strandT > 50) { strandT = 0; const fee = Math.min(ST.credits, 60); ST.credits -= fee; ST.fuel = 25; showCargo(); save(); comm(`Salvage tug to ${call()}: tanks topped to a quarter.${fee ? ' That is ' + fee + ' credits.' : ' This one is on us.'}`); } }
@@ -2660,7 +2660,7 @@ function rockAssist(dt) {
             const s = at(C, cx, cy, cz); if (!s) continue;
             const rx = (cx + gj0) * C - px, ry = (cy + gj1) * C - py, rz = (cz + gj2) * C - pz, t = rx * ux + ry * uy + rz * uz; if (t < 0 || t > look) continue;
             const ox = ux * t - rx, oy = uy * t - ry, oz = uz * t - rz, m = Math.hypot(ox, oy, oz), R = s * .93 + 18;
-            if (sp > 500 && t < sp * .14 && m > R && m < R + 90 && !nearSeen.has(key) && tm - cHitT > 1) { nearSeen.add(key); const g = Math.round(3 + 4 * (1 - (m - R) / 90)); ST.spice = Math.min(100, (ST.spice || 0) + g); spiceSnd(1); }
+            if (sp > 500 && t < sp * .14 && m > R && m < R + 90 && !nearSeen.has(key) && tm - cHitT > 1) { nearSeen.add(key); const g = Math.round((3 + 4 * (1 - (m - R) / 90)) * (1 + bOd)); ST.spice = Math.min(100, (ST.spice || 0) + g); spiceSnd(1); }
             if (m < R && t - s < best) { best = t - s; raThr = { t: Math.max(1, t - s), m, R, s, huge: L === LH, tier: hx(3) < .3 ? 1 : 0, nx: m > .1 ? ox / m : sRx, ny: m > .1 ? oy / m : sRy, nz: m > .1 ? oz / m : sRz }; } } } } } }
   if (!raThr || sp < 240) return;
   const T = raThr, tti = T.t / sp;
@@ -2670,8 +2670,8 @@ function rockAssist(dt) {
       for (let k = 0; k < 18; k++) fxAdd(px + sFx * 30 + (Math.random() - .5) * 60, py + sFy * 30 + (Math.random() - .5) * 40, pz + sFz * 30 + (Math.random() - .5) * 60, .3 + Math.random() * .5, 1.4, .2, .35); }
     else if (tm > spiceTip) { spiceTip = tm + 8; tip(`Not enough spice to slow this one (needs ${cost}) · steer!`, 2500); } }
   if (btT > 0 && T.m < T.R * .85 && tti < .9 && btHold < 1.6) { btT = Math.max(btT, btMax * .45); btHold += dt / Math.max(.1, slow); }   // a big rock still dead ahead keeps time slow a little longer
-  if (tti < .7) { const want = Math.max(240, T.t / .7); if (sp > want) { const f = Math.max(want / sp, 1 - dt * 1.5); vx *= f; vy *= f; vz *= f; } }   // only the last moment eases off: a boost run still needs steering
-  const a = 70 * (1 - T.m / T.R) * dt; vx += T.nx * a; vy += T.ny * a; vz += T.nz * a;
+  if (tti < .7 && bOd < .7) { const want = Math.max(240, T.t / .7); if (sp > want) { const f = Math.max(want / sp, 1 - dt * 1.5 * (1 - bOd)); vx *= f; vy *= f; vz *= f; } }   // overdrive: the safety brake lets go   // only the last moment eases off: a boost run still needs steering
+  const a = 70 * (1 - T.m / T.R) * dt * (1 - .9 * bOd); vx += T.nx * a; vy += T.ny * a; vz += T.nz * a;
 }
 
 // ---- touch screens: the actions that have keys get buttons ----
@@ -2973,7 +2973,7 @@ function scNote(T, deg, oct) { const sc = T.scale, o = Math.floor(deg / 7), d = 
 function scInit() {
   if (SC.bus) return;
   const A = AC;
-  SC.lim = A.createDynamicsCompressor(); SC.lim.threshold.value = -6; SC.lim.knee.value = 6; SC.lim.ratio.value = 8; SC.lim.attack.value = .005; SC.lim.release.value = .25;
+  SC.lim = A.createDynamicsCompressor(); SC.lim.threshold.value = -4; SC.lim.knee.value = 10; SC.lim.ratio.value = 4; SC.lim.attack.value = .03; SC.lim.release.value = .3;   // slow enough not to grind on the sub
   SC.out = A.createGain(); SC.out.gain.value = 0; SC.lim.connect(SC.out).connect(AG);
   // reverb: a 4.5 s tail with a little pre-delay, darkening as it fades
   const len = A.sampleRate * 4.5 | 0, ir = A.createBuffer(2, len, A.sampleRate), pre = A.sampleRate * .05 | 0;
@@ -3012,8 +3012,8 @@ function scTrack() {
 function scEnv(g, t, a, peak, d) { g.gain.setValueAtTime(.0001, t); g.gain.linearRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(.0001, t + d); return t + d + .05; }
 function scKick(t, v) {   // deep and soft: a sine dropping into the low end, low-passed, with a gentle pump on everything else
   const o = AC.createOscillator(), g = AC.createGain(); o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(42, t + .08); o.frequency.exponentialRampToValueAtTime(36, t + .4);
-  o.connect(g).connect(SC.kickBus); o.start(t); o.stop(scEnv(g, t, .002, v, .5));
-  SC.pump.gain.cancelScheduledValues(t); SC.pump.gain.setValueAtTime(.45, t); SC.pump.gain.linearRampToValueAtTime(1, t + .22);
+  o.connect(g).connect(SC.kickBus); o.start(t); o.stop(scEnv(g, t, .006, v, .5));
+  SC.pump.gain.cancelScheduledValues(t); SC.pump.gain.setTargetAtTime(.5, t, .012); SC.pump.gain.setTargetAtTime(1, t + .05, .07);   // the duck eases down and back: a hard step clicks
 }
 function scNoise(t, v, type, f, dur, dst, q) { const s = AC.createBufferSource(), fl = AC.createBiquadFilter(), g = AC.createGain(); s.buffer = NB; fl.type = type; fl.frequency.value = f; if (q) fl.Q.value = q; s.connect(fl).connect(g).connect(dst || SC.bus); s.start(t, Math.random()); s.stop(scEnv(g, t, .001, v, dur)); return g; }
 function scSnare(t, v) { const g = scNoise(t, v, 'bandpass', 1800, .18, SC.bus, .8); g.connect(SC.revIn); }        // restrained, and most of it is room
@@ -3023,7 +3023,7 @@ function scBass(t, n, dur, v) {   // clean sub, low-passed, legato: no grit
   o.frequency.value = mf(n); o2.type = 'triangle'; o2.frequency.value = mf(n + 12); g2.gain.value = .12;            // a faint octave so small speakers still hear the line
   o.connect(f); o2.connect(g2).connect(f); f.connect(g).connect(SC.bus);
   g.gain.setValueAtTime(.0001, t); g.gain.linearRampToValueAtTime(v, t + .02); g.gain.setTargetAtTime(v * .5, t + .05, .3); g.gain.setTargetAtTime(.0001, t + dur, .35);
-  o.start(t); o2.start(t); o.stop(t + dur + 1.4); o2.stop(t + dur + 1.4);
+  o.start(t); o2.start(t); o.stop(t + dur + 2.2); o2.stop(t + dur + 2.2);
 }
 function scPad(t, notes, dur, v) {   // sine and triangle pairs, slowly detuned against each other (a chorus), 2.5 s swell, 4 s release
   const g = AC.createGain(), f = AC.createBiquadFilter(); f.frequency.value = 1400; f.connect(g); g.connect(SC.bus); g.connect(SC.revIn);
@@ -3053,10 +3053,10 @@ function scNextSec(e) {
 }
 function scStep(t, T, e) {
   const s = SC.step & 15, S = SECS[SC.sec], spb = 60 / T.bpm / 4, prog = (SC.bar >> 4) & 1 ? T.prog2 : T.prog, rd = prog[(SC.secBar >> 1) & 3], bk = SC.sec === 'build' ? (SC.secBar + s / 16) / SC.secLen : 1;
-  if (S.k && (T.kick.includes(s) || s === T.kickVar && SC.sec === 'drop') && Math.random() < .92) scKick(t, (s === T.kickVar ? .2 : .32) * (.75 + .25 * Math.random()));
+  if (S.k && (T.kick.includes(s) || s === T.kickVar && SC.sec === 'drop') && Math.random() < .92) scKick(t, (s === T.kickVar ? .17 : .27) * (.75 + .25 * Math.random()));
   if (S.sn && T.snare.includes(s) && (T.style === 'night' || Math.random() < .6)) scSnare(t, .05 * bk);
   if (S.h && T.hat[s] && Math.random() < S.h) scHat(t, (.008 + .008 * Math.random()) * (SC.sec === 'build' ? .5 + .5 * bk : 1));
-  if (S.b && s % 4 === 0) scBass(t, scNote(T, rd + T.bass[(s >> 2) + (SC.secBar & 1) * 4], -1), spb * 3.6, .22 + .05 * Math.random());
+  if (S.b && s % 4 === 0) scBass(t, scNote(T, rd + T.bass[(s >> 2) + (SC.secBar & 1) * 4], -1), spb * 3.6, .19 + .04 * Math.random());
   if (s === 0 && S.pad) scPad(t, [scNote(T, rd, 0), scNote(T, rd + 2, 0), scNote(T, rd + 4, 0), scNote(T, rd + 6, 0)], spb * 16, .012 * S.pad);   // a 7th chord, one bar
   if (S.arp && T.style === 'night' && s % 2 === 0 && Math.random() < S.arp * (.4 + .6 * e)) scPluck(t, scNote(T, rd + T.arp[(s >> 1) % 4], 1), .022);
   if (S.arp && T.style === 'drift' && s % 4 === 2 && Math.random() < S.arp * .5) scPluck(t, scNote(T, rd + T.arp[(s >> 2) % 4], 1), .018);
@@ -3069,7 +3069,7 @@ function scTick() {
   const key = SYS.id + ':' + SYS.loc + ':' + (SYS.atm ? 1 : 0);
   if (key !== SC.key) { SC.key = key; SC.trk = scTrack(); SC.sec = 'intro'; SC.secBar = 0; SC.secLen = 8; SC.drops = 0; const T = SC.trk, q = 60 / T.bpm / 4; SC.dl.delayTime.value = q * 2; SC.dr.delayTime.value = q * 2; SC.revIn.gain.value = T.rev; }
   const T = SC.trk, air = radioAir(), solo = AC.currentTime < cueEnd, now = AC.currentTime;
-  SC.out.gain.setTargetAtTime(air || muted ? 0 : solo ? .3 : .9, now, air ? .4 : 1.5);
+  SC.out.gain.setTargetAtTime(air || muted ? 0 : solo ? .3 : .8, now, air ? .4 : 1.5);
   SC.atm.gain.setTargetAtTime(air ? 0 : .01 + .015 * (1 - energy), now, 1); SC.atmF.frequency.setTargetAtTime(250 + 600 * energy, now, .5);
   if (air) { SC.t = Math.max(SC.t, now + .1); return; }
   if (SC.t < now) SC.t = now + .05;
@@ -3177,7 +3177,7 @@ addEventListener('resize', resize);
 
 // ---- ship state and input ----
 let syaw = .05, spit = .08, hurtTip = 0, subO = null, subG = null;
-let bHold = 0, bRamp = 0, QA = null, QAs = null, yawL = 0, pitchL = 0, rollIn = 0;
+let bHold = 0, bRamp = 0, bOd = 0, odOn = 0, QA = null, QAs = null, yawL = 0, pitchL = 0, rollIn = 0;
 const qmul = (a, b) => [a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1], a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0], a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3], a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2]];
 const qn = (q) => { const l = Math.hypot(q[0], q[1], q[2], q[3]) || 1; return [q[0] / l, q[1] / l, q[2] / l, q[3] / l]; };
 const qax = (x, y, z, a) => { const s = Math.sin(a / 2); return [x * s, y * s, z * s, Math.cos(a / 2)]; };
@@ -3850,6 +3850,7 @@ function frame(now, xf) {
   if (fly && ST.fuel <= 0) fwd *= .18;                              // dry tanks: emergency thrusters only
   bst += (boost - bst) * (1 - Math.exp(-dt * 2.5));
   bHold = boost && fly ? bHold + dt : 0; bRamp = Math.min(1, Math.max(0, (bHold - 1) / 5));   // keep holding boost and it keeps building, to the top of the range
+  bOd = SYS.atm ? 0 : Math.min(1, Math.max(0, (bHold - 7) / 18)); if (bOd > 0 && !odOn && !drift) { odOn = 1; pop('OVERDRIVE · ASSIST OFF', '#ffb347'); } if (!boost) odOn = 0;   // hold on past full boost: faster and faster, and the rocks are yours to dodge
   // the ship's attitude is a free rotation: every input turns it about its own axes, so it can roll, loop and fly inverted; code that points the ship sets yaw and pitch and raises snap
   roll += ((CFG.ctl ? 0 : -dyaw / dt * .1 - ms * .14) - roll) * (1 - Math.exp(-dt * 4)); roll = Math.max(-.5, Math.min(.5, roll));   // standard flight banks into turns
   dyaw = 0; trauma = Math.max(0, trauma - dt * 1.6);
@@ -3860,7 +3861,7 @@ function frame(now, xf) {
   const sh = trauma * trauma * .02, Qb = roll ? qmul(QAs, qax(0, 0, 1, roll)) : QAs, Qv = sh > 0 ? qmul(Qb, qmul(qax(0, 1, 0, Math.sin(tm * 71) * sh), qax(1, 0, 0, Math.sin(tm * 93 + 1) * sh))) : Qb;
   { const R = qv(Qv, 1, 0, 0), U = qv(Qv, 0, 1, 0), F = qv(Qv, 0, 0, -1); sRx = R[0]; sRy = R[1]; sRz = R[2]; sUx = U[0]; sUy = U[1]; sUz = U[2]; sFx = F[0]; sFy = F[1]; sFz = F[2];
     spit = Math.asin(Math.max(-1, Math.min(1, F[1]))); syaw = Math.atan2(F[0], -F[2]); }
-  fwd += bst * 400 * eff * (1 + .55 * bRamp);                                            // local rush tops out near 620: rocks get two seconds or more to arrive; the long-range drive carries you across the system                                          // Shift is thrust on its own: no need to hold forward
+  fwd += bst * 400 * eff * (1 + .55 * bRamp + .85 * bOd * (2 - bOd) * (drift ? 0 : 1));                                            // local rush tops out near 620; overdrive (held 7 s+) climbs toward ~960 over the next 18 s; the long-range drive carries you across the system                                          // Shift is thrust on its own: no need to hold forward
   const k = 1 - Math.exp(-dt * (bst > .3 ? 1.5 : 1.05));
   vx += (sFx * fwd + (sRx * ms + sUx * mu) * 45 - vx) * k; vy += (sFy * fwd + (sRy * ms + sUy * mu) * 45 - vy) * k; vz += (sFz * fwd + (sRz * ms + sUz * mu) * 45 - vz) * k;
   if (fly) rockAssist(dt);
@@ -3963,7 +3964,7 @@ resize();
 window.ES = { warpLook: (a, b) => { dbgJ = a; dbgT = b; }, zero: (i) => { const L = LAYERS[i]; L.n = 0; for (const s of L.slaves) s.n = 0; return LAYERS.length; }, dbg: (z) => { if (z) for (let i = 0; i < 3; i++) SYS.pl[i * 4 + 3] = 0; return Array.from(SYS.pl).map((v) => +v.toFixed(2)).concat(Array.from(SYS.pa).map((v) => +v.toFixed(2))); },
   goto: (sec, loc) => arrive(sec, loc || 0, 1), market: marketPanel, ph: (t) => { SYS.ph = t; SYS.pq = [sFx, sFy, sFz]; }, bh: () => { SYS.sky[0] = 1; pitch = Math.asin(-.22); yaw = Math.atan2(.58, -.78); snap = 1; }, seeNpc: (i) => { const a = NPCS.filter((q) => !q.big && q.var === i)[0]; if (!a) return -1; px = a.x + 22; py = a.y + 7; pz = a.z + 22; const dx = a.x - px, dy = a.y - py, dz = a.z - pz, l = Math.hypot(dx, dy, dz); pitch = Math.asin(dy / l); yaw = Math.atan2(dx, -dz); snap = 1; vx = vy = vz = 0; thr = 0; return a.var; }, linger: () => { for (let i = 0; i < 90; i++) lingerTick(.05); return [lingT, lingId, jpOpen]; }, tp: (x, y, z) => { px = x; py = y; pz = z; vx = vy = vz = 0; thr = 0; }, navCur, interact, map: starMap, drift: driftToggle, near: (k, f) => { const P = sysP[k]; sysS = [P[0] * f, P[1] * f, P[2] * f]; }, dsys: () => [sysS.map((v) => v | 0), driftV | 0, +SYS.pl[3].toFixed(3), SYS.atm, +veil.toFixed(2)], aim: (k, s) => { const d = SYS.pl, q = s || 1; pitch = Math.asin(q * d[k * 4 + 1]); yaw = Math.atan2(q * d[k * 4], -q * d[k * 4 + 2]); snap = 1; }, good: goodPanel, sc: (k, t) => { scP = k; scT = t; }, scOut: (t) => { scOut = t; vy = 120; thr = 1; }, host: (v) => { hostLv = v; npcSpawn(); }, rp: () => ST.rp, head: (y, p) => { hlF = y == null ? null : [y, p || 0]; }, nav: () => NAV.map((n) => n.id), npcs: () => NPCS.length, journal: journalPanel, board: boardPanel, hail: () => hailPanel(NPCS[0]), cycle: navCycle, atm: () => arrive(SYS.sec, SYS.locs.findIndex((l) => l.atm), 1), vrPanel: (v) => { hudForce = v; }, jt: () => [jumpT, !!jumpTo, SYS.loc, SYS.name, slow], system: describe, on: (f) => hooks.push(f), kind: (t) => { for (let x = 1; x < 400; x++) if ((sysIdAt(x, 0, 0) & 7) === t) return arrive([x, 0, 0], 0, 1); }, place: (t) => { const l = SYS.locs.find((q) => q.t === t); if (l) arrive(SYS.sec, l.i, 1); return !!l; }, startJump, gatePanel, logPanel, tradePanel, closePanel, hull: () => ST.hull, beacon: () => { px = bcn[0] + 200; py = bcn[1]; pz = bcn[2]; }, trader: () => trader, go, vr, cock: setCock, thr: (v) => { thr = v; }, key: (c, v) => { K[c] = v; }, look: (y, p) => { yaw = y; pitch = p; snap = 1; }, at: (x, y, z) => { px = x; py = y; pz = z; snap = 1; }, stereo: (v) => { stereo = v; resize(); },
   jelly: (d = 60, s = 0) => seek(LJ, swarmAt, d, s), rock: (d) => seek(LH, hugeAt, d), big: (d) => seek(LB, bigAt, d), titan: (d) => seek(LTi, titanAt, d), geode: (d = 40) => seek(LG, geodeAt, d),
-  fleet: (d = 60) => seek(LF, cellHas(20, SYS.a.fl * .6), d), frig: (d = 1) => seek(LFr, cellHas(21, SYS.a.fr * .7), d), siph: (d = 40) => seek(LDs, cellHas(24, SYS.a.dr * .13 + .008), d), spark: (d = 40) => seek(LDe, cellHas(25, SYS.a.dr * .13 + .008), d), inv: (m) => invShow(m), closeStar: (sc, giant, rad) => { bigStarsSet(); csU = [rad || .2, sc, 1.3, giant ? 1 : 0]; csC = giant ? [1, .34, .1] : CSC[sc]; yaw = Math.atan2(SUN[0], -SUN[2]); pitch = Math.asin(SUN[1]); snap = 1; }, bigLook: (i, ty) => { bigStarsSet(); if (ty != null) bsS[i * 4 + 3] = ty; const x = bsS[i * 4], y = bsS[i * 4 + 1], z = bsS[i * 4 + 2]; yaw = Math.atan2(x, -z); pitch = Math.asin(y); snap = 1; return [bsS[i * 4 + 3], bsC[i * 4 + 3]]; }, musMeter: () => { if (!SC.an) { SC.an = AC.createAnalyser(); SC.an.fftSize = 2048; SC.lim.connect(SC.an); } if (!SC.mi) { const b = new Float32Array(2048); SC.mm = { pk: 0, ss: 0, n: 0 }; SC.mi = setInterval(() => { SC.an.getFloatTimeDomainData(b); for (const x of b) { SC.mm.pk = Math.max(SC.mm.pk, Math.abs(x)); SC.mm.ss += x * x; SC.mm.n++; } }, 20); } const r = { pk: +SC.mm.pk.toFixed(3), rms: +Math.sqrt(SC.mm.ss / Math.max(1, SC.mm.n)).toFixed(3), sec: SC.sec }; SC.mm = { pk: 0, ss: 0, n: 0 }; return r; }, musSec: (s) => { SC.sec = s; SC.secBar = 0; SC.secLen = SECS[s].len; }, jumpTest: (l) => startJump({ sec: SYS.sec, loc: l == null ? (SYS.loc + 1) % SYS.locs.length : l }), mus: () => { if (!SC.an && SC.lim) { SC.an = AC.createAnalyser(); SC.an.fftSize = 2048; SC.lim.connect(SC.an); } const T = SC.trk, b = new Float32Array(2048); let pk = 0, rms = 0; if (SC.an) { SC.an.getFloatTimeDomainData(b); for (const x of b) { pk = Math.max(pk, Math.abs(x)); rms += x * x; } rms = Math.sqrt(rms / 2048); } return { sec: SC.sec, bar: SC.bar, secBar: SC.secBar, e: +energy.toFixed(2), bpm: T && T.bpm, mode: T && T.mode, style: T && T.style, root: T && T.root, pk: +pk.toFixed(3), rms: +rms.toFixed(3), ac: AC && AC.state }; }, vel: (s) => { vx = sFx * s; vy = sFy * s; vz = sFz * s; bst = 1; }, bloomNow: () => { bloomT = 0; }, sys: () => ({ bl: BLOOMS.length, grv: grooveAt(bar), arp: ARPS.indexOf(arpAt(bar)), chord: chordAt(bar), ac: AC && AC.state, spd: Math.round(Math.hypot(vx, vy, vz)), thr: raThr && { t: raThr.t | 0, m: raThr.m | 0, R: raThr.R | 0 }, hull: ST.hull, fuel: ST.fuel, wen: ST.wen, spice: ST.spice, cargo: ST.cargo.slice(), warn: sysWarn, sw: swOn, slow, btT }), setSys: (o) => { if (o.cargo) { o.cargo.forEach((v, i) => cargo[i] = v); delete o.cargo; } Object.assign(ST, o); }, drone: (d = 40) => seek(LDr, cellHas(22, SYS.a.dr * .16 + .008), d),
+  fleet: (d = 60) => seek(LF, cellHas(20, SYS.a.fl * .6), d), frig: (d = 1) => seek(LFr, cellHas(21, SYS.a.fr * .7), d), siph: (d = 40) => seek(LDs, cellHas(24, SYS.a.dr * .13 + .008), d), spark: (d = 40) => seek(LDe, cellHas(25, SYS.a.dr * .13 + .008), d), inv: (m) => invShow(m), closeStar: (sc, giant, rad) => { bigStarsSet(); csU = [rad || .2, sc, 1.3, giant ? 1 : 0]; csC = giant ? [1, .34, .1] : CSC[sc]; yaw = Math.atan2(SUN[0], -SUN[2]); pitch = Math.asin(SUN[1]); snap = 1; }, bigLook: (i, ty) => { bigStarsSet(); if (ty != null) bsS[i * 4 + 3] = ty; const x = bsS[i * 4], y = bsS[i * 4 + 1], z = bsS[i * 4 + 2]; yaw = Math.atan2(x, -z); pitch = Math.asin(y); snap = 1; return [bsS[i * 4 + 3], bsC[i * 4 + 3]]; }, musMeter: () => { if (!SC.an) { SC.an = AC.createAnalyser(); SC.an.fftSize = 2048; SC.lim.connect(SC.an); } if (!SC.mi) { const b = new Float32Array(2048); SC.mm = { pk: 0, ss: 0, n: 0 }; SC.mi = setInterval(() => { SC.an.getFloatTimeDomainData(b); for (const x of b) { SC.mm.pk = Math.max(SC.mm.pk, Math.abs(x)); SC.mm.ss += x * x; SC.mm.n++; } }, 20); } const r = { pk: +SC.mm.pk.toFixed(3), rms: +Math.sqrt(SC.mm.ss / Math.max(1, SC.mm.n)).toFixed(3), sec: SC.sec }; SC.mm = { pk: 0, ss: 0, n: 0 }; return r; }, musSec: (s) => { SC.sec = s; SC.secBar = 0; SC.secLen = SECS[s].len; }, jumpTest: (l) => startJump({ sec: SYS.sec, loc: l == null ? (SYS.loc + 1) % SYS.locs.length : l }), mus: () => { if (!SC.an && SC.lim) { SC.an = AC.createAnalyser(); SC.an.fftSize = 2048; SC.lim.connect(SC.an); } const T = SC.trk, b = new Float32Array(2048); let pk = 0, rms = 0; if (SC.an) { SC.an.getFloatTimeDomainData(b); for (const x of b) { pk = Math.max(pk, Math.abs(x)); rms += x * x; } rms = Math.sqrt(rms / 2048); } return { sec: SC.sec, bar: SC.bar, secBar: SC.secBar, e: +energy.toFixed(2), bpm: T && T.bpm, mode: T && T.mode, style: T && T.style, root: T && T.root, pk: +pk.toFixed(3), rms: +rms.toFixed(3), ac: AC && AC.state }; }, vel: (s) => { vx = sFx * s; vy = sFy * s; vz = sFz * s; bst = 1; }, bloomNow: () => { bloomT = 0; }, bh: (h) => { bHold = h; return [bRamp, bOd]; }, sys: () => ({ bl: BLOOMS.length, grv: grooveAt(bar), arp: ARPS.indexOf(arpAt(bar)), chord: chordAt(bar), ac: AC && AC.state, spd: Math.round(Math.hypot(vx, vy, vz)), thr: raThr && { t: raThr.t | 0, m: raThr.m | 0, R: raThr.R | 0 }, hull: ST.hull, fuel: ST.fuel, wen: ST.wen, spice: ST.spice, cargo: ST.cargo.slice(), warn: sysWarn, sw: swOn, slow, btT }), setSys: (o) => { if (o.cargo) { o.cargo.forEach((v, i) => cargo[i] = v); delete o.cargo; } Object.assign(ST, o); }, drone: (d = 40) => seek(LDr, cellHas(22, SYS.a.dr * .16 + .008), d),
   whale: (d = 900) => seek(LWh, cellHas(17, .55), d), serpent: (d = 250) => seek(LSp, cellHas(18, .4), d), colossus: (d = 900) => seek(LQ, cellHas(16, .4), d), ray: (d = 300) => seek(LY, cellHas(7, .65), d),
   info: () => ({ cue: cueName, up: [sUx, sUy, sUz].map((v) => +v.toFixed(2)), fw: [sFx, sFy, sFz].map((v) => +v.toFixed(2)), fps, W, H, S, pos: [px, py, pz], reg: REG, sys: SYS.name, broken, cargo, live: nLive, dyn: DC[0].n + DC[1].n + DGm.n, n: LAYERS.map((l) => l.n) }),
 };
