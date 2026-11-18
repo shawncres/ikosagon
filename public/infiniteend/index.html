@@ -295,6 +295,7 @@ function mkSys(id) {
   s.name = n[0].toUpperCase() + n.slice(1) + ' ' + ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'IX'][id >>> 17 & 7];
   // the star
   const sc = id >>> 20 & 7, STC = [[1, .55, .4], [1, .72, .5], [1, .93, .78], [.98, .97, .95], [.8, .88, 1], [.65, .78, 1], [1, .85, .7], [.85, .92, 1]][sc];
+  s.sc = sc; s.stc = STC;
   s.star = ['red dwarf', 'orange dwarf', 'yellow star', 'white star', 'blue-white star', 'blue giant', 'binary pair', 'white dwarf'][sc];
   for (let i = 0; i < 3; i++) s.pal[9 + i] = s.pal[9 + i] * .35 + STC[i] * .65;
   const word = () => { const w = SYLL[rnd() * 16 | 0] + SYLL[rnd() * 16 | 0]; return w[0].toUpperCase() + w.slice(1); };
@@ -415,7 +416,7 @@ const ROCK_V = VI + `
 uniform float uSpin;uniform int uKind;
 out vec3 vP,vN,vO;flat out vec4 vQ,vI,vJ;
 void main(){
- vec3 c=ctr();float sz=iA.w,sd=iB.w;if(uCN.y>.5)sz*=smoothstep(uCN.x*uCN.y*.5,uCN.x*uCN.y*.36,length(c));
+ vec3 c=ctr();float sz=iA.w,sd=iB.w;if(uCN.y>.5)sz*=smoothstep(uCN.x*uCN.y*.5,uCN.x*uCN.y*.28,length(c));
  vec4 q=rockQ(sd,uSpin);
  vec3 s=uKind==0?rockS(sd):uKind==2?.05+.95*pow(h3(sd*7.7),vec3(2.2)):vec3(1);
  vec3 o=aP*s*sz;
@@ -519,7 +520,7 @@ const CRY_V = VI + `
 uniform float uSpin;
 out vec3 vP,vN;out vec2 vU;flat out vec4 vI;
 void main(){
- vec3 c=ctr();float sz=iA.w,sd=iB.w;if(uCN.y>.5)sz*=smoothstep(uCN.x*uCN.y*.5,uCN.x*uCN.y*.36,length(c));
+ vec3 c=ctr();float sz=iA.w,sd=iB.w;if(uCN.y>.5)sz*=smoothstep(uCN.x*uCN.y*.5,uCN.x*uCN.y*.28,length(c));
  vec4 q=rockQ(sd,uSpin);vec3 s=rockS(sd);
  vec3 up=normalize(iC.xyz/s),t=normalize(cross(up,vec3(.31,.9,.23))),b=cross(up,t);
  float cs=sz*(.16+.3*iC.w);
@@ -735,7 +736,7 @@ out vec2 vU;void main(){vec2 p=vec2(gl_VertexID<<1&2,gl_VertexID&2);vU=p;gl_Posi
 
 // the sky: nebula, stars, the sun, and a ringed giant with a moon
 const SKY_F = HD + `
-in vec2 vU;uniform vec4 uSky,uPl[3],uPa[3],uOrb,uPh;uniform vec3 uPb[3],uSd,uOa,uOb,uPq;out vec4 o;
+in vec2 vU;uniform vec4 uBS[8],uBC[8],uCS;uniform vec3 uCC;uniform vec4 uSky,uPl[3],uPa[3],uOrb,uPh;uniform vec3 uPb[3],uSd,uOa,uOb,uPq;out vec4 o;
 float hsh(vec3 p){p=fract(p*.3183099+.1);p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
 float n3(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.-2.*f);
  return mix(mix(mix(hsh(i),hsh(i+vec3(1,0,0)),f.x),mix(hsh(i+vec3(0,1,0)),hsh(i+vec3(1,1,0)),f.x),f.y),
@@ -747,7 +748,67 @@ float vn(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*f*(f*(f*6.-15.)+10.);
 float tn(vec3 p){p*=4.;return .55*vn(p)+.3*vn(p*2.03+7.)+.15*vn(p*4.1+3.);}
 float stars(vec3 d,float sc,float th){vec3 p=d*sc,i=floor(p),f=p-i;float h=hsh(i);
  vec3 q=.2+.6*vec3(hsh(i+3.1),hsh(i+7.7),hsh(i+11.3));
- float r=length(f-q);return step(th,h)*smoothstep(.16,0.,r)*(h-th)/(1.-th);}
+ float r=length(f-q),tw=.6+.4*sin(TIME*(1.3+h*7.)+h*97.)*sin(TIME*(.7+h*3.1)+h*41.);   // far stars scintillate, each at its own pace
+ return step(th,h)*smoothstep(.16,0.,r)*(h-th)/(1.-th)*tw;}
+// ---- big stars: a few per place, each a kind and a stage of life. S = direction + kind, C = colour + angular size ----
+float spk(vec2 v,float s,float L,float rot,float th){float a=0.;for(int i=0;i<3;i++){float an=rot+float(i)*1.0472;vec2 ax=vec2(cos(an),sin(an));
+ a+=exp(-abs(dot(v,vec2(-ax.y,ax.x)))/(.00045+s*th*.12))*exp(-abs(dot(v,ax))/min(s*L*.3,.045));}return a*.35;}   // thin, short, faint: a hint of the optics, not searchlights            // six diffraction spikes
+vec3 bigStar(vec3 d,vec4 S,vec4 C){
+ float s=C.w;if(s<=0.||dot(d,S.xyz)<.8)return vec3(0);
+ vec3 T=normalize(cross(S.xyz,vec3(.17,1.,.31))),B=cross(S.xyz,T);vec2 v=vec2(dot(d,T),dot(d,B));float r=length(v),ty=S.w,ph=fract(S.x*91.7+S.y*13.1),an=atan(v.y,v.x);
+ vec3 col=C.rgb,o=vec3(0);float halo=s*s/(r*r+s*s*.25)*1.6,core=exp(-r*r/(s*s*.05));
+ if(ty<.5){                                                   // a star in its prime: hard core, soft corona, spikes
+  o=col*(core*22.+halo*.6+spk(v,s,9.,ph*2.,.05)*1.6);}
+ else if(ty<1.5){                                             // a red giant: a swollen, mottled disc that breathes, darker at its rim
+  float R=s*(1.+.04*sin(TIME*.25+ph*9.)),q=clamp(r/R,0.,1.),cv=n3(vec3(v/s*5.,TIME*.05+ph*7.))*.6+n3(vec3(v/s*13.,ph*3.))*.4;
+  o=col*(smoothstep(1.,.96,r/R)*sqrt(max(0.,1.-q*q))*(.6+.7*cv)*2.4+halo*.7+exp(-max(r-R,0.)/(s*.6))*.6)+col*spk(v,s,4.,ph,.04)*.4;}
+ else if(ty<2.5){                                             // a blue supergiant: fierce, with long spikes
+  o=col*(core*40.+halo*1.4+spk(v,s,26.,ph*2.,.04)*2.6)+vec3(.5,.7,1.)*exp(-r/(s*5.))*.5;}
+ else if(ty<3.5){                                             // a white dwarf in the ring of gas it shed: teal inside, red at the edge, clumped
+  float Rr=s*6.,dr=(r-Rr)/Rr,cl=.55+.45*n3(vec3(cos(an)*3.,sin(an)*3.,ph*9.)+r/s*.4);
+  o=vec3(1.)*exp(-r*r/(s*s*.004))*30.+vec3(.25,.95,.85)*exp(-r*r/(Rr*Rr*.55))*.35+mix(vec3(.3,1.,.8),vec3(1.,.25,.2),smoothstep(-.15,.2,dr))*exp(-dr*dr*28.)*cl*2.;}
+ else if(ty<4.5){                                             // a pulsar: a pinprick that flickers, two beams sweeping round it, a faint wind nebula
+  float ba=TIME*.5+ph*6.28,fl=.35+.65*pow(.5+.5*sin(TIME*14.+ph*30.),8.);vec2 ax=vec2(cos(ba),sin(ba));
+  float bm=exp(-abs(dot(v,vec2(-ax.y,ax.x)))/(r*.06+s*.04))*exp(-r/(s*16.));
+  o=vec3(.8,.9,1.)*(exp(-r*r/(s*s*.02))*40.*fl+bm*2.6*fl)+vec3(.35,.5,1.)*exp(-r/(s*4.))*n3(vec3(v/s*1.5,ph))*.8;}
+ else if(ty<5.5){                                             // a protostar: a warm glow still wrapped in dust, jets driven out of its poles
+  vec2 ax=vec2(cos(ph*6.28),sin(ph*6.28));float al=dot(v,ax),ac=dot(v,vec2(-ax.y,ax.x));
+  float jet=exp(-abs(ac)/(s*.12+abs(al)*.05))*exp(-abs(al)/(s*9.))*(.5+.5*sin(abs(al)/s*3.-TIME*.8))*smoothstep(s*.3,s*1.2,abs(al));
+  o=vec3(1.,.5,.25)*(core*10.+halo*.8)+vec3(1.,.3,.45)*jet*4.;}
+ else if(ty<6.5){                                             // a Wolf-Rayet star: fierce and hot, inside a clumpy bubble it is blowing
+  float Rb=s*5.5,dr=(r-Rb)/Rb,cl=n3(vec3(cos(an)*4.,sin(an)*4.,ph*5.)+r/s*.8);
+  o=vec3(.75,.85,1.)*(core*36.+halo*.8+spk(v,s,14.,ph,.04)*1.8)+mix(vec3(1.,.35,.6),vec3(.6,.4,1.),cl)*exp(-dr*dr*14.)*smoothstep(.3,.75,cl)*2.4;}
+ else{                                                        // a binary pair: gold and blue, close enough to share a glow
+  vec2 off=vec2(cos(ph*6.28+TIME*.02),sin(ph*6.28+TIME*.02))*s*1.4;float r1=length(v-off),r2=length(v+off);
+  o=vec3(1.,.78,.45)*(exp(-r1*r1/(s*s*.04))*26.+spk(v-off,s,7.,ph,.05)*1.3)+vec3(.55,.7,1.)*(exp(-r2*r2/(s*s*.035))*30.+spk(v+off,s,7.,ph,.05)*1.3)+mix(vec3(1.,.8,.5),vec3(.6,.75,1.),.5)*halo*.9;}
+ return o;}
+// ---- the system's own star, close: a disc that fills part of the sky. uCS = angular radius, stage, seed, giant phase; uCC = colour ----
+vec3 closeStar(vec3 d){
+ float R=uCS.x;vec3 L=uSun.xyz;float mu0=dot(d,L);if(R<=0.||mu0<cos(min(R*2.6,1.5)))return vec3(0);
+ vec3 T=normalize(cross(L,vec3(.17,1.,.31))),B=cross(L,T);vec2 v=vec2(dot(d,T),dot(d,B));float th=acos(clamp(mu0,-1.,1.)),rr=th/R,an=atan(v.y,v.x),ph=uCS.z,st=uCS.y,gi=uCS.w;
+ vec3 col=uCC,o=vec3(0);float gs=gi>.5?7.:st>3.5&&st<5.5?26.:16.;
+ if(rr<1.){
+  float mu=sqrt(1.-rr*rr);vec3 p=vec3(v/max(th,1e-5)*rr,mu);float ca=cos(TIME*.004+ph),sa=sin(TIME*.004+ph);p=vec3(p.x*ca+p.z*sa,p.y,-p.x*sa+p.z*ca);   // the surface turns, slowly
+  float g1=n3(p*gs+TIME*.02),g2=n3(p*gs*2.7+9.-TIME*.03),cell=1.-abs(2.*g1-1.),fine=n3(p*gs*7.+3.);
+  float gran=.62+.22*cell*cell+.1*g2+.06*fine;                                                            // fine convection cells, coarser for a giant
+  float grp=smoothstep(.62,.8,n3(p*1.6+ph*7.)),spn=n3(p*14.+ph*3.)*grp,spot=smoothstep(.55,.62,spn)*(st>4.5&&st<5.5||st>6.5?.3:1.),umb=smoothstep(.6,.66,spn);   // small spots, in groups
+  float act=smoothstep(.4,.55,spn)*(1.-spot)*.6,loops=exp(-abs(n3(p*22.+ph)-.5)*40.)*smoothstep(.35,.5,spn);                      // active regions: bright plage and magnetic loops around the spots
+  float limb=1.-.62*(1.-mu)-.25*(1.-mu)*(1.-mu);
+  vec3 hot=mix(col,vec3(1.,.9,.6),.3),cool=col*vec3(1.,.6,.35);
+  vec3 surf=mix(cool,hot,clamp((gran-.5)*2.2,0.,1.))*limb*(1.-spot*.6-umb*.35)+hot*act*.5+vec3(1.,.95,.8)*loops*.7;
+  if(gi>.5)surf*=.75+.25*sin(TIME*.15+ph*5.);                                                             // a giant breathes
+  o=surf*(st>6.5?2.4:1.8)*smoothstep(1.,.985,rr);                                                       // a star glows: brighter than anything else in the sky, colour kept saturated
+  o+=col*pow(1.-mu,4.)*.6;}                                                              // a thin bright rim of the atmosphere
+ else{
+  float h=th-R;
+  float cor=exp(-h/(R*.12))*.9+exp(-h/(R*.6))*.15,str=n3(vec3(cos(an)*3.,sin(an)*3.,ph))*exp(-h/(R*.7));
+  o=col*(cor+str*.2)*(st>4.5&&st<5.5?1.4:1.);
+  float sec=smoothstep(.62,.78,n3(vec3(cos(an)*2.2,sin(an)*2.2,ph*3.)));                                   // prominences: flame arcs standing off the limb in a few places
+  float hn=h/R,fl=exp(-abs(n3(vec3(an*7.,hn*9.,TIME*.03+ph))-.5)*14.)*smoothstep(.3,.02,hn)*step(0.,hn);
+  o+=col*vec3(1.,.55,.4)*fl*sec*1.6*(gi>.5?.6:1.);}
+ if(st>5.5&&st<6.5){vec3 C2=normalize(L+T*R*2.3+B*R*.6);float t2=acos(clamp(dot(d,C2),-1.,1.)),R2=R*.35;   // a binary: the companion, small and blue, close by
+  float rq=t2/(R*.03);o+=vec3(.6,.75,1.)*(exp(-rq*rq)*14.+.02/(rq*rq*.02+.02)*.06);}
+ return o;}
 vec4 planet(vec3 d,vec3 P,float rp,vec3 ca,vec3 cb,float ring){
  float b=dot(d,P),ds=b*b-(1.-rp*rp);vec4 c=vec4(0);float ts=1e9;vec3 L=uSun.xyz,atm=mix(ca,vec3(.4,.68,1.),.65)*uSunC.rgb;
  if(ds>0.&&b>0.){ts=b-sqrt(ds);vec3 n=normalize(d*ts-P);float nl=dot(n,L);
@@ -794,13 +855,14 @@ void main(){
  float st=stars(d,110.,.93)*3.+stars(d,230.,.9)*1.6+stars(d,60.,.985)*9.,fine=stars(d,470.,.62),hc=hsh(floor(d*230.));
  vec3 scol=hc<.14?vec3(1.,.35,.2):hc<.5?vec3(.55,.72,1.):vec3(1.,.95,.9);
  c+=(st*1.5+fine*.9)*scol*(1.-.9*t.b);
+ for(int i=0;i<8;i++)c+=bigStar(d,uBS[i],uBC[i])*(1.-.7*t.b);
  // one soft ribbon of light following a level curve of a smooth, gently warped field
  {vec3 q1=(d+uSd*.07)*.9;q1+=vec3(n3(q1*.8+3.),n3(q1*.8+13.),n3(q1*.8+23.))*1.5;
   float phi=n3(q1+50.)*.7+n3(q1*2.+9.)*.3,den=smoothstep(.5,.85,n3(q1*1.3+31.)*.75+t.r*.35);
   float rib=exp(-(phi-.5)*(phi-.5)*500.),band=exp(-(phi-.5)*(phi-.5)*60.);
   c+=mix(mix(uCB.rgb,uCE.rgb,.6),vec3(1.),rib*.5)*(band*.05+rib*.3)*den*den*(.7+.6*tn(d*9.))*(1.-.8*t.b);}
  float s=dot(d,uSun.xyz),s2=dot(d,normalize(uSun.xyz+vec3(.07,.045,.02)));
- c+=glow(d)+uSunC.rgb*(smoothstep(.99982,.99994,s)*30.+pow(max(s,0.),1500.)*1.3);
+ c+=glow(d)*(uCS.x>0.?.15:1.)+(uCS.x>0.?closeStar(d):uSunC.rgb*(smoothstep(.99982,.99994,s)*30.+pow(max(s,0.),1500.)*1.3));
  c+=vec3(1.,.3,.12)*(smoothstep(.99996,.99999,s2)*22.+pow(max(s2,0.),4000.)*1.4);
  // a ringworld: we are inside its hoop, so it crosses the whole sky as a band of lit land and city lights
  if(uSky.y>.01){vec3 n=normalize(vec3(.35,.25,.9));float sn=dot(d,n),w=.017;
@@ -834,9 +896,13 @@ void main(){
    else{vec2 gq=pp*520.,gi=floor(gq),gf=fract(gq)-.2-.6*vec2(hsh(vec3(gi,1.)),hsh(vec3(gi,2.)));float h=hsh(vec3(gi,sv*31.)),fall=exp(-an*an*(160.+200.*sv));
     c+=mix(vec3(1.,.8,.55),vec3(.8,.88,1.),hsh(vec3(gi,7.)))*(step(1.-fall*.9,h)*exp(-dot(gf,gf)*14.)*1.6+fall*.1);}
   }}
+
  for(int i=2;i>=0;i--)if(uPl[i].w>0.){vec4 p=planet(d,uPl[i].xyz,uPl[i].w,uPa[i].rgb,uPb[i],uPa[i].a);c=c*(1.-p.a)+p.rgb;m*=1.-p.a;}
  if(uOrb.x>0.){float R=90000.,h=uOrb.y,cl=R+h,b=-d.y*cl,q=2.*R*h+h*h,disc=b*b-q;vec3 L=uSun.xyz;
   vec3 at=mix(uOa,uSunC.rgb,.45);float sunH=smoothstep(-.25,.25,L.y+.15);
+  // the horizon: ground and sky both melt into one band of haze, brightest toward the sun, with a thin glow along the limb
+  float yh=-sqrt(q)/cl,hzv=d.y-yh,sdh=pow(max(dot(normalize(vec3(d.x,0.,d.z)+1e-4),normalize(vec3(L.x,0.,L.z)+1e-4)),0.),3.);
+  vec3 hcol=at*at*(.22+.55*sunH)+mix(vec3(1.,.55,.25),uSunC.rgb,.4)*sdh*(.15+.6*sunH)*(.4+.6*smoothstep(.35,-.05,L.y));
   if(b>0.&&disc>0.){float t=b-sqrt(disc);vec3 P=d*t,N=normalize(P+vec3(0,cl,0));vec2 s=P.xz+uOrb.zw;
    float big=tn(vec3(s*.000035,.3)),c1=tn(vec3(s*.00011+big*.6,1.7)),c2=tn(vec3(s*.0005,4.1));
    {float h0=smoothstep(.4,.85,big*.5+c1*.4+c2*.18);vec2 pv=d.xz/max(.18,dot(-d,N))*1400.*h0;s+=pv;big=tn(vec3(s*.000035,.3));c1=tn(vec3(s*.00011+big*.6,1.7));c2=tn(vec3(s*.0005,4.1));}
@@ -856,9 +922,12 @@ void main(){
    cc+=uSunC.rgb*warm*pow(max(dot(reflect(d,N),L),0.),50.)*.3*cov*ndl;
    float sd2=pow(max(dot(d,L),0.),4.);vec3 air=mix(at*at*1.3,vec3(1.,.5,.2),sd2*.6)*(.05+.22*sunH+1.2*sd2);
    cc=mix(vec3(dot(cc,vec3(.33))),cc,1.45);float fg=1.-exp(-t/30000.);cc=mix(cc,air,fg*.85);
+   cc=mix(cc,hcol,smoothstep(-.09,0.,hzv)*.92);                        // far ground dissolves into the horizon haze
+   {float ah=abs(hzv);cc+=hcol*(exp(-ah*140.)*.55+exp(-ah*9.)*.12);}
    c=cc;m=0.;}
   else{float bb=max(b,0.),alt=sqrt(max(cl*cl-bb*bb,0.))-R;
-   float g=exp(-max(alt,0.)/1500.)+.25*exp(-max(alt,0.)/7000.);c+=at*at*g*(.08+.3*sunH+1.6*pow(max(dot(d,L),0.),5.));}
+   float g=exp(-max(alt,0.)/1500.)+.25*exp(-max(alt,0.)/7000.);c+=at*at*g*(.08+.3*sunH+1.6*pow(max(dot(d,L),0.),5.));
+   float hz=max(hzv,0.);c=mix(c,hcol,exp(-hz*26.)*.9);c+=hcol*(exp(-hz*140.)*.55+exp(-hz*9.)*.12);m*=1.-exp(-hz*26.)*.9;}   // haze above the horizon, and the glow along it
  }
  o=vec4(c,m);}`;
 
@@ -897,7 +966,7 @@ void main(){vec2 dl=(uSunS.xy-vU)/float(NS)*.92;
   acc+=min(s.rgb,vec3(8.))*max(s.a,0.)*smoothstep(.9,4.,l)*w;w*=.976;p+=dl;}
  o=vec4(acc/float(NS)*uSunS.z,1);}`;
 const COMP_F = HD + `
-uniform sampler2D uH,uB,uR;uniform vec2 uPx;uniform vec3 uFl,uJ;uniform vec4 uFx;uniform float uFs;in vec2 vU;out vec4 o;
+uniform sampler2D uH,uB,uR;uniform vec2 uPx;uniform vec3 uFl,uJ;uniform vec4 uFx,uFy,uFz;uniform float uFs;in vec2 vU;out vec4 o;
 vec3 aces(vec3 x){return clamp(x*(2.51*x+.03)/(x*(2.43*x+.59)+.14),0.,1.);}
 void main(){vec2 q=vU-.5;float bs=uCA.w;
  vec2 of=q*dot(q,q)*(.005+.028*bs)*uFx.x;
@@ -906,7 +975,7 @@ void main(){vec2 q=vU-.5;float bs=uCA.w;
  if(texture(uH,vU).a>-.5&&dot(mv,mv)>2e-7){float jt=fract(52.98*fract(dot(gl_FragCoord.xy,vec2(.0671,.00584))));vec3 mb=c,c0=c;for(int i=1;i<7;i++){vec2 u=vU+mv*(float(i)-jt)/6.;vec4 sg=texture(uH,u);mb+=sg.a<-.5?c0:vec3(texture(uH,u+of).r,sg.g,texture(uH,u-of).b);}c=mb/7.;}   // the cabin is not moving relative to you: it stays sharp
  if(uJ.x>0.){vec3 ac=vec3(0);for(int i=0;i<12;i++){float t=float(i)/12.;ac+=texture(uH,.5+q*(1.-uJ.x*.6*t)).rgb*(1.-.5*t);}c=mix(c,ac/8.*(1.+uJ.x),uJ.x);}
  vec4 e=uPx.xyxy*vec4(-5,-5,5,5);
- c+=texture(uB,vU).rgb*.03+.25*(texture(uR,vU+e.xy)+texture(uR,vU+e.zy)+texture(uR,vU+e.xw)+texture(uR,vU+e.zw)).rgb;
+ c+=(texture(uB,vU).rgb*.03+.25*(texture(uR,vU+e.xy)+texture(uR,vU+e.zy)+texture(uR,vU+e.xw)+texture(uR,vU+e.zw)).rgb)*uFy.y;   // glow and sun rays
  if(uFl.z>0.){vec2 sv=vU-uFl.xy,g1=vU-mix(uFl.xy,1.-uFl.xy,.62),g2=vU-(1.-uFl.xy);float vis=uFl.z*max(texture(uH,clamp(uFl.xy,.002,.998)).a,0.);
   c+=vis*uSunC.rgb*(vec3(.45,.65,1.)*exp(-abs(sv.y)*110.)*exp(-abs(sv.x)*3.2)*.22+vec3(.6,.8,1.)*exp(-dot(g1,g1)*700.)*.035+vec3(1.,.7,.5)*smoothstep(.012,0.,abs(length(g2)-.11))*.02);}
  if(uJ.y>0.){vec2 qa=q*vec2(uPx.y/uPx.x,1.);float r=length(qa),a=atan(qa.y,qa.x),z=.22/(r+.03)+uJ.z*5.;
@@ -915,9 +984,13 @@ void main(){vec2 q=vU-.5;float bs=uCA.w;
   float sw=texture(uNz,vec3(cos(a)*.35,sin(a)*.35,z*.06)).r;
   vec3 tc=mix(uCE.rgb,vec3(.35,.6,1.),.6)*(s*smoothstep(.03,.45,r)*4.+sw*sw*r*.9)+vec3(.9,.95,1.)*exp(-r*r*90.)*(1.+.4*sin(uJ.z*40.))+c*.25;
   c=mix(c,tc,uJ.y);}
- c*=uCE.w*(1.-dot(q,q)*1.15);
+ if(uFz.x>0.){vec2 vq=q*vec2(uPx.y/uPx.x,1.)*vec2(.92,1.);float rim=length(vq*vec2(.9,1.3)+vec2(0.,.1))-.8;   // the visor: a tinted rim where the glass curves away, a faint line on its edge
+  float gm=smoothstep(-.02,.06,rim)*uFz.x;vec2 rq=vU-q*.035*gm;vec3 bent=texture(uH,rq).rgb;
+  c=mix(c,bent*vec3(.55,.62,.7),gm*.8);c+=vec3(.55,.75,1.)*exp(-abs(rim-.005)*320.)*.01*uFz.x;
+  c+=vec3(.6,.8,1.)*smoothstep(.55,1.,1.-vU.y)*smoothstep(.2,.9,abs(q.x)*2.)*.012*uFz.x;}
+ c*=uCE.w*(1.-dot(q,q)*1.15*uFy.z);                           // vignette
  c=pow(aces(c),vec3(1./2.2));c=mix(c,c*c*(3.-2.*c),.55);c*=mix(vec3(.9,.98,1.1),vec3(1.),smoothstep(0.,.5,dot(c,vec3(.33))));
- c*=1.-.045*step(fract(gl_FragCoord.y/3.),.34)*step(1e-4,uFx.y);                // faint scanlines: the view as a screen
+ c*=1.-.045*step(fract(gl_FragCoord.y/3.),.34)*uFy.x;                // faint scanlines: the view as a screen
  c+=(fract(52.9829189*fract(dot(gl_FragCoord.xy+TIME*61.,vec2(.06711056,.00583715))))-.5)*(1./160.+uFx.y*(.6-.45*dot(c,vec3(.33))));
  o=vec4(mix(c,vec3(1.,.97,.95),uCB.w),1);}`;
 // ============================================================================
@@ -1502,7 +1575,8 @@ const typeAt = () => SYS.mat[gh >>> 5 & 7];
 // lists the generators fill: [shape family] for each size class, things growing on rocks, station kinds
 let HV, BF, BN, SV, LC, LTd, LTb, TV, RV, MV, FV;
 function titanAt(C, wx, wy, wz) { cellRnd(wx, wy, wz, 14); if (hx(1) > SYS.a.ti * .6) return 0; const r = hx(5), s = 2200 + 5200 * r * r; return gateClear(C, wx, wy, wz, s, 1500) ? 0 : s; }
-function hugeAt(C, wx, wy, wz) { cellRnd(wx, wy, wz, 2); const p = hx(1); if (p > .4 || dead.has(gh) || p > .1 && fM((wx + gj0) * C, (wy + gj1) * C, (wz + gj2) * C) < .82) return 0; const r = hx(5), s = 170 + 400 * r * r; return gateClear(C, wx, wy, wz, s, 700) ? 0 : s; }
+function hugeAt(C, wx, wy, wz) { if ((wx | wy | wz) & 1) return 0; cellRnd(wx, wy, wz, 2); const p = hx(1); if (p > .75 ||   // only every other cell on each axis: no two giants side by side
+  dead.has(gh) || p > .1 && fM((wx + gj0) * C, (wy + gj1) * C, (wz + gj2) * C) < .82) return 0; const r = hx(5), s = 170 + 400 * r * r; return gateClear(C, wx, wy, wz, s, 700) ? 0 : s; }
 function bigAt(C, wx, wy, wz) {
   cellRnd(wx, wy, wz, 1); if (dead.has(gh)) return 0;
   const a = fM((wx + gj0) * C, (wy + gj1) * C, (wz + gj2) * C) - .82 - SYS.a.rock - (hx(1) - .5) * .3;
@@ -1599,9 +1673,14 @@ function texFrom(t, cv) {
 }
 const P_HUD = prog(HD + `layout(location=0)in vec2 aP;layout(location=1)in vec2 aU;uniform mat3 uShip;uniform vec3 uEye,uMo;uniform vec4 uR,uZ,uUV;out vec2 vU;
 void main(){vec2 q=aP*uR.zw;float c=cos(uZ.y),s=sin(uZ.y);q=vec2(q.x*c-q.y*s,q.x*s+q.y*c);
- vec3 p=uShip*(vec3(uR.xy+q,uZ.x)+uMo)-uEye;vU=mix(uUV.xy,uUV.zw,aU);gl_Position=uVP*vec4(p,1);}`,
+ float z=uZ.x*(1.-uZ.w*(aP.x*aP.x*.36+aP.y*aP.y*.16));q.x*=1.+uZ.w*aP.y*aP.y*.06;                // the visor curves: edges wrap toward the eye
+ vec3 p=uShip*(vec3(uR.xy+q,z)+uMo)-uEye;vU=mix(uUV.xy,uUV.zw,aU);gl_Position=uVP*vec4(p,1);}`,
   HD + `in vec2 vU;uniform sampler2D uTx;uniform vec4 uZ;out vec4 o;void main(){vec4 t=texture(uTx,vU);o=vec4(t.rgb*uZ.z,0);}`);
-const hudVA = gl.createVertexArray();
+const hudVA = gl.createVertexArray(), visVA = gl.createVertexArray(); let visN = 0;
+{ const v = [], NX = 40, NY = 20, pt = (i, j) => { const x = i / NX, y = j / NY; v.push(x * 2 - 1, y * 2 - 1, x, 1 - y); };
+  for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) { pt(i, j); pt(i + 1, j); pt(i, j + 1); pt(i + 1, j); pt(i + 1, j + 1); pt(i, j + 1); }
+  gl.bindVertexArray(visVA); const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW); visN = v.length / 4;
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 16, 0); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 16, 8); gl.bindVertexArray(null); }
 { gl.bindVertexArray(hudVA); const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 0, 1, 1, -1, 1, 1, -1, 1, 0, 0, 1, 1, 1, 0]), gl.STATIC_DRAW);
   gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 16, 0); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 16, 8); gl.bindVertexArray(null);
@@ -2027,7 +2106,9 @@ function hudDraw(k) {
   gl.uniformMatrix3fv(P.u.uShip, false, M3); gl.uniform3f(P.u.uEye, eox * k, eoy * k, eoz * k); gl.uniform3f(P.u.uMo, cockpit ? ckx : 0, cockpit ? cky : 0, cockpit ? ckz : 0);
   gl.bindVertexArray(hudVA); gl.activeTexture(gl.TEXTURE8); gl.uniform1i(P.u.uTx, 8);
   gl.bindTexture(gl.TEXTURE_2D, hudTex); const asp = W / H, nar = !xr && asp < 1.05, hs2 = xr ? 1 : (nar ? Math.min(1.45, 1.5 * asp / 1.1) : Math.min(1.45, 1.55 * asp / 1.76, cinOn && asp > 1.6 ? 1.5 * asp / 2.39 : 9)) * CFG.size, cy0 = xr ? .2 : 0, hw = nar ? 1.1 * hs2 : 1.76 * hs2;                                   // on a flat screen the display is a visor across the whole view; in a headset it sits on the front glass
-  gl.uniform4f(P.u.uR, 0, cy0, hw, hs2); gl.uniform4f(P.u.uZ, HZ, 0, .8 * hudOp, 0); gl.uniform4f(P.u.uUV, nar ? .1875 : 0, 0, nar ? .8125 : 1, 1); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  gl.uniform4f(P.u.uR, 0, cy0, hw, hs2); gl.uniform4f(P.u.uUV, nar ? .1875 : 0, 0, nar ? .8125 : 1, 1);
+  if (!xr && CFG.fxVisor) { gl.uniform4f(P.u.uZ, HZ, 0, .8 * hudOp, CFG.fxVisor); gl.bindVertexArray(visVA); gl.drawArrays(gl.TRIANGLES, 0, visN); gl.bindVertexArray(hudVA); }
+  else { gl.uniform4f(P.u.uZ, HZ, 0, .8 * hudOp, 0); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); }
   const c = navCur();
   if (c && !((xr || hudForce) && jpOpen)) {
     const dx = c.x - px, dy = c.y - py, dz = c.z - pz, lx = dx * sRx + dy * sRy + dz * sRz, ly = dx * sUx + dy * sUy + dz * sUz, lz = -(dx * sFx + dy * sFy + dz * sFz);
@@ -2043,9 +2124,11 @@ function hudDraw(k) {
 // ---- settings: display, flight, and every key. Kept in the browser. ----
 const HCOL = [['Ice', ['#e6f6ff', 'rgba(160,210,240,.62)', '#ffb44a', '#63e2ff']], ['Amber', ['#ffd9a0', 'rgba(255,190,110,.6)', '#ffffff', '#ffb44a']], ['Green', ['#c8ffd8', 'rgba(120,255,170,.55)', '#ffe27a', '#5dffa0']], ['Violet', ['#ffd6f6', 'rgba(255,150,230,.55)', '#7ee8ff', '#ff7ae0']], ['Red', ['#ffd0c8', 'rgba(255,120,100,.6)', '#ffe9a8', '#ff6a5a']]];
 const ACTS = [['KeyW', 'Throttle up'], ['KeyS', 'Throttle down'], ['KeyA', 'Strafe left'], ['KeyD', 'Strafe right'], ['KeyE', 'Rise'], ['KeyQ', 'Sink'], ['ShiftLeft', 'Boost'], ['Space', 'Fire'], ['KeyX', 'Zero throttle'], ['KeyT', 'Next target'], ['KeyF', 'Interact / hail'], ['KeyJ', 'Warp gate'], ['KeyB', 'Journal'], ['KeyL', 'Log'], ['KeyC', 'Cockpit on / off'], ['Comma', 'Glance left'], ['Period', 'Glance right'], ['Slash', 'Glance behind'], ['KeyR', 'Radio on / off'], ['BracketRight', 'Radio: skip to another song'], ['KeyI', 'Cargo hold'], ['KeyN', 'Star map'], ['KeyM', 'Mute'], ['KeyV', 'VR / 3D']];
-const CFG = { hud: 0, op: 1, size: 1, cin: 1, host: 0, inv: 0, sens: 1, fx: 1, pl: 1, radio: 1, keys: {}, vEng: .5, vCht: 1, vRad: 1 };
-const pct = (v) => v ? Math.round(v * 100) + '%' : 'off';
+const CFG = { hud: 1, op: .7, size: .85, cin: 1, host: 0, inv: 0, sens: 1, fx: 1, pl: 1, radio: 1, keys: {}, vEng: .5, vCht: 1, vRad: 1, fxBlur: .5, fxCA: 1, fxGrain: 1, fxScan: 1, fxBloom: 1, fxFlare: 1, fxVig: 1, fxVisor: .5, fxGlass: 1 };
+const pct = (v) => v ? Math.round(v * 100) + '%' : 'off', LV3 = (v) => !v ? 'off' : v < .75 ? 'subtle' : 'full';
 try { Object.assign(CFG, JSON.parse(localStorage.ibCfg || '{}')); } catch {}
+if ((CFG.fxMig || 0) < 3) { for (const k of ['fxCA', 'fxGrain', 'fxBloom', 'fxFlare', 'fxGlass', 'fxScan', 'fxVig']) CFG[k] = 1; CFG.fxBlur = .5; CFG.fxVisor = .5; CFG.fxMig = 3; }
+if ((CFG.fxMig || 0) < 4) { CFG.hud = 1; CFG.op = .7; CFG.size = .85; CFG.cin = 1; CFG.fxMig = 4; }   // v1.18 display defaults: amber HUD, 70% brightness, 85% size, cinematic bars   // v1.17: effects at full, except motion blur and the visor curve, which start subtle
 let wipeArm = 0;
 let hostLv = CFG.host, hudOp = CFG.op, cinOn = !!CFG.cin, rebind = null, mbx = 0, mby = 0, mbs = 0;
 const IY = () => CFG.inv ? -1 : 1;
@@ -2067,7 +2150,7 @@ function setUi() {
   const row = (k, name, val) => `<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(160,210,240,.14);padding:7px 0"><span>${name}</span><button data-k="${k}" style="min-width:150px;padding:6px 14px;background:${rebind === k ? '#ffb44a' : 'transparent'};color:${rebind === k ? '#000' : '#63e2ff'};border:1px solid rgba(99,226,255,.5);font:inherit;cursor:pointer">${val}</button></div>`;
   const hd = (t) => `<h3 style="margin:26px 0 6px;font-weight:600;letter-spacing:.25em;font-size:13px;color:#ffb44a">${t}</h3>`;
   setP.innerHTML = `<div style="max-width:720px;margin:auto"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="font-weight:300;letter-spacing:.3em;margin:0">SETTINGS</h2><button data-k="close" style="background:none;border:1px solid #63e2ff;color:#63e2ff;padding:6px 18px;font:inherit;cursor:pointer">Done</button></div>`
-    + hd('DISPLAY') + row('hud', 'HUD colour', HCOL[CFG.hud][0]) + row('op', 'HUD brightness', Math.round(CFG.op * 100) + '%') + row('size', 'HUD size', Math.round(CFG.size * 100) + '%') + row('cin', 'Cinematic bars', CFG.cin ? 'on' : 'off') + row('fx', 'Lens effects (blur, grain, fringing)', ['off', 'subtle', 'full'][CFG.fx]) + row('radio', 'Ikosagon radio', CFG.radio ? 'on' : 'off') + row('pl', 'My playlist (streams now and then)', CFG.pl ? 'on' : 'off') + hd('VOLUME') + row('vEng', 'Engine and boost', pct(CFG.vEng)) + row('vCht', 'Radio chatter (pilots, traffic control)', pct(CFG.vCht)) + row('vRad', 'Music stream', pct(CFG.vRad)) + row('suno', 'Suno playlist page', 'open in a new tab')
+    + hd('DISPLAY') + row('hud', 'HUD colour', HCOL[CFG.hud][0]) + row('op', 'HUD brightness', Math.round(CFG.op * 100) + '%') + row('size', 'HUD size', Math.round(CFG.size * 100) + '%') + row('cin', 'Cinematic bars', CFG.cin ? 'on' : 'off') + hd('LENS EFFECTS') + row('fxVisor', 'Curved visor (HUD wraps at the edges)', LV3(CFG.fxVisor)) + row('fxGlass', 'Visor glass (tinted rim)', LV3(CFG.fxGlass)) + row('fxBlur', 'Motion blur', LV3(CFG.fxBlur)) + row('fxCA', 'Colour fringing at the edges', LV3(CFG.fxCA)) + row('fxGrain', 'Film grain', LV3(CFG.fxGrain)) + row('fxBloom', 'Glow and sun rays', LV3(CFG.fxBloom)) + row('fxFlare', 'Lens flare from the sun', LV3(CFG.fxFlare)) + row('fxScan', 'Scanlines', CFG.fxScan ? 'on' : 'off') + row('fxVig', 'Darkened corners', CFG.fxVig ? 'on' : 'off') + hd('RADIO') + row('radio', 'Ikosagon radio', CFG.radio ? 'on' : 'off') + row('pl', 'My playlist (streams now and then)', CFG.pl ? 'on' : 'off') + hd('VOLUME') + row('vEng', 'Engine and boost', pct(CFG.vEng)) + row('vCht', 'Radio chatter (pilots, traffic control)', pct(CFG.vCht)) + row('vRad', 'Music stream', pct(CFG.vRad)) + row('suno', 'Suno playlist page', 'open in a new tab')
     + hd('FLIGHT') + row('inv', 'Invert pitch', CFG.inv ? 'on' : 'off') + row('ctl', 'Controls', CFG.ctl ? 'space sim' : 'standard') + row('sens', 'Mouse sensitivity', Math.round(CFG.sens * 100) + '%') + row('host', 'Other pilots', ['peaceful', 'wary', 'hostile'][CFG.host]) + row('wipe', 'Reset game', wipeArm ? 'click again: erases everything' : 'erase the save')
     + hd('KEYS · click one, then press the new key') + ACTS.map(([k, n]) => row('key:' + k, n, rebind === 'key:' + k ? 'press a key…' : keyName(CFG.keys[k] || k))).join('') + row('reset', 'All keys', 'reset to defaults') + '</div>';
 }
@@ -2082,7 +2165,7 @@ setP.onclick = (e) => {
   else if (k === 'hud') CFG.hud = (CFG.hud + 1) % HCOL.length; else if (k === 'op') CFG.op = cyc(CFG.op, [1, .7, .45, .25]); else if (k === 'size') CFG.size = cyc(CFG.size, [1, 1.15, .85]);
   else if (k === 'ctl') CFG.ctl = CFG.ctl ? 0 : 1;
   else if (k === 'vEng' || k === 'vCht' || k === 'vRad') CFG[k] = cyc(CFG[k], [1, .75, .5, .25, 0]);
-  else if (k === 'cin') CFG.cin = CFG.cin ? 0 : 1; else if (k === 'radio') CFG.radio = CFG.radio ? 0 : 1; else if (k === 'pl') { CFG.pl = CFG.pl ? 0 : 1; if (!CFG.pl && plA) { plA.pause(); plOn = 0; } } else if (k === 'fx') CFG.fx = (CFG.fx + 1) % 3; else if (k === 'inv') CFG.inv = CFG.inv ? 0 : 1; else if (k === 'sens') CFG.sens = cyc(CFG.sens, [1, 1.3, 1.7, .5, .75]);
+  else if (k === 'cin') CFG.cin = CFG.cin ? 0 : 1; else if (k === 'radio') CFG.radio = CFG.radio ? 0 : 1; else if (k === 'pl') { CFG.pl = CFG.pl ? 0 : 1; if (!CFG.pl && plA) { plA.pause(); plOn = 0; } } else if (['fxBlur', 'fxCA', 'fxGrain', 'fxBloom', 'fxFlare', 'fxVisor', 'fxGlass'].includes(k)) CFG[k] = cyc(CFG[k], [.5, 1, 0]); else if (k === 'fxScan' || k === 'fxVig') CFG[k] = CFG[k] ? 0 : 1; else if (k === 'inv') CFG.inv = CFG.inv ? 0 : 1; else if (k === 'sens') CFG.sens = cyc(CFG.sens, [1, 1.3, 1.7, .5, .75]);
   else if (k === 'host') { CFG.host = (CFG.host + 1) % 3; hostLv = CFG.host; if (SYS) npcSpawn(); }
   if (k !== 'wipe') wipeArm = 0;
   setUi();
@@ -2106,11 +2189,27 @@ addEventListener('resize', () => { cinH = -1; cinFit(); }); setUi();   // never 
 
 // ---- supercruise: hold a planet ahead at speed and the drive takes over; climb hard out of an atmosphere to leave ----
 let scP = -1, scT = 0, scK = 0, scE = 0, scOut = 0, plBase = [0, 0, 0], scTip = 0, fogX = 0, pYaw = 0, pPit = 0;
-function hop(loc) { const sv = [yaw, pitch, thr, vx, vy, vz]; arrive(SYS.sec, loc, 1); [yaw, pitch, thr, vx, vy, vz] = sv; snap = 1; fogX = .0065; }   // change place without the gate's jolt: same heading, same speed, inside the haze
+// ---- big stars: each place gets up to eight, seeded, each a different kind and stage of life ----
+const BSK = [[0, .26, [1, .95, .86], .018, .032], [1, .14, [1, .4, .16], .05, .09], [2, .1, [.62, .76, 1], .024, .04], [3, .12, [1, 1, 1], .013, .022], [4, .08, [.8, .9, 1], .012, .018], [5, .12, [1, .5, .3], .02, .034], [6, .08, [.75, .85, 1], .018, .026], [7, .1, [1, 1, 1], .018, .03]];
+const CSC = [[1, .3, .06], [1, .42, .08], [1, .55, .12], [1, .8, .45], [.62, .78, 1], [.5, .66, 1], [1, .58, .14], [.85, .92, 1]];   // close-star surface colours by stage: saturated, the way a filtered view sees them
+let csKey = '', csU = [0, 0, 0, 0], csC = [1, 1, 1], bsKey = '', bsS = new Float32Array(32), bsC = new Float32Array(32);
+function bigStarsSet() {
+  const key = SYS.id + ':' + SYS.loc;
+  if (key !== bsKey) { bsKey = key; bsS.fill(0); bsC.fill(0); const R = mulberry32((SYS.salt ^ 0x51A75) >>> 0), closeOn = !SYS.atm && mulberry32((SYS.salt ^ 0xC105E) >>> 0)() < .32, show = !closeOn && R() < .5, n = closeOn ? (R() < .5 ? 0 : 1) : 1 + (R() < .4 ? 1 : 0);   // one or two per sky, never a crowd
+    for (let i = 0; i < n; i++) { let u = R() * BSK.reduce((a, k) => a + k[1], 0), K = BSK[0]; for (const k of BSK) { if ((u -= k[1]) <= 0) { K = k; break; } }
+      if (i === 0 && show) K = BSK[[1, 2, 3, 6, 7][R() * 5 | 0]]; else if (!show && K[0] !== 0 && K[0] !== 4) K = BSK[0];   // a showpiece in about half the places; otherwise plain suns or a pulsar
+      let x, y, z; do { z = R() * 2 - 1; const a = R() * 6.283, q = Math.sqrt(1 - z * z); x = Math.cos(a) * q; y = Math.sin(a) * q; } while (x * SUN[0] + y * SUN[1] + z * SUN[2] > .9);
+      bsS.set([x, y, z, K[0]], i * 4); bsC.set([K[2][0], K[2][1], K[2][2], (K[3] + (K[4] - K[3]) * R()) * (i ? .8 : 1.2)], i * 4); } }
+  if (key !== csKey) { csKey = key; const R = mulberry32((SYS.salt ^ 0xC105E) >>> 0), on = !SYS.atm && R() < .32, sc = SYS.sc || 0, giant = sc <= 2 && R() < .35;
+    const RR = [[.1, .18], [.1, .2], [.1, .22], [.08, .15], [.06, .12], [.14, .3], [.1, .18], [.02, .04]][sc], rad = giant ? .26 + R() * .12 : RR[0] + (RR[1] - RR[0]) * R();
+    csU = [on ? rad : 0, sc, R() * 6.283, giant ? 1 : 0]; csC = giant ? [1, .34, .1] : CSC[sc]; }
+  gl.uniform4fv(P_SKY.u['uBS[0]'], bsS); gl.uniform4fv(P_SKY.u['uBC[0]'], bsC); gl.uniform4f(P_SKY.u.uCS, ...csU); gl.uniform3f(P_SKY.u.uCC, ...csC);
+}
+function hop(loc) { const sv = [yaw, pitch, thr, vx, vy, vz]; palEase = 1; arrive(SYS.sec, loc, 1); [yaw, pitch, thr, vx, vy, vz] = sv; snap = 1; fogX = .0065; }   // change place without the gate's jolt: same heading, same speed, inside the haze
 function cruiseTick(dt, fly) {
   { const k = Math.min(1, dt * 8), d = Math.max(.001, dt); let dy = syaw - pYaw; pYaw = syaw; const dp = spit - pPit; pPit = spit; if (Math.abs(dy) > 1) dy = 0;
     mbx += (Math.max(-.03, Math.min(.03, dy / d * .011)) - mbx) * k; mby += (Math.max(-.03, Math.min(.03, -dp / d * .011)) - mby) * k; mbs += ((.01 + .05 * bst) * Math.min(1, Math.hypot(vx, vy, vz) / 300) - mbs) * k; }
-  if (veil > .02 && !jumpTo) flash = Math.max(flash, veil * veil * .92);   // the haze thickens to a veil and thins again: no cut
+  if (veil > .02 && !jumpTo) flash = Math.max(flash, veil * veil * .55);   // the haze thickens to a veil and thins again: no cut
   if (!fly || jumpTo) { scK = scE = 0; return; }
   const sp = Math.hypot(vx, vy, vz), r = rp();
   if (SYS.atm) {
@@ -2118,13 +2217,10 @@ function cruiseTick(dt, fly) {
     scK = Math.min(1, scOut / 13); scE = scK * scK * (3 - 2 * scK); { const want = scE * scE * .0065; fogX += (want - fogX) * Math.min(1, dt * (fogX > want ? .18 : .6)); veil += (scE * scE - veil) * Math.min(1, dt * (veil > scE * scE ? .3 : 2)); }
     if (scOut > 1.2 && tm > scTip) { scTip = tm + 20; tip('Terminal velocity: hold the nose up, throttle open or boost held, to break out of the atmosphere', 5000); }
     if (scOut > 13) { const k = SYS.atm - 1, back = r.from != null && SYS.locs[r.from] && !SYS.locs[r.from].atm ? r.from : 0; hop(back); const P = sysP[k];
-      if (P) {   // come out where you were heading: the side of the planet you came in on, carried on round in the direction you flew, climbing at the angle you climbed
-        const R0 = PR[k], mine = ent && ent.k === k && ent.sys === SYS.id; let r0, t0;
-        if (mine) { r0 = ent.r0; t0 = ent.t0; } else { const D = Math.hypot(P[0], P[1], P[2]); r0 = [-P[0] / D, -P[1] / D, -P[2] / D]; t0 = nrm(crs(r0, [0, 1, 0])); }
-        const b0 = crs(r0, t0), a = mine ? yaw - ent.yaw : 0, ca = Math.cos(a), sa = Math.sin(a), t = [t0[0] * ca + b0[0] * sa, t0[1] * ca + b0[1] * sa, t0[2] * ca + b0[2] * sa];
-        const r1 = nrm([r0[0] + t[0] * .35, r0[1] + t[1] * .35, r0[2] + t[2] * .35]), cl = Math.max(.42, pitch), sc = Math.sin(cl), cc = Math.cos(cl), hd = nrm([r1[0] * sc + t[0] * cc, r1[1] * sc + t[1] * cc, r1[2] * sc + t[2] * cc]);
-        sysS = [P[0] + r1[0] * 1.45 * R0, P[1] + r1[1] * 1.45 * R0, P[2] + r1[2] * 1.45 * R0];
-        pitch = Math.asin(Math.max(-1, Math.min(1, hd[1]))); yaw = Math.atan2(hd[0], -hd[2]); vx = hd[0] * sp; vy = hd[1] * sp; vz = hd[2] * sp; snap = 1; drift = bst > .3 ? 2 : thr > .3 ? 1 : 0; driftV = 0; veil = 1; ent = null; }
+      if (P) {   // come out still facing the way you climbed: no turn, no cut. The planet sits behind you and below, where the climb left it
+        const R0 = PR[k], cp = Math.cos(pitch), F = [Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp], n = nrm([F[0], F[1] + .45, F[2]]);
+        sysS = [P[0] + n[0] * 1.45 * R0, P[1] + n[1] * 1.45 * R0, P[2] + n[2] * 1.45 * R0];
+        vx = F[0] * sp; vy = F[1] * sp; vz = F[2] * sp; drift = bst > .3 ? 2 : thr > .3 ? 1 : 0; driftV = 0; veil = .8; ent = null; }
       tip(`Clear of ${SYS.planets[k].name}: it is behind and below you.${drift === 2 ? ' Light drift while you hold boost.' : ''}`, 7000); }
     return;
   }
@@ -2476,7 +2572,7 @@ function fxTick(dt) { for (let i = FXL.length - 1; i >= 0; i--) { const f = FXL[
 // from Cinnabar. Any of the three ores will do at half the yield. With nothing in the hold they can only watch.
 const SWM = [['MENDERS', 'hull', [1, 2, 3], 12, 8, '#c3ccdc', [.8, .86, 1]], ['SIPHONS', 'fuel', [2, 1, 3], 20, 10, '#ffd84a', [1, .82, .25]], ['SPARKS', 'weapons', [3, 2, 1], 24, 14, '#ff6a3d', [1, .32, .14]]];
 const WEN = [.35, 1.6, 4, .02, 3];                                      // gun energy per shot, by weapon
-let nearSeen = new Set(), cHitT = -9, BLOOMS = [], bloomT = 6, drT = 0, swN = [null, null, null], swOn = -1, swCred = [0, 0, 0], swTip = [0, 0, 0], swWork = 0, strandT = 0, fuelTip = 0, sysWarn = '', sysWarnC = '', spiceAcc = 0, spiceTip = 0, btT = 0, btMax = 2, btCool = 0, raT = 0, raThr = null;
+let btHold = 0, nearSeen = new Set(), cHitT = -9, BLOOMS = [], bloomT = 6, drT = 0, swN = [null, null, null], swOn = -1, swCred = [0, 0, 0], swTip = [0, 0, 0], swWork = 0, strandT = 0, fuelTip = 0, sysWarn = '', sysWarnC = '', spiceAcc = 0, spiceTip = 0, btT = 0, btMax = 2, btCool = 0, raT = 0, raThr = null;
 const sysLv = (k) => k === 0 ? ST.hull : k === 1 ? ST.fuel : ST.wen;
 function sysAdd(k, v) { if (k === 0) ST.hull = Math.min(100, ST.hull + v); else if (k === 1) ST.fuel = Math.min(100, ST.fuel + v); else ST.wen = Math.min(100, ST.wen + v); }
 function oreFor(k) { for (const t of SWM[k][2]) if (cargo[t] > 0) return t; return 0; }
@@ -2568,11 +2664,12 @@ function rockAssist(dt) {
             if (m < R && t - s < best) { best = t - s; raThr = { t: Math.max(1, t - s), m, R, s, huge: L === LH, tier: hx(3) < .3 ? 1 : 0, nx: m > .1 ? ox / m : sRx, ny: m > .1 ? oy / m : sRy, nz: m > .1 ? oz / m : sRz }; } } } } } }
   if (!raThr || sp < 240) return;
   const T = raThr, tti = T.t / sp;
-  if (bst > .5 && btT <= 0 && btCool <= 0 && tti < 1.1) {      // the worse the crash would have been, the more spice it takes: speed, size, how dense the rock is, how dead-centre
+  if (bst > .5 && btT <= 0 && btCool <= 0 && tti < 1.1 + Math.min(1, T.s / 200)) {      // the worse the crash would have been, the more spice it takes: speed, size, how dense the rock is, how dead-centre
     const cost = Math.max(6, Math.round(Math.min(50, (sp / 1600) * 13 * (.7 + Math.min(T.s, 300) / 80) * (T.huge ? 1.4 : 1) * (T.tier ? 1.25 : 1) * (1.2 - .5 * T.m / T.R))));
-    if (ST.spice >= cost) { ST.spice -= cost; btMax = btT = 1.8 + Math.min(1.4, cost / 30); btCool = 6; save(); pop(`SLOW TIME · SPICE −${cost}`, '#ff3b5c'); spiceSnd(0);
+    if (ST.spice >= cost) { ST.spice -= cost; btMax = btT = 1.8 + Math.min(1.4, cost / 30); btHold = 0; btCool = 6; save(); pop(`SLOW TIME · SPICE −${cost}`, '#ff3b5c'); spiceSnd(0);
       for (let k = 0; k < 18; k++) fxAdd(px + sFx * 30 + (Math.random() - .5) * 60, py + sFy * 30 + (Math.random() - .5) * 40, pz + sFz * 30 + (Math.random() - .5) * 60, .3 + Math.random() * .5, 1.4, .2, .35); }
     else if (tm > spiceTip) { spiceTip = tm + 8; tip(`Not enough spice to slow this one (needs ${cost}) · steer!`, 2500); } }
+  if (btT > 0 && T.m < T.R * .85 && tti < .9 && btHold < 1.6) { btT = Math.max(btT, btMax * .45); btHold += dt / Math.max(.1, slow); }   // a big rock still dead ahead keeps time slow a little longer
   if (tti < .7) { const want = Math.max(240, T.t / .7); if (sp > want) { const f = Math.max(want / sp, 1 - dt * 1.5); vx *= f; vy *= f; vz *= f; } }   // only the last moment eases off: a boost run still needs steering
   const a = 70 * (1 - T.m / T.R) * dt; vx += T.nx * a; vy += T.ny * a; vz += T.nz * a;
 }
@@ -2860,6 +2957,133 @@ function mslTick(dt) {
     if (d < g.size * 1.8 + m.s * dt) { npcHit(g, 75 * (crew('gun') ? 1.3 : 1), Math.hypot(g.x - px, g.y - py, g.z - pz), m.x, m.y, m.z, 4); fxAdd(m.x, m.y, m.z, 30, 1, .7, .35); MSL.splice(i, 1); }
   }
 }
+
+// ============================================================================
+// The score: seeded, soft electronic music for space, built on raw Web Audio.
+// Shawn's direction: clean and sparse, deep but soft (low-passed kick, clean sub), warm sine/triangle pads with chorus,
+// a soft filtered triangle lead, dark sparse hats, a restrained snare, long reverb, gentle pump, a quiet limiter;
+// a touch of The Weeknd: 7th chords, a shimmering delayed arp, a snare on 2 and 4 in the night style.
+// One seed per star system (tempo, key, mode, progression), varied per place (patterns, motif, colours).
+// Speed drives the arrangement: drifting holds the ambient sections, cruising grooves, boosting brings the full section.
+// ============================================================================
+const SC = { bus: null, trk: null, key: '', bar: 0, step: 0, t: 0, sec: 'intro', secBar: 0, secLen: 8, drops: 0 };
+const MODES = { minor: [0, 2, 3, 5, 7, 8, 10], dorian: [0, 2, 3, 5, 7, 9, 10] };
+const PROGS2 = [[0, 5, 2, 6], [0, 4, 5, 6], [0, 5, 0, 5], [0, 6, 0, 6], [0, 3, 0, 3], [5, 6, 0, 0], [0, 5, 3, 6], [0, 2, 6, 5]];
+function scNote(T, deg, oct) { const sc = T.scale, o = Math.floor(deg / 7), d = deg - o * 7; return T.root + sc[d] + 12 * (o + oct); }
+function scInit() {
+  if (SC.bus) return;
+  const A = AC;
+  SC.lim = A.createDynamicsCompressor(); SC.lim.threshold.value = -6; SC.lim.knee.value = 6; SC.lim.ratio.value = 8; SC.lim.attack.value = .005; SC.lim.release.value = .25;
+  SC.out = A.createGain(); SC.out.gain.value = 0; SC.lim.connect(SC.out).connect(AG);
+  // reverb: a 4.5 s tail with a little pre-delay, darkening as it fades
+  const len = A.sampleRate * 4.5 | 0, ir = A.createBuffer(2, len, A.sampleRate), pre = A.sampleRate * .05 | 0;
+  for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); let lp = 0; for (let i = pre; i < len; i++) { const k = (i - pre) / (len - pre); lp += (Math.random() * 2 - 1 - lp) * (.85 - .7 * k); d[i] = lp * Math.pow(1 - k, 2); } }
+  SC.rev = A.createConvolver(); SC.rev.buffer = ir; SC.revIn = A.createGain(); SC.revIn.gain.value = .55; SC.revIn.connect(SC.rev).connect(SC.lim);
+  // eighth-note delay, ping-pong, soft feedback
+  const dl = A.createDelay(2), dr = A.createDelay(2), fb = A.createGain(), hp = A.createBiquadFilter(), lp = A.createBiquadFilter(), mg = A.createChannelMerger(2), dw = A.createGain();
+  hp.type = 'highpass'; hp.frequency.value = 350; lp.frequency.value = 3200; fb.gain.value = .28; dw.gain.value = .6;
+  SC.dlyIn = A.createGain(); SC.dlyIn.connect(hp).connect(lp).connect(dl); dl.connect(dr); dr.connect(fb).connect(dl); dl.connect(mg, 0, 0); dr.connect(mg, 0, 1); mg.connect(dw); dw.connect(SC.lim); dw.connect(SC.revIn);
+  SC.dl = dl; SC.dr = dr;
+  // a gentle pump: everything ducks a little under the kick
+  SC.pump = A.createGain(); SC.bus = A.createGain(); SC.bus.gain.value = 1; SC.bus.connect(SC.pump); SC.pump.connect(SC.lim); SC.pump.connect(SC.revIn);
+  SC.kickBus = A.createBiquadFilter(); SC.kickBus.type = 'lowpass'; SC.kickBus.frequency.value = 120; SC.kickBus.connect(SC.lim);
+  // atmosphere: a low breath of filtered noise that never stops
+  const ns = A.createBufferSource(); ns.buffer = NB; ns.loop = true; SC.atmF = A.createBiquadFilter(); SC.atmF.type = 'lowpass'; SC.atmF.frequency.value = 400; SC.atmF.Q.value = .5;
+  SC.atm = A.createGain(); SC.atm.gain.value = 0; ns.connect(SC.atmF).connect(SC.atm).connect(SC.revIn); ns.start();
+}
+function scTrack() {
+  const sysR = mulberry32((SYS.id * 2654435761) >>> 0), R = mulberry32((SYS.salt ^ 0x5C0E) >>> 0), pick = (r, a) => a[r() * a.length | 0];
+  const T = {};
+  T.bpm = SYS.atm ? 98 + (sysR() * 10 | 0) : 112 + (sysR() * 16 | 0); T.root = 45 + (sysR() * 7 | 0) - 3; T.mode = sysR() < .6 ? 'minor' : 'dorian'; T.scale = MODES[T.mode];
+  T.prog = pick(sysR, PROGS2); T.prog2 = R() < .5 ? T.prog : pick(R, PROGS2);
+  T.style = R() < .5 ? 'night' : 'drift';                                     // night: snare on 2 and 4, shimmering arp. drift: snare on 3, sparser
+  T.kick = [0, 4, 8, 12]; T.kickVar = R() < .6 ? 14 : -1;                       // the occasional pickup kick, like the sketch's 0.6 on step 14
+  T.snare = T.style === 'night' ? [4, 12] : [8];
+  T.hat = Array.from({ length: 16 }, (_, i) => i % 2 === 1 && R() < .5 ? 1 : 0);
+  T.bass = [0, 0, 4, 0, 0, 7, 4, 0].map((d, i) => R() < .7 ? d : pick(R, [0, 4, 7, 2]));   // rooted, mostly root and fifth
+  T.motif = []; let dg = pick(R, [0, 2, 4]);
+  for (let i = 0; i < 32; i++) { const on = i % 8 === 0 ? R() < .7 : i % 4 === 0 ? R() < .35 : i % 2 === 0 ? R() < .12 : 0; if (!on) { T.motif.push(null); continue; }
+    const mv = R(); dg += mv < .4 ? 1 : mv < .75 ? -1 : mv < .87 ? 2 : -2; dg = Math.max(0, Math.min(9, dg)); T.motif.push(dg); }
+  T.arp = pick(R, [[0, 2, 4, 6], [0, 4, 6, 9], [6, 4, 2, 0], [0, 4, 2, 6]]);
+  T.lfo = .05 + R() * .1; T.cut = 500 + R() * 400; T.rev = .45 + R() * .2;
+  return T;
+}
+// ---- voices: soft, clean, no distortion ----
+function scEnv(g, t, a, peak, d) { g.gain.setValueAtTime(.0001, t); g.gain.linearRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(.0001, t + d); return t + d + .05; }
+function scKick(t, v) {   // deep and soft: a sine dropping into the low end, low-passed, with a gentle pump on everything else
+  const o = AC.createOscillator(), g = AC.createGain(); o.frequency.setValueAtTime(110, t); o.frequency.exponentialRampToValueAtTime(42, t + .08); o.frequency.exponentialRampToValueAtTime(36, t + .4);
+  o.connect(g).connect(SC.kickBus); o.start(t); o.stop(scEnv(g, t, .002, v, .5));
+  SC.pump.gain.cancelScheduledValues(t); SC.pump.gain.setValueAtTime(.45, t); SC.pump.gain.linearRampToValueAtTime(1, t + .22);
+}
+function scNoise(t, v, type, f, dur, dst, q) { const s = AC.createBufferSource(), fl = AC.createBiquadFilter(), g = AC.createGain(); s.buffer = NB; fl.type = type; fl.frequency.value = f; if (q) fl.Q.value = q; s.connect(fl).connect(g).connect(dst || SC.bus); s.start(t, Math.random()); s.stop(scEnv(g, t, .001, v, dur)); return g; }
+function scSnare(t, v) { const g = scNoise(t, v, 'bandpass', 1800, .18, SC.bus, .8); g.connect(SC.revIn); }        // restrained, and most of it is room
+function scHat(t, v) { scNoise(t, v, 'highpass', 6000, .04); }
+function scBass(t, n, dur, v) {   // clean sub, low-passed, legato: no grit
+  const o = AC.createOscillator(), o2 = AC.createOscillator(), f = AC.createBiquadFilter(), g = AC.createGain(), g2 = AC.createGain(); f.frequency.value = 180;
+  o.frequency.value = mf(n); o2.type = 'triangle'; o2.frequency.value = mf(n + 12); g2.gain.value = .12;            // a faint octave so small speakers still hear the line
+  o.connect(f); o2.connect(g2).connect(f); f.connect(g).connect(SC.bus);
+  g.gain.setValueAtTime(.0001, t); g.gain.linearRampToValueAtTime(v, t + .02); g.gain.setTargetAtTime(v * .5, t + .05, .3); g.gain.setTargetAtTime(.0001, t + dur, .35);
+  o.start(t); o2.start(t); o.stop(t + dur + 1.4); o2.stop(t + dur + 1.4);
+}
+function scPad(t, notes, dur, v) {   // sine and triangle pairs, slowly detuned against each other (a chorus), 2.5 s swell, 4 s release
+  const g = AC.createGain(), f = AC.createBiquadFilter(); f.frequency.value = 1400; f.connect(g); g.connect(SC.bus); g.connect(SC.revIn);
+  g.gain.setValueAtTime(.0001, t); g.gain.linearRampToValueAtTime(v, t + 2.5); g.gain.setValueAtTime(v, t + dur); g.gain.linearRampToValueAtTime(.0001, t + dur + 4);
+  for (const n of notes) for (const [ty, dt] of [['sine', -6], ['triangle', 7]]) { const o = AC.createOscillator(), lf = AC.createOscillator(), lg = AC.createGain(); o.type = ty; o.frequency.value = mf(n); o.detune.value = dt;
+    lf.frequency.value = .3 + Math.random() * .4; lg.gain.value = 6; lf.connect(lg).connect(o.detune); o.connect(f); o.start(t); lf.start(t); o.stop(t + dur + 4.1); lf.stop(t + dur + 4.1); }
+}
+function scLead(t, n, dur, v, T) {   // soft triangle through a slowly drifting low-pass, mostly heard through the delay
+  const o = AC.createOscillator(), f = AC.createBiquadFilter(), g = AC.createGain(); o.type = 'triangle'; o.frequency.value = mf(n); f.Q.value = 2;
+  const drift = 150 + 450 * (.5 + .5 * Math.sin(t * T.lfo * 6.283)); f.frequency.setValueAtTime(drift * 4, t + .05); f.frequency.exponentialRampToValueAtTime(drift, t + .65);
+  o.connect(f).connect(g); g.connect(SC.bus); g.connect(SC.dlyIn);
+  g.gain.setValueAtTime(.0001, t); g.gain.linearRampToValueAtTime(v, t + .05); g.gain.setTargetAtTime(v * .2, t + .1, .3); g.gain.setTargetAtTime(.0001, t + dur, .3); o.start(t); o.stop(t + dur + 1.5);
+}
+function scPluck(t, n, v) {   // the night arp: a soft triangle pluck that lives in the delay
+  const o = AC.createOscillator(), f = AC.createBiquadFilter(), g = AC.createGain(); o.type = 'triangle'; o.frequency.value = mf(n); f.frequency.setValueAtTime(2600, t); f.frequency.exponentialRampToValueAtTime(700, t + .2);
+  o.connect(f).connect(g); g.connect(SC.bus); g.connect(SC.dlyIn); o.start(t); o.stop(scEnv(g, t, .004, v, .35));
+}
+function scSwell(t, dur, v) { const s = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain(); s.buffer = NB; s.loop = true; f.type = 'lowpass'; f.frequency.setValueAtTime(300, t); f.frequency.exponentialRampToValueAtTime(2500, t + dur);
+  g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(v, t + dur); g.gain.linearRampToValueAtTime(.0001, t + dur + .3); s.connect(f).connect(g).connect(SC.revIn); s.start(t); s.stop(t + dur + .4); }   // a soft breath into the full section
+// ---- arrangement ----
+const SECS = { intro: { len: 8, k: 0, h: 0, sn: 0, b: 0, pad: 1, arp: 0, lead: 0 }, groove: { len: 8, k: 1, h: .6, sn: 0, b: 1, pad: 1, arp: .5, lead: 0 }, build: { len: 4, k: 1, h: 1, sn: 1, b: 1, pad: 1, arp: 1, lead: 0 }, drop: { len: 16, k: 1, h: 1, sn: 1, b: 1, pad: .8, arp: 1, lead: 1 }, breakdown: { len: 8, k: 0, h: 0, sn: 0, b: 0, pad: 1, arp: .4, lead: 1 } };
+function scNextSec(e) {
+  const s = SC.sec;
+  if (e < .22) return s === 'drop' || s === 'build' ? 'breakdown' : 'intro';
+  if (e < .55) return s === 'intro' || s === 'breakdown' ? 'groove' : s === 'groove' ? (Math.random() < .5 ? 'groove' : 'build') : s === 'build' ? 'drop' : 'breakdown';
+  return s === 'build' ? 'drop' : s === 'drop' ? (SC.drops % 2 ? 'breakdown' : 'drop') : 'build';
+}
+function scStep(t, T, e) {
+  const s = SC.step & 15, S = SECS[SC.sec], spb = 60 / T.bpm / 4, prog = (SC.bar >> 4) & 1 ? T.prog2 : T.prog, rd = prog[(SC.secBar >> 1) & 3], bk = SC.sec === 'build' ? (SC.secBar + s / 16) / SC.secLen : 1;
+  if (S.k && (T.kick.includes(s) || s === T.kickVar && SC.sec === 'drop') && Math.random() < .92) scKick(t, (s === T.kickVar ? .2 : .32) * (.75 + .25 * Math.random()));
+  if (S.sn && T.snare.includes(s) && (T.style === 'night' || Math.random() < .6)) scSnare(t, .05 * bk);
+  if (S.h && T.hat[s] && Math.random() < S.h) scHat(t, (.008 + .008 * Math.random()) * (SC.sec === 'build' ? .5 + .5 * bk : 1));
+  if (S.b && s % 4 === 0) scBass(t, scNote(T, rd + T.bass[(s >> 2) + (SC.secBar & 1) * 4], -1), spb * 3.6, .22 + .05 * Math.random());
+  if (s === 0 && S.pad) scPad(t, [scNote(T, rd, 0), scNote(T, rd + 2, 0), scNote(T, rd + 4, 0), scNote(T, rd + 6, 0)], spb * 16, .012 * S.pad);   // a 7th chord, one bar
+  if (S.arp && T.style === 'night' && s % 2 === 0 && Math.random() < S.arp * (.4 + .6 * e)) scPluck(t, scNote(T, rd + T.arp[(s >> 1) % 4], 1), .022);
+  if (S.arp && T.style === 'drift' && s % 4 === 2 && Math.random() < S.arp * .5) scPluck(t, scNote(T, rd + T.arp[(s >> 2) % 4], 1), .018);
+  if (S.lead) { const dg = T.motif[(SC.secBar & 1) * 16 + s]; if (dg != null && Math.random() < .85) scLead(t, scNote(T, dg, 1), spb * 3, .035, T); }
+  if (SC.sec === 'build' && SC.secBar === SC.secLen - 2 && s === 0) scSwell(t, spb * 32, .05);
+}
+function scTick() {
+  if (!AC || AC.state !== 'running') return;
+  scInit();
+  const key = SYS.id + ':' + SYS.loc + ':' + (SYS.atm ? 1 : 0);
+  if (key !== SC.key) { SC.key = key; SC.trk = scTrack(); SC.sec = 'intro'; SC.secBar = 0; SC.secLen = 8; SC.drops = 0; const T = SC.trk, q = 60 / T.bpm / 4; SC.dl.delayTime.value = q * 2; SC.dr.delayTime.value = q * 2; SC.revIn.gain.value = T.rev; }
+  const T = SC.trk, air = radioAir(), solo = AC.currentTime < cueEnd, now = AC.currentTime;
+  SC.out.gain.setTargetAtTime(air || muted ? 0 : solo ? .3 : .9, now, air ? .4 : 1.5);
+  SC.atm.gain.setTargetAtTime(air ? 0 : .01 + .015 * (1 - energy), now, 1); SC.atmF.frequency.setTargetAtTime(250 + 600 * energy, now, .5);
+  if (air) { SC.t = Math.max(SC.t, now + .1); return; }
+  if (SC.t < now) SC.t = now + .05;
+  const spb = 60 / T.bpm / 4;
+  while (SC.t < now + .2) {
+    scStep(SC.t, T, energy);
+    SC.step++; if ((SC.step & 15) === 0) { SC.bar++; SC.secBar++;
+      if (SC.secBar % 4 === 0 && SC.secBar < SC.secLen) {                                 // speed changes cut in at the next four-bar line
+        if (energy > .55 && (SC.sec === 'intro' || SC.sec === 'groove' || SC.sec === 'breakdown')) { SC.sec = 'build'; SC.secLen = 4; SC.secBar = 0; }
+        else if (energy < .2 && (SC.sec === 'drop' || SC.sec === 'build')) { SC.sec = 'breakdown'; SC.secLen = 8; SC.secBar = 0; } }
+      if (SC.secBar >= SC.secLen) { if (SC.sec === 'drop') SC.drops++; SC.sec = scNextSec(energy); SC.secLen = SECS[SC.sec].len; SC.secBar = 0; } }
+    SC.t += spb;
+  }
+}
 // ============================================================================
 // Build everything (with a loading bar), then fly
 // ============================================================================
@@ -2880,7 +3104,7 @@ async function loadState() {
   if (ST.build !== BUILD) { for (const q of Object.keys(ST)) delete ST[q]; Object.assign(ST, { v: 1, hull: 100, cargo: [0, 0, 0, 0, 0, 0], credits: 0, sec: [0, 0, 0], loc: 0, visited: {}, dead: [], missions: {}, found: {}, courier: null, build: BUILD, seed: (Math.random() * 4294967296) >>> 0 }); }
   MASTER = ST.seed >>> 0; HOME = hs(MASTER ^ 0x40E) >>> 0;
 }
-const BUILD = 'v1.13';                                          // shown on the pause screen; a new value also starts every player in a new universe
+const BUILD = 'v1.18';                                          // shown on the pause screen; a new value also starts every player in a new universe
 function save() { clearTimeout(saveT); saveT = setTimeout(() => { try { if (idb) idb.transaction('kv', 'readwrite').objectStore('kv').put(ST, 'state'); else localStorage.esState = JSON.stringify(ST); } catch {} }, 1000); }
 if (!TEST || QS.has('keep')) await loadState();
 SYS = mkSys(sysIdAt(ST.sec[0], ST.sec[1], ST.sec[2])); SYS.sec = ST.sec;
@@ -2997,8 +3221,7 @@ function arrive(sec, loc, quiet) {
   px = 0; py = 30; pz = 760; yaw = Math.PI; pitch = 0; snap = 1; gateIn = 0; tradeIn = 0;
   for (const L of LAYERS) L.cx = 1e9;
   dKind.fill(0); bL.fill(0); pL.fill(0); mReg = -1;
-  for (let i = 0; i < 12; i++) pal[i] = SYS.pal[i];
-  for (let i = 0; i < 4; i++) skyw[i] = SYS.sky[i];
+  if (!palEase) { for (let i = 0; i < 12; i++) pal[i] = SYS.pal[i]; for (let i = 0; i < 4; i++) skyw[i] = SYS.sky[i]; }
   unstick(); thr = Math.min(thr, .3);
   // this place's quiet furniture, all from its seed: a signal beacon some kilometres out, and sometimes a trader by the gate
   const R = mulberry32(SYS.salt ^ 0xBEAC), a = R() * 6.283, e = (R() - .5) * .8, d = 3000 + 4000 * R();
@@ -3104,7 +3327,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyJ' && flying()) jpOpen ? closePanel() : gatePanel();
   if (e.code === 'KeyL' && flying()) jpOpen ? closePanel() : logPanel();
   if (e.code === 'KeyN') starMap();
-  if (e.code === 'KeyR') { CFG.radio = CFG.radio ? 0 : 1; setUi(); tip(CFG.radio ? 'Ikosagon radio on' : 'Radio off: ship\'s score', 3000); }
+  if (e.code === 'KeyR') { CFG.radio = CFG.radio ? 0 : 1; setUi(); if (CFG.radio) radioJump(); tip(CFG.radio ? 'Ikosagon radio on: tuning in somewhere new' : 'Radio off: ship\'s score', 3000); }
   if (e.code === 'BracketRight' && CFG.radio) radioJump();
   if (flying() && !jpOpen && !invOpen && /^Digit[1-5]$/.test(e.code)) wpnSet(+e.code[5] - 1);
   if (e.code === 'KeyI' && flying() && !jpOpen) invShow('hold');
@@ -3188,7 +3411,7 @@ function audio() {
   AG.sx = AC.createGain(); AG.sx.gain.value = .9; AG.sx.connect(ws);                      // effects that must always be heard join after the limiter
   DL = AC.createDelay(2); const fb = AC.createGain(), lp = AC.createBiquadFilter();
   DL.delayTime.value = .36; fb.gain.value = .55; lp.frequency.value = 1800; DL.connect(lp).connect(fb).connect(DL); DL.connect(AG);
-  padF = AC.createBiquadFilter(); padF.frequency.value = 260; padF.Q.value = 1.5; padG = AC.createGain(); padG.gain.value = .11; padF.connect(padG).connect(AG);
+  padF = AC.createBiquadFilter(); padF.frequency.value = 260; padF.Q.value = 1.5; padG = AC.createGain(); padG.gain.value = .11; padF.connect(padG).connect(AG); padG.gain.value = 0;   // the old drone pad is retired: the score has its own
   arpF = AC.createBiquadFilter(); arpF.Q.value = 7; arpF.frequency.value = 500; arpG = AC.createGain(); arpG.gain.value = 1; const as = AC.createGain(); as.gain.value = .35; arpF.connect(arpG).connect(AG); arpG.connect(as).connect(DL);
   for (let i = 0; i < 6; i++) { const o = AC.createOscillator(); o.type = i < 2 ? 'sawtooth' : i < 4 ? 'triangle' : 'sawtooth'; o.detune.value = (i & 1 ? 7 : -7) + Math.random() * 4; o.connect(padF); o.start(); padO.push(o); }
   const lfo = AC.createOscillator(), lg = AC.createGain(); lfo.frequency.value = .06; lg.gain.value = 90; lfo.connect(lg).connect(padF.frequency); lfo.start();
@@ -3239,19 +3462,9 @@ function burst(t, dur, v, f0, f1, type) {                    // filtered noise: 
 }
 function sched() {
   if (!AC || AC.state !== 'running' || document.hidden) return;
-  { const air = radioAir(); if (air !== padMute) { padMute = air; const t = AC.currentTime; padG.gain.cancelScheduledValues(t); padG.gain.setTargetAtTime(air ? 0 : .11, t, air ? .4 : 2); if (air && cueG) { cueG.gain.cancelScheduledValues(t); cueG.gain.setTargetAtTime(0, t, .4); cueEnd = t; } }
-    if (air) { mT = Math.max(mT, AC.currentTime + .1); return; } }   // while the radio is on the air, every part of the ship's own music is silent: sequencer, pad, recorded passages, swells       // the radio has the air: the sequenced score rests and picks up when the song ends
-  if (mReg < 0) { mReg = REG; retune(REG, chordAt(bar)); }
-  const e = energy, spb = 60 / TMP() / 4, solo = AC.currentTime < cueEnd, oct = REG & 4 ? 12 : 0;
-  if (mT < AC.currentTime) mT = AC.currentTime + .05;
-  while (mT < AC.currentTime + .2) {
-    const s = mStep++ & 15; if (s === 0) { bar++; mReg = REG; retune(REG, chordAt(bar)); }
-    const rd = chordAt(bar), pat = arpAt(bar), st = pat[s], dens = e > .45 ? 1 : e > .12 ? !(s & 1) : !(s & 3);   // drifting: quarter notes. Cruising: eighths. Running: every step the pattern has
-    if (dens && st > -1) arp(mf(48 + oct + sn(rd + st)), mT, (.012 + .03 * e) * (solo ? .35 : 1) * ARPV(), 380 + 1500 * e);
-    if (!solo) groove(mT, s, e, rd, spb);
-    beat808(mT, s, e, rd, solo);
-    mT += spb;
-  }
+  { const air = radioAir(); if (air !== padMute) { padMute = air; const t = AC.currentTime; padG.gain.cancelScheduledValues(t); padG.gain.setTargetAtTime(0, t, .4); if (air && cueG) { cueG.gain.cancelScheduledValues(t); cueG.gain.setTargetAtTime(0, t, .4); cueEnd = t; } }
+    if (air) { mT = Math.max(mT, AC.currentTime + .1); scTick(); return; } }   // while the radio is on the air, every part of the ship's own music is silent: sequencer, pad, recorded passages, swells       // the radio has the air: the sequenced score rests and picks up when the song ends
+  scTick();
 }
 // each round: a short low knock with a little body of filtered noise under it
 function gunSnd() {
@@ -3299,7 +3512,7 @@ const rd = [0, 0, 0];
 const rdir = () => { let x, y, z, l; do { x = Math.random() * 2 - 1; y = Math.random() * 2 - 1; z = Math.random() * 2 - 1; l = x * x + y * y + z * z; } while (l > 1 || l < .01); l = 1 / Math.sqrt(l); rd[0] = x * l; rd[1] = y * l; rd[2] = z * l; };
 
 const bW = new Uint8Array(NBU), WCOL = [[7, 3.6, 1], [1.4, 7, 2.6], [6.5, 1.6, 9], [1.2, 4.5, 6], [8, 4, 1]], WSH = [[1, .007, 1600, 1.4], [6, .07, 1300, .45], [1, .002, 3400, 1.7], [1, .004, 3000, .26]];
-let gmx = 0, gmy = 0, lastFire = -99, dryTip = 0, fullTip = 0;                                         // where the guns are pointing, off the nose: they follow the cursor a little   // each weapon has its own light: amber rounds, green shot, violet lance
+let gmx = 0, gmy = 0, lastFire = -99, dryTip = 0, fullTip = 0, palEase = 0;                                         // where the guns are pointing, off the nose: they follow the cursor a little   // each weapon has its own light: amber rounds, green shot, violet lance
 function shoot() {
   if (wpn === 4) return seekerFire();
   const sd = shotN++ & 1 ? 1 : -1, ox = sRx * sd * 2.7 - sUx * 1.3 + sFx * 4, oy = sRy * sd * 2.7 - sUy * 1.3 + sFy * 4, oz = sRz * sd * 2.7 - sUz * 1.3 + sFz * 4;   // the guns sit well out on either side
@@ -3509,7 +3722,7 @@ function eye(fb, x, y, w, h, tw, th) {
   // the sky fills whatever is left
   gl.depthFunc(gl.LEQUAL); gl.depthMask(false);
   if (NO.includes('k')) skyw.fill(0);
-  gl.useProgram(P_SKY.p); gl.uniform4fv(P_SKY.u.uSky, skyw); gl.uniform4fv(P_SKY.u['uPl[0]'], SYS.pl); gl.uniform4fv(P_SKY.u['uPa[0]'], SYS.pa); gl.uniform3fv(P_SKY.u['uPb[0]'], SYS.pb); gl.uniform3f(P_SKY.u.uSd, SYS.seed[0], SYS.seed[1], SYS.seed[2]); gl.uniform4f(P_SKY.u.uPh, SYS.atm ? 0 : SYS.ph, SYS.phs, 0, 0); gl.uniform3f(P_SKY.u.uPq, SYS.pq[0], SYS.pq[1], SYS.pq[2]);
+  gl.useProgram(P_SKY.p); bigStarsSet(); gl.uniform4fv(P_SKY.u.uSky, skyw); gl.uniform4fv(P_SKY.u['uPl[0]'], SYS.pl); gl.uniform4fv(P_SKY.u['uPa[0]'], SYS.pa); gl.uniform3fv(P_SKY.u['uPb[0]'], SYS.pb); gl.uniform3f(P_SKY.u.uSd, SYS.seed[0], SYS.seed[1], SYS.seed[2]); gl.uniform4f(P_SKY.u.uPh, SYS.atm ? 0 : SYS.ph, SYS.phs, 0, 0); gl.uniform3f(P_SKY.u.uPq, SYS.pq[0], SYS.pq[1], SYS.pq[2]);
   { const k = SYS.atm ? SYS.atm - 1 : 0; gl.uniform4f(P_SKY.u.uOrb, SYS.atm, Math.max(700, Math.min(9000, 2600 + py * .5)), px, pz); gl.uniform3f(P_SKY.u.uOa, SYS.pa[k * 4], SYS.pa[k * 4 + 1], SYS.pa[k * 4 + 2]); gl.uniform3f(P_SKY.u.uOb, SYS.pb[k * 3], SYS.pb[k * 3 + 1], SYS.pb[k * 3 + 2]); } gl.bindVertexArray(VA0); gl.drawArrays(gl.TRIANGLES, 0, 3);
   // glowing things, added on top (alpha is left alone: it marks open sky for the star shafts)
   gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE); gl.disable(gl.CULL_FACE);
@@ -3550,11 +3763,11 @@ function eye(fb, x, y, w, h, tw, th) {
   const sw = G[3] * SUN[0] + G[7] * SUN[1] + G[11] * SUN[2], sx = G[0] * SUN[0] + G[4] * SUN[1] + G[8] * SUN[2], sy = G[1] * SUN[0] + G[5] * SUN[1] + G[9] * SUN[2];
   pass(P_RAY, T.ray, T.hdr);
   const sux = sw > .01 ? sx / sw * .5 + .5 : .5, suy = sw > .01 ? sy / sw * .5 + .5 : .5, sus = sm(.05, .5, sw);
-  gl.uniform3f(P_RAY.u.uSunS, sux, suy, NO.includes('r') ? 0 : sus * Math.min(.9, .2 + fogD * 600));   // dustier space, stronger shafts
+  gl.uniform3f(P_RAY.u.uSunS, sux, suy, NO.includes('r') ? 0 : sus * Math.min(.9, .2 + fogD * 600) * (csU[0] ? .15 : 1));   // a close star is a surface to look at, not a searchlight   // dustier space, stronger shafts
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   // tone-map into the destination
   gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.viewport(x, y, w, h);
-  gl.useProgram(P_COMP.p); gl.uniform2f(P_COMP.u.uPx, 1 / tw, 1 / th); { const f = xr ? 0 : CFG.fx; gl.uniform4f(P_COMP.u.uFx, 1 + f * .9, f * .045, mbx * f, mby * f); gl.uniform1f(P_COMP.u.uFs, f * mbs); } gl.uniform3f(P_COMP.u.uJ, Math.max(jk, dbgJ, scE * .22) * .9, Math.max(tun, dbgT), jumpT + tm); gl.uniform3f(P_COMP.u.uFl, sux, suy, sux > -.2 && sux < 1.2 && suy > -.2 && suy < 1.2 ? sus : 0);
+  gl.useProgram(P_COMP.p); gl.uniform2f(P_COMP.u.uPx, 1 / tw, 1 / th); { const v = (k) => xr ? 0 : CFG[k], fb = v('fxBlur') * 1.1, fc = v('fxCA'); gl.uniform4f(P_COMP.u.uFx, fc ? fc * 1.9 : 0, v('fxGrain') * .09, mbx * fb, mby * fb); gl.uniform1f(P_COMP.u.uFs, fb * mbs); gl.uniform4f(P_COMP.u.uFy, v('fxScan'), CFG.fxBloom, v('fxVig'), 0); gl.uniform4f(P_COMP.u.uFz, v('fxGlass'), 0, 0, 0); } gl.uniform3f(P_COMP.u.uJ, Math.max(jk, dbgJ, scE * .22) * .9, Math.max(tun, dbgT), jumpT + tm); gl.uniform3f(P_COMP.u.uFl, sux, suy, sux > -.2 && sux < 1.2 && suy > -.2 && suy < 1.2 ? sus * CFG.fxFlare * (csU[0] ? .2 : 1) : 0);
   gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, T.hdr.t); gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, bl[0].t); gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, T.ray.t);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   hudDraw(xr ? 1 / 6 : stereo ? .25 : 1);                     // the display goes on last, over the finished picture, so blur, grain and fringing never touch its text
@@ -3595,7 +3808,6 @@ function frame(now, xf) {
   (xr || window).requestAnimationFrame(frame);
   const raw = (now - last) / 1000; last = now;
   const rdt = Math.min(.05, Math.max(.001, raw)); btT = Math.max(0, btT - rdt); slow += (((jpOpen || invOpen) && flying() ? .12 : btT > 0 ? .14 + .86 * Math.pow(1 - btT / btMax, 2.4) : 1) - slow) * Math.min(1, rdt * (btT > 0 ? 14 : 4));
-  if (rdA) { const pr = btT > 0 ? Math.max(.6, Math.min(1, .45 + .55 * slow)) : 1; if (Math.abs(rdA.playbackRate - pr) > .02) try { rdA.preservesPitch = false; rdA.playbackRate = pr; } catch {} }
   const dt = rdt * slow; tm += dt;                             // with a panel open the world all but stops, and eases back when it closes
   acc += raw; nf++;
   if (nf >= 40) {                                            // hold the frame rate by trading resolution
@@ -3648,7 +3860,7 @@ function frame(now, xf) {
   const sh = trauma * trauma * .02, Qb = roll ? qmul(QAs, qax(0, 0, 1, roll)) : QAs, Qv = sh > 0 ? qmul(Qb, qmul(qax(0, 1, 0, Math.sin(tm * 71) * sh), qax(1, 0, 0, Math.sin(tm * 93 + 1) * sh))) : Qb;
   { const R = qv(Qv, 1, 0, 0), U = qv(Qv, 0, 1, 0), F = qv(Qv, 0, 0, -1); sRx = R[0]; sRy = R[1]; sRz = R[2]; sUx = U[0]; sUy = U[1]; sUz = U[2]; sFx = F[0]; sFy = F[1]; sFz = F[2];
     spit = Math.asin(Math.max(-1, Math.min(1, F[1]))); syaw = Math.atan2(F[0], -F[2]); }
-  fwd += bst * 520 * eff * (1 + 2.5 * bRamp);                                          // Shift is thrust on its own: no need to hold forward
+  fwd += bst * 400 * eff * (1 + .55 * bRamp);                                            // local rush tops out near 620: rocks get two seconds or more to arrive; the long-range drive carries you across the system                                          // Shift is thrust on its own: no need to hold forward
   const k = 1 - Math.exp(-dt * (bst > .3 ? 1.5 : 1.05));
   vx += (sFx * fwd + (sRx * ms + sUx * mu) * 45 - vx) * k; vy += (sFy * fwd + (sRy * ms + sUy * mu) * 45 - vy) * k; vz += (sFz * fwd + (sRz * ms + sUz * mu) * 45 - vz) * k;
   if (fly) rockAssist(dt);
@@ -3680,9 +3892,10 @@ function frame(now, xf) {
   ovx = vx; ovy = vy; ovz = vz; oyaw = syaw; opit = spit;
   ckx += (cl(-axl * .0015, .12) - yr * .05 - ckx) * ck; cky += (cl(-ayl * .0015, .1) + pr * .04 - cky) * ck; ckz += (cl(-azl * .0009, .22) - jk * .25 - ckz) * ck;
   ckr += (cl(-yr * .035, .09) - ckr) * ck; stx += (cl(-yr * .35, .45) - stx) * Math.min(1, dt * 9); sty += (cl(-pr * .35, .4) - sty) * Math.min(1, dt * 9);
-  const pk = snap ? 1 : Math.min(1, dt * 2);
+  palEase = Math.max(0, palEase - rdt * .25); const pk = snap && !palEase ? 1 : Math.min(1, dt * (palEase ? .55 : 2));   // after a climb-out the colours drift over a few seconds instead of cutting
   REG = SYS.t;
   for (let i = 0; i < 12; i++) pal[i] += (SYS.pal[i] - pal[i]) * pk;
+  for (let i = 0; i < 4; i++) skyw[i] += (SYS.sky[i] - skyw[i]) * pk;
   fogD += ((.00024 + .0012 * sm(.42, .75, fG(px, py, pz))) * SYS.a.fog + fogX - fogD) * pk; snap = 0;
   flash *= Math.exp(-dt * 2.2);
   energy += (Math.min(1, speed / 420) * .8 + combat * .3 - energy) * Math.min(1, dt * 2);
@@ -3750,7 +3963,7 @@ resize();
 window.ES = { warpLook: (a, b) => { dbgJ = a; dbgT = b; }, zero: (i) => { const L = LAYERS[i]; L.n = 0; for (const s of L.slaves) s.n = 0; return LAYERS.length; }, dbg: (z) => { if (z) for (let i = 0; i < 3; i++) SYS.pl[i * 4 + 3] = 0; return Array.from(SYS.pl).map((v) => +v.toFixed(2)).concat(Array.from(SYS.pa).map((v) => +v.toFixed(2))); },
   goto: (sec, loc) => arrive(sec, loc || 0, 1), market: marketPanel, ph: (t) => { SYS.ph = t; SYS.pq = [sFx, sFy, sFz]; }, bh: () => { SYS.sky[0] = 1; pitch = Math.asin(-.22); yaw = Math.atan2(.58, -.78); snap = 1; }, seeNpc: (i) => { const a = NPCS.filter((q) => !q.big && q.var === i)[0]; if (!a) return -1; px = a.x + 22; py = a.y + 7; pz = a.z + 22; const dx = a.x - px, dy = a.y - py, dz = a.z - pz, l = Math.hypot(dx, dy, dz); pitch = Math.asin(dy / l); yaw = Math.atan2(dx, -dz); snap = 1; vx = vy = vz = 0; thr = 0; return a.var; }, linger: () => { for (let i = 0; i < 90; i++) lingerTick(.05); return [lingT, lingId, jpOpen]; }, tp: (x, y, z) => { px = x; py = y; pz = z; vx = vy = vz = 0; thr = 0; }, navCur, interact, map: starMap, drift: driftToggle, near: (k, f) => { const P = sysP[k]; sysS = [P[0] * f, P[1] * f, P[2] * f]; }, dsys: () => [sysS.map((v) => v | 0), driftV | 0, +SYS.pl[3].toFixed(3), SYS.atm, +veil.toFixed(2)], aim: (k, s) => { const d = SYS.pl, q = s || 1; pitch = Math.asin(q * d[k * 4 + 1]); yaw = Math.atan2(q * d[k * 4], -q * d[k * 4 + 2]); snap = 1; }, good: goodPanel, sc: (k, t) => { scP = k; scT = t; }, scOut: (t) => { scOut = t; vy = 120; thr = 1; }, host: (v) => { hostLv = v; npcSpawn(); }, rp: () => ST.rp, head: (y, p) => { hlF = y == null ? null : [y, p || 0]; }, nav: () => NAV.map((n) => n.id), npcs: () => NPCS.length, journal: journalPanel, board: boardPanel, hail: () => hailPanel(NPCS[0]), cycle: navCycle, atm: () => arrive(SYS.sec, SYS.locs.findIndex((l) => l.atm), 1), vrPanel: (v) => { hudForce = v; }, jt: () => [jumpT, !!jumpTo, SYS.loc, SYS.name, slow], system: describe, on: (f) => hooks.push(f), kind: (t) => { for (let x = 1; x < 400; x++) if ((sysIdAt(x, 0, 0) & 7) === t) return arrive([x, 0, 0], 0, 1); }, place: (t) => { const l = SYS.locs.find((q) => q.t === t); if (l) arrive(SYS.sec, l.i, 1); return !!l; }, startJump, gatePanel, logPanel, tradePanel, closePanel, hull: () => ST.hull, beacon: () => { px = bcn[0] + 200; py = bcn[1]; pz = bcn[2]; }, trader: () => trader, go, vr, cock: setCock, thr: (v) => { thr = v; }, key: (c, v) => { K[c] = v; }, look: (y, p) => { yaw = y; pitch = p; snap = 1; }, at: (x, y, z) => { px = x; py = y; pz = z; snap = 1; }, stereo: (v) => { stereo = v; resize(); },
   jelly: (d = 60, s = 0) => seek(LJ, swarmAt, d, s), rock: (d) => seek(LH, hugeAt, d), big: (d) => seek(LB, bigAt, d), titan: (d) => seek(LTi, titanAt, d), geode: (d = 40) => seek(LG, geodeAt, d),
-  fleet: (d = 60) => seek(LF, cellHas(20, SYS.a.fl * .6), d), frig: (d = 1) => seek(LFr, cellHas(21, SYS.a.fr * .7), d), siph: (d = 40) => seek(LDs, cellHas(24, SYS.a.dr * .13 + .008), d), spark: (d = 40) => seek(LDe, cellHas(25, SYS.a.dr * .13 + .008), d), inv: (m) => invShow(m), vel: (s) => { vx = sFx * s; vy = sFy * s; vz = sFz * s; bst = 1; }, bloomNow: () => { bloomT = 0; }, sys: () => ({ bl: BLOOMS.length, grv: grooveAt(bar), arp: ARPS.indexOf(arpAt(bar)), chord: chordAt(bar), ac: AC && AC.state, spd: Math.round(Math.hypot(vx, vy, vz)), thr: raThr && { t: raThr.t | 0, m: raThr.m | 0, R: raThr.R | 0 }, hull: ST.hull, fuel: ST.fuel, wen: ST.wen, spice: ST.spice, cargo: ST.cargo.slice(), warn: sysWarn, sw: swOn, slow, btT }), setSys: (o) => { if (o.cargo) { o.cargo.forEach((v, i) => cargo[i] = v); delete o.cargo; } Object.assign(ST, o); }, drone: (d = 40) => seek(LDr, cellHas(22, SYS.a.dr * .16 + .008), d),
+  fleet: (d = 60) => seek(LF, cellHas(20, SYS.a.fl * .6), d), frig: (d = 1) => seek(LFr, cellHas(21, SYS.a.fr * .7), d), siph: (d = 40) => seek(LDs, cellHas(24, SYS.a.dr * .13 + .008), d), spark: (d = 40) => seek(LDe, cellHas(25, SYS.a.dr * .13 + .008), d), inv: (m) => invShow(m), closeStar: (sc, giant, rad) => { bigStarsSet(); csU = [rad || .2, sc, 1.3, giant ? 1 : 0]; csC = giant ? [1, .34, .1] : CSC[sc]; yaw = Math.atan2(SUN[0], -SUN[2]); pitch = Math.asin(SUN[1]); snap = 1; }, bigLook: (i, ty) => { bigStarsSet(); if (ty != null) bsS[i * 4 + 3] = ty; const x = bsS[i * 4], y = bsS[i * 4 + 1], z = bsS[i * 4 + 2]; yaw = Math.atan2(x, -z); pitch = Math.asin(y); snap = 1; return [bsS[i * 4 + 3], bsC[i * 4 + 3]]; }, musMeter: () => { if (!SC.an) { SC.an = AC.createAnalyser(); SC.an.fftSize = 2048; SC.lim.connect(SC.an); } if (!SC.mi) { const b = new Float32Array(2048); SC.mm = { pk: 0, ss: 0, n: 0 }; SC.mi = setInterval(() => { SC.an.getFloatTimeDomainData(b); for (const x of b) { SC.mm.pk = Math.max(SC.mm.pk, Math.abs(x)); SC.mm.ss += x * x; SC.mm.n++; } }, 20); } const r = { pk: +SC.mm.pk.toFixed(3), rms: +Math.sqrt(SC.mm.ss / Math.max(1, SC.mm.n)).toFixed(3), sec: SC.sec }; SC.mm = { pk: 0, ss: 0, n: 0 }; return r; }, musSec: (s) => { SC.sec = s; SC.secBar = 0; SC.secLen = SECS[s].len; }, jumpTest: (l) => startJump({ sec: SYS.sec, loc: l == null ? (SYS.loc + 1) % SYS.locs.length : l }), mus: () => { if (!SC.an && SC.lim) { SC.an = AC.createAnalyser(); SC.an.fftSize = 2048; SC.lim.connect(SC.an); } const T = SC.trk, b = new Float32Array(2048); let pk = 0, rms = 0; if (SC.an) { SC.an.getFloatTimeDomainData(b); for (const x of b) { pk = Math.max(pk, Math.abs(x)); rms += x * x; } rms = Math.sqrt(rms / 2048); } return { sec: SC.sec, bar: SC.bar, secBar: SC.secBar, e: +energy.toFixed(2), bpm: T && T.bpm, mode: T && T.mode, style: T && T.style, root: T && T.root, pk: +pk.toFixed(3), rms: +rms.toFixed(3), ac: AC && AC.state }; }, vel: (s) => { vx = sFx * s; vy = sFy * s; vz = sFz * s; bst = 1; }, bloomNow: () => { bloomT = 0; }, sys: () => ({ bl: BLOOMS.length, grv: grooveAt(bar), arp: ARPS.indexOf(arpAt(bar)), chord: chordAt(bar), ac: AC && AC.state, spd: Math.round(Math.hypot(vx, vy, vz)), thr: raThr && { t: raThr.t | 0, m: raThr.m | 0, R: raThr.R | 0 }, hull: ST.hull, fuel: ST.fuel, wen: ST.wen, spice: ST.spice, cargo: ST.cargo.slice(), warn: sysWarn, sw: swOn, slow, btT }), setSys: (o) => { if (o.cargo) { o.cargo.forEach((v, i) => cargo[i] = v); delete o.cargo; } Object.assign(ST, o); }, drone: (d = 40) => seek(LDr, cellHas(22, SYS.a.dr * .16 + .008), d),
   whale: (d = 900) => seek(LWh, cellHas(17, .55), d), serpent: (d = 250) => seek(LSp, cellHas(18, .4), d), colossus: (d = 900) => seek(LQ, cellHas(16, .4), d), ray: (d = 300) => seek(LY, cellHas(7, .65), d),
   info: () => ({ cue: cueName, up: [sUx, sUy, sUz].map((v) => +v.toFixed(2)), fw: [sFx, sFy, sFz].map((v) => +v.toFixed(2)), fps, W, H, S, pos: [px, py, pz], reg: REG, sys: SYS.name, broken, cargo, live: nLive, dyn: DC[0].n + DC[1].n + DGm.n, n: LAYERS.map((l) => l.n) }),
 };
