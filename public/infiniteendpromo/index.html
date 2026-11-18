@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Infinite End: Play the space sim in your browser</title>
+<meta name="description" content="An endless space sim that runs in your browser. Boost through asteroid fields, mine ore, feed the swarms and jump the gates. No download, no account.">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#04050a">
+<meta property="og:type" content="website">
+<meta property="og:title" content="The Infinite End">
+<meta property="og:description" content="The charts stop here. An endless space sim that runs in your browser. Play it now.">
+<meta property="og:url" content="https://www.ikosagon.com/infiniteendpromo">
+<meta property="og:image" content="https://www.ikosagon.com/infiniteendpromo/img/hero-warp.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Michroma&amp;family=Syncopate:wght@700&amp;family=Chakra+Petch:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#04050a;color:#f2f4f8;font-family:"Chakra Petch",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#5ee6cf;text-decoration:none}a:hover{color:#a8f3e6}
+.ie *{box-sizing:border-box}
+.ie{background-color:#04050a;background-image:
+radial-gradient(1px 1px at 12% 18%,#fff 50%,transparent 51%),
+radial-gradient(1px 1px at 78% 9%,#cfe 50%,transparent 51%),
+radial-gradient(1.5px 1.5px at 33% 42%,#fff 50%,transparent 51%),
+radial-gradient(1px 1px at 64% 61%,#9ad 50%,transparent 51%),
+radial-gradient(1px 1px at 88% 34%,#fff 50%,transparent 51%),
+radial-gradient(1px 1px at 22% 77%,#bcd 50%,transparent 51%),
+radial-gradient(1.5px 1.5px at 51% 88%,#fff 50%,transparent 51%),
+radial-gradient(1px 1px at 6% 52%,#fff 50%,transparent 51%),
+radial-gradient(1px 1px at 93% 72%,#cde 50%,transparent 51%),
+radial-gradient(1px 1px at 44% 6%,#fff 50%,transparent 51%);
+background-size:620px 620px}
+.wrap{max-width:1180px;margin:0 auto;padding:0 32px}
+.mono{font-family:"JetBrains Mono",ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;font-size:12px}
+.display{font-family:Michroma,Inter,sans-serif;letter-spacing:.08em;text-transform:uppercase;font-weight:400}
+.muted{color:#a3acbb}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:52px;padding:0 28px;font-family:"JetBrains Mono",monospace;font-size:13px;letter-spacing:.16em;text-transform:uppercase;border:1px solid #5ee6cf;cursor:pointer}
+.btn-primary{background:#5ee6cf;color:#04050a}.btn-primary:hover{background:#a8f3e6;color:#04050a}
+.btn-ghost{background:transparent;color:#f2f4f8;border-color:#3a4252}.btn-ghost:hover{border-color:#5ee6cf;color:#5ee6cf}
+.hud{position:relative}
+.hud:before,.hud:after{content:"";position:absolute;width:14px;height:14px;border-color:#5ee6cf;border-style:solid;opacity:.8}
+.hud:before{top:-7px;left:-7px;border-width:1px 0 0 1px}.hud:after{bottom:-7px;right:-7px;border-width:0 1px 1px 0}
+.sec{padding:120px 0;border-top:1px solid #141a24}
+.eyebrow{color:#e9b35f;margin:0 0 18px}
+.h2{font-size:34px;line-height:1.25;margin:0 0 16px}
+.lead{font-size:18px;line-height:1.65;max-width:640px;margin:0}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+.card{border:1px solid #1c2330;background:rgba(10,13,20,.85)}
+.chip{display:inline-flex;align-items:center;gap:8px;font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.14em;text-transform:uppercase;padding:6px 10px;border:1px solid #2a3240;color:#a3acbb}
+.chip.on{border-color:#5ee6cf;color:#5ee6cf}
+.dot{width:7px;height:7px;border-radius:50%;background:#5b6474}.on .dot{background:#5ee6cf;box-shadow:0 0 8px #5ee6cf}
+.ph{display:flex;align-items:flex-end;padding:14px;aspect-ratio:16/9;border-bottom:1px solid #1c2330;background:linear-gradient(160deg,#0d1622,#05070c 70%)}
+.input{min-height:52px;padding:0 16px;background:#070a10;border:1px solid #2a3240;color:#f2f4f8;font:16px "Chakra Petch",sans-serif;flex:1 1 260px}
+.input:focus{outline:2px solid #5ee6cf;outline-offset:1px}
+.herobox{border-left:1px solid #5ee6cf;padding-left:56px}
+.eyebrow-wide{font-family:"Chakra Petch",sans-serif;font-weight:500;color:#e9b35f;letter-spacing:.42em;text-transform:uppercase;font-size:14px;margin:0 0 26px}
+.t-the{font-family:Michroma,sans-serif;color:#e9b35f;font-size:clamp(22px,2.6vw,36px);letter-spacing:.6em;text-transform:uppercase;margin-bottom:6px}
+.t-inf{font-family:Syncopate,sans-serif;font-weight:700;color:#e6edf1;font-size:clamp(46px,7.4vw,104px);letter-spacing:.01em;text-transform:uppercase}
+.t-end{font-family:Michroma,sans-serif;color:transparent;-webkit-text-stroke:1.5px #5ee6cf;font-size:clamp(46px,7.4vw,104px);letter-spacing:.28em;text-transform:uppercase;margin-top:8px}
+.menu{display:flex;flex-direction:column;max-width:640px}
+.menu-item{display:flex;align-items:baseline;gap:28px;padding:18px 0;border-bottom:1px solid rgba(230,237,241,.16);color:#e6edf1;flex-wrap:wrap}
+.menu-item:hover{color:#5ee6cf}
+.menu-num{font-family:"Chakra Petch",sans-serif;color:#8b94a3;font-size:15px;width:28px}
+.menu-label{font-family:Michroma,sans-serif;text-transform:uppercase;letter-spacing:.22em;font-size:clamp(15px,1.7vw,22px)}
+.menu-primary .menu-label{color:#e9b35f}.menu-primary:hover .menu-label{color:#f6d79c}
+.menu-note{margin-left:auto;font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#5ee6cf}
+.shot{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-bottom:1px solid #1c2330}
+@media (max-width:560px){.herobox{padding-left:20px}.menu-note{margin-left:56px;width:100%}}
+@media (max-width:900px){.grid3{grid-template-columns:minmax(0,1fr)}.grid4{grid-template-columns:repeat(2,minmax(0,1fr))}.grid2{grid-template-columns:minmax(0,1fr)}.navlinks{display:none}.sec{padding:80px 0}}
+@media (max-width:560px){.grid4{grid-template-columns:minmax(0,1fr)}.wrap{padding:0 20px}}
+</style>
+<style>html{scroll-behavior:smooth}@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}</style>
+</head>
+<body>
+<div class="ie" style="width: 100%; min-height: 100vh">
+
+<!-- NAV -->
+<header style="position: sticky; top: 0; z-index: 10; background: rgba(4,5,10,.82); backdrop-filter: blur(10px); border-bottom: 1px solid #141a24">
+<nav class="wrap" style="display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 64px" aria-label="Page">
+<a href="https://www.ikosagon.com" class="mono" style="color: #f2f4f8; font-size: 13px">IKOSAGON</a>
+<div class="navlinks" style="display: flex; gap: 28px; align-items: center">
+<a href="#play-today" class="mono muted">Gameplay</a>
+<a href="#roadmap" class="mono muted">Roadmap</a>
+<a href="#support" class="mono muted">Support</a>
+<a href="/infiniteend" data-play class="btn btn-primary" style="min-height: 40px; padding: 0 18px; font-size: 12px">Play now</a>
+</div>
+</nav>
+</header>
+
+<!-- HERO -->
+<section style="position: relative; min-height: 94vh; display: flex; align-items: center; overflow: hidden">
+<img src="/infiniteendpromo/img/hero-warp.jpg" alt="" aria-hidden="true" style="position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 75% 50%">
+<div aria-hidden="true" style="position: absolute; inset: 0; background: linear-gradient(90deg, #04050a 0%, rgba(4,5,10,.9) 38%, rgba(4,5,10,.35) 72%, rgba(4,5,10,.15) 100%), linear-gradient(180deg, rgba(4,5,10,.5) 0%, rgba(4,5,10,0) 30%, rgba(4,5,10,0) 70%, #04050a 100%)"></div>
+<div class="wrap" style="position: relative; width: 100%; padding-top: 72px; padding-bottom: 72px">
+<div class="herobox">
+<p class="eyebrow-wide">Beyond the last charted gate</p>
+<h1 aria-label="The Infinite End" style="margin: 0 0 30px; display: flex; flex-direction: column; line-height: 1">
+<span class="t-the" aria-hidden="true">The</span>
+<span class="t-inf" aria-hidden="true">Infinite</span>
+<span class="t-end" aria-hidden="true">End</span>
+</h1>
+<p style="font-family: Michroma, sans-serif; font-size: clamp(18px,2vw,26px); letter-spacing: .06em; color: #e6edf1; margin: 0 0 14px">The charts stop here.</p>
+<p class="lead" style="color: #b7bfcc; margin-bottom: 40px; max-width: 560px">Boost through asteroid fields, mine ore, feed the swarms and jump the gates into an endless universe. One click and you're flying.</p>
+<nav aria-label="Start" class="menu">
+<a href="/infiniteend" data-play class="menu-item menu-primary"><span class="menu-num">01</span><span class="menu-label">Play it now</span><span class="menu-note"><span data-play-note>Full build · browser</span></span></a>
+<a href="#play-today" class="menu-item"><span class="menu-num">02</span><span class="menu-label">See what you'll do</span><span class="menu-note">First ten minutes</span></a>
+<a href="#support" class="menu-item"><span class="menu-num">03</span><span class="menu-label">Support the build</span><span class="menu-note">Fuel the next jump</span></a>
+</nav>
+<p class="mono muted" style="font-size: 11px; margin: 22px 0 8px">Free · runs in your browser · no download, no account · updated often</p>
+<a href="/endless-space" data-alt class="mono" style="display: inline-block; font-size: 11px"><span data-alt-label>On a phone? Try the mobile build →</span></a>
+</div>
+</div>
+</section>
+
+<!-- PILLARS -->
+<section id="play-today" class="sec">
+<div class="wrap">
+<p class="mono eyebrow">Play it today</p>
+<h2 class="display h2">Your first ten minutes.</h2>
+<p class="lead muted" style="margin-bottom: 40px">No tutorial wall. Open the link and this is what you're doing.</p>
+<div class="grid3" style="margin-bottom: 48px">
+<div style="border-top: 1px solid #5ee6cf; padding-top: 16px"><p style="margin: 0; line-height: 1.6"><span style="color: #e6edf1">Every system is new.</span> <span class="muted">Its own star, places, traffic and music.</span></p></div>
+<div style="border-top: 1px solid #5ee6cf; padding-top: 16px"><p style="margin: 0; line-height: 1.6"><span style="color: #e6edf1">The universe remembers.</span> <span class="muted">Break a rock today; it's still gone tomorrow.</span></p></div>
+<div style="border-top: 1px solid #5ee6cf; padding-top: 16px"><p style="margin: 0; line-height: 1.6"><span style="color: #e6edf1">It keeps getting better.</span> <span class="muted">Updates ship often, so each return is a little different.</span></p></div>
+</div>
+
+<div class="grid2">
+<article class="card">
+<img class="shot" src="/infiniteendpromo/img/fly-boost.jpg" alt="Boosting through an ice-ring asteroid field">
+<div style="padding: 28px">
+<div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px"><span class="mono" style="color: #5ee6cf">01 · Fly</span><span class="chip on"><span class="dot"></span>Playable</span></div>
+<h3 class="display" style="font-size: 20px; margin: 0 0 10px">Boost is the whole point.</h3>
+<p class="muted" style="margin: 0; line-height: 1.6">A fast, weighty ship that banks, rolls, loops and flies inverted. Thread asteroid fields at speed while the music builds, and burn spice to slow time a breath before the crash. Then dive to a planet and skim its surface.</p>
+</div>
+</article>
+<article class="card">
+<img class="shot" src="/infiniteendpromo/img/explore-npc.jpg" alt="An NPC miner, Marlin-25, flying through the Azure Venur belt">
+<div style="padding: 28px">
+<div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px"><span class="mono" style="color: #5ee6cf">02 · Explore</span><span class="chip on"><span class="dot"></span>Playable</span></div>
+<h3 class="display" style="font-size: 20px; margin: 0 0 10px">A universe that remembers you.</h3>
+<p class="muted" style="margin: 0; line-height: 1.6">Every system grows from a seed: same coordinates, same world, forever. Glacier fields, ember forges, creature nurseries, ship graveyards. Pilots hail you with stories and choices. Break a rock today and it's still gone tomorrow.</p>
+</div>
+</article>
+<article class="card">
+<img class="shot" src="/infiniteendpromo/img/survive-mining.jpg" alt="Mining laser cutting ore from an asteroid">
+<div style="padding: 28px">
+<div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px"><span class="mono" style="color: #5ee6cf">03 · Survive</span><span class="chip on"><span class="dot"></span>Playable</span></div>
+<h3 class="display" style="font-size: 20px; margin: 0 0 10px">Mine it. Feed it. Keep flying.</h3>
+<p class="muted" style="margin: 0; line-height: 1.6">Laser ore out of the rocks, then fly through drone swarms that turn it into fuel, weapons energy or hull. Trade at the hubs, take courier jobs, survive the odd skirmish. The meters are generous, so new pilots can just fly.</p>
+</div>
+</article>
+<article class="card">
+<img class="shot" src="/infiniteendpromo/img/listen-radio.jpg" alt="Cockpit view over cloud tops with Ikosagon Radio playing">
+<div style="padding: 28px">
+<div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px"><span class="mono" style="color: #5ee6cf">04 · Listen</span><span class="chip on"><span class="dot"></span>Playable</span></div>
+<h3 class="display" style="font-size: 20px; margin: 0 0 10px">A soundtrack no one else will hear.</h3>
+<p class="muted" style="margin: 0; line-height: 1.6">Music generated live as you fly. Every system has its own tempo, key and chords: calm when you drift, building when you boost. And the Ikosagon radio sounds like a real one. Flip it off and on to find a new track.</p>
+</div>
+</article>
+</div>
+<div style="display: flex; flex-wrap: wrap; gap: 16px; margin-top: 40px">
+<a href="/infiniteend" data-play class="btn btn-primary">Play it now</a>
+<a href="/endless-space" data-alt class="btn btn-ghost"><span data-alt-short>Mobile build</span></a>
+</div>
+</div>
+</section>
+
+<!-- COMING ABOARD -->
+<section class="sec">
+<div class="wrap">
+<p class="mono eyebrow">Where it's going</p>
+<h2 class="display h2">An early seat in a universe still being built.</h2>
+<p class="lead muted" style="margin-bottom: 40px">A sci-fi passion project, built carefully and updated often. Fidelity, variety and depth keep rising. Next comes the part that turns a ship into a home.</p>
+<div class="grid3">
+<div class="card" style="padding: 24px; display: flex; flex-direction: column; gap: 12px"><span class="chip" style="align-self: flex-start"><span class="dot"></span>In development</span><h3 class="display" style="font-size: 16px; margin: 0">The cab</h3><p class="muted" style="margin: 0; line-height: 1.55; font-size: 15px">Living quarters you customize like a long-haul trucker's cab. Set the ship to cruise and make yourself at home.</p></div>
+<div class="card" style="padding: 24px; display: flex; flex-direction: column; gap: 12px"><span class="chip" style="align-self: flex-start"><span class="dot"></span>In development</span><h3 class="display" style="font-size: 16px; margin: 0">Card duels</h3><p class="muted" style="margin: 0; line-height: 1.55; font-size: 15px">Meet a pilot past the gates and deal them in, on one of your dash screens.</p></div>
+<div class="card" style="padding: 24px; display: flex; flex-direction: column; gap: 12px"><span class="chip" style="align-self: flex-start"><span class="dot"></span>In development</span><h3 class="display" style="font-size: 16px; margin: 0">The handheld</h3><p class="muted" style="margin: 0; line-height: 1.55; font-size: 15px">A console in the cab with games of its own, for the long quiet stretches.</p></div>
+</div>
+</div>
+</section>
+
+<!-- PLATFORMS -->
+<section class="sec">
+<div class="wrap">
+<p class="mono eyebrow">One pilot, every screen</p>
+<h2 class="display h2">A link is all it takes.</h2>
+<p class="lead muted" style="margin-bottom: 48px">No account needed to play today. Later, an optional pilot account will carry your progress between browser, phone and headset.</p>
+<div class="grid4">
+<div class="card" style="padding: 24px; display: flex; flex-direction: column; gap: 14px">
+<span class="chip on" style="align-self: flex-start"><span class="dot"></span>Playable now</span>
+<h3 class="display" style="font-size: 16px; margin: 0">Desktop browser</h3>
+<p class="muted" style="margin: 0; line-height: 1.55; font-size: 15px">The full prototype. Chrome and other modern browsers.</p>
+<a href="/infiniteend" class="mono" style="margin-top: auto">Launch →</a>
+</div>
+<div class="card" style="padding: 24px; display: flex; flex-direction: column; gap: 14px">
+<span class="chip on" style="align-self: flex-start"><span class="dot"></span>Playable now</span>
+<h3 class="display" style="font-size: 16px; margin: 0">Phone</h3>
+<p class="muted" style="margin: 0; line-height: 1.55; font-size: 15px">A fast mobile cut of the flight demo.</p>
+<a href="/endless-space" class="mono" style="margin-top: auto">Try it →</a>
+</div>
+<div class="card" style="padding: 24px; display: flex; flex-direction: column; gap: 14px">
+<span class="chip" style="align-self: flex-start"><span class="dot"></span>Testing next</span>
+<h3 class="display" style="font-size: 16px; margin: 0">Meta Quest</h3>
+<p class="muted" style="margin: 0; line-height: 1.55; font-size: 15px">Headset support is in the code. On-headset testing comes next.</p>
+<span class="mono muted" style="margin-top: auto">Store link coming</span>
+</div>
+<div class="card" style="padding: 24px; display: flex; flex-direction: column; gap: 14px">
+<span class="chip" style="align-self: flex-start"><span class="dot"></span>Planned</span>
+<h3 class="display" style="font-size: 16px; margin: 0">PC app</h3>
+<p class="muted" style="margin: 0; line-height: 1.55; font-size: 15px">A desktop app for the full game.</p>
+<span class="mono muted" style="margin-top: auto">Store link coming</span>
+</div>
+</div>
+</div>
+</section>
+
+<!-- ROADMAP -->
+<section id="roadmap" class="sec">
+<div class="wrap">
+<p class="mono eyebrow">Roadmap</p>
+<h2 class="display h2">The route, honestly.</h2>
+<p class="lead muted" style="margin-bottom: 56px">No dates we can't keep. Each stage ships before the next one starts.</p>
+<ol style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border-left: 1px solid #1c2330">
+<li style="position: relative; padding: 0 0 44px 36px">
+<span style="position: absolute; left: -6px; top: 4px; width: 11px; height: 11px; border-radius: 50%; background: #5ee6cf; box-shadow: 0 0 10px #5ee6cf"></span>
+<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 8px"><span class="mono" style="color: #5ee6cf">Stage 1 · The prototype</span><span class="chip on"><span class="dot"></span>Live</span></div>
+<p class="muted" style="margin: 0; line-height: 1.6; max-width: 640px">An endless seeded universe, flight, spice, mining, swarms, trading, encounters and missions, a generated soundtrack and the radio. Desktop and mobile browsers, with regular updates.</p>
+</li>
+<li style="position: relative; padding: 0 0 44px 36px">
+<span style="position: absolute; left: -6px; top: 4px; width: 11px; height: 11px; border-radius: 50%; border: 1px solid #5ee6cf; background: #04050a"></span>
+<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 8px"><span class="mono" style="color: #f2f4f8">Stage 2 · Into the headset</span><span class="chip"><span class="dot"></span>Next</span></div>
+<p class="muted" style="margin: 0; line-height: 1.6; max-width: 640px">On-headset testing on Meta Quest and performance tuning on real graphics hardware.</p>
+</li>
+<li style="position: relative; padding: 0 0 44px 36px">
+<span style="position: absolute; left: -6px; top: 4px; width: 11px; height: 11px; border-radius: 50%; border: 1px solid #5b6474; background: #04050a"></span>
+<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 8px"><span class="mono" style="color: #f2f4f8">Stage 3 · Life aboard</span><span class="chip"><span class="dot"></span>In development</span></div>
+<p class="muted" style="margin: 0; line-height: 1.6; max-width: 640px">The customizable cab, card duels on the dash against pilots you meet, and the handheld console.</p>
+</li>
+<li style="position: relative; padding: 0 0 44px 36px">
+<span style="position: absolute; left: -6px; top: 4px; width: 11px; height: 11px; border-radius: 50%; border: 1px solid #5b6474; background: #04050a"></span>
+<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 8px"><span class="mono" style="color: #f2f4f8">Stage 4 · Early access</span><span class="chip"><span class="dot"></span>Planned</span></div>
+<p class="muted" style="margin: 0; line-height: 1.6; max-width: 640px">First store release and optional pilot accounts that carry progress between devices.</p>
+</li>
+<li style="position: relative; padding: 0 0 44px 36px">
+<span style="position: absolute; left: -6px; top: 4px; width: 11px; height: 11px; border-radius: 50%; border: 1px solid #5b6474; background: #04050a"></span>
+<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 8px"><span class="mono" style="color: #f2f4f8">Stage 5 · The Network</span><span class="chip"><span class="dot"></span>Planned</span></div>
+<p class="muted" style="margin: 0; line-height: 1.6; max-width: 640px">Leave your deck on the network and it fights for you: passive duels against other pilots' decks while you fly. Real stations on the radio.</p>
+</li>
+<li style="position: relative; padding: 0 0 0 36px">
+<span style="position: absolute; left: -6px; top: 4px; width: 11px; height: 11px; border-radius: 50%; border: 1px dashed #5b6474; background: #04050a"></span>
+<div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 8px"><span class="mono" style="color: #f2f4f8">Beyond · The long haul</span><span class="chip"><span class="dot"></span>Vision</span></div>
+<p class="muted" style="margin: 0; line-height: 1.6; max-width: 640px">Deeper systems, a PC app, and a universe that keeps growing with its pilots.</p>
+</li>
+</ol>
+</div>
+</section>
+
+<!-- SUPPORT -->
+<section id="support" class="sec">
+<div class="wrap">
+<div class="card hud" style="padding: 56px; display: flex; flex-wrap: wrap; gap: 48px; align-items: center; background: radial-gradient(ellipse at 100% 0%, rgba(94,230,207,.12), transparent 55%), rgba(10,13,20,.9)">
+<div style="flex: 1 1 420px; min-width: 0">
+<p class="mono eyebrow">Support development</p>
+<h2 class="display h2">Fuel the next jump.</h2>
+<p class="lead muted">The Infinite End is independently built. Support goes straight into development time, VR testing hardware, licensed music for the radio, and the servers the Network will need.</p>
+</div>
+<div style="flex: 0 1 320px; display: flex; flex-direction: column; gap: 14px">
+<a href="mailto:shawn@ikosagon.com?subject=Supporting%20The%20Infinite%20End" class="btn btn-primary">Support the build</a>
+<span class="mono muted" style="font-size: 11px">Online payments coming soon · shawn@ikosagon.com</span>
+
+</div>
+</div>
+</div>
+</section>
+
+<!-- JOIN -->
+<section class="sec">
+<div class="wrap">
+<div class="grid2" style="gap: 56px">
+<div>
+<p class="mono eyebrow">Join the crew</p>
+<h2 class="display h2">Get the transmission.</h2>
+<p class="lead muted" style="margin-bottom: 28px">New flight logs, playtest invites and early access. No spam, just signal.</p>
+<form id="ie-signup" style="display: flex; flex-wrap: wrap; gap: 12px">
+<label for="ie-email" class="mono muted" style="width: 100%; font-size: 11px">Email address</label>
+<input id="ie-email" type="email" required placeholder="pilot@example.com" class="input">
+<button type="submit" class="btn btn-primary">Sign up</button>
+</form>
+<p id="ie-signup-done" class="mono" style="color: #5ee6cf; display: none">Opening your email app. Hit send and you're on the list.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 14px">
+<p class="mono eyebrow">Feedback &amp; links</p>
+<a href="mailto:shawn@ikosagon.com?subject=Infinite%20End%20feedback" class="card" style="display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 20px 22px; color: #f2f4f8"><span>Send feedback<span class="muted" style="display: block; font-size: 14px; margin-top: 4px">shawn@ikosagon.com</span></span><span class="mono" style="color: #5ee6cf">→</span></a>
+<a href="https://youtu.be/WgXem1aGkjU" class="card" style="display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 20px 22px; color: #f2f4f8"><span>Gameplay on YouTube</span><span class="mono" style="color: #5ee6cf">→</span></a>
+<a href="/infiniteend" data-play class="card" style="display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 20px 22px; color: #f2f4f8"><span>Become a playtester<span class="muted" style="display: block; font-size: 14px; margin-top: 4px">Play the prototype, then tell us what broke</span></span><span class="mono" style="color: #5ee6cf">→</span></a>
+</div>
+</div>
+</div>
+</section>
+
+<!-- FOOTER -->
+<footer style="border-top: 1px solid #141a24; padding: 48px 0">
+<div class="wrap" style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 24px; align-items: center">
+<span class="display" style="font-size: 13px">The Infinite End</span>
+<div style="display: flex; flex-wrap: wrap; gap: 24px">
+<a href="https://www.ikosagon.com" class="mono muted">ikosagon.com</a>
+<a href="/infiniteend" class="mono muted">Prototype</a>
+<a href="mailto:shawn@ikosagon.com" class="mono muted">shawn@ikosagon.com</a>
+</div>
+<span class="mono muted" style="font-size: 11px">© 2026 Ikosagon</span>
+</div>
+</footer>
+
+</div>
+<script>
+(function(){
+  try{
+    var ua=navigator.userAgent, headset=/OculusBrowser|Pico|Wolvic/i.test(ua);
+    var touchOnly=matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches;
+    if(!headset && touchOnly){
+      document.querySelectorAll('[data-play]').forEach(function(a){a.href='/endless-space'});
+      document.querySelectorAll('[data-alt]').forEach(function(a){a.href='/infiniteend'});
+      document.querySelectorAll('[data-play-note]').forEach(function(e){e.textContent='Mobile build'});
+      document.querySelectorAll('[data-alt-label]').forEach(function(e){e.textContent='On a desktop? Play the full version →'});
+      document.querySelectorAll('[data-alt-short]').forEach(function(e){e.textContent='Full version'});
+    }
+  }catch(e){}
+  var f=document.getElementById('ie-signup');
+  if(f) f.addEventListener('submit',function(e){
+    e.preventDefault();
+    var em=document.getElementById('ie-email').value;
+    location.href='mailto:shawn@ikosagon.com?subject='+encodeURIComponent('Infinite End updates')+'&body='+encodeURIComponent('Please add '+em+' to The Infinite End update list.');
+    f.style.display='none'; document.getElementById('ie-signup-done').style.display='block';
+  });
+})();
+</script>
+</body>
+</html>

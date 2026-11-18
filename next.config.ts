@@ -16,6 +16,9 @@ const nextConfig: NextConfig = {
       { source: "/ikolearn/", destination: "/ikolearn/index.html" },
       { source: "/ikolearn/privacy", destination: "/ikolearn/privacy.html" },
       { source: "/ikolearn/learners", destination: "/ikolearn/learners.html" },
+      // The Infinite End promo: standalone static page in public/infiniteendpromo/ (unlisted for now).
+      { source: "/infiniteendpromo", destination: "/infiniteendpromo/index.html" },
+      { source: "/infiniteendpromo/", destination: "/infiniteendpromo/index.html" },
     ];
   },
   async headers() {
@@ -23,6 +26,8 @@ const nextConfig: NextConfig = {
       { source: "/ikoreadtube/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
       { source: "/ikolearn", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
       { source: "/ikolearn/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
+      { source: "/infiniteendpromo", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
+      { source: "/infiniteendpromo/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
     ];
   },
   async redirects() {
