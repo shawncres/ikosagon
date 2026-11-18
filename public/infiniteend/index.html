@@ -156,17 +156,17 @@ body[class^="g"] #tip{display:none!important}   /* in flight the HUD shows messa
       <dt>Shift</dt><dd>Boost: keep holding and it builds and carries you across the system. Near a targeted planet at full boost: light drift</dd>
       <dt>X</dt><dd>Full stop</dd>
       <dt>A D · Q E</dt><dd>Slide sideways · down, up (Settings › Controls › space sim: W S pitch, A D roll, Q E throttle, Z X altitude)</dd>
-      <dt>Space / click</dt><dd>Fire: Gatling, scatter, lance, mining laser, seekers (R to change)</dd>
+      <dt>Space / click</dt><dd>Fire · 1 to 5 pick the weapon: Gatling, scatter, lance, mining laser, seekers</dd>
       <dt>J</dt><dd>Warp gate (fly into one): other places, other systems</dd>
       <dt>T / F</dt><dd>Next target · hail, dock or open what you are pointing at</dd>
       <dt>B / N</dt><dd>Journal · star map</dd>
-      <dt>R · I</dt><dd>Change weapon · cargo hold</dd>
+      <dt>R · ] · I</dt><dd>Radio on / off · skip song · cargo hold</dd>
       <dt>, . /</dt><dd>Glance left, right, behind</dd>
       <dt>C · V</dt><dd>Cockpit · VR</dd>
       <dt>L</dt><dd>Log: task here, signal, hold, places visited</dd>
       <dt>M · H · Esc</dt><dd>Mute · stats · menu</dd>
       <dt>Swarms</dt><dd>Slow down inside one and it works your ore: silver menders turn grey Ferrite into hull, yellow siphons turn Pyrite into fuel, red sparks turn Cinnabar into weapons energy. Each matches its meter</dd>
-      <dt>Spice</dt><dd>Fly through crimson blooms while boosting, skim rocks for near misses, or linger near living things. Boosting into a near-certain crash spends some to slow time: the worse the crash, the more it costs</dd>
+      <dt>Spice</dt><dd>Fly through crimson blooms while boosting, skim rocks, or linger near living things. It thins away otherwise. Boosting into a near-certain crash spends some to slow time: the worse the crash, the more it costs</dd>
     </dl>
   </div>
   <i id=bf></i>
@@ -223,7 +223,9 @@ function noise(x, y, z, s) {
 
 // ---- world fields, in world units ----
 // matter: asteroid belts are thick curved sheets (where a slow noise crosses its middle), broken up by a faster one
-const fM = (x, y, z) => 1 - Math.abs(2 * noise(x / 2600, y / 1500, z / 2600, 11) - 1) + (noise(x / 800, y / 560, z / 800, 12) - .5) * .55;
+// open space: wide pockets of quiet, a few kilometres across, where the belts thin out and traffic keeps away
+const fC = (x, y, z) => sm(.56, .7, noise(x / 9000, y / 6000, z / 9000, 61));
+const fM = (x, y, z) => 1 - Math.abs(2 * noise(x / 2600, y / 1500, z / 2600, 11) - 1) + (noise(x / 800, y / 560, z / 800, 12) - .5) * .55 - .8 * fC(x, y, z);
 const fL = (x, y, z) => noise(x / 2800, y / 2800, z / 2800, 21);   // life: where swarms gather
 const fG = (x, y, z) => noise(x / 2400, y / 2000, z / 2400, 31);   // gas: fog thickness and nebula wisps
 const fW = (x, y, z) => noise(x / 1700, y / 1700, z / 1700, 51);   // wreckage
@@ -1539,7 +1541,7 @@ const geodeTier = () => { const h = hx(7); return h < .4 ? 1 : h < .7 ? 2 : h < 
 function genGeode(L, wx, wy, wz, sx, sy, sz) { const s = geodeAt(L.C, wx, wy, wz); if (s) { const t = geodeTier(); put(L, sx, sy, sz, s + t, gj0, gj1, gj2, gsd, hx(6), t, 6, 0); } }
 function genDebris(L, wx, wy, wz, sx, sy, sz) {
   cellRnd(wx, wy, wz, 4); const C = L.C, dk = SYS.a.deb;
-  if (!dk || fW((wx + gj0) * C, (wy + gj1) * C, (wz + gj2) * C) - .78 + .3 * dk - (hx(1) - .5) * .25 <= 0) return;
+  if (!dk || fW((wx + gj0) * C, (wy + gj1) * C, (wz + gj2) * C) - .78 + .3 * dk - (hx(1) - .5) * .25 - .6 * fC((wx + gj0) * C, (wy + gj1) * C, (wz + gj2) * C) <= 0) return;
   const r = hx(5); put(L, sx, sy, sz, .4 + 3.2 * r * r, gj0, gj1, gj2, gsd, 0, 0, 0, 0);
 }
 function genRing(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 12); if (hx(1) < SYS.a.st * .6) put(RV[gh >>> 4 & 3], sx, sy, sz, 320 + 520 * hx(5), gj0, gj1, gj2, gsd, 0, 0, 0, 0); }
@@ -1554,8 +1556,8 @@ function genRay(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 7); if (hx(1) <
 function genWhale(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 17); if (hx(1) < SYS.a.life[4] * .8) { gsx = sx; gsy = sy; gsz = sz; pack(L, 220 + 420 * hx(5), hx(3), .05, -1); } }
 function genSerpent(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 18); if (hx(1) < SYS.a.life[5] * .6) { gsx = sx; gsy = sy; gsz = sz; pack(L, 45 + 90 * hx(5), hx(3), .2, -1); } }
 const home = (wx, wy, wz, on, j) => { if (wx | wy | wz || !on) return 0; gj0 = gj1 = gj2 = j; return 1; };   // the cell that holds the gate
-function genFleet(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 20); if (home(wx, wy, wz, SYS.a.fl >= .25, .06) || hx(1) < SYS.a.fl * .8) { gsx = sx; gsy = sy; gsz = sz; pack(L, 8 + 6 * hx(5), hx(3), 0, -1); } }
-function genFrig(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 21); if (home(wx, wy, wz, SYS.a.fr >= .15, .05) || hx(1) < SYS.a.fr * .8) { gsx = sx; gsy = sy; gsz = sz; pack(FV[gh >>> 4 & 1], 450 + 900 * hx(5), hx(3), .3, -1); } }
+function genFleet(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 20); if (home(wx, wy, wz, SYS.a.fl >= .25, .06) || hx(1) < SYS.a.fl * .8 * (1 - fC((wx + .5) * L.C, (wy + .5) * L.C, (wz + .5) * L.C))) { gsx = sx; gsy = sy; gsz = sz; pack(L, 8 + 6 * hx(5), hx(3), 0, -1); } }
+function genFrig(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 21); if (home(wx, wy, wz, SYS.a.fr >= .15, .05) || hx(1) < SYS.a.fr * .8 * (1 - fC((wx + .5) * L.C, (wy + .5) * L.C, (wz + .5) * L.C))) { gsx = sx; gsy = sy; gsz = sz; pack(FV[gh >>> 4 & 1], 450 + 900 * hx(5), hx(3), .3, -1); } }
 function genDrone(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 22); if (home(wx, wy, wz, SYS.a.dr >= .25, .5) || hx(1) < SYS.a.dr * .16 + .008) { gsx = sx; gsy = sy; gsz = sz; pack(L, 1.6 + 1.8 * hx(5), .67, .02, -1); } }   // menders: silver
 function genSiphon(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 24); if (hx(1) < SYS.a.dr * .13 + .008) { gsx = sx; gsy = sy; gsz = sz; pack(L, 2 + 1.6 * hx(5), .85, .02, -1); } }      // siphons: yellow, make fuel
 function genSpark(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 25); if (hx(1) < SYS.a.dr * .13 + .008) { gsx = sx; gsy = sy; gsz = sz; pack(L, 1.4 + 1.4 * hx(5), .95, .02, -1); } }     // sparks: orange-red, charge the guns
@@ -1807,6 +1809,7 @@ function npcTick(dt) {
       if (cx * cx + cy * cy + cz * cz > rr * rr) continue; bL[b] = 0; npcHit(a, [9, 6, 45, 1.2, 0][bW[b]] * (crew('gun') ? 1.3 : 1), qd, a.x + cx, a.y + cy, a.z + cz, bW[b]); if (a.dead) break; }
     if (a.dead) NPCS.splice(n, 1);
   }
+  const calmP = fC(px, py, pz);
   for (let n = NPCS.length - 1; n >= 0; n--) {                 // raiders hunt
     const a = NPCS[n]; if (a.big || a.lead) continue;
     const qx = a.x - px, qy = a.y - py, qz = a.z - pz, qd = Math.hypot(qx, qy, qz) || 1;
@@ -1817,7 +1820,7 @@ function npcTick(dt) {
     if (a.role === 2 && wantedT > 0) { a.hold = 0; a.wp = [px + vx * .6, py + vy * .6, pz + vz * .6]; a.cd = (a.cd || 0) - dt; if (flying() && qd < 520 && a.cd <= 0 && -(a.fx * qx + a.fy * qy + a.fz * qz) / qd > .97) { a.cd = .5; (hurtSrc = 'raider', hurtSrcT = tm, hurt(1.2)); trauma = Math.min(1, trauma + .15); thud(.2); } }
     if (a.dead) { NPCS.splice(n, 1); continue; }
     if (a.role === 5) {
-      const hunt = a.bounty || hostLv === 2 || hostLv === 1 && SYS.danger >= 3;
+      const hunt = a.bounty || calmP < .5 && (hostLv === 2 || hostLv === 1 && SYS.danger >= 3);   // in open space raiders lose interest
       if (!hunt) { a.brk -= dt; if (a.brk <= 0) { let en = null, ed = 4000; for (const b of NPCS) if (b.role === 2) { const e = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z); if (e < ed) { ed = e; en = b; } } if (en) { a.wp = [en.x, en.y, en.z]; if (ed < 600) { const u = (tm * 2 + a.seed) % 1; put(DPa, qx + (en.x - a.x) * u, qy + (en.y - a.y) * u, qz + (en.z - a.z) * u, 3.5, 0, 0, 0, .5, 1, .3, .15, 0); } if (ed < 120) { a.brk = 3; const j = () => (Math.random() - .5) * 2500; a.wp = [a.x + j(), a.y + j() * .3, a.z + j()]; } } } }
       else { a.brk -= dt; if (qd < 110 && a.brk <= 0) { a.brk = 3.5; const j = () => (Math.random() - .5) * 1800; a.wp = [px + j(), py + j() * .4, pz + j()]; }
       if (a.brk <= 0) a.wp = [px + vx * .8, py + vy * .8, pz + vz * .8];
@@ -1968,7 +1971,7 @@ function hudPaint() {
   { const fu = ST.fuel == null ? 100 : ST.fuel, we = ST.wen == null ? 100 : ST.wen, spc = ST.spice || 0;
     T('FUEL', 822, 74, 12, 'right', dim, 700); bar(580, 66, 190, fu / 100, gFlash[1] > .5 ? '#ffffff' : fu < 15 ? red : '#ffd84a');
     T('WPNS' + (wpn === 4 ? ' ' + mslN : ''), 822, 92, 12, 'right', dim, 700); bar(580, 84, 190, we / 100, gFlash[2] > .5 ? '#ffffff' : we < 12 ? red : '#ff6a3d');
-    T('SPICE', 178, 92, 12, 'left', dim, 700); bar(232, 84, 190, spc / 100, btT > 0 ? '#ffffff' : '#ff3b5c'); if (btT > 0) T('SPICE · SLOW TIME', 500, 252, 15, 'center', '#ff3b5c', 700); }
+    T('SPICE', 178, 92, 12, 'left', dim, 700); bar(232, 84, 190, spc / 100, btT > 0 ? '#ffffff' : '#ff3b5c'); if (btT > 0) { T('SLOW TIME', 500, 252, 15, 'center', '#ff3b5c', 700); line([[500 - 80 * btT / btMax, 262], [500 + 80 * btT / btMax, 262]], '#ff3b5c', 2); } }
   const hd = Math.atan2(sFx, -sFz) * 57.29578, CARD = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'], wrap = (a) => ((a + 540) % 360) - 180;
   for (let a = 0; a < 360; a += 5) { const x = 500 + wrap(a - hd) * 6.5; if (x < 250 || x > 750) continue; const m = a % 45 === 0; line([[x, 118], [x, m ? 134 : a % 15 ? 123 : 128]], m ? main : dim, m ? 2 : 1); if (m) T(CARD[a / 45], x, 156, 16, 'center', main, 700); }
   c.fillStyle = main; c.beginPath(); c.moveTo(500, 114); c.lineTo(493, 102); c.lineTo(507, 102); c.fill();
@@ -2003,7 +2006,7 @@ function hudPaint() {
   SYS.locs.forEach((l, i) => { const ring = l.atm ? l.atm - 1 : l.body >= 0 ? l.body : (i % 3), a = i * 2.4 + .6 + (SYS.id & 7) + tm * .22 / (1 + ring) - hdR, r = 34 + ring * 34, x0 = Math.cos(a) * r, y0 = Math.sin(a) * r * sq, x = mx + x0 * Math.cos(rl) - y0 * Math.sin(rl), y = my + x0 * Math.sin(rl) + y0 * Math.cos(rl), here = i === SYS.loc, want = obj.loc === i;
     c.beginPath(); c.arc(x, y, here ? 6 : 4.5, 0, 6.3); if (here) { c.fillStyle = cy; c.fill(); } else { c.strokeStyle = want ? amb : main; c.lineWidth = 2; c.stroke(); if (want) { c.fillStyle = amb; c.fill(); } }
     if (here || want) { line([[x, y - 7], [x, y - 20]], here ? cy : amb, 1.5); T(String(i + 1), x, y - 24, 12, 'center', here ? cy : amb, 700); } });
-  if (rdOn && rdName) T('IKOSAGON RADIO · ' + rdName, 300, 848, 12, 'right', cy, 700);
+  { const rk = keyName(CFG.keys.KeyR || 'KeyR'); if (rdOn && rdName) T(`${rk} · IKOSAGON RADIO · ` + rdName, 300, 848, 12, 'right', cy, 700); else T(`${rk} · RADIO ${CFG.radio ? '…' : 'OFF'}`, 300, 848, 12, 'right', dim, 700); }
   T(rankName().toUpperCase(), 300, 800, 14, 'right', dim, 700); T(rp().jobs.length + '/3 CONTRACTS', 300, 822, 14, 'right', dim, 700);
   T(ST.credits + ' CR', 700, 800, 14, 'left', dim, 700); T(SYS.star.toUpperCase(), 700, 822, 14, 'left', dim, 700);
   if ((xr || hudForce) && jpOpen) {                                         // in a headset the lists are drawn here, since the page cannot be seen
@@ -2039,7 +2042,7 @@ function hudDraw(k) {
 
 // ---- settings: display, flight, and every key. Kept in the browser. ----
 const HCOL = [['Ice', ['#e6f6ff', 'rgba(160,210,240,.62)', '#ffb44a', '#63e2ff']], ['Amber', ['#ffd9a0', 'rgba(255,190,110,.6)', '#ffffff', '#ffb44a']], ['Green', ['#c8ffd8', 'rgba(120,255,170,.55)', '#ffe27a', '#5dffa0']], ['Violet', ['#ffd6f6', 'rgba(255,150,230,.55)', '#7ee8ff', '#ff7ae0']], ['Red', ['#ffd0c8', 'rgba(255,120,100,.6)', '#ffe9a8', '#ff6a5a']]];
-const ACTS = [['KeyW', 'Throttle up'], ['KeyS', 'Throttle down'], ['KeyA', 'Strafe left'], ['KeyD', 'Strafe right'], ['KeyE', 'Rise'], ['KeyQ', 'Sink'], ['ShiftLeft', 'Boost'], ['Space', 'Fire'], ['KeyX', 'Zero throttle'], ['KeyT', 'Next target'], ['KeyF', 'Interact / hail'], ['KeyJ', 'Warp gate'], ['KeyB', 'Journal'], ['KeyL', 'Log'], ['KeyC', 'Cockpit on / off'], ['Comma', 'Glance left'], ['Period', 'Glance right'], ['Slash', 'Glance behind'], ['KeyP', 'Radio on / off'], ['BracketRight', 'Radio: skip to another song'], ['KeyI', 'Cargo hold'], ['KeyR', 'Change weapon'], ['KeyN', 'Star map'], ['KeyM', 'Mute'], ['KeyV', 'VR / 3D']];
+const ACTS = [['KeyW', 'Throttle up'], ['KeyS', 'Throttle down'], ['KeyA', 'Strafe left'], ['KeyD', 'Strafe right'], ['KeyE', 'Rise'], ['KeyQ', 'Sink'], ['ShiftLeft', 'Boost'], ['Space', 'Fire'], ['KeyX', 'Zero throttle'], ['KeyT', 'Next target'], ['KeyF', 'Interact / hail'], ['KeyJ', 'Warp gate'], ['KeyB', 'Journal'], ['KeyL', 'Log'], ['KeyC', 'Cockpit on / off'], ['Comma', 'Glance left'], ['Period', 'Glance right'], ['Slash', 'Glance behind'], ['KeyR', 'Radio on / off'], ['BracketRight', 'Radio: skip to another song'], ['KeyI', 'Cargo hold'], ['KeyN', 'Star map'], ['KeyM', 'Mute'], ['KeyV', 'VR / 3D']];
 const CFG = { hud: 0, op: 1, size: 1, cin: 1, host: 0, inv: 0, sens: 1, fx: 1, pl: 1, radio: 1, keys: {}, vEng: .5, vCht: 1, vRad: 1 };
 const pct = (v) => v ? Math.round(v * 100) + '%' : 'off';
 try { Object.assign(CFG, JSON.parse(localStorage.ibCfg || '{}')); } catch {}
@@ -2259,7 +2262,7 @@ function advTick() {
   advise(ST.fuel, 'fuel', [25, 10], (s) => `Fuel ${s}% · ${s === 10 ? 'ease off the boost · ' : ''}${swarmAdvice(1)}`);
   const cause = tm - hurtSrcT < 8 ? (hurtSrc === 'storm' ? 'get out of the ion storm · ' : hurtSrc === 'raider' ? 'break away from the raider, or fight with the lance · ' : hurtSrc === 'rock' ? 'slow down among the rocks · ' : '') : '';
   advise(ST.hull, 'hull', [35, 20, 10], (s) => s >= 60 ? `Hull ${s}% · ${cause || 'menders (silver) repair with Ferrite'}` : `${s <= 10 ? 'HULL FAILING' : 'Hull ' + s + '%'} · ${cause}${swarmAdvice(0)}${s <= 20 && trader ? ' · or the trader repairs' : ''}`);
-  advise(ST.wen, 'wen', [15], (s) => `Weapons ${s}% · the mining laser (R) runs on almost nothing · ${swarmAdvice(2)}`);
+  advise(ST.wen, 'wen', [15], (s) => `Weapons ${s}% · the mining laser (4) runs on almost nothing · ${swarmAdvice(2)}`);
 }
 
 // ---- screens: the hold (I), and trading as two grids side by side ----
@@ -2460,7 +2463,8 @@ function starMap() {
 // name, cone (radians), damage rate, loudness, pitch, range
 const WPN = [['Gatling', .02, 1, .3, 115, 1500], ['Scatter', .09, .55, .34, 80, 800], ['Lance', .012, 2.6, .26, 190, 2600], ['Mining laser', .02, .3, .12, 420, 750], ['Seeker', .02, 1, .3, 60, 3000]];
 let wpn = 0;
-function wpnCycle() { wpn = (wpn + 1) % WPN.length; tip(`Weapon: ${WPN[wpn][0]} · ${['amber rounds: the all-rounder', 'green shot: six at once, strips shields up close', 'violet lance: slow, fast and far, breaks hulls', 'blue mining laser: barely scratches a ship, but the best way to open rocks: more ore from every one, and almost no weapons energy', 'homing seekers: four in the rack, need a ship targeted'][wpn]}`, 3000); }
+function wpnCycle() { wpnSet((wpn + 1) % WPN.length); }
+function wpnSet(i) { if (i < 0 || i >= WPN.length) return; wpn = i; tip(`${wpn + 1} · ` + `Weapon: ${WPN[wpn][0]} · ${['amber rounds: the all-rounder', 'green shot: six at once, strips shields up close', 'violet lance: slow, fast and far, breaks hulls', 'blue mining laser: barely scratches a ship, but the best way to open rocks: more ore from every one, and almost no weapons energy', 'homing seekers: four in the rack, need a ship targeted'][wpn]}`, 3000); }
 
 // ---- short-lived flashes: jumps and kills ----
 const FXL = [];
@@ -2472,7 +2476,7 @@ function fxTick(dt) { for (let i = FXL.length - 1; i >= 0; i--) { const f = FXL[
 // from Cinnabar. Any of the three ores will do at half the yield. With nothing in the hold they can only watch.
 const SWM = [['MENDERS', 'hull', [1, 2, 3], 12, 8, '#c3ccdc', [.8, .86, 1]], ['SIPHONS', 'fuel', [2, 1, 3], 20, 10, '#ffd84a', [1, .82, .25]], ['SPARKS', 'weapons', [3, 2, 1], 24, 14, '#ff6a3d', [1, .32, .14]]];
 const WEN = [.35, 1.6, 4, .02, 3];                                      // gun energy per shot, by weapon
-let nearSeen = new Set(), cHitT = -9, BLOOMS = [], bloomT = 6, drT = 0, swN = [null, null, null], swOn = -1, swCred = [0, 0, 0], swTip = [0, 0, 0], swWork = 0, strandT = 0, fuelTip = 0, sysWarn = '', sysWarnC = '', spiceAcc = 0, spiceTip = 0, btT = 0, btCool = 0, raT = 0, raThr = null;
+let nearSeen = new Set(), cHitT = -9, BLOOMS = [], bloomT = 6, drT = 0, swN = [null, null, null], swOn = -1, swCred = [0, 0, 0], swTip = [0, 0, 0], swWork = 0, strandT = 0, fuelTip = 0, sysWarn = '', sysWarnC = '', spiceAcc = 0, spiceTip = 0, btT = 0, btMax = 2, btCool = 0, raT = 0, raThr = null;
 const sysLv = (k) => k === 0 ? ST.hull : k === 1 ? ST.fuel : ST.wen;
 function sysAdd(k, v) { if (k === 0) ST.hull = Math.min(100, ST.hull + v); else if (k === 1) ST.fuel = Math.min(100, ST.fuel + v); else ST.wen = Math.min(100, ST.wen + v); }
 function oreFor(k) { for (const t of SWM[k][2]) if (cargo[t] > 0) return t; return 0; }
@@ -2532,7 +2536,8 @@ function spiceTick(dt, fly) {                              // spice: living thin
   btCool -= dt; if (cHit) cHitT = tm;
   if (!fly) return;
   let near = 0; for (const [L, R] of [[LJ, 420], [LY, 450], [LWh, 900], [LQ, 1300], [LM, 250]]) { const r = nearInst(L); if (r[0] < R * R) near = 1; }
-  if (near && ST.spice < 100) { const was = ST.spice; ST.spice = Math.min(100, ST.spice + dt * 4); if (Math.random() < dt * 6) fxAdd(px + sFx * 14 + (Math.random() - .5) * 30, py + sFy * 14 + (Math.random() - .5) * 20, pz + sFz * 14 + (Math.random() - .5) * 30, .12 + Math.random() * .2, 1.1, .2, .3);
+  if (!near && ST.spice > 0) ST.spice = Math.max(0, ST.spice - dt * (bst > .5 ? 1.1 : .35));   // spice thins away unless you are near life; boosting burns it faster
+  if (near && ST.spice < 100) { const was = ST.spice; ST.spice = Math.min(100, ST.spice + dt * 5.5); if (Math.random() < dt * 6) fxAdd(px + sFx * 14 + (Math.random() - .5) * 30, py + sFy * 14 + (Math.random() - .5) * 20, pz + sFz * 14 + (Math.random() - .5) * 30, .12 + Math.random() * .2, 1.1, .2, .3);
     if (Math.floor(was / 25) < Math.floor(ST.spice / 25) && tm > spiceTip) { spiceTip = tm + 20; pop(`SPICE ${ST.spice | 0}%`, '#ff3b5c'); } }
   const sp = Math.hypot(vx, vy, vz);
   bloomT -= dt; if (bloomT <= 0 && bst > .5 && sp > 400 && BLOOMS.length < 4) {      // a bloom ahead, a little off the line: worth a steer
@@ -2559,13 +2564,14 @@ function rockAssist(dt) {
             const s = at(C, cx, cy, cz); if (!s) continue;
             const rx = (cx + gj0) * C - px, ry = (cy + gj1) * C - py, rz = (cz + gj2) * C - pz, t = rx * ux + ry * uy + rz * uz; if (t < 0 || t > look) continue;
             const ox = ux * t - rx, oy = uy * t - ry, oz = uz * t - rz, m = Math.hypot(ox, oy, oz), R = s * .93 + 18;
-            if (sp > 500 && t < sp * .14 && m > R && m < R + 90 && !nearSeen.has(key) && tm - cHitT > 1) { nearSeen.add(key); const g = Math.round(3 + 4 * (1 - (m - R) / 90)); ST.spice = Math.min(100, (ST.spice || 0) + g); pop(`NEAR MISS · SPICE +${g}`, '#ff3b5c'); spiceSnd(1); }
+            if (sp > 500 && t < sp * .14 && m > R && m < R + 90 && !nearSeen.has(key) && tm - cHitT > 1) { nearSeen.add(key); const g = Math.round(3 + 4 * (1 - (m - R) / 90)); ST.spice = Math.min(100, (ST.spice || 0) + g); spiceSnd(1); }
             if (m < R && t - s < best) { best = t - s; raThr = { t: Math.max(1, t - s), m, R, s, huge: L === LH, tier: hx(3) < .3 ? 1 : 0, nx: m > .1 ? ox / m : sRx, ny: m > .1 ? oy / m : sRy, nz: m > .1 ? oz / m : sRz }; } } } } } }
   if (!raThr || sp < 240) return;
   const T = raThr, tti = T.t / sp;
   if (bst > .5 && btT <= 0 && btCool <= 0 && tti < 1.1) {      // the worse the crash would have been, the more spice it takes: speed, size, how dense the rock is, how dead-centre
-    const cost = Math.max(4, Math.round(Math.min(40, (sp / 1600) * 10 * (.7 + Math.min(T.s, 300) / 80) * (T.huge ? 1.4 : 1) * (T.tier ? 1.25 : 1) * (1.2 - .5 * T.m / T.R))));
-    if (ST.spice >= cost) { ST.spice -= cost; btT = 2.2; btCool = 8; save(); pop(`SPICE −${cost}`, '#ff3b5c'); }
+    const cost = Math.max(6, Math.round(Math.min(50, (sp / 1600) * 13 * (.7 + Math.min(T.s, 300) / 80) * (T.huge ? 1.4 : 1) * (T.tier ? 1.25 : 1) * (1.2 - .5 * T.m / T.R))));
+    if (ST.spice >= cost) { ST.spice -= cost; btMax = btT = 1.8 + Math.min(1.4, cost / 30); btCool = 6; save(); pop(`SLOW TIME · SPICE −${cost}`, '#ff3b5c'); spiceSnd(0);
+      for (let k = 0; k < 18; k++) fxAdd(px + sFx * 30 + (Math.random() - .5) * 60, py + sFy * 30 + (Math.random() - .5) * 40, pz + sFz * 30 + (Math.random() - .5) * 60, .3 + Math.random() * .5, 1.4, .2, .35); }
     else if (tm > spiceTip) { spiceTip = tm + 8; tip(`Not enough spice to slow this one (needs ${cost}) · steer!`, 2500); } }
   if (tti < .7) { const want = Math.max(240, T.t / .7); if (sp > want) { const f = Math.max(want / sp, 1 - dt * 1.5); vx *= f; vy *= f; vz *= f; } }   // only the last moment eases off: a boost run still needs steering
   const a = 70 * (1 - T.m / T.R) * dt; vx += T.nx * a; vy += T.ny * a; vz += T.nz * a;
@@ -2611,7 +2617,7 @@ function gText(c, s, x, y, sz, al, col, wt) {
 // ---- meteor showers: now and then a rake of bright streaks crosses the field ----
 const METS = []; let metT = 25, metN = 0, metD = [1, 0, 0];
 function meteorTick(dt, fly) {
-  metT -= dt;
+  metT -= dt; if (metT <= 0 && metN <= 0 && fC(px, py, pz) > .4) metT = 20;   // no showers in open space
   if (metT <= 0) { if (metN <= 0) { metN = 6 + Math.random() * 10 | 0; const a = Math.random() * 6.283, y = Math.random() * .6 - .5, c = Math.sqrt(1 - y * y); metD = [Math.cos(a) * c, y, Math.sin(a) * c]; }
     metN--; metT = metN > 0 ? .15 + Math.random() * .6 : 40 + Math.random() * 80;
     const j = () => (Math.random() - .5) * 2600; METS.push({ x: px + sFx * 1400 + j() - metD[0] * 900, y: py + sFy * 1400 + j() * .6 - metD[1] * 900, z: pz + sFz * 1400 + j() - metD[2] * 900, t: 0, s: 3 + Math.random() * 5, v: 1300 + Math.random() * 900 }); }
@@ -2689,7 +2695,7 @@ function radioTick(dt) {
   if (!CFG.radio) { if (rdA && !rdA.paused) rdA.pause(); return; }
   if (!rdList) { rdFetchT -= dt; if (rdFetchT <= 0 && rdBad < 6) { rdFetchT = 8; radioLoad(); } return; }
   if (!rdA) { rdA = new Audio(); rdA.preload = 'auto'; rdA.onended = () => radioNext(0); rdA.onerror = () => { rdBad++; if (rdBad < 14) setTimeout(() => radioNext(0), 2500); }; radioNext(0); }   // on the air from the loading screen
-  if (fly && !rdWas) { rdWas = 1; radioJump(); }                                   // once, at the first launch: pausing and resuming leaves the song alone
+  if (fly && !rdWas) rdWas = 1;                                   // once, at the first launch: pausing and resuming leaves the song alone
   rdHold = rdWas && !fly;                                                           // paused: the song waits where it is
   if (rdHold) { if (!rdA.paused) rdA.pause(); rdAirT = performance.now(); return; }
   if (rdA.paused && !rdA.ended) { rdRetry -= dt; if (rdRetry <= 0) { rdRetry = .3; const p = rdA.play(); if (p && p.catch) p.catch(() => {}); } return; }
@@ -3006,7 +3012,7 @@ function arrive(sec, loc, quiet) {
   const cj = ST.courier;
   if (cj && cj.sec[0] === sec[0] && cj.sec[1] === sec[1] && cj.sec[2] === sec[2] && cj.loc === SYS.loc) { ST.credits += cj.pay; ST.courier = null; note = `Case delivered · +${cj.pay} credits`; }
   mission(); save(); showCargo();
-  if (!quiet) { radioJump(); flash = TEST ? 0 : 1; tip(note || SYS.locs[SYS.loc].name + ' · ' + SYS.name, 6000); cueStop(); swell(); setTimeout(() => cue(note ? 'outro' : 'intro', 1), 9000); }
+  if (!quiet) { flash = TEST ? 0 : 1; tip(note || SYS.locs[SYS.loc].name + ' · ' + SYS.name, 6000); cueStop(); swell(); setTimeout(() => cue(note ? 'outro' : 'intro', 1), 9000); }
   for (const f of hooks) try { f(describe()); } catch (er) { console.error(er); }
 }
 // what a story layer needs to know about where the player is
@@ -3098,9 +3104,9 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyJ' && flying()) jpOpen ? closePanel() : gatePanel();
   if (e.code === 'KeyL' && flying()) jpOpen ? closePanel() : logPanel();
   if (e.code === 'KeyN') starMap();
-  if (e.code === 'KeyP') { CFG.radio = CFG.radio ? 0 : 1; setUi(); tip(CFG.radio ? 'Ikosagon radio on' : 'Radio off: ship\'s score', 3000); }
+  if (e.code === 'KeyR') { CFG.radio = CFG.radio ? 0 : 1; setUi(); tip(CFG.radio ? 'Ikosagon radio on' : 'Radio off: ship\'s score', 3000); }
   if (e.code === 'BracketRight' && CFG.radio) radioJump();
-  if (e.code === 'KeyR' && flying() && !jpOpen) wpnCycle();
+  if (flying() && !jpOpen && !invOpen && /^Digit[1-5]$/.test(e.code)) wpnSet(+e.code[5] - 1);
   if (e.code === 'KeyI' && flying() && !jpOpen) invShow('hold');
   if (e.code === 'KeyB' && flying()) jpOpen ? closePanel() : journalPanel();
   if (e.code === 'KeyT' && flying() && !jpOpen) navCycle(e.shiftKey ? -1 : 1);
@@ -3588,7 +3594,8 @@ function frame(now, xf) {
   if (!xf !== !xr) return;                                   // a callback left over from the other display loop
   (xr || window).requestAnimationFrame(frame);
   const raw = (now - last) / 1000; last = now;
-  const rdt = Math.min(.05, Math.max(.001, raw)); btT = Math.max(0, btT - rdt); slow += (((jpOpen || invOpen) && flying() ? .12 : btT > 0 ? .28 : 1) - slow) * Math.min(1, rdt * (btT > 0 ? 9 : 4));
+  const rdt = Math.min(.05, Math.max(.001, raw)); btT = Math.max(0, btT - rdt); slow += (((jpOpen || invOpen) && flying() ? .12 : btT > 0 ? .14 + .86 * Math.pow(1 - btT / btMax, 2.4) : 1) - slow) * Math.min(1, rdt * (btT > 0 ? 14 : 4));
+  if (rdA) { const pr = btT > 0 ? Math.max(.6, Math.min(1, .45 + .55 * slow)) : 1; if (Math.abs(rdA.playbackRate - pr) > .02) try { rdA.preservesPitch = false; rdA.playbackRate = pr; } catch {} }
   const dt = rdt * slow; tm += dt;                             // with a panel open the world all but stops, and eases back when it closes
   acc += raw; nf++;
   if (nf >= 40) {                                            // hold the frame rate by trading resolution
