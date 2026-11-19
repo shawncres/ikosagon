@@ -19,6 +19,8 @@ const nextConfig: NextConfig = {
       // The Infinite End promo: standalone static page in public/infiniteendpromo/ (unlisted for now).
       { source: "/infiniteendpromo", destination: "/infiniteendpromo/index.html" },
       { source: "/infiniteendpromo/", destination: "/infiniteendpromo/index.html" },
+      // The Infinite End: standalone static game in public/infiniteend/. The Meta Horizon Store app opens /infiniteend?pwa=1.
+      { source: "/infiniteend", destination: "/infiniteend/index.html" },
       // The Infinite End test build: standalone static page in public/infiniteendtest/ (hidden).
       { source: "/infiniteendtest", destination: "/infiniteendtest/index.html" },
       { source: "/infiniteendtest/", destination: "/infiniteendtest/index.html" },
