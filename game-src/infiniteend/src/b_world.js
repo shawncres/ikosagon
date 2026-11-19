@@ -498,39 +498,21 @@ function cockpitMesh() {
       cq([cs(a0, .805, -1.075), cs(a1, .805, -1.075), cs(a1, .7, -1.6), cs(a0, .7, -1.6)], 14, inw);
       cq([cs(a0, .7, -1.6), cs(a1, .7, -1.6), cs(a1, .66, -3.7), cs(a0, .66, -3.7)], 0, [inw[0], 0, inw[2]]); } }
 
-  const cb0 = I.length;   // from here to the glass: the aux screen and the quarters, drawn with their own shader
-  // ---- living quarters: a long-haul cab. You only see it glancing round (, . /) or in a headset.
-  // the aux screen: a small monochrome CRT left of the dash (material 15, its picture is a live canvas)
-  screen([-1.15, -1.16, -2.06], .17, .0956, .28, -.35, 15);   // 16:9 ob([-1.15, -1.3, -2.0], .12, .018, .02, .28, -.35, 1);
-  // left: the bunk. Frame, mattress, a rumpled blanket, a pillow, a curtain half drawn, a shelf with books, a plant and a photo, string lights, a reading lamp
-  ob([-2.75, -2.7, 3.0], .7, .95, 2.3, 0, 0, 14); ob([-2.05, -1.72, 3.0], .025, .05, 2.3, 0, 0, 20);
-  ob([-2.74, -1.6, 3.0], .66, .14, 2.2, 0, 0, 13);
-  ob([-2.72, -1.43, 3.75], .69, .05, 1.45, 0, 0, 16); ob([-2.1, -1.62, 3.75], .05, .2, 1.45, 0, 0, 16); ob([-2.72, -1.4, 2.32], .66, .045, .14, 0, .25, 16);
-  ob([-2.78, -1.36, 1.35], .5, .1, .3, .08, .1, 13);
-  beam([[-1.98, .95, .85], [-1.98, .95, 5.3]], .015, .015, 12);
-  for (let i = 0; i < 9; i++) { const z = 4.05 + i * .14, w = i & 1 ? .05 : -.02; ob([-1.98 + w, -.35, z], .04, 1.28, .075, 0, 0, 19); }
-  ob([-3.28, .05, 3.1], .2, .025, 1.9, 0, 0, 20); ob([-3.28, -.05, 3.1], .2, .07, .02, 0, 0, 12);
-  for (let i = 0, z = 1.45; i < 11; i++) { const r = Math.abs(Math.sin(i * 12.9898) * 43758.5) % 1, h = .17 + .1 * r, w = .028 + .02 * r; ob([-3.3, .075 + h, z + w], .13, h, w, 0, i === 7 ? .3 : 0, 23 + r * .4); z += w * 2 + .006; }
-  lathe(V, I, -3.25, 3.55, [[.075, .06], [.12, .07], [.2, .085], [.215, .09]], 14, 21); for (let i = 0; i < 7; i++) { const a = i / 7 * 6.283; ob([-3.25 + Math.cos(a) * .09, .33 + .04 * (i & 1), 3.55 + Math.sin(a) * .09], .02, .12, .055, a, .5, 22); }
-  ob([-3.33, .25, 4.3], .02, .19, .14, 0, 0, 21); ob([-3.315, .25, 4.3], .006, .16, .115, 0, 0, 17.2);
-  for (let i = 0; i < 18; i++) ob([-3.12, -.12 - .03 * Math.sin(i * .9) ** 2, 1.4 + i * .22], .012, .012, .012, 0, 0, 18);
-  ob([-3.35, -.55, 4.95], .07, .03, .03, 0, 0, 1); ob([-3.22, -.62, 4.95], .06, .05, .06, 0, 0, 18);
-  ob([-3.44, -.75, 2.0], .01, .2, .25, 0, 0, 21); ob([-3.43, -.75, 2.0], .006, .15, .2, 0, 0, 17); ob([-3.44, -.85, 2.65], .01, .14, .18, 0, .1, 21); ob([-3.43, -.85, 2.65], .006, .1, .14, 0, .1, 17.1);
-  // right: the galley. A counter on the cupboards, a mug, a coffee maker with a lit button, a notebook, open cubbies with soft bins, an under-shelf lamp, a jacket on a hook by the hatch
-  ob([3.02, -1.51, 2.6], .5, .04, 1.62, 0, 0, 20);
-  lathe(V, I, 2.85, 2.05, [[-1.47, .065], [-1.3, .072], [-1.285, .07]], 16, 21); ob([2.85, -1.38, 2.135], .012, .045, .025, 0, 0, 21);
-  ob([3.15, -1.27, 3.1], .16, .2, .14, 0, 0, 1); ob([3.15, -1.06, 3.1], .14, .02, .12, 0, 0, 12); ob([2.985, -1.2, 3.1], .006, .015, .015, 0, 0, 6);
-  ob([2.8, -1.462, 2.55], .18, .008, .13, .3, 0, 17.3);
-  ob([3.44, .35, 2.6], .02, .55, 1.5, 0, 0, 14); ob([3.25, .88, 2.6], .21, .025, 1.52, 0, 0, 14); ob([3.25, .35, 2.6], .2, .018, 1.5, 0, 0, 20); for (const z of [1.1, 2.1, 3.1, 4.1]) ob([3.25, .35, z], .2, .53, .022, 0, 0, 14);   // open cubbies
-  ob([3.1, -.2, 2.6], .34, .02, 1.5, 0, 0, 20); ob([3.15, -.24, 2.6], .04, .01, 1.3, 0, 0, 18);
-  ob([3.22, -.02, 1.6], .17, .15, .4, 0, 0, 19); ob([3.22, -.04, 3.6], .17, .13, .38, 0, 0, 16); ob([3.22, .5, 2.6], .17, .13, .4, 0, 0, 13); ob([3.24, .43, 1.6], .16, .045, .36, 0, 0, 19); ob([3.24, .52, 1.6], .15, .04, .34, 0, 0, 16); ob([3.24, .6, 1.6], .14, .035, .32, 0, 0, 13);   // soft bins and a pile of folded clothes
-  ob([2.95, .3, 5.4], .03, .03, .06, 0, 0, 1); ob([2.95, -.35, 5.3], .3, .62, .12, .1, 0, 19); ob([2.72, -.5, 5.25], .07, .45, .08, .1, .05, 19);
-  // the deck: a worn rug between the bunk and the galley
-  ob([.2, -3.625, 2.9], 1.5, .012, 1.7, 0, 0, 16);
+  const cb0 = I.length;   // from here to the glass: the aux screen, then the quarters
+  // the aux screen: a small 16:9 CRT left of the dash (material 15)
+  screen([-1.15, -1.16, -2.06], .17, .0956, .28, -.35, 15);
+  const qt0 = I.length;   // quarters start here: skipped on desktop unless you glance aft
+  // a long-haul berth and a galley ledge. Same cabin size, almost no clutter: one pad, one counter, two light strips.
+  ob([-2.72, -2.55, 3.15], .62, .07, 2.2, 0, 0, 14);
+  ob([-2.72, -2.44, 3.15], .56, .045, 2.05, 0, 0, 13);
+  ob([-2.74, -2.38, 4.55], .5, .03, .48, 0, 0, 13);
+  ob([3.05, -1.5, 2.65], .4, .03, 1.5, 0, 0, 14);
+  ob([-3.2, .55, 3.2], .015, .012, 1.7, 0, 0, 18);
+  ob([3.28, .2, 2.65], .015, .012, 1.35, 0, 0, 18);
   const n0 = I.length, gs = V.length / 8;                       // the glass: one smooth curved sheet
   for (let j = 0; j <= GJ; j++) for (let i = 0; i <= CN; i++) { const p = cr(-1.5708 + i / CN * 3.1416, j / GJ), nx = -p[0] / 11.5, nz = -(p[2] + 1) / 4.4, l = Math.hypot(nx, .12, nz); V.push(p[0], p[1], p[2], nx / l, -.12 / l, nz / l, 10, 0); }
   for (let j = 0; j < GJ; j++) for (let i = 0; i < CN; i++) { const a = gs + j * (CN + 1) + i; I.push(a, a + 1, a + CN + 2, a, a + CN + 2, a + CN + 1); }
-  const me = mesh(V, I); me.ng = I.length - n0; me.nv = V.length / 8; me.cb = cb0; if (me.nv > 65535) console.error('cockpit mesh has too many vertices for 16-bit indices', me.nv);
+  const me = mesh(V, I); me.ng = I.length - n0; me.nv = V.length / 8; me.cb = cb0; me.qt = qt0; if (me.nv > 65535) console.error('cockpit mesh has too many vertices for 16-bit indices', me.nv);
   return me;
 }
 function quadMesh() { return mesh([-1, -1, 0, 0, 0, 1, 0, 0, 1, -1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 1, 1, 1, -1, 1, 0, 0, 0, 1, 0, 1], [0, 1, 2, 0, 2, 3]); }
@@ -608,11 +590,11 @@ const tierOf = (h) => h < .86 ? 0 : h < .94 ? 1 : h < .975 ? 2 : h < .99 ? 3 : h
 const typeAt = () => SYS.mat[gh >>> 5 & 7];
 // lists the generators fill: [shape family] for each size class, things growing on rocks, station kinds
 let HV, BF, BN, SV, LC, LTd, LTb, TV, RV, MV, FV;
-function titanAt(C, wx, wy, wz) { cellRnd(wx, wy, wz, 14); if (hx(1) > SYS.a.ti * .6) return 0; const r = hx(5), s = 2200 + 5200 * r * r; return gateClear(C, wx, wy, wz, s, 1500) ? 0 : s; }
-function hugeAt(C, wx, wy, wz) { if ((wx | wy | wz) & 1) return 0; cellRnd(wx, wy, wz, 2); const p = hx(1); if (p > .75 ||   // only every other cell on each axis: no two giants side by side
+function titanAt(C, wx, wy, wz) { if (SYS.atm) return 0; cellRnd(wx, wy, wz, 14); if (hx(1) > SYS.a.ti * .6) return 0; const r = hx(5), s = 2200 + 5200 * r * r; return gateClear(C, wx, wy, wz, s, 1500) ? 0 : s; }
+function hugeAt(C, wx, wy, wz) { if (SYS.atm || ((wx | wy | wz) & 1)) return 0; cellRnd(wx, wy, wz, 2); const p = hx(1); if (p > .75 ||   // only every other cell on each axis: no two giants side by side
   dead.has(gh) || p > .1 && fM((wx + gj0) * C, (wy + gj1) * C, (wz + gj2) * C) < .82) return 0; const r = hx(5), s = (170 + 400 * r * r) * ((SYS.fz && SYS.fz.kh) || 1); return gateClear(C, wx, wy, wz, s, 700) ? 0 : s; }
 function bigAt(C, wx, wy, wz) {
-  cellRnd(wx, wy, wz, 1); if (dead.has(gh)) return 0;
+  if (SYS.atm) return 0; cellRnd(wx, wy, wz, 1); if (dead.has(gh)) return 0;
   const a = fM((wx + gj0) * C, (wy + gj1) * C, (wz + gj2) * C) - .82 - SYS.a.rock - (hx(1) - .5) * .3;
   if (a <= 0) return 0;
   const r = hx(5), s = (13 + 66 * r * r * r) * Math.min(1, a * 8) * ((SYS.fz && SYS.fz.kb) || 1);
@@ -634,7 +616,7 @@ function genBig(L, wx, wy, wz, sx, sy, sz) {
   else if (hx(12) < SYS.a.ten * .3) grow(LTb, 4 + (hx(13) * 7 | 0), v, sx, sy, sz, s, hx(11));
 }
 function smallAt(C, wx, wy, wz) {
-  cellRnd(wx, wy, wz, 3); if (dead.has(gh)) return 0;
+  if (SYS.atm) return 0; cellRnd(wx, wy, wz, 3); if (dead.has(gh)) return 0;
   const a = fM((wx + gj0) * C, (wy + gj1) * C, (wz + gj2) * C) - .64 - SYS.a.rock - (hx(1) - .5) * .5;
   if (a <= 0 && hx(2) > .006) return 0;
   const r = hx(5); return .35 + 4.6 * r * r * r;
@@ -644,22 +626,22 @@ function genSmall(L, wx, wy, wz, sx, sy, sz) {
   put(SV[(gh >>> 3) % 3], sx, sy, sz, s, gj0, gj1, gj2, gsd, hx(6), hx(8) < .4 ? tierOf(hx(7)) : 0, typeAt(), 0);
 }
 // rarities: lone geodes, glowing in the colour of what is inside. Rarer minerals are rarer finds.
-function geodeAt(C, wx, wy, wz) { cellRnd(wx, wy, wz, 13); return hx(1) < SYS.a.geo * .5 && !dead.has(gh) ? 4 + 5 * hx(5) : 0; }
+function geodeAt(C, wx, wy, wz) { if (SYS.atm) return 0; cellRnd(wx, wy, wz, 13); return hx(1) < SYS.a.geo * .5 && !dead.has(gh) ? 4 + 5 * hx(5) : 0; }
 const geodeTier = () => { const h = hx(7); return h < .4 ? 1 : h < .7 ? 2 : h < .88 ? 3 : h < .97 ? 4 : 5; };
 function genGeode(L, wx, wy, wz, sx, sy, sz) { const s = geodeAt(L.C, wx, wy, wz); if (s) { const t = geodeTier(); put(L, sx, sy, sz, s + t, gj0, gj1, gj2, gsd, hx(6), t, 6, 0); } }
 function genDebris(L, wx, wy, wz, sx, sy, sz) {
-  cellRnd(wx, wy, wz, 4); const C = L.C, dk = SYS.a.deb;
+  if (SYS.atm) return; cellRnd(wx, wy, wz, 4); const C = L.C, dk = SYS.a.deb;
   if (!dk || fW((wx + gj0) * C, (wy + gj1) * C, (wz + gj2) * C) - .78 + .3 * dk - (hx(1) - .5) * .25 - .6 * fC((wx + gj0) * C, (wy + gj1) * C, (wz + gj2) * C) <= 0) return;
   const r = hx(5); put(L, sx, sy, sz, .4 + 3.2 * r * r, gj0, gj1, gj2, gsd, 0, 0, 0, 0);
 }
-function genRing(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 12); if (hx(1) < SYS.a.st * .6) put(RV[gh >>> 4 & 3], sx, sy, sz, 320 + 520 * hx(5), gj0, gj1, gj2, gsd, 0, 0, 0, 0); }
-function genMega(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 15); if (hx(1) < SYS.a.mega * .6) put(MV[gh >>> 4 & 1], sx, sy, sz, 7000 + 11000 * hx(5), gj0, gj1, gj2, gsd, 0, 0, 0, 0); }
+function genRing(L, wx, wy, wz, sx, sy, sz) { if (SYS.atm) return; cellRnd(wx, wy, wz, 12); if (hx(1) < SYS.a.st * .6) put(RV[gh >>> 4 & 3], sx, sy, sz, 320 + 520 * hx(5), gj0, gj1, gj2, gsd, 0, 0, 0, 0); }
+function genMega(L, wx, wy, wz, sx, sy, sz) { if (SYS.atm) return; cellRnd(wx, wy, wz, 15); if (hx(1) < SYS.a.mega * .6) put(MV[gh >>> 4 & 1], sx, sy, sz, 7000 + 11000 * hx(5), gj0, gj1, gj2, gsd, 0, 0, 0, 0); }
 function swarmAt(C, wx, wy, wz) { cellRnd(wx, wy, wz, 5); return fL((wx + gj0) * C, (wy + gj1) * C, (wz + gj2) * C) + (hx(1) - .5) * .4 > .8 - .3 * SYS.a.life[0] && SYS.a.life[0] > 0; }
 const pack = (L, s, hue, hv, w) => { rs = gh; for (let k = 0; k < L.per; k++) put(L, gsx, gsy, gsz, s, gj0, gj1, gj2, gsd, rnd(), rnd(), hue + (rnd() - .5) * hv, w < 0 ? k : w); };
 let gsx = 0, gsy = 0, gsz = 0;
-function genJelly(L, wx, wy, wz, sx, sy, sz) { if (swarmAt(L.C, wx, wy, wz)) { gsx = sx; gsy = sy; gsz = sz; pack(L, 1.8 + 3 * hx(5), hx(3), .18, -1); } }
+function genJelly(L, wx, wy, wz, sx, sy, sz) { if (SYS.atm) { const y = (wy + .5) * L.C; if (y < 2200 || y > 7600) return; } if (swarmAt(L.C, wx, wy, wz)) { gsx = sx; gsy = sy; gsz = sz; pack(L, 1.8 + 3 * hx(5), hx(3), .18, -1); } }
 function genColossus(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 16); if (hx(1) < SYS.a.life[1] * .7) { gsx = sx; gsy = sy; gsz = sz; pack(L, 45 + 60 * hx(5), hx(3), 0, 0); } }
-function genMinnow(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 6); if (hx(1) < SYS.a.life[2] * .7) { gsx = sx; gsy = sy; gsz = sz; pack(L, .9 + hx(5), hx(3), .1, -1); } }
+function genMinnow(L, wx, wy, wz, sx, sy, sz) { if (SYS.atm) { const y = (wy + .5) * L.C; if (y < 1800 || y > 8200) return; } cellRnd(wx, wy, wz, 6); if (hx(1) < SYS.a.life[2] * .7) { gsx = sx; gsy = sy; gsz = sz; pack(L, .9 + hx(5), hx(3), .1, -1); } }
 function genRay(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 7); if (hx(1) < SYS.a.life[3]) { gsx = sx; gsy = sy; gsz = sz; pack(L, 26 + 50 * hx(5), hx(3), 0, -1); } }
 function genWhale(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 17); if (hx(1) < SYS.a.life[4] * .8) { gsx = sx; gsy = sy; gsz = sz; pack(L, 220 + 420 * hx(5), hx(3), .05, -1); } }
 function genSerpent(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 18); if (hx(1) < SYS.a.life[5] * .6) { gsx = sx; gsy = sy; gsz = sz; pack(L, 45 + 90 * hx(5), hx(3), .2, -1); } }

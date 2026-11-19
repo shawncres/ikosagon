@@ -32,7 +32,7 @@ const hudVA = gl.createVertexArray(), visVA = gl.createVertexArray(); let visN =
 { const s = document.createElement('style'); s.textContent = '#gm{display:none!important}'; document.head.appendChild(s); }
 
 // ---- the pilot's record: rank, standing with four factions, ship fittings, contracts, and the trail ----
-const FAC = [['Meridian Combine', 'haulage and refining'], ['Lantern Order', 'keepers of beacons and old routes'], ['Free Haulers Union', 'independent crews'], ['Deepfield Survey', 'cartographers and salvors']];
+const FAC = [['Meridian Combine', 'haulage, refining, and the law on the inner lanes'], ['Lantern Order', 'keepers of beacons and the old gate rites'], ['Free Haulers Union', 'independent crews, credit and grudges'], ['Deepfield Survey', 'cartographers of the Silence, and your licence']];
 const RANKS = [[0, 'Drifter'], [100, 'Deckhand'], [300, 'Pilot'], [700, 'Pathfinder'], [1500, 'Wayfarer'], [3000, 'Navigator'], [6000, 'Star-warden']];
 const UPS = [['eng', 'Engine tuning', 'More thrust at every throttle setting'], ['plt', 'Hull plating', 'Knocks take less out of the hull'], ['scn', 'Scanner array', 'Scan and hail from further away, faster'], ['ref', 'Refinery', 'A chance of extra yield from every mineral'], ['bay', 'Cargo bay', 'Four more slots in the hold'], ['shd', 'Shield generator', 'Stronger shields that come back faster']];
 const rp = () => ST.rp || (ST.rp = { xp: 0, rep: [0, 0, 0, 0], up: { eng: 0, plt: 0, scn: 0, ref: 0 }, jobs: [], done: 0, trail: 0, seen: {}, took: {} });
@@ -79,7 +79,7 @@ function route(sec) {                                         // the next sector
 }
 // the trail: six places, fixed by the universe's seed, each holding a piece of one story
 let TRAIL = null;
-const LORE = ['A relay, older than the gates. It carries one line: "We went quiet on purpose. Follow, if you still listen."', 'A cairn of hull plates. Scratched inside: the names of a crew, and under them, coordinates.', 'A garden pod with a working lamp. Its log says the others went on ahead, and that the fruit is for whoever comes.', 'A gate that was never finished. Someone left the plans in its frame, annotated in three hands.', 'A listening post. For a century it has recorded nothing but its own heartbeat, and, last week, you.', 'The end of the trail: a lit window in the dark, and a chair pulled out. Nobody is home. The kettle is warm.'];
+const LORE = ['A relay older than the Silence. One line, still live: "We went quiet on purpose. Follow, if you still listen."', 'Hull plates stacked as a cairn. Inside, a crew list from the lost survey, and coordinates in the Lantern cipher.', 'A garden pod with a working lamp. The log says the others went on ahead, and the fruit is for whoever still follows.', 'A gate frame that was never lit. Three hands annotated the plans: Combine, Order, Survey. They did not agree.', 'A listening post. For a century it recorded only its own heartbeat, and, last week, you.', 'The end of the trail: a lit window, a chair pulled out, a kettle still warm. Nobody is home. The Silence, it seems, is a door.'];
 function trail() {
   if (TRAIL) return TRAIL; TRAIL = []; const R = mulberry32(MASTER ^ 0x7A11); let sec = [0, 0, 0];
   for (let i = 0; i < 6; i++) { for (let st = 1 + (R() * 2 | 0); st > 0; st--) { const nb = reach(sec); if (nb.length) sec = nb[R() * nb.length | 0]; } const s = mkSys(sysIdAt(sec[0], sec[1], sec[2])), loc = R() * s.locs.length | 0; TRAIL.push({ sec: sec.slice(), loc, pl: s.locs[loc].name, sy: s.name }); }
@@ -97,10 +97,10 @@ function objective() {                                        // what to do next
   if (isHere(d)) return { text: pre + 'you are here', nav: '' };
   if (sameSec(d.sec, SYS.sec)) { const L = SYS.locs[d.loc];
     if (L && L.atm) return SYS.atm ? { text: `${pre}climb out, then fly down to ${SYS.planets[L.atm - 1].name}`, nav: '' } : { text: `${pre}fly down to ${SYS.planets[L.atm - 1].name} (hold course on it)`, nav: 'p' + (L.atm - 1) };
-    return { text: `${pre}warp gate → ${d.pl}`, nav: 'gate', loc: d.loc }; }
-  if (SYS.loc !== 0) return { text: `${pre}warp gate → ${SYS.locs[0].name}, this system's gate, then on toward ${d.sy}`, nav: 'gate', loc: 0 };
+    return SYS.atm ? { text: `${pre}climb out of the air, then the gate to ${d.pl}`, nav: 'settle' } : { text: `${pre}warp gate → ${d.pl}`, nav: 'gate', loc: d.loc }; }
+  if (SYS.loc !== 0) return SYS.atm ? { text: `${pre}climb out, then ${SYS.locs[0].name}, on toward ${d.sy}`, nav: 'settle' } : { text: `${pre}warp gate → ${SYS.locs[0].name}, this system's gate, then on toward ${d.sy}`, nav: 'gate', loc: 0 };
   const hop = route(d.sec);
-  return { text: hop ? `${pre}warp gate → ${mkSys(sysIdAt(hop[0], hop[1], hop[2])).name}, on the way to ${d.pl}, ${d.sy}` : `${pre}${d.pl}, ${d.sy} (sector ${d.sec.join(' ')}) is beyond charted routes`, nav: 'gate' };
+  return { text: hop ? `${pre}warp gate → ${mkSys(sysIdAt(hop[0], hop[1], hop[2])).name}, on the way to ${d.pl}, ${d.sy}` : `${pre}${d.pl}, ${d.sy} (sector ${d.sec.join(' ')}) is beyond charted routes`, nav: SYS.atm ? 'settle' : 'gate' };
 }
 const EV = [
   ['A hauler drifts dark off {p}. Its beacon asks, politely, for a jump-start.', [['Lend it power', 'It coughs awake. The crew send ore across and promise to speak well of you.', { min: [2, 3], rep: 6, xp: 15 }], ['Take a part for your trouble', 'Nobody is watching. Probably. The part sells well.', { cr: 140, rep: -8 }], ['Fly on', 'You leave it blinking behind you.', {}]]],
@@ -116,16 +116,32 @@ const EV = [
   ['Something large passes under your keel at {p}, and your instruments sing in a key you have not heard.', [['Hold still and listen', 'It circles once and leaves a wake of bright dust. Your hold is heavier.', { min: [4, 1], xp: 35 }], ['Follow it', 'It leads you a long way, to nothing, or to the point of it.', { xp: 50 }], ['Light the engines', 'You are gone before you find out.', {}]]],
   ['A gambler on the {p} band wants to race you to the gate and back.', [['Take the bet (50)', 'You win by a length. He pays up, laughing.', { cr: 100, xp: 25 }], ['Take the bet and coast', 'He wins. He needed to more than you did.', { cr: -50, rep: 6 }], ['No bets', 'He calls you sensible. It does not sound like praise.', {}]]],
 ];
+let ENC = null, trailPend = null;
 function eventPanel() {
   const R = mulberry32(SYS.salt ^ 0xE7E), e = EV[R() * EV.length | 0], f = (s) => s.replace('{p}', SYS.locs[SYS.loc].name).replace('{s}', SYS.name);
-  panel('Encounter', SYS.locs[SYS.loc].name + ' · ' + FAC[SYS.fac][0] + ' space', [{ name: 'On arrival', desc: f(e[0]) }].concat(e[1].map((o) => ({ name: o[0], desc: '', run: () => { gain(o[2]); panel('Encounter', SYS.locs[SYS.loc].name, [{ name: o[0], desc: f(o[1]) }, { name: 'Carry on', desc: '', run: () => {} }], 'Press a number · J to close'); } }))), 'Press a number to choose');
+  panel('Encounter', SYS.locs[SYS.loc].name + ' · ' + FAC[SYS.fac][0], [{ name: 'Contact', desc: f(e[0]) }].concat(e[1].map((o) => ({ name: o[0], desc: '', run: () => { gain(o[2]); panel('Encounter', SYS.locs[SYS.loc].name, [{ name: o[0], desc: f(o[1]) }, { name: 'Carry on', desc: '', run: () => {} }], 'Press a number · J to close'); } }))), 'Press a number to choose');
+}
+function encTick(dt) {
+  if (trailPend && flying() && !jpOpen && !jumpTo) {
+    trailPend.t += dt;
+    const d = Math.hypot(bcn[0] - px, bcn[1] - py, bcn[2] - pz);
+    if (trailPend.t > 5 && d < 1100) {
+      const i = trailPend.i; trailPend = null;
+      panel('The trail', `Part ${i + 1} of 6 · ${SYS.locs[SYS.loc].name}`, [{ name: 'Found', desc: LORE[i] }, { name: i < 5 ? 'Next' : 'Done', desc: i < 5 ? `It points on, to ${trail()[i + 1].pl} in ${trail()[i + 1].sy}.` : 'There is nothing further to follow. The rest is yours.' }], 'J to close');
+    }
+  }
+  if (!ENC || ENC.open || !flying() || SYS.atm || jumpTo || jpOpen) return;
+  ENC.t += dt;
+  put(DGm, ENC.x - px, ENC.y - py, ENC.z - pz, 7, 0, 0, 0, .22, .95, .62, .28, 0);
+  const d = Math.hypot(ENC.x - px, ENC.y - py, ENC.z - pz);
+  if (ENC.t > 10 && d < 480) { ENC.open = 1; eventPanel(); }
 }
 function rpgArrive() {
   const r = rp(); npcSpawn(); scanned = {}; { const R = mulberry32(SYS.salt ^ 0x5702), a = R() * 6.283, d = 1800 + R() * 2600; STORM = R() < (SYS.atm === 1 ? .85 : .3 + .1 * SYS.danger) ? { x: Math.cos(a) * d, y: (R() - .5) * 900, z: Math.sin(a) * d, r: 900 + R() * 900, warned: 0 } : null; } sysInit(); scK = 0; scOut = 0; navAuto = 1; navId = ''; scanT = 0; routeK = '';
   for (const j of r.jobs.slice()) { const d = jobDest(j); if (!isHere(d)) continue; if (j.ty === 0) jobDone(j); else if (j.stage && (j.ty === 1 || j.ty === 3)) { if (j.ty === 1) cargo[j.tier] = Math.max(0, cargo[j.tier] - j.n); jobDone(j); } }
-  const ok = () => flying() && !jpOpen && !jumpTo;
-  if (r.trail < 6 && isHere(trail()[r.trail])) { const i = r.trail++; gain({ xp: 80, cr: 100 }); setTimeout(() => { if (ok()) panel('The trail', `Part ${i + 1} of 6 · ${SYS.locs[SYS.loc].name}`, [{ name: 'Found', desc: LORE[i] }, { name: i < 5 ? 'Next' : 'Done', desc: i < 5 ? `It points on, to ${trail()[i + 1].pl} in ${trail()[i + 1].sy}.` : 'There is nothing further to follow. The rest is yours.' }], 'J to close'); }, 3000); }
-  else if (!r.seen[mkey()]) { r.seen[mkey()] = 1; if (mulberry32(SYS.salt ^ 0xE7)() < .45) setTimeout(() => { if (ok()) eventPanel(); }, 4000); }
+  ENC = null; trailPend = null;
+  if (r.trail < 6 && isHere(trail()[r.trail])) { const i = r.trail++; gain({ xp: 80, cr: 100 }); trailPend = { i, t: 0 }; }
+  else if (!SYS.atm && !r.seen[mkey()]) { r.seen[mkey()] = 1; if (mulberry32(SYS.salt ^ 0xE7)() < .45) { const R = mulberry32(SYS.salt ^ 0xE11C), a = R() * 6.283, el = (R() - .5) * .35, dist = 1600 + R() * 700, ce = Math.cos(el); ENC = { x: Math.cos(a) * ce * dist, y: Math.sin(el) * dist * .6, z: Math.sin(a) * ce * dist, t: 0, open: 0 }; } }
   save();
 }
 function rpgCollected(tier) {
@@ -154,6 +170,9 @@ function journalPanel() {
   for (const j of r.jobs) list.push({ name: j.title, kind: `${j.pay} cr · ${FAC[j.fac][0]}`, desc: j.text, run: () => { r.jobs = r.jobs.filter((x) => x !== j); gain({ rep: -3, fac: j.fac }); tip('Contract abandoned', 4000); } });
   list.push({ name: SYS.name, kind: SYS.star, desc: `${FAC[SYS.fac][0]} space · economy: ${SYS.econ}${SYS.ph ? ' · in its sky: ' + ['', 'a supernova remnant', 'a planetary nebula', 'a pulsar', 'a companion star', 'a comet', 'a globular cluster'][SYS.ph] : ''} · ` + SYS.planets.map((p) => `${p.name}: ${p.type}, ${p.orbit} AU, ${p.moons} moons${p.pop && p.pop !== 'none' ? ', ' + p.pop : ''}`).join(' · ') });
   list.push({ name: 'Standing', kind: '', desc: FAC.map((f, i) => `${f[0]}: ${repName(r.rep[i])} (${r.rep[i]})`).join(' · ') });
+  list.push({ name: 'The Infinite End', kind: 'why you are out here', desc: 'The outer gates went quiet three centuries ago. The Survey calls it the Silence. You hold a pathfinder licence to go past the last reliable lane and bring the charts home. The Combine pays for them. The Lantern Order says the old rites still open a door. The kettle at the end of the trail was warm.' });
+  { const arcs = Object.values(cast()).filter((c) => c.arc && !c.dead); if (arcs.length) list.push({ name: 'Oaths', kind: arcs.length + ' open', desc: arcs.slice(0, 4).map((c) => `${c.n} · ${c.arc.id} ${c.arc.done ? 'kept' : 'step ' + (c.arc.step + 1)}`).join(' · ') }); }
+  { const gone = (ST.deadNames || []).slice(-4); if (gone.length) list.push({ name: 'The dead', kind: 'they do not return', desc: gone.join(' · ') }); }
   panel('Journal', SYS.locs[SYS.loc].name, list, 'Press a contract\'s number to abandon it · B or J to close');
 }
 const RUM = ['They say the {k} here is worth the trip.', 'Traders pay better where the {e} runs short. Not here.', 'Watch the big ships: they keep to their lanes and expect you to keep to yours.', 'If your hull is singing, the outfitter sells plating. Mine saved me twice.'];
@@ -173,6 +192,21 @@ function hailPanel(a) {
 // come back, patrols fly a loop in formation, couriers arrive, cross and leave by the gate, frigates keep a lane.
 const NPCS = [], DAg = Dyn(40), DAgs = [DAg, Dyn(40), Dyn(40)], DAf = Dyn(6), ROLE = ['Hauler', 'Miner', 'Patrol', 'Courier', 'Frigate', 'Raider', 'Tender'];
 const NPN = NM.ship, RDN = NM.raider;   // ships carry Earth names; raiders, the names they gave themselves
+function nameBanned(n) { if (!n) return false; if ((ST.deadNames || []).includes(n)) return true; for (const c of Object.values(cast())) if (!c.dead && (c.n === n || c.sh === n)) return true; return false; }
+function freshRaiderName(R) {
+  const live = new Set(NPCS.map((a) => a.name));
+  for (let i = 0; i < 28; i++) { const n = pickN(R, RDN) + ' ' + pickN(R, NM.last); if (!live.has(n) && !nameBanned(n)) return n; }
+  return pickN(R, NM.first) + ' ' + pickN(R, RDN);
+}
+function noteKill(a) {
+  if (!a || !a.name) return;
+  ST.deadNames = ST.deadNames || [];
+  if (!ST.deadNames.includes(a.name)) ST.deadNames.push(a.name);
+  if (ST.deadNames.length > 240) ST.deadNames.splice(0, 40);
+  if (a.cast && cast()[a.cast]) { const ch = cast()[a.cast]; ch.dead = 1; ch.cool = 1e15; }
+  quietUntil = Math.max(quietUntil || 0, tm + 110);
+  cmT = Math.max(cmT, 190);
+}
 let NPT = null;
 function npcGoal(a) {
   const P = NPT, j = () => (Math.random() - .5) * 160;
@@ -198,7 +232,7 @@ function npcSpawn() {
   }
   for (let i = 0; i < 5; i++) { const d = dir(), ds = 900 + R() * 1500; NPCS.push({ i: 300 + i, role: 6, big: 0, x: d[0] * ds, y: d[1] * ds, z: d[2] * ds, vx: 0, vy: 0, vz: 0, fx: -d[0], fy: -d[1], fz: -d[2], ux: 0, uy: 1, uz: 0, sp: 42 + R() * 14, size: 4.5, st: 0, t: 0, hold: 0, wp: NPT.fields[i % 3], hue: .55, seed: R(), fac: SYS.fac, name: 'Tender ' + (i + 1), lead: null, k: i, anchor: null, orb: 380 + R() * 500 }); }   // small craft that work round the nearest station
   const nr = hostLv === 2 ? 2 + (R() * 3 | 0) : SYS.danger >= 2 ? 2 + (R() * 2 | 0) : 0;
-  for (let i = 0; i < nr; i++) { const d = dir(), ds = 2500 + R() * 2500; NPCS.push({ i: 100 + i, role: 5, big: 0, x: d[0] * ds, y: d[1] * ds, z: d[2] * ds, vx: 0, vy: 0, vz: 0, fx: -d[0], fy: -d[1], fz: -d[2], ux: 0, uy: 1, uz: 0, sp: 105 + R() * 25, size: 9, st: 0, t: 0, hold: 0, wp: [0, 0, 0], hue: .02, seed: R(), fac: SYS.fac, name: pickN(R, RDN), lead: null, k: 0, hp: 1.3, cd: 1, brk: 0 }); }
+  for (let i = 0; i < nr; i++) { const d = dir(), ds = 2500 + R() * 2500; NPCS.push({ i: 100 + i, role: 5, big: 0, x: d[0] * ds, y: d[1] * ds, z: d[2] * ds, vx: 0, vy: 0, vz: 0, fx: -d[0], fy: -d[1], fz: -d[2], ux: 0, uy: 1, uz: 0, sp: 105 + R() * 25, size: 9, st: 0, t: 0, hold: 0, wp: [0, 0, 0], hue: .02, seed: R(), fac: SYS.fac, name: freshRaiderName(R), lead: null, k: 0, hp: 1.3, cd: 1, brk: 0 }); }
   for (const j of rp().jobs) if (j.ty === 5 && !j.stage && isHere(jobDest(j))) { const d = dir(), ds = 1800 + R() * 1800; NPCS.push({ i: 200, role: 5, big: 0, x: d[0] * ds, y: d[1] * ds, z: d[2] * ds, vx: 0, vy: 0, vz: 0, fx: -d[0], fy: -d[1], fz: -d[2], ux: 0, uy: 1, uz: 0, sp: 120, size: 11, st: 0, t: 0, hold: 0, wp: [0, 0, 0], hue: .98, seed: R(), fac: SYS.fac, name: j.tn, lead: null, k: 0, hp: 3.2, cd: 1, brk: 0, bounty: j }); }
   const nb = SYS.a.fr > .1 ? 1 + (R() * 2 | 0) : R() < .35 ? 1 : 0;
   for (let i = 0; i < nb; i++) {
@@ -206,7 +240,7 @@ function npcSpawn() {
     const a = { i: n + i, role: 4, big: 1, x: A[0] + (B[0] - A[0]) * u, y: A[1] + (B[1] - A[1]) * u, z: A[2] + (B[2] - A[2]) * u, vx: 0, vy: 0, vz: 0, fx: -d[0], fy: 0, fz: -d[2], ux: 0, uy: 1, uz: 0, sp: 26 + R() * 10, size: 380 + R() * 420, st: 0, t: 0, hold: 0, A, B, hue: R(), seed: R(), fac: SYS.fac, name: 'ISV ' + pickN(R, NM.navy), lead: null, k: 0 };
     npcGoal(a); NPCS.push(a);
   }
-  for (const a of NPCS) { const hs2 = a.big ? [3000, 2000] : a.bounty ? [150, 120] : [[60, 40], [50, 30], [90, 80], [40, 50], 0, [70, 60], [35, 25]][a.role]; a.hpM = a.hp = hs2[0]; a.shM = a.sh = hs2[1]; a.shT = -99; a.s = 0; a.var = a.role === 2 || a.role === 5 ? 2 : a.role === 3 ? 1 : a.i & 1; }
+  for (const a of NPCS) { const hs2 = a.big ? [3000, 2000] : a.bounty ? [240, 320] : [[60, 40], [50, 30], [90, 80], [40, 50], 0, [150, 300], [35, 25]][a.role]; a.hpM = a.hp = hs2[0]; a.shM = a.sh = hs2[1]; a.shT = -99; a.s = 0; a.var = a.role === 2 || a.role === 5 ? 2 : a.role === 3 ? 1 : a.i & 1; }
 }
 const AVO = [];
 let trafT = 8;
@@ -244,7 +278,7 @@ function npcTick(dt) {
     if (a.role === 1 && a.hold && !(a.st & 1)) for (let k = 1; k < 9; k++) { const f = k / 9 * 130, w = .5 + .5 * Math.sin(tm * 40 + k); put(DPa, qx + a.fx * f, qy + a.fy * f - k * 1.5, qz + a.fz * f, 2.2 + w * 1.5 + (k === 8 ? 7 : 0), 0, 0, 0, k * .11, 1, .32, .1, 0); }
     if (a.role === 2) { let en = null, ed = 3500; for (const b of NPCS) if (b.role === 5) { const e = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z); if (e < ed) { ed = e; en = b; } }
       if (en) { a.hold = 0; a.wp = [en.x, en.y, en.z]; if (ed < 700) { const u = (tm * 2.2 + a.seed) % 1; for (let k = 0; k < 3; k++) { const f = (u + k / 3) % 1; put(DPa, qx + (en.x - a.x) * f, qy + (en.y - a.y) * f, qz + (en.z - a.z) * f, 3.5, 0, 0, 0, k * .3, .3, .8, 1, 0); } { const q = dt * 14, t = Math.min(en.sh, q); en.sh -= t; en.hp -= q - t; en.shT = tm; } en.brk = 2; if (en.hp <= 0) { fxAdd(en.x, en.y, en.z, 60, 1, .6, .3); en.dead = 1; navT = 0; } } } }
-    if (a.role === 2 && wantedT > 0) { a.hold = 0; a.wp = [px + vx * .6, py + vy * .6, pz + vz * .6]; a.cd = (a.cd || 0) - dt; if (flying() && qd < 520 && a.cd <= 0 && -(a.fx * qx + a.fy * qy + a.fz * qz) / qd > .97) { a.cd = .5; (hurtSrc = 'raider', hurtSrcT = tm, hurt(1.2)); trauma = Math.min(1, trauma + .15); thud(.2); } }
+    if (a.role === 2 && wantedT > 0) { a.hold = 0; a.wp = [px + vx * .6, py + vy * .6, pz + vz * .6]; a.cd = (a.cd || 0) - dt; if (flying() && qd < 520 && a.cd <= 0 && -(a.fx * qx + a.fy * qy + a.fz * qz) / qd > .97) { a.cd = .5; hurtSrc = 'raider'; hurtSrcT = tm; hitFromX = a.x; hitFromY = a.y; hitFromZ = a.z; hurt(1.2); trauma = Math.min(1, trauma + .15); thud(.2); } }
     if (a.dead) { NPCS.splice(n, 1); continue; }
     if (a.role === 5) {
       if (a.fled) continue;
@@ -253,7 +287,7 @@ function npcTick(dt) {
       if (!hunt) { a.brk -= dt; if (a.brk <= 0) { let en = null, ed = 4000; for (const b of NPCS) if (b.role === 2) { const e = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z); if (e < ed) { ed = e; en = b; } } if (en) { a.wp = [en.x, en.y, en.z]; if (ed < 600) { const u = (tm * 2 + a.seed) % 1; put(DPa, qx + (en.x - a.x) * u, qy + (en.y - a.y) * u, qz + (en.z - a.z) * u, 3.5, 0, 0, 0, .5, 1, .3, .15, 0); } if (ed < 120) { a.brk = 3; const j = () => (Math.random() - .5) * 2500; a.wp = [a.x + j(), a.y + j() * .3, a.z + j()]; } } } }
       else { a.brk -= dt; if (qd < 110 && a.brk <= 0) { a.brk = 3.5; const j = () => (Math.random() - .5) * 1800; a.wp = [px + j(), py + j() * .4, pz + j()]; }
       if (a.brk <= 0) a.wp = [px + vx * .8, py + vy * .8, pz + vz * .8];
-      a.cd -= dt; if (flying() && qd < 520 && a.cd <= 0 && -(a.fx * qx + a.fy * qy + a.fz * qz) / qd > .975) { a.cd = .4; (hurtSrc = 'raider', hurtSrcT = tm, hurt(1.4)); trauma = Math.min(1, trauma + .2); thud(.2); if (!a.warned) { a.warned = 1; tip('Under fire: ' + a.name + ' is on you', 4000); } } }
+      a.cd -= dt; if (flying() && qd < 520 && a.cd <= 0 && -(a.fx * qx + a.fy * qy + a.fz * qz) / qd > .975) { a.cd = .4; hurtSrc = 'raider'; hurtSrcT = tm; hitFromX = a.x; hitFromY = a.y; hitFromZ = a.z; hurt(1.4); trauma = Math.min(1, trauma + .2); thud(.2); if (!a.warned) { a.warned = 1; tip('Under fire: ' + a.name + ' is on you', 4000); } } }
     }
 
   }
@@ -307,7 +341,7 @@ let NAV = [], navId = '', navAuto = 1, navT = 0, scanT = 0, scanned = {}, psel =
 const wreckAt = (j) => { const R = mulberry32(SYS.salt ^ (j.pay * 977 + j.n * 31)), a = R() * 6.283, y = R() * .5 - .25, c = Math.sqrt(1 - y * y), d = 1500 + R() * 2500; return [Math.cos(a) * c * d, y * d, Math.sin(a) * c * d]; };
 const scanR = () => 1500 * (1 + .5 * upLv('scn')) * (crew('nav') ? 1.3 : 1);
 function navBuild() {
-  const N = [{ id: 'gate', name: 'WARP GATE', kind: 'gate', x: 0, y: 0, z: 0 }];
+  const N = SYS.atm ? [] : [{ id: 'gate', name: 'WARP GATE', kind: 'gate', x: 0, y: 0, z: 0 }];
   if (trader) N.push({ id: 'trader', name: 'TRADER', kind: 'dock', x: 430, y: -70, z: 260 });
   if (!ST.found[mkey()]) N.push({ id: 'signal', name: 'UNKNOWN SIGNAL', kind: 'signal', x: bcn[0], y: bcn[1], z: bcn[2] });
   for (const j of rp().jobs) if (j.ty === 3 && !j.stage && isHere(jobDest(j))) { const w = wreckAt(j); N.push({ id: 'wreck', name: 'WRECK SIGNAL', kind: 'wreck', x: w[0], y: w[1], z: w[2], job: j }); }
@@ -325,8 +359,9 @@ function navBuild() {
   ['MENDER SWARM', 'SIPHON SWARM', 'SPARK SWARM'].forEach((nm, k) => { const r = swN[k]; if (r && r[0] < 6000 * 6000) N.push({ id: 'sw' + k, name: nm, kind: 'swarm', x: px + r[1], y: py + r[2], z: pz + r[3] }); });
   NAV = N; obj = objective();
   { const lowK = ST.hull < 30 ? 0 : ST.fuel < 20 ? 1 : ST.wen < 12 ? 2 : -1; if (lowK >= 0 && navAuto && N.some((n) => n.id === 'sw' + lowK)) { obj = { ...obj, nav: 'sw' + lowK }; } }
-  if (navAuto) { const want = obj.nav === 'npc' ? (N.find((n) => n.npc) || {}).id : obj.nav === 'bounty' ? (N.find((n) => n.npc && n.npc.bounty) || {}).id : obj.nav; navId = N.some((n) => n.id === want) ? want : 'gate'; }
-  else if (!N.some((n) => n.id === navId)) navId = 'gate';
+  const homeNav = SYS.atm ? 'settle' : 'gate';
+  if (navAuto) { const want = obj.nav === 'npc' ? (N.find((n) => n.npc) || {}).id : obj.nav === 'bounty' ? (N.find((n) => n.npc && n.npc.bounty) || {}).id : obj.nav; navId = N.some((n) => n.id === want) ? want : homeNav; }
+  else if (!N.some((n) => n.id === navId)) navId = homeNav;
 }
 const navCur = () => { for (const n of NAV) if (n.id === navId) { if (n.npc) { n.x = n.npc.x; n.y = n.npc.y; n.z = n.npc.z; } return n; } return NAV[0]; };
 let atK = '', atT = 0, manT = -99;
@@ -365,7 +400,7 @@ function navTick(dt, fly) {
     if (scanT > 1.6) { scanned[c.id] = 1; scanT = 0; gain({ xp: 4 }); tip('Scanned: ' + c.name + (c.npc ? ` · ${FAC[c.npc.fac][0]}` : ''), 3500); for (const j of rp().jobs) if (j.ty === 2 && isHere(jobDest(j)) && ++j.got >= 3) jobDone(j); }
   } else scanT = Math.max(0, scanT - dt);
 }
-function rpgSim(dt, fly) { mslTick(dt); chatter(dt, fly); if (fly && crew('eng') && ST.hull < 100 && tm - shHit > 8) ST.hull = Math.min(100, ST.hull + dt * .25); if (wantedT > 0) { wantedT -= dt; if (wantedT <= 0) tip('The patrols have stood down. They will not forget.', 5000); } npcTick(dt); meteorTick(dt, fly); flareTick(dt, fly); if (!radioAir() && (!rdList || !CFG.radio)) playlistTick(dt, fly); fxTick(dt); droneTick(dt, fly); navTick(dt, fly); cruiseTick(dt, fly); stormTick(dt, fly); if (tm - shHit > 4) shield = Math.min(shMax(), shield + dt * (9 + 5 * upLv('shd'))); }
+function rpgSim(dt, fly) { encTick(dt); mslTick(dt); chatter(dt, fly); if (fly && crew('eng') && ST.hull < 100 && tm - shHit > 8) ST.hull = Math.min(100, ST.hull + dt * .25); if (wantedT > 0) { wantedT -= dt; if (wantedT <= 0) tip('The patrols have stood down. They will not forget.', 5000); } npcTick(dt); meteorTick(dt, fly); flareTick(dt, fly); if (!radioAir() && (!rdList || !CFG.radio)) playlistTick(dt, fly); fxTick(dt); droneTick(dt, fly); navTick(dt, fly); cruiseTick(dt, fly); stormTick(dt, fly); if (tm - shHit > 4) shield = Math.min(shMax(), shield + dt * (9 + 5 * upLv('shd'))); }
 
 // ---- controllers in a headset: everything that has a key has a button ----
 let hudForce = 0;
@@ -397,13 +432,14 @@ function hudPaint() {
   const nar = !xr && W / H < 1.05, OX = 300, LX = nar ? 300 : 0, RX = nar ? 300 : 600, at = (o) => c.setTransform(1, 0, 0, 1, o, 0);
   at(OX);
   line([[120, 30], [170, 104], [830, 104], [880, 30]]);
-  T('SHLD', 178, 63, 12, 'left', dim, 700); bar(232, 55, 190, shield / shMax(), tm - shHit < .4 ? '#ffffff' : cy);
-  T('HULL', 178, 48, 15, 'left', dim, 700); bar(232, 38, 190, hull / 100, gFlash[0] > .5 ? '#ffffff' : hull < 35 ? red : '#d2d4d8'); T((hull | 0) + '%', 430, 48, 15, 'left', hull < 35 ? red : '#d2d4d8');
+  T('SHLD', 178, 63, 12, 'left', dim, 700); bar(232, 55, 190, shield / shMax(), tm - shHit < .55 ? '#ffffff' : cy);
+  T('HULL', 178, 48, 15, 'left', dim, 700); bar(232, 38, 190, hull / 100, tm - hullHitT < .45 || gFlash[0] > .5 ? '#ffffff' : hull < 35 ? red : '#d2d4d8'); T((hull | 0) + '%', 430, 48, 15, 'left', tm - hullHitT < .45 ? '#ffffff' : hull < 35 ? red : '#d2d4d8');
   { const o2 = ST.o2 == null ? 100 : ST.o2, lo = o2 < 15, bl = lo && (tm * 3 | 0) % 2; T('O2', 178, 78, 12, 'left', lo ? red : dim, 700); bar(232, 70, 190, o2 / 100, bl ? '#ffffff' : lo ? red : '#7fd8ff'); if (SYS.atm && o2 < 100) T('REFILLING', 430, 78, 11, 'left', '#7fd8ff', 700); }
  if (wantedT > 0) T('WANTED  ' + Math.ceil(wantedT), 500, 228, 17, 'center', red, 700);
   T('THR', 822, 56, 15, 'right', dim, 700); bar(580, 46, 190, Math.abs(thr), thr < 0 ? red : bst > .3 ? amb : main); T(Math.round(thr * 100) + '%', 572, 56, 15, 'right', main);
   { const fu = ST.fuel == null ? 100 : ST.fuel, we = ST.wen == null ? 100 : ST.wen, spc = ST.spice || 0;
     T('FUEL', 822, 74, 12, 'right', dim, 700); bar(580, 66, 190, fu / 100, gFlash[1] > .5 ? '#ffffff' : fu < 15 ? red : '#ffd84a');
+    T(WPN[wpn][0].toUpperCase(), 822, 108, 11, 'right', dim, 600);
     T('WPNS' + (wpn === 4 ? ' ' + mslN : ''), 822, 92, 12, 'right', dim, 700); bar(580, 84, 190, we / 100, gFlash[2] > .5 ? '#ffffff' : we < 12 ? red : '#ff6a3d');
     T('SPICE', 178, 93, 12, 'left', dim, 700); bar(232, 85, 190, spc / 100, btT > 0 ? '#ffffff' : '#ff3b5c'); if (btT > 0) { T('SLOW TIME', 500, 252, 15, 'center', '#ff3b5c', 700); line([[500 - 80 * btT / btMax, 262], [500 + 80 * btT / btMax, 262]], '#ff3b5c', 2); } }
   const hd = Math.atan2(sFx, -sFz) * 57.29578, CARD = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'], wrap = (a) => ((a + 540) % 360) - 180;
@@ -413,6 +449,7 @@ function hudPaint() {
   let dist = 0;
   if (cur) { const dx = cur.x - px, dy = cur.y - py, dz = cur.z - pz; dist = Math.hypot(dx, dy, dz); const bx = Math.max(250, Math.min(750, 500 + wrap(Math.atan2(dx, -dz) * 57.29578 - hd) * 6.5)); c.fillStyle = amb; c.beginPath(); c.moveTo(bx, 108); c.lineTo(bx + 7, 116); c.lineTo(bx, 124); c.lineTo(bx - 7, 116); c.fill(); }
   // left: speed, hull state. right: target, distance
+  if (tm - hitPing < 1.2) { const u = 1 - (tm - hitPing) / 1.2, ang = hitAng || 0, rad = 230, cx = 500 + Math.sin(ang) * rad, cy = 460 - Math.cos(ang) * 150; c.save(); c.translate(cx, cy); c.rotate(ang); c.globalAlpha = .4 + .6 * u; c.fillStyle = '#ff5d4f'; c.beginPath(); c.moveTo(0, -16); c.lineTo(11, 10); c.lineTo(0, 4); c.lineTo(-11, 10); c.closePath(); c.fill(); c.restore(); }
   at(LX); tag('SPEED', 92, 236); T(String(spd | 0), 108, 290, 50, 'left', main, 700); T('U/S', 108 + gW(String(spd | 0), 50) + 10, 270, 15, 'left', dim, 700);
   tag(SYS.atm ? 'ALTITUDE' : 'CREDITS', 92, 366); T(SYS.atm ? ((Math.max(700, Math.min(9000, 2600 + py * .5)) / 100 | 0) / 10).toFixed(1) : String(ST.credits), 108, 420, 40, 'left', main, 700); if (SYS.atm) T('KM', 108 + gW('00.0', 40) + 12, 402, 15, 'left', dim, 700);
   at(RX); tag('TARGET', 908, 236, 'right'); T(cur ? cur.name : 'NONE', 892, 284, 22, 'right', amb, 700);
@@ -511,7 +548,7 @@ function setUi() {
   const hd = (t) => `<h3 style="margin:26px 0 6px;font-weight:600;letter-spacing:.25em;font-size:13px;color:var(--hc);text-shadow:0 0 10px rgb(var(--hcr) / .45)">${t}</h3>`;
   setP.innerHTML = `<div style="max-width:720px;margin:auto"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="font-weight:300;letter-spacing:.3em;margin:0">SETTINGS</h2><button data-k="close" style="background:rgb(var(--hcr) / .08);border:1px solid var(--hc);color:var(--hc);padding:6px 18px;font:inherit;cursor:pointer">Done</button></div>`
     + hd('DISPLAY') + row('hud', 'HUD colour', HCOL[CFG.hud][0]) + row('op', 'HUD brightness', Math.round(CFG.op * 100) + '%') + row('size', 'HUD size', Math.round(CFG.size * 100) + '%') + row('cin', 'Cinematic bars', CFG.cin ? 'on' : 'off') + row('fs', 'Full screen on launch', CFG.fs === 0 ? 'off' : 'on') + hd('LENS EFFECTS') + row('fxVisor', 'Curved visor (HUD wraps at the edges)', LV3(CFG.fxVisor)) + row('fxGlass', 'Visor glass (tinted rim)', LV3(CFG.fxGlass)) + row('fxBlur', 'Motion blur', LV3(CFG.fxBlur)) + row('fxCA', 'Colour fringing at the edges', LV3(CFG.fxCA)) + row('fxGrain', 'Film grain', LV3(CFG.fxGrain)) + row('fxBloom', 'Glow and sun rays', LV3(CFG.fxBloom)) + row('fxFlare', 'Lens flare from the sun', LV3(CFG.fxFlare)) + row('fxScan', 'Scanlines', CFG.fxScan ? 'on' : 'off') + row('fxVig', 'Darkened corners', CFG.fxVig ? 'on' : 'off') + hd('RADIO') + row('radio', 'Ikosagon radio', CFG.radio ? 'on' : 'off') + row('pl', 'My playlist (streams now and then)', CFG.pl ? 'on' : 'off') + hd('VOLUME') + row('vEng', 'Engine and boost', pct(CFG.vEng)) + row('vCht', 'Radio chatter (pilots, traffic control)', pct(CFG.vCht)) + row('vRad', 'Music stream', pct(CFG.vRad)) + row('suno', 'Suno playlist page', 'open in a new tab')
-    + hd('FLIGHT') + row('inv', 'Invert pitch', CFG.inv ? 'on' : 'off') + row('ctl', 'Controls', CFG.ctl ? 'space sim' : 'standard') + row('sens', 'Mouse sensitivity', Math.round(CFG.sens * 100) + '%') + row('host', 'Other pilots', ['peaceful', 'wary', 'hostile'][CFG.host]) + row('wipe', 'Reset game', wipeArm ? 'click again: erases everything' : 'erase the save')
+    + hd('FLIGHT') + row('inv', 'Invert pitch', CFG.inv ? 'on' : 'off') + row('ctl', 'Controls', CFG.ctl ? 'space sim' : 'standard') + row('sens', 'Mouse sensitivity', Math.round(CFG.sens * 100) + '%') + row('host', 'Other pilots', ['peaceful', 'wary', 'hostile'][CFG.host]) + row('wipe', 'New universe', 'start fresh, with a confirmation')
     + hd('KEYS · click one, then press the new key') + ACTS.map(([k, n]) => row('key:' + k, n, rebind === 'key:' + k ? 'press a key…' : keyName(CFG.keys[k] || k))).join('') + row('reset', 'All keys', 'reset to defaults') + '</div>';
   if (isPWA()) {   // the store app is played in a headset: desktop-only settings step aside, and the VR ones join
     for (const k of ['cin', 'fs', 'sens', 'ctl', 'reset', 'suno']) { const b = setP.querySelector(`[data-k="${k}"]`); if (b) b.parentNode.remove(); }
@@ -529,7 +566,7 @@ setP.onclick = (e) => {
   if (k.startsWith('key:')) rebind = rebind === k ? null : k;
   else if (k === 'reset') CFG.keys = {};
   else if (k === 'suno') window.open('https://suno.com/playlist/12f42e02-78a5-4eb2-bf7e-f605817e4c06', '_blank', 'noopener');
-  else if (k === 'wipe') { if (!wipeArm) wipeArm = 1; else { for (const q of Object.keys(ST)) delete ST[q]; Object.assign(ST, { v: 1, hull: 100, cargo: [0, 0, 0, 0, 0, 0], credits: 0, sec: [0, 0, 0], loc: 0, visited: {}, dead: [], missions: {}, found: {}, courier: null }); save(); try { localStorage.removeItem('esState'); } catch {} setTimeout(() => location.reload(), 1600); e.target.textContent = 'erasing…'; return; } }
+  else if (k === 'wipe') { setP.style.display = 'none'; newUniverse(); return; }
   else if (k === 'hud') CFG.hud = (CFG.hud + 1) % HCOL.length; else if (k === 'op') CFG.op = cyc(CFG.op, [1, .7, .45, .25]); else if (k === 'size') CFG.size = cyc(CFG.size, [1, 1.15, .85]);
   else if (k === 'ctl') CFG.ctl = CFG.ctl ? 0 : 1;
   else if (k === 'vrH') CFG.vrH = VRH[(vrHi() + 1) % VRH.length][1];
@@ -593,17 +630,17 @@ const CSC = [[1, .3, .06], [1, .42, .08], [1, .55, .12], [1, .8, .45], [.62, .78
 let csKey = '', csU = [0, 0, 0, 0], csC = [1, 1, 1], bsKey = '', bsS = new Float32Array(32), bsC = new Float32Array(32);
 function bigStarsSet() {
   const key = SYS.id + ':' + SYS.loc;
-  if (key !== bsKey) { bsKey = key; bsS.fill(0); bsC.fill(0); const R = mulberry32((SYS.salt ^ 0x51A75) >>> 0), closeOn = !SYS.atm && mulberry32((SYS.salt ^ 0xC105E) >>> 0)() < .32, show = !closeOn && R() < .5, n = closeOn ? (R() < .5 ? 0 : 1) : 1 + (R() < .4 ? 1 : 0);   // one or two per sky, never a crowd
+  if (key !== bsKey) { bsKey = key; bsS.fill(0); bsC.fill(0); const R = mulberry32((SYS.salt ^ 0x51A75) >>> 0), head = SYS.headline || 0, closeOn = !SYS.atm && !head && mulberry32((SYS.salt ^ 0xC105E) >>> 0)() < .32, show = !closeOn && !head && R() < .5, n = head ? 0 : closeOn ? (R() < .5 ? 0 : 1) : 1 + (R() < .4 ? 1 : 0);   // one headline already owns this sky
     for (let i = 0; i < n; i++) { let u = R() * BSK.reduce((a, k) => a + k[1], 0), K = BSK[0]; for (const k of BSK) { if ((u -= k[1]) <= 0) { K = k; break; } }
       if (i === 0 && show) K = BSK[[1, 2, 3, 6, 7][R() * 5 | 0]]; else if (!show && K[0] !== 0 && K[0] !== 4) K = BSK[0];   // a showpiece in about half the places; otherwise plain suns or a pulsar
       let x, y, z; do { z = R() * 2 - 1; const a = R() * 6.283, q = Math.sqrt(1 - z * z); x = Math.cos(a) * q; y = Math.sin(a) * q; } while (x * SUN[0] + y * SUN[1] + z * SUN[2] > .9);
       bsS.set([x, y, z, K[0]], i * 4); bsC.set([K[2][0], K[2][1], K[2][2], (K[3] + (K[4] - K[3]) * R()) * (i ? .8 : 1.2)], i * 4); } }
-  if (key !== csKey) { csKey = key; const R = mulberry32((SYS.salt ^ 0xC105E) >>> 0), on = !SYS.atm && R() < .32, sc = SYS.sc || 0, giant = sc <= 2 && R() < .35;
+  if (key !== csKey) { csKey = key; const R = mulberry32((SYS.salt ^ 0xC105E) >>> 0), on = !SYS.atm && !(SYS.headline) && R() < .32, sc = SYS.sc || 0, giant = sc <= 2 && R() < .35;
     const RR = [[.1, .18], [.1, .2], [.1, .22], [.08, .15], [.06, .12], [.14, .3], [.1, .18], [.02, .04]][sc], rad = giant ? .26 + R() * .12 : RR[0] + (RR[1] - RR[0]) * R();
     csU = [on ? rad : 0, sc, R() * 6.283, giant ? 1 : 0]; csC = giant ? [1, .34, .1] : CSC[sc]; }
   gl.uniform4fv(P_SKY.u['uBS[0]'], bsS); gl.uniform4fv(P_SKY.u['uBC[0]'], bsC); gl.uniform4f(P_SKY.u.uCS, ...csU); gl.uniform3f(P_SKY.u.uCC, ...csC);
 }
-function hop(loc) { const sv = [yaw, pitch, thr, vx, vy, vz]; palEase = 1; arrive(SYS.sec, loc, 1); [yaw, pitch, thr, vx, vy, vz] = sv; snap = 1; fogX = .0065; }   // change place without the gate's jolt: same heading, same speed, inside the haze
+function hop(loc) { const sv = [yaw, pitch, thr, vx, vy, vz]; palEase = 1; softArr = 1; arrive(SYS.sec, loc, 1); softArr = 0; [yaw, pitch, thr, vx, vy, vz] = sv; snap = 0; fogX = .0065; }   // same heading and speed; attitude eases instead of snapping
 function cruiseTick(dt, fly) {
   { const k = Math.min(1, dt * 8), d = Math.max(.001, dt); let dy = syaw - pYaw; pYaw = syaw; const dp = spit - pPit; pPit = spit; if (Math.abs(dy) > 1) dy = 0;
     mbx += (Math.max(-.03, Math.min(.03, dy / d * .011)) - mbx) * k; mby += (Math.max(-.03, Math.min(.03, -dp / d * .011)) - mby) * k; mbs += ((.01 + .05 * bst) * Math.min(1, Math.hypot(vx, vy, vz) / 300) - mbs) * k; }
@@ -646,7 +683,7 @@ function cruiseTick(dt, fly) {
     if (loc >= 0) { if (u < .5) veil = Math.max(veil, 1 - (u - .1) / .4);                         // the air closes in
       if (u < .1) { { const P = sysP[nk], rr = nrm([sysS[0] - P[0], sysS[1] - P[1], sysS[2] - P[2]]), dp = sFx * rr[0] + sFy * rr[1] + sFz * rr[2], tt = [sFx - rr[0] * dp, sFy - rr[1] * dp, sFz - rr[2] * dp];
           ent = { k: nk, sys: SYS.id, r0: rr, t0: Math.hypot(tt[0], tt[1], tt[2]) < .05 ? nrm(crs(rr, [0, 1, 0])) : nrm(tt), yaw: 0 }; }   // remember where on the planet you came in, and which way you were travelling
-        drift = 0; r.from = SYS.loc; hop(loc); py = 9000; pitch = -1.15; snap = 1; ent.yaw = yaw; { const cp = Math.cos(pitch), s2 = Math.max(sp, 120); vx = Math.sin(yaw) * cp * s2; vy = Math.sin(pitch) * s2; vz = -Math.cos(yaw) * cp * s2; } veil = 1; tip(`${SYS.locs[SYS.loc].name}: dive for the deck. Hold the nose up to climb back out.`, 7000); } }
+        drift = 0; r.from = SYS.loc; const yaw0 = yaw, pit0 = pitch; hop(loc); py = 9000; yaw = yaw0; pitch = Math.max(-.85, Math.min(.35, pit0)); levelAim = -.22; rightT = 6.2; rollBias = 0; snap = 0; ent.yaw = yaw; { const cp = Math.cos(pitch), s2 = Math.max(sp, 120); vx = Math.sin(yaw) * cp * s2; vy = Math.sin(pitch) * s2; vz = -Math.cos(yaw) * cp * s2; } veil = 1; quietUntil = tm + 150; cmT = Math.max(cmT, 200); tip(`${SYS.locs[SYS.loc].name}: the wings will settle. Hold the nose up to climb back out.`, 7000); } }
     else if (u < .25) { drift = 0; tip(`${SYS.planets[nk].name} has no air to fly in: holding off`, 5000); } }
 }
 let scBack = -1;
@@ -1060,11 +1097,14 @@ function spiceTick(dt, fly) {                              // spice: living thin
   btCool -= dt; if (cHit) cHitT = tm;
   if (!fly) return;
   let near = 0; for (const [L, R] of [[LJ, 420], [LY, 450], [LWh, 900], [LQ, 1300], [LM, 250]]) { const r = nearInst(L); if (r[0] < R * R) near = 1; }
+  if (SYS.atm) { near = 1; const cloud = Math.exp(-((py - 5200) * (py - 5200)) / 1.4e7);
+    if (cloud > .15 && ST.spice < 100) { const was = ST.spice; ST.spice = Math.min(100, ST.spice + dt * 5 * cloud); if (Math.random() < dt * 6 * cloud) fxAdd(px + (Math.random() - .5) * 50, py + (Math.random() - .5) * 24, pz + (Math.random() - .5) * 50, .35 + Math.random() * .7, 1.35, .22, .42); if (Math.floor(was / 25) < Math.floor(ST.spice / 25) && tm > spiceTip) { spiceTip = tm + 16; pop('SPICE IN THE CLOUDS', '#ff3b5c'); } } }
   if (!near && ST.spice > 0) ST.spice = Math.max(0, ST.spice - dt * (bst > .5 ? 1.1 : .35));   // spice thins away unless you are near life; boosting burns it faster
   if (near && ST.spice < 100) { const was = ST.spice; ST.spice = Math.min(100, ST.spice + dt * 5.5); if (Math.random() < dt * 6) fxAdd(px + sFx * 14 + (Math.random() - .5) * 30, py + sFy * 14 + (Math.random() - .5) * 20, pz + sFz * 14 + (Math.random() - .5) * 30, .12 + Math.random() * .2, 1.1, .2, .3);
     if (Math.floor(was / 25) < Math.floor(ST.spice / 25) && tm > spiceTip) { spiceTip = tm + 20; pop(`SPICE ${ST.spice | 0}%`, '#ff3b5c'); } }
   const sp = Math.hypot(vx, vy, vz);
-  bloomT -= dt; if (bloomT <= 0 && bst > .5 && sp > 400 && BLOOMS.length < 4) {      // a bloom ahead, a little off the line: worth a steer
+  bloomT -= dt; if (SYS.atm && bloomT <= 0 && BLOOMS.length < 3 && Math.exp(-((py - 4600) * (py - 4600)) / 2.4e6) > .35) { bloomT = 3 + Math.random() * 4; BLOOMS.push({ x: px + sFx * (500 + Math.random() * 900) + (Math.random() - .5) * 220, y: py + (Math.random() - .5) * 140, z: pz + sFz * (500 + Math.random() * 900), t: 0, v: 6 + (Math.random() * 5 | 0) }); }
+  if (bloomT <= 0 && !SYS.atm && bst > .5 && sp > 400 && BLOOMS.length < 4) {      // a bloom ahead, a little off the line: worth a steer
     bloomT = 4 + Math.random() * 5; const ux = vx / sp, uy = vy / sp, uz = vz / sp, d = Math.min(2600, 700 + sp * 1.4), off = 50 + Math.random() * 220, g = Math.random() * 6.283;
     const ox = sRx * Math.cos(g) + sUx * Math.sin(g), oy = sRy * Math.cos(g) + sUy * Math.sin(g), oz = sRz * Math.cos(g) + sUz * Math.sin(g);
     BLOOMS.push({ x: px + ux * d + ox * off, y: py + uy * d + oy * off, z: pz + uz * d + oz * off, t: 0, v: 8 + (Math.random() * 6 | 0) }); }
@@ -1290,7 +1330,7 @@ function npcHit(a, dmg, qd, hx, hy, hz, w = 0) {
   if (a.role === 5) a.brk = 1.2;
   else if (!a.hit) { a.hit = 1; if (a.cast && cast()[a.cast]) remember(cast()[a.cast], 'shot', -30); wantedT = Math.max(wantedT, 75); gain({ rep: -6, fac: a.fac }); comm(`Mayday, mayday, ${a.name} taking fire from ${call()}! ${ctl()}, respond!`); if (!a.big) { a.sp *= 1.5; a.hold = 0; a.wp = NPT.far[a.i % 3]; } }
   if (a.hp > 0) return;
-  a.dead = 1; fxAdd(a.x, a.y, a.z, a.size * 7, 1, .6, .3); fxAdd(a.x, a.y, a.z, a.size * 3, 1, 1, .9); boom(a.big ? 200 : 40, qd); flash = Math.max(flash, a.big ? .6 : .3); navT = 0;
+  a.dead = 1; noteKill(a); fxAdd(a.x, a.y, a.z, a.size * 7, 1, .6, .3); fxAdd(a.x, a.y, a.z, a.size * 3, 1, 1, .9); boom(a.big ? a.size : Math.max(36, a.size * 4), qd); flash = Math.max(flash, a.big ? .6 : .3); navT = 0;
   if (a.role === 5) { gain({ cr: 80, xp: 25, rep: 3 }); if (a.bounty) jobDone(a.bounty); tip('Raider destroyed · 80 credit bounty', 5000); comm(`${ctl()} to ${call()}: good kill. Bounty is on its way.`); }
   else { gain({ rep: -25, fac: a.fac }); wantedT = 150; tip(`${a.name} destroyed. ${FAC[a.fac][0]} have put a price on you.`, 7000); }
 }
@@ -1586,19 +1626,20 @@ function pipPaint(x, W, ink, big) {
   // footer: where you are, the clock, and the key that opens or closes it
   A(.55, () => x.fillRect(18, 314, 604, 2));
   const loc = SYS.locs && SYS.locs[SYS.loc] ? SYS.locs[SYS.loc].name : '', st = Math.floor(performance.now() / 1000), cl = [Math.floor(st / 3600) % 100, Math.floor(st / 60) % 60, st % 60].map((v) => String(v).padStart(2, '0')).join(':');
-  T(loc.toUpperCase().slice(0, 26), 22, 336, 17, 600); T('T+ ' + cl, 618, 336, 17, 600, 'right');
-  T((big ? '1-5 TABS · TAB CLOSES' : 'TAB · AUX DISPLAY') + ((t * 2 | 0) % 2 ? ' _' : ''), 320, 336, 15, 600, 'center');
+  T(loc.toUpperCase().slice(0, 20), 22, 336, 16, 600); T('T+ ' + cl, 618, 336, 16, 600, 'right');
+  T((big ? '1-5  TAB' : 'TAB') + ((t * 2 | 0) % 2 ? ' _' : ''), 430, 308, 14, 600, 'right');
 }
 function pipTick() {
   if (!PIP.c) pipInit();
   if (PIP.hud !== CFG.hud) { PIP.hud = CFG.hud; const h = HCOL[CFG.hud][1][3], v = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255); PIP.col = v.map((c) => Math.pow(c, 2.2) * 1.2); }
-  const now = performance.now(); if (now - PIP.t < 200) return; PIP.t = now;
+  if (PIP.big) return;
+  const now = performance.now(); if (now - PIP.t < 2200) return; PIP.t = now;
   pipPaint(PIP.x, 640, '#fff', 0); gl.activeTexture(gl.TEXTURE6); gl.bindTexture(gl.TEXTURE_2D, PIP.tex); gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, PIP.c); gl.activeTexture(gl.TEXTURE0);
 }
 // full screen: the same screen, close up, behind curved glass
 function pipOpen() {
   if (!PIP.o) {
-    const st = document.createElement('style'); st.textContent = `#pipO{position:fixed;inset:0;z-index:9;display:none;align-items:center;justify-content:center;background:radial-gradient(#000a,#000e)}
+    const st = document.createElement('style'); st.textContent = `#pipO{position:fixed;inset:0;z-index:9;display:none;align-items:center;justify-content:center;background:#05070c}body.pip #hud,body.pip #jp,body.pip #fire,body.pip #jb,body.pip #o{opacity:0!important;visibility:hidden!important}
 #pipF{position:relative;width:min(92vw,calc(86vh*16/9));aspect-ratio:16/9;border-radius:2.2vmin;padding:1.1vmin;background:#08090b;box-shadow:0 0 0 2px #1d2229,0 0 0 1.2vmin #0d0f12,0 2vmin 6vmin #000}
 #pipF canvas{width:100%;height:100%;display:block;border-radius:1.6vmin;filter:drop-shadow(0 0 .5vmin var(--pg))}
 #pipF i{position:absolute;inset:1.1vmin;border-radius:1.6vmin;pointer-events:none;background:repeating-linear-gradient(#0000 0 2px,#0006 2px 4px),radial-gradient(ellipse at 50% 50%,#0000 60%,#000b 100%),linear-gradient(160deg,#ffffff12,#0000 35%);animation:pipFl .09s steps(2) infinite}
@@ -1608,10 +1649,10 @@ function pipOpen() {
     PIP.bc.addEventListener('click', (e) => { const r = PIP.bc.getBoundingClientRect(), X = (e.clientX - r.left) / r.width * 640, Y = (e.clientY - r.top) / r.height * 360; PIP.tabR.forEach(([a, b, w, h], i) => { if (X > a && X < a + w && Y > b && Y < b + h) PIP.tab = i; }); });
     PIP.o.addEventListener('click', (e) => { if (e.target === PIP.o) pipClose(); });
   }
-  PIP.big = 1; PIP.o.style.display = 'flex'; PIP.o.style.setProperty('--pg', HCOL[CFG.hud][1][3] + '88'); try { document.exitPointerLock(); } catch {} K.KeyW = K.KeyS = 0;
+  PIP.big = 1; PIP.o.style.display = 'flex'; PIP.o.style.setProperty('--pg', HCOL[CFG.hud][1][3] + '88'); document.body.classList.add('pip'); try { document.exitPointerLock(); } catch {} K.KeyW = K.KeyS = 0;
   const loop = () => { if (!PIP.big) return; pipPaint(PIP.bx, 1280, HCOL[CFG.hud][1][3], 1); requestAnimationFrame(loop); }; loop();
 }
-function pipClose() { PIP.big = 0; if (PIP.o) PIP.o.style.display = 'none'; }
+function pipClose() { PIP.big = 0; if (PIP.o) PIP.o.style.display = 'none'; document.body.classList.remove('pip'); }
 function pipKey(e) {
   if (e.type !== 'keydown') return; const n = PIP.tabs.length;
   if (e.code === 'Escape' || e.code === 'Tab' || e.code === 'KeyU' || (CFG.keys.Tab && e.code === CFG.keys.Tab)) pipClose();
@@ -1650,7 +1691,7 @@ const VOICE = {      // {c} your callsign · {me} their name · {sh} their ship 
 const MEM = { saved: 'that run you flew with us', helped: 'the fuel you spared me', escorted: 'the convoy you brought home', lost: 'the ships we lost on your watch', left: 'you leaving us to the raiders', shot: 'you shooting up my ship', declined: 'you turning me down' };
 const CARGO = ['medical supplies', 'seed stock', 'reactor coils', 'mail and family parcels', 'water ice', 'machine parts', 'a cold-sleep pod', 'refinery catalysts', 'live coral', 'a disassembled telescope'];
 const FAULT = ['fuel line cracked', 'tanks ran dry two jumps ago', 'converter is coughing', 'navigator misread the burn', 'siphon swarm stripped my reserve'];
-let CM = null, ESC = null, cmT = 70 + Math.random() * 40, cmSeq = 0;
+let CM = null, ESC = null, cmT = 70 + Math.random() * 40, cmSeq = 0, quietUntil = 0;
 const PL = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: -1, ux: 0, uy: 1, uz: 0 };   // the player, seen by a wingman as a formation leader
 const cast = () => ST.cast || (ST.cast = {});
 const say = (s, ch) => s.replace(/\{c\}/g, call()).replace(/\{me\}/g, ch.n).replace(/\{sh\}/g, ch.sh).replace(/\{pl\}/g, SYS.locs[SYS.loc].name).replace(/\{mem\}/g, ch.mem.length ? MEM[ch.mem[ch.mem.length - 1]] : 'last time');
@@ -1661,15 +1702,16 @@ function castNew() {
   const C = cast(), ks = Object.keys(C); if (ks.length >= 60) { ks.sort((a, b) => (C[a].met - C[b].met) || (C[a].t - C[b].t)); delete C[ks[0]]; }
   return C[id] = ch;
 }
+function castOk(c) { return c && !c.dead && Date.now() >= (c.cool || 0) && (ST.jumps || 0) >= (c.needJ || 0) && !nameBanned(c.dead ? c.n : ''); }
 function castPick() {                                                            // someone you know (more likely near their home), or someone new
-  const known = Object.values(cast()).filter((c) => c.met > 0 && !c.dead), local = known.filter((c) => sameSec(c.home, SYS.sec));
+  const known = Object.values(cast()).filter((c) => c.met > 0 && castOk(c)), local = known.filter((c) => sameSec(c.home, SYS.sec));
   const pool = local.length && Math.random() < .7 ? local : known;
   return pool.length && Math.random() < .55 ? pool[Math.random() * pool.length | 0] : castNew();
 }
 function remember(ch, m, d) { ch.mem.push(m); if (ch.mem.length > 6) ch.mem.shift(); ch.rel = Math.max(-100, Math.min(100, ch.rel + d)); save(); }
 function mkShip(role, x, y, z, name, extra) {
   const a = Object.assign({ i: 500 + (cmSeq++ % 400), role, big: 0, x, y, z, vx: 0, vy: 0, vz: 0, fx: sFx, fy: sFy, fz: sFz, ux: 0, uy: 1, uz: 0, sp: 90, size: [11, 9, 8, 7, 0, 9][role], st: 0, t: 0, hold: 0, wp: [x, y, z], hue: Math.random(), seed: Math.random(), fac: SYS.fac, name, lead: null, off: null, k: 0, greet: 1, toGate: 0 }, extra);
-  const hs2 = role === 5 ? [70, 60] : [60, 40]; a.hpM = a.hp = hs2[0]; a.shM = a.sh = hs2[1]; a.shT = -99; a.s = 0; a.var = role === 5 ? 2 : role === 3 ? 1 : a.i & 1; a.cd = 1; a.brk = 0;
+  const hs2 = role === 5 ? [150, 300] : [60, 40]; a.hpM = a.hp = hs2[0]; a.shM = a.sh = hs2[1]; a.shT = -99; a.s = 0; a.var = role === 5 ? 2 : role === 3 ? 1 : a.i & 1; a.cd = 1; a.brk = 0;
   NPCS.push(a); return a;
 }
 // ---- what they want: a small grammar of offers, filled from the world as it is ----
@@ -1688,8 +1730,13 @@ function mkOffer(ch) {
 }
 // ---- a ship flies in, holds station off your wing, talks, then peels away ----
 function cmStart() {
-  const ch = castPick(), off = mkOffer(ch), rx = sFy * sUz - sFz * sUy, ry = sFz * sUx - sFx * sUz, rz = sFx * sUy - sFy * sUx;
+  if (tm < quietUntil || SYS.atm) { cmT = 50 + Math.random() * 40; return; }
+  const ch = castPick(); if (!ch || !castOk(ch) && ch.met) { cmT = 40; return; }
+  const off = mkOffer(ch);
+  if ((off.ty === 'grudge' || ch.raider) && tm < quietUntil + 30) { cmT = 80 + Math.random() * 40; return; }
+  const rx = sFy * sUz - sFz * sUy, ry = sFz * sUx - sFx * sUz, rz = sFx * sUy - sFy * sUx;
   const a = mkShip(off.ty === 'escort' ? 0 : off.ty === 'grudge' ? 5 : 3, px - sFx * 1400 + rx * 350, py - sFy * 1400 + 60, pz - sFz * 1400 + rz * 350, ch.sh, { pilot: ch.n, cast: ch.id, comms: 1, fac: ch.fac });
+  if (ch.raider) { const pwr = 1 + (ch.returns || 1) * .6; a.hp = a.hpM = 150 * pwr; a.sh = a.shM = 300 * pwr; a.rival = ch.id; ch.returns = (ch.returns || 0) + 1; if (ch.returns > 1) mkShip(5, a.x + 90, a.y + 20, a.z + 70, freshRaiderName(Math.random), { hunter: 1, fac: ch.fac }); }
   a.lead = PL; a.off = [75, 12, -150]; a.sp = 420;                               // holds station ahead and to the right: in view on a screen, a glance in a headset
   CM = { a, ch, off, ph: 'approach', t: 0, n: 0 }; navId = 'n' + a.i; navAuto = 0;
 }
@@ -1700,7 +1747,7 @@ function cmTick(dt) {
   if (a.dead || !NPCS.includes(a)) { CM = null; return; }
   a.sp = Math.max(300, Math.hypot(vx, vy, vz) * 1.3);
   if (c.ph === 'approach') { if (d < 320 || c.t > 40) { c.ph = 'talk'; c.t = 0; const ch = c.ch;
-      if (c.off.ty === 'grudge' || ch.raider) { cmLine(say(pickL(VOICE.grudge), ch)); } else { cmLine(say(pickL(VOICE[ch.met ? 'again' : 'hello'][ch.tr]), ch)); if (ch.rel >= 15 && ch.mem.length) setTimeout(() => CM && CM.ch === ch && cmLine(say(pickL(VOICE.thanks), ch)), 3800); }
+      if (c.off.ty === 'grudge' || ch.raider) { cmLine(ch.ejected ? `I ejected last time, ${call()}. New hull, real shields${ch.returns > 1 ? ', and I did not come alone' : ''}.` : say(pickL(VOICE.grudge), ch)); } else { cmLine(say(pickL(VOICE[ch.met > 1 ? 'again' : 'hello'][ch.tr]), ch)); if (ch.rel >= 15 && ch.mem.length) setTimeout(() => CM && CM.ch === ch && cmLine(say(pickL(VOICE.thanks), ch)), 3800); }
       ch.met++; ch.t = Date.now(); save(); } return; }
   if (c.ph === 'talk' && c.t > 5.5) { c.t = 0;
     if (c.off.ty === 'grudge') { cmLine(ch2(c) < -40 && Math.random() < .6 ? 'I brought some friends this time.' : 'Stay out of my way, and I will stay out of yours.'); if (ch2(c) < -40) cmAmbush(2, 'player'); c.ph = 'leave'; return cmLeave(); }
@@ -1732,7 +1779,7 @@ function escStart(c) {
 function cmAmbush(n, target) {
   const lead = target === 'player' ? null : ESC && ESC.ships.find((s) => !s.dead), o = lead || { x: px, y: py, z: pz, fx: sFx, fy: sFy, fz: sFz };
   const side = Math.random() < .5 ? -1 : 1, out = [];
-  for (let k = 0; k < n; k++) { const r = mkShip(5, o.x + o.fx * 1600 - o.fz * side * 900 + k * 70, o.y + 120 + k * 40, o.z + o.fz * 1600 + o.fx * side * 900, pickL(RDN), { escHunt: target !== 'player', hunter: target === 'player', fac: SYS.fac, sp: 110 + Math.random() * 25, hue: .02 }); out.push(r); }
+  for (let k = 0; k < n; k++) { const r = mkShip(5, o.x + o.fx * 1600 - o.fz * side * 900 + k * 70, o.y + 120 + k * 40, o.z + o.fz * 1600 + o.fx * side * 900, freshRaiderName(Math.random), { escHunt: target !== 'player', hunter: target === 'player', fac: SYS.fac, sp: 110 + Math.random() * 25, hue: .02 }); out.push(r); }
   if (ESC && target !== 'player') ESC.raiders.push(...out);
   return out;
 }
@@ -1774,7 +1821,7 @@ function lifeTick(dt) {
   PL.x = px; PL.y = py; PL.z = pz; PL.vx = vx; PL.vy = vy; PL.vz = vz; PL.fx = sFx; PL.fy = sFy; PL.fz = sFz; PL.ux = sUx; PL.uy = sUy; PL.uz = sUz;
   if (!flying()) return; cmTick(dt); escTick(dt);
 }
-function lifeReset() { try { if (ESC) escEnd(0, 'left'); CM = null; cmT = Math.min(cmT, 45 + Math.random() * 40); } catch {} }   // a jump: the caller and any convoy are left behind
+function lifeReset() { try { if (ESC) escEnd(0, 'left'); CM = null; ST.jumps = (ST.jumps || 0) + 1; cmT = 210 + Math.random() * 100; quietUntil = tm + 120; } catch {} }   // a jump or a new sky: no one you know calls until you have actually travelled
 const lifeObjective = () => { if (!ESC) return null; const E = ESC, alive = E.ships.filter((s) => !s.dead && NPCS.includes(s)), L = alive[0]; if (!L) return null;
   const dd = Math.hypot(E.dest[0] - L.x, E.dest[1] - L.y, E.dest[2] - L.z), rd = E.raiders.find((r) => !r.dead && !r.fled && NPCS.includes(r));
   if (E.wait) return { text: `Rescue the ${L.name}: ${rd ? 'drive the raiders off' : 'come alongside'} · ${(Math.hypot(L.x - px, L.y - py, L.z - pz) / 1000).toFixed(1)} km`, nav: 'n' + (rd || L).i };
@@ -1858,7 +1905,7 @@ function rescueStart(c) {
   ESC.raiders.push(...cmAmbushAt(st, 3)); navId = 'n' + st.i; navAuto = 1;
   tip(`Rescue · drive the raiders off the ${st.name}, then come alongside`, 8000);
 }
-function cmAmbushAt(o, n) { const out = []; for (let k = 0; k < n; k++) { const g = k / n * 6.283; out.push(mkShip(5, o.x + Math.cos(g) * 500, o.y + 60, o.z + Math.sin(g) * 500, pickL(RDN), { escHunt: 1, fac: SYS.fac, sp: 110 + Math.random() * 25, hue: .02 })); } return out; }
+function cmAmbushAt(o, n) { const out = []; for (let k = 0; k < n; k++) { const g = k / n * 6.283; out.push(mkShip(5, o.x + Math.cos(g) * 500, o.y + 60, o.z + Math.sin(g) * 500, freshRaiderName(Math.random), { escHunt: 1, fac: SYS.fac, sp: 110 + Math.random() * 25, hue: .02 })); } return out; }
 const escTick0 = escTick;
 escTick = function (dt) {
   const E = ESC; if (!E) return;
@@ -1878,7 +1925,7 @@ function behaveTick(dt) {
     if (a.hpM && a.hp < a.hpM * .3 && !a.bounty && !a.rival) {                        // beaten: break off and run
       a.fled = 1; a.escHunt = 0; a.hunter = 0; a.cd = 1e9; a.sp *= 1.5; const ax = a.x - px, az = a.z - pz, l = Math.hypot(ax, az) || 1; a.wp = [a.x + ax / l * 9000, a.y + 800, a.z + az / l * 9000];
       comm(`${a.name} on open band: "${pickL(['I am out, I am out!', 'Not today. You will see me again, ' + call() + '.', 'Breaking off! This is not over.'])}"`);
-      if (Math.random() < .5) { const ch = castNew(); ch.n = a.name; ch.sh = a.name; ch.rel = -45; ch.mem = ['shot']; ch.met = 1; ch.raider = 1; ch.tr = 1; ch.arc = { id: 'rival', step: 0 }; save(); }   // some come back
+      if (Math.random() < .5 && !nameBanned(a.name)) { const ch = castNew(); ch.n = a.pilot || a.name; ch.sh = a.name; ch.rel = -45; ch.mem = ['shot']; ch.met = 1; ch.raider = 1; ch.ejected = 1; ch.tr = 1; ch.returns = 1; ch.cool = Date.now() + 8 * 60 * 1000; ch.needJ = (ST.jumps || 0) + 3; ch.arc = { id: 'rival', step: 0 }; save(); }   // ejected, not dead: they come back later, stronger
     }
   }
   for (const a of NPCS) if (a.fled && Math.hypot(a.x - px, a.y - py, a.z - pz) > 6000) { fxAdd(a.x, a.y, a.z, 40, .5, .8, 1); a.dead = 1; }

@@ -1,6 +1,6 @@
 # The Infinite End: handoff brief for the next build (v1.20)
 
-You're taking over development of **The Infinite End**, a single-file WebGL/WebXR space flight, mining, trading and story game by Shawn (Ikosagon). Your job: a substantially better v1.20 that is faster, fixes the QA findings, and adds what you can from the backlog. Deliver it the same way as before: one self-contained `index.html`, deployed to the test site.
+You're taking over development of **The Infinite End**, a single-file WebGL/WebXR space flight, mining, trading and story game by Shawn (Ikosagon). v1.20 is the current test build (`BUILD` in `c_main.js`). The next handoff is v1.21: faster, fixes whatever Shawn logs next, and adds from the backlog. Deliver it the same way: one self-contained `index.html` on the test site.
 
 This is a trial. Shawn will compare your v1.20 against the previous developer's work on fidelity, performance and polish.
 
@@ -31,7 +31,7 @@ src/                              the source, the only thing you edit
   bz_game.js                      game: jobs, NPCs, comms, escorts, story arcs, HUD, settings, aux display (PIP), oxygen, audio score
   c_main.js                       main loop, rendering passes, input, XR, save/load, BUILD label, debug hooks (window.ES)
   build.sh                        joins them → src/index.html (store flavour) and src/dist/test/index.html (test flavour)
-current/infiniteendtest-index.html   the build Shawn is testing now (v1.19 content, mislabelled v1.18). Your baseline.
+current/infiniteendtest-index.html   the build Shawn was testing before v1.20 (v1.19 content, mislabelled v1.18).
 docs/qa-log.md                    Shawn's QA findings 0–13: your primary to-do list
 docs/backlog.md                   standing rules, design principles (incl. what Shawn REJECTED), build history, backlog
 docs/previous-handoff-v1.18.md    detailed notes on recent systems (search the source for the names it mentions)
@@ -45,7 +45,11 @@ Syntax check before every build:
 (printf "(async()=>{"; cat src/a_core.js src/b_world.js src/bz_game.js src/c_main.js; printf "})()") > /tmp/chk.js && node --check /tmp/chk.js
 ```
 
-## 3. Required for v1.20 (in this order)
+## 3. v1.20 is in the tree. The next build (v1.21) starts from new QA.
+
+v1.20 already did the list below. Do not repeat it. Read `docs/qa-log.md` for what landed, then take new findings and a slice of `docs/backlog.md`.
+
+## 3b. What v1.20 was required to do
 
 1. **Version:** set `BUILD = 'v1.20'` in `c_main.js`. It shows on the pause screen and in the Quest pause panel.
 2. **Saves must survive updates (Shawn's decision).** At present `loadState()` in `c_main.js` wipes the save and makes a new universe whenever `ST.build !== BUILD`. Change it so existing saves (from v1.18/v1.19) load and migrate: fill missing fields with defaults and update `ST.build`. Keep `ST.seed`, so the player's universe is unchanged. Add a **New game** option in the menus (with a confirmation) that starts a fresh universe with a new random seed.

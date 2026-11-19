@@ -144,14 +144,32 @@ function mkSys(id) {
   for (let i = 0; i < 12; i += 3) { const r = P[i], g = P[i + 1], b = P[i + 2], w = i < 9 ? 1 : .3; s.pal[i] = r + w * ((co + k - 1) * r + (k - q) * g + (k + q) * b); s.pal[i + 1] = g + w * ((k + q) * r + (co + k - 1) * g + (k - q) * b); s.pal[i + 2] = b + w * ((k - q) * r + (k + q) * g + (co + k - 1) * b); }
   for (let i = 0; i < 12; i++) s.pal[i] = Math.max(.01, s.pal[i]);
   s.seed0 = [rnd() * 40, rnd() * 40, rnd() * 40]; s.seed = s.seed0.slice(); s.rot = [co, k, q]; s.th = th;
-  // three worlds: a main planet (enormous in a Giant's Shadow, absent in the Void), and two lesser ones
+  // three worlds, far apart on the sky: a gas giant, a rocky world, an ice world.
+  // Angular size is real radius ÷ distance (PR in cruise), so two discs that look alike are at alike ranges.
+  const SUN0 = [.45, .32, -.83], PR0 = [70, 6.4, 2.6], dist0 = [640 + rnd() * 220, 168 + rnd() * 55, 310 + rnd() * 120];
+  const tone = [
+    [[.78, .46, .22], [.98, .78, .46]],
+    [[.16, .34, .24], [.62, .46, .28]],
+    [[.55, .74, .86], [.88, .94, .98]],
+  ];
   for (let i = 0; i < 3; i++) {
-    let d; do { d = [rnd() * 2 - 1, rnd() * .9 - .45, rnd() * 2 - 1]; const l = Math.hypot(d[0], d[1], d[2]); d = [d[0] / l, d[1] / l, d[2] / l]; } while (d[0] * .45 + d[1] * .32 - d[2] * .83 > .55 || (i && d[0] * s.pl[0] + d[1] * s.pl[1] + d[2] * s.pl[2] > .6));
-    const r = i ? .025 + .05 * rnd() : t === 3 ? 0 : .1 + .1 * rnd(), h = rnd(); s.pr[i] = r;
-    s.pl.set([d[0], d[1], d[2], r], i * 4);
-    const c1 = [.5 + .5 * Math.cos(6.283 * h), .5 + .5 * Math.cos(6.283 * (h + .33)), .5 + .5 * Math.cos(6.283 * (h + .67))];
-    s.pa.set([c1[0] * .3 + s.pal[3] * .35 + .2, c1[1] * .3 + s.pal[4] * .35 + .2, c1[2] * .3 + s.pal[5] * .35 + .2, !i && rnd() < .7 || t === 7 && !i ? 1 : 0], i * 4);
-    s.pb.set([c1[2] * .2 + s.pal[0] * .3 + .08, c1[0] * .2 + s.pal[1] * .3 + .08, c1[1] * .2 + s.pal[2] * .3 + .08], i * 3);
+    let d, guard = 0, ok = false;
+    do {
+      const az = rnd() * 6.283, el = (rnd() - .5) * 1.15, ce = Math.cos(el);
+      d = [Math.cos(az) * ce, Math.sin(el), Math.sin(az) * ce];
+      const sun = d[0] * SUN0[0] + d[1] * SUN0[1] + d[2] * SUN0[2];
+      let nearP = false;
+      for (let k = 0; k < i; k++) if (d[0] * s.pl[k * 4] + d[1] * s.pl[k * 4 + 1] + d[2] * s.pl[k * 4 + 2] > .12) nearP = true;
+      ok = sun < .28 && !nearP; guard++;
+    } while (!ok && guard < 48);
+    const r = i === 0 && t === 3 ? 0 : PR0[i] / dist0[i];
+    s.pr[i] = r; s.pl.set([d[0], d[1], d[2], r], i * 4);
+    const th = (rnd() - .5) * .45, co = Math.cos(th), si = Math.sin(th), A0 = tone[i][0], B0 = tone[i][1];
+    const A = [A0[0] * co - A0[1] * si * .25, A0[1] * co + A0[0] * si * .12, A0[2]];
+    const B = [B0[0] * co - B0[1] * si * .2, B0[1] * co + B0[0] * si * .1, B0[2]];
+    const ring = !i && t !== 3 && rnd() < .5 ? 1 : 0;
+    s.pa.set([Math.max(.02, A[0] * .82 + s.pal[3] * .18), Math.max(.02, A[1] * .82 + s.pal[4] * .18), Math.max(.02, A[2] * .82 + s.pal[5] * .18), ring], i * 4);
+    s.pb.set([Math.max(.02, B[0] * .8 + s.pal[0] * .2), Math.max(.02, B[1] * .8 + s.pal[1] * .2), Math.max(.02, B[2] * .8 + s.pal[2] * .2)], i * 3);
   }
   { const nr = nameRng(id, 0x4E414D45), c = pickN(nr, NM.city);   // e.g. New Halifax, Kyoto Reach
     s.name = nr() < .5 ? pickN(nr, NM.pre) + ' ' + c : c + ' ' + pickN(nr, NM.suf); }
@@ -189,7 +207,7 @@ function mkSys(id) {
 // stand in one of a system's places: it decides what is around you and which world looms in the sky
 function setLoc(s, i) {
   const L = s.locs[s.loc = i % s.locs.length];
-  s.t = L.t; s.a = L.atm ? Object.assign({}, ARC[L.t], { rock: .22, ti: 0, mega: 0, deb: 0, cry: 0, ten: 0, geo: .04, fog: .5, st: .25, life: [0, 0, 0, L.atm > 1 ? .2 : 0, 0, 0] }) : (() => { const R = mulberry32(s.id ^ Math.imul(s.loc + 3, 0x9E3779B1)), B = ARC[L.t], o = Object.assign({}, B), X = ARC[R() * 8 | 0];
+  s.t = L.t; s.a = L.atm ? Object.assign({}, ARC[L.t], { rock: 4, ti: 0, mega: 0, deb: 0, cry: 0, ten: 0, geo: 0, fog: .4, st: 0, fl: .12, fr: 0, dr: 0, life: [.7, 0, .4, .15, 0, 0] }) : (() => { const R = mulberry32(s.id ^ Math.imul(s.loc + 3, 0x9E3779B1)), B = ARC[L.t], o = Object.assign({}, B), X = ARC[R() * 8 | 0];
     for (const k of ['cry', 'ten', 'deb', 'geo', 'fl', 'fr', 'dr', 'st', 'ti']) { if (typeof B[k] !== 'number') continue; o[k] = B[k] * (.25 + R() * 1.5); if (R() < .28 && typeof X[k] === 'number') o[k] = Math.max(o[k], X[k] * (.5 + R())); }
     o.deb = 0; o.fog = B.fog * (.35 + R() * R() * 4); o.rock = B.rock + (R() - .25) * .09; o.life = B.life.map((v, i) => R() < .3 ? 0 : Math.max(v, R() < .2 ? X.life[i] : 0) * (.4 + R() * 1.3)); return o; })(); s.atm = L.atm || 0; s.mat = REGT[L.t]; s.salt = hs(s.id ^ 0x5bd1e995 ^ Math.imul(s.loc + 1, 0x9E3779B1)) | 0;
   s.sky[2] = SKYW[L.t][2]; s.sky[3] = SKYW[L.t][3];
@@ -216,6 +234,12 @@ function setLoc(s, i) {
   for (let i = 0; i < 9; i += 3) { const m = (s.pal[i] + s.pal[i + 1] + s.pal[i + 2]) / 3; for (let j = 0; j < 3; j++) s.pal[i + j] = Math.max(.01, (m + (s.pal[i + j] - m) * (s.sat || 1.45)) * (s.bri || 1)); }
   s.seed = [s.seed0[0] + s.loc * 7.3, s.seed0[1] + s.loc * 3.1, s.seed0[2] - s.loc * 5.7];
   for (let k = 0; k < 3; k++) s.pl[k * 4 + 3] = L.body === k ? (k ? .3 : .6) : s.pr[k];
+  // one headline per sky: a black hole, a ringworld, or a rare phenomenon. Close stars and showpiece suns yield when one is already up.
+  if (s.atm) { s.sky[0] = 0; s.sky[1] = 0; s.ph = 0; s.headline = 0; }
+  else if (s.sky[0] > .35) { s.sky[1] = 0; s.sky[2] *= .15; s.sky[3] *= .2; s.ph = 0; s.headline = 1; }
+  else if (s.sky[1] > .35) { s.sky[0] = 0; s.sky[3] *= .25; s.ph = 0; s.headline = 2; }
+  else if (s.ph) { s.sky[0] = 0; s.sky[1] = 0; s.sky[3] *= .35; s.headline = 3; }
+  else s.headline = 0;
   return s;
 }
 
@@ -284,7 +308,7 @@ vec3 h3(float n){return fract(sin(vec3(n*127.1,n*269.5+1.3,n*419.2+2.7))*43758.5
 const VI = HD + `
 layout(location=0)in vec3 aP;layout(location=1)in vec3 aN;layout(location=2)in vec2 aU;
 layout(location=3)in vec4 iA;layout(location=4)in vec4 iB;layout(location=5)in vec4 iC;
-uniform vec3 uCell,uCam,uCN;
+uniform vec3 uCell,uCam,uCN;uniform float uVd;
 vec3 ctr(){if(uCN.y<.5)return iA.xyz-uCam;vec3 r=mod(iA.xyz-uCell+uCN.y*.5,uCN.y)-uCN.y*.5;return(r+iB.xyz)*uCN.x-uCam;}
 vec4 rockQ(float s,float sp){return quat(normalize(h3(s*91.7)-.5+1e-3),s*40.+TIME*sp*(h1(s*3.)-.5)*2.);}
 vec3 rockS(float s){return .6+.4*h3(s*33.3+5.);}
@@ -298,7 +322,7 @@ void main(){
  vec4 q=rockQ(sd,uSpin);
  vec3 s=uKind==0?rockS(sd):uKind==2?.05+.95*pow(h3(sd*7.7),vec3(2.2)):vec3(1);
  vec3 o=aP*s*sz;
- float k=1.-smoothstep(.9*uCN.z,uCN.z,length(c));
+ float k=(1.-smoothstep(.9*uCN.z,uCN.z,length(c)))*clamp(1.-uVd,0.,1.);
  vec3 p=c+qr(q,o)*k;
  vP=p;vN=qr(q,aN/s);vO=o/sz;vQ=q;vI=vec4(sd,iC.x,iC.y,sz);vJ=vec4(iC.z,iC.w,0,0);
  gl_Position=uVP*vec4(p,1);}`;
@@ -388,7 +412,7 @@ void main(){
   P0=cc+(o1*cos(t)+o2*sin(t))*rr*(1.+.3*sin(t*1.7+k))+ax*sin(t*.6+k)*sz*5.;
   Z=-normalize(-o1*sin(t)+o2*cos(t)+ax*.2*cos(t*.6+k));X=normalize(cross(ax,Z));Y=cross(Z,X);
  }
- float d=length(P0),fd=1.-smoothstep(.85*uCN.z,uCN.z,d);
+ float d=length(P0),fd=(1.-smoothstep(.85*uCN.z,uCN.z,d))*clamp(1.-uVd,0.,1.);
  vec3 p=P0+(X*lp.x+Y*lp.y+Z*lp.z)*sz*fd;
  vP=p;vN=X*aN.x+Y*aN.y+Z*aN.z;vO=lp;vQ=vec4(aN,aU.x);vI=vec4(sd+k*.13,uShip==4?k:iC.z,0,sz);vJ=vec4(0);
  gl_Position=uVP*vec4(p,1);}`;
@@ -462,7 +486,7 @@ void main(){
   vec3 o=iC.xyz*s*rs*.95+up*tt*ln+t*(aP.x*ln*.0018*(1.-.6*tt)+sin(TIME*.6+iC.w*40.-tt*3.)*tt*tt*ln*.13)+bb*cos(TIME*.45+iC.w*23.-tt*2.5)*tt*tt*ln*.1;
   P0=c;p=c+qr(q,o);vN=qr(q,bb);direct=true;
  }
- float d=length(P0),k=1.-smoothstep(.8*uCN.z,uCN.z,d);
+ float d=length(P0),k=(1.-smoothstep(.8*uCN.z,uCN.z,d))*clamp(1.-uVd,0.,1.);
  if(!direct){p=P0+(X*lp.x+Y*lp.y+Z*lp.z)*sz;vN=X*aN.x+Y*aN.y+Z*aN.z;}
  if(uKind==0&&iC.w<.5)k*=smoothstep(sz*.9,sz*2.6,d);                // a colossus fades as you fly into it, instead of filling the view with its bell
  vP=p;vU=aU;vI=vec4(hue,gl2,k*exp(-min(d*FOGD*.7,1.7)),0);
@@ -537,7 +561,7 @@ void main(){vec3 l=aP,n=aN;
 // materials: 0 hull, 1 trim, 2-4 screens, 5 lamps, 6 warm lamps, 7 grip, 8 red cap, 9 instrument panel, 10 glass,
 // 11 cyan strip, 12 frame alloy. uDm = how damaged the ship is (0..1).
 const COCK_F = HD + `
-in vec3 vL,vW,vN,vM;in vec2 vU;uniform vec2 uAt;uniform vec4 uCk,uSt,uCg;uniform float uDm;uniform vec3 uHc;uniform sampler2D uPip;out vec4 o;
+in vec3 vL,vW,vN,vM;in vec2 vU;uniform vec2 uAt;uniform vec4 uCk,uSt,uCg;uniform float uDm,uHt;uniform vec3 uHc;uniform sampler2D uPip;out vec4 o;
 float hh(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float bar(vec2 q,float y,float h,float f){return step(abs(q.y-y),h)*step(-.8,q.x)*step(q.x,-.8+1.6*f);}
 float pool(vec3 c,float k){vec3 d=vL-c;return exp(-dot(d,d)*k);}
@@ -603,7 +627,7 @@ void main(){
  else if(id<.5){alb=vec3(.011,.0115,.014)*(.85+.3*texture(uNz,vL*40.).r);sp=.2;gs=20.;}
  else if(id<1.5){alb=vec3(.005,.0055,.0068);sp=1.5;gs=240.;}
  else if(id<4.5){
-  alb=vec3(.003);sp=.2;gs=200.;vec3 sc=vec3(.008,.02,.03);vec2 q;float scan=(.8+.2*sin(vL.y*400.+TIME*6.))*(1.-.7*uDm*step(.82,hh(vec2(floor(TIME*9.),id))));
+  alb=vec3(.003);sp=.2;gs=200.;vec3 sc=vec3(.008,.02,.03);vec2 q;float scan=(.8+.2*sin(vL.y*400.+TIME*6.))*(1.-.7*uDm*step(.82,hh(vec2(floor(TIME*9.),id))))*(1.-uHt*.65*step(.5,fract(TIME*18.)));
   if(id<2.5){q=vec2(vL.x/.2,(vL.y+1.18)/.15);
    float bi=floor((q.x+.9)*2.78),bf=fract((q.x+.9)*2.78),lv=bi<1.?uCg.x:bi<2.?uCg.y:bi<3.?uCg.z:bi<4.?uCg.w:uSt.w,h=(q.y+.85)/1.2;
    vec3 bc=bi<1.?vec3(.75,.8,.9):bi<2.?vec3(.2,1.,.5):bi<3.?vec3(.25,.65,1.):bi<4.?vec3(.8,.35,1.):vec3(1.,.72,.2);
@@ -734,35 +758,39 @@ vec3 closeStar(vec3 d){
  if(st>5.5&&st<6.5){vec3 C2=normalize(L+T*R*2.3+B*R*.6);float t2=acos(clamp(dot(d,C2),-1.,1.)),R2=R*.35;   // a binary: the companion, small and blue, close by
   float rq=t2/(R*.03);o+=vec3(.6,.75,1.)*(exp(-rq*rq)*14.+.02/(rq*rq*.02+.02)*.06);}
  return o;}
-vec4 planet(vec3 d,vec3 P,float rp,vec3 ca,vec3 cb,float ring){
- float b=dot(d,P),ds=b*b-(1.-rp*rp);vec4 c=vec4(0);float ts=1e9;vec3 L=uSun.xyz,atm=mix(ca,vec3(.4,.68,1.),.65)*uSunC.rgb;
+vec4 planet(vec3 d,vec3 P,float rp,vec3 ca,vec3 cb,float ring,int ty){
+ float b=dot(d,P),ds=b*b-(1.-rp*rp);vec4 c=vec4(0);float ts=1e9;vec3 Ls0=uSun.xyz;
+ vec3 axis=normalize(abs(P.yzx)+vec3(.18,.9,.16));float spin=TIME*.008+P.x*4.+float(ty)*1.7;
+ vec3 L=normalize(Ls0*cos(spin)+cross(axis,Ls0)*sin(spin)+axis*sin(spin*.5)*.35);
+ vec3 atm=mix(ca,vec3(.45,.72,1.),.5);
  if(ds>0.&&b>0.){ts=b-sqrt(ds);vec3 n=normalize(d*ts-P);float nl=dot(n,L);
-  float w=tn(n*.6+.2),w2=tn(n*2.3+.5),w3=texture(uNz,n*7.).r;
-  vec3 s=mix(ca,cb,smoothstep(.3,.7,.5+.3*sin((n.y*2.5+w*1.3)*5.)+(w2-.5)*.9))*(.45+.7*w3);
-  // clouds: a storm swirl, two layers drifting at different rates, and the shadows they throw on the ground
-  vec3 sw=normalize(ca.zxy-.45+vec3(.07,.11,.03));float sdt=dot(n,sw),ga=smoothstep(.8,1.,sdt)*5.;vec3 nq=n*cos(ga)+cross(sw,n)*sin(ga)+sw*sdt*(1.-cos(ga));
-  float c1=smoothstep(.47,.72,tn(nq*1.5+vec3(TIME*.0015,0,.3))*.65+w3*.45),c2=smoothstep(.56,.8,tn(nq*3.1+vec3(-TIME*.003,.7,0))*.7+texture(uNz,nq*11.).r*.35)*.7,cl=max(c1*.85,c2);
-  vec3 nS=normalize(n+L*.035);float shd=smoothstep(.47,.72,tn(nS*1.5+vec3(TIME*.0015,0,.3))*.65+texture(uNz,nS*7.).r*.45);
-  s*=1.-.5*shd*(1.-cl);s=mix(s,vec3(.86,.88,.9)*(.72+.38*w2),cl*.85);
-  float lit=mix(smoothstep(-.06,.28,nl),smoothstep(-.16,.2,nl),cl),mu=max(dot(n,-d),0.),rim=pow(1.-mu,2.5),hz=pow(1.-mu,1.5),tw=exp(-nl*nl*50.)*smoothstep(-.25,.05,nl);
-  vec3 col=s*s*lit*uSunC.rgb*1.15+vec3(1.,.66,.3)*step(.78,w3)*step(.52,w2)*(1.-lit)*(1.-cl)*.35;
-  col+=vec3(1.,.45,.2)*uSunC.rgb*tw*(.12+.35*cl);                                              // a warm band where day turns to night
-  col=mix(col,atm*(.08+1.3*lit),hz*.7)+atm*.035*lit;                                           // haze thickens toward the edge of the disc
-  col+=atm*rim*pow(max(dot(d,L),0.),4.)*1.6;                                                    // backlit: the rim of air lights up
-  c=vec4(mix(col,atm*(.12+1.7*lit),rim*.9),1.);}
+  float w=tn(n*1.15+.2),w2=tn(n*2.6+.7),w3=tn(n*5.2+1.4);vec3 s;float cl,land=1.;
+  if(ty==1){land=smoothstep(.4,.62,w*.72+w2*.28);vec3 sea=mix(vec3(.03,.09,.18),ca,.45),grd=mix(cb,ca*.8+.08,smoothstep(.25,.75,w2));s=mix(sea,grd,land);cl=smoothstep(.62,.88,w2)*.42;}
+  else if(ty==2){s=mix(vec3(.8,.9,.97),mix(ca,vec3(.72,.86,.95),.45),.4+.2*w2);s=mix(s,vec3(.16,.26,.38),smoothstep(.045,0.,abs(fract(n.y*5.+w*2.4)-.5)-.47)*.6);cl=smoothstep(.66,.9,w)*.2;land=1.;}
+  else{float bd=.5+.5*sin(n.y*(7.+2.*w)+w2*1.6),bd2=.5+.5*sin(n.y*3.4+1.1+w);s=mix(ca*.62,cb*1.45,smoothstep(.15,.85,bd));s=mix(s,ca*vec3(1.35,.95,.7),smoothstep(.45,.9,bd2)*.7);
+   float sx=n.x*2.1,sy=(n.y-.12)*5.5;s=mix(s,cb*vec3(1.35,.8,.5),exp(-(sx*sx+sy*sy))*1.15);cl=smoothstep(.52,.8,w*.5+w2*.5)*.38;land=0.;}
+  s*=.93+.07*w3;
+  float shd=ty==2?0.:(ty==1?smoothstep(.4,.62,tn((n+L*.04)*1.15+.2)*.72+tn((n+L*.04)*2.6+.7)*.28):smoothstep(.52,.8,tn((n+L*.05)*1.2)))*(1.-cl);
+  s*=1.-.32*shd;s=mix(s,ty==0?mix(vec3(.96,.9,.8),ca,.3):vec3(.92,.93,.95),cl);
+  float lit=smoothstep(-.14,.2,nl),mu=max(dot(n,-d),0.),rim=pow(1.-mu,2.6),hz=pow(1.-mu,1.55),tw=exp(-nl*nl*36.)*smoothstep(-.22,.08,nl);
+  vec3 col=s*lit*(.45+.7*max(atm,vec3(.3)))*1.05+atm*.04*lit;
+  if(ty==1)col+=vec3(1.,.74,.4)*(1.-lit)*land*smoothstep(.7,.9,w3)*1.5;
+  if(ty==2)col+=vec3(.55,.75,1.)*(1.-lit)*.05;
+  col+=vec3(1.,.48,.22)*tw*(.12+.45*cl);
+  col=mix(col,atm*(.12+1.05*lit),hz*.62);
+  col+=atm*rim*pow(max(dot(d,Ls0),0.),4.)*1.15;
+  c=vec4(col,1.);}
  else if(b>0.&&rp>0.){float h=(acos(clamp(b,-1.,1.))-asin(min(rp,.999)))/rp;
-  if(h<.7){float lit=smoothstep(-.35,.35,dot(normalize(d-P*b),L)),a=(exp(-h*22.)*.75+exp(-h*6.)*.22)*(.08+lit),fs=pow(max(dot(d,L),0.),6.)*exp(-h*7.)*1.4;
-   c=vec4(atm*1.5*a+uSunC.rgb*fs*.5,min(1.,a+fs*.3));}}
- if(ring>0.){vec3 rn=normalize(vec3(.25,1,.35)),e1=normalize(cross(rn,vec3(0,0,1))),e2=cross(rn,e1);float t=dot(P,rn)/dot(d,rn);
-  vec3 hp=d*t-P;float r=length(hp)/rp,k=r*120.,lw=fwidth(k);
-  if(t>0.&&t<ts&&r>1.25&&r<3.1){                              // thousands of orbiting grains, each drawn as the path it travels
-   float li=floor(k),lf=fract(k),lh=hsh(vec3(li,3.,7.)),l2=hsh(vec3(li,11.,5.)),ang=atan(dot(hp,e2),dot(hp,e1));
-   float line=mix(smoothstep(.48,.2,abs(lf-.5)),.45,smoothstep(.5,1.4,lw));
-   float dd=fract(ang*(30.+floor(lh*110.))+TIME*.03*(l2-.4)+lh*9.),dot1=mix(1.,smoothstep(.5,.25,abs(dd-.5)),step(.3,l2)*smoothstep(1.2,.4,lw));
-   float env=smoothstep(1.25,1.4,r)*smoothstep(3.1,2.7,r)*(.25+.75*texture(uNz,vec3(r*.5,.3,.7)).r)*(1.-.8*smoothstep(.06,0.,abs(r-2.05)));
-   vec3 tc=l2<.1?vec3(1.,.22,.12):l2<.17?vec3(1.,.6,.3):mix(vec3(.3,.5,1.),vec3(1.),lh*lh*lh);
-   float sh=dot(hp,L),shd=length(hp-L*sh)<rp&&sh<0.?.08:1.,a=env*line*dot1;
-   c.rgb=c.rgb*(1.-a*.5)+tc*uSunC.rgb*(.3+7.*lh*lh*lh*lh*lh)*a*shd;c.a=max(c.a,a*.5);}}
+  if(h<.5){float lit=smoothstep(-.35,.35,dot(normalize(d-P*b),L)),a=(exp(-h*16.)*.65+exp(-h*4.5)*.16)*(.12+lit);
+   c=vec4(atm*a*1.25,min(.8,a));}}
+ if(ring>.5&&ty==0){vec3 rn=normalize(vec3(.25,1.,.35)),e1=normalize(cross(rn,vec3(0,0,1))),e2=cross(rn,e1);float t=dot(P,rn)/max(dot(d,rn),1e-4);
+  vec3 hp=d*t-P;float r=length(hp)/max(rp,.02),fw=fwidth(r);
+  if(t>0.&&t<ts&&r>1.32&&r<2.75){
+   float lane=smoothstep(.42,.16,abs(fract(r*2.6)-.5));lane=mix(lane,.62,smoothstep(.015,.07,fw));
+   float env=smoothstep(1.32,1.48,r)*smoothstep(2.75,2.45,r)*(1.-smoothstep(.05,0.,abs(r-1.92))*.8);
+   float sh=dot(hp,L),shd=length(hp-L*sh)<rp&&sh<0.?.15:1.,a=env*lane*.8;
+   vec3 ice=mix(vec3(.84,.88,.93),vec3(.5,.4,.3),smoothstep(1.45,2.55,r));
+   c.rgb=c.rgb*(1.-a*.5)+ice*shd*a*(.4+.6*max(dot(normalize(P),L),0.));c.a=max(c.a,a*.6);}}
  return c;}
 void main(){
  vec3 d=normalize(uFw.xyz+uRt.xyz*mix(uRt.w,uFw.w,vU.x)+uUp.xyz*mix(uUp.w,uVel.w,vU.y));
@@ -813,7 +841,7 @@ void main(){
     c+=(vec3(1.,.22,.18)*exp(-q1*q1)*(.3+1.4*f2*f2)+vec3(.15,.75,.7)*exp(-q2*q2)*(.15+.8*fl*fl)+vec3(.25,.3,.6)*smoothstep(R,0.,an)*.05)*.9;}
    else if(ty<2.5){float R=.035+.03*sv,el=length(pp*vec2(1.,1.+.6*sv)),q1=(el-R)/(R*.22),q2=(el-R*1.25)/(R*.3);
     c+=vec3(.2,.9,.75)*exp(-q1*q1)*.9+vec3(.9,.3,.25)*exp(-q2*q2)*.35+vec3(.3,.5,.9)*smoothstep(R,0.,el)*.18+vec3(1.)*exp(-an*an*3e5)*3.;}
-   else if(ty<3.5){float th=TIME*(2.+3.*sv),bd=abs(pp.x*sin(th)-pp.y*cos(th)),pl=.6+.4*sin(TIME*(14.+20.*sv));
+   else if(ty<3.5){float th=TIME*(.012+.02*sv),bd=abs(pp.x*sin(th)-pp.y*cos(th)),pl=.75+.25*sin(TIME*(.4+.3*sv));
     c+=vec3(.7,.85,1.)*(exp(-an*an*2.5e5)*5.*pl+exp(-bd*bd*2.5e4)*exp(-length(pp)*16.)*.8+exp(-an*an*900.)*.12);}
    else if(ty<4.5){vec3 sc=mix(vec3(.6,.75,1.),vec3(1.,.5,.25),sv);c+=sc*(exp(-an*an*6e3)*6.+exp(-an*an*220.)*.35+exp(-an*18.)*.08);}
    else if(ty<5.5){vec3 aw=normalize(Q-uSun.xyz);vec2 td=normalize(vec2(dot(aw,U),dot(aw,W))+1e-4);float al0=dot(pp,td),al=max(al0,0.),pe=pp.x*td.y-pp.y*td.x+al*al*.6*(sv-.5),p2=pe-al*.25;
@@ -822,8 +850,8 @@ void main(){
     c+=mix(vec3(1.,.8,.55),vec3(.8,.88,1.),hsh(vec3(gi,7.)))*(step(1.-fall*.9,h)*exp(-dot(gf,gf)*14.)*1.6+fall*.1);}
   }}
 
- for(int i=2;i>=0;i--)if(uPl[i].w>0.){vec4 p=planet(d,uPl[i].xyz,uPl[i].w,uPa[i].rgb,uPb[i],uPa[i].a);c=c*(1.-p.a)+p.rgb;m*=1.-p.a;}
- if(uOrb.x>0.){float R=90000.,h=uOrb.y,cl=R+h,b=-d.y*cl,q=2.*R*h+h*h,disc=b*b-q;vec3 L=uSun.xyz;
+ for(int i=2;i>=0;i--)if(uPl[i].w>0.){vec4 p=planet(d,uPl[i].xyz,uPl[i].w,uPa[i].rgb,uPb[i],uPa[i].a,i);c=c*(1.-p.a)+p.rgb;m*=1.-p.a;}
+ if(uOrb.x>0.){float R=90000.,h=uOrb.y,cl=R+h,b=-d.y*cl,q=2.*R*h+h*h,disc=b*b-q;float dayPh=TIME*.01+uSd.x*6.283;float sunEl=sin(dayPh);vec3 L=normalize(vec3(cos(dayPh)*.85,sunEl,sin(dayPh*.5+.4)*.55));
   vec3 at=mix(uOa,uSunC.rgb,.45);float sunH=smoothstep(-.25,.25,L.y+.15);
   // the horizon: ground and sky both melt into one band of haze, brightest toward the sun, with a thin glow along the limb
   float yh=-sqrt(q)/cl,hzv=d.y-yh,sdh=pow(max(dot(normalize(vec3(d.x,0.,d.z)+1e-4),normalize(vec3(L.x,0.,L.z)+1e-4)),0.),3.);
@@ -843,7 +871,7 @@ void main(){
    vec3 ccol=mix(vec3(1.),uOa*.6+.4,.55)+(ty<1.5?(uCE.rgb-.4)*.35*sin(c1*9.+big*6.):vec3(0));
    vec3 cc=mix(gnd,ccol*top*(lit*.95+at*.07),cov);
    float gp=smoothstep(.6,.8,tn(vec3(s*.00022,7.)))*(1.-cov*.85)*(.35+.65*smoothstep(.3,.7,tn(vec3(s*.004,2.))));
-   cc+=(ty<1.5?mix(uCE.rgb,vec3(1.,.72,.22),.7)*gp*(.5+1.2*(1.-ndl)):ty<2.5?vec3(1.,.75,.4)*gp*land*smoothstep(.5,.1,ndl)*1.5:vec3(.2,.7,1.)*gp*.15);
+   cc+=(ty<1.5?mix(uCE.rgb,vec3(1.,.72,.22),.7)*gp*(.5+1.2*(1.-ndl)):ty<2.5?vec3(1.,.75,.4)*gp*land*(smoothstep(.5,.1,ndl)*1.5+smoothstep(.05,-.4,sunEl)*1.8):vec3(.2,.7,1.)*gp*.15);
    cc+=uSunC.rgb*warm*pow(max(dot(reflect(d,N),L),0.),50.)*.3*cov*ndl;
    float sd2=pow(max(dot(d,L),0.),4.);vec3 air=mix(at*at*1.3,vec3(1.,.5,.2),sd2*.6)*(.05+.22*sunH+1.2*sd2);
    cc=mix(vec3(dot(cc,vec3(.33))),cc,1.45);float fg=1.-exp(-t/30000.);cc=mix(cc,air,fg*.85);

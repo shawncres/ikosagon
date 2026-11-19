@@ -1,6 +1,19 @@
 # The Infinite End (formerly Infinite Black): backlog and build log
 
-Standing rule from Shawn: every build takes a selection from this backlog alongside whatever is newly asked. Nothing here is to be dropped silently. Versions use point numbering (v1.0 = first rollback build … v1.4 = old "v5"; current build v1.18, live: PR #169 merged 2026-11-19 with the VR fixes). `BUILD` in `c_main.js`, shown bottom-right of the pause screen and in the Quest pause panel. Increment it on each release. Until v1.19 a new value also wiped every save and started a new universe; **from v1.20 on, updates keep the player's progress** (Shawn, 2026-11-19) and a fresh universe happens only when the player chooses to start fresh. (v1.14 was skipped at Shawn's direction.)
+Standing rule from Shawn: every build takes a selection from this backlog alongside whatever is newly asked. Nothing here is to be dropped silently. Versions use point numbering (v1.0 = first rollback build … v1.4 = old "v5"; current test build v1.20). `BUILD` in `c_main.js`, shown on the title screen, bottom-right of the pause screen and in the Quest pause panel. Increment it on each release. **From v1.20 on, updates keep the player's progress** (Shawn, 2026-11-19) and a fresh universe happens only when the player chooses New universe. (v1.14 was skipped at Shawn's direction.)
+
+## v1.20 (2026-11-19, test site only)
+
+QA 0–13, as logged in `docs/qa-log.md`. Also from the backlog:
+
+- Sky audit: one headline per place (black hole, ringworld, or a rare phenomenon). A close star or a showpiece sun stands down when a headline is already up. The sky-phenomenon pulsar drifts instead of spinning.
+- Saves migrate. New universe, with a confirmation, on the title screen and in Settings.
+- Lore of the Silence: the Deepfield Survey sent you past the last reliable gate; the Meridian Combine, the Lantern Order and the Free Haulers Union are named in the title, the journal and the faction lines. The six-part trail is that story.
+- Oaths and the dead are listed in the journal. The aux display footer no longer collides with a long place name.
+- The weapon name sits on the visor by the weapons bar.
+- Quarters draw only on a glance (always in VR). Dash CRT is idle-cheap.
+
+Headless software WebGL on this machine reported about 0.4 fps while the window was 1280×720. That figure is not a desktop or Quest measurement; the same harness is expected to run far slower than a GPU. Structural cuts aimed at the cabin and the aux upload, which the QA log named. Not heard by ear. Not flown in a headset.
 
 Hosting and deploys: live at `ikosagon.com/infiniteend`, file `public/infiniteend/index.html` in Shawn's site repo, deployed by Vercel from `main`. Another builder handles deploys: work on a branch and open a PR, never commit to main. Always start from the current live `index.html`. Each release goes out as `index.html` plus a handoff note (`infiniteend-v1.xx-handoff.md`).
 
@@ -123,7 +136,7 @@ Design principles (Shawn):
 - Overdrive next steps, if it lands well: denser rock lanes on long runs (must thicken far ahead, never pop in close), an overdrive meter or streak counter, a music lift when overdrive starts.
 - Cabin: more life if Shawn wants it; the centre dash bank and overhead console still use the procedural instrument material.
 - Spacing for other massive things too (titans, megastructures, stations near huge rocks), if Shawn still sees bunching.
-- Sky audit: the older fixed sky features can stack with planets and big stars; give each place at most one headline feature. Check all of them for too-fast motion.
+- Sky audit: v1.20 gives each place one headline and slows the phenomenon pulsar. Still worth a pass if a close star and a planet disc crowd one view.
 - Music next steps: tune by ear; key changes between systems; counter-melodies.
 - Close stars: approach them (heat, glare, a danger zone) and a slow swell in the score.
 - Nebula variety: if revisited, prototype in a screenshot first.

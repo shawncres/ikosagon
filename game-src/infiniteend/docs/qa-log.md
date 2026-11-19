@@ -1,6 +1,25 @@
 # The Infinite End: QA log
 
-Shawn's QA findings, logged one by one. Nothing here is being worked on until Shawn says to start.
+Shawn's QA findings, logged one by one. v1.20 (2026-11-19) worked this round. New findings stay logged only until Shawn says go.
+
+## v1.20 resolutions
+
+| # | What v1.20 did |
+|---|---|
+| 0 | `BUILD` is `v1.20`. It shows on the title screen and the pause screen. |
+| 1 | Planets are placed on a wide triangle, away from the sun. Apparent size is real radius ÷ distance, so a giant, a rocky world and an ice world no longer share one blotchy look. Gas giants have broad bands, rocky worlds have seas and night cities, ice worlds have cracks. Rings are a few broad ice lanes that fade before they alias. |
+| 2 | Entering an atmosphere no longer snaps the quaternion. Wings ease level over about six seconds, shortest way, and do not reverse mid-turn. VR keeps a gentler hand on the roll. |
+| 3 | Encounters and trail beats open when you come near their subject, not on arrival. The header row no longer consumes a number (choices start at 1). The panel sits low-left so it does not cover the view. |
+| 4 | Any time in an atmosphere counts as near spice, with a stronger gather and blooms in the cloud band. Cloud-layer jellies and minnows can spawn there. |
+| 5 | The warp gate mesh, its glow and its nav target exist only in open space. Atmosphere objectives say to climb out. Rock, station and titan generators do not place solids in the air. |
+| 6 | Each planet's light walks slowly around it (terminator, night side, city lights on rocky worlds). Below the clouds the sun's altitude follows the same slow day. |
+| 7 | Chose fade, not a hard swap: world instances scale out with the entry veil, and solids are not generated on the atmosphere side, so nothing pops into the path at the cloud layer. |
+| 8 | Living quarters are a berth, a counter and two light strips. On a screen they draw only when you glance aft; the headset always draws them. Cabin vertex count is about 13.5k. |
+| 9 | A destroyed pilot is dead and that name stays retired. Known pilots need real time and jumps before they call again. A rival who returns ejected, waits, and comes back with more hull, shields and sometimes a wingman. No fly-in for about two minutes after a jump, an atmosphere exit or a kill. Raider shields are real (about 300, more on a return). |
+| 10 | Kills use a low sine boom, a falling noise body and a short debris crackle, scaled by size and distance. |
+| 11 | Hits flash the shield and hull bars, flicker the dash screens, and put a red chevron on the visor toward the shooter or the rock. |
+| 12 | The dash CRT uploads about every 2.2 s and not at all while the full display is open. The full display is an opaque screen in place of the HUD. |
+| 13 | Saves from v1.18/v1.19 migrate: same seed, missing fields filled, `ST.build` updated. **New universe** is on the title screen and in Settings, and it asks before it replaces the save. |
 
 ## QA round 1 (2026-11-19, test build 1795118420-ff01, mislabelled v1.18; should have been v1.19)
 

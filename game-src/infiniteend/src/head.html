@@ -113,9 +113,9 @@ h1 span + span { color: #0000; -webkit-text-stroke: 1.5px var(--t); letter-spaci
 .g #o, .g #jb { display: block; }
 .p #o, .p #jb { display: none; }
 #jb { top: .8em; right: 6.4em; padding: .3em .7em; letter-spacing: .2em; cursor: pointer; color: var(--a); border-color: #ffb34780; }
-#jp { position: absolute; left: 50%; top: 50%; width: min(40em, 92vw); transform: translate(-50%, -50%) scale(.97); padding: 1.4em 1.6em; background: linear-gradient(160deg, rgb(var(--hcr) / .09), transparent 40%), rgba(4, 7, 12, .66); backdrop-filter: blur(9px) saturate(1.2); -webkit-backdrop-filter: blur(9px); border: 1px solid rgb(var(--hcr) / .45); box-shadow: inset 0 0 40px rgb(var(--hcr) / .06), 0 0 30px rgb(var(--hcr) / .08); opacity: 0; visibility: hidden; transition: opacity .25s, transform .25s, visibility .25s;
+#jp { position: absolute; left: 2.4vw; right: auto; top: auto; bottom: 8vh; width: min(34em, 78vw); transform: none; padding: 1.4em 1.6em; background: linear-gradient(160deg, rgb(var(--hcr) / .09), transparent 40%), rgba(4, 7, 12, .72); backdrop-filter: blur(9px) saturate(1.2); -webkit-backdrop-filter: blur(9px); border: 1px solid rgb(var(--hcr) / .45); box-shadow: inset 0 0 40px rgb(var(--hcr) / .06), 0 0 30px rgb(var(--hcr) / .08); opacity: 0; visibility: hidden; transition: opacity .25s, visibility .25s;
   clip-path: polygon(0 0, calc(100% - 1.5em) 0, 100% 1.5em, 100% 100%, 1.5em 100%, 0 calc(100% - 1.5em)); }
-.g #jp.on { opacity: 1; visibility: visible; transform: translate(-50%, -50%); }
+.g #jp.on { opacity: 1; visibility: visible; transform: none; }
 #jp h2 { margin: 0; font: 400 1em/1 Syncopate, sans-serif; letter-spacing: .34em; color: var(--hc); text-shadow: 0 0 12px rgb(var(--hcr) / .5); text-transform: uppercase; }
 #jp::after { content: ''; position: absolute; right: 0; top: 0; width: 2.1em; height: 2px; background: var(--hc); transform: translate(.15em, .72em) rotate(45deg); box-shadow: 0 0 8px var(--hc); }
 #jp::before { content: ''; position: absolute; left: 1.6em; top: 0; width: 5em; height: 2px; background: var(--hc); box-shadow: 0 0 8px var(--hc); }
@@ -124,8 +124,8 @@ h1 span + span { color: #0000; -webkit-text-stroke: 1.5px var(--t); letter-spaci
 #jl { margin: 0; padding: 0; list-style: none; counter-reset: j; }
 #jl li { counter-increment: j; display: grid; grid-template-columns: 2em 11em 1fr; gap: 0 .6em; padding: .55em .3em; border-top: 1px solid rgb(var(--hcr) / .12); cursor: pointer; transition: background .15s, box-shadow .15s; }
 #jl li:hover, #jl li.cur { background: rgb(var(--hcr) / .14); box-shadow: inset 3px 0 0 var(--hc); }
-#jl li.ro { cursor: default; } #jl li.ro:hover { background: none; } #jl li.ro::before { content: '·'; color: var(--dim); }
 #jl li::before { content: counter(j); grid-row: 1 / 3; align-self: center; font: 700 1.2em Syncopate, sans-serif; color: var(--hc); }
+#jl li.ro { cursor: default; counter-increment: none; } #jl li.ro:hover { background: none; box-shadow: none; } #jl li.ro::before { content: ''; }
 #jl b { font-weight: 600; letter-spacing: .08em; color: #fff; }
 #jl i { font-style: normal; color: rgb(var(--hcr) / .85); letter-spacing: .12em; text-transform: uppercase; font-size: .82em; align-self: center; }
 #jl span { grid-column: 2 / 4; font-size: .84em; color: var(--dim); }
@@ -146,9 +146,9 @@ body[class^="g"] #tip{display:none!important}   /* in flight the HUD shows messa
 <div id=jp><h2 id=jh></h2><p id=jc></p><ol id=jl></ol><p class=k id=jk></p></div>
 <div id=m>
   <div id=col>
-    <p id=kick>Beyond the last charted gate</p>
+    <p id=kick>The Silence has started answering</p>
     <h1><span class=the>The</span><span>Infinite</span><span>End</span></h1>
-    <p id=tag>The charts stop here. The dark doesn't. Crack rocks for ore, feed it to the swarms, trade what's left and ride the gates further out. Every system is born the moment you arrive: a star, its worlds, and vast places that no pilot has flown, each with its own sky, traffic and sound.</p>
+    <p id=tag>Three centuries ago the outer gates went quiet. The Deepfield Survey sent you past the last reliable lane, in a long-haul cab, to learn why. The Meridian Combine pays for charts. The Lantern Order keeps the old rites. The Free Haulers just want to get home. Crack rocks, keep your air, and follow what the dark still says.</p>
     <p id=ld><b id=pc>0%</b><span id=st>Igniting stars past the edge</span></p>
     <ul id=opts>
       <li><button id=launch>Launch into the dark</button></li>
@@ -157,6 +157,7 @@ body[class^="g"] #tip{display:none!important}   /* in flight the HUD shows messa
       <li><button id=det>Detail<i></i></button></li>
       <li><button id=snd>Sound<i></i></button></li>
       <li><button id=set>Settings<i></i></button></li>
+      <li><button id=fresh>New universe<i>fresh charts</i></button></li>
       <li><button id=keys>View controls<i></i></button></li>
     </ul>
     <p id=fsn>Launching goes full screen · F11 toggles it any time</p>
