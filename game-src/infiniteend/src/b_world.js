@@ -586,7 +586,7 @@ let gh = 0, gj0 = 0, gj1 = 0, gj2 = 0, gsd = 0;
 const hx = (k) => hs(gh + k) * U;
 function cellRnd(wx, wy, wz, s) { gh = h3(wx, wy, wz, s ^ SYS.salt); gj0 = (gh & 1023) / 1024; gj1 = (gh >>> 10 & 1023) / 1024; gj2 = (gh >>> 20 & 1023) / 1024; gsd = hx(77); }
 const gateClear = (C, wx, wy, wz, s, m) => { const x = (wx + gj0) * C, y = (wy + gj1) * C, z = (wz + gj2) * C, r = s + m; return x * x + y * y + z * z < r * r; };
-const tierOf = (h) => h < .86 ? 0 : h < .94 ? 1 : h < .975 ? 2 : h < .99 ? 3 : h < .997 ? 4 : 5;
+const tierOf = (h) => { const x = h + ((SYS && SYS.oreBias) || 0); return x < .86 ? 0 : x < .94 ? 1 : x < .975 ? 2 : x < .99 ? 3 : x < .997 ? 4 : 5; };
 const typeAt = () => SYS.mat[gh >>> 5 & 7];
 // lists the generators fill: [shape family] for each size class, things growing on rocks, station kinds
 let HV, BF, BN, SV, LC, LTd, LTb, TV, RV, MV, FV;

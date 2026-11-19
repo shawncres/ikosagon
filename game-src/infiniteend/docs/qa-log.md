@@ -1,6 +1,16 @@
 # The Infinite End: QA log
 
-Shawn's QA findings, logged one by one. v1.20 (2026-11-19) worked this round. New findings stay logged only until Shawn says go.
+Shawn's QA findings, logged one by one. v1.20 (2026-11-19) worked the previous round. v1.21 is a feature build from Shawn's brief, not a new QA round. New findings stay logged only until Shawn says go.
+
+## v1.21 notes
+
+No new numbered findings. Decisions taken while building, so the next QA pass can check them:
+
+- Quest 3 / Touch Plus is the VR control target. The desktop keyboard, mouse and gamepad scheme is separate and was not remapped onto the controllers.
+- Snap turn at 30° is the default in VR, because Meta's comfort note prefers snap over smooth yaw. Pitch stays smooth. Smooth yaw is still in the VR menu.
+- Grip is boost, not grab. There is nothing in the cab to pick up, and the trigger is already the gun.
+- The in-headset menu is drawn on the visor as an opaque plate (alpha blend while it is open) so it can be read over passthrough. It sits in the middle of the glass.
+- Fixed foveation defaults to medium. It does not foveate the offscreen world pass. Render scale is the knob if Quest frame time slips. Default refresh is 72 Hz.
 
 ## v1.20 resolutions
 

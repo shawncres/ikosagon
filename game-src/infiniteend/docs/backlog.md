@@ -2,6 +2,18 @@
 
 Standing rule from Shawn: every build takes a selection from this backlog alongside whatever is newly asked. Nothing here is to be dropped silently. Versions use point numbering (v1.0 = first rollback build … v1.4 = old "v5"; current test build v1.20). `BUILD` in `c_main.js`, shown on the title screen, bottom-right of the pause screen and in the Quest pause panel. Increment it on each release. **From v1.20 on, updates keep the player's progress** (Shawn, 2026-11-19) and a fresh universe happens only when the player chooses New universe. (v1.14 was skipped at Shawn's direction.)
 
+## v1.21 (2026-11-19, test site only)
+
+Shawn's brief: procedural skies, flight, dogfights, and a settings split. Quest 3 / Touch Plus is the VR target.
+
+- Star class, age and metallicity cascade into planet count, orbits, kind (lava, desert, ocean, toxic, ice, tidal, shattered, gas with band palettes), rings and moons. Home always keeps a world with air. Faction name kits: Combine, Lantern, Haulers, Survey.
+- First charts pay on a new system. Scanning a world pays by rarity. Reputation moves prices. A faction that wants you gone refuses the berth. Outfitter accepts ore when credits are short. Danger rises with distance from home.
+- Cruise thrust is higher. Boost adds a field of view kick, a restrained whoosh, world-space speed streaks (capped) and, on a screen only, a little chromatic fringe. No extra debris.
+- Raiders lead the target, jink, break and extend. Difficulty follows sector danger. A shot is telegraphed.
+- Settings are split. VR (and the store app) shows comfort, refresh, foveation, render scale, posture, view scale, handedness and haptics, and never a keyboard list. Desktop keeps keys, mouse and a separate gamepad.
+- Touch Plus: left stick flies, right stick is throttle and strafe, either trigger fires, either grip boosts, A accepts, B backs out, X journal, Y next weapon, left menu button pauses. Snap 30° is the comfort default. 72 Hz is the default rate.
+- Headless software WebGL, low detail, 1280×720: about 48 draws and 559k vertices in one eye. That fps number is the harness, not a Quest measurement.
+
 ## v1.20 (2026-11-19, test site only)
 
 QA 0–13, as logged in `docs/qa-log.md`. Also from the backlog:

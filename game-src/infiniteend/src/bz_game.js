@@ -168,7 +168,8 @@ function journalPanel() {
   list.push({ name: 'Next', kind: '', desc: o.text });
   { const cw = rp().crew || {}, n = Object.keys(cw); if (n.length) list.push({ name: 'Crew', kind: n.length + '/3', desc: n.map((k) => `${cw[k]}, ${CREW[k][0].toLowerCase()}`).join(' · ') }); list.push({ name: 'Ship\'s log', kind: Object.keys(rp().lore || {}).length + ' entries', desc: 'Stop or slow down close to things. The log notices.' }); }
   for (const j of r.jobs) list.push({ name: j.title, kind: `${j.pay} cr · ${FAC[j.fac][0]}`, desc: j.text, run: () => { r.jobs = r.jobs.filter((x) => x !== j); gain({ rep: -3, fac: j.fac }); tip('Contract abandoned', 4000); } });
-  list.push({ name: SYS.name, kind: SYS.star, desc: `${FAC[SYS.fac][0]} space · economy: ${SYS.econ}${SYS.ph ? ' · in its sky: ' + ['', 'a supernova remnant', 'a planetary nebula', 'a pulsar', 'a companion star', 'a comet', 'a globular cluster'][SYS.ph] : ''} · ` + SYS.planets.map((p) => `${p.name}: ${p.type}, ${p.orbit} AU, ${p.moons} moons${p.pop && p.pop !== 'none' ? ', ' + p.pop : ''}`).join(' · ') });
+  list.push({ name: SYS.name, kind: SYS.star, desc: `${FAC[SYS.fac][0]} space · danger ${SYS.danger} · ${SYS.belt || 'mixed'} belt · economy: ${SYS.econ}${SYS.ph ? ' · in its sky: ' + ['', 'a supernova remnant', 'a planetary nebula', 'a pulsar', 'a companion star', 'a comet', 'a globular cluster'][SYS.ph] : ''} · ` + SYS.planets.filter((p) => p.type !== 'none').map((p) => `${p.name}: ${p.rare || ''} ${p.type}, ${p.orbit} AU, ${p.moons} moons${p.anomaly ? ', ' + p.anomaly : ''}${p.pop && p.pop !== 'none' ? ', ' + p.pop : ''}`).join(' · ') });
+  { const ch = ST.chart || {}, ks = Object.keys(ch); if (ks.length) list.push({ name: 'First charts', kind: ks.length + ' systems', desc: ks.slice(-5).map((id) => `${ch[id].name}${ch[id].pay ? ' +' + ch[id].pay : ''}`).join(' · ') }); }
   list.push({ name: 'Standing', kind: '', desc: FAC.map((f, i) => `${f[0]}: ${repName(r.rep[i])} (${r.rep[i]})`).join(' · ') });
   list.push({ name: 'The Infinite End', kind: 'why you are out here', desc: 'The outer gates went quiet three centuries ago. The Survey calls it the Silence. You hold a pathfinder licence to go past the last reliable lane and bring the charts home. The Combine pays for them. The Lantern Order says the old rites still open a door. The kettle at the end of the trail was warm.' });
   { const arcs = Object.values(cast()).filter((c) => c.arc && !c.dead); if (arcs.length) list.push({ name: 'Oaths', kind: arcs.length + ' open', desc: arcs.slice(0, 4).map((c) => `${c.n} · ${c.arc.id} ${c.arc.done ? 'kept' : 'step ' + (c.arc.step + 1)}`).join(' · ') }); }
@@ -285,9 +286,7 @@ function npcTick(dt) {
       if (a.escHunt && escHunt(a, dt)) continue;
       const hunt = a.hunter || a.bounty || calmP < .5 && (hostLv === 2 || hostLv === 1 && SYS.danger >= 3);   // in open space raiders lose interest
       if (!hunt) { a.brk -= dt; if (a.brk <= 0) { let en = null, ed = 4000; for (const b of NPCS) if (b.role === 2) { const e = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z); if (e < ed) { ed = e; en = b; } } if (en) { a.wp = [en.x, en.y, en.z]; if (ed < 600) { const u = (tm * 2 + a.seed) % 1; put(DPa, qx + (en.x - a.x) * u, qy + (en.y - a.y) * u, qz + (en.z - a.z) * u, 3.5, 0, 0, 0, .5, 1, .3, .15, 0); } if (ed < 120) { a.brk = 3; const j = () => (Math.random() - .5) * 2500; a.wp = [a.x + j(), a.y + j() * .3, a.z + j()]; } } } }
-      else { a.brk -= dt; if (qd < 110 && a.brk <= 0) { a.brk = 3.5; const j = () => (Math.random() - .5) * 1800; a.wp = [px + j(), py + j() * .4, pz + j()]; }
-      if (a.brk <= 0) a.wp = [px + vx * .8, py + vy * .8, pz + vz * .8];
-      a.cd -= dt; if (flying() && qd < 520 && a.cd <= 0 && -(a.fx * qx + a.fy * qy + a.fz * qz) / qd > .975) { a.cd = .4; hurtSrc = 'raider'; hurtSrcT = tm; hitFromX = a.x; hitFromY = a.y; hitFromZ = a.z; hurt(1.4); trauma = Math.min(1, trauma + .2); thud(.2); if (!a.warned) { a.warned = 1; tip('Under fire: ' + a.name + ' is on you', 4000); } } }
+      else v121Dog(a, dt, qx, qy, qz, qd);
     }
 
   }
@@ -405,18 +404,29 @@ function rpgSim(dt, fly) { encTick(dt); mslTick(dt); chatter(dt, fly); if (fly &
 // ---- controllers in a headset: everything that has a key has a button ----
 let hudForce = 0;
 const xprev = { left: [], right: [] }, xNav = { left: 0, right: 0 };   // per hand: when the stick may next step the menu (0 = centred, ready)
+function xrEdge(gp, h) {
+  const pv = xprev[h];
+  const down = (i) => { const b = gp.buttons[i]; return !!(b && (b.pressed || (i === 0 && b.value > .65))); };
+  return (i) => { const p = down(i), r = p && !pv[i]; pv[i] = p; return r; };
+}
 function xrPad(src, gp) {
-  const h = src.handedness === 'left' ? 'left' : 'right', pv = xprev[h], e = [0, 1, 2, 3, 4, 5].map((i) => { const p = !!(gp.buttons[i] && gp.buttons[i].pressed), r = p && !pv[i]; pv[i] = p; return r; });
-  const ay = gp.axes[3] || gp.axes[1] || 0;
+  // Touch Plus, xr-standard: 0 trigger, 1 grip, 3 stick click, 4 X or A, 5 Y or B, 7 menu on the left only.
+  // The Meta button on the right is reserved by the system and never arrives here.
+  const h = src.handedness === 'left' ? 'left' : 'right';
+  if (h !== 'left' && h !== 'right') return 0;
+  const edge = xrEdge(gp, h), steerLeft = !CFG.vrHand, menuHand = steerLeft ? 'right' : 'left';
+  const hasMenu = h === 'left' && gp.buttons.length > 7;
   if (jpOpen) {
-    if (h === 'left') { if (e[5]) closePanel(); return 0; }   // the left hand keeps flying the ship while a panel is up (Y closes it)
-    const now = performance.now();   // one step per push, then after half a second a slow repeat; each hand keeps its own latch
+    if (h !== menuHand) { if (edge(5) || (hasMenu && edge(7))) closePanel(); return 0; }   // the steer hand keeps flying. Y or the menu button still backs out.
+    const ay = gp.axes[3] || 0, now = performance.now();
     if (Math.abs(ay) > .65) { if (items.length && (xNav[h] === 0 || now >= xNav[h])) { const first = xNav[h] === 0; psel = (psel + (ay > 0 ? 1 : -1) + items.length) % items.length; xNav[h] = now + (first ? 480 : 220); } } else if (Math.abs(ay) < .3) xNav[h] = 0;
-    if (e[0] || e[4]) pick(psel); else if (e[5] || e[1]) closePanel();
+    if (edge(0) || edge(4)) pick(psel); else if (edge(5) || (hasMenu && edge(7))) closePanel();
     return 1;
   }
-  if (h === 'right') { if (e[4]) interact(); if (e[5]) navCycle(1); if (e[3]) pausePanel(); }
-  else { if (e[0]) navCycle(1); if (e[4]) journalPanel(); if (e[3]) wpnCycle(); if (e[5]) pausePanel(); }
+  if (hasMenu && edge(7)) pausePanel();
+  if (h === 'right') { if (edge(4)) interact(); if (edge(5)) navCycle(1); }
+  else { if (edge(4)) journalPanel(); if (edge(5)) wpnCycle(); }
+  if (h === (CFG.vrHand ? 'left' : 'right') && edge(3)) thr = 0;
   return 0;
 }
 
@@ -484,19 +494,20 @@ function hudPaint() {
   T(rankName().toUpperCase(), 300, 800, 14, 'right', dim, 700); T(rp().jobs.length + '/3 CONTRACTS', 300, 822, 14, 'right', dim, 700);
   T(ST.credits + ' CR', 700, 800, 14, 'left', dim, 700); T(SYS.star.toUpperCase(), 700, 822, 14, 'left', dim, 700);
   if ((xr || hudForce) && jpOpen) {                                         // in a headset the lists are drawn here, since the page cannot be seen
-    c.fillStyle = 'rgba(2,9,16,.9)'; c.fillRect(110, 170, 780, 560); line([[110, 170], [890, 170], [890, 730], [110, 730], [110, 170]], main, 1.5);
+    c.fillStyle = 'rgba(4,10,18,.97)'; c.fillRect(110, 170, 780, 560); line([[110, 170], [890, 170], [890, 730], [110, 730], [110, 170]], main, 2);
     T($('jh').textContent.toUpperCase(), 136, 208, 22, 'left', amb, 700); T($('jc').textContent.slice(0, 80), 136, 234, 14, 'left', dim);
     const n = items.length, rows = Math.min(n, 7), top = Math.max(0, Math.min(n - rows, psel - 3)), wrapT = (s, x, y, w) => { c.font = '500 14px "Segoe UI",system-ui,sans-serif'; c.textAlign = 'left'; c.fillStyle = dim; let ln = '', k = 0; for (const wd of s.split(' ')) { if (c.measureText(ln + wd).width > w) { c.fillText(ln, x, y + k * 17); ln = ''; if (++k > 1) return; } ln += wd + ' '; } c.fillText(ln, x, y + k * 17); };
     for (let k = 0; k < rows; k++) { const i = top + k, d = items[i], y = 262 + k * 64; if (i === psel) { c.fillStyle = 'rgba(99,226,255,.16)'; c.fillRect(122, y - 6, 756, 60); line([[122, y - 6], [122, y + 54]], cy, 3); }
       T(String(i + 1), 140, y + 16, 16, 'left', d.run ? amb : dim, 700); T(d.name, 170, y + 16, 18, 'left', d.run ? main : dim, 700); if (d.kind) T(String(d.kind).toUpperCase().slice(0, 34), 866, y + 16, 13, 'right', cy, 700); wrapT(d.desc || '', 170, y + 35, 690); }
-    T('STICK · CHOOSE     TRIGGER / A · SELECT     B · CLOSE', 500, 716, 13, 'center', dim, 700);
+    T('THROTTLE STICK MOVES THE ROW    TRIGGER OR A SELECTS    B GOES BACK', 500, 716, 13, 'center', dim, 700);
   }
   c.setTransform(1, 0, 0, 1, 0, 0);
 }
 function hudTick(now) { cinFit(); if (now - hudLast < (xr ? 70 : 45) || !flying()) return; hudLast = now; hudPaint(); texFrom(hudTex, hudC); }
 function hudDraw(k) {
   if (!flying()) return;
-  const P = P_HUD; gl.useProgram(P.p); gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+  const P = P_HUD; gl.useProgram(P.p); gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND);
+  if (xr && jpOpen) gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); else gl.blendFunc(gl.ONE, gl.ONE);
   M3[0] = sRx; M3[1] = sRy; M3[2] = sRz; M3[3] = sUx; M3[4] = sUy; M3[5] = sUz; M3[6] = -sFx; M3[7] = -sFy; M3[8] = -sFz;
   gl.uniformMatrix3fv(P.u.uShip, false, M3); if (xr) gl.uniform3f(P.u.uEye, cex, cey, cez); else gl.uniform3f(P.u.uEye, eox * k, eoy * k, eoz * k); gl.uniform3f(P.u.uMo, cockpit ? ckx : 0, cockpit ? cky : 0, cockpit ? ckz : 0);
   gl.bindVertexArray(hudVA); gl.activeTexture(gl.TEXTURE8); gl.uniform1i(P.u.uTx, 8);
@@ -643,7 +654,7 @@ function bigStarsSet() {
 function hop(loc) { const sv = [yaw, pitch, thr, vx, vy, vz]; palEase = 1; softArr = 1; arrive(SYS.sec, loc, 1); softArr = 0; [yaw, pitch, thr, vx, vy, vz] = sv; snap = 0; fogX = .0065; }   // same heading and speed; attitude eases instead of snapping
 function cruiseTick(dt, fly) {
   { const k = Math.min(1, dt * 8), d = Math.max(.001, dt); let dy = syaw - pYaw; pYaw = syaw; const dp = spit - pPit; pPit = spit; if (Math.abs(dy) > 1) dy = 0;
-    mbx += (Math.max(-.03, Math.min(.03, dy / d * .011)) - mbx) * k; mby += (Math.max(-.03, Math.min(.03, -dp / d * .011)) - mby) * k; mbs += ((.01 + .05 * bst) * Math.min(1, Math.hypot(vx, vy, vz) / 300) - mbs) * k; }
+    mbx += (Math.max(-.03, Math.min(.03, dy / d * .011)) - mbx) * k; mby += (Math.max(-.03, Math.min(.03, -dp / d * .011)) - mby) * k; mbs += ((.012 + .09 * bst * bst) * Math.min(1, Math.hypot(vx, vy, vz) / 280) - mbs) * k; }
   if (veil > .02 && !jumpTo) flash = Math.max(flash, veil * veil * .55);   // the haze thickens to a veil and thins again: no cut
   if (!fly || jumpTo) { scK = scE = 0; return; }
   const sp = Math.hypot(vx, vy, vz), r = rp();
@@ -689,7 +700,8 @@ function cruiseTick(dt, fly) {
 let scBack = -1;
 const PR = [70, 6.4, 2.6];                                  // planet radii in thousands of km
 let sysS = [0, 0, 0], sysP = null, drift = 0, driftV = 0, veil = 0, aimK = -1, aimT = 0, apT = 0, apTip = 0, noAuto = -1, apOn = 0, apDist = 0, apGate = 0, ent = null;
-function sysInit() { sysS = [0, 0, 0]; drift = 0; driftV = 0; aimK = -1; aimT = apT = 0; noAuto = -1; sysP = SYS.atm ? null : [0, 1, 2].map((k) => { const w = SYS.pl[k * 4 + 3]; return w > 0 ? [SYS.pl[k * 4] * PR[k] / w, SYS.pl[k * 4 + 1] * PR[k] / w, SYS.pl[k * 4 + 2] * PR[k] / w] : null; }); }
+function syncPR() { if (SYS && SYS.prad) for (let k = 0; k < 3; k++) if (SYS.prad[k] > 0) PR[k] = SYS.prad[k]; }
+function sysInit() { syncPR(); sysS = [0, 0, 0]; drift = 0; driftV = 0; aimK = -1; aimT = apT = 0; noAuto = -1; sysP = SYS.atm ? null : [0, 1, 2].map((k) => { const w = SYS.pl[k * 4 + 3]; return w > 0 ? [SYS.pl[k * 4] * PR[k] / w, SYS.pl[k * 4 + 1] * PR[k] / w, SYS.pl[k * 4 + 2] * PR[k] / w] : null; }); }
 function driftToggle() { if (SYS.atm) return tip('Climb out of the atmosphere first: hold the nose up at full throttle', 4000); drift = drift ? 0 : 1; if (!drift) { noAuto = aimK; aimT = apT = 0; bHold = 0; } tip(drift ? 'Light drift: throttle sets the pace, the sky is the map. Point at a world and hold. G drops out.' : 'Dropped out of light drift', 5000); }
 const plDist = (c) => { const k = +c.id[1], P = sysP && sysP[k]; if (!P) return '—'; const d = Math.hypot(P[0] - sysS[0], P[1] - sysS[1], P[2] - sysS[2]) - PR[k]; return d < 100 ? d.toFixed(1) : String(d | 0); };
 

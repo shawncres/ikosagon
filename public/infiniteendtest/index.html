@@ -311,6 +311,160 @@ const DIRS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1
 function linked(a, b) { const f = a[0] < b[0] || a[0] === b[0] && (a[1] < b[1] || a[1] === b[1] && a[2] < b[2]), p = f ? a : b, q = f ? b : a; return a[1] === b[1] && a[2] === b[2] || h3(p[0], p[1], p[2], h3(q[0], q[1], q[2], MASTER)) % 100 < 14; }   // an east-west spine, and now and then a branch: two or three lanes a system
 const reach = (s) => DIRS.map((d) => [s[0] + d[0], s[1] + d[1], s[2] + d[2]]).filter((n) => linked(s, n));
 let SYS = null;
+// Blackbody colour, 0..1, from a temperature in kelvin. Clamped so a cold dwarf still reads as light.
+function bbCol(Tk) {
+  let T = Tk / 100; if (T < 10) T = 10;
+  let r, g, b;
+  if (T <= 66) { r = 255; g = 99.4708025861 * Math.log(T) - 161.1195681661; }
+  else { r = 329.698727446 * Math.pow(T - 60, -0.1332047592); g = 288.1221695283 * Math.pow(T - 60, -0.0755148492); }
+  if (T >= 66) b = 255; else if (T <= 19) b = 0; else b = 138.5177312231 * Math.log(T - 10) - 305.0447927307;
+  const c = (v) => Math.max(.02, Math.min(1, v / 255));
+  return [c(r), c(g), c(b)];
+}
+const PKN = ['gas giant', 'lava world', 'desert world', 'ocean world', 'toxic world', 'ice world', 'tidally locked world', 'shattered world'];
+const RAREN = ['common', 'uncommon', 'rare', 'legendary'];
+const GASBAND = [
+  [[.62, .38, .18], [.95, .78, .42]],
+  [[.18, .32, .62], [.55, .72, .9]],
+  [[.72, .62, .16], [.95, .88, .45]],
+  [[.78, .7, .58], [.45, .32, .22]],
+  [[.62, .28, .38], [.92, .7, .62]],
+];
+// A star's class, age and metallicity decide how many worlds it keeps, where the ice line sits, and what colour the nebula burns.
+function fillWorld(s, id, R) {
+  s.fac = (hs(id ^ 0xFAC7) >>> 0) % 4;
+  const u = R();
+  const Z = Math.pow(R(), 1.35);
+  const age = R();
+  let letter = 'G', T = 5600, L = 1, dead = 0, rogue = 0, giant = 0, young = 0, binary = 0;
+  if (u < .014) { rogue = 1; letter = 'M'; T = 1800 + R() * 900; L = .004 + R() * .02; }
+  else if (u < .03) { dead = 1; letter = 'N'; T = 800000; L = .002; }
+  else if (u < .055) { dead = 1; letter = 'D'; T = 7000 + R() * 16000; L = .004 + R() * .02; }
+  else {
+    const x = Math.pow(R(), .62);
+    const row = [['M', 3200, .08], ['K', 4500, .28], ['G', 5700, 1], ['F', 6800, 3.4], ['A', 8600, 18], ['B', 15000, 900], ['O', 28000, 12000]][Math.min(6, x * 7 | 0)];
+    letter = row[0]; T = row[1] * (.86 + R() * .28); L = row[2] * (.45 + R() * 1.3);
+    if (age > .84 && x < .62) { giant = 1; L *= 30 + R() * 90; T *= .7; }
+    else if (age < .1) young = 1;
+    if (R() < .22) binary = 1;
+  }
+  const bb = bbCol(Math.min(T, 40000));
+  const star = { letter, T, L, Z, age, dead, rogue, giant, young, binary, bb };
+  s.starBody = star; s.dead = dead; s.rogue = rogue; s.Z = Z; s.age = age; s.temp = T;
+  const map = { M: 'red dwarf', K: 'orange dwarf', G: 'yellow star', F: 'yellow-white star', A: 'white star', B: 'blue-white star', O: 'blue giant', N: 'neutron star', D: 'white dwarf' };
+  let label = map[letter] || 'star';
+  if (rogue) label = 'rogue dwarf';
+  else if (giant && letter === 'M') label = 'red giant';
+  else if (giant && letter === 'K') label = 'orange giant';
+  else if (giant) label = label.replace('dwarf', 'giant').replace('star', 'giant');
+  if (binary && !dead && !rogue) label += ' binary';
+  if (young && !giant) label = 'young ' + label;
+  s.star = label;
+  s.sc = letter === 'D' ? 7 : binary ? 6 : T < 3800 ? 0 : T < 5000 ? 1 : T < 6000 ? 2 : T < 7500 ? 3 : T < 11000 ? 4 : 5;
+  s.stc = bb;
+  for (let i = 0; i < 3; i++) s.pal[9 + i] = s.pal[9 + i] * .25 + bb[i] * .75;
+  const em = dead ? [.2, .62, .7] : rogue ? [.28, .16, .42] : young ? [.9, .28, .48] : Z > .62 ? [.78, .5, .2] : [bb[2] * .8, bb[0] * .45, bb[1] * .7];
+  s.neb = [bb[0] * .55, bb[1] * .4, bb[2] * .45, em[0], em[1], em[2]];
+  const nr = nameRng(id, 0x4E414D45), city = pickN(nr, NM.city);
+  if (s.fac === 0) s.name = nr() < .45 ? 'MC ' + city : city + (nr() < .5 ? ' Charter' : ' Annex');
+  else if (s.fac === 1) s.name = nr() < .5 ? 'Lantern of ' + pickN(nr, NM.world) : city + ' Shrine';
+  else if (s.fac === 2) s.name = nr() < .5 ? pickN(nr, NM.ship) + ' Road' : 'Haul ' + city;
+  else s.name = nr() < .4 ? 'DS-' + (1000 + (hs(id ^ 0xD5) % 9000)) : 'Survey ' + city;
+  const iceLine = 2.4 * Math.sqrt(Math.max(L, .05));
+  let n = rogue ? (R() < .42 ? 1 : 0) : letter === 'N' ? (R() < .5 ? 0 : 1 + (R() * 2 | 0)) : Math.round(.8 + Z * 5.2 + (age > .25 ? 1.1 : 0));
+  n = Math.max(rogue || letter === 'N' ? 0 : 1, Math.min(7, n | 0));
+  if (letter === 'D') n = Math.min(n, 1 + (R() * 3 | 0));
+  if (id === HOME) n = Math.max(n, 3);
+  const worlds = [];
+  let a = (.1 + R() * .22) * Math.sqrt(Math.max(L, .15));
+  const ratio = 1.42 + R() * .38;
+  for (let i = 0; i < n; i++) {
+    a *= ratio * (.84 + R() * .32);
+    const beyond = a > iceLine;
+    let mass = beyond ? (R() < .5 + Z * .28 ? 22 + R() * 260 : .2 + R() * 3.5) : (R() < .1 ? 12 + R() * 30 : .06 + Math.pow(R(), 1.55) * 7);
+    const Teq = 255 * Math.pow(Math.max(L, .01), .25) / Math.sqrt(Math.max(a, .05));
+    let kind = 5;
+    if (dead && R() < .4) kind = 7;
+    else if (mass > 16) kind = 0;
+    else if (a < .14 * Math.sqrt(Math.max(L, .2)) && R() < .6) kind = 6;
+    else if (Teq > 850) kind = 1;
+    else if (Teq > 430) kind = mass > 2.2 && R() < .38 ? 4 : 2;
+    else if (Teq > 210) kind = Z > .32 && R() < .58 ? 3 : (R() < .28 ? 4 : 2);
+    else if (Teq > 140) kind = R() < .22 ? 3 : 5;
+    if (id === HOME && i === 1) kind = 3;
+    const rad = kind === 0 ? 32 + Math.pow(mass, .32) * 7.5 : kind === 7 ? 1.1 + mass * .35 : kind === 5 ? 1.5 + Math.pow(mass, .38) * 2.4 : 2.4 + Math.pow(Math.max(mass, .2), .4) * 3.2;
+    const band = GASBAND[R() * GASBAND.length | 0];
+    const base = kind === 0 ? band : [
+      [[.15, .05, .03], [.95, .32, .06]],
+      [[.55, .36, .18], [.9, .7, .38]],
+      [[.05, .16, .32], [.28, .48, .28]],
+      [[.32, .48, .1], [.7, .78, .22]],
+      [[.55, .72, .86], [.9, .95, .98]],
+      [[.85, .32, .1], [.4, .58, .75]],
+      [[.22, .18, .16], [.5, .46, .42]],
+    ][kind - 1];
+    let rare = kind === 7 || kind === 6 ? 2 : kind === 4 || kind === 1 ? 1 : 0;
+    let anomaly = '';
+    if (R() < .07) { anomaly = ['a standing storm', 'a crystal continent', 'a living sheen', 'night cities', 'a split ring'][R() * 5 | 0]; rare = Math.min(3, rare + 1); }
+    if (dead) rare = Math.min(3, rare + 1);
+    const rings = kind === 7 || (kind === 0 && a > iceLine * .75 && R() < .62) || (kind === 5 && R() < .3);
+    const moons = kind === 0 ? 2 + (R() * 10 | 0) : kind === 7 ? 0 : R() * (1 + mass) | 0;
+    const air = kind !== 7 && !(rogue && kind === 1);
+    const pop = (kind === 3 || kind === 2) && Teq > 200 && Teq < 360 && !dead ? ['outposts', 'a mining colony', 'domed cities', 'no one'][R() * 4 | 0] : 'none';
+    worlds.push({ au: a, mass, Teq, kind, rad, base, rare, anomaly, rings, moons, air, pop });
+  }
+  const slot = [null, null, null];
+  let gas = null, rock = null, ice = null, rockScore = 1e9;
+  for (const w of worlds) {
+    if (w.kind === 0 && (!gas || w.mass > gas.mass)) gas = w;
+    if (w.kind === 5 && (!ice || w.au > ice.au)) ice = w;
+    if (w.kind !== 0 && w.kind !== 5) { const sc = Math.abs(w.Teq - 280) + (w.kind === 3 ? -40 : 0); if (sc < rockScore) { rockScore = sc; rock = w; } }
+  }
+  if (!gas && worlds.length) gas = worlds.slice().sort((p, q) => q.rad - p.rad)[0];
+  if (!rock) rock = worlds.find((w) => w !== gas && w !== ice) || null;
+  if (!ice) ice = worlds.find((w) => w !== gas && w !== rock) || null;
+  slot[0] = gas; slot[1] = rock; slot[2] = ice;
+  if (id === HOME && (!slot[1] || !slot[1].air)) {
+    slot[1] = { au: 1, mass: 1, Teq: 280, kind: 3, rad: 6.4, base: [[.05, .16, .32], [.28, .48, .28]], rare: 0, anomaly: '', rings: 0, moons: 1, air: 1, pop: 'outposts' };
+  }
+  const used = [];
+  const wr = nameRng(id, 0x574F524C);
+  s.pk = [0, 5, 5, 0]; s.prad = [0, 0, 0]; s.worlds = worlds; s.rareSum = 0;
+  const SUN0 = [.45, .32, -.83];
+  for (let i = 0; i < 3; i++) {
+    const w = slot[i];
+    let nm = '—';
+    if (w) {
+      let guard = 0; do { nm = pickN(wr, NM.world); guard++; } while (used.includes(nm) && guard < 12);
+      used.push(nm);
+      if (s.fac === 0) nm = 'MC-' + nm;
+      else if (s.fac === 2 && wr() < .5) nm = 'Old ' + nm;
+    }
+    const ang = w ? Math.min(.85, w.rad / Math.max(48, w.au * 155)) : 0;
+    let d = [0, 1, 0], guard = 0, ok = false;
+    if (w) do {
+      const az = R() * 6.283, el = (R() - .5) * 1.05, ce = Math.cos(el);
+      d = [Math.cos(az) * ce, Math.sin(el), Math.sin(az) * ce];
+      const sun = d[0] * SUN0[0] + d[1] * SUN0[1] + d[2] * SUN0[2];
+      let nearP = false;
+      for (let k = 0; k < i; k++) if (s.pl[k * 4 + 3] > 0 && d[0] * s.pl[k * 4] + d[1] * s.pl[k * 4 + 1] + d[2] * s.pl[k * 4 + 2] > .18) nearP = true;
+      ok = sun < .42 && !nearP; guard++;
+    } while (!ok && guard < 48);
+    s.pr[i] = ang; s.prad[i] = w ? w.rad : 0; s.pk[i] = w ? w.kind : 5;
+    s.pl.set(w ? [d[0], d[1], d[2], ang] : [0, 1, 0, 0], i * 4);
+    const A = w ? w.base[0] : [.2, .2, .2], B = w ? w.base[1] : [.4, .4, .4];
+    const mix = (c, p, i0) => Math.max(.02, c * .78 + p * .22);
+    s.pa.set([mix(A[0], s.pal[3]), mix(A[1], s.pal[4]), mix(A[2], s.pal[5]), w && w.rings ? 1 : 0], i * 4);
+    s.pb.set([mix(B[0], s.pal[0]), mix(B[1], s.pal[1]), mix(B[2], s.pal[2])], i * 3);
+    const airName = !w || !w.air ? '' : w.kind === 0 ? 'Cloud Tops, ' + nm : w.kind === 5 ? 'Ice Skies of ' + nm : 'Skies of ' + nm;
+    const airDesc = !w ? '' : w.kind === 0 ? 'Flight above the cloud deck · banded storms · oxygen in the deck' : w.kind === 1 ? 'A thin burning sky over a lava plain' : w.kind === 2 ? 'Dust and a hard light over dunes' : w.kind === 3 ? 'Thin air over an ocean world · settlements below' : w.kind === 4 ? 'A sour yellow deck · filters advised' : w.kind === 6 ? 'A hot face and a frozen face, and a thin dusk between' : 'Low over a frozen world · fracture light';
+    s.planets.push(w ? { name: nm, type: PKN[w.kind], kind: w.kind, orbit: +w.au.toFixed(2), moons: w.moons, pop: w.pop, rare: RAREN[w.rare], rareN: w.rare, anomaly: w.anomaly, Teq: Math.round(w.Teq), mass: +w.mass.toFixed(1), air: w.air ? 1 : 0, airName, airDesc, rings: w.rings ? 1 : 0 } : { name: '—', type: 'none', kind: 5, orbit: 0, moons: 0, pop: 'none', rare: 'common', rareN: 0, anomaly: '', Teq: 0, mass: 0, air: 0, airName: '', airDesc: '', rings: 0 });
+    if (w) s.rareSum += w.rare;
+  }
+  s.oreBias = Math.max(-.02, Math.min(.03, (Z - .45) * .05 + (dead ? .01 : 0)));
+  s.belt = Z > .7 ? 'metal-rich' : Z < .25 ? 'metal-poor' : giant ? 'soot and ice' : 'mixed crust';
+  s.oreName = ['rock', 'iron', 'ice', 'molten', 'overgrown', 'obsidian'][s.mat[0]] || 'rock';
+}
 function mkSys(id) {
   id >>>= 0; const rnd = mulberry32(id ^ MASTER); const t = id & 7, a = ARC[t], s = { id, t, cls: t, a, salt: 0, mat: REGT[t], sky: SKYW[t].slice(), pr: [0, 0, 0], locs: [], loc: 0, planets: [], pal: new Float32Array(12), pl: new Float32Array(12), pa: new Float32Array(12), pb: new Float32Array(9), seed: [0, 0, 0] };
   // the kind's colours, with the hue turned a little so two systems of a kind are not twins
@@ -318,55 +472,15 @@ function mkSys(id) {
   for (let i = 0; i < 12; i += 3) { const r = P[i], g = P[i + 1], b = P[i + 2], w = i < 9 ? 1 : .3; s.pal[i] = r + w * ((co + k - 1) * r + (k - q) * g + (k + q) * b); s.pal[i + 1] = g + w * ((k + q) * r + (co + k - 1) * g + (k - q) * b); s.pal[i + 2] = b + w * ((k - q) * r + (k + q) * g + (co + k - 1) * b); }
   for (let i = 0; i < 12; i++) s.pal[i] = Math.max(.01, s.pal[i]);
   s.seed0 = [rnd() * 40, rnd() * 40, rnd() * 40]; s.seed = s.seed0.slice(); s.rot = [co, k, q]; s.th = th;
-  // three worlds, far apart on the sky: a gas giant, a rocky world, an ice world.
-  // Angular size is real radius ÷ distance (PR in cruise), so two discs that look alike are at alike ranges.
-  const SUN0 = [.45, .32, -.83], PR0 = [70, 6.4, 2.6], dist0 = [640 + rnd() * 220, 168 + rnd() * 55, 310 + rnd() * 120];
-  const tone = [
-    [[.78, .46, .22], [.98, .78, .46]],
-    [[.16, .34, .24], [.62, .46, .28]],
-    [[.55, .74, .86], [.88, .94, .98]],
-  ];
-  for (let i = 0; i < 3; i++) {
-    let d, guard = 0, ok = false;
-    do {
-      const az = rnd() * 6.283, el = (rnd() - .5) * 1.15, ce = Math.cos(el);
-      d = [Math.cos(az) * ce, Math.sin(el), Math.sin(az) * ce];
-      const sun = d[0] * SUN0[0] + d[1] * SUN0[1] + d[2] * SUN0[2];
-      let nearP = false;
-      for (let k = 0; k < i; k++) if (d[0] * s.pl[k * 4] + d[1] * s.pl[k * 4 + 1] + d[2] * s.pl[k * 4 + 2] > .12) nearP = true;
-      ok = sun < .28 && !nearP; guard++;
-    } while (!ok && guard < 48);
-    const r = i === 0 && t === 3 ? 0 : PR0[i] / dist0[i];
-    s.pr[i] = r; s.pl.set([d[0], d[1], d[2], r], i * 4);
-    const th = (rnd() - .5) * .45, co = Math.cos(th), si = Math.sin(th), A0 = tone[i][0], B0 = tone[i][1];
-    const A = [A0[0] * co - A0[1] * si * .25, A0[1] * co + A0[0] * si * .12, A0[2]];
-    const B = [B0[0] * co - B0[1] * si * .2, B0[1] * co + B0[0] * si * .1, B0[2]];
-    const ring = !i && t !== 3 && rnd() < .5 ? 1 : 0;
-    s.pa.set([Math.max(.02, A[0] * .82 + s.pal[3] * .18), Math.max(.02, A[1] * .82 + s.pal[4] * .18), Math.max(.02, A[2] * .82 + s.pal[5] * .18), ring], i * 4);
-    s.pb.set([Math.max(.02, B[0] * .8 + s.pal[0] * .2), Math.max(.02, B[1] * .8 + s.pal[1] * .2), Math.max(.02, B[2] * .8 + s.pal[2] * .2)], i * 3);
-  }
-  { const nr = nameRng(id, 0x4E414D45), c = pickN(nr, NM.city);   // e.g. New Halifax, Kyoto Reach
-    s.name = nr() < .5 ? pickN(nr, NM.pre) + ' ' + c : c + ' ' + pickN(nr, NM.suf); }
-  // the star
-  const sc = id >>> 20 & 7, STC = [[1, .55, .4], [1, .72, .5], [1, .93, .78], [.98, .97, .95], [.8, .88, 1], [.65, .78, 1], [1, .85, .7], [.85, .92, 1]][sc];
-  s.sc = sc; s.stc = STC;
-  s.star = ['red dwarf', 'orange dwarf', 'yellow star', 'white star', 'blue-white star', 'blue giant', 'binary pair', 'white dwarf'][sc];
-  for (let i = 0; i < 3; i++) s.pal[9 + i] = s.pal[9 + i] * .35 + STC[i] * .65;
-  const PT = ['gas giant', 'rocky world', 'ice world'], wr = nameRng(id, 0x574F524C), wn = [];
-  while (wn.length < 3) { const w = pickN(wr, NM.world); if (!wn.includes(w)) wn.push(w); }   // worlds named for explorers, thinkers and old gods
-  for (let i = 0; i < 3; i++) s.planets.push({ name: wn[i], type: t === 3 && !i ? 'none' : PT[i] });
+  fillWorld(s, id, rnd);
   // the places in it. The first is the system's signature; the rest are drawn from the other kinds.
   const kinds = [t]; while (kinds.length < 4 + (id >>> 27) % 3) { const k = rnd() * 8 | 0; if (!kinds.includes(k) && (k !== 3 || t === 3)) kinds.push(k); }
   const lr = nameRng(id, 0x504C4143), used = [], LN = (k) => {   // places: a river, a volcano, a port, a desert, a lost ship, a garden... and what it is now
-    if (k === 1) return 'Ice Rings of ' + s.planets[2].name; if (k === 7) return 'Low Orbit, ' + s.planets[0].name;
+    if (k === 1) return s.planets[2].type === 'none' ? 'The Outer Ice' : 'Ice Rings of ' + s.planets[2].name; if (k === 7) return s.planets[0].type === 'none' ? 'High Anchor' : 'Low Orbit, ' + s.planets[0].name;
     const [ws, ss] = NM.place[k]; let w; do { w = pickN(lr, ws); } while (used.includes(w) && used.length < ws.length); used.push(w);
     const sf = pickN(lr, ss); return k === 3 ? 'The ' + w + ' ' + sf : w + ' ' + sf; };
   kinds.forEach((k, i) => s.locs.push({ i, name: LN(k), t: k, kind: NAMES[k], body: k === 7 && t !== 3 ? 0 : k === 1 ? 2 : k === 2 ? 1 : -1, desc: ARC[k].tr }));
-  // worlds you can go down to: the cloud tops of the giant and the skies of the rocky world (appended, so older saves keep their indices)
-  if (t !== 3) s.locs.push({ i: s.locs.length, name: 'Cloud Tops, ' + s.planets[0].name, t: 7, kind: 'Atmosphere', body: -1, atm: 1, desc: 'Flight above the cloud deck · storm light · high traffic lanes' });
-  s.locs.push({ i: s.locs.length, name: 'Skies of ' + s.planets[1].name, t: 0, kind: 'Atmosphere', body: -1, atm: 2, desc: 'Thin air over a rocky world · settlements below · survey work' });
-  s.locs.push({ i: s.locs.length, name: 'Ice Skies of ' + s.planets[2].name, t: 1, kind: 'Atmosphere', body: -1, atm: 3, desc: 'Low over a frozen world · fracture lines · cold light' });
-  for (let i = 0; i < 3; i++) { const p = s.planets[i]; p.orbit = +(.4 + i * .9 + rnd() * .5).toFixed(2); p.moons = rnd() * (i ? 3 : 9) | 0; p.pop = i === 1 ? ['outposts', 'a mining colony', 'domed cities', 'no one'][rnd() * 4 | 0] : 'none'; }
+  for (let i = 0; i < 3; i++) { const p = s.planets[i]; if (!p || !p.air) continue; const look = p.kind === 0 || p.kind === 4 ? 7 : p.kind === 5 ? 1 : 0; s.locs.push({ i: s.locs.length, name: p.airName, t: look, kind: 'Atmosphere', body: -1, atm: i + 1, skin: p.kind, desc: p.airDesc }); }
   { const h = hs(id ^ 0x5A17) >>> 0, p = (h % 1000) / 1000, q = ((h >>> 10) % 1000) / 1000 * 6.283, y = ((h >>> 20) % 1000) / 1000 * 1.2 - .5, cc = Math.sqrt(Math.max(0, 1 - y * y));   // a rare sight in this system's sky, if any
     s.ph = p < .42 ? 0 : p < .56 ? 1 : p < .67 ? 2 : p < .75 ? 3 : p < .86 ? 4 : p < .95 ? 5 : 6; s.phs = ((h >>> 5) % 97) / 97; s.pq = [Math.cos(q) * cc, y, Math.sin(q) * cc]; }
   s.fac = (hs(id ^ 0xFAC7) >>> 0) % 4; s.danger = (hs(id ^ 0xD4) >>> 0) % 5; s.econ = ['extraction', 'refining', 'agriculture', 'salvage', 'research', 'trade hub'][(hs(id ^ 0xEC0) >>> 0) % 6];
@@ -414,6 +528,9 @@ function setLoc(s, i) {
   else if (s.sky[1] > .35) { s.sky[0] = 0; s.sky[3] *= .25; s.ph = 0; s.headline = 2; }
   else if (s.ph) { s.sky[0] = 0; s.sky[1] = 0; s.sky[3] *= .35; s.headline = 3; }
   else s.headline = 0;
+  if (s.neb) { for (let i = 0; i < 3; i++) { s.pal[i] = Math.max(.01, s.pal[i] * .4 + s.neb[i] * .6); s.pal[3 + i] = Math.max(.01, s.pal[3 + i] * .48 + s.neb[3 + i] * .52); } }
+  if (s.dead && s.a) s.a.deb = Math.max(s.a.deb || 0, .9);
+  if (s.sty && s.age != null) { s.sty[0] = Math.min(2.2, s.sty[0] * (.75 + s.age * .7)); s.sty[2] = Math.min(1.8, s.sty[2] * (.65 + (s.Z || .4) + (s.dead ? .4 : 0))); }
   return s;
 }
 
@@ -859,7 +976,7 @@ out vec2 vU;void main(){vec2 p=vec2(gl_VertexID<<1&2,gl_VertexID&2);vU=p;gl_Posi
 
 // the sky: nebula, stars, the sun, and a ringed giant with a moon
 const SKY_F = HD + `
-in vec2 vU;uniform vec4 uBS[8],uBC[8],uCS;uniform vec3 uCC;uniform vec4 uSky,uPl[3],uPa[3],uOrb,uPh;uniform vec3 uPb[3],uSd,uOa,uOb,uPq;out vec4 o;
+in vec2 vU;uniform vec4 uBS[8],uBC[8],uCS;uniform vec3 uCC;uniform vec4 uSky,uPl[3],uPa[3],uOrb,uPh,uPk;uniform vec3 uPb[3],uSd,uOa,uOb,uPq;out vec4 o;
 float hsh(vec3 p){p=fract(p*.3183099+.1);p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
 float n3(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.-2.*f);
  return mix(mix(mix(hsh(i),hsh(i+vec3(1,0,0)),f.x),mix(hsh(i+vec3(0,1,0)),hsh(i+vec3(1,1,0)),f.x),f.y),
@@ -932,24 +1049,31 @@ vec3 closeStar(vec3 d){
  if(st>5.5&&st<6.5){vec3 C2=normalize(L+T*R*2.3+B*R*.6);float t2=acos(clamp(dot(d,C2),-1.,1.)),R2=R*.35;   // a binary: the companion, small and blue, close by
   float rq=t2/(R*.03);o+=vec3(.6,.75,1.)*(exp(-rq*rq)*14.+.02/(rq*rq*.02+.02)*.06);}
  return o;}
-vec4 planet(vec3 d,vec3 P,float rp,vec3 ca,vec3 cb,float ring,int ty){
+vec4 planet(vec3 d,vec3 P,float rp,vec3 ca,vec3 cb,float ring,float kd){
  float b=dot(d,P),ds=b*b-(1.-rp*rp);vec4 c=vec4(0);float ts=1e9;vec3 Ls0=uSun.xyz;
- vec3 axis=normalize(abs(P.yzx)+vec3(.18,.9,.16));float spin=TIME*.008+P.x*4.+float(ty)*1.7;
+ vec3 axis=normalize(abs(P.yzx)+vec3(.18,.9,.16));float spin=TIME*.008+P.x*4.+kd*1.7;int k=int(kd+.5);
  vec3 L=normalize(Ls0*cos(spin)+cross(axis,Ls0)*sin(spin)+axis*sin(spin*.5)*.35);
  vec3 atm=mix(ca,vec3(.45,.72,1.),.5);
  if(ds>0.&&b>0.){ts=b-sqrt(ds);vec3 n=normalize(d*ts-P);float nl=dot(n,L);
   float w=tn(n*1.15+.2),w2=tn(n*2.6+.7),w3=tn(n*5.2+1.4);vec3 s;float cl,land=1.;
-  if(ty==1){land=smoothstep(.4,.62,w*.72+w2*.28);vec3 sea=mix(vec3(.03,.09,.18),ca,.45),grd=mix(cb,ca*.8+.08,smoothstep(.25,.75,w2));s=mix(sea,grd,land);cl=smoothstep(.62,.88,w2)*.42;}
-  else if(ty==2){s=mix(vec3(.8,.9,.97),mix(ca,vec3(.72,.86,.95),.45),.4+.2*w2);s=mix(s,vec3(.16,.26,.38),smoothstep(.045,0.,abs(fract(n.y*5.+w*2.4)-.5)-.47)*.6);cl=smoothstep(.66,.9,w)*.2;land=1.;}
-  else{float bd=.5+.5*sin(n.y*(7.+2.*w)+w2*1.6),bd2=.5+.5*sin(n.y*3.4+1.1+w);s=mix(ca*.62,cb*1.45,smoothstep(.15,.85,bd));s=mix(s,ca*vec3(1.35,.95,.7),smoothstep(.45,.9,bd2)*.7);
+  if(k==0){float freq=6.+5.*fract(abs(P.x)*7.3+P.z*2.1);float bd=.5+.5*sin(n.y*freq+w2*1.6),bd2=.5+.5*sin(n.y*(freq*.42)+1.1+w);s=mix(ca*.62,cb*1.45,smoothstep(.15,.85,bd));s=mix(s,ca*vec3(1.35,.95,.7),smoothstep(.45,.9,bd2)*.7);
    float sx=n.x*2.1,sy=(n.y-.12)*5.5;s=mix(s,cb*vec3(1.35,.8,.5),exp(-(sx*sx+sy*sy))*1.15);cl=smoothstep(.52,.8,w*.5+w2*.5)*.38;land=0.;}
+  else if(k==1){s=mix(vec3(.045,.016,.01),vec3(.2,.07,.03),w2);land=smoothstep(.07,0.,abs(fract(w*2.4+w2)-.5)-.4);cl=0.;}
+  else if(k==2){float dune=.5+.5*sin(n.x*16.+w*5.);s=mix(ca,cb,smoothstep(.15,.85,w2*.55+dune*.45));cl=smoothstep(.74,.94,w)*.16;land=1.;}
+  else if(k==3){land=smoothstep(.46,.64,w*.7+w2*.3);vec3 sea=mix(vec3(.02,.07,.16),ca,.4),grd=mix(cb,ca*.75+.08,smoothstep(.25,.75,w2));s=mix(sea,grd,land);cl=smoothstep(.58,.86,w2)*.48;}
+  else if(k==4){float bd=.5+.5*sin(n.y*5.2+w*2.4);s=mix(ca,cb,bd);s=mix(s,vec3(.12,.32,.06),smoothstep(.35,.8,w3)*.45);cl=smoothstep(.38,.72,w)*.55;land=0.;}
+  else if(k==6){float hot=smoothstep(-.08,.4,dot(n,L));vec3 cold=mix(vec3(.5,.66,.8),cb,.35),hotc=mix(vec3(.16,.04,.02),vec3(.95,.32,.06),smoothstep(.1,0.,abs(w-.48)));s=mix(cold,hotc,hot);cl=smoothstep(.72,.92,w2)*.12;land=hot;}
+  else if(k==7){float br=smoothstep(.12,0.,abs(w-.4)-.07);s=mix(vec3(.1,.09,.08),cb,w2)*(1.-br*.7);cl=0.;land=0.;}
+  else{s=mix(vec3(.8,.9,.97),mix(ca,vec3(.72,.86,.95),.45),.4+.2*w2);s=mix(s,vec3(.16,.26,.38),smoothstep(.045,0.,abs(fract(n.y*5.+w*2.4)-.5)-.47)*.6);cl=smoothstep(.66,.9,w)*.2;land=1.;}
   s*=.93+.07*w3;
-  float shd=ty==2?0.:(ty==1?smoothstep(.4,.62,tn((n+L*.04)*1.15+.2)*.72+tn((n+L*.04)*2.6+.7)*.28):smoothstep(.52,.8,tn((n+L*.05)*1.2)))*(1.-cl);
-  s*=1.-.32*shd;s=mix(s,ty==0?mix(vec3(.96,.9,.8),ca,.3):vec3(.92,.93,.95),cl);
+  float shd=k==5||k==7?0.:(k==3?smoothstep(.46,.64,tn((n+L*.04)*1.15+.2)*.7+tn((n+L*.04)*2.6+.7)*.3):smoothstep(.52,.8,tn((n+L*.05)*1.2)))*(1.-cl);
+  s*=1.-.32*shd;s=mix(s,k==0?mix(vec3(.96,.9,.8),ca,.3):vec3(.92,.93,.95),cl);
   float lit=smoothstep(-.14,.2,nl),mu=max(dot(n,-d),0.),rim=pow(1.-mu,2.6),hz=pow(1.-mu,1.55),tw=exp(-nl*nl*36.)*smoothstep(-.22,.08,nl);
   vec3 col=s*lit*(.45+.7*max(atm,vec3(.3)))*1.05+atm*.04*lit;
-  if(ty==1)col+=vec3(1.,.74,.4)*(1.-lit)*land*smoothstep(.7,.9,w3)*1.5;
-  if(ty==2)col+=vec3(.55,.75,1.)*(1.-lit)*.05;
+  if(k==1)col+=vec3(1.,.32,.04)*land*(1.6+.5*sin(TIME*.35+w*18.));
+  if(k==3)col+=vec3(1.,.74,.4)*(1.-lit)*land*smoothstep(.7,.9,w3)*1.5;
+  if(k==5)col+=vec3(.55,.75,1.)*(1.-lit)*.05;
+  if(k==6)col+=vec3(1.,.4,.08)*land*(1.-smoothstep(.2,.8,dot(n,L)))*.35;
   col+=vec3(1.,.48,.22)*tw*(.12+.45*cl);
   col=mix(col,atm*(.12+1.05*lit),hz*.62);
   col+=atm*rim*pow(max(dot(d,Ls0),0.),4.)*1.15;
@@ -957,7 +1081,7 @@ vec4 planet(vec3 d,vec3 P,float rp,vec3 ca,vec3 cb,float ring,int ty){
  else if(b>0.&&rp>0.){float h=(acos(clamp(b,-1.,1.))-asin(min(rp,.999)))/rp;
   if(h<.5){float lit=smoothstep(-.35,.35,dot(normalize(d-P*b),L)),a=(exp(-h*16.)*.65+exp(-h*4.5)*.16)*(.12+lit);
    c=vec4(atm*a*1.25,min(.8,a));}}
- if(ring>.5&&ty==0){vec3 rn=normalize(vec3(.25,1.,.35)),e1=normalize(cross(rn,vec3(0,0,1))),e2=cross(rn,e1);float t=dot(P,rn)/max(dot(d,rn),1e-4);
+ if(ring>.5&&(k==0||k==5||k==7)){vec3 rn=normalize(vec3(.25,1.,.35)),e1=normalize(cross(rn,vec3(0,0,1))),e2=cross(rn,e1);float t=dot(P,rn)/max(dot(d,rn),1e-4);
   vec3 hp=d*t-P;float r=length(hp)/max(rp,.02),fw=fwidth(r);
   if(t>0.&&t<ts&&r>1.32&&r<2.75){
    float lane=smoothstep(.42,.16,abs(fract(r*2.6)-.5));lane=mix(lane,.62,smoothstep(.015,.07,fw));
@@ -1024,7 +1148,7 @@ void main(){
     c+=mix(vec3(1.,.8,.55),vec3(.8,.88,1.),hsh(vec3(gi,7.)))*(step(1.-fall*.9,h)*exp(-dot(gf,gf)*14.)*1.6+fall*.1);}
   }}
 
- for(int i=2;i>=0;i--)if(uPl[i].w>0.){vec4 p=planet(d,uPl[i].xyz,uPl[i].w,uPa[i].rgb,uPb[i],uPa[i].a,i);c=c*(1.-p.a)+p.rgb;m*=1.-p.a;}
+ for(int i=2;i>=0;i--)if(uPl[i].w>0.){float kd=i==0?uPk.x:i==1?uPk.y:uPk.z;vec4 p=planet(d,uPl[i].xyz,uPl[i].w,uPa[i].rgb,uPb[i],uPa[i].a,kd);c=c*(1.-p.a)+p.rgb;m*=1.-p.a;}
  if(uOrb.x>0.){float R=90000.,h=uOrb.y,cl=R+h,b=-d.y*cl,q=2.*R*h+h*h,disc=b*b-q;float dayPh=TIME*.01+uSd.x*6.283;float sunEl=sin(dayPh);vec3 L=normalize(vec3(cos(dayPh)*.85,sunEl,sin(dayPh*.5+.4)*.55));
   vec3 at=mix(uOa,uSunC.rgb,.45);float sunH=smoothstep(-.25,.25,L.y+.15);
   // the horizon: ground and sky both melt into one band of haze, brightest toward the sun, with a thin glow along the limb
@@ -1067,7 +1191,7 @@ float n3(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.-2.*f);
   mix(mix(hsh(i+vec3(0,0,1)),hsh(i+vec3(1,0,1)),f.x),mix(hsh(i+vec3(0,1,1)),hsh(i+vec3(1,1,1)),f.x),f.y),f.z);}
 float fbm(vec3 p){float a=.5,s=0.;for(int i=0;i<6;i++){s+=a*n3(p);p=p*2.03+vec3(1.7,9.2,3.1);a*=.5;}return s;}
 void main(){vec2 n=vU*2.-1.;vec3 d=normalize(uFa+uRa*n.x+uUa*n.y)+uSeed;
- vec3 w=vec3(fbm(d*2.+3.),fbm(d*2.+11.),fbm(d*2.+19.))-.5;
+ vec3 w=(vec3(fbm(d*2.+3.),fbm(d*2.+11.),fbm(d*2.+19.))-.5)*(0.55+uSty.w*1.35);
  float sc=uSty.x,cv=uSty.y;                                                                // this place's nebula: scale and coverage
  float r=smoothstep(.3-cv,.8-cv,fbm(d*1.7*sc+w*1.6));
  float g=smoothstep(.38-cv,.85-cv,fbm(d*2.2*sc+17.+w.yzx*1.8));
@@ -1097,7 +1221,7 @@ const COMP_F = HD + `
 uniform sampler2D uH,uB,uR;uniform vec2 uPx,uJc;uniform vec3 uFl,uJ;uniform vec4 uFx,uFy,uFz;uniform float uFs;in vec2 vU;out vec4 o;
 vec3 aces(vec3 x){return clamp(x*(2.51*x+.03)/(x*(2.43*x+.59)+.14),0.,1.);}
 void main(){vec2 q=vU-.5;float bs=uCA.w;
- vec2 of=q*dot(q,q)*(.005+.028*bs)*uFx.x;
+ vec2 of=q*dot(q,q)*(.004+.05*bs)*uFx.x;
  vec3 c=vec3(texture(uH,vU+of).r,texture(uH,vU).g,texture(uH,vU-of).b);
  vec2 mv=uFx.zw+q*dot(q,q)*uFs;                               // motion blur: the turn, plus speed streaming past the edges
  if(texture(uH,vU).a>-.5&&dot(mv,mv)>2e-7){float jt=fract(52.98*fract(dot(gl_FragCoord.xy,vec2(.0671,.00584))));vec3 mb=c,c0=c;for(int i=1;i<7;i++){vec2 u=vU+mv*(float(i)-jt)/6.;vec4 sg=texture(uH,u);mb+=sg.a<-.5?c0:vec3(texture(uH,u+of).r,sg.g,texture(uH,u-of).b);}c=mb/7.;}   // the cabin is not moving relative to you: it stays sharp
@@ -1711,7 +1835,7 @@ let gh = 0, gj0 = 0, gj1 = 0, gj2 = 0, gsd = 0;
 const hx = (k) => hs(gh + k) * U;
 function cellRnd(wx, wy, wz, s) { gh = h3(wx, wy, wz, s ^ SYS.salt); gj0 = (gh & 1023) / 1024; gj1 = (gh >>> 10 & 1023) / 1024; gj2 = (gh >>> 20 & 1023) / 1024; gsd = hx(77); }
 const gateClear = (C, wx, wy, wz, s, m) => { const x = (wx + gj0) * C, y = (wy + gj1) * C, z = (wz + gj2) * C, r = s + m; return x * x + y * y + z * z < r * r; };
-const tierOf = (h) => h < .86 ? 0 : h < .94 ? 1 : h < .975 ? 2 : h < .99 ? 3 : h < .997 ? 4 : 5;
+const tierOf = (h) => { const x = h + ((SYS && SYS.oreBias) || 0); return x < .86 ? 0 : x < .94 ? 1 : x < .975 ? 2 : x < .99 ? 3 : x < .997 ? 4 : 5; };
 const typeAt = () => SYS.mat[gh >>> 5 & 7];
 // lists the generators fill: [shape family] for each size class, things growing on rocks, station kinds
 let HV, BF, BN, SV, LC, LTd, LTb, TV, RV, MV, FV;
@@ -1970,7 +2094,8 @@ function journalPanel() {
   list.push({ name: 'Next', kind: '', desc: o.text });
   { const cw = rp().crew || {}, n = Object.keys(cw); if (n.length) list.push({ name: 'Crew', kind: n.length + '/3', desc: n.map((k) => `${cw[k]}, ${CREW[k][0].toLowerCase()}`).join(' · ') }); list.push({ name: 'Ship\'s log', kind: Object.keys(rp().lore || {}).length + ' entries', desc: 'Stop or slow down close to things. The log notices.' }); }
   for (const j of r.jobs) list.push({ name: j.title, kind: `${j.pay} cr · ${FAC[j.fac][0]}`, desc: j.text, run: () => { r.jobs = r.jobs.filter((x) => x !== j); gain({ rep: -3, fac: j.fac }); tip('Contract abandoned', 4000); } });
-  list.push({ name: SYS.name, kind: SYS.star, desc: `${FAC[SYS.fac][0]} space · economy: ${SYS.econ}${SYS.ph ? ' · in its sky: ' + ['', 'a supernova remnant', 'a planetary nebula', 'a pulsar', 'a companion star', 'a comet', 'a globular cluster'][SYS.ph] : ''} · ` + SYS.planets.map((p) => `${p.name}: ${p.type}, ${p.orbit} AU, ${p.moons} moons${p.pop && p.pop !== 'none' ? ', ' + p.pop : ''}`).join(' · ') });
+  list.push({ name: SYS.name, kind: SYS.star, desc: `${FAC[SYS.fac][0]} space · danger ${SYS.danger} · ${SYS.belt || 'mixed'} belt · economy: ${SYS.econ}${SYS.ph ? ' · in its sky: ' + ['', 'a supernova remnant', 'a planetary nebula', 'a pulsar', 'a companion star', 'a comet', 'a globular cluster'][SYS.ph] : ''} · ` + SYS.planets.filter((p) => p.type !== 'none').map((p) => `${p.name}: ${p.rare || ''} ${p.type}, ${p.orbit} AU, ${p.moons} moons${p.anomaly ? ', ' + p.anomaly : ''}${p.pop && p.pop !== 'none' ? ', ' + p.pop : ''}`).join(' · ') });
+  { const ch = ST.chart || {}, ks = Object.keys(ch); if (ks.length) list.push({ name: 'First charts', kind: ks.length + ' systems', desc: ks.slice(-5).map((id) => `${ch[id].name}${ch[id].pay ? ' +' + ch[id].pay : ''}`).join(' · ') }); }
   list.push({ name: 'Standing', kind: '', desc: FAC.map((f, i) => `${f[0]}: ${repName(r.rep[i])} (${r.rep[i]})`).join(' · ') });
   list.push({ name: 'The Infinite End', kind: 'why you are out here', desc: 'The outer gates went quiet three centuries ago. The Survey calls it the Silence. You hold a pathfinder licence to go past the last reliable lane and bring the charts home. The Combine pays for them. The Lantern Order says the old rites still open a door. The kettle at the end of the trail was warm.' });
   { const arcs = Object.values(cast()).filter((c) => c.arc && !c.dead); if (arcs.length) list.push({ name: 'Oaths', kind: arcs.length + ' open', desc: arcs.slice(0, 4).map((c) => `${c.n} · ${c.arc.id} ${c.arc.done ? 'kept' : 'step ' + (c.arc.step + 1)}`).join(' · ') }); }
@@ -2087,9 +2212,7 @@ function npcTick(dt) {
       if (a.escHunt && escHunt(a, dt)) continue;
       const hunt = a.hunter || a.bounty || calmP < .5 && (hostLv === 2 || hostLv === 1 && SYS.danger >= 3);   // in open space raiders lose interest
       if (!hunt) { a.brk -= dt; if (a.brk <= 0) { let en = null, ed = 4000; for (const b of NPCS) if (b.role === 2) { const e = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z); if (e < ed) { ed = e; en = b; } } if (en) { a.wp = [en.x, en.y, en.z]; if (ed < 600) { const u = (tm * 2 + a.seed) % 1; put(DPa, qx + (en.x - a.x) * u, qy + (en.y - a.y) * u, qz + (en.z - a.z) * u, 3.5, 0, 0, 0, .5, 1, .3, .15, 0); } if (ed < 120) { a.brk = 3; const j = () => (Math.random() - .5) * 2500; a.wp = [a.x + j(), a.y + j() * .3, a.z + j()]; } } } }
-      else { a.brk -= dt; if (qd < 110 && a.brk <= 0) { a.brk = 3.5; const j = () => (Math.random() - .5) * 1800; a.wp = [px + j(), py + j() * .4, pz + j()]; }
-      if (a.brk <= 0) a.wp = [px + vx * .8, py + vy * .8, pz + vz * .8];
-      a.cd -= dt; if (flying() && qd < 520 && a.cd <= 0 && -(a.fx * qx + a.fy * qy + a.fz * qz) / qd > .975) { a.cd = .4; hurtSrc = 'raider'; hurtSrcT = tm; hitFromX = a.x; hitFromY = a.y; hitFromZ = a.z; hurt(1.4); trauma = Math.min(1, trauma + .2); thud(.2); if (!a.warned) { a.warned = 1; tip('Under fire: ' + a.name + ' is on you', 4000); } } }
+      else v121Dog(a, dt, qx, qy, qz, qd);
     }
 
   }
@@ -2207,18 +2330,29 @@ function rpgSim(dt, fly) { encTick(dt); mslTick(dt); chatter(dt, fly); if (fly &
 // ---- controllers in a headset: everything that has a key has a button ----
 let hudForce = 0;
 const xprev = { left: [], right: [] }, xNav = { left: 0, right: 0 };   // per hand: when the stick may next step the menu (0 = centred, ready)
+function xrEdge(gp, h) {
+  const pv = xprev[h];
+  const down = (i) => { const b = gp.buttons[i]; return !!(b && (b.pressed || (i === 0 && b.value > .65))); };
+  return (i) => { const p = down(i), r = p && !pv[i]; pv[i] = p; return r; };
+}
 function xrPad(src, gp) {
-  const h = src.handedness === 'left' ? 'left' : 'right', pv = xprev[h], e = [0, 1, 2, 3, 4, 5].map((i) => { const p = !!(gp.buttons[i] && gp.buttons[i].pressed), r = p && !pv[i]; pv[i] = p; return r; });
-  const ay = gp.axes[3] || gp.axes[1] || 0;
+  // Touch Plus, xr-standard: 0 trigger, 1 grip, 3 stick click, 4 X or A, 5 Y or B, 7 menu on the left only.
+  // The Meta button on the right is reserved by the system and never arrives here.
+  const h = src.handedness === 'left' ? 'left' : 'right';
+  if (h !== 'left' && h !== 'right') return 0;
+  const edge = xrEdge(gp, h), steerLeft = !CFG.vrHand, menuHand = steerLeft ? 'right' : 'left';
+  const hasMenu = h === 'left' && gp.buttons.length > 7;
   if (jpOpen) {
-    if (h === 'left') { if (e[5]) closePanel(); return 0; }   // the left hand keeps flying the ship while a panel is up (Y closes it)
-    const now = performance.now();   // one step per push, then after half a second a slow repeat; each hand keeps its own latch
+    if (h !== menuHand) { if (edge(5) || (hasMenu && edge(7))) closePanel(); return 0; }   // the steer hand keeps flying. Y or the menu button still backs out.
+    const ay = gp.axes[3] || 0, now = performance.now();
     if (Math.abs(ay) > .65) { if (items.length && (xNav[h] === 0 || now >= xNav[h])) { const first = xNav[h] === 0; psel = (psel + (ay > 0 ? 1 : -1) + items.length) % items.length; xNav[h] = now + (first ? 480 : 220); } } else if (Math.abs(ay) < .3) xNav[h] = 0;
-    if (e[0] || e[4]) pick(psel); else if (e[5] || e[1]) closePanel();
+    if (edge(0) || edge(4)) pick(psel); else if (edge(5) || (hasMenu && edge(7))) closePanel();
     return 1;
   }
-  if (h === 'right') { if (e[4]) interact(); if (e[5]) navCycle(1); if (e[3]) pausePanel(); }
-  else { if (e[0]) navCycle(1); if (e[4]) journalPanel(); if (e[3]) wpnCycle(); if (e[5]) pausePanel(); }
+  if (hasMenu && edge(7)) pausePanel();
+  if (h === 'right') { if (edge(4)) interact(); if (edge(5)) navCycle(1); }
+  else { if (edge(4)) journalPanel(); if (edge(5)) wpnCycle(); }
+  if (h === (CFG.vrHand ? 'left' : 'right') && edge(3)) thr = 0;
   return 0;
 }
 
@@ -2286,19 +2420,20 @@ function hudPaint() {
   T(rankName().toUpperCase(), 300, 800, 14, 'right', dim, 700); T(rp().jobs.length + '/3 CONTRACTS', 300, 822, 14, 'right', dim, 700);
   T(ST.credits + ' CR', 700, 800, 14, 'left', dim, 700); T(SYS.star.toUpperCase(), 700, 822, 14, 'left', dim, 700);
   if ((xr || hudForce) && jpOpen) {                                         // in a headset the lists are drawn here, since the page cannot be seen
-    c.fillStyle = 'rgba(2,9,16,.9)'; c.fillRect(110, 170, 780, 560); line([[110, 170], [890, 170], [890, 730], [110, 730], [110, 170]], main, 1.5);
+    c.fillStyle = 'rgba(4,10,18,.97)'; c.fillRect(110, 170, 780, 560); line([[110, 170], [890, 170], [890, 730], [110, 730], [110, 170]], main, 2);
     T($('jh').textContent.toUpperCase(), 136, 208, 22, 'left', amb, 700); T($('jc').textContent.slice(0, 80), 136, 234, 14, 'left', dim);
     const n = items.length, rows = Math.min(n, 7), top = Math.max(0, Math.min(n - rows, psel - 3)), wrapT = (s, x, y, w) => { c.font = '500 14px "Segoe UI",system-ui,sans-serif'; c.textAlign = 'left'; c.fillStyle = dim; let ln = '', k = 0; for (const wd of s.split(' ')) { if (c.measureText(ln + wd).width > w) { c.fillText(ln, x, y + k * 17); ln = ''; if (++k > 1) return; } ln += wd + ' '; } c.fillText(ln, x, y + k * 17); };
     for (let k = 0; k < rows; k++) { const i = top + k, d = items[i], y = 262 + k * 64; if (i === psel) { c.fillStyle = 'rgba(99,226,255,.16)'; c.fillRect(122, y - 6, 756, 60); line([[122, y - 6], [122, y + 54]], cy, 3); }
       T(String(i + 1), 140, y + 16, 16, 'left', d.run ? amb : dim, 700); T(d.name, 170, y + 16, 18, 'left', d.run ? main : dim, 700); if (d.kind) T(String(d.kind).toUpperCase().slice(0, 34), 866, y + 16, 13, 'right', cy, 700); wrapT(d.desc || '', 170, y + 35, 690); }
-    T('STICK · CHOOSE     TRIGGER / A · SELECT     B · CLOSE', 500, 716, 13, 'center', dim, 700);
+    T('THROTTLE STICK MOVES THE ROW    TRIGGER OR A SELECTS    B GOES BACK', 500, 716, 13, 'center', dim, 700);
   }
   c.setTransform(1, 0, 0, 1, 0, 0);
 }
 function hudTick(now) { cinFit(); if (now - hudLast < (xr ? 70 : 45) || !flying()) return; hudLast = now; hudPaint(); texFrom(hudTex, hudC); }
 function hudDraw(k) {
   if (!flying()) return;
-  const P = P_HUD; gl.useProgram(P.p); gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
+  const P = P_HUD; gl.useProgram(P.p); gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND);
+  if (xr && jpOpen) gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); else gl.blendFunc(gl.ONE, gl.ONE);
   M3[0] = sRx; M3[1] = sRy; M3[2] = sRz; M3[3] = sUx; M3[4] = sUy; M3[5] = sUz; M3[6] = -sFx; M3[7] = -sFy; M3[8] = -sFz;
   gl.uniformMatrix3fv(P.u.uShip, false, M3); if (xr) gl.uniform3f(P.u.uEye, cex, cey, cez); else gl.uniform3f(P.u.uEye, eox * k, eoy * k, eoz * k); gl.uniform3f(P.u.uMo, cockpit ? ckx : 0, cockpit ? cky : 0, cockpit ? ckz : 0);
   gl.bindVertexArray(hudVA); gl.activeTexture(gl.TEXTURE8); gl.uniform1i(P.u.uTx, 8);
@@ -2445,7 +2580,7 @@ function bigStarsSet() {
 function hop(loc) { const sv = [yaw, pitch, thr, vx, vy, vz]; palEase = 1; softArr = 1; arrive(SYS.sec, loc, 1); softArr = 0; [yaw, pitch, thr, vx, vy, vz] = sv; snap = 0; fogX = .0065; }   // same heading and speed; attitude eases instead of snapping
 function cruiseTick(dt, fly) {
   { const k = Math.min(1, dt * 8), d = Math.max(.001, dt); let dy = syaw - pYaw; pYaw = syaw; const dp = spit - pPit; pPit = spit; if (Math.abs(dy) > 1) dy = 0;
-    mbx += (Math.max(-.03, Math.min(.03, dy / d * .011)) - mbx) * k; mby += (Math.max(-.03, Math.min(.03, -dp / d * .011)) - mby) * k; mbs += ((.01 + .05 * bst) * Math.min(1, Math.hypot(vx, vy, vz) / 300) - mbs) * k; }
+    mbx += (Math.max(-.03, Math.min(.03, dy / d * .011)) - mbx) * k; mby += (Math.max(-.03, Math.min(.03, -dp / d * .011)) - mby) * k; mbs += ((.012 + .09 * bst * bst) * Math.min(1, Math.hypot(vx, vy, vz) / 280) - mbs) * k; }
   if (veil > .02 && !jumpTo) flash = Math.max(flash, veil * veil * .55);   // the haze thickens to a veil and thins again: no cut
   if (!fly || jumpTo) { scK = scE = 0; return; }
   const sp = Math.hypot(vx, vy, vz), r = rp();
@@ -2491,7 +2626,8 @@ function cruiseTick(dt, fly) {
 let scBack = -1;
 const PR = [70, 6.4, 2.6];                                  // planet radii in thousands of km
 let sysS = [0, 0, 0], sysP = null, drift = 0, driftV = 0, veil = 0, aimK = -1, aimT = 0, apT = 0, apTip = 0, noAuto = -1, apOn = 0, apDist = 0, apGate = 0, ent = null;
-function sysInit() { sysS = [0, 0, 0]; drift = 0; driftV = 0; aimK = -1; aimT = apT = 0; noAuto = -1; sysP = SYS.atm ? null : [0, 1, 2].map((k) => { const w = SYS.pl[k * 4 + 3]; return w > 0 ? [SYS.pl[k * 4] * PR[k] / w, SYS.pl[k * 4 + 1] * PR[k] / w, SYS.pl[k * 4 + 2] * PR[k] / w] : null; }); }
+function syncPR() { if (SYS && SYS.prad) for (let k = 0; k < 3; k++) if (SYS.prad[k] > 0) PR[k] = SYS.prad[k]; }
+function sysInit() { syncPR(); sysS = [0, 0, 0]; drift = 0; driftV = 0; aimK = -1; aimT = apT = 0; noAuto = -1; sysP = SYS.atm ? null : [0, 1, 2].map((k) => { const w = SYS.pl[k * 4 + 3]; return w > 0 ? [SYS.pl[k * 4] * PR[k] / w, SYS.pl[k * 4 + 1] * PR[k] / w, SYS.pl[k * 4 + 2] * PR[k] / w] : null; }); }
 function driftToggle() { if (SYS.atm) return tip('Climb out of the atmosphere first: hold the nose up at full throttle', 4000); drift = drift ? 0 : 1; if (!drift) { noAuto = aimK; aimT = apT = 0; bHold = 0; } tip(drift ? 'Light drift: throttle sets the pace, the sky is the map. Point at a world and hold. G drops out.' : 'Dropped out of light drift', 5000); }
 const plDist = (c) => { const k = +c.id[1], P = sysP && sysP[k]; if (!P) return '—'; const d = Math.hypot(P[0] - sysS[0], P[1] - sysS[1], P[2] - sysS[2]) - PR[k]; return d < 100 ? d.toFixed(1) : String(d | 0); };
 
@@ -3756,6 +3892,318 @@ npcHit = function (a, dmg, qd, hx, hy, hz, w) { const was = a.dead; npcHit0(a, d
 // smuggled crates: now and then a patrol scans you on delivery
 const jobDone0 = jobDone;
 jobDone = function (j) { if (j.smug && Math.random() < .3) { j.pay = Math.round(j.pay / 2); gain({ rep: -8, fac: SYS.fac }); comm(`${ctl()} patrol to ${call()}: "That crate isn't on any manifest. We'll take half as a fine. Move along."`); } jobDone0(j); };
+// v1.21: faction kits, dogfighting, charts, reputation, and the split settings menus.
+// Generators live in a_core (fillWorld). This file only dresses what those seeds already decided.
+if (CFG.vrVig == null) CFG.vrVig = .45;
+if (CFG.vrTurn == null) CFG.vrTurn = 1;
+if (CFG.vrSeat == null) CFG.vrSeat = 0;
+if (CFG.vrIpd == null) CFG.vrIpd = 1;
+if (CFG.vrHand == null) CFG.vrHand = 0;
+if (CFG.vrHap == null) CFG.vrHap = 1;
+if (CFG.vrRs == null) CFG.vrRs = 1;
+if (CFG.vrFov == null) CFG.vrFov = .5;
+if (CFG.vrHz == null) CFG.vrHz = 72;
+if (CFG.padL == null) CFG.padL = 1;
+if (!CFG.gp) CFG.gp = { fire: 7, boost: 5 };
+if ((CFG.fxMig || 0) < 6) CFG.fxMig = 6;
+
+function dangerCurve() {
+  const sec = SYS.sec || [0, 0, 0];
+  const d = Math.hypot(sec[0], sec[1], sec[2]);
+  const hush = (hs(SYS.id ^ 0xD4) >>> 0) % 2;
+  SYS.danger = Math.max(0, Math.min(4, Math.floor(d * .72) + hush + (SYS.dead ? 1 : 0)));
+}
+function chartOf() {
+  if (!ST.chart || typeof ST.chart !== 'object') ST.chart = {};
+  let c = ST.chart[SYS.id];
+  if (!c) c = ST.chart[SYS.id] = { name: SYS.name, star: SYS.star, worlds: [], pay: 0, welcomed: 0 };
+  return c;
+}
+function chartArrive() {
+  const c = chartOf();
+  if (c.welcomed) return;
+  c.welcomed = 1; c.name = SYS.name; c.star = SYS.star;
+  const known = ST.visited[SYS.id] && ST.visited[SYS.id].locs && ST.visited[SYS.id].locs.length;
+  if (known) return;
+  const pay = 30 + (SYS.danger || 0) * 22 + (SYS.rareSum || 0) * 28 + (SYS.dead ? 40 : 0);
+  c.pay = pay; ST.credits += pay;
+  tip(`First charts of ${SYS.name} · ${SYS.star} · +${pay} cr`, 6000);
+  showCargo();
+}
+const rpgArrive0 = rpgArrive;
+rpgArrive = function () { dangerCurve(); rpgArrive0(); chartArrive(); };
+
+const navTick0 = navTick;
+navTick = function (dt, fly) {
+  navTick0(dt, fly);
+  if (!fly) return;
+  const c = navCur();
+  if (!c || c.kind !== 'planet' || !scanned[c.id]) return;
+  const p = SYS.planets[+c.id[1]];
+  if (!p || p.type === 'none') return;
+  const ch = chartOf();
+  ch.worlds = ch.worlds || [];
+  if (ch.worlds.indexOf(p.name) >= 0) return;
+  ch.worlds.push(p.name);
+  const pay = 18 + (p.rareN || 0) * 45 + (SYS.danger || 0) * 8;
+  ST.credits += pay; gain({ xp: 6 + (p.rareN || 0) * 4 });
+  tip(`First look at ${p.name} · ${p.rare} ${p.type}${p.anomaly ? ' · ' + p.anomaly : ''} · +${pay} cr`, 5200);
+  save(); showCargo();
+};
+
+const priceAt0 = priceAt;
+priceAt = function (s, loc, g) {
+  const p = priceAt0(s, loc, g);
+  const rep = (rp().rep && rp().rep[s.fac]) || 0;
+  const m = rep >= 60 ? .82 : rep >= 25 ? .9 : rep >= 8 ? .96 : rep <= -40 ? 1.45 : rep <= -8 ? 1.16 : 1;
+  return Math.max(2, Math.round(p * m));
+};
+const tradePanel0 = tradePanel;
+tradePanel = function () {
+  const rep = (rp().rep && rp().rep[SYS.fac]) || 0;
+  if (rep <= -40) return panel('Berth refused', FAC[SYS.fac][0], [{ name: 'They will not have you', desc: 'Your name is posted here. Another faction will still sell to you, or you can earn this one back.' }], xr ? 'B to close' : 'J to close');
+  return tradePanel0();
+};
+
+const ORECOST = [[3, 8], [4, 4], [5, 2]];
+function outfitPanel() {
+  const r = rp();
+  panel('Outfitter', `${ST.credits} credits · a find can pay instead`, UPS.map(([k, n, d]) => {
+    const lv = upLv(k);
+    if (lv >= 3) return { name: n + ' III', kind: 'fitted', desc: d };
+    const cost = 300 * 3 ** lv, ore = ORECOST[lv], have = cargo[ore[0]] || 0;
+    const buyCr = ST.credits >= cost ? () => { ST.credits -= cost; r.up[k] = lv + 1; save(); showCargo(); tip(n + ' fitted', 4000); outfitPanel(); } : undefined;
+    const buyOre = have >= ore[1] ? () => { cargo[ore[0]] -= ore[1]; r.up[k] = lv + 1; save(); showCargo(); tip(n + ' fitted from the hold', 4000); outfitPanel(); } : undefined;
+    return { name: `${n} ${'I'.repeat(lv + 1)}`, kind: cost + ' cr', desc: d + ` · or ${ore[1]} ${TIERS[ore[0]]} (you hold ${have})`, run: buyCr || buyOre };
+  }).concat(UPS.map(([k, n]) => {
+    const lv = upLv(k); if (lv >= 3) return null;
+    const ore = ORECOST[lv], have = cargo[ore[0]] || 0;
+    if (have < ore[1] || ST.credits >= 300 * 3 ** lv) return null;
+    return { name: `Fit ${n} with ${TIERS[ore[0]]}`, kind: `${ore[1]} held`, desc: 'Credits are short. The hold covers it.', run: () => { cargo[ore[0]] -= ore[1]; r.up[k] = lv + 1; save(); showCargo(); tip(n + ' fitted from the hold', 4000); outfitPanel(); } };
+  }).filter(Boolean)), xr ? 'A to select · B to close' : 'Press a number · J to close');
+}
+
+EV.push(
+  ['Distress at {p}. A hauler is bleeding air, and the band is full of the Silence.', [['Share oxygen and a tow', 'They make the gate. The Union remembers the favour.', { rep: 8, xp: 24, cr: 40 }], ['Sell them a seal', 'It holds. They pay more than it was worth.', { cr: 120, xp: 10 }], ['Keep going', 'The squawk fades.', { rep: -4 }]]],
+  ['A relic tone at {p}: hull-warm metal, older than the Survey, still answering.', [['Log it for the Survey', 'First charts of a thing with no name. The licence pays.', { cr: 160, xp: 40, rep: 6 }], ['Take a shard', 'It sings in the hold.', { min: [5, 1], xp: 20 }], ['Leave it', 'Some doors are better shut.', { xp: 12 }]]],
+  ['{p} warns that a rival wing is hunting pilots who draw new charts.', [['Stand and answer', 'They break off when the lance finds them. Word travels.', { cr: 90, xp: 30, rep: 4 }], ['Pay them to look elsewhere', 'Credits change hands. The lane goes quiet.', { cr: -70 }], ['Run dark', 'You are gone before they are sure.', { xp: 16, rep: -2 }]]]
+);
+function eventPanel() {
+  const rep = (rp().rep && rp().rep[SYS.fac]) || 0;
+  const R = mulberry32((SYS.salt ^ 0xE7E ^ Math.imul((SYS.danger || 0) + 1, 0x9E3779B1)) >>> 0);
+  const f = (s) => s.replace('{p}', SYS.locs[SYS.loc].name).replace('{s}', SYS.name);
+  let pool = EV;
+  if ((SYS.danger || 0) >= 3) pool = EV.filter((e, i) => i >= EV.length - 3 || i % 2 === 1);
+  else if (rep >= 25) pool = EV.filter((e, i) => i < 8 || i === EV.length - 2);
+  const e = pool[R() * pool.length | 0];
+  panel('Encounter', SYS.locs[SYS.loc].name + ' · ' + FAC[SYS.fac][0], [{ name: 'Contact', desc: f(e[0]) }].concat(e[1].map((o) => ({ name: o[0], desc: '', run: () => { gain(o[2]); panel('Encounter', SYS.locs[SYS.loc].name, [{ name: o[0], desc: f(o[1]) }, { name: 'Carry on', desc: '', run: () => {} }], xr ? 'A to select · B to close' : 'Press a number · J to close'); } }))), xr ? 'A to select · B to close' : 'Press a number to choose');
+}
+
+const KITN = ['MC', 'LANTERN', 'HAULER', 'SURVEY'];
+function factionDress() {
+  for (const a of NPCS) {
+    if (a.role === 5 || a.bounty) {
+      if (!a._scaled) {
+        a._scaled = 1;
+        const d = 1 + (SYS.danger || 0) * .2;
+        a.hp = a.hpM = (a.hpM || a.hp || 80) * d;
+        a.sh = a.shM = (a.shM || a.sh || 40) * d;
+        a.sp = (a.sp || 110) * (1 + (SYS.danger || 0) * .05);
+      }
+      continue;
+    }
+    if (a.big) continue;
+    const kit = a.role === 2 ? SYS.fac : (a.fac == null ? SYS.fac : a.fac % 4);
+    a.var = kit === 2 ? 2 : kit === 1 ? 1 : 0;
+    a.hue = kit === 0 ? .55 : kit === 1 ? .1 : kit === 2 ? .04 : .46;
+    if (!a.cast && !a._named) {
+      a._named = 1;
+      const R = mulberry32((SYS.salt ^ Math.imul(a.i + 1, 0x85EBCA77)) >>> 0);
+      if (kit === 0) a.name = 'MC ' + pickN(R, NM.navy);
+      else if (kit === 1) a.name = 'Ring ' + pickN(R, NM.world);
+      else if (kit === 2) a.name = pickN(R, NM.ship);
+      else a.name = 'DS ' + pickN(R, NM.ship);
+    }
+  }
+}
+const npcSpawn0 = npcSpawn;
+npcSpawn = function () { npcSpawn0(); factionDress(); };
+const navBuild0 = navBuild;
+navBuild = function () {
+  navBuild0();
+  const tag = KITN[SYS.fac] || 'DS';
+  for (const n of NAV) if (n.kind === 'station' && n.name.indexOf(tag) !== 0) n.name = tag + ' ' + n.name;
+};
+
+function v121Dog(a, dt, qx, qy, qz, qd) {
+  if (!a.df) a.df = { mode: 0, t: 1.2, tel: 0, told: 0 };
+  const df = a.df;
+  const dif = Math.max(.5, Math.min(1.4, .58 + (SYS.danger || 0) * .15 + (a.bounty ? .14 : 0) + (a.rival ? .2 : 0)));
+  const pers = a.fac === 1 ? 1 : a.fac === 2 ? 2 : 0;
+  if (!a._winged) {
+    a._winged = 1;
+    if ((a.i & 1) && !a.lead && !a.bounty) {
+      for (const b of NPCS) if (b !== a && b.role === 5 && !b.lead && !b.wingUsed && !b.fled) { a.lead = b; a.off = [42, 6, 56]; b.wingUsed = 1; break; }
+    }
+  }
+  df.t -= dt;
+  const leadT = Math.min(1.25, qd / (860 + dif * 80));
+  let tx = px + vx * leadT, ty = py + vy * leadT * .55, tz = pz + vz * leadT;
+  if (df.t <= 0) {
+    if (qd < 150) { df.mode = 2; df.t = .8; }
+    else if (qd < 400 && pers === 2) { df.mode = 1; df.t = .6; }
+    else if (qd < 560 && a.hp < (a.hpM || 1) * .42) { df.mode = 3; df.t = 1.1; }
+    else { df.mode = 0; df.t = 1.25; }
+  }
+  if (df.mode === 1) { const s = 700 / qd; tx = a.x + qz * s; ty = a.y + Math.sin(tm * 2.2 + a.seed * 6) * 150; tz = a.z - qx * s; }
+  else if (df.mode === 2) { tx = px + sRx * 620 - sFx * 160; ty = py + 80; tz = pz + sRz * 620 - sFz * 160; }
+  else if (df.mode === 3) { tx = a.x + a.fx * 2000; ty = a.y + 180; tz = a.z + a.fz * 2000; a.sp = Math.min(200, (a.sp || 120) + 24); }
+  a.wp = [tx, ty, tz]; a.hold = 0;
+  const ax = tx - a.x, ay = ty - a.y, az = tz - a.z, ad = Math.hypot(ax, ay, az) || 1;
+  const nose = (a.fx * ax + a.fy * ay + a.fz * az) / ad;
+  a.cd = (a.cd || 0) - dt;
+  if (flying() && !a.fled && qd > 80 && qd < 460 + dif * 120 && nose > .99 - dif * .01) {
+    df.tel += dt;
+    if (!df.told) { df.told = 1; tip(a.name + ' is lining up a shot', 2200); }
+    put(DPa, qx * .22, qy * .22, qz * .22, 3.5 + df.tel * 5, 0, 0, 0, .25, 1.5, .4, .16, 0);
+    if (df.tel > (pers === 1 ? .58 : .32) / dif && a.cd <= 0) {
+      a.cd = (pers === 2 ? .28 : .42) / dif; df.tel = 0;
+      hurtSrc = 'raider'; hurtSrcT = tm; hitFromX = a.x; hitFromY = a.y; hitFromZ = a.z;
+      hurt(.8 + dif * .5); trauma = Math.min(1, trauma + (typeof xr !== 'undefined' && xr ? .04 : .1)); thud(.14);
+      put(DT, qx, qy, qz, .35, -qx * .08, -qy * .08, -qz * .08, 0, 2.2, .45, .18, 0);
+    }
+  } else { df.tel = Math.max(0, df.tel - dt * 1.5); if (nose < .85) df.told = 0; }
+  return true;
+}
+
+let setTab = 0;
+function setUi() {
+  { const h = HCOL[CFG.hud][1][3], de = document.documentElement.style; de.setProperty('--hc', h); de.setProperty('--hcr', [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(' ')); }
+  hostLv = CFG.host; hudOp = CFG.op; cinOn = !!CFG.cin; keep('ibCfg', JSON.stringify(CFG)); mkIcons(HCOL[CFG.hud][1][2]);
+  cinFit();
+  if (setP.style.display === 'none') return;
+  const headset = !!(xr || isPWA()), touch = mob && !headset;
+  const tabs = headset ? ['Comfort', 'Display', 'Audio'] : touch ? ['Display', 'Audio', 'Flight'] : ['Display', 'Audio', 'Flight', 'Controls'];
+  if (setTab >= tabs.length) setTab = 0;
+  const row = (k, name, val) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:16px;border-bottom:1px solid rgb(var(--hcr) / .14);padding:8px 0"><span>${name}</span><button data-k="${k}" style="min-width:168px;padding:7px 14px;background:${rebind === k ? 'var(--hc)' : 'rgb(var(--hcr) / .06)'};color:${rebind === k ? '#041018' : 'var(--hc)'};border:1px solid rgb(var(--hcr) / .5);font:inherit;cursor:pointer">${val}</button></div>`;
+  const tabBtn = tabs.map((t, i) => `<button data-k="tab:${i}" style="margin:0 8px 0 0;padding:6px 12px;letter-spacing:.14em;text-transform:uppercase;font:inherit;cursor:pointer;background:${i === setTab ? 'var(--hc)' : 'transparent'};color:${i === setTab ? '#041018' : 'var(--hc)'};border:1px solid var(--hc)">${t}</button>`).join('');
+  const turnN = ['smooth', 'snap 30°', 'snap 45°'][CFG.vrTurn || 0];
+  const vigN = !CFG.vrVig ? 'off' : CFG.vrVig < .7 ? 'subtle' : 'full';
+  const hapN = ['off', 'subtle', 'strong'][CFG.vrHap || 0] || 'off';
+  const scaleN = ['90%', '100%', '110%'][Math.round(((CFG.vrIpd || 1) - .9) / .1)] || '100%';
+  const rsN = ['0.8', '1', '1.2'][[.8, 1, 1.2].indexOf(CFG.vrRs)] || '1';
+  const fovN = ['off', 'medium', 'high'][[0, .5, 1].indexOf(CFG.vrFov)] || 'off';
+  const hzN = (CFG.vrHz || 72) + ' Hz';
+  let body = '';
+  const tab = tabs[setTab];
+  if (tab === 'Comfort') {
+    body = row('vrTurn', 'Turning', turnN) + row('vrVig', 'Comfort vignette', vigN) + row('vrHz', 'Refresh', hzN) + row('vrSeat', 'Posture', CFG.vrSeat ? 'standing' : 'seated') + row('vrH', 'Seat height', VRH[vrHi()][0]) + row('vrIpd', 'View scale', scaleN) + row('vrHand', 'Throttle hand', CFG.vrHand ? 'left' : 'right') + row('vrHap', 'Touch haptics', hapN) + row('ck', 'Cockpit', cockpit ? 'on' : 'off');
+  } else if (tab === 'Display') {
+    body = row('hud', 'HUD colour', HCOL[CFG.hud][0]) + row('op', 'HUD brightness', Math.round(CFG.op * 100) + '%') + row('size', 'HUD size', Math.round(CFG.size * 100) + '%');
+    if (headset) body += row('vrRs', 'Render scale', rsN + ' · next entry') + row('vrFov', 'Fixed foveation', fovN) + row('ck', 'Cockpit', cockpit ? 'on' : 'off') + `<p style="color:rgb(var(--hcr) / .8);margin:14px 0 0">Quest 3 budget is 13.9 ms at 72 Hz, 11.1 ms at 90, 8.3 ms at 120. A steady 72 is kinder than a 120 that drops frames. Foveation cheapens the edge of each eye. This game draws the world to an offscreen buffer first, so the foveation mostly helps the final pass. Drop the render scale if the frame time slips. Quest 3S has no 120 Hz mode.</p>`;
+    else body += row('cin', 'Cinematic bars', CFG.cin ? 'on' : 'off') + row('fs', 'Full screen on launch', CFG.fs === 0 ? 'off' : 'on') + row('fxVisor', 'Curved visor', LV3(CFG.fxVisor)) + row('fxGlass', 'Visor glass', LV3(CFG.fxGlass)) + row('fxBlur', 'Motion blur', LV3(CFG.fxBlur)) + row('fxCA', 'Colour fringing', LV3(CFG.fxCA)) + row('fxGrain', 'Film grain', LV3(CFG.fxGrain)) + row('fxBloom', 'Glow', LV3(CFG.fxBloom)) + row('fxFlare', 'Lens flare', LV3(CFG.fxFlare)) + row('fxScan', 'Scanlines', CFG.fxScan ? 'on' : 'off') + row('fxVig', 'Darkened corners', CFG.fxVig ? 'on' : 'off');
+  } else if (tab === 'Audio') {
+    body = row('radio', 'Ikosagon radio', CFG.radio ? 'on' : 'off') + row('pl', 'Playlist between songs', CFG.pl ? 'on' : 'off') + row('vEng', 'Engine and boost', pct(CFG.vEng)) + row('vCht', 'Radio chatter', pct(CFG.vCht)) + row('vRad', 'Music', pct(CFG.vRad));
+    if (!headset && !touch) body += row('suno', 'Suno playlist', 'open');
+  } else if (tab === 'Flight') {
+    body = row('host', 'Other pilots', ['peaceful', 'wary', 'hostile'][CFG.host]) + row('inv', 'Invert pitch', CFG.inv ? 'on' : 'off') + row('wipe', 'New universe', 'asks first');
+    if (!touch) body += row('ctl', 'Stick model', CFG.ctl ? 'space sim' : 'standard');
+    if (touch) body += `<p style="color:rgb(var(--hcr) / .8);margin:14px 0 0">Hold to fly. Slide to steer. A second finger boosts. The FIRE button shoots. The aux display, gate and journal stay on their own controls.</p>`;
+  } else {
+    body = row('sens', 'Mouse sensitivity', Math.round(CFG.sens * 100) + '%') + row('padL', 'Gamepad', CFG.padL === 0 ? 'match headset' : 'racer') + row('gpFire', 'Fire button', CFG.padL === 0 ? 'right trigger' : ({ 7: 'right trigger', 5: 'right bumper', 0: 'A', 2: 'X' }[CFG.gp.fire] || 'right trigger')) + row('gpBoost', 'Boost button', ({ 7: 'right trigger', 5: 'right bumper', 6: 'left trigger', 4: 'left bumper' }[CFG.gp.boost] || 'right bumper'))
+      + `<h3 style="margin:22px 0 6px;font-weight:600;letter-spacing:.22em;font-size:12px;color:var(--hc)">KEYBOARD</h3>`
+      + ACTS.map(([k, n]) => row('key:' + k, n, rebind === 'key:' + k ? 'press a key…' : keyName(CFG.keys[k] || k))).join('')
+      + row('reset', 'All keys', 'defaults');
+  }
+  setP.innerHTML = `<div style="max-width:760px;margin:auto"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px"><h2 style="font-weight:300;letter-spacing:.28em;margin:0">SETTINGS</h2><button data-k="close" style="background:rgb(var(--hcr) / .08);border:1px solid var(--hc);color:var(--hc);padding:6px 18px;font:inherit;cursor:pointer">Done</button></div><div style="margin:18px 0 8px">${tabBtn}</div>${body}<p style="margin-top:18px;color:rgb(var(--hcr) / .65);font-size:13px;letter-spacing:.08em">${BUILD}</p></div>`;
+}
+setP.onclick = (e) => {
+  const k = e.target.dataset && e.target.dataset.k; if (!k) return;
+  if (k === 'close') { setP.style.display = 'none'; rebind = null; return; }
+  if (k.startsWith('tab:')) { setTab = +k.slice(4); rebind = null; setUi(); return; }
+  if (k.startsWith('key:')) { rebind = rebind === k ? null : k; setUi(); return; }
+  if (k === 'reset') CFG.keys = {};
+  else if (k === 'suno') window.open('https://suno.com/playlist/12f42e02-78a5-4eb2-bf7e-f605817e4c06', '_blank', 'noopener');
+  else if (k === 'wipe') { setP.style.display = 'none'; newUniverse(); return; }
+  else if (k === 'hud') CFG.hud = (CFG.hud + 1) % HCOL.length;
+  else if (k === 'op') CFG.op = cyc(CFG.op, [1, .7, .45, .25]);
+  else if (k === 'size') CFG.size = cyc(CFG.size, [1, 1.15, .85]);
+  else if (k === 'ctl') CFG.ctl = CFG.ctl ? 0 : 1;
+  else if (k === 'vrH') CFG.vrH = VRH[(vrHi() + 1) % VRH.length][1];
+  else if (k === 'vrTurn') CFG.vrTurn = ((CFG.vrTurn || 0) + 1) % 3;
+  else if (k === 'vrVig') CFG.vrVig = cyc(CFG.vrVig || 0, [0, .45, 1]);
+  else if (k === 'vrSeat') CFG.vrSeat = CFG.vrSeat ? 0 : 1;
+  else if (k === 'vrIpd') CFG.vrIpd = cyc(CFG.vrIpd || 1, [.9, 1, 1.1]);
+  else if (k === 'vrHand') CFG.vrHand = CFG.vrHand ? 0 : 1;
+  else if (k === 'vrHap') CFG.vrHap = ((CFG.vrHap || 0) + 1) % 3;
+  else if (k === 'vrRs') CFG.vrRs = cyc(CFG.vrRs || 1, [.8, 1, 1.2]);
+  else if (k === 'vrFov') { CFG.vrFov = cyc(CFG.vrFov || 0, [0, .5, 1]); if (typeof applyFoveation === 'function') applyFoveation(); }
+  else if (k === 'vrHz') { CFG.vrHz = cyc(CFG.vrHz || 72, [72, 90, 120]); if (typeof applyVrRate === 'function') applyVrRate(); }
+  else if (k === 'ck') { const b = $('ck'); if (b) b.click(); }
+  else if (k === 'vEng' || k === 'vCht' || k === 'vRad') CFG[k] = cyc(CFG[k], [1, .75, .5, .25, 0]);
+  else if (k === 'cin') CFG.cin = CFG.cin ? 0 : 1;
+  else if (k === 'fs') CFG.fs = CFG.fs === 0 ? 1 : 0;
+  else if (k === 'radio') CFG.radio = CFG.radio ? 0 : 1;
+  else if (k === 'pl') { CFG.pl = CFG.pl ? 0 : 1; if (!CFG.pl && plA) { plA.pause(); plOn = 0; } }
+  else if (['fxBlur', 'fxCA', 'fxGrain', 'fxBloom', 'fxFlare', 'fxVisor', 'fxGlass'].includes(k)) CFG[k] = cyc(CFG[k], [.5, 1, 0]);
+  else if (k === 'fxScan' || k === 'fxVig') CFG[k] = CFG[k] ? 0 : 1;
+  else if (k === 'inv') CFG.inv = CFG.inv ? 0 : 1;
+  else if (k === 'sens') CFG.sens = cyc(CFG.sens, [1, 1.3, 1.7, .5, .75]);
+  else if (k === 'host') { CFG.host = (CFG.host + 1) % 3; hostLv = CFG.host; if (SYS) npcSpawn(); }
+  else if (k === 'padL') CFG.padL = CFG.padL === 0 ? 1 : 0;
+  else if (k === 'gpFire') { const list = [7, 5, 0, 2]; CFG.gp.fire = list[(list.indexOf(CFG.gp.fire) + 1) % list.length]; }
+  else if (k === 'gpBoost') { const list = [5, 7, 6, 4]; CFG.gp.boost = list[(list.indexOf(CFG.gp.boost) + 1) % list.length]; }
+  setUi();
+};
+
+function pausePanel() {
+  if (jpOpen) return closePanel();
+  if (xr) return vrMenu();
+  panel('Paused', `${SYS.locs[SYS.loc].name} · ${SYS.name}`, [
+    { name: 'Resume', desc: '', run: () => {} },
+    { name: 'Ikosagon radio', kind: CFG.radio ? 'on' : 'off', desc: 'Your tracks, or the ship\'s own score', run: () => { CFG.radio = CFG.radio ? 0 : 1; setUi(); pausePanel(); } },
+    { name: 'Other pilots', kind: ['peaceful', 'wary', 'hostile'][CFG.host], desc: 'Whether raiders come looking', run: () => { CFG.host = (CFG.host + 1) % 3; hostLv = CFG.host; setUi(); npcSpawn(); pausePanel(); } },
+    { name: 'HUD colour', kind: HCOL[CFG.hud][0], desc: '', run: () => { CFG.hud = (CFG.hud + 1) % HCOL.length; setUi(); pausePanel(); } },
+    { name: 'Journal', desc: 'Contracts, standing, first charts', run: journalPanel },
+    { name: 'Star map', desc: 'Where you have been, and the lanes between', run: starMap },
+    { name: 'Settings', desc: 'Display, audio, flight, controls', run: () => { closePanel(); setP.style.display = 'block'; setUi(); } },
+  ], 'Esc closes · ' + BUILD);
+}
+function vrMenu() {
+  const turnN = ['smooth', 'snap 30°', 'snap 45°'][CFG.vrTurn || 0];
+  const vigN = !CFG.vrVig ? 'off' : CFG.vrVig < .7 ? 'subtle' : 'full';
+  const hapN = ['off', 'subtle', 'strong'][CFG.vrHap || 0] || 'off';
+  panel('Paused', `${SYS.locs[SYS.loc].name} · ${SYS.name}`, [
+    { name: 'Resume', desc: '', run: () => {} },
+    { name: 'Turning', kind: turnN, desc: 'Snap is the Quest comfort default. Pitch stays smooth either way.', run: () => { CFG.vrTurn = ((CFG.vrTurn || 0) + 1) % 3; setUi(); vrMenu(); } },
+    { name: 'Comfort vignette', kind: vigN, desc: 'Darkens the edge of each eye while you boost', run: () => { CFG.vrVig = cyc(CFG.vrVig || 0, [0, .45, 1]); setUi(); vrMenu(); } },
+    { name: 'Refresh', kind: (CFG.vrHz || 72) + ' Hz', desc: '72 is 13.9 ms. 90 is 11.1. 120 is 8.3 and Quest 3 only. The nearest rate the headset offers is used.', run: () => { CFG.vrHz = cyc(CFG.vrHz || 72, [72, 90, 120]); applyVrRate(); setUi(); vrMenu(); } },
+    { name: 'Posture', kind: CFG.vrSeat ? 'standing' : 'seated', desc: 'Seated drops you into the chair. Standing uses the floor.', run: () => { CFG.vrSeat = CFG.vrSeat ? 0 : 1; setUi(); vrMenu(); } },
+    { name: 'Seat height', kind: VRH[vrHi()][0], desc: 'Where the cabin floor meets the room', run: () => { CFG.vrH = VRH[(vrHi() + 1) % VRH.length][1]; setUi(); vrMenu(); } },
+    { name: 'View scale', kind: ({ .9: '90%', 1: '100%', 1.1: '110%' }[CFG.vrIpd || 1] || '100%'), desc: 'A small scale around the headset IPD. It does not replace it.', run: () => { CFG.vrIpd = cyc(CFG.vrIpd || 1, [.9, 1, 1.1]); setUi(); vrMenu(); } },
+    { name: 'Throttle hand', kind: CFG.vrHand ? 'left' : 'right', desc: 'The cab has the stick on the left. Swap if you fly the other way.', run: () => { CFG.vrHand = CFG.vrHand ? 0 : 1; setUi(); vrMenu(); } },
+    { name: 'Haptics', kind: hapN, desc: 'Touch Plus buzz on a panel, a snap turn, and a hit', run: () => { CFG.vrHap = ((CFG.vrHap || 0) + 1) % 3; setUi(); vrMenu(); } },
+    { name: 'Render scale', kind: String(CFG.vrRs || 1), desc: 'Eye buffer scale. Applies the next time you enter VR.', run: () => { CFG.vrRs = cyc(CFG.vrRs || 1, [.8, 1, 1.2]); setUi(); vrMenu(); } },
+    { name: 'Foveation', kind: ({ 0: 'off', .5: 'medium', 1: 'high' }[CFG.vrFov || 0] || 'off'), desc: 'Lowers the edge of each eye. Medium is the Quest default.', run: () => { CFG.vrFov = cyc(CFG.vrFov || 0, [0, .5, 1]); applyFoveation(); setUi(); vrMenu(); } },
+    { name: 'Cockpit', kind: cockpit ? 'on' : 'off', desc: 'The cabin, or open space', run: () => { const b = $('ck'); if (b) b.click(); vrMenu(); } },
+    { name: 'HUD colour', kind: HCOL[CFG.hud][0], desc: '', run: () => { CFG.hud = (CFG.hud + 1) % HCOL.length; setUi(); vrMenu(); } },
+    { name: 'Journal', desc: 'Contracts, standing, first charts', run: journalPanel },
+    { name: 'Controls', desc: 'Touch Plus, Quest 3 and newer', run: () => panel('Controls', 'Touch Plus', [
+      { name: CFG.vrHand ? 'Right stick' : 'Left stick', desc: (CFG.vrTurn ? 'Snap turn and pitch. ' : 'Yaw and pitch. ') + 'This hand keeps flying while a menu is open.' },
+      { name: CFG.vrHand ? 'Left stick' : 'Right stick', desc: 'Throttle, and strafe on the sideways axis. In a menu, this stick moves the row.' },
+      { name: 'Either trigger', desc: 'Fire. A normal squeeze is enough. The hard second stage is not required.' },
+      { name: 'Either grip', desc: 'Boost. Hold it and it builds. There is nothing to grab in the cab.' },
+      { name: 'A', desc: 'Hail, dock, or accept the row.' },
+      { name: 'B', desc: 'Next target in flight. Back, when a menu is open.' },
+      { name: 'X', desc: 'Journal' },
+      { name: 'Y', desc: 'Next weapon' },
+      { name: 'Menu, left controller', desc: 'This pause menu. The Meta button on the right belongs to the system.' },
+      { name: 'Throttle stick click', desc: 'Throttle to zero' },
+      { name: 'Hands', desc: 'Empty hands are ignored. The ship stays on Touch Plus.' },
+    ], 'B to close') },
+    { name: 'Exit to main menu', desc: 'Leave the headset view', run: () => { try { xr.end(); } catch (e) {} menu(); } },
+  ], 'Throttle stick moves the row · trigger or A selects · B goes back · ' + BUILD);
+}
 // ============================================================================
 // Build everything (with a loading bar), then fly
 // ============================================================================
@@ -3764,7 +4212,12 @@ noiseTex();
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.20';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
+const BUILD = 'v1.21';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
+let draws = 0, verts = 0, frameDraws = 0, frameVerts = 0;
+const _dei = gl.drawElementsInstanced.bind(gl), _de = gl.drawElements.bind(gl), _da = gl.drawArrays.bind(gl);
+gl.drawElementsInstanced = (m, c, ty, off, n) => { draws++; verts += c * n; return _dei(m, c, ty, off, n); };
+gl.drawElements = (m, c, ty, off) => { draws++; verts += c; return _de(m, c, ty, off); };
+gl.drawArrays = (m, a, c) => { draws++; verts += c; return _da(m, a, c); };
 const ST = { v: 1, hull: 100, cargo: [0, 0, 0, 0, 0, 0], credits: 0, sec: [0, 0, 0], loc: 0, visited: {}, dead: [], missions: {}, found: {}, courier: null };
 let idb = null, saveT = 0;
 function blankState(seed) {
@@ -3778,6 +4231,7 @@ function migrateState() {
   while (ST.cargo.length < 6) ST.cargo.push(0);
   if (!Array.isArray(ST.deadNames)) ST.deadNames = [];
   if (!Array.isArray(ST.sec) || ST.sec.length < 3) ST.sec = [0, 0, 0];
+  if (!ST.chart || typeof ST.chart !== 'object') ST.chart = {};
   ST.build = BUILD; ST.v = 1;
 }
 async function loadState() {
@@ -3980,7 +4434,7 @@ function discover() {
 // ---- one panel serves the gate, the trader and the log: a titled list; entries with an action can be picked ----
 let items = [], jpOpen = 0, jumpTo = null, jumpT = 0, jumped = 0, gateIn = 0;
 function panel(title, sub, list, foot) {
-  if (xr && !jpOpen) for (const src of xr.inputSources) { try { const ha = src.gamepad && src.gamepad.hapticActuators && src.gamepad.hapticActuators[0]; if (ha && ha.pulse) ha.pulse(.5, 90); } catch {} }   // in a headset a panel is easy to miss: a buzz says one has opened
+  if (xr && !jpOpen) xrBuzz(.45, 50);   // a short buzz on the Touch Plus, so a panel is not missed
   if (!list.some((d) => d.run)) foot = xr ? 'B to close' : 'Click, or press J, to close'; else if (xr && foot && /number|press/i.test(foot)) foot = 'Right stick to choose · A to select · B to close';
   items = list; psel = Math.max(0, list.findIndex((d) => d.run)); $('jh').textContent = title; $('jc').textContent = sub; $('jk').textContent = foot;
   $('jl').innerHTML = list.map((d, i) => `<li data-i=${i} class="${d.far ? 'far ' : ''}${d.run ? '' : 'ro'}"><b>${d.name}</b><i>${d.kind || ''}</i><span>${d.desc || ''}</span></li>`).join('');
@@ -4108,7 +4562,7 @@ labels();
 // Sound. Nothing is recorded: a pad, a walking melody, bass and drums are synthesized, and each region has
 // its own key, scale and tempo. Speed adds energy; gunfire brings in the percussion.
 // ============================================================================
-let AC = null, AG = null, DL = null, NB = null, windG = null, windF = null, gatG = null, padF = null, padO = [], mT = 0, mStep = 0, mReg = -1, mWalk = 5, combat = 0, energy = 0;
+let AC = null, AG = null, DL = null, NB = null, windG = null, windF = null, boostG = null, boostF = null, gatG = null, padF = null, padO = [], mT = 0, mStep = 0, mReg = -1, mWalk = 5, combat = 0, energy = 0;
 const mf = (m) => 440 * 2 ** ((m - 69) / 12);
 // the recorded score: five passages cut from the track, laid end to end in one file (start, length, level).
 // They are never looped as a soundtrack; one drifts in at a moment that suits it, then leaves.
@@ -4137,6 +4591,8 @@ function audio() {
   windF = AC.createBiquadFilter(); windF.type = 'lowpass'; windF.frequency.value = 90; windF.Q.value = .5;
   subO = AC.createOscillator(); subG = AC.createGain(); subO.frequency.value = 34; subG.gain.value = 0; subO.connect(subG).connect(AG); subO.start();   // the engine's body
   windG = AC.createGain(); windG.gain.value = 0; noise().connect(windF).connect(windG).connect(AG);
+  boostF = AC.createBiquadFilter(); boostF.type = 'bandpass'; boostF.frequency.value = 420; boostF.Q.value = .6;
+  boostG = AC.createGain(); boostG.gain.value = 0; noise().connect(boostF).connect(boostG).connect(AG);
   // the gun: two low oscillators and a little dull noise through a low-pass, struck by a falling ramp at the firing rate,
   // so each round is a short thump with a body and almost nothing above 500 Hz
   const g1 = AC.createOscillator(), g2 = AC.createOscillator(), gf = AC.createBiquadFilter(), am = AC.createGain(), lf = AC.createOscillator(), lg2 = AC.createGain(), gn = AC.createGain(), nf = AC.createBiquadFilter();
@@ -4285,7 +4741,7 @@ function bhit(i, cx, cy, cz, r) {
 }
 function simulate(dt, fly) {
   // the gun spins up, then fires 24 rounds a second from alternating barrels
-  const firing = fly && (K.Space || mFire || tFire || xFire);
+  const firing = fly && (K.Space || mFire || tFire || xFire || gpFire);
   gunSpin += ((firing ? 1 : 0) - gunSpin) * (1 - Math.exp(-dt * (firing ? 8 : 3)));
   { const tx = xr || locked ? 0 : Math.max(-1, Math.min(1, mxn)) * .14, ty = xr || locked ? 0 : -Math.max(-1, Math.min(1, myn)) * .14, k = Math.min(1, dt * 10); gmx += (tx - gmx) * k; gmy += (ty - gmy) * k; }   // guns follow the cursor a little; straight ahead in mouse-look
   if (firing) { lastFire = tm; fireAcc += dt * 11 * gunSpin * [1, .32, .2, 3.4, .12][wpn]; while (fireAcc >= 1) { fireAcc -= 1; if (ST.wen < WEN[wpn]) { fireAcc = 0; if (tm > dryTip) { dryTip = tm + 6; tip('Weapons energy spent · it trickles back · sparks (red) charge it fast', 3500); } break; } ST.wen -= WEN[wpn]; shoot(); } }
@@ -4356,6 +4812,19 @@ function simulate(dt, fly) {
     put(DPa, pX[o] - px, pX[o + 1] - py, pX[o + 2] - pz, pS[i], 0, 0, 0, i * .137, pC[o] * a, pC[o + 1] * a, pC[o + 2] * a, pK[i]);
   }
   for (let i = 0; i < NBU; i++) if (bL[i] > 0) { const o = i * 3; const w = bW[i], q = WCOL[w], tl = w === 2 ? .05 : w === 1 ? .018 : w === 3 ? .07 : .03; put(DT, bX[o] - px, bX[o + 1] - py, bX[o + 2] - pz, w === 2 ? .5 : w === 1 ? .15 : w === 3 ? .13 : .22, -bV[o] * tl, -bV[o + 1] * tl, -bV[o + 2] * tl, 0, q[0], q[1], q[2], 0); }
+  if (fly && (Math.abs(thr) > .2 || bst > .2)) {
+    const len = 4 + Math.abs(thr) * 6 + bst * 16;
+    put(DT, -sFx * 3.2, -sFy * 3.2 - .4, -sFz * 3.2, .22 + bst * .2, -sFx * len, -sFy * len, -sFz * len, 0, .35 + bst, .75, 1.3, 0);
+    thrustT += dt;
+    if (thrustT > .045) { thrustT = 0; spark(px - sFx * 2.4, py - sFy * 2.4, pz - sFz * 2.4, vx - sFx * (40 + bst * 80), vy - sFy * (40 + bst * 80), vz - sFz * (40 + bst * 80), .18, .12 + bst * .15, 0, .4, .8, 1.4, 0); }
+  }
+  if (fly && bst > .32 && !jumpTo) {
+    const n = Math.min(12, 4 + (bst * 8 | 0));
+    for (let i = 0; i < n; i++) {
+      const a = i * 2.399963 + tm * .12, rad = 7 + (i % 4) * 3.4, back = 9 + (i * 5) % 16, cs = Math.cos(a), sn = Math.sin(a), ln = 12 + bst * 26;
+      put(DT, sRx * cs * rad + sUx * sn * rad - sFx * back, sRy * cs * rad + sUy * sn * rad - sFy * back, sRz * cs * rad + sUz * sn * rad - sFz * back, .12 + bst * .12, -sFx * ln, -sFy * ln, -sFz * ln, 0, .75, .9, 1.15, 0);
+    }
+  }
   // a rich rock gives off a faint breathing glow of its mineral's colour: no beam
   for (let n = LG.n, o = 0, D = LG.d, N = LG.N, Hh = N / 2; n > 0; n--, o += F) {
     if (!D[o + 3]) continue;
@@ -4462,7 +4931,10 @@ function eye(fb, x, y, w, h, tw, th) {
   gl.depthFunc(gl.LEQUAL); gl.depthMask(false);
   if (NO.includes('k')) skyw.fill(0);
   gl.useProgram(P_SKY.p); bigStarsSet(); gl.uniform4fv(P_SKY.u.uSky, skyw); gl.uniform4fv(P_SKY.u['uPl[0]'], SYS.pl); gl.uniform4fv(P_SKY.u['uPa[0]'], SYS.pa); gl.uniform3fv(P_SKY.u['uPb[0]'], SYS.pb); gl.uniform3f(P_SKY.u.uSd, SYS.seed[0], SYS.seed[1], SYS.seed[2]); gl.uniform4f(P_SKY.u.uPh, SYS.atm ? 0 : SYS.ph, SYS.phs, 0, 0); gl.uniform3f(P_SKY.u.uPq, SYS.pq[0], SYS.pq[1], SYS.pq[2]);
-  { const k = SYS.atm ? SYS.atm - 1 : 0; gl.uniform4f(P_SKY.u.uOrb, SYS.atm, Math.max(700, Math.min(9000, 2600 + py * .5)), px, pz); gl.uniform3f(P_SKY.u.uOa, SYS.pa[k * 4], SYS.pa[k * 4 + 1], SYS.pa[k * 4 + 2]); gl.uniform3f(P_SKY.u.uOb, SYS.pb[k * 3], SYS.pb[k * 3 + 1], SYS.pb[k * 3 + 2]); } gl.bindVertexArray(VA0); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  { const pk = SYS.pk || [0, 3, 5, 0]; if (P_SKY.u.uPk) gl.uniform4f(P_SKY.u.uPk, pk[0], pk[1], pk[2], 0);
+    const k = SYS.atm ? SYS.atm - 1 : 0, skin = SYS.atm && SYS.locs[SYS.loc] ? SYS.locs[SYS.loc].skin : 0;
+    const look = !SYS.atm ? 0 : skin === 0 || skin === 4 ? 1 : skin === 5 || skin === 7 ? 3 : 2;
+    gl.uniform4f(P_SKY.u.uOrb, look, Math.max(700, Math.min(9000, 2600 + py * .5)), px, pz); gl.uniform3f(P_SKY.u.uOa, SYS.pa[k * 4], SYS.pa[k * 4 + 1], SYS.pa[k * 4 + 2]); gl.uniform3f(P_SKY.u.uOb, SYS.pb[k * 3], SYS.pb[k * 3 + 1], SYS.pb[k * 3 + 2]); } gl.bindVertexArray(VA0); gl.drawArrays(gl.TRIANGLES, 0, 3);
   // glowing things, added on top (alpha is left alone: it marks open sky for the star shafts)
   gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE); gl.disable(gl.CULL_FACE);
   const Lf = P_LIFE, lu = Lf.u;
@@ -4506,7 +4978,7 @@ function eye(fb, x, y, w, h, tw, th) {
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   // tone-map into the destination
   gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.viewport(x, y, w, h);
-  gl.useProgram(P_COMP.p); gl.uniform2f(P_COMP.u.uPx, 1 / tw, 1 / th); { const v = (k) => xr ? 0 : CFG[k], fb = v('fxBlur') * 1.1, fc = v('fxCA'); gl.uniform4f(P_COMP.u.uFx, fc ? fc * 1.9 : 0, v('fxGrain') * .09, mbx * fb, mby * fb); gl.uniform1f(P_COMP.u.uFs, fb * mbs); gl.uniform4f(P_COMP.u.uFy, v('fxScan'), CFG.fxBloom, v('fxVig'), o2Hyp); gl.uniform4f(P_COMP.u.uFz, v('fxGlass'), 0, 0, 0); } gl.uniform3f(P_COMP.u.uJ, Math.max(jk, dbgJ, scE * .22) * .9, Math.max(tun, dbgT), jumpT + tm); { const fx = sFx * eRx + sFy * eRy + sFz * eRz, fy = sFx * eUx + sFy * eUy + sFz * eUz, fz = Math.max(.15, sFx * eFx + sFy * eFy + sFz * eFz), cl = (v) => Math.max(-.5, Math.min(1.5, v));   // where the ship's nose falls in this eye's picture
+  gl.useProgram(P_COMP.p); gl.uniform2f(P_COMP.u.uPx, 1 / tw, 1 / th); { const v = (k) => xr ? 0 : CFG[k], fb = v('fxBlur') * 1.1, fc = v('fxCA'), vig = xr ? (CFG.vrVig || 0) * (.4 + .6 * Math.min(1, bst)) : v('fxVig'); gl.uniform4f(P_COMP.u.uFx, fc ? fc * 1.9 : 0, v('fxGrain') * .09, mbx * fb, mby * fb); gl.uniform1f(P_COMP.u.uFs, fb * mbs); gl.uniform4f(P_COMP.u.uFy, v('fxScan'), CFG.fxBloom, vig, o2Hyp); gl.uniform4f(P_COMP.u.uFz, v('fxGlass'), 0, 0, 0); } gl.uniform3f(P_COMP.u.uJ, Math.max(jk, dbgJ, scE * .22) * .9, Math.max(tun, dbgT), jumpT + tm); { const fx = sFx * eRx + sFy * eRy + sFz * eRz, fy = sFx * eUx + sFy * eUy + sFz * eUz, fz = Math.max(.15, sFx * eFx + sFy * eFy + sFz * eFz), cl = (v) => Math.max(-.5, Math.min(1.5, v));   // where the ship's nose falls in this eye's picture
     gl.uniform2f(P_COMP.u.uJc, cl((fx / fz - tL) / (tR - tL)), cl((fy / fz - tB) / (tT - tB))); } gl.uniform3f(P_COMP.u.uFl, sux, suy, sux > -.2 && sux < 1.2 && suy > -.2 && suy < 1.2 ? sus * CFG.fxFlare * (csU[0] ? .2 : 1) : 0);
   gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, T.hdr.t); gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, bl[0].t); gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, T.ray.t);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -4515,6 +4987,22 @@ function eye(fb, x, y, w, h, tw, th) {
 
 // ---- VR: a headset through WebXR where there is one, otherwise a side-by-side stereo view ----
 let xr = null, xrRef = null, xrFloor = 0;
+function foveationLevel() { const v = CFG.vrFov || 0; return v >= .9 ? 1 : v >= .4 ? .66 : 0; }
+function applyFoveation() { if (xrLayer && 'fixedFoveation' in xrLayer) { try { xrLayer.fixedFoveation = foveationLevel(); } catch (e) {} } }
+function applyVrRate() {
+  if (!xr || !xr.updateTargetFrameRate || !xr.supportedFrameRates) return;
+  const rates = Array.from(xr.supportedFrameRates), want = CFG.vrHz || 72;
+  if (!rates.length) return;
+  let best = rates[0];
+  for (const r of rates) if (Math.abs(r - want) < Math.abs(best - want)) best = r;
+  xr.updateTargetFrameRate(best).catch(() => {});
+}
+function xrBuzz(strength, ms) {
+  if (!xr || !CFG.vrHap) return;
+  const s = Math.min(1, strength * (CFG.vrHap > 1 ? 1 : .45));
+  for (const src of xr.inputSources) { try { const ha = src.gamepad && src.gamepad.hapticActuators && src.gamepad.hapticActuators[0]; if (ha && ha.pulse) ha.pulse(s, ms); } catch (e) {} }
+}
+let xrLayer = null;
 async function vr(auto) {
   if (xr) { xr.end(); return; }
   let ok = 0;
@@ -4522,11 +5010,16 @@ async function vr(auto) {
   if (ok) {
     try {
       await gl.makeXRCompatible();
-      const s = await navigator.xr.requestSession('immersive-vr');
-      s.updateRenderState({ baseLayer: new XRWebGLLayer(s, gl, { antialias: false, depth: false, stencil: false }) });
+      const feats = ['local-floor', 'hand-tracking'];
+      const fv = foveationLevel();
+      if (fv >= .9) feats.push('high-fixed-foveation-level'); else if (fv >= .4) feats.push('medium-fixed-foveation-level');
+      const s = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: feats });
+      const rs = CFG.vrRs == null ? 1 : CFG.vrRs, layer = new XRWebGLLayer(s, gl, { antialias: false, depth: false, stencil: false, framebufferScaleFactor: rs });
+      xrLayer = layer; applyFoveation();
+      s.updateRenderState({ baseLayer: layer });
       xrFloor = 1; xrRef = await s.requestReferenceSpace('local-floor').catch(() => { xrFloor = 0; return s.requestReferenceSpace('local'); });   // floor-level tracking puts the cabin floor on the room's floor, seated or standing
-      s.addEventListener('end', () => { xr = null; xFire = 0; requestAnimationFrame(frame); });
-      xr = s; if (document.pointerLockElement) document.exitPointerLock();
+      s.addEventListener('end', () => { xr = null; xrLayer = null; xFire = 0; requestAnimationFrame(frame); });
+      xr = s; applyVrRate(); if (document.pointerLockElement) document.exitPointerLock();
       go(); s.requestAnimationFrame(frame);
       return;
     } catch (e) { console.warn(e); if (auto) return; tip('The headset did not start: ' + e.message); }
@@ -4544,9 +5037,27 @@ let slowTip = 0, last = 0, acc = 0, nf = 0, fps = 0, hold = 0, cool = 4000, hudN
 const YS = () => Math.cos(pitch) < 0 ? -1 : 1;                // past vertical the ship is on its back, so left and right swap: this keeps the stick's sense
 const curve = (v) => { const a = Math.min(1, Math.abs(v)) - .08; return a > 0 ? Math.sign(v) * a * Math.sqrt(a) : 0; };
 
+let gpFire = 0, gpBoost = 0, thrustT = 0, snapL = 0, snapR = 0;
+function readPad(dt) {
+  gpFire = 0; gpBoost = 0;
+  if (!navigator.getGamepads) return;
+  const map = CFG.gp || { fire: 7, boost: 5 }, racer = CFG.padL !== 0;
+  const fireB = racer ? (map.fire == null ? 7 : map.fire) : 7, boostB = racer ? (map.boost == null ? 5 : map.boost) : 6;
+  const dead = (v) => Math.abs(v) < .18 ? 0 : v;
+  for (const gp of navigator.getGamepads()) {
+    if (!gp || !gp.connected) continue;
+    const ax = dead(gp.axes[0] || 0), ay = dead(gp.axes[1] || 0), ry = dead(gp.axes[3] || 0);
+    if (!CFG.ctl) { yaw += YS() * ax * dt * 1.45; pitch -= IY() * ay * dt * 1.2; dyaw += ax * dt * 1.45; }
+    else { pitch -= IY() * ay * dt * 1.15; rollIn += ax * dt * 1.5; }
+    thr = Math.max(-.25, Math.min(1, thr - ry * dt * .85));
+    if (gp.buttons[fireB] && (gp.buttons[fireB].pressed || gp.buttons[fireB].value > .45)) gpFire = 1;
+    if (gp.buttons[boostB] && (gp.buttons[boostB].pressed || gp.buttons[boostB].value > .45)) gpBoost = 1;
+  }
+}
 function frame(now, xf) {
   if (!xf !== !xr) return;                                   // a callback left over from the other display loop
   (xr || window).requestAnimationFrame(frame);
+  frameDraws = draws; frameVerts = verts; draws = 0; verts = 0;
   const raw = (now - last) / 1000; last = now;
   const rdt = Math.min(.05, Math.max(.001, raw)); btT = Math.max(0, btT - rdt); slow += (((jpOpen || invOpen || PIP.big) && flying() ? .12 : btT > 0 ? .14 + .86 * Math.pow(1 - btT / btMax, 2.4) : 1) - slow) * Math.min(1, rdt * (btT > 0 ? 14 : 4));
   const dt = rdt * slow; tm += dt;                             // with a panel open the world all but stops, and eases back when it closes
@@ -4577,16 +5088,30 @@ function frame(now, xf) {
     boost = K.ShiftLeft || K.ShiftRight ? 1 : 0;
     if (tn) { thr = 1; boost = tn > 1 ? 1 : 0; yaw += YS() * tdx * dt * 2.4; pitch -= IY() * tdy * dt * 2.4; dyaw += tdx * dt * 2.4; }
     if (steer && !locked) { const sx = curve(mxn) * dt * 1.9; yaw += YS() * sx; pitch -= IY() * curve(myn) * dt * 1.6; dyaw += sx; }
-    if (xr) for (const src of xr.inputSources) {             // controllers: left stick steers, right stick is the throttle, trigger fires, grip boosts
-      const gp = src.gamepad; if (!gp) continue;
-      if (xrPad(src, gp)) { xFire = 0; continue; }
-      const ax = gp.axes[2] || gp.axes[0] || 0, ay = gp.axes[3] || gp.axes[1] || 0;
-      if (src.handedness === 'left') { yaw += YS() * ax * dt * 1.4; pitch -= IY() * ay * dt * 1.2; dyaw += ax * dt * 1.4; } else thr = Math.max(-.25, Math.min(1, thr - ay * dt * .8));
-      if (src.handedness !== 'left') xFire = gp.buttons[0] && gp.buttons[0].pressed ? 1 : 0;
-      if (gp.buttons[1] && gp.buttons[1].pressed) boost = 1;
-    }
-    fwd = thr * 140 * eff * (1 + .12 * upLv('eng'));
-  } else yaw += dt * .018;
+    gpFire = 0; gpBoost = 0; if (!xr) readPad(dt);
+    if (xr) { xFire = 0; for (const src of xr.inputSources) {             // Touch Plus. Sticks are axes 2 and 3. Triggers fire, grips boost. The steer hand never gives up the nose.
+      const gp = src.gamepad; if (!gp || (src.handedness !== 'left' && src.handedness !== 'right')) continue;
+      const consumed = xrPad(src, gp);
+      const ax = Math.abs(gp.axes[2] || 0) < .12 ? 0 : gp.axes[2], ay = Math.abs(gp.axes[3] || 0) < .12 ? 0 : gp.axes[3];
+      const trig = gp.buttons[0] && (gp.buttons[0].pressed || gp.buttons[0].value > .65);
+      const grip = gp.buttons[1] && (gp.buttons[1].pressed || gp.buttons[1].value > .4);
+      if (trig && !jpOpen) xFire = 1;
+      if (grip && !jpOpen) boost = 1;
+      if (consumed) continue;
+      const onSteer = src.handedness === (CFG.vrHand ? 'right' : 'left');
+      if (onSteer) {
+        if ((CFG.vrTurn || 0) > 0) {
+          const step = CFG.vrTurn === 2 ? .78 : .52, held = src.handedness === 'left' ? snapL : snapR;
+          if (ax > .65 && !held) { yaw += YS() * step; if (src.handedness === 'left') snapL = 1; else snapR = 1; xrBuzz(.4, 28); }
+          else if (ax < -.65 && !held) { yaw -= YS() * step; if (src.handedness === 'left') snapL = 1; else snapR = 1; xrBuzz(.4, 28); }
+          else if (Math.abs(ax) < .3) { if (src.handedness === 'left') snapL = 0; else snapR = 0; }
+          pitch -= IY() * ay * dt * 1.05;
+        } else { yaw += YS() * ax * dt * 1.35; pitch -= IY() * ay * dt * 1.15; dyaw += ax * dt * 1.35; }
+      } else { thr = Math.max(-.25, Math.min(1, thr - ay * dt * .85)); ms += ax; }
+    } }
+    if (gpBoost) boost = 1;
+    fwd = thr * 230 * eff * (1 + .12 * upLv('eng'));
+  } else { yaw += dt * .018; gpFire = 0; }
   if (ST.hull < 25 || ST.fuel <= 0) boost = 0;
   if (fly && ST.fuel <= 0) fwd *= .18;                              // dry tanks: emergency thrusters only
   bst += (boost - bst) * (1 - Math.exp(-dt * 2.5));
@@ -4620,7 +5145,7 @@ function frame(now, xf) {
   }
   rightT = Math.max(0, rightT - dt); atmWas = fly && SYS.atm ? 1 : 0;
   { const tk = 1 - Math.exp(-dt * (rightT > 0 ? 2.6 : 6.5)); QAs = qslerp(QAs, QA, tk); }                              // the ship turns with a little lag: it has mass (more gently while righting)
-  const sh = trauma * trauma * .02, Qb = roll ? qmul(QAs, qax(0, 0, 1, roll)) : QAs, Qv = sh > 0 ? qmul(Qb, qmul(qax(0, 1, 0, Math.sin(tm * 71) * sh), qax(1, 0, 0, Math.sin(tm * 93 + 1) * sh))) : Qb;
+  const sh = trauma * trauma * .02 + (xr ? 0 : bst * bst * .0035), Qb = roll ? qmul(QAs, qax(0, 0, 1, roll)) : QAs, Qv = sh > 0 ? qmul(Qb, qmul(qax(0, 1, 0, Math.sin(tm * 71) * sh), qax(1, 0, 0, Math.sin(tm * 93 + 1) * sh))) : Qb;
   { const R = qv(Qv, 1, 0, 0), U = qv(Qv, 0, 1, 0), F = qv(Qv, 0, 0, -1); sRx = R[0]; sRy = R[1]; sRz = R[2]; sUx = U[0]; sUy = U[1]; sUz = U[2]; sFx = F[0]; sFy = F[1]; sFz = F[2];
     spit = Math.asin(Math.max(-1, Math.min(1, F[1]))); syaw = Math.atan2(F[0], -F[2]); }
   fwd += bst * 400 * eff * (1 + .55 * bRamp + .85 * bOd * (2 - bOd) * (drift ? 0 : 1));                                            // local rush tops out near 620; overdrive (held 7 s+) climbs toward ~960 over the next 18 s; the long-range drive carries you across the system                                          // Shift is thrust on its own: no need to hold forward
@@ -4666,7 +5191,7 @@ function frame(now, xf) {
   for (let i = 0; i < LAYERS.length; i++) upd(LAYERS[i]);
 
   // views
-  const fov = Math.tan((68 + 16 * bst + 34 * jk) * Math.PI / 360);
+  const fov = Math.tan((64 + 6 * Math.abs(thr) + 30 * bst * bst + 6 * bRamp + 34 * jk) * Math.PI / 360);
   if (xr) {
     const pose = xf.getViewerPose(xrRef), bl = xr.renderState.baseLayer;
     if (pose) for (const v of pose.views) {
@@ -4676,11 +5201,12 @@ function frame(now, xf) {
       eUx = sRx * m[4] + sUx * m[5] - sFx * m[6]; eUy = sRy * m[4] + sUy * m[5] - sFy * m[6]; eUz = sRz * m[4] + sUz * m[5] - sFz * m[6];
       eFx = -(sRx * m[8] + sUx * m[9] - sFx * m[10]); eFy = -(sRy * m[8] + sUy * m[9] - sFy * m[10]); eFz = -(sRz * m[8] + sUz * m[9] - sFz * m[10]);
       tL = (p[8] - 1) / p[0]; tR = (p[8] + 1) / p[0]; tB = (p[9] - 1) / p[5]; tT = (p[9] + 1) / p[5];
-      const ox = (ep.x - hp.x) * 6, oy = (ep.y - hp.y) * 6, oz = (ep.z - hp.z) * 6;   // eyes set wide apart, so the asteroids nearby have depth
+      const ipd = CFG.vrIpd == null ? 1 : CFG.vrIpd, ox = (ep.x - hp.x) * 6 * ipd, oy = (ep.y - hp.y) * 6 * ipd, oz = (ep.z - hp.z) * 6 * ipd;   // eyes set wide apart, so the asteroids nearby have depth. View scale stays near 1 so it never fights the headset's IPD.
       eox = sRx * ox + sUx * oy - sFx * oz; eoy = sRy * ox + sUy * oy - sFy * oz; eoz = sRz * ox + sUz * oy - sFz * oz;
       { const lift = (CFG.vrH || 0) * CKM, cx = Math.max(-3.1, Math.min(3.1, ep.x * CKM)), cz = Math.max(-1.7, Math.min(4.9, ep.z * CKM)),   // the eye inside the cabin: the head's real place in the room, so leaning and standing up work
           cy = Math.max(-3.3, Math.min(1.35, (xrFloor ? CK_FLOOR + ep.y * CKM : ep.y * CKM - .55) + lift));   // with floor tracking the cabin floor is the room floor; without it, assume a seated head
-        cex = sRx * cx + sUx * cy - sFx * cz; cey = sRy * cx + sUy * cy - sFy * cz; cez = sRz * cx + sUz * cy - sFz * cz; }
+        const posture = (CFG.vrSeat ? 0 : -.28) * CKM;
+        cex = sRx * cx + sUx * (cy + posture) - sFx * cz; cey = sRy * cx + sUy * (cy + posture) - sFy * cz; cez = sRz * cx + sUz * (cy + posture) - sFz * cz; }
       eye(bl.framebuffer, vp.x, vp.y, vp.width, vp.height, Math.round(vp.width * .8), Math.round(vp.height * .8));
     }
   } else {
@@ -4713,21 +5239,22 @@ function frame(now, xf) {
     const t = AC.currentTime;
     const at = fly ? Math.abs(thr) : 0;                      // thrust is a low rumble that swells with throttle and boost; no whine
     windG.gain.setTargetAtTime(Math.min(.9, .1 * at + .75 * bst) * CFG.vEng, t, .25); windF.frequency.setTargetAtTime(70 + 50 * at + 170 * bst, t, .3);
-    subG.gain.setTargetAtTime((.035 * at + .2 * bst) * CFG.vEng, t, .3); subO.frequency.setTargetAtTime(34 + 16 * bst, t, .4);
+    if (boostG) { boostG.gain.setTargetAtTime(Math.min(.2, bst * bst * .26) * CFG.vEng, t, .16); boostF.frequency.setTargetAtTime(260 + bst * 980, t, .2); }
+    subG.gain.setTargetAtTime((.035 * at + .22 * bst) * CFG.vEng, t, .3); subO.frequency.setTargetAtTime(34 + 18 * bst, t, .4);
     padF.frequency.setTargetAtTime(240 + energy * 1100, t, .5);
   }
   if (++hudN >= 12) {
     hudN = 0;
     $('sec').innerHTML = `<span>${SYS.name} · ${SYS.star}</span><b>${SYS.locs[SYS.loc].name}</b>${Math.round(speed)} u/s${ST.hull < 99.5 ? ' · hull ' + (ST.hull | 0) + '%' : ''}`;
     $('tf').style.transform = `scaleY(${Math.abs(thr)})`; $('tf').className = thr < 0 ? 'rev' : bst > .3 ? 'bst' : '';
-    if (stats) $('i').textContent = `${fps.toFixed(0)} fps  ${T.w}×${T.h}  scale ${S.toFixed(2)}  detail ${['High', 'Medium', 'Low'][LV]}\nasteroids ${TV[0].n + TV[1].n + TV[2].n} titans + ${HV[0].n + HV[1].n + HV[2].n} + ${BF[0].n + BF[1].n + BF[2].n + BN[0].n + BN[1].n + BN[2].n} + ${SV[0].n + SV[1].n + SV[2].n}  crystals ${LC.n}  tendrils ${LTd.n + LTb.n}  geodes ${LG.n}\njellyfish ${LJ.n + LQ.n}  rays ${LY.n}  minnows ${LM.n}  leviathans ${LWh.n}  serpents ${LSp.n}\nstations ${RV[0].n + RV[1].n} + ${MV[0].n + MV[1].n} mega  rubble ${DC[0].n + DC[1].n}  broken ${broken}\nposition ${px.toFixed(0)} ${py.toFixed(0)} ${pz.toFixed(0)}`;
+    if (stats) $('i').textContent = `${fps.toFixed(0)} fps  ${frameDraws} draws  ${(frameVerts / 1000).toFixed(0)}k verts  ${T.w}×${T.h}  scale ${S.toFixed(2)}  detail ${['High', 'Medium', 'Low'][LV]}\nasteroids ${TV[0].n + TV[1].n + TV[2].n} titans + ${HV[0].n + HV[1].n + HV[2].n} + ${BF[0].n + BF[1].n + BF[2].n + BN[0].n + BN[1].n + BN[2].n} + ${SV[0].n + SV[1].n + SV[2].n}  crystals ${LC.n}  tendrils ${LTd.n + LTb.n}  geodes ${LG.n}\njellyfish ${LJ.n + LQ.n}  rays ${LY.n}  minnows ${LM.n}  leviathans ${LWh.n}  serpents ${LSp.n}\nstations ${RV[0].n + RV[1].n} + ${MV[0].n + MV[1].n} mega  rubble ${DC[0].n + DC[1].n}  broken ${broken}\nposition ${px.toFixed(0)} ${py.toFixed(0)} ${pz.toFixed(0)}`;
   }
 }
 
 arrive(ST.sec, ST.loc, 1);
 resize();
 window.ES = { warpLook: (a, b) => { dbgJ = a; dbgT = b; }, zero: (i) => { const L = LAYERS[i]; L.n = 0; for (const s of L.slaves) s.n = 0; return LAYERS.length; }, dbg: (z) => { if (z) for (let i = 0; i < 3; i++) SYS.pl[i * 4 + 3] = 0; return Array.from(SYS.pl).map((v) => +v.toFixed(2)).concat(Array.from(SYS.pa).map((v) => +v.toFixed(2))); },
-  build: () => BUILD, cabin: () => ({ nv: mCock.nv, cb: mCock.cb, qt: mCock.qt, n: mCock.n, ng: mCock.ng }), newGame: newUniverse, goto: (sec, loc) => arrive(sec, loc || 0, 1), market: marketPanel, ph: (t) => { SYS.ph = t; SYS.pq = [sFx, sFy, sFz]; }, bh: () => { SYS.sky[0] = 1; pitch = Math.asin(-.22); yaw = Math.atan2(.58, -.78); snap = 1; }, seeNpc: (i) => { const a = NPCS.filter((q) => !q.big && q.var === i)[0]; if (!a) return -1; px = a.x + 22; py = a.y + 7; pz = a.z + 22; const dx = a.x - px, dy = a.y - py, dz = a.z - pz, l = Math.hypot(dx, dy, dz); pitch = Math.asin(dy / l); yaw = Math.atan2(dx, -dz); snap = 1; vx = vy = vz = 0; thr = 0; return a.var; }, linger: () => { for (let i = 0; i < 90; i++) lingerTick(.05); return [lingT, lingId, jpOpen]; }, tp: (x, y, z) => { px = x; py = y; pz = z; vx = vy = vz = 0; thr = 0; }, navCur, interact, map: starMap, drift: driftToggle, near: (k, f) => { const P = sysP[k]; sysS = [P[0] * f, P[1] * f, P[2] * f]; }, dsys: () => [sysS.map((v) => v | 0), driftV | 0, +SYS.pl[3].toFixed(3), SYS.atm, +veil.toFixed(2)], aim: (k, s) => { const d = SYS.pl, q = s || 1; pitch = Math.asin(q * d[k * 4 + 1]); yaw = Math.atan2(q * d[k * 4], -q * d[k * 4 + 2]); snap = 1; }, good: goodPanel, sc: (k, t) => { scP = k; scT = t; }, scOut: (t) => { scOut = t; vy = 120; thr = 1; }, host: (v) => { hostLv = v; npcSpawn(); }, rp: () => ST.rp, head: (y, p) => { hlF = y == null ? null : [y, p || 0]; }, nav: () => NAV.map((n) => n.id), npcs: () => NPCS.length, journal: journalPanel, board: boardPanel, hail: () => hailPanel(NPCS[0]), cycle: navCycle, atm: () => arrive(SYS.sec, SYS.locs.findIndex((l) => l.atm), 1), vrPanel: (v) => { hudForce = v; }, jt: () => [jumpT, !!jumpTo, SYS.loc, SYS.name, slow], system: describe, on: (f) => hooks.push(f), kind: (t) => { for (let x = 1; x < 400; x++) if ((sysIdAt(x, 0, 0) & 7) === t) return arrive([x, 0, 0], 0, 1); }, place: (t) => { const l = SYS.locs.find((q) => q.t === t); if (l) arrive(SYS.sec, l.i, 1); return !!l; }, startJump, gatePanel, logPanel, tradePanel, closePanel, hull: () => ST.hull, beacon: () => { px = bcn[0] + 200; py = bcn[1]; pz = bcn[2]; }, trader: () => trader, go, vr, cock: setCock, thr: (v) => { thr = v; }, key: (c, v) => { K[c] = v; }, look: (y, p) => { yaw = y; pitch = p; snap = 1; }, at: (x, y, z) => { px = x; py = y; pz = z; snap = 1; }, stereo: (v) => { stereo = v; resize(); },
+  build: () => BUILD, perf: () => ({ fps: +fps.toFixed(1), draws: frameDraws, verts: frameVerts, w: W, h: H, scale: +S.toFixed(2), lv: LV }), gen: () => ({ name: SYS.name, star: SYS.star, temp: SYS.temp | 0, fac: SYS.fac, danger: SYS.danger, belt: SYS.belt, dead: !!SYS.dead, planets: (SYS.planets || []).filter((p) => p.type !== 'none').map((p) => ({ name: p.name, type: p.type, rare: p.rare, au: p.orbit, moons: p.moons, anomaly: p.anomaly || '' })) }), cabin: () => ({ nv: mCock.nv, cb: mCock.cb, qt: mCock.qt, n: mCock.n, ng: mCock.ng }), newGame: newUniverse, goto: (sec, loc) => arrive(sec, loc || 0, 1), market: marketPanel, ph: (t) => { SYS.ph = t; SYS.pq = [sFx, sFy, sFz]; }, bh: () => { SYS.sky[0] = 1; pitch = Math.asin(-.22); yaw = Math.atan2(.58, -.78); snap = 1; }, seeNpc: (i) => { const a = NPCS.filter((q) => !q.big && q.var === i)[0]; if (!a) return -1; px = a.x + 22; py = a.y + 7; pz = a.z + 22; const dx = a.x - px, dy = a.y - py, dz = a.z - pz, l = Math.hypot(dx, dy, dz); pitch = Math.asin(dy / l); yaw = Math.atan2(dx, -dz); snap = 1; vx = vy = vz = 0; thr = 0; return a.var; }, linger: () => { for (let i = 0; i < 90; i++) lingerTick(.05); return [lingT, lingId, jpOpen]; }, tp: (x, y, z) => { px = x; py = y; pz = z; vx = vy = vz = 0; thr = 0; }, navCur, interact, map: starMap, drift: driftToggle, near: (k, f) => { const P = sysP[k]; sysS = [P[0] * f, P[1] * f, P[2] * f]; }, dsys: () => [sysS.map((v) => v | 0), driftV | 0, +SYS.pl[3].toFixed(3), SYS.atm, +veil.toFixed(2)], aim: (k, s) => { const d = SYS.pl, q = s || 1; pitch = Math.asin(q * d[k * 4 + 1]); yaw = Math.atan2(q * d[k * 4], -q * d[k * 4 + 2]); snap = 1; }, good: goodPanel, sc: (k, t) => { scP = k; scT = t; }, scOut: (t) => { scOut = t; vy = 120; thr = 1; }, host: (v) => { hostLv = v; npcSpawn(); }, rp: () => ST.rp, head: (y, p) => { hlF = y == null ? null : [y, p || 0]; }, nav: () => NAV.map((n) => n.id), npcs: () => NPCS.length, journal: journalPanel, board: boardPanel, hail: () => hailPanel(NPCS[0]), cycle: navCycle, atm: () => arrive(SYS.sec, SYS.locs.findIndex((l) => l.atm), 1), vrPanel: (v) => { hudForce = v; }, jt: () => [jumpT, !!jumpTo, SYS.loc, SYS.name, slow], system: describe, on: (f) => hooks.push(f), kind: (t) => { for (let x = 1; x < 400; x++) if ((sysIdAt(x, 0, 0) & 7) === t) return arrive([x, 0, 0], 0, 1); }, place: (t) => { const l = SYS.locs.find((q) => q.t === t); if (l) arrive(SYS.sec, l.i, 1); return !!l; }, startJump, gatePanel, logPanel, tradePanel, closePanel, hull: () => ST.hull, beacon: () => { px = bcn[0] + 200; py = bcn[1]; pz = bcn[2]; }, trader: () => trader, go, vr, cock: setCock, thr: (v) => { thr = v; }, key: (c, v) => { K[c] = v; }, look: (y, p) => { yaw = y; pitch = p; snap = 1; }, at: (x, y, z) => { px = x; py = y; pz = z; snap = 1; }, stereo: (v) => { stereo = v; resize(); },
   jelly: (d = 60, s = 0) => seek(LJ, swarmAt, d, s), rock: (d) => seek(LH, hugeAt, d), big: (d) => seek(LB, bigAt, d), titan: (d) => seek(LTi, titanAt, d), geode: (d = 40) => seek(LG, geodeAt, d),
   fleet: (d = 60) => seek(LF, cellHas(20, SYS.a.fl * .6), d), frig: (d = 1) => seek(LFr, cellHas(21, SYS.a.fr * .7), d), siph: (d = 40) => seek(LDs, cellHas(24, SYS.a.dr * .13 + .008), d), spark: (d = 40) => seek(LDe, cellHas(25, SYS.a.dr * .13 + .008), d), inv: (m) => invShow(m), closeStar: (sc, giant, rad) => { bigStarsSet(); csU = [rad || .2, sc, 1.3, giant ? 1 : 0]; csC = giant ? [1, .34, .1] : CSC[sc]; yaw = Math.atan2(SUN[0], -SUN[2]); pitch = Math.asin(SUN[1]); snap = 1; }, bigLook: (i, ty) => { bigStarsSet(); if (ty != null) bsS[i * 4 + 3] = ty; const x = bsS[i * 4], y = bsS[i * 4 + 1], z = bsS[i * 4 + 2]; yaw = Math.atan2(x, -z); pitch = Math.asin(y); snap = 1; return [bsS[i * 4 + 3], bsC[i * 4 + 3]]; }, musMeter: () => { if (!SC.an) { SC.an = AC.createAnalyser(); SC.an.fftSize = 2048; SC.lim.connect(SC.an); } if (!SC.mi) { const b = new Float32Array(2048); SC.mm = { pk: 0, ss: 0, n: 0 }; SC.mi = setInterval(() => { SC.an.getFloatTimeDomainData(b); for (const x of b) { SC.mm.pk = Math.max(SC.mm.pk, Math.abs(x)); SC.mm.ss += x * x; SC.mm.n++; } }, 20); } const r = { pk: +SC.mm.pk.toFixed(3), rms: +Math.sqrt(SC.mm.ss / Math.max(1, SC.mm.n)).toFixed(3), sec: SC.sec }; SC.mm = { pk: 0, ss: 0, n: 0 }; return r; }, musSec: (s) => { SC.sec = s; SC.secBar = 0; SC.secLen = SECS[s].len; }, jumpTest: (l) => startJump({ sec: SYS.sec, loc: l == null ? (SYS.loc + 1) % SYS.locs.length : l }), mus: () => { if (!SC.an && SC.lim) { SC.an = AC.createAnalyser(); SC.an.fftSize = 2048; SC.lim.connect(SC.an); } const T = SC.trk, b = new Float32Array(2048); let pk = 0, rms = 0; if (SC.an) { SC.an.getFloatTimeDomainData(b); for (const x of b) { pk = Math.max(pk, Math.abs(x)); rms += x * x; } rms = Math.sqrt(rms / 2048); } return { sec: SC.sec, bar: SC.bar, secBar: SC.secBar, e: +energy.toFixed(2), bpm: T && T.bpm, mode: T && T.mode, style: T && T.style, root: T && T.root, pk: +pk.toFixed(3), rms: +rms.toFixed(3), ac: AC && AC.state }; }, vel: (s) => { vx = sFx * s; vy = sFy * s; vz = sFz * s; bst = 1; }, bloomNow: () => { bloomT = 0; }, life: (cmd) => { if (cmd === 'call') { cmT = 0; } if (cmd === 'near' && CM) { const rx = sFy * sUz - sFz * sUy, rz = sFx * sUy - sFy * sUx; CM.a.x = px + rx * 75 + sFx * 150; CM.a.y = py + 12 + sFy * 150; CM.a.z = pz + rz * 75 + sFz * 150; CM.a.fx = sFx; CM.a.fy = sFy; CM.a.fz = sFz; } if (cmd === 'talk' && CM && CM.ph !== 'offer') CM.t = 99; if (cmd === 'esc' && CM) { for (let i = 0; i < 60 && CM.off.ty !== 'escort'; i++) CM.off = mkOffer(CM.ch); } if (cmd === 'accept') cmAccept(); if (CM && /^arc:/.test(cmd)) { const [, id, st] = cmd.split(':'); CM.ch.arc = { id, step: +st }; if (id === 'rival') CM.ch.raider = 1; CM.off = mkOffer(CM.ch); } if (CM && /^ty:/.test(cmd)) { const w = cmd.slice(3); for (let i = 0; i < 200 && !(CM.off.ty === w && (w !== 'job' || /scan|bounty|crate/i.test(CM.off.text))); i++) CM.off = mkOffer(CM.ch); } if (cmd === 'hurt') for (const a of NPCS) if (a.role === 5 && !a.dead) a.hp = a.hpM * .2; if (cmd === 'raid') cmAmbush(2, 'player'); if (cmd === 'amb' && ESC) { ESC.amb = 0; } return JSON.stringify({ cm: CM && { ph: CM.ph, ty: CM.off.ty, who: CM.ch.n, ship: CM.ch.sh, d: Math.round(Math.hypot(CM.a.x - px, CM.a.y - py, CM.a.z - pz)) }, esc: ESC && { n: ESC.ships.filter((s) => !s.dead).length, wave: ESC.wave, raiders: ESC.raiders.filter((r) => !r.dead).length, wait: ESC.wait }, off: CM && CM.off.text, npc: NPCS.filter((a) => a.role === 5 && !a.dead).map((a) => a.name + (a.fled ? '(fled)' : '') + (a.rival ? '(rival)' : '')).join(','), ally: NPCS.filter((a) => a.ally).length, cast: Object.keys(ST.cast || {}).length, comm: commS }); }, o2: (h) => { if (h != null) { o2Hyp = h; o2Out = 30; ST.o2 = 0; } return [ST.o2, o2Hyp, o2Out, flying()]; }, pip: (tab) => { if (tab != null) { PIP.tab = tab; if (!PIP.big) pipOpen(); } return [flying(), jpOpen, invOpen, PIP.big]; }, bh: (h) => { bHold = h; return [bRamp, bOd]; }, sys: () => ({ bl: BLOOMS.length, grv: grooveAt(bar), arp: ARPS.indexOf(arpAt(bar)), chord: chordAt(bar), ac: AC && AC.state, spd: Math.round(Math.hypot(vx, vy, vz)), thr: raThr && { t: raThr.t | 0, m: raThr.m | 0, R: raThr.R | 0 }, hull: ST.hull, fuel: ST.fuel, wen: ST.wen, spice: ST.spice, cargo: ST.cargo.slice(), warn: sysWarn, sw: swOn, slow, btT }), setSys: (o) => { if (o.cargo) { o.cargo.forEach((v, i) => cargo[i] = v); delete o.cargo; } Object.assign(ST, o); }, drone: (d = 40) => seek(LDr, cellHas(22, SYS.a.dr * .16 + .008), d),
   whale: (d = 900) => seek(LWh, cellHas(17, .55), d), serpent: (d = 250) => seek(LSp, cellHas(18, .4), d), colossus: (d = 900) => seek(LQ, cellHas(16, .4), d), ray: (d = 300) => seek(LY, cellHas(7, .65), d),

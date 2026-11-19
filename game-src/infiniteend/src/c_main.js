@@ -6,7 +6,12 @@ noiseTex();
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.20';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
+const BUILD = 'v1.21';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
+let draws = 0, verts = 0, frameDraws = 0, frameVerts = 0;
+const _dei = gl.drawElementsInstanced.bind(gl), _de = gl.drawElements.bind(gl), _da = gl.drawArrays.bind(gl);
+gl.drawElementsInstanced = (m, c, ty, off, n) => { draws++; verts += c * n; return _dei(m, c, ty, off, n); };
+gl.drawElements = (m, c, ty, off) => { draws++; verts += c; return _de(m, c, ty, off); };
+gl.drawArrays = (m, a, c) => { draws++; verts += c; return _da(m, a, c); };
 const ST = { v: 1, hull: 100, cargo: [0, 0, 0, 0, 0, 0], credits: 0, sec: [0, 0, 0], loc: 0, visited: {}, dead: [], missions: {}, found: {}, courier: null };
 let idb = null, saveT = 0;
 function blankState(seed) {
@@ -20,6 +25,7 @@ function migrateState() {
   while (ST.cargo.length < 6) ST.cargo.push(0);
   if (!Array.isArray(ST.deadNames)) ST.deadNames = [];
   if (!Array.isArray(ST.sec) || ST.sec.length < 3) ST.sec = [0, 0, 0];
+  if (!ST.chart || typeof ST.chart !== 'object') ST.chart = {};
   ST.build = BUILD; ST.v = 1;
 }
 async function loadState() {
@@ -222,7 +228,7 @@ function discover() {
 // ---- one panel serves the gate, the trader and the log: a titled list; entries with an action can be picked ----
 let items = [], jpOpen = 0, jumpTo = null, jumpT = 0, jumped = 0, gateIn = 0;
 function panel(title, sub, list, foot) {
-  if (xr && !jpOpen) for (const src of xr.inputSources) { try { const ha = src.gamepad && src.gamepad.hapticActuators && src.gamepad.hapticActuators[0]; if (ha && ha.pulse) ha.pulse(.5, 90); } catch {} }   // in a headset a panel is easy to miss: a buzz says one has opened
+  if (xr && !jpOpen) xrBuzz(.45, 50);   // a short buzz on the Touch Plus, so a panel is not missed
   if (!list.some((d) => d.run)) foot = xr ? 'B to close' : 'Click, or press J, to close'; else if (xr && foot && /number|press/i.test(foot)) foot = 'Right stick to choose · A to select · B to close';
   items = list; psel = Math.max(0, list.findIndex((d) => d.run)); $('jh').textContent = title; $('jc').textContent = sub; $('jk').textContent = foot;
   $('jl').innerHTML = list.map((d, i) => `<li data-i=${i} class="${d.far ? 'far ' : ''}${d.run ? '' : 'ro'}"><b>${d.name}</b><i>${d.kind || ''}</i><span>${d.desc || ''}</span></li>`).join('');
@@ -350,7 +356,7 @@ labels();
 // Sound. Nothing is recorded: a pad, a walking melody, bass and drums are synthesized, and each region has
 // its own key, scale and tempo. Speed adds energy; gunfire brings in the percussion.
 // ============================================================================
-let AC = null, AG = null, DL = null, NB = null, windG = null, windF = null, gatG = null, padF = null, padO = [], mT = 0, mStep = 0, mReg = -1, mWalk = 5, combat = 0, energy = 0;
+let AC = null, AG = null, DL = null, NB = null, windG = null, windF = null, boostG = null, boostF = null, gatG = null, padF = null, padO = [], mT = 0, mStep = 0, mReg = -1, mWalk = 5, combat = 0, energy = 0;
 const mf = (m) => 440 * 2 ** ((m - 69) / 12);
 // the recorded score: five passages cut from the track, laid end to end in one file (start, length, level).
 // They are never looped as a soundtrack; one drifts in at a moment that suits it, then leaves.
@@ -379,6 +385,8 @@ function audio() {
   windF = AC.createBiquadFilter(); windF.type = 'lowpass'; windF.frequency.value = 90; windF.Q.value = .5;
   subO = AC.createOscillator(); subG = AC.createGain(); subO.frequency.value = 34; subG.gain.value = 0; subO.connect(subG).connect(AG); subO.start();   // the engine's body
   windG = AC.createGain(); windG.gain.value = 0; noise().connect(windF).connect(windG).connect(AG);
+  boostF = AC.createBiquadFilter(); boostF.type = 'bandpass'; boostF.frequency.value = 420; boostF.Q.value = .6;
+  boostG = AC.createGain(); boostG.gain.value = 0; noise().connect(boostF).connect(boostG).connect(AG);
   // the gun: two low oscillators and a little dull noise through a low-pass, struck by a falling ramp at the firing rate,
   // so each round is a short thump with a body and almost nothing above 500 Hz
   const g1 = AC.createOscillator(), g2 = AC.createOscillator(), gf = AC.createBiquadFilter(), am = AC.createGain(), lf = AC.createOscillator(), lg2 = AC.createGain(), gn = AC.createGain(), nf = AC.createBiquadFilter();
@@ -527,7 +535,7 @@ function bhit(i, cx, cy, cz, r) {
 }
 function simulate(dt, fly) {
   // the gun spins up, then fires 24 rounds a second from alternating barrels
-  const firing = fly && (K.Space || mFire || tFire || xFire);
+  const firing = fly && (K.Space || mFire || tFire || xFire || gpFire);
   gunSpin += ((firing ? 1 : 0) - gunSpin) * (1 - Math.exp(-dt * (firing ? 8 : 3)));
   { const tx = xr || locked ? 0 : Math.max(-1, Math.min(1, mxn)) * .14, ty = xr || locked ? 0 : -Math.max(-1, Math.min(1, myn)) * .14, k = Math.min(1, dt * 10); gmx += (tx - gmx) * k; gmy += (ty - gmy) * k; }   // guns follow the cursor a little; straight ahead in mouse-look
   if (firing) { lastFire = tm; fireAcc += dt * 11 * gunSpin * [1, .32, .2, 3.4, .12][wpn]; while (fireAcc >= 1) { fireAcc -= 1; if (ST.wen < WEN[wpn]) { fireAcc = 0; if (tm > dryTip) { dryTip = tm + 6; tip('Weapons energy spent · it trickles back · sparks (red) charge it fast', 3500); } break; } ST.wen -= WEN[wpn]; shoot(); } }
@@ -598,6 +606,19 @@ function simulate(dt, fly) {
     put(DPa, pX[o] - px, pX[o + 1] - py, pX[o + 2] - pz, pS[i], 0, 0, 0, i * .137, pC[o] * a, pC[o + 1] * a, pC[o + 2] * a, pK[i]);
   }
   for (let i = 0; i < NBU; i++) if (bL[i] > 0) { const o = i * 3; const w = bW[i], q = WCOL[w], tl = w === 2 ? .05 : w === 1 ? .018 : w === 3 ? .07 : .03; put(DT, bX[o] - px, bX[o + 1] - py, bX[o + 2] - pz, w === 2 ? .5 : w === 1 ? .15 : w === 3 ? .13 : .22, -bV[o] * tl, -bV[o + 1] * tl, -bV[o + 2] * tl, 0, q[0], q[1], q[2], 0); }
+  if (fly && (Math.abs(thr) > .2 || bst > .2)) {
+    const len = 4 + Math.abs(thr) * 6 + bst * 16;
+    put(DT, -sFx * 3.2, -sFy * 3.2 - .4, -sFz * 3.2, .22 + bst * .2, -sFx * len, -sFy * len, -sFz * len, 0, .35 + bst, .75, 1.3, 0);
+    thrustT += dt;
+    if (thrustT > .045) { thrustT = 0; spark(px - sFx * 2.4, py - sFy * 2.4, pz - sFz * 2.4, vx - sFx * (40 + bst * 80), vy - sFy * (40 + bst * 80), vz - sFz * (40 + bst * 80), .18, .12 + bst * .15, 0, .4, .8, 1.4, 0); }
+  }
+  if (fly && bst > .32 && !jumpTo) {
+    const n = Math.min(12, 4 + (bst * 8 | 0));
+    for (let i = 0; i < n; i++) {
+      const a = i * 2.399963 + tm * .12, rad = 7 + (i % 4) * 3.4, back = 9 + (i * 5) % 16, cs = Math.cos(a), sn = Math.sin(a), ln = 12 + bst * 26;
+      put(DT, sRx * cs * rad + sUx * sn * rad - sFx * back, sRy * cs * rad + sUy * sn * rad - sFy * back, sRz * cs * rad + sUz * sn * rad - sFz * back, .12 + bst * .12, -sFx * ln, -sFy * ln, -sFz * ln, 0, .75, .9, 1.15, 0);
+    }
+  }
   // a rich rock gives off a faint breathing glow of its mineral's colour: no beam
   for (let n = LG.n, o = 0, D = LG.d, N = LG.N, Hh = N / 2; n > 0; n--, o += F) {
     if (!D[o + 3]) continue;
@@ -704,7 +725,10 @@ function eye(fb, x, y, w, h, tw, th) {
   gl.depthFunc(gl.LEQUAL); gl.depthMask(false);
   if (NO.includes('k')) skyw.fill(0);
   gl.useProgram(P_SKY.p); bigStarsSet(); gl.uniform4fv(P_SKY.u.uSky, skyw); gl.uniform4fv(P_SKY.u['uPl[0]'], SYS.pl); gl.uniform4fv(P_SKY.u['uPa[0]'], SYS.pa); gl.uniform3fv(P_SKY.u['uPb[0]'], SYS.pb); gl.uniform3f(P_SKY.u.uSd, SYS.seed[0], SYS.seed[1], SYS.seed[2]); gl.uniform4f(P_SKY.u.uPh, SYS.atm ? 0 : SYS.ph, SYS.phs, 0, 0); gl.uniform3f(P_SKY.u.uPq, SYS.pq[0], SYS.pq[1], SYS.pq[2]);
-  { const k = SYS.atm ? SYS.atm - 1 : 0; gl.uniform4f(P_SKY.u.uOrb, SYS.atm, Math.max(700, Math.min(9000, 2600 + py * .5)), px, pz); gl.uniform3f(P_SKY.u.uOa, SYS.pa[k * 4], SYS.pa[k * 4 + 1], SYS.pa[k * 4 + 2]); gl.uniform3f(P_SKY.u.uOb, SYS.pb[k * 3], SYS.pb[k * 3 + 1], SYS.pb[k * 3 + 2]); } gl.bindVertexArray(VA0); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  { const pk = SYS.pk || [0, 3, 5, 0]; if (P_SKY.u.uPk) gl.uniform4f(P_SKY.u.uPk, pk[0], pk[1], pk[2], 0);
+    const k = SYS.atm ? SYS.atm - 1 : 0, skin = SYS.atm && SYS.locs[SYS.loc] ? SYS.locs[SYS.loc].skin : 0;
+    const look = !SYS.atm ? 0 : skin === 0 || skin === 4 ? 1 : skin === 5 || skin === 7 ? 3 : 2;
+    gl.uniform4f(P_SKY.u.uOrb, look, Math.max(700, Math.min(9000, 2600 + py * .5)), px, pz); gl.uniform3f(P_SKY.u.uOa, SYS.pa[k * 4], SYS.pa[k * 4 + 1], SYS.pa[k * 4 + 2]); gl.uniform3f(P_SKY.u.uOb, SYS.pb[k * 3], SYS.pb[k * 3 + 1], SYS.pb[k * 3 + 2]); } gl.bindVertexArray(VA0); gl.drawArrays(gl.TRIANGLES, 0, 3);
   // glowing things, added on top (alpha is left alone: it marks open sky for the star shafts)
   gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE); gl.disable(gl.CULL_FACE);
   const Lf = P_LIFE, lu = Lf.u;
@@ -748,7 +772,7 @@ function eye(fb, x, y, w, h, tw, th) {
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   // tone-map into the destination
   gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.viewport(x, y, w, h);
-  gl.useProgram(P_COMP.p); gl.uniform2f(P_COMP.u.uPx, 1 / tw, 1 / th); { const v = (k) => xr ? 0 : CFG[k], fb = v('fxBlur') * 1.1, fc = v('fxCA'); gl.uniform4f(P_COMP.u.uFx, fc ? fc * 1.9 : 0, v('fxGrain') * .09, mbx * fb, mby * fb); gl.uniform1f(P_COMP.u.uFs, fb * mbs); gl.uniform4f(P_COMP.u.uFy, v('fxScan'), CFG.fxBloom, v('fxVig'), o2Hyp); gl.uniform4f(P_COMP.u.uFz, v('fxGlass'), 0, 0, 0); } gl.uniform3f(P_COMP.u.uJ, Math.max(jk, dbgJ, scE * .22) * .9, Math.max(tun, dbgT), jumpT + tm); { const fx = sFx * eRx + sFy * eRy + sFz * eRz, fy = sFx * eUx + sFy * eUy + sFz * eUz, fz = Math.max(.15, sFx * eFx + sFy * eFy + sFz * eFz), cl = (v) => Math.max(-.5, Math.min(1.5, v));   // where the ship's nose falls in this eye's picture
+  gl.useProgram(P_COMP.p); gl.uniform2f(P_COMP.u.uPx, 1 / tw, 1 / th); { const v = (k) => xr ? 0 : CFG[k], fb = v('fxBlur') * 1.1, fc = v('fxCA'), vig = xr ? (CFG.vrVig || 0) * (.4 + .6 * Math.min(1, bst)) : v('fxVig'); gl.uniform4f(P_COMP.u.uFx, fc ? fc * 1.9 : 0, v('fxGrain') * .09, mbx * fb, mby * fb); gl.uniform1f(P_COMP.u.uFs, fb * mbs); gl.uniform4f(P_COMP.u.uFy, v('fxScan'), CFG.fxBloom, vig, o2Hyp); gl.uniform4f(P_COMP.u.uFz, v('fxGlass'), 0, 0, 0); } gl.uniform3f(P_COMP.u.uJ, Math.max(jk, dbgJ, scE * .22) * .9, Math.max(tun, dbgT), jumpT + tm); { const fx = sFx * eRx + sFy * eRy + sFz * eRz, fy = sFx * eUx + sFy * eUy + sFz * eUz, fz = Math.max(.15, sFx * eFx + sFy * eFy + sFz * eFz), cl = (v) => Math.max(-.5, Math.min(1.5, v));   // where the ship's nose falls in this eye's picture
     gl.uniform2f(P_COMP.u.uJc, cl((fx / fz - tL) / (tR - tL)), cl((fy / fz - tB) / (tT - tB))); } gl.uniform3f(P_COMP.u.uFl, sux, suy, sux > -.2 && sux < 1.2 && suy > -.2 && suy < 1.2 ? sus * CFG.fxFlare * (csU[0] ? .2 : 1) : 0);
   gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, T.hdr.t); gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, bl[0].t); gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, T.ray.t);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -757,6 +781,22 @@ function eye(fb, x, y, w, h, tw, th) {
 
 // ---- VR: a headset through WebXR where there is one, otherwise a side-by-side stereo view ----
 let xr = null, xrRef = null, xrFloor = 0;
+function foveationLevel() { const v = CFG.vrFov || 0; return v >= .9 ? 1 : v >= .4 ? .66 : 0; }
+function applyFoveation() { if (xrLayer && 'fixedFoveation' in xrLayer) { try { xrLayer.fixedFoveation = foveationLevel(); } catch (e) {} } }
+function applyVrRate() {
+  if (!xr || !xr.updateTargetFrameRate || !xr.supportedFrameRates) return;
+  const rates = Array.from(xr.supportedFrameRates), want = CFG.vrHz || 72;
+  if (!rates.length) return;
+  let best = rates[0];
+  for (const r of rates) if (Math.abs(r - want) < Math.abs(best - want)) best = r;
+  xr.updateTargetFrameRate(best).catch(() => {});
+}
+function xrBuzz(strength, ms) {
+  if (!xr || !CFG.vrHap) return;
+  const s = Math.min(1, strength * (CFG.vrHap > 1 ? 1 : .45));
+  for (const src of xr.inputSources) { try { const ha = src.gamepad && src.gamepad.hapticActuators && src.gamepad.hapticActuators[0]; if (ha && ha.pulse) ha.pulse(s, ms); } catch (e) {} }
+}
+let xrLayer = null;
 async function vr(auto) {
   if (xr) { xr.end(); return; }
   let ok = 0;
@@ -764,11 +804,16 @@ async function vr(auto) {
   if (ok) {
     try {
       await gl.makeXRCompatible();
-      const s = await navigator.xr.requestSession('immersive-vr');
-      s.updateRenderState({ baseLayer: new XRWebGLLayer(s, gl, { antialias: false, depth: false, stencil: false }) });
+      const feats = ['local-floor', 'hand-tracking'];
+      const fv = foveationLevel();
+      if (fv >= .9) feats.push('high-fixed-foveation-level'); else if (fv >= .4) feats.push('medium-fixed-foveation-level');
+      const s = await navigator.xr.requestSession('immersive-vr', { optionalFeatures: feats });
+      const rs = CFG.vrRs == null ? 1 : CFG.vrRs, layer = new XRWebGLLayer(s, gl, { antialias: false, depth: false, stencil: false, framebufferScaleFactor: rs });
+      xrLayer = layer; applyFoveation();
+      s.updateRenderState({ baseLayer: layer });
       xrFloor = 1; xrRef = await s.requestReferenceSpace('local-floor').catch(() => { xrFloor = 0; return s.requestReferenceSpace('local'); });   // floor-level tracking puts the cabin floor on the room's floor, seated or standing
-      s.addEventListener('end', () => { xr = null; xFire = 0; requestAnimationFrame(frame); });
-      xr = s; if (document.pointerLockElement) document.exitPointerLock();
+      s.addEventListener('end', () => { xr = null; xrLayer = null; xFire = 0; requestAnimationFrame(frame); });
+      xr = s; applyVrRate(); if (document.pointerLockElement) document.exitPointerLock();
       go(); s.requestAnimationFrame(frame);
       return;
     } catch (e) { console.warn(e); if (auto) return; tip('The headset did not start: ' + e.message); }
@@ -786,9 +831,27 @@ let slowTip = 0, last = 0, acc = 0, nf = 0, fps = 0, hold = 0, cool = 4000, hudN
 const YS = () => Math.cos(pitch) < 0 ? -1 : 1;                // past vertical the ship is on its back, so left and right swap: this keeps the stick's sense
 const curve = (v) => { const a = Math.min(1, Math.abs(v)) - .08; return a > 0 ? Math.sign(v) * a * Math.sqrt(a) : 0; };
 
+let gpFire = 0, gpBoost = 0, thrustT = 0, snapL = 0, snapR = 0;
+function readPad(dt) {
+  gpFire = 0; gpBoost = 0;
+  if (!navigator.getGamepads) return;
+  const map = CFG.gp || { fire: 7, boost: 5 }, racer = CFG.padL !== 0;
+  const fireB = racer ? (map.fire == null ? 7 : map.fire) : 7, boostB = racer ? (map.boost == null ? 5 : map.boost) : 6;
+  const dead = (v) => Math.abs(v) < .18 ? 0 : v;
+  for (const gp of navigator.getGamepads()) {
+    if (!gp || !gp.connected) continue;
+    const ax = dead(gp.axes[0] || 0), ay = dead(gp.axes[1] || 0), ry = dead(gp.axes[3] || 0);
+    if (!CFG.ctl) { yaw += YS() * ax * dt * 1.45; pitch -= IY() * ay * dt * 1.2; dyaw += ax * dt * 1.45; }
+    else { pitch -= IY() * ay * dt * 1.15; rollIn += ax * dt * 1.5; }
+    thr = Math.max(-.25, Math.min(1, thr - ry * dt * .85));
+    if (gp.buttons[fireB] && (gp.buttons[fireB].pressed || gp.buttons[fireB].value > .45)) gpFire = 1;
+    if (gp.buttons[boostB] && (gp.buttons[boostB].pressed || gp.buttons[boostB].value > .45)) gpBoost = 1;
+  }
+}
 function frame(now, xf) {
   if (!xf !== !xr) return;                                   // a callback left over from the other display loop
   (xr || window).requestAnimationFrame(frame);
+  frameDraws = draws; frameVerts = verts; draws = 0; verts = 0;
   const raw = (now - last) / 1000; last = now;
   const rdt = Math.min(.05, Math.max(.001, raw)); btT = Math.max(0, btT - rdt); slow += (((jpOpen || invOpen || PIP.big) && flying() ? .12 : btT > 0 ? .14 + .86 * Math.pow(1 - btT / btMax, 2.4) : 1) - slow) * Math.min(1, rdt * (btT > 0 ? 14 : 4));
   const dt = rdt * slow; tm += dt;                             // with a panel open the world all but stops, and eases back when it closes
@@ -819,16 +882,30 @@ function frame(now, xf) {
     boost = K.ShiftLeft || K.ShiftRight ? 1 : 0;
     if (tn) { thr = 1; boost = tn > 1 ? 1 : 0; yaw += YS() * tdx * dt * 2.4; pitch -= IY() * tdy * dt * 2.4; dyaw += tdx * dt * 2.4; }
     if (steer && !locked) { const sx = curve(mxn) * dt * 1.9; yaw += YS() * sx; pitch -= IY() * curve(myn) * dt * 1.6; dyaw += sx; }
-    if (xr) for (const src of xr.inputSources) {             // controllers: left stick steers, right stick is the throttle, trigger fires, grip boosts
-      const gp = src.gamepad; if (!gp) continue;
-      if (xrPad(src, gp)) { xFire = 0; continue; }
-      const ax = gp.axes[2] || gp.axes[0] || 0, ay = gp.axes[3] || gp.axes[1] || 0;
-      if (src.handedness === 'left') { yaw += YS() * ax * dt * 1.4; pitch -= IY() * ay * dt * 1.2; dyaw += ax * dt * 1.4; } else thr = Math.max(-.25, Math.min(1, thr - ay * dt * .8));
-      if (src.handedness !== 'left') xFire = gp.buttons[0] && gp.buttons[0].pressed ? 1 : 0;
-      if (gp.buttons[1] && gp.buttons[1].pressed) boost = 1;
-    }
-    fwd = thr * 140 * eff * (1 + .12 * upLv('eng'));
-  } else yaw += dt * .018;
+    gpFire = 0; gpBoost = 0; if (!xr) readPad(dt);
+    if (xr) { xFire = 0; for (const src of xr.inputSources) {             // Touch Plus. Sticks are axes 2 and 3. Triggers fire, grips boost. The steer hand never gives up the nose.
+      const gp = src.gamepad; if (!gp || (src.handedness !== 'left' && src.handedness !== 'right')) continue;
+      const consumed = xrPad(src, gp);
+      const ax = Math.abs(gp.axes[2] || 0) < .12 ? 0 : gp.axes[2], ay = Math.abs(gp.axes[3] || 0) < .12 ? 0 : gp.axes[3];
+      const trig = gp.buttons[0] && (gp.buttons[0].pressed || gp.buttons[0].value > .65);
+      const grip = gp.buttons[1] && (gp.buttons[1].pressed || gp.buttons[1].value > .4);
+      if (trig && !jpOpen) xFire = 1;
+      if (grip && !jpOpen) boost = 1;
+      if (consumed) continue;
+      const onSteer = src.handedness === (CFG.vrHand ? 'right' : 'left');
+      if (onSteer) {
+        if ((CFG.vrTurn || 0) > 0) {
+          const step = CFG.vrTurn === 2 ? .78 : .52, held = src.handedness === 'left' ? snapL : snapR;
+          if (ax > .65 && !held) { yaw += YS() * step; if (src.handedness === 'left') snapL = 1; else snapR = 1; xrBuzz(.4, 28); }
+          else if (ax < -.65 && !held) { yaw -= YS() * step; if (src.handedness === 'left') snapL = 1; else snapR = 1; xrBuzz(.4, 28); }
+          else if (Math.abs(ax) < .3) { if (src.handedness === 'left') snapL = 0; else snapR = 0; }
+          pitch -= IY() * ay * dt * 1.05;
+        } else { yaw += YS() * ax * dt * 1.35; pitch -= IY() * ay * dt * 1.15; dyaw += ax * dt * 1.35; }
+      } else { thr = Math.max(-.25, Math.min(1, thr - ay * dt * .85)); ms += ax; }
+    } }
+    if (gpBoost) boost = 1;
+    fwd = thr * 230 * eff * (1 + .12 * upLv('eng'));
+  } else { yaw += dt * .018; gpFire = 0; }
   if (ST.hull < 25 || ST.fuel <= 0) boost = 0;
   if (fly && ST.fuel <= 0) fwd *= .18;                              // dry tanks: emergency thrusters only
   bst += (boost - bst) * (1 - Math.exp(-dt * 2.5));
@@ -862,7 +939,7 @@ function frame(now, xf) {
   }
   rightT = Math.max(0, rightT - dt); atmWas = fly && SYS.atm ? 1 : 0;
   { const tk = 1 - Math.exp(-dt * (rightT > 0 ? 2.6 : 6.5)); QAs = qslerp(QAs, QA, tk); }                              // the ship turns with a little lag: it has mass (more gently while righting)
-  const sh = trauma * trauma * .02, Qb = roll ? qmul(QAs, qax(0, 0, 1, roll)) : QAs, Qv = sh > 0 ? qmul(Qb, qmul(qax(0, 1, 0, Math.sin(tm * 71) * sh), qax(1, 0, 0, Math.sin(tm * 93 + 1) * sh))) : Qb;
+  const sh = trauma * trauma * .02 + (xr ? 0 : bst * bst * .0035), Qb = roll ? qmul(QAs, qax(0, 0, 1, roll)) : QAs, Qv = sh > 0 ? qmul(Qb, qmul(qax(0, 1, 0, Math.sin(tm * 71) * sh), qax(1, 0, 0, Math.sin(tm * 93 + 1) * sh))) : Qb;
   { const R = qv(Qv, 1, 0, 0), U = qv(Qv, 0, 1, 0), F = qv(Qv, 0, 0, -1); sRx = R[0]; sRy = R[1]; sRz = R[2]; sUx = U[0]; sUy = U[1]; sUz = U[2]; sFx = F[0]; sFy = F[1]; sFz = F[2];
     spit = Math.asin(Math.max(-1, Math.min(1, F[1]))); syaw = Math.atan2(F[0], -F[2]); }
   fwd += bst * 400 * eff * (1 + .55 * bRamp + .85 * bOd * (2 - bOd) * (drift ? 0 : 1));                                            // local rush tops out near 620; overdrive (held 7 s+) climbs toward ~960 over the next 18 s; the long-range drive carries you across the system                                          // Shift is thrust on its own: no need to hold forward
@@ -908,7 +985,7 @@ function frame(now, xf) {
   for (let i = 0; i < LAYERS.length; i++) upd(LAYERS[i]);
 
   // views
-  const fov = Math.tan((68 + 16 * bst + 34 * jk) * Math.PI / 360);
+  const fov = Math.tan((64 + 6 * Math.abs(thr) + 30 * bst * bst + 6 * bRamp + 34 * jk) * Math.PI / 360);
   if (xr) {
     const pose = xf.getViewerPose(xrRef), bl = xr.renderState.baseLayer;
     if (pose) for (const v of pose.views) {
@@ -918,11 +995,12 @@ function frame(now, xf) {
       eUx = sRx * m[4] + sUx * m[5] - sFx * m[6]; eUy = sRy * m[4] + sUy * m[5] - sFy * m[6]; eUz = sRz * m[4] + sUz * m[5] - sFz * m[6];
       eFx = -(sRx * m[8] + sUx * m[9] - sFx * m[10]); eFy = -(sRy * m[8] + sUy * m[9] - sFy * m[10]); eFz = -(sRz * m[8] + sUz * m[9] - sFz * m[10]);
       tL = (p[8] - 1) / p[0]; tR = (p[8] + 1) / p[0]; tB = (p[9] - 1) / p[5]; tT = (p[9] + 1) / p[5];
-      const ox = (ep.x - hp.x) * 6, oy = (ep.y - hp.y) * 6, oz = (ep.z - hp.z) * 6;   // eyes set wide apart, so the asteroids nearby have depth
+      const ipd = CFG.vrIpd == null ? 1 : CFG.vrIpd, ox = (ep.x - hp.x) * 6 * ipd, oy = (ep.y - hp.y) * 6 * ipd, oz = (ep.z - hp.z) * 6 * ipd;   // eyes set wide apart, so the asteroids nearby have depth. View scale stays near 1 so it never fights the headset's IPD.
       eox = sRx * ox + sUx * oy - sFx * oz; eoy = sRy * ox + sUy * oy - sFy * oz; eoz = sRz * ox + sUz * oy - sFz * oz;
       { const lift = (CFG.vrH || 0) * CKM, cx = Math.max(-3.1, Math.min(3.1, ep.x * CKM)), cz = Math.max(-1.7, Math.min(4.9, ep.z * CKM)),   // the eye inside the cabin: the head's real place in the room, so leaning and standing up work
           cy = Math.max(-3.3, Math.min(1.35, (xrFloor ? CK_FLOOR + ep.y * CKM : ep.y * CKM - .55) + lift));   // with floor tracking the cabin floor is the room floor; without it, assume a seated head
-        cex = sRx * cx + sUx * cy - sFx * cz; cey = sRy * cx + sUy * cy - sFy * cz; cez = sRz * cx + sUz * cy - sFz * cz; }
+        const posture = (CFG.vrSeat ? 0 : -.28) * CKM;
+        cex = sRx * cx + sUx * (cy + posture) - sFx * cz; cey = sRy * cx + sUy * (cy + posture) - sFy * cz; cez = sRz * cx + sUz * (cy + posture) - sFz * cz; }
       eye(bl.framebuffer, vp.x, vp.y, vp.width, vp.height, Math.round(vp.width * .8), Math.round(vp.height * .8));
     }
   } else {
@@ -955,21 +1033,22 @@ function frame(now, xf) {
     const t = AC.currentTime;
     const at = fly ? Math.abs(thr) : 0;                      // thrust is a low rumble that swells with throttle and boost; no whine
     windG.gain.setTargetAtTime(Math.min(.9, .1 * at + .75 * bst) * CFG.vEng, t, .25); windF.frequency.setTargetAtTime(70 + 50 * at + 170 * bst, t, .3);
-    subG.gain.setTargetAtTime((.035 * at + .2 * bst) * CFG.vEng, t, .3); subO.frequency.setTargetAtTime(34 + 16 * bst, t, .4);
+    if (boostG) { boostG.gain.setTargetAtTime(Math.min(.2, bst * bst * .26) * CFG.vEng, t, .16); boostF.frequency.setTargetAtTime(260 + bst * 980, t, .2); }
+    subG.gain.setTargetAtTime((.035 * at + .22 * bst) * CFG.vEng, t, .3); subO.frequency.setTargetAtTime(34 + 18 * bst, t, .4);
     padF.frequency.setTargetAtTime(240 + energy * 1100, t, .5);
   }
   if (++hudN >= 12) {
     hudN = 0;
     $('sec').innerHTML = `<span>${SYS.name} · ${SYS.star}</span><b>${SYS.locs[SYS.loc].name}</b>${Math.round(speed)} u/s${ST.hull < 99.5 ? ' · hull ' + (ST.hull | 0) + '%' : ''}`;
     $('tf').style.transform = `scaleY(${Math.abs(thr)})`; $('tf').className = thr < 0 ? 'rev' : bst > .3 ? 'bst' : '';
-    if (stats) $('i').textContent = `${fps.toFixed(0)} fps  ${T.w}×${T.h}  scale ${S.toFixed(2)}  detail ${['High', 'Medium', 'Low'][LV]}\nasteroids ${TV[0].n + TV[1].n + TV[2].n} titans + ${HV[0].n + HV[1].n + HV[2].n} + ${BF[0].n + BF[1].n + BF[2].n + BN[0].n + BN[1].n + BN[2].n} + ${SV[0].n + SV[1].n + SV[2].n}  crystals ${LC.n}  tendrils ${LTd.n + LTb.n}  geodes ${LG.n}\njellyfish ${LJ.n + LQ.n}  rays ${LY.n}  minnows ${LM.n}  leviathans ${LWh.n}  serpents ${LSp.n}\nstations ${RV[0].n + RV[1].n} + ${MV[0].n + MV[1].n} mega  rubble ${DC[0].n + DC[1].n}  broken ${broken}\nposition ${px.toFixed(0)} ${py.toFixed(0)} ${pz.toFixed(0)}`;
+    if (stats) $('i').textContent = `${fps.toFixed(0)} fps  ${frameDraws} draws  ${(frameVerts / 1000).toFixed(0)}k verts  ${T.w}×${T.h}  scale ${S.toFixed(2)}  detail ${['High', 'Medium', 'Low'][LV]}\nasteroids ${TV[0].n + TV[1].n + TV[2].n} titans + ${HV[0].n + HV[1].n + HV[2].n} + ${BF[0].n + BF[1].n + BF[2].n + BN[0].n + BN[1].n + BN[2].n} + ${SV[0].n + SV[1].n + SV[2].n}  crystals ${LC.n}  tendrils ${LTd.n + LTb.n}  geodes ${LG.n}\njellyfish ${LJ.n + LQ.n}  rays ${LY.n}  minnows ${LM.n}  leviathans ${LWh.n}  serpents ${LSp.n}\nstations ${RV[0].n + RV[1].n} + ${MV[0].n + MV[1].n} mega  rubble ${DC[0].n + DC[1].n}  broken ${broken}\nposition ${px.toFixed(0)} ${py.toFixed(0)} ${pz.toFixed(0)}`;
   }
 }
 
 arrive(ST.sec, ST.loc, 1);
 resize();
 window.ES = { warpLook: (a, b) => { dbgJ = a; dbgT = b; }, zero: (i) => { const L = LAYERS[i]; L.n = 0; for (const s of L.slaves) s.n = 0; return LAYERS.length; }, dbg: (z) => { if (z) for (let i = 0; i < 3; i++) SYS.pl[i * 4 + 3] = 0; return Array.from(SYS.pl).map((v) => +v.toFixed(2)).concat(Array.from(SYS.pa).map((v) => +v.toFixed(2))); },
-  build: () => BUILD, cabin: () => ({ nv: mCock.nv, cb: mCock.cb, qt: mCock.qt, n: mCock.n, ng: mCock.ng }), newGame: newUniverse, goto: (sec, loc) => arrive(sec, loc || 0, 1), market: marketPanel, ph: (t) => { SYS.ph = t; SYS.pq = [sFx, sFy, sFz]; }, bh: () => { SYS.sky[0] = 1; pitch = Math.asin(-.22); yaw = Math.atan2(.58, -.78); snap = 1; }, seeNpc: (i) => { const a = NPCS.filter((q) => !q.big && q.var === i)[0]; if (!a) return -1; px = a.x + 22; py = a.y + 7; pz = a.z + 22; const dx = a.x - px, dy = a.y - py, dz = a.z - pz, l = Math.hypot(dx, dy, dz); pitch = Math.asin(dy / l); yaw = Math.atan2(dx, -dz); snap = 1; vx = vy = vz = 0; thr = 0; return a.var; }, linger: () => { for (let i = 0; i < 90; i++) lingerTick(.05); return [lingT, lingId, jpOpen]; }, tp: (x, y, z) => { px = x; py = y; pz = z; vx = vy = vz = 0; thr = 0; }, navCur, interact, map: starMap, drift: driftToggle, near: (k, f) => { const P = sysP[k]; sysS = [P[0] * f, P[1] * f, P[2] * f]; }, dsys: () => [sysS.map((v) => v | 0), driftV | 0, +SYS.pl[3].toFixed(3), SYS.atm, +veil.toFixed(2)], aim: (k, s) => { const d = SYS.pl, q = s || 1; pitch = Math.asin(q * d[k * 4 + 1]); yaw = Math.atan2(q * d[k * 4], -q * d[k * 4 + 2]); snap = 1; }, good: goodPanel, sc: (k, t) => { scP = k; scT = t; }, scOut: (t) => { scOut = t; vy = 120; thr = 1; }, host: (v) => { hostLv = v; npcSpawn(); }, rp: () => ST.rp, head: (y, p) => { hlF = y == null ? null : [y, p || 0]; }, nav: () => NAV.map((n) => n.id), npcs: () => NPCS.length, journal: journalPanel, board: boardPanel, hail: () => hailPanel(NPCS[0]), cycle: navCycle, atm: () => arrive(SYS.sec, SYS.locs.findIndex((l) => l.atm), 1), vrPanel: (v) => { hudForce = v; }, jt: () => [jumpT, !!jumpTo, SYS.loc, SYS.name, slow], system: describe, on: (f) => hooks.push(f), kind: (t) => { for (let x = 1; x < 400; x++) if ((sysIdAt(x, 0, 0) & 7) === t) return arrive([x, 0, 0], 0, 1); }, place: (t) => { const l = SYS.locs.find((q) => q.t === t); if (l) arrive(SYS.sec, l.i, 1); return !!l; }, startJump, gatePanel, logPanel, tradePanel, closePanel, hull: () => ST.hull, beacon: () => { px = bcn[0] + 200; py = bcn[1]; pz = bcn[2]; }, trader: () => trader, go, vr, cock: setCock, thr: (v) => { thr = v; }, key: (c, v) => { K[c] = v; }, look: (y, p) => { yaw = y; pitch = p; snap = 1; }, at: (x, y, z) => { px = x; py = y; pz = z; snap = 1; }, stereo: (v) => { stereo = v; resize(); },
+  build: () => BUILD, perf: () => ({ fps: +fps.toFixed(1), draws: frameDraws, verts: frameVerts, w: W, h: H, scale: +S.toFixed(2), lv: LV }), gen: () => ({ name: SYS.name, star: SYS.star, temp: SYS.temp | 0, fac: SYS.fac, danger: SYS.danger, belt: SYS.belt, dead: !!SYS.dead, planets: (SYS.planets || []).filter((p) => p.type !== 'none').map((p) => ({ name: p.name, type: p.type, rare: p.rare, au: p.orbit, moons: p.moons, anomaly: p.anomaly || '' })) }), cabin: () => ({ nv: mCock.nv, cb: mCock.cb, qt: mCock.qt, n: mCock.n, ng: mCock.ng }), newGame: newUniverse, goto: (sec, loc) => arrive(sec, loc || 0, 1), market: marketPanel, ph: (t) => { SYS.ph = t; SYS.pq = [sFx, sFy, sFz]; }, bh: () => { SYS.sky[0] = 1; pitch = Math.asin(-.22); yaw = Math.atan2(.58, -.78); snap = 1; }, seeNpc: (i) => { const a = NPCS.filter((q) => !q.big && q.var === i)[0]; if (!a) return -1; px = a.x + 22; py = a.y + 7; pz = a.z + 22; const dx = a.x - px, dy = a.y - py, dz = a.z - pz, l = Math.hypot(dx, dy, dz); pitch = Math.asin(dy / l); yaw = Math.atan2(dx, -dz); snap = 1; vx = vy = vz = 0; thr = 0; return a.var; }, linger: () => { for (let i = 0; i < 90; i++) lingerTick(.05); return [lingT, lingId, jpOpen]; }, tp: (x, y, z) => { px = x; py = y; pz = z; vx = vy = vz = 0; thr = 0; }, navCur, interact, map: starMap, drift: driftToggle, near: (k, f) => { const P = sysP[k]; sysS = [P[0] * f, P[1] * f, P[2] * f]; }, dsys: () => [sysS.map((v) => v | 0), driftV | 0, +SYS.pl[3].toFixed(3), SYS.atm, +veil.toFixed(2)], aim: (k, s) => { const d = SYS.pl, q = s || 1; pitch = Math.asin(q * d[k * 4 + 1]); yaw = Math.atan2(q * d[k * 4], -q * d[k * 4 + 2]); snap = 1; }, good: goodPanel, sc: (k, t) => { scP = k; scT = t; }, scOut: (t) => { scOut = t; vy = 120; thr = 1; }, host: (v) => { hostLv = v; npcSpawn(); }, rp: () => ST.rp, head: (y, p) => { hlF = y == null ? null : [y, p || 0]; }, nav: () => NAV.map((n) => n.id), npcs: () => NPCS.length, journal: journalPanel, board: boardPanel, hail: () => hailPanel(NPCS[0]), cycle: navCycle, atm: () => arrive(SYS.sec, SYS.locs.findIndex((l) => l.atm), 1), vrPanel: (v) => { hudForce = v; }, jt: () => [jumpT, !!jumpTo, SYS.loc, SYS.name, slow], system: describe, on: (f) => hooks.push(f), kind: (t) => { for (let x = 1; x < 400; x++) if ((sysIdAt(x, 0, 0) & 7) === t) return arrive([x, 0, 0], 0, 1); }, place: (t) => { const l = SYS.locs.find((q) => q.t === t); if (l) arrive(SYS.sec, l.i, 1); return !!l; }, startJump, gatePanel, logPanel, tradePanel, closePanel, hull: () => ST.hull, beacon: () => { px = bcn[0] + 200; py = bcn[1]; pz = bcn[2]; }, trader: () => trader, go, vr, cock: setCock, thr: (v) => { thr = v; }, key: (c, v) => { K[c] = v; }, look: (y, p) => { yaw = y; pitch = p; snap = 1; }, at: (x, y, z) => { px = x; py = y; pz = z; snap = 1; }, stereo: (v) => { stereo = v; resize(); },
   jelly: (d = 60, s = 0) => seek(LJ, swarmAt, d, s), rock: (d) => seek(LH, hugeAt, d), big: (d) => seek(LB, bigAt, d), titan: (d) => seek(LTi, titanAt, d), geode: (d = 40) => seek(LG, geodeAt, d),
   fleet: (d = 60) => seek(LF, cellHas(20, SYS.a.fl * .6), d), frig: (d = 1) => seek(LFr, cellHas(21, SYS.a.fr * .7), d), siph: (d = 40) => seek(LDs, cellHas(24, SYS.a.dr * .13 + .008), d), spark: (d = 40) => seek(LDe, cellHas(25, SYS.a.dr * .13 + .008), d), inv: (m) => invShow(m), closeStar: (sc, giant, rad) => { bigStarsSet(); csU = [rad || .2, sc, 1.3, giant ? 1 : 0]; csC = giant ? [1, .34, .1] : CSC[sc]; yaw = Math.atan2(SUN[0], -SUN[2]); pitch = Math.asin(SUN[1]); snap = 1; }, bigLook: (i, ty) => { bigStarsSet(); if (ty != null) bsS[i * 4 + 3] = ty; const x = bsS[i * 4], y = bsS[i * 4 + 1], z = bsS[i * 4 + 2]; yaw = Math.atan2(x, -z); pitch = Math.asin(y); snap = 1; return [bsS[i * 4 + 3], bsC[i * 4 + 3]]; }, musMeter: () => { if (!SC.an) { SC.an = AC.createAnalyser(); SC.an.fftSize = 2048; SC.lim.connect(SC.an); } if (!SC.mi) { const b = new Float32Array(2048); SC.mm = { pk: 0, ss: 0, n: 0 }; SC.mi = setInterval(() => { SC.an.getFloatTimeDomainData(b); for (const x of b) { SC.mm.pk = Math.max(SC.mm.pk, Math.abs(x)); SC.mm.ss += x * x; SC.mm.n++; } }, 20); } const r = { pk: +SC.mm.pk.toFixed(3), rms: +Math.sqrt(SC.mm.ss / Math.max(1, SC.mm.n)).toFixed(3), sec: SC.sec }; SC.mm = { pk: 0, ss: 0, n: 0 }; return r; }, musSec: (s) => { SC.sec = s; SC.secBar = 0; SC.secLen = SECS[s].len; }, jumpTest: (l) => startJump({ sec: SYS.sec, loc: l == null ? (SYS.loc + 1) % SYS.locs.length : l }), mus: () => { if (!SC.an && SC.lim) { SC.an = AC.createAnalyser(); SC.an.fftSize = 2048; SC.lim.connect(SC.an); } const T = SC.trk, b = new Float32Array(2048); let pk = 0, rms = 0; if (SC.an) { SC.an.getFloatTimeDomainData(b); for (const x of b) { pk = Math.max(pk, Math.abs(x)); rms += x * x; } rms = Math.sqrt(rms / 2048); } return { sec: SC.sec, bar: SC.bar, secBar: SC.secBar, e: +energy.toFixed(2), bpm: T && T.bpm, mode: T && T.mode, style: T && T.style, root: T && T.root, pk: +pk.toFixed(3), rms: +rms.toFixed(3), ac: AC && AC.state }; }, vel: (s) => { vx = sFx * s; vy = sFy * s; vz = sFz * s; bst = 1; }, bloomNow: () => { bloomT = 0; }, life: (cmd) => { if (cmd === 'call') { cmT = 0; } if (cmd === 'near' && CM) { const rx = sFy * sUz - sFz * sUy, rz = sFx * sUy - sFy * sUx; CM.a.x = px + rx * 75 + sFx * 150; CM.a.y = py + 12 + sFy * 150; CM.a.z = pz + rz * 75 + sFz * 150; CM.a.fx = sFx; CM.a.fy = sFy; CM.a.fz = sFz; } if (cmd === 'talk' && CM && CM.ph !== 'offer') CM.t = 99; if (cmd === 'esc' && CM) { for (let i = 0; i < 60 && CM.off.ty !== 'escort'; i++) CM.off = mkOffer(CM.ch); } if (cmd === 'accept') cmAccept(); if (CM && /^arc:/.test(cmd)) { const [, id, st] = cmd.split(':'); CM.ch.arc = { id, step: +st }; if (id === 'rival') CM.ch.raider = 1; CM.off = mkOffer(CM.ch); } if (CM && /^ty:/.test(cmd)) { const w = cmd.slice(3); for (let i = 0; i < 200 && !(CM.off.ty === w && (w !== 'job' || /scan|bounty|crate/i.test(CM.off.text))); i++) CM.off = mkOffer(CM.ch); } if (cmd === 'hurt') for (const a of NPCS) if (a.role === 5 && !a.dead) a.hp = a.hpM * .2; if (cmd === 'raid') cmAmbush(2, 'player'); if (cmd === 'amb' && ESC) { ESC.amb = 0; } return JSON.stringify({ cm: CM && { ph: CM.ph, ty: CM.off.ty, who: CM.ch.n, ship: CM.ch.sh, d: Math.round(Math.hypot(CM.a.x - px, CM.a.y - py, CM.a.z - pz)) }, esc: ESC && { n: ESC.ships.filter((s) => !s.dead).length, wave: ESC.wave, raiders: ESC.raiders.filter((r) => !r.dead).length, wait: ESC.wait }, off: CM && CM.off.text, npc: NPCS.filter((a) => a.role === 5 && !a.dead).map((a) => a.name + (a.fled ? '(fled)' : '') + (a.rival ? '(rival)' : '')).join(','), ally: NPCS.filter((a) => a.ally).length, cast: Object.keys(ST.cast || {}).length, comm: commS }); }, o2: (h) => { if (h != null) { o2Hyp = h; o2Out = 30; ST.o2 = 0; } return [ST.o2, o2Hyp, o2Out, flying()]; }, pip: (tab) => { if (tab != null) { PIP.tab = tab; if (!PIP.big) pipOpen(); } return [flying(), jpOpen, invOpen, PIP.big]; }, bh: (h) => { bHold = h; return [bRamp, bOd]; }, sys: () => ({ bl: BLOOMS.length, grv: grooveAt(bar), arp: ARPS.indexOf(arpAt(bar)), chord: chordAt(bar), ac: AC && AC.state, spd: Math.round(Math.hypot(vx, vy, vz)), thr: raThr && { t: raThr.t | 0, m: raThr.m | 0, R: raThr.R | 0 }, hull: ST.hull, fuel: ST.fuel, wen: ST.wen, spice: ST.spice, cargo: ST.cargo.slice(), warn: sysWarn, sw: swOn, slow, btT }), setSys: (o) => { if (o.cargo) { o.cargo.forEach((v, i) => cargo[i] = v); delete o.cargo; } Object.assign(ST, o); }, drone: (d = 40) => seek(LDr, cellHas(22, SYS.a.dr * .16 + .008), d),
   whale: (d = 900) => seek(LWh, cellHas(17, .55), d), serpent: (d = 250) => seek(LSp, cellHas(18, .4), d), colossus: (d = 900) => seek(LQ, cellHas(16, .4), d), ray: (d = 300) => seek(LY, cellHas(7, .65), d),
