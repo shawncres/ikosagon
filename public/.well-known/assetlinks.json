@@ -1,10 +1,8 @@
-[
-  {
-    "relation": ["delegate_permission/common.handle_all_urls"],
-    "target": {
-      "namespace": "android_app",
-      "package_name": "com.ikosagon.infiniteend",
-      "sha256_cert_fingerprints": ["REPLACE_WITH_SHA256_FINGERPRINT_FROM_STEP_4"]
-    }
-  }
-]
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.ikosagon.infiniteend",
+        "sha256_cert_fingerprints": ["EB:9B:54:BC:5B:53:EA:5A:01:A2:0B:47:52:99:A2:67:24:90:5F:1E:39:F0:61:E1:7B:93:C7:AD:D6:F6:CB:CE"]
+      }
+    }]
