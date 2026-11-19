@@ -1009,19 +1009,20 @@ void main(){vec2 dl=(uSunS.xy-vU)/float(NS)*.92;
   acc+=min(s.rgb,vec3(8.))*max(s.a,0.)*smoothstep(.9,4.,l)*w;w*=.976;p+=dl;}
  o=vec4(acc/float(NS)*uSunS.z,1);}`;
 const COMP_F = HD + `
-uniform sampler2D uH,uB,uR;uniform vec2 uPx;uniform vec3 uFl,uJ;uniform vec4 uFx,uFy,uFz;uniform float uFs;in vec2 vU;out vec4 o;
+uniform sampler2D uH,uB,uR;uniform vec2 uPx,uJc;uniform vec3 uFl,uJ;uniform vec4 uFx,uFy,uFz;uniform float uFs;in vec2 vU;out vec4 o;
 vec3 aces(vec3 x){return clamp(x*(2.51*x+.03)/(x*(2.43*x+.59)+.14),0.,1.);}
 void main(){vec2 q=vU-.5;float bs=uCA.w;
  vec2 of=q*dot(q,q)*(.005+.028*bs)*uFx.x;
  vec3 c=vec3(texture(uH,vU+of).r,texture(uH,vU).g,texture(uH,vU-of).b);
  vec2 mv=uFx.zw+q*dot(q,q)*uFs;                               // motion blur: the turn, plus speed streaming past the edges
  if(texture(uH,vU).a>-.5&&dot(mv,mv)>2e-7){float jt=fract(52.98*fract(dot(gl_FragCoord.xy,vec2(.0671,.00584))));vec3 mb=c,c0=c;for(int i=1;i<7;i++){vec2 u=vU+mv*(float(i)-jt)/6.;vec4 sg=texture(uH,u);mb+=sg.a<-.5?c0:vec3(texture(uH,u+of).r,sg.g,texture(uH,u-of).b);}c=mb/7.;}   // the cabin is not moving relative to you: it stays sharp
- if(uJ.x>0.){vec3 ac=vec3(0);for(int i=0;i<12;i++){float t=float(i)/12.;ac+=texture(uH,.5+q*(1.-uJ.x*.6*t)).rgb*(1.-.5*t);}c=mix(c,ac/8.*(1.+uJ.x),uJ.x);}
+ vec2 qj=vU-uJc;   // the jump is centred on the point dead ahead of the ship, projected for this eye: in a headset both eyes agree, so the tunnel has depth
+ if(uJ.x>0.){vec3 ac=vec3(0);for(int i=0;i<12;i++){float t=float(i)/12.;ac+=texture(uH,uJc+qj*(1.-uJ.x*.6*t)).rgb*(1.-.5*t);}c=mix(c,ac/8.*(1.+uJ.x),uJ.x);}
  vec4 e=uPx.xyxy*vec4(-5,-5,5,5);
  c+=(texture(uB,vU).rgb*.03+.25*(texture(uR,vU+e.xy)+texture(uR,vU+e.zy)+texture(uR,vU+e.xw)+texture(uR,vU+e.zw)).rgb)*uFy.y;   // glow and sun rays
  if(uFl.z>0.){vec2 sv=vU-uFl.xy,g1=vU-mix(uFl.xy,1.-uFl.xy,.62),g2=vU-(1.-uFl.xy);float vis=uFl.z*max(texture(uH,clamp(uFl.xy,.002,.998)).a,0.);
   c+=vis*uSunC.rgb*(vec3(.45,.65,1.)*exp(-abs(sv.y)*110.)*exp(-abs(sv.x)*3.2)*.22+vec3(.6,.8,1.)*exp(-dot(g1,g1)*700.)*.035+vec3(1.,.7,.5)*smoothstep(.012,0.,abs(length(g2)-.11))*.02);}
- if(uJ.y>0.){vec2 qa=q*vec2(uPx.y/uPx.x,1.);float r=length(qa),a=atan(qa.y,qa.x),z=.22/(r+.03)+uJ.z*5.;
+ if(uJ.y>0.){vec2 qa=qj*vec2(uPx.y/uPx.x,1.);float r=length(qa),a=atan(qa.y,qa.x),z=.22/(r+.03)+uJ.z*5.;
   float ag=(a+3.1416)*52.,id=floor(ag),af=fract(ag)-.5,h=h1(id),h2=h1(id+91.),ln=exp(-af*af*(10.+30.*h2));
   float s=(pow(fract(z*(.25+h*.9)+h2*9.),6.)*step(.3,h)+.3*pow(fract(z*(.6+h2)+h*5.),10.))*ln;
   float sw=texture(uNz,vec3(cos(a)*.35,sin(a)*.35,z*.06)).r;
@@ -2089,12 +2090,13 @@ function rpgSim(dt, fly) { mslTick(dt); chatter(dt, fly); if (fly && crew('eng')
 
 // ---- controllers in a headset: everything that has a key has a button ----
 let hudForce = 0;
-const xprev = { left: [], right: [] }; let xNav = 0;
+const xprev = { left: [], right: [] }, xNav = { left: 0, right: 0 };   // per hand: when the stick may next step the menu (0 = centred, ready)
 function xrPad(src, gp) {
   const h = src.handedness === 'left' ? 'left' : 'right', pv = xprev[h], e = [0, 1, 2, 3, 4, 5].map((i) => { const p = !!(gp.buttons[i] && gp.buttons[i].pressed), r = p && !pv[i]; pv[i] = p; return r; });
   const ay = gp.axes[3] || gp.axes[1] || 0;
   if (jpOpen) {
-    if (Math.abs(ay) > .6) { if (!xNav && items.length) { psel = (psel + (ay > 0 ? 1 : -1) + items.length) % items.length; xNav = 1; } } else if (h === 'left' || Math.abs(ay) < .3) xNav = 0;
+    const now = performance.now();   // one step per push, then after half a second a slow repeat; each hand keeps its own latch
+    if (Math.abs(ay) > .65) { if (items.length && (xNav[h] === 0 || now >= xNav[h])) { const first = xNav[h] === 0; psel = (psel + (ay > 0 ? 1 : -1) + items.length) % items.length; xNav[h] = now + (first ? 480 : 220); } } else if (Math.abs(ay) < .3) xNav[h] = 0;
     if (e[0] || e[4]) pick(psel); else if (e[5] || e[1]) closePanel();
     return 1;
   }
@@ -2175,7 +2177,7 @@ function hudDraw(k) {
   if (!flying()) return;
   const P = P_HUD; gl.useProgram(P.p); gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
   M3[0] = sRx; M3[1] = sRy; M3[2] = sRz; M3[3] = sUx; M3[4] = sUy; M3[5] = sUz; M3[6] = -sFx; M3[7] = -sFy; M3[8] = -sFz;
-  gl.uniformMatrix3fv(P.u.uShip, false, M3); gl.uniform3f(P.u.uEye, eox * k, eoy * k, eoz * k); gl.uniform3f(P.u.uMo, cockpit ? ckx : 0, cockpit ? cky : 0, cockpit ? ckz : 0);
+  gl.uniformMatrix3fv(P.u.uShip, false, M3); if (xr) gl.uniform3f(P.u.uEye, cex, cey, cez); else gl.uniform3f(P.u.uEye, eox * k, eoy * k, eoz * k); gl.uniform3f(P.u.uMo, cockpit ? ckx : 0, cockpit ? cky : 0, cockpit ? ckz : 0);
   gl.bindVertexArray(hudVA); gl.activeTexture(gl.TEXTURE8); gl.uniform1i(P.u.uTx, 8);
   gl.bindTexture(gl.TEXTURE_2D, hudTex); const asp = W / H, nar = !xr && asp < 1.05, hs2 = xr ? 1 : (nar ? Math.min(1.45, 1.5 * asp / 1.1) : Math.min(1.45, 1.55 * asp / 1.76, cinOn && asp > 1.6 ? 1.5 * asp / 2.39 : 9)) * CFG.size, cy0 = xr ? .2 : 0, hw = nar ? 1.1 * hs2 : 1.76 * hs2;                                   // on a flat screen the display is a visor across the whole view; in a headset it sits on the front glass
   gl.uniform4f(P.u.uR, 0, cy0, hw, hs2); gl.uniform4f(P.u.uUV, nar ? .1875 : 0, 0, nar ? .8125 : 1, 1);
@@ -3371,7 +3373,7 @@ addEventListener('resize', resize);
 
 // ---- ship state and input ----
 let syaw = .05, spit = .08, hurtTip = 0, subO = null, subG = null;
-let bHold = 0, bRamp = 0, bOd = 0, odOn = 0, QA = null, QAs = null, yawL = 0, pitchL = 0, rollIn = 0;
+let bHold = 0, bRamp = 0, bOd = 0, odOn = 0, QA = null, QAs = null, yawL = 0, pitchL = 0, rollIn = 0, atmWas = 0, rightT = 0;
 const qmul = (a, b) => [a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1], a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0], a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3], a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2]];
 const qn = (q) => { const l = Math.hypot(q[0], q[1], q[2], q[3]) || 1; return [q[0] / l, q[1] / l, q[2] / l, q[3] / l]; };
 const qax = (x, y, z, a) => { const s = Math.sin(a / 2); return [x * s, y * s, z * s, Math.cos(a / 2)]; };
@@ -3576,6 +3578,14 @@ function go() {
 $('ver').textContent = BUILD;
 function menu() { closePanel(); B.className = 'm'; if (document.pointerLockElement) document.exitPointerLock(); for (const k in K) K[k] = 0; mFire = 0; steer = 0; }
 $('launch').onclick = go; $('o').onclick = menu;
+// Installed from the Meta Horizon Store (a packaged web app): VR is the only way in, so the main button enters the headset
+// and the desktop-only items (separate VR button, keyboard controls, the full-screen note) step aside.
+const PWA = typeof window.getDigitalGoodsService === 'function' || QS.has('pwa');
+if (PWA) {
+  $('launch').textContent = 'Enter VR';
+  $('launch').onclick = async () => { let ok = false; try { ok = navigator.xr && await navigator.xr.isSessionSupported('immersive-vr'); } catch {} if (ok) vr(1); else go(); };
+  for (const id of ['vr', 'keys']) $(id).parentNode.style.display = 'none'; const fn = $('fsn'); if (fn) fn.style.display = 'none';
+}
 let cockpit = 1;
 try { cockpit = localStorage.esCock !== '0'; } catch {}
 const labels = () => { $('cargo').style.display = cockpit ? 'none' : ''; $('ck').lastChild.textContent = cockpit ? 'on' : 'off'; $('snd').lastChild.textContent = muted ? 'off' : 'on'; $('det').lastChild.textContent = ['high', 'medium', 'low'][LV]; };
@@ -3853,7 +3863,8 @@ function simulate(dt, fly) {
 // Drawing. eye() renders one view (the screen, half of it, or one lens of a headset) from the globals below.
 // ============================================================================
 let ckx = 0, cky = 0, ckz = 0, ckr = 0, stx = 0, sty = 0, ovx = 0, ovy = 0, ovz = 0, oyaw = 0, opit = 0, jk = 0;
-let eRx, eRy, eRz, eUx, eUy, eUz, eFx, eFy, eFz, tL, tR, tB, tT, eox = 0, eoy = 0, eoz = 0;
+let eRx, eRy, eRz, eUx, eUy, eUz, eFx, eFy, eFz, tL, tR, tB, tT, eox = 0, eoy = 0, eoz = 0, cex = 0, cey = 0, cez = 0;
+const CKM = 3;   // cockpit units per metre in a headset: the cabin was drawn at about a third of a metre to the unit, so this puts the seat, dash and floor at real-world heights
 function draw(P, L, m) {
   if (!L.n) return;
   const u = P.u;
@@ -3892,7 +3903,7 @@ function eye(fb, x, y, w, h, tw, th) {
     M3[0] = sRx; M3[1] = sRy; M3[2] = sRz; M3[3] = sUx; M3[4] = sUy; M3[5] = sUz; M3[6] = -sFx; M3[7] = -sFy; M3[8] = -sFz;
     for (const [C, a, b] of [[P_COCK, 0, mCock.cb], [P_CAB, mCock.cb, mCock.n - mCock.ng]]) {   // two draws: the dash with a lean shader, then the quarters with theirs
       gl.useProgram(C.p);
-      gl.uniformMatrix3fv(C.u.uShip, false, M3); gl.uniform3f(C.u.uEye, eox * k, eoy * k, eoz * k); gl.uniform1f(C.u.uWd, xr ? 1 : 1.3);
+      gl.uniformMatrix3fv(C.u.uShip, false, M3); if (xr) gl.uniform3f(C.u.uEye, cex, cey, cez); else gl.uniform3f(C.u.uEye, eox * k, eoy * k, eoz * k); gl.uniform1f(C.u.uWd, xr ? 1 : 1.3);
       gl.uniform4f(C.u.uMo, ckx + Math.sin(tm * 53) * vib, cky + Math.sin(tm * 67 + 2) * vib, ckz, ckr);
       gl.uniform4f(C.u.uCk, thr, gunSpin, Math.max(bst, jk), muzzle); gl.uniform4f(C.u.uSt, stx, sty, Math.min(1, Math.hypot(vx, vy, vz) / 660), cg(5)); gl.uniform4f(C.u.uCg, cg(1), cg(2), cg(3), cg(4)); gl.uniform1f(C.u.uDm, 1 - ST.hull / 100); gl.uniform2f(C.u.uAt, Math.asin(Math.max(-1, Math.min(1, sFy))), Math.atan2(sRy, sUy));
       if (C.u.uHc) gl.uniform3f(C.u.uHc, PIP.col[0], PIP.col[1], PIP.col[2]);
@@ -3968,7 +3979,8 @@ function eye(fb, x, y, w, h, tw, th) {
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   // tone-map into the destination
   gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.viewport(x, y, w, h);
-  gl.useProgram(P_COMP.p); gl.uniform2f(P_COMP.u.uPx, 1 / tw, 1 / th); { const v = (k) => xr ? 0 : CFG[k], fb = v('fxBlur') * 1.1, fc = v('fxCA'); gl.uniform4f(P_COMP.u.uFx, fc ? fc * 1.9 : 0, v('fxGrain') * .09, mbx * fb, mby * fb); gl.uniform1f(P_COMP.u.uFs, fb * mbs); gl.uniform4f(P_COMP.u.uFy, v('fxScan'), CFG.fxBloom, v('fxVig'), 0); gl.uniform4f(P_COMP.u.uFz, v('fxGlass'), 0, 0, 0); } gl.uniform3f(P_COMP.u.uJ, Math.max(jk, dbgJ, scE * .22) * .9, Math.max(tun, dbgT), jumpT + tm); gl.uniform3f(P_COMP.u.uFl, sux, suy, sux > -.2 && sux < 1.2 && suy > -.2 && suy < 1.2 ? sus * CFG.fxFlare * (csU[0] ? .2 : 1) : 0);
+  gl.useProgram(P_COMP.p); gl.uniform2f(P_COMP.u.uPx, 1 / tw, 1 / th); { const v = (k) => xr ? 0 : CFG[k], fb = v('fxBlur') * 1.1, fc = v('fxCA'); gl.uniform4f(P_COMP.u.uFx, fc ? fc * 1.9 : 0, v('fxGrain') * .09, mbx * fb, mby * fb); gl.uniform1f(P_COMP.u.uFs, fb * mbs); gl.uniform4f(P_COMP.u.uFy, v('fxScan'), CFG.fxBloom, v('fxVig'), 0); gl.uniform4f(P_COMP.u.uFz, v('fxGlass'), 0, 0, 0); } gl.uniform3f(P_COMP.u.uJ, Math.max(jk, dbgJ, scE * .22) * .9, Math.max(tun, dbgT), jumpT + tm); { const fx = sFx * eRx + sFy * eRy + sFz * eRz, fy = sFx * eUx + sFy * eUy + sFz * eUz, fz = Math.max(.15, sFx * eFx + sFy * eFy + sFz * eFz), cl = (v) => Math.max(-.5, Math.min(1.5, v));   // where the ship's nose falls in this eye's picture
+    gl.uniform2f(P_COMP.u.uJc, cl((fx / fz - tL) / (tR - tL)), cl((fy / fz - tB) / (tT - tB))); } gl.uniform3f(P_COMP.u.uFl, sux, suy, sux > -.2 && sux < 1.2 && suy > -.2 && suy < 1.2 ? sus * CFG.fxFlare * (csU[0] ? .2 : 1) : 0);
   gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, T.hdr.t); gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, bl[0].t); gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, T.ray.t);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   hudDraw(xr ? 1 / 6 : stereo ? .25 : 1);                     // the display goes on last, over the finished picture, so blur, grain and fringing never touch its text
@@ -4059,7 +4071,18 @@ function frame(now, xf) {
   if (!QA || snap || !CFG.ctl) { QA = qYP(yaw, pitch); if (!QAs || snap) QAs = QA.slice(); rollIn = 0; yawL = yaw; pitchL = pitch; }
   else { const dY = yaw - yawL, dP = pitch - pitchL; if (dY || dP || rollIn) QA = qn(qmul(qmul(qmul(QA, qax(0, 1, 0, -dY)), qax(1, 0, 0, dP)), qax(0, 0, 1, -rollIn))); }
   if (CFG.ctl) { rollIn = 0; const F = qv(QA, 0, 0, -1); pitch = Math.asin(Math.max(-1, Math.min(1, F[1]))); yaw = Math.atan2(F[0], -F[2]); yawL = yaw; pitchL = pitch; }
-  { const tk = 1 - Math.exp(-dt * 6.5); QAs = qslerp(QAs, QA, tk); }                                                   // the ship turns with a little lag: it has mass
+  // Below a planet's clouds the ship rights itself: on entry it rolls level and upright over a couple of seconds (keeping its heading),
+  // and in a headset, which has no roll, it keeps easing back to level so the horizon never sits tilted.
+  if (fly && SYS.atm && QA) {
+    if (!atmWas) rightT = 2.2;
+    if (rightT > 0 || xr) {
+      const F = qv(QA, 0, 0, -1), p = Math.max(-1.25, Math.min(1.25, Math.asin(Math.max(-1, Math.min(1, F[1]))))), y = Math.atan2(F[0], -F[2]), L = qYP(y, p);
+      QA = rightT > 0 ? qslerp(QA, L, 1 - Math.exp(-dt * 2.2)) : qslerp(QA, L, 1 - Math.exp(-dt * .9));
+      if (!CFG.ctl || rightT > 0) { yaw = y; pitch = p; yawL = y; pitchL = p; rollIn = 0; }
+    }
+  }
+  rightT = Math.max(0, rightT - dt); atmWas = fly && SYS.atm ? 1 : 0;
+  { const tk = 1 - Math.exp(-dt * (rightT > 0 ? 2.6 : 6.5)); QAs = qslerp(QAs, QA, tk); }                              // the ship turns with a little lag: it has mass (more gently while righting)
   const sh = trauma * trauma * .02, Qb = roll ? qmul(QAs, qax(0, 0, 1, roll)) : QAs, Qv = sh > 0 ? qmul(Qb, qmul(qax(0, 1, 0, Math.sin(tm * 71) * sh), qax(1, 0, 0, Math.sin(tm * 93 + 1) * sh))) : Qb;
   { const R = qv(Qv, 1, 0, 0), U = qv(Qv, 0, 1, 0), F = qv(Qv, 0, 0, -1); sRx = R[0]; sRy = R[1]; sRz = R[2]; sUx = U[0]; sUy = U[1]; sUz = U[2]; sFx = F[0]; sFy = F[1]; sFz = F[2];
     spit = Math.asin(Math.max(-1, Math.min(1, F[1]))); syaw = Math.atan2(F[0], -F[2]); }
@@ -4118,6 +4141,8 @@ function frame(now, xf) {
       tL = (p[8] - 1) / p[0]; tR = (p[8] + 1) / p[0]; tB = (p[9] - 1) / p[5]; tT = (p[9] + 1) / p[5];
       const ox = (ep.x - hp.x) * 6, oy = (ep.y - hp.y) * 6, oz = (ep.z - hp.z) * 6;   // eyes set wide apart, so the asteroids nearby have depth
       eox = sRx * ox + sUx * oy - sFx * oz; eoy = sRy * ox + sUy * oy - sFy * oz; eoz = sRz * ox + sUz * oy - sFz * oz;
+      { const cl = (v) => Math.max(-1.6, Math.min(1.6, v * CKM)), cx = cl(ep.x), cy = cl(ep.y), cz = cl(ep.z);   // the eye inside the cabin: where the head is (from where it started), so leaning in works
+        cex = sRx * cx + sUx * cy - sFx * cz; cey = sRy * cx + sUy * cy - sFy * cz; cez = sRz * cx + sUz * cy - sFz * cz; }
       eye(bl.framebuffer, vp.x, vp.y, vp.width, vp.height, Math.round(vp.width * .8), Math.round(vp.height * .8));
     }
   } else {
@@ -4175,7 +4200,6 @@ await step(1, 'The dark is ready');
 B.className = 'm';
 // Installed from the Meta Horizon Store (a packaged web app): open straight into the headset. Launching the app counts as the user's
 // tap, so the session is allowed without one. Ordinary website visits never auto-enter. If the headset won't start, the menu stays up.
-const PWA = typeof window.getDigitalGoodsService === 'function' || QS.has('pwa');
 if (PWA && !TEST) (async () => { try { if (navigator.xr && await navigator.xr.isSessionSupported('immersive-vr')) await vr(1); } catch {} })();
 if (TEST) go();
 
