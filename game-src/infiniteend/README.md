@@ -1,6 +1,8 @@
-# The Infinite End: handoff brief for the next build (v1.20)
+# The Infinite End: handoff brief (v1.21)
 
-You're taking over development of **The Infinite End**, a single-file WebGL/WebXR space flight, mining, trading and story game by Shawn (Ikosagon). v1.20 is the current test build (`BUILD` in `c_main.js`). The next handoff is v1.21: faster, fixes whatever Shawn logs next, and adds from the backlog. Deliver it the same way: one self-contained `index.html` on the test site.
+You're taking over development of **The Infinite End**, a single-file WebGL/WebXR space flight, mining, trading and story game by Shawn (Ikosagon). v1.21 is the current test build (`BUILD` in `c_main.js`). The next handoff is v1.22: faster, fixes whatever Shawn logs next, and adds from the backlog. Deliver it the same way: one self-contained `index.html` on the test site.
+
+v1.21 targets **Meta Quest 3 and newer** (Quest 3 / 3S, Touch Plus). Desktop keyboard, mouse and gamepad stay a separate scheme. See "Quest 3 controls" below.
 
 This is a trial. Shawn will compare your v1.20 against the previous developer's work on fidelity, performance and polish.
 
@@ -29,6 +31,7 @@ src/                              the source, the only thing you edit
   a_core.js                       core: seeds, names (NM), systems/places (mkSys, setLoc), fields (fM fC fL fG), shaders (bake, composite)
   b_world.js                      world geometry: rocks, giants, cockpit/cabin meshes
   bz_game.js                      game: jobs, NPCs, comms, escorts, story arcs, HUD, settings, aux display (PIP), oxygen, audio score
+  e_v121.js                       v1.21 layer: charts, reputation prices, dogfight, faction kits, split settings
   c_main.js                       main loop, rendering passes, input, XR, save/load, BUILD label, debug hooks (window.ES)
   build.sh                        joins them → src/index.html (store flavour) and src/dist/test/index.html (test flavour)
 current/infiniteendtest-index.html   the build Shawn was testing before v1.20 (v1.19 content, mislabelled v1.18).
@@ -58,6 +61,24 @@ v1.20 already did the list below. Do not repeat it. Read `docs/qa-log.md` for wh
    - make the small console screen cheap when idle, and load the full display only when opened, replacing the HUD like a widescreen TV.
 4. **Fix every QA finding** in `docs/qa-log.md`, items 1–13. Where the log lists "options to weigh", choose and say which.
 5. Then **backlog items** of your choice from `docs/backlog.md`, favouring ones that raise visual fidelity and the feeling of a living universe.
+
+## 3c. Quest 3 controls (v1.21)
+
+Mapped from Meta's Touch button guide and the `meta-quest-touch-plus` WebXR profile (xr-standard). The right-hand Meta button is reserved by the system and is not used.
+
+| Touch Plus | In flight | In a menu |
+|---|---|---|
+| Left stick (the cab's stick) | Yaw and pitch. Snap 30° by default, pitch stays smooth. | Still flies the ship |
+| Right stick | Throttle, and strafe sideways. Click zeros the throttle. | Moves the row |
+| Either trigger | Fire. A normal squeeze is enough. The hard second stage is not required. | Select (A is preferred) |
+| Either grip | Boost. Nothing in the cab is grabbable, so grip is boost. | — |
+| A | Hail, dock, accept | Select |
+| B | Next target | Back |
+| X | Journal | — |
+| Y | Next weapon | Back |
+| Menu (≡), left controller | Pause | Close |
+
+Handedness swaps the sticks. Empty hands are ignored. Comfort defaults: snap turn, seated, subtle vignette while boosting, subtle haptics, 72 Hz (13.9 ms; 90 is 11.1 ms, 120 is 8.3 ms and Quest 3 only; Quest 3S has no 120), render scale 1, medium fixed foveation. Foveation only cheapens the final eye pass, because the world is drawn to an offscreen buffer first. The in-headset menu is an opaque plate on the visor so it stays readable if passthrough shows the room. Keyboard bindings are not shown in VR.
 
 ## 4. Non-negotiables
 

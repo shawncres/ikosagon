@@ -137,6 +137,160 @@ const DIRS = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1
 function linked(a, b) { const f = a[0] < b[0] || a[0] === b[0] && (a[1] < b[1] || a[1] === b[1] && a[2] < b[2]), p = f ? a : b, q = f ? b : a; return a[1] === b[1] && a[2] === b[2] || h3(p[0], p[1], p[2], h3(q[0], q[1], q[2], MASTER)) % 100 < 14; }   // an east-west spine, and now and then a branch: two or three lanes a system
 const reach = (s) => DIRS.map((d) => [s[0] + d[0], s[1] + d[1], s[2] + d[2]]).filter((n) => linked(s, n));
 let SYS = null;
+// Blackbody colour, 0..1, from a temperature in kelvin. Clamped so a cold dwarf still reads as light.
+function bbCol(Tk) {
+  let T = Tk / 100; if (T < 10) T = 10;
+  let r, g, b;
+  if (T <= 66) { r = 255; g = 99.4708025861 * Math.log(T) - 161.1195681661; }
+  else { r = 329.698727446 * Math.pow(T - 60, -0.1332047592); g = 288.1221695283 * Math.pow(T - 60, -0.0755148492); }
+  if (T >= 66) b = 255; else if (T <= 19) b = 0; else b = 138.5177312231 * Math.log(T - 10) - 305.0447927307;
+  const c = (v) => Math.max(.02, Math.min(1, v / 255));
+  return [c(r), c(g), c(b)];
+}
+const PKN = ['gas giant', 'lava world', 'desert world', 'ocean world', 'toxic world', 'ice world', 'tidally locked world', 'shattered world'];
+const RAREN = ['common', 'uncommon', 'rare', 'legendary'];
+const GASBAND = [
+  [[.62, .38, .18], [.95, .78, .42]],
+  [[.18, .32, .62], [.55, .72, .9]],
+  [[.72, .62, .16], [.95, .88, .45]],
+  [[.78, .7, .58], [.45, .32, .22]],
+  [[.62, .28, .38], [.92, .7, .62]],
+];
+// A star's class, age and metallicity decide how many worlds it keeps, where the ice line sits, and what colour the nebula burns.
+function fillWorld(s, id, R) {
+  s.fac = (hs(id ^ 0xFAC7) >>> 0) % 4;
+  const u = R();
+  const Z = Math.pow(R(), 1.35);
+  const age = R();
+  let letter = 'G', T = 5600, L = 1, dead = 0, rogue = 0, giant = 0, young = 0, binary = 0;
+  if (u < .014) { rogue = 1; letter = 'M'; T = 1800 + R() * 900; L = .004 + R() * .02; }
+  else if (u < .03) { dead = 1; letter = 'N'; T = 800000; L = .002; }
+  else if (u < .055) { dead = 1; letter = 'D'; T = 7000 + R() * 16000; L = .004 + R() * .02; }
+  else {
+    const x = Math.pow(R(), .62);
+    const row = [['M', 3200, .08], ['K', 4500, .28], ['G', 5700, 1], ['F', 6800, 3.4], ['A', 8600, 18], ['B', 15000, 900], ['O', 28000, 12000]][Math.min(6, x * 7 | 0)];
+    letter = row[0]; T = row[1] * (.86 + R() * .28); L = row[2] * (.45 + R() * 1.3);
+    if (age > .84 && x < .62) { giant = 1; L *= 30 + R() * 90; T *= .7; }
+    else if (age < .1) young = 1;
+    if (R() < .22) binary = 1;
+  }
+  const bb = bbCol(Math.min(T, 40000));
+  const star = { letter, T, L, Z, age, dead, rogue, giant, young, binary, bb };
+  s.starBody = star; s.dead = dead; s.rogue = rogue; s.Z = Z; s.age = age; s.temp = T;
+  const map = { M: 'red dwarf', K: 'orange dwarf', G: 'yellow star', F: 'yellow-white star', A: 'white star', B: 'blue-white star', O: 'blue giant', N: 'neutron star', D: 'white dwarf' };
+  let label = map[letter] || 'star';
+  if (rogue) label = 'rogue dwarf';
+  else if (giant && letter === 'M') label = 'red giant';
+  else if (giant && letter === 'K') label = 'orange giant';
+  else if (giant) label = label.replace('dwarf', 'giant').replace('star', 'giant');
+  if (binary && !dead && !rogue) label += ' binary';
+  if (young && !giant) label = 'young ' + label;
+  s.star = label;
+  s.sc = letter === 'D' ? 7 : binary ? 6 : T < 3800 ? 0 : T < 5000 ? 1 : T < 6000 ? 2 : T < 7500 ? 3 : T < 11000 ? 4 : 5;
+  s.stc = bb;
+  for (let i = 0; i < 3; i++) s.pal[9 + i] = s.pal[9 + i] * .25 + bb[i] * .75;
+  const em = dead ? [.2, .62, .7] : rogue ? [.28, .16, .42] : young ? [.9, .28, .48] : Z > .62 ? [.78, .5, .2] : [bb[2] * .8, bb[0] * .45, bb[1] * .7];
+  s.neb = [bb[0] * .55, bb[1] * .4, bb[2] * .45, em[0], em[1], em[2]];
+  const nr = nameRng(id, 0x4E414D45), city = pickN(nr, NM.city);
+  if (s.fac === 0) s.name = nr() < .45 ? 'MC ' + city : city + (nr() < .5 ? ' Charter' : ' Annex');
+  else if (s.fac === 1) s.name = nr() < .5 ? 'Lantern of ' + pickN(nr, NM.world) : city + ' Shrine';
+  else if (s.fac === 2) s.name = nr() < .5 ? pickN(nr, NM.ship) + ' Road' : 'Haul ' + city;
+  else s.name = nr() < .4 ? 'DS-' + (1000 + (hs(id ^ 0xD5) % 9000)) : 'Survey ' + city;
+  const iceLine = 2.4 * Math.sqrt(Math.max(L, .05));
+  let n = rogue ? (R() < .42 ? 1 : 0) : letter === 'N' ? (R() < .5 ? 0 : 1 + (R() * 2 | 0)) : Math.round(.8 + Z * 5.2 + (age > .25 ? 1.1 : 0));
+  n = Math.max(rogue || letter === 'N' ? 0 : 1, Math.min(7, n | 0));
+  if (letter === 'D') n = Math.min(n, 1 + (R() * 3 | 0));
+  if (id === HOME) n = Math.max(n, 3);
+  const worlds = [];
+  let a = (.1 + R() * .22) * Math.sqrt(Math.max(L, .15));
+  const ratio = 1.42 + R() * .38;
+  for (let i = 0; i < n; i++) {
+    a *= ratio * (.84 + R() * .32);
+    const beyond = a > iceLine;
+    let mass = beyond ? (R() < .5 + Z * .28 ? 22 + R() * 260 : .2 + R() * 3.5) : (R() < .1 ? 12 + R() * 30 : .06 + Math.pow(R(), 1.55) * 7);
+    const Teq = 255 * Math.pow(Math.max(L, .01), .25) / Math.sqrt(Math.max(a, .05));
+    let kind = 5;
+    if (dead && R() < .4) kind = 7;
+    else if (mass > 16) kind = 0;
+    else if (a < .14 * Math.sqrt(Math.max(L, .2)) && R() < .6) kind = 6;
+    else if (Teq > 850) kind = 1;
+    else if (Teq > 430) kind = mass > 2.2 && R() < .38 ? 4 : 2;
+    else if (Teq > 210) kind = Z > .32 && R() < .58 ? 3 : (R() < .28 ? 4 : 2);
+    else if (Teq > 140) kind = R() < .22 ? 3 : 5;
+    if (id === HOME && i === 1) kind = 3;
+    const rad = kind === 0 ? 32 + Math.pow(mass, .32) * 7.5 : kind === 7 ? 1.1 + mass * .35 : kind === 5 ? 1.5 + Math.pow(mass, .38) * 2.4 : 2.4 + Math.pow(Math.max(mass, .2), .4) * 3.2;
+    const band = GASBAND[R() * GASBAND.length | 0];
+    const base = kind === 0 ? band : [
+      [[.15, .05, .03], [.95, .32, .06]],
+      [[.55, .36, .18], [.9, .7, .38]],
+      [[.05, .16, .32], [.28, .48, .28]],
+      [[.32, .48, .1], [.7, .78, .22]],
+      [[.55, .72, .86], [.9, .95, .98]],
+      [[.85, .32, .1], [.4, .58, .75]],
+      [[.22, .18, .16], [.5, .46, .42]],
+    ][kind - 1];
+    let rare = kind === 7 || kind === 6 ? 2 : kind === 4 || kind === 1 ? 1 : 0;
+    let anomaly = '';
+    if (R() < .07) { anomaly = ['a standing storm', 'a crystal continent', 'a living sheen', 'night cities', 'a split ring'][R() * 5 | 0]; rare = Math.min(3, rare + 1); }
+    if (dead) rare = Math.min(3, rare + 1);
+    const rings = kind === 7 || (kind === 0 && a > iceLine * .75 && R() < .62) || (kind === 5 && R() < .3);
+    const moons = kind === 0 ? 2 + (R() * 10 | 0) : kind === 7 ? 0 : R() * (1 + mass) | 0;
+    const air = kind !== 7 && !(rogue && kind === 1);
+    const pop = (kind === 3 || kind === 2) && Teq > 200 && Teq < 360 && !dead ? ['outposts', 'a mining colony', 'domed cities', 'no one'][R() * 4 | 0] : 'none';
+    worlds.push({ au: a, mass, Teq, kind, rad, base, rare, anomaly, rings, moons, air, pop });
+  }
+  const slot = [null, null, null];
+  let gas = null, rock = null, ice = null, rockScore = 1e9;
+  for (const w of worlds) {
+    if (w.kind === 0 && (!gas || w.mass > gas.mass)) gas = w;
+    if (w.kind === 5 && (!ice || w.au > ice.au)) ice = w;
+    if (w.kind !== 0 && w.kind !== 5) { const sc = Math.abs(w.Teq - 280) + (w.kind === 3 ? -40 : 0); if (sc < rockScore) { rockScore = sc; rock = w; } }
+  }
+  if (!gas && worlds.length) gas = worlds.slice().sort((p, q) => q.rad - p.rad)[0];
+  if (!rock) rock = worlds.find((w) => w !== gas && w !== ice) || null;
+  if (!ice) ice = worlds.find((w) => w !== gas && w !== rock) || null;
+  slot[0] = gas; slot[1] = rock; slot[2] = ice;
+  if (id === HOME && (!slot[1] || !slot[1].air)) {
+    slot[1] = { au: 1, mass: 1, Teq: 280, kind: 3, rad: 6.4, base: [[.05, .16, .32], [.28, .48, .28]], rare: 0, anomaly: '', rings: 0, moons: 1, air: 1, pop: 'outposts' };
+  }
+  const used = [];
+  const wr = nameRng(id, 0x574F524C);
+  s.pk = [0, 5, 5, 0]; s.prad = [0, 0, 0]; s.worlds = worlds; s.rareSum = 0;
+  const SUN0 = [.45, .32, -.83];
+  for (let i = 0; i < 3; i++) {
+    const w = slot[i];
+    let nm = '—';
+    if (w) {
+      let guard = 0; do { nm = pickN(wr, NM.world); guard++; } while (used.includes(nm) && guard < 12);
+      used.push(nm);
+      if (s.fac === 0) nm = 'MC-' + nm;
+      else if (s.fac === 2 && wr() < .5) nm = 'Old ' + nm;
+    }
+    const ang = w ? Math.min(.85, w.rad / Math.max(48, w.au * 155)) : 0;
+    let d = [0, 1, 0], guard = 0, ok = false;
+    if (w) do {
+      const az = R() * 6.283, el = (R() - .5) * 1.05, ce = Math.cos(el);
+      d = [Math.cos(az) * ce, Math.sin(el), Math.sin(az) * ce];
+      const sun = d[0] * SUN0[0] + d[1] * SUN0[1] + d[2] * SUN0[2];
+      let nearP = false;
+      for (let k = 0; k < i; k++) if (s.pl[k * 4 + 3] > 0 && d[0] * s.pl[k * 4] + d[1] * s.pl[k * 4 + 1] + d[2] * s.pl[k * 4 + 2] > .18) nearP = true;
+      ok = sun < .42 && !nearP; guard++;
+    } while (!ok && guard < 48);
+    s.pr[i] = ang; s.prad[i] = w ? w.rad : 0; s.pk[i] = w ? w.kind : 5;
+    s.pl.set(w ? [d[0], d[1], d[2], ang] : [0, 1, 0, 0], i * 4);
+    const A = w ? w.base[0] : [.2, .2, .2], B = w ? w.base[1] : [.4, .4, .4];
+    const mix = (c, p, i0) => Math.max(.02, c * .78 + p * .22);
+    s.pa.set([mix(A[0], s.pal[3]), mix(A[1], s.pal[4]), mix(A[2], s.pal[5]), w && w.rings ? 1 : 0], i * 4);
+    s.pb.set([mix(B[0], s.pal[0]), mix(B[1], s.pal[1]), mix(B[2], s.pal[2])], i * 3);
+    const airName = !w || !w.air ? '' : w.kind === 0 ? 'Cloud Tops, ' + nm : w.kind === 5 ? 'Ice Skies of ' + nm : 'Skies of ' + nm;
+    const airDesc = !w ? '' : w.kind === 0 ? 'Flight above the cloud deck · banded storms · oxygen in the deck' : w.kind === 1 ? 'A thin burning sky over a lava plain' : w.kind === 2 ? 'Dust and a hard light over dunes' : w.kind === 3 ? 'Thin air over an ocean world · settlements below' : w.kind === 4 ? 'A sour yellow deck · filters advised' : w.kind === 6 ? 'A hot face and a frozen face, and a thin dusk between' : 'Low over a frozen world · fracture light';
+    s.planets.push(w ? { name: nm, type: PKN[w.kind], kind: w.kind, orbit: +w.au.toFixed(2), moons: w.moons, pop: w.pop, rare: RAREN[w.rare], rareN: w.rare, anomaly: w.anomaly, Teq: Math.round(w.Teq), mass: +w.mass.toFixed(1), air: w.air ? 1 : 0, airName, airDesc, rings: w.rings ? 1 : 0 } : { name: '—', type: 'none', kind: 5, orbit: 0, moons: 0, pop: 'none', rare: 'common', rareN: 0, anomaly: '', Teq: 0, mass: 0, air: 0, airName: '', airDesc: '', rings: 0 });
+    if (w) s.rareSum += w.rare;
+  }
+  s.oreBias = Math.max(-.02, Math.min(.03, (Z - .45) * .05 + (dead ? .01 : 0)));
+  s.belt = Z > .7 ? 'metal-rich' : Z < .25 ? 'metal-poor' : giant ? 'soot and ice' : 'mixed crust';
+  s.oreName = ['rock', 'iron', 'ice', 'molten', 'overgrown', 'obsidian'][s.mat[0]] || 'rock';
+}
 function mkSys(id) {
   id >>>= 0; const rnd = mulberry32(id ^ MASTER); const t = id & 7, a = ARC[t], s = { id, t, cls: t, a, salt: 0, mat: REGT[t], sky: SKYW[t].slice(), pr: [0, 0, 0], locs: [], loc: 0, planets: [], pal: new Float32Array(12), pl: new Float32Array(12), pa: new Float32Array(12), pb: new Float32Array(9), seed: [0, 0, 0] };
   // the kind's colours, with the hue turned a little so two systems of a kind are not twins
@@ -144,55 +298,15 @@ function mkSys(id) {
   for (let i = 0; i < 12; i += 3) { const r = P[i], g = P[i + 1], b = P[i + 2], w = i < 9 ? 1 : .3; s.pal[i] = r + w * ((co + k - 1) * r + (k - q) * g + (k + q) * b); s.pal[i + 1] = g + w * ((k + q) * r + (co + k - 1) * g + (k - q) * b); s.pal[i + 2] = b + w * ((k - q) * r + (k + q) * g + (co + k - 1) * b); }
   for (let i = 0; i < 12; i++) s.pal[i] = Math.max(.01, s.pal[i]);
   s.seed0 = [rnd() * 40, rnd() * 40, rnd() * 40]; s.seed = s.seed0.slice(); s.rot = [co, k, q]; s.th = th;
-  // three worlds, far apart on the sky: a gas giant, a rocky world, an ice world.
-  // Angular size is real radius ÷ distance (PR in cruise), so two discs that look alike are at alike ranges.
-  const SUN0 = [.45, .32, -.83], PR0 = [70, 6.4, 2.6], dist0 = [640 + rnd() * 220, 168 + rnd() * 55, 310 + rnd() * 120];
-  const tone = [
-    [[.78, .46, .22], [.98, .78, .46]],
-    [[.16, .34, .24], [.62, .46, .28]],
-    [[.55, .74, .86], [.88, .94, .98]],
-  ];
-  for (let i = 0; i < 3; i++) {
-    let d, guard = 0, ok = false;
-    do {
-      const az = rnd() * 6.283, el = (rnd() - .5) * 1.15, ce = Math.cos(el);
-      d = [Math.cos(az) * ce, Math.sin(el), Math.sin(az) * ce];
-      const sun = d[0] * SUN0[0] + d[1] * SUN0[1] + d[2] * SUN0[2];
-      let nearP = false;
-      for (let k = 0; k < i; k++) if (d[0] * s.pl[k * 4] + d[1] * s.pl[k * 4 + 1] + d[2] * s.pl[k * 4 + 2] > .12) nearP = true;
-      ok = sun < .28 && !nearP; guard++;
-    } while (!ok && guard < 48);
-    const r = i === 0 && t === 3 ? 0 : PR0[i] / dist0[i];
-    s.pr[i] = r; s.pl.set([d[0], d[1], d[2], r], i * 4);
-    const th = (rnd() - .5) * .45, co = Math.cos(th), si = Math.sin(th), A0 = tone[i][0], B0 = tone[i][1];
-    const A = [A0[0] * co - A0[1] * si * .25, A0[1] * co + A0[0] * si * .12, A0[2]];
-    const B = [B0[0] * co - B0[1] * si * .2, B0[1] * co + B0[0] * si * .1, B0[2]];
-    const ring = !i && t !== 3 && rnd() < .5 ? 1 : 0;
-    s.pa.set([Math.max(.02, A[0] * .82 + s.pal[3] * .18), Math.max(.02, A[1] * .82 + s.pal[4] * .18), Math.max(.02, A[2] * .82 + s.pal[5] * .18), ring], i * 4);
-    s.pb.set([Math.max(.02, B[0] * .8 + s.pal[0] * .2), Math.max(.02, B[1] * .8 + s.pal[1] * .2), Math.max(.02, B[2] * .8 + s.pal[2] * .2)], i * 3);
-  }
-  { const nr = nameRng(id, 0x4E414D45), c = pickN(nr, NM.city);   // e.g. New Halifax, Kyoto Reach
-    s.name = nr() < .5 ? pickN(nr, NM.pre) + ' ' + c : c + ' ' + pickN(nr, NM.suf); }
-  // the star
-  const sc = id >>> 20 & 7, STC = [[1, .55, .4], [1, .72, .5], [1, .93, .78], [.98, .97, .95], [.8, .88, 1], [.65, .78, 1], [1, .85, .7], [.85, .92, 1]][sc];
-  s.sc = sc; s.stc = STC;
-  s.star = ['red dwarf', 'orange dwarf', 'yellow star', 'white star', 'blue-white star', 'blue giant', 'binary pair', 'white dwarf'][sc];
-  for (let i = 0; i < 3; i++) s.pal[9 + i] = s.pal[9 + i] * .35 + STC[i] * .65;
-  const PT = ['gas giant', 'rocky world', 'ice world'], wr = nameRng(id, 0x574F524C), wn = [];
-  while (wn.length < 3) { const w = pickN(wr, NM.world); if (!wn.includes(w)) wn.push(w); }   // worlds named for explorers, thinkers and old gods
-  for (let i = 0; i < 3; i++) s.planets.push({ name: wn[i], type: t === 3 && !i ? 'none' : PT[i] });
+  fillWorld(s, id, rnd);
   // the places in it. The first is the system's signature; the rest are drawn from the other kinds.
   const kinds = [t]; while (kinds.length < 4 + (id >>> 27) % 3) { const k = rnd() * 8 | 0; if (!kinds.includes(k) && (k !== 3 || t === 3)) kinds.push(k); }
   const lr = nameRng(id, 0x504C4143), used = [], LN = (k) => {   // places: a river, a volcano, a port, a desert, a lost ship, a garden... and what it is now
-    if (k === 1) return 'Ice Rings of ' + s.planets[2].name; if (k === 7) return 'Low Orbit, ' + s.planets[0].name;
+    if (k === 1) return s.planets[2].type === 'none' ? 'The Outer Ice' : 'Ice Rings of ' + s.planets[2].name; if (k === 7) return s.planets[0].type === 'none' ? 'High Anchor' : 'Low Orbit, ' + s.planets[0].name;
     const [ws, ss] = NM.place[k]; let w; do { w = pickN(lr, ws); } while (used.includes(w) && used.length < ws.length); used.push(w);
     const sf = pickN(lr, ss); return k === 3 ? 'The ' + w + ' ' + sf : w + ' ' + sf; };
   kinds.forEach((k, i) => s.locs.push({ i, name: LN(k), t: k, kind: NAMES[k], body: k === 7 && t !== 3 ? 0 : k === 1 ? 2 : k === 2 ? 1 : -1, desc: ARC[k].tr }));
-  // worlds you can go down to: the cloud tops of the giant and the skies of the rocky world (appended, so older saves keep their indices)
-  if (t !== 3) s.locs.push({ i: s.locs.length, name: 'Cloud Tops, ' + s.planets[0].name, t: 7, kind: 'Atmosphere', body: -1, atm: 1, desc: 'Flight above the cloud deck · storm light · high traffic lanes' });
-  s.locs.push({ i: s.locs.length, name: 'Skies of ' + s.planets[1].name, t: 0, kind: 'Atmosphere', body: -1, atm: 2, desc: 'Thin air over a rocky world · settlements below · survey work' });
-  s.locs.push({ i: s.locs.length, name: 'Ice Skies of ' + s.planets[2].name, t: 1, kind: 'Atmosphere', body: -1, atm: 3, desc: 'Low over a frozen world · fracture lines · cold light' });
-  for (let i = 0; i < 3; i++) { const p = s.planets[i]; p.orbit = +(.4 + i * .9 + rnd() * .5).toFixed(2); p.moons = rnd() * (i ? 3 : 9) | 0; p.pop = i === 1 ? ['outposts', 'a mining colony', 'domed cities', 'no one'][rnd() * 4 | 0] : 'none'; }
+  for (let i = 0; i < 3; i++) { const p = s.planets[i]; if (!p || !p.air) continue; const look = p.kind === 0 || p.kind === 4 ? 7 : p.kind === 5 ? 1 : 0; s.locs.push({ i: s.locs.length, name: p.airName, t: look, kind: 'Atmosphere', body: -1, atm: i + 1, skin: p.kind, desc: p.airDesc }); }
   { const h = hs(id ^ 0x5A17) >>> 0, p = (h % 1000) / 1000, q = ((h >>> 10) % 1000) / 1000 * 6.283, y = ((h >>> 20) % 1000) / 1000 * 1.2 - .5, cc = Math.sqrt(Math.max(0, 1 - y * y));   // a rare sight in this system's sky, if any
     s.ph = p < .42 ? 0 : p < .56 ? 1 : p < .67 ? 2 : p < .75 ? 3 : p < .86 ? 4 : p < .95 ? 5 : 6; s.phs = ((h >>> 5) % 97) / 97; s.pq = [Math.cos(q) * cc, y, Math.sin(q) * cc]; }
   s.fac = (hs(id ^ 0xFAC7) >>> 0) % 4; s.danger = (hs(id ^ 0xD4) >>> 0) % 5; s.econ = ['extraction', 'refining', 'agriculture', 'salvage', 'research', 'trade hub'][(hs(id ^ 0xEC0) >>> 0) % 6];
@@ -240,6 +354,9 @@ function setLoc(s, i) {
   else if (s.sky[1] > .35) { s.sky[0] = 0; s.sky[3] *= .25; s.ph = 0; s.headline = 2; }
   else if (s.ph) { s.sky[0] = 0; s.sky[1] = 0; s.sky[3] *= .35; s.headline = 3; }
   else s.headline = 0;
+  if (s.neb) { for (let i = 0; i < 3; i++) { s.pal[i] = Math.max(.01, s.pal[i] * .4 + s.neb[i] * .6); s.pal[3 + i] = Math.max(.01, s.pal[3 + i] * .48 + s.neb[3 + i] * .52); } }
+  if (s.dead && s.a) s.a.deb = Math.max(s.a.deb || 0, .9);
+  if (s.sty && s.age != null) { s.sty[0] = Math.min(2.2, s.sty[0] * (.75 + s.age * .7)); s.sty[2] = Math.min(1.8, s.sty[2] * (.65 + (s.Z || .4) + (s.dead ? .4 : 0))); }
   return s;
 }
 
@@ -685,7 +802,7 @@ out vec2 vU;void main(){vec2 p=vec2(gl_VertexID<<1&2,gl_VertexID&2);vU=p;gl_Posi
 
 // the sky: nebula, stars, the sun, and a ringed giant with a moon
 const SKY_F = HD + `
-in vec2 vU;uniform vec4 uBS[8],uBC[8],uCS;uniform vec3 uCC;uniform vec4 uSky,uPl[3],uPa[3],uOrb,uPh;uniform vec3 uPb[3],uSd,uOa,uOb,uPq;out vec4 o;
+in vec2 vU;uniform vec4 uBS[8],uBC[8],uCS;uniform vec3 uCC;uniform vec4 uSky,uPl[3],uPa[3],uOrb,uPh,uPk;uniform vec3 uPb[3],uSd,uOa,uOb,uPq;out vec4 o;
 float hsh(vec3 p){p=fract(p*.3183099+.1);p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
 float n3(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.-2.*f);
  return mix(mix(mix(hsh(i),hsh(i+vec3(1,0,0)),f.x),mix(hsh(i+vec3(0,1,0)),hsh(i+vec3(1,1,0)),f.x),f.y),
@@ -758,24 +875,31 @@ vec3 closeStar(vec3 d){
  if(st>5.5&&st<6.5){vec3 C2=normalize(L+T*R*2.3+B*R*.6);float t2=acos(clamp(dot(d,C2),-1.,1.)),R2=R*.35;   // a binary: the companion, small and blue, close by
   float rq=t2/(R*.03);o+=vec3(.6,.75,1.)*(exp(-rq*rq)*14.+.02/(rq*rq*.02+.02)*.06);}
  return o;}
-vec4 planet(vec3 d,vec3 P,float rp,vec3 ca,vec3 cb,float ring,int ty){
+vec4 planet(vec3 d,vec3 P,float rp,vec3 ca,vec3 cb,float ring,float kd){
  float b=dot(d,P),ds=b*b-(1.-rp*rp);vec4 c=vec4(0);float ts=1e9;vec3 Ls0=uSun.xyz;
- vec3 axis=normalize(abs(P.yzx)+vec3(.18,.9,.16));float spin=TIME*.008+P.x*4.+float(ty)*1.7;
+ vec3 axis=normalize(abs(P.yzx)+vec3(.18,.9,.16));float spin=TIME*.008+P.x*4.+kd*1.7;int k=int(kd+.5);
  vec3 L=normalize(Ls0*cos(spin)+cross(axis,Ls0)*sin(spin)+axis*sin(spin*.5)*.35);
  vec3 atm=mix(ca,vec3(.45,.72,1.),.5);
  if(ds>0.&&b>0.){ts=b-sqrt(ds);vec3 n=normalize(d*ts-P);float nl=dot(n,L);
   float w=tn(n*1.15+.2),w2=tn(n*2.6+.7),w3=tn(n*5.2+1.4);vec3 s;float cl,land=1.;
-  if(ty==1){land=smoothstep(.4,.62,w*.72+w2*.28);vec3 sea=mix(vec3(.03,.09,.18),ca,.45),grd=mix(cb,ca*.8+.08,smoothstep(.25,.75,w2));s=mix(sea,grd,land);cl=smoothstep(.62,.88,w2)*.42;}
-  else if(ty==2){s=mix(vec3(.8,.9,.97),mix(ca,vec3(.72,.86,.95),.45),.4+.2*w2);s=mix(s,vec3(.16,.26,.38),smoothstep(.045,0.,abs(fract(n.y*5.+w*2.4)-.5)-.47)*.6);cl=smoothstep(.66,.9,w)*.2;land=1.;}
-  else{float bd=.5+.5*sin(n.y*(7.+2.*w)+w2*1.6),bd2=.5+.5*sin(n.y*3.4+1.1+w);s=mix(ca*.62,cb*1.45,smoothstep(.15,.85,bd));s=mix(s,ca*vec3(1.35,.95,.7),smoothstep(.45,.9,bd2)*.7);
+  if(k==0){float freq=6.+5.*fract(abs(P.x)*7.3+P.z*2.1);float bd=.5+.5*sin(n.y*freq+w2*1.6),bd2=.5+.5*sin(n.y*(freq*.42)+1.1+w);s=mix(ca*.62,cb*1.45,smoothstep(.15,.85,bd));s=mix(s,ca*vec3(1.35,.95,.7),smoothstep(.45,.9,bd2)*.7);
    float sx=n.x*2.1,sy=(n.y-.12)*5.5;s=mix(s,cb*vec3(1.35,.8,.5),exp(-(sx*sx+sy*sy))*1.15);cl=smoothstep(.52,.8,w*.5+w2*.5)*.38;land=0.;}
+  else if(k==1){s=mix(vec3(.045,.016,.01),vec3(.2,.07,.03),w2);land=smoothstep(.07,0.,abs(fract(w*2.4+w2)-.5)-.4);cl=0.;}
+  else if(k==2){float dune=.5+.5*sin(n.x*16.+w*5.);s=mix(ca,cb,smoothstep(.15,.85,w2*.55+dune*.45));cl=smoothstep(.74,.94,w)*.16;land=1.;}
+  else if(k==3){land=smoothstep(.46,.64,w*.7+w2*.3);vec3 sea=mix(vec3(.02,.07,.16),ca,.4),grd=mix(cb,ca*.75+.08,smoothstep(.25,.75,w2));s=mix(sea,grd,land);cl=smoothstep(.58,.86,w2)*.48;}
+  else if(k==4){float bd=.5+.5*sin(n.y*5.2+w*2.4);s=mix(ca,cb,bd);s=mix(s,vec3(.12,.32,.06),smoothstep(.35,.8,w3)*.45);cl=smoothstep(.38,.72,w)*.55;land=0.;}
+  else if(k==6){float hot=smoothstep(-.08,.4,dot(n,L));vec3 cold=mix(vec3(.5,.66,.8),cb,.35),hotc=mix(vec3(.16,.04,.02),vec3(.95,.32,.06),smoothstep(.1,0.,abs(w-.48)));s=mix(cold,hotc,hot);cl=smoothstep(.72,.92,w2)*.12;land=hot;}
+  else if(k==7){float br=smoothstep(.12,0.,abs(w-.4)-.07);s=mix(vec3(.1,.09,.08),cb,w2)*(1.-br*.7);cl=0.;land=0.;}
+  else{s=mix(vec3(.8,.9,.97),mix(ca,vec3(.72,.86,.95),.45),.4+.2*w2);s=mix(s,vec3(.16,.26,.38),smoothstep(.045,0.,abs(fract(n.y*5.+w*2.4)-.5)-.47)*.6);cl=smoothstep(.66,.9,w)*.2;land=1.;}
   s*=.93+.07*w3;
-  float shd=ty==2?0.:(ty==1?smoothstep(.4,.62,tn((n+L*.04)*1.15+.2)*.72+tn((n+L*.04)*2.6+.7)*.28):smoothstep(.52,.8,tn((n+L*.05)*1.2)))*(1.-cl);
-  s*=1.-.32*shd;s=mix(s,ty==0?mix(vec3(.96,.9,.8),ca,.3):vec3(.92,.93,.95),cl);
+  float shd=k==5||k==7?0.:(k==3?smoothstep(.46,.64,tn((n+L*.04)*1.15+.2)*.7+tn((n+L*.04)*2.6+.7)*.3):smoothstep(.52,.8,tn((n+L*.05)*1.2)))*(1.-cl);
+  s*=1.-.32*shd;s=mix(s,k==0?mix(vec3(.96,.9,.8),ca,.3):vec3(.92,.93,.95),cl);
   float lit=smoothstep(-.14,.2,nl),mu=max(dot(n,-d),0.),rim=pow(1.-mu,2.6),hz=pow(1.-mu,1.55),tw=exp(-nl*nl*36.)*smoothstep(-.22,.08,nl);
   vec3 col=s*lit*(.45+.7*max(atm,vec3(.3)))*1.05+atm*.04*lit;
-  if(ty==1)col+=vec3(1.,.74,.4)*(1.-lit)*land*smoothstep(.7,.9,w3)*1.5;
-  if(ty==2)col+=vec3(.55,.75,1.)*(1.-lit)*.05;
+  if(k==1)col+=vec3(1.,.32,.04)*land*(1.6+.5*sin(TIME*.35+w*18.));
+  if(k==3)col+=vec3(1.,.74,.4)*(1.-lit)*land*smoothstep(.7,.9,w3)*1.5;
+  if(k==5)col+=vec3(.55,.75,1.)*(1.-lit)*.05;
+  if(k==6)col+=vec3(1.,.4,.08)*land*(1.-smoothstep(.2,.8,dot(n,L)))*.35;
   col+=vec3(1.,.48,.22)*tw*(.12+.45*cl);
   col=mix(col,atm*(.12+1.05*lit),hz*.62);
   col+=atm*rim*pow(max(dot(d,Ls0),0.),4.)*1.15;
@@ -783,7 +907,7 @@ vec4 planet(vec3 d,vec3 P,float rp,vec3 ca,vec3 cb,float ring,int ty){
  else if(b>0.&&rp>0.){float h=(acos(clamp(b,-1.,1.))-asin(min(rp,.999)))/rp;
   if(h<.5){float lit=smoothstep(-.35,.35,dot(normalize(d-P*b),L)),a=(exp(-h*16.)*.65+exp(-h*4.5)*.16)*(.12+lit);
    c=vec4(atm*a*1.25,min(.8,a));}}
- if(ring>.5&&ty==0){vec3 rn=normalize(vec3(.25,1.,.35)),e1=normalize(cross(rn,vec3(0,0,1))),e2=cross(rn,e1);float t=dot(P,rn)/max(dot(d,rn),1e-4);
+ if(ring>.5&&(k==0||k==5||k==7)){vec3 rn=normalize(vec3(.25,1.,.35)),e1=normalize(cross(rn,vec3(0,0,1))),e2=cross(rn,e1);float t=dot(P,rn)/max(dot(d,rn),1e-4);
   vec3 hp=d*t-P;float r=length(hp)/max(rp,.02),fw=fwidth(r);
   if(t>0.&&t<ts&&r>1.32&&r<2.75){
    float lane=smoothstep(.42,.16,abs(fract(r*2.6)-.5));lane=mix(lane,.62,smoothstep(.015,.07,fw));
@@ -850,7 +974,7 @@ void main(){
     c+=mix(vec3(1.,.8,.55),vec3(.8,.88,1.),hsh(vec3(gi,7.)))*(step(1.-fall*.9,h)*exp(-dot(gf,gf)*14.)*1.6+fall*.1);}
   }}
 
- for(int i=2;i>=0;i--)if(uPl[i].w>0.){vec4 p=planet(d,uPl[i].xyz,uPl[i].w,uPa[i].rgb,uPb[i],uPa[i].a,i);c=c*(1.-p.a)+p.rgb;m*=1.-p.a;}
+ for(int i=2;i>=0;i--)if(uPl[i].w>0.){float kd=i==0?uPk.x:i==1?uPk.y:uPk.z;vec4 p=planet(d,uPl[i].xyz,uPl[i].w,uPa[i].rgb,uPb[i],uPa[i].a,kd);c=c*(1.-p.a)+p.rgb;m*=1.-p.a;}
  if(uOrb.x>0.){float R=90000.,h=uOrb.y,cl=R+h,b=-d.y*cl,q=2.*R*h+h*h,disc=b*b-q;float dayPh=TIME*.01+uSd.x*6.283;float sunEl=sin(dayPh);vec3 L=normalize(vec3(cos(dayPh)*.85,sunEl,sin(dayPh*.5+.4)*.55));
   vec3 at=mix(uOa,uSunC.rgb,.45);float sunH=smoothstep(-.25,.25,L.y+.15);
   // the horizon: ground and sky both melt into one band of haze, brightest toward the sun, with a thin glow along the limb
@@ -893,7 +1017,7 @@ float n3(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.-2.*f);
   mix(mix(hsh(i+vec3(0,0,1)),hsh(i+vec3(1,0,1)),f.x),mix(hsh(i+vec3(0,1,1)),hsh(i+vec3(1,1,1)),f.x),f.y),f.z);}
 float fbm(vec3 p){float a=.5,s=0.;for(int i=0;i<6;i++){s+=a*n3(p);p=p*2.03+vec3(1.7,9.2,3.1);a*=.5;}return s;}
 void main(){vec2 n=vU*2.-1.;vec3 d=normalize(uFa+uRa*n.x+uUa*n.y)+uSeed;
- vec3 w=vec3(fbm(d*2.+3.),fbm(d*2.+11.),fbm(d*2.+19.))-.5;
+ vec3 w=(vec3(fbm(d*2.+3.),fbm(d*2.+11.),fbm(d*2.+19.))-.5)*(0.55+uSty.w*1.35);
  float sc=uSty.x,cv=uSty.y;                                                                // this place's nebula: scale and coverage
  float r=smoothstep(.3-cv,.8-cv,fbm(d*1.7*sc+w*1.6));
  float g=smoothstep(.38-cv,.85-cv,fbm(d*2.2*sc+17.+w.yzx*1.8));
@@ -923,7 +1047,7 @@ const COMP_F = HD + `
 uniform sampler2D uH,uB,uR;uniform vec2 uPx,uJc;uniform vec3 uFl,uJ;uniform vec4 uFx,uFy,uFz;uniform float uFs;in vec2 vU;out vec4 o;
 vec3 aces(vec3 x){return clamp(x*(2.51*x+.03)/(x*(2.43*x+.59)+.14),0.,1.);}
 void main(){vec2 q=vU-.5;float bs=uCA.w;
- vec2 of=q*dot(q,q)*(.005+.028*bs)*uFx.x;
+ vec2 of=q*dot(q,q)*(.004+.05*bs)*uFx.x;
  vec3 c=vec3(texture(uH,vU+of).r,texture(uH,vU).g,texture(uH,vU-of).b);
  vec2 mv=uFx.zw+q*dot(q,q)*uFs;                               // motion blur: the turn, plus speed streaming past the edges
  if(texture(uH,vU).a>-.5&&dot(mv,mv)>2e-7){float jt=fract(52.98*fract(dot(gl_FragCoord.xy,vec2(.0671,.00584))));vec3 mb=c,c0=c;for(int i=1;i<7;i++){vec2 u=vU+mv*(float(i)-jt)/6.;vec4 sg=texture(uH,u);mb+=sg.a<-.5?c0:vec3(texture(uH,u+of).r,sg.g,texture(uH,u-of).b);}c=mb/7.;}   // the cabin is not moving relative to you: it stays sharp
