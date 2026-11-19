@@ -1,0 +1,18 @@
+{
+  "name": "The Infinite End",
+  "short_name": "Infinite End",
+  "description": "Fly, mine and trade across an endless universe that is born the moment you arrive.",
+  "id": "/infiniteend/",
+  "start_url": "/infiniteend?pwa=1",
+  "scope": "/infiniteend",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#04050a",
+  "theme_color": "#04050a",
+  "categories": ["games"],
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
