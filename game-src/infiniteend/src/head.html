@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang=en>
+<head><meta name="robots" content="noindex">
+<meta charset=utf-8>
+<title>The Infinite End</title>
+<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name=apple-mobile-web-app-capable content=yes>
+<meta name=mobile-web-app-capable content=yes>
+<meta name=apple-mobile-web-app-status-bar-style content=black-translucent>
+<meta name=apple-mobile-web-app-title content="The Infinite End">
+<meta name=theme-color content=#04050a>
+<link rel=manifest href=/infiniteend/manifest.webmanifest>
+<link rel=icon type=image/png sizes=192x192 href=/infiniteend/icon-192.png>
+<link rel=apple-touch-icon href=/infiniteend/icon-192.png>
+<link rel=preconnect href=https://fonts.googleapis.com>
+<link rel=stylesheet href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600&family=Syncopate:wght@400;700&display=swap">
+<style>
+/* body class = page state: l loading, m menu, g flying (g p while the mouse is captured), l e failed */
+:root { --hc: #ffb44a; --hcr: 255 180 74; --t: #35f2d6; --a: #ffb347; --ink: #dfe9ee; --dim: #7f95a0; }
+html { background: #04050a; }
+body {
+  position: fixed; inset: 0; margin: 0; overflow: hidden; background: #04050a; color: var(--ink);
+  font: 400 clamp(12px, .55vw + .75vh, 26px)/1.4 "Chakra Petch", "Trebuchet MS", "Segoe UI", sans-serif;
+  -webkit-user-select: none; user-select: none;
+}
+@media (orientation: portrait) and (pointer: coarse) {
+  body { width: 100dvh; height: 100dvw; inset: auto; top: 0; left: 0; transform-origin: 0 0; transform: rotate(90deg) translateY(-100%); }
+}
+canvas { position: absolute; width: 100%; height: 100%; touch-action: none; outline: 0; cursor: crosshair; transition: opacity 2.5s; }
+.l canvas { opacity: 0; }
+.p canvas { cursor: none; }
+p, h1, ul { margin: 0; padding: 0; }
+
+/* title screen: the scene stays sharp; a scrim on the left carries a stacked title and a numbered list */
+#m { position: absolute; inset: 0; display: grid; grid-template-columns: minmax(0, 34em) 1fr; align-items: end; transition: opacity .5s, visibility .5s; }
+#m::before { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, #04050af2 0, #04050ab8 30%, #04050a00 62%), linear-gradient(0deg, #04050acc, #04050a00 30%); }
+.l #m::before { background: #04050a; }
+.g #m { opacity: 0; visibility: hidden; }
+#col { position: relative; padding: 0 0 8vh 6vw; }
+#col::before { content: ""; position: absolute; left: 3.2vw; top: 0; bottom: 8vh; width: 1px; background: linear-gradient(var(--t), #35f2d600); }
+#kick { font-size: .72em; letter-spacing: .5em; color: var(--a); text-transform: uppercase; }
+h1 { margin: .35em 0 .3em -.04em; font: 700 min(4.3em, 9.4vw)/.9 Syncopate, "Arial Black", Impact, sans-serif; letter-spacing: -.02em; text-transform: uppercase; }
+h1 span { display: block; }
+h1 .the + span { color: inherit; -webkit-text-stroke: 0; letter-spacing: -.02em; font-weight: 700; }
+h1 .the { font-size: .3em; letter-spacing: .9em; font-weight: 400; color: var(--a); margin: 0 0 .35em .12em; }
+h1 span + span { color: #0000; -webkit-text-stroke: 1.5px var(--t); letter-spacing: .32em; font-weight: 400; }
+#tag { max-width: 26em; color: var(--dim); font-size: .92em; }
+#ld { margin-top: 2.2em; font-size: .8em; letter-spacing: .28em; text-transform: uppercase; color: var(--t); }
+#ld b { display: inline-block; width: 3.2em; color: var(--ink); font-weight: 600; }
+.m #ld { display: none; }
+.e #ld { color: #ff8f8f; letter-spacing: .02em; text-transform: none; font-size: 1em; }
+.e #ld b { display: none; }
+#bf { position: absolute; left: 0; bottom: 0; width: 100%; height: 3px; background: linear-gradient(90deg, var(--t), var(--a)); transform: scaleX(0); transform-origin: 0; transition: transform .25s; }
+.m #bf, .g #bf, .e #bf { display: none; }
+#opts { list-style: none; margin-top: 1.8em; counter-reset: n; }
+.l #opts { visibility: hidden; }
+#opts button {
+  counter-increment: n; display: grid; grid-template-columns: 2.6em auto 1fr; align-items: baseline; gap: .2em; width: 100%; max-width: 24em; padding: .5em 0; border: 0; border-bottom: 1px solid #ffffff14;
+  background: none; color: var(--ink); font: 600 1em/1.2 inherit; font-family: inherit; letter-spacing: .26em; text-transform: uppercase; text-align: left; cursor: pointer; transition: color .15s, padding .15s, border-color .15s;
+}
+#opts button::before { content: "0" counter(n); font-size: .72em; letter-spacing: .1em; color: var(--dim); }
+#opts button i { justify-self: end; font-style: normal; font-size: .82em; font-weight: 400; color: var(--t); }
+#opts button:hover, #opts button:focus-visible { padding-left: .8em; color: var(--t); border-color: var(--t); outline: 0; }
+#opts #launch { padding: .7em 0; font-size: 1.35em; color: var(--a); border-color: #ffb34766; }
+#opts #launch:hover, #opts #launch:focus-visible { color: #fff; border-color: var(--a); }
+/* flight card, lower right */
+#card { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 8; display: none; max-height: 88vh; overflow: auto; width: min(36em, 92vw); padding: 1.2em 1.4em; background: #070b12c9; border: 1px solid #35f2d640; font-size: .82em;
+  clip-path: polygon(0 0, calc(100% - 1.3em) 0, 100% 1.3em, 100% 100%, 1.3em 100%, 0 calc(100% - 1.3em)); }
+#card h2 { margin: 0 0 .8em; font: 400 .78em/1 Syncopate, sans-serif; letter-spacing: .34em; color: var(--t); text-transform: uppercase; }
+#card dl { display: grid; grid-template-columns: auto 1fr; gap: .34em 1.2em; margin: 0; }
+#card dt { color: var(--a); font-weight: 600; letter-spacing: .06em; white-space: nowrap; }
+#card dd { margin: 0; color: var(--ink); }
+#card.on { display: block; }
+#card h2 b { float: right; cursor: pointer; font: 400 1.6em/.6 inherit; color: var(--dim); letter-spacing: 0; }
+#card dt.ch { color: var(--t); }
+#keyn { margin: 1em 0 0; color: var(--dim); font-size: .9em; }
+@media (pointer: coarse) { #keys { display: none !important; } }
+#fsn { margin-top: 1.1em; color: var(--dim); font-size: .8em; letter-spacing: .04em; }
+@media (pointer: coarse) { #fsn { display: none; } }
+#hh { display: none; margin-top: 1.4em; color: var(--dim); font-size: .85em; }
+.l #card { visibility: hidden; }
+@media (pointer: coarse), (max-height: 34em), (max-width: 60em) { #m { grid-template-columns: 1fr; } }
+@media (max-height: 30em) { #tag, #kick, #hh { display: none !important; } h1 { font-size: 2.4em; } #opts { margin-top: .8em; } #opts button { padding: .32em 0; } #opts #launch { padding: .4em 0; font-size: 1.15em; } #col { padding-bottom: 3vh !important; } }
+@media (pointer: coarse) { #hh { display: block; } #col { padding-bottom: 5vh; } }
+
+/* in flight */
+#hud { position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity 1.2s .4s; }
+.g #hud { opacity: 1; }
+#ret { position: absolute; left: 50%; top: 50%; width: 1.7em; height: 1.7em; margin: -.85em; border: 1px solid #35f2d699; transform: rotate(45deg); }
+#ret::after { content: ""; position: absolute; inset: 43%; background: var(--a); }
+#sec { position: absolute; left: 1.8em; bottom: 1.5em; font-size: .78em; letter-spacing: .26em; text-transform: uppercase; text-shadow: 0 0 .8em #000; color: var(--dim); }
+#sec b { display: block; margin: .15em 0; font: 400 1.5em/1.1 Syncopate, sans-serif; letter-spacing: .12em; color: #fff; }
+#sec span { color: var(--t); }
+#thr { display: none !important; position: absolute; right: 1.8em; bottom: 1.5em; width: .5em; height: 9em; border: 1px solid #35f2d666; }
+#thr::after { content: "THR"; position: absolute; right: 1.2em; bottom: -.2em; font-size: .62em; letter-spacing: .3em; color: var(--dim); }
+#tf { position: absolute; inset: 1px; background: var(--t); transform-origin: 50% 100%; transform: scaleY(0); box-shadow: 0 0 .8em var(--t); }
+#tf.rev { background: #ff6b6b; box-shadow: 0 0 .8em #ff6b6b; }
+#tf.bst { background: var(--a); box-shadow: 0 0 1.2em var(--a); }
+#cargo { position: absolute; right: 1.2em; top: 4.2em; display: grid; gap: .1em; font-size: .72em; letter-spacing: .2em; text-transform: uppercase; text-align: right; text-shadow: 0 0 .8em #000; }
+#cargo i { font-style: normal; }
+#cargo b { margin-right: .7em; font-size: 1.25em; }
+#cargo.gain { animation: cgain .9s ease-out; }
+@keyframes cgain { 0% { filter: brightness(2.4) drop-shadow(0 0 10px #fff); transform: scale(1.06); transform-origin: right top; } 100% { filter: none; transform: none; } }
+#cargo .val { margin-top: .3em; padding-top: .3em; border-top: 1px solid #ffffff30; color: var(--dim); }
+#cargo .val b { color: #fff; }
+#gm { position: absolute; margin: 0; padding: .15em .6em; transform: translate(-50%, -50%); border: 1px solid #ffb34799; color: var(--a); font-size: .68em; letter-spacing: .2em; white-space: nowrap; opacity: 0; transition: opacity .4s; text-shadow: 0 0 .6em #000; background: #070b1266; }
+#jl li.far b { color: var(--hc); }
+#jl li.far:first-of-type, #jl li:not(.far) + li.far { border-top: 1px solid rgb(var(--hcr) / .5); margin-top: .4em; }
+#tip { position: absolute; left: 0; right: 0; top: 16%; text-align: center; font-size: .8em; letter-spacing: .28em; text-transform: uppercase; opacity: 0; transition: opacity .8s; text-shadow: 0 0 1em #000; color: var(--a); }
+#tip.on { opacity: .95; }
+#o, #fire, #jb { position: absolute; display: none; border: 1px solid #35f2d680; background: #070b12a0; color: var(--t); font: 600 1em inherit; font-family: inherit; }
+#o { top: .8em; right: .8em; padding: .3em .7em; letter-spacing: .2em; cursor: pointer; }
+.g #o, .g #jb { display: block; }
+.p #o, .p #jb { display: none; }
+#jb { top: .8em; right: 6.4em; padding: .3em .7em; letter-spacing: .2em; cursor: pointer; color: var(--a); border-color: #ffb34780; }
+#jp { position: absolute; left: 2.4vw; right: auto; top: auto; bottom: 8vh; width: min(34em, 78vw); transform: none; padding: 1.4em 1.6em; background: linear-gradient(160deg, rgb(var(--hcr) / .09), transparent 40%), rgba(4, 7, 12, .72); backdrop-filter: blur(9px) saturate(1.2); -webkit-backdrop-filter: blur(9px); border: 1px solid rgb(var(--hcr) / .45); box-shadow: inset 0 0 40px rgb(var(--hcr) / .06), 0 0 30px rgb(var(--hcr) / .08); opacity: 0; visibility: hidden; transition: opacity .25s, visibility .25s;
+  clip-path: polygon(0 0, calc(100% - 1.5em) 0, 100% 1.5em, 100% 100%, 1.5em 100%, 0 calc(100% - 1.5em)); }
+.g #jp.on { opacity: 1; visibility: visible; transform: none; }
+#jp h2 { margin: 0; font: 400 1em/1 Syncopate, sans-serif; letter-spacing: .34em; color: var(--hc); text-shadow: 0 0 12px rgb(var(--hcr) / .5); text-transform: uppercase; }
+#jp::after { content: ''; position: absolute; right: 0; top: 0; width: 2.1em; height: 2px; background: var(--hc); transform: translate(.15em, .72em) rotate(45deg); box-shadow: 0 0 8px var(--hc); }
+#jp::before { content: ''; position: absolute; left: 1.6em; top: 0; width: 5em; height: 2px; background: var(--hc); box-shadow: 0 0 8px var(--hc); }
+#jc, #jp .k { margin: .5em 0 1em; font-size: .8em; letter-spacing: .14em; color: var(--dim); text-transform: uppercase; }
+#jp .k { margin: 1em 0 0; }
+#jl { margin: 0; padding: 0; list-style: none; counter-reset: j; }
+#jl li { counter-increment: j; display: grid; grid-template-columns: 2em 11em 1fr; gap: 0 .6em; padding: .55em .3em; border-top: 1px solid rgb(var(--hcr) / .12); cursor: pointer; transition: background .15s, box-shadow .15s; }
+#jl li:hover, #jl li.cur { background: rgb(var(--hcr) / .14); box-shadow: inset 3px 0 0 var(--hc); }
+#jl li::before { content: counter(j); grid-row: 1 / 3; align-self: center; font: 700 1.2em Syncopate, sans-serif; color: var(--hc); }
+#jl li.ro { cursor: default; counter-increment: none; } #jl li.ro:hover { background: none; box-shadow: none; } #jl li.ro::before { content: ''; }
+#jl b { font-weight: 600; letter-spacing: .08em; color: #fff; }
+#jl i { font-style: normal; color: rgb(var(--hcr) / .85); letter-spacing: .12em; text-transform: uppercase; font-size: .82em; align-self: center; }
+#jl span { grid-column: 2 / 4; font-size: .84em; color: var(--dim); }
+#fire { left: 1.6em; bottom: 6.5em; width: 5em; height: 5em; border-radius: 50%; letter-spacing: .15em; touch-action: none; }
+@media (pointer: coarse) { .g #fire { display: block; } }
+#i { position: absolute; top: 1em; left: 1.2em; margin: 0; font: .76em/1.6 ui-monospace, Consolas, monospace; white-space: pre-wrap; text-shadow: 0 1px 4px #000; pointer-events: none; }
+#ver{position:fixed;right:max(14px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom));font:500 11px/1 system-ui,sans-serif;letter-spacing:.2em;color:rgba(170,215,240,.45);display:none;z-index:9;pointer-events:none}
+body.m #ver{display:block}
+body[class^="g"] #tip{display:none!important}   /* in flight the HUD shows messages itself */
+</style>
+</head>
+<body class=l>
+<div id=ver></div>
+<canvas id=c tabindex=0></canvas>
+<div id=hud><p id=gm></p><p id=sec></p><div id=thr><div id=tf></div></div><div id=cargo></div><p id=tip></p></div>
+<button id=fire>FIRE</button>
+<button id=jb>JUMP</button>
+<div id=jp><h2 id=jh></h2><p id=jc></p><ol id=jl></ol><p class=k id=jk></p></div>
+<div id=m>
+  <div id=col>
+    <p id=kick>The Silence has started answering</p>
+    <h1><span class=the>The</span><span>Infinite</span><span>End</span></h1>
+    <p id=tag>Three centuries ago the outer gates went quiet. The Deepfield Survey sent you past the last reliable lane, in a long-haul cab, to learn why. The Meridian Combine pays for charts. The Lantern Order keeps the old rites. The Free Haulers just want to get home. Crack rocks, keep your air, and follow what the dark still says.</p>
+    <p id=ld><b id=pc>0%</b><span id=st>Igniting stars past the edge</span></p>
+    <ul id=opts>
+      <li><button id=launch>Launch into the dark</button></li>
+      <li><button id=vr>Enter VR<i>headset or 3D</i></button></li>
+      <li><button id=ck>Cockpit<i></i></button></li>
+      <li><button id=det>Detail<i></i></button></li>
+      <li><button id=snd>Sound<i></i></button></li>
+      <li><button id=set>Settings<i></i></button></li>
+      <li><button id=fresh>New universe<i>fresh charts</i></button></li>
+      <li><button id=keys>View controls<i></i></button></li>
+    </ul>
+    <p id=fsn>Launching goes full screen · F11 toggles it any time</p>
+    <p id=hh>Hold to fly · slide to steer · second finger to boost · FIRE button for the gun</p>
+  </div>
+  <div id=card role=dialog aria-label=Controls>
+    <h2>Controls <b id=cardX aria-label=Close>×</b></h2>
+    <dl id=keyl></dl>
+    <p id=keyn></p>
+  </div>
+  <i id=bf></i>
+</div>
+<button id=o aria-label=Menu>MENU</button>
+<pre id=i></pre>
+<script>

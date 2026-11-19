@@ -110,9 +110,9 @@ h1 span + span { color: #0000; -webkit-text-stroke: 1.5px var(--t); letter-spaci
 .g #o, .g #jb { display: block; }
 .p #o, .p #jb { display: none; }
 #jb { top: .8em; right: 6.4em; padding: .3em .7em; letter-spacing: .2em; cursor: pointer; color: var(--a); border-color: #ffb34780; }
-#jp { position: absolute; left: 50%; top: 50%; width: min(40em, 92vw); transform: translate(-50%, -50%) scale(.97); padding: 1.4em 1.6em; background: linear-gradient(160deg, rgb(var(--hcr) / .09), transparent 40%), rgba(4, 7, 12, .66); backdrop-filter: blur(9px) saturate(1.2); -webkit-backdrop-filter: blur(9px); border: 1px solid rgb(var(--hcr) / .45); box-shadow: inset 0 0 40px rgb(var(--hcr) / .06), 0 0 30px rgb(var(--hcr) / .08); opacity: 0; visibility: hidden; transition: opacity .25s, transform .25s, visibility .25s;
+#jp { position: absolute; left: 2.4vw; right: auto; top: auto; bottom: 8vh; width: min(34em, 78vw); transform: none; padding: 1.4em 1.6em; background: linear-gradient(160deg, rgb(var(--hcr) / .09), transparent 40%), rgba(4, 7, 12, .72); backdrop-filter: blur(9px) saturate(1.2); -webkit-backdrop-filter: blur(9px); border: 1px solid rgb(var(--hcr) / .45); box-shadow: inset 0 0 40px rgb(var(--hcr) / .06), 0 0 30px rgb(var(--hcr) / .08); opacity: 0; visibility: hidden; transition: opacity .25s, visibility .25s;
   clip-path: polygon(0 0, calc(100% - 1.5em) 0, 100% 1.5em, 100% 100%, 1.5em 100%, 0 calc(100% - 1.5em)); }
-.g #jp.on { opacity: 1; visibility: visible; transform: translate(-50%, -50%); }
+.g #jp.on { opacity: 1; visibility: visible; transform: none; }
 #jp h2 { margin: 0; font: 400 1em/1 Syncopate, sans-serif; letter-spacing: .34em; color: var(--hc); text-shadow: 0 0 12px rgb(var(--hcr) / .5); text-transform: uppercase; }
 #jp::after { content: ''; position: absolute; right: 0; top: 0; width: 2.1em; height: 2px; background: var(--hc); transform: translate(.15em, .72em) rotate(45deg); box-shadow: 0 0 8px var(--hc); }
 #jp::before { content: ''; position: absolute; left: 1.6em; top: 0; width: 5em; height: 2px; background: var(--hc); box-shadow: 0 0 8px var(--hc); }
@@ -121,8 +121,8 @@ h1 span + span { color: #0000; -webkit-text-stroke: 1.5px var(--t); letter-spaci
 #jl { margin: 0; padding: 0; list-style: none; counter-reset: j; }
 #jl li { counter-increment: j; display: grid; grid-template-columns: 2em 11em 1fr; gap: 0 .6em; padding: .55em .3em; border-top: 1px solid rgb(var(--hcr) / .12); cursor: pointer; transition: background .15s, box-shadow .15s; }
 #jl li:hover, #jl li.cur { background: rgb(var(--hcr) / .14); box-shadow: inset 3px 0 0 var(--hc); }
-#jl li.ro { cursor: default; } #jl li.ro:hover { background: none; } #jl li.ro::before { content: '·'; color: var(--dim); }
 #jl li::before { content: counter(j); grid-row: 1 / 3; align-self: center; font: 700 1.2em Syncopate, sans-serif; color: var(--hc); }
+#jl li.ro { cursor: default; counter-increment: none; } #jl li.ro:hover { background: none; box-shadow: none; } #jl li.ro::before { content: ''; }
 #jl b { font-weight: 600; letter-spacing: .08em; color: #fff; }
 #jl i { font-style: normal; color: rgb(var(--hcr) / .85); letter-spacing: .12em; text-transform: uppercase; font-size: .82em; align-self: center; }
 #jl span { grid-column: 2 / 4; font-size: .84em; color: var(--dim); }
@@ -143,9 +143,9 @@ body[class^="g"] #tip{display:none!important}   /* in flight the HUD shows messa
 <div id=jp><h2 id=jh></h2><p id=jc></p><ol id=jl></ol><p class=k id=jk></p></div>
 <div id=m>
   <div id=col>
-    <p id=kick>Beyond the last charted gate</p>
+    <p id=kick>The Silence has started answering</p>
     <h1><span class=the>The</span><span>Infinite</span><span>End</span></h1>
-    <p id=tag>The charts stop here. The dark doesn't. Crack rocks for ore, feed it to the swarms, trade what's left and ride the gates further out. Every system is born the moment you arrive: a star, its worlds, and vast places that no pilot has flown, each with its own sky, traffic and sound.</p>
+    <p id=tag>Three centuries ago the outer gates went quiet. The Deepfield Survey sent you past the last reliable lane, in a long-haul cab, to learn why. The Meridian Combine pays for charts. The Lantern Order keeps the old rites. The Free Haulers just want to get home. Crack rocks, keep your air, and follow what the dark still says.</p>
     <p id=ld><b id=pc>0%</b><span id=st>Igniting stars past the edge</span></p>
     <ul id=opts>
       <li><button id=launch>Launch into the dark</button></li>
@@ -154,6 +154,7 @@ body[class^="g"] #tip{display:none!important}   /* in flight the HUD shows messa
       <li><button id=det>Detail<i></i></button></li>
       <li><button id=snd>Sound<i></i></button></li>
       <li><button id=set>Settings<i></i></button></li>
+      <li><button id=fresh>New universe<i>fresh charts</i></button></li>
       <li><button id=keys>View controls<i></i></button></li>
     </ul>
     <p id=fsn>Launching goes full screen · F11 toggles it any time</p>
@@ -317,14 +318,32 @@ function mkSys(id) {
   for (let i = 0; i < 12; i += 3) { const r = P[i], g = P[i + 1], b = P[i + 2], w = i < 9 ? 1 : .3; s.pal[i] = r + w * ((co + k - 1) * r + (k - q) * g + (k + q) * b); s.pal[i + 1] = g + w * ((k + q) * r + (co + k - 1) * g + (k - q) * b); s.pal[i + 2] = b + w * ((k - q) * r + (k + q) * g + (co + k - 1) * b); }
   for (let i = 0; i < 12; i++) s.pal[i] = Math.max(.01, s.pal[i]);
   s.seed0 = [rnd() * 40, rnd() * 40, rnd() * 40]; s.seed = s.seed0.slice(); s.rot = [co, k, q]; s.th = th;
-  // three worlds: a main planet (enormous in a Giant's Shadow, absent in the Void), and two lesser ones
+  // three worlds, far apart on the sky: a gas giant, a rocky world, an ice world.
+  // Angular size is real radius ÷ distance (PR in cruise), so two discs that look alike are at alike ranges.
+  const SUN0 = [.45, .32, -.83], PR0 = [70, 6.4, 2.6], dist0 = [640 + rnd() * 220, 168 + rnd() * 55, 310 + rnd() * 120];
+  const tone = [
+    [[.78, .46, .22], [.98, .78, .46]],
+    [[.16, .34, .24], [.62, .46, .28]],
+    [[.55, .74, .86], [.88, .94, .98]],
+  ];
   for (let i = 0; i < 3; i++) {
-    let d; do { d = [rnd() * 2 - 1, rnd() * .9 - .45, rnd() * 2 - 1]; const l = Math.hypot(d[0], d[1], d[2]); d = [d[0] / l, d[1] / l, d[2] / l]; } while (d[0] * .45 + d[1] * .32 - d[2] * .83 > .55 || (i && d[0] * s.pl[0] + d[1] * s.pl[1] + d[2] * s.pl[2] > .6));
-    const r = i ? .025 + .05 * rnd() : t === 3 ? 0 : .1 + .1 * rnd(), h = rnd(); s.pr[i] = r;
-    s.pl.set([d[0], d[1], d[2], r], i * 4);
-    const c1 = [.5 + .5 * Math.cos(6.283 * h), .5 + .5 * Math.cos(6.283 * (h + .33)), .5 + .5 * Math.cos(6.283 * (h + .67))];
-    s.pa.set([c1[0] * .3 + s.pal[3] * .35 + .2, c1[1] * .3 + s.pal[4] * .35 + .2, c1[2] * .3 + s.pal[5] * .35 + .2, !i && rnd() < .7 || t === 7 && !i ? 1 : 0], i * 4);
-    s.pb.set([c1[2] * .2 + s.pal[0] * .3 + .08, c1[0] * .2 + s.pal[1] * .3 + .08, c1[1] * .2 + s.pal[2] * .3 + .08], i * 3);
+    let d, guard = 0, ok = false;
+    do {
+      const az = rnd() * 6.283, el = (rnd() - .5) * 1.15, ce = Math.cos(el);
+      d = [Math.cos(az) * ce, Math.sin(el), Math.sin(az) * ce];
+      const sun = d[0] * SUN0[0] + d[1] * SUN0[1] + d[2] * SUN0[2];
+      let nearP = false;
+      for (let k = 0; k < i; k++) if (d[0] * s.pl[k * 4] + d[1] * s.pl[k * 4 + 1] + d[2] * s.pl[k * 4 + 2] > .12) nearP = true;
+      ok = sun < .28 && !nearP; guard++;
+    } while (!ok && guard < 48);
+    const r = i === 0 && t === 3 ? 0 : PR0[i] / dist0[i];
+    s.pr[i] = r; s.pl.set([d[0], d[1], d[2], r], i * 4);
+    const th = (rnd() - .5) * .45, co = Math.cos(th), si = Math.sin(th), A0 = tone[i][0], B0 = tone[i][1];
+    const A = [A0[0] * co - A0[1] * si * .25, A0[1] * co + A0[0] * si * .12, A0[2]];
+    const B = [B0[0] * co - B0[1] * si * .2, B0[1] * co + B0[0] * si * .1, B0[2]];
+    const ring = !i && t !== 3 && rnd() < .5 ? 1 : 0;
+    s.pa.set([Math.max(.02, A[0] * .82 + s.pal[3] * .18), Math.max(.02, A[1] * .82 + s.pal[4] * .18), Math.max(.02, A[2] * .82 + s.pal[5] * .18), ring], i * 4);
+    s.pb.set([Math.max(.02, B[0] * .8 + s.pal[0] * .2), Math.max(.02, B[1] * .8 + s.pal[1] * .2), Math.max(.02, B[2] * .8 + s.pal[2] * .2)], i * 3);
   }
   { const nr = nameRng(id, 0x4E414D45), c = pickN(nr, NM.city);   // e.g. New Halifax, Kyoto Reach
     s.name = nr() < .5 ? pickN(nr, NM.pre) + ' ' + c : c + ' ' + pickN(nr, NM.suf); }
@@ -362,7 +381,7 @@ function mkSys(id) {
 // stand in one of a system's places: it decides what is around you and which world looms in the sky
 function setLoc(s, i) {
   const L = s.locs[s.loc = i % s.locs.length];
-  s.t = L.t; s.a = L.atm ? Object.assign({}, ARC[L.t], { rock: .22, ti: 0, mega: 0, deb: 0, cry: 0, ten: 0, geo: .04, fog: .5, st: .25, life: [0, 0, 0, L.atm > 1 ? .2 : 0, 0, 0] }) : (() => { const R = mulberry32(s.id ^ Math.imul(s.loc + 3, 0x9E3779B1)), B = ARC[L.t], o = Object.assign({}, B), X = ARC[R() * 8 | 0];
+  s.t = L.t; s.a = L.atm ? Object.assign({}, ARC[L.t], { rock: 4, ti: 0, mega: 0, deb: 0, cry: 0, ten: 0, geo: 0, fog: .4, st: 0, fl: .12, fr: 0, dr: 0, life: [.7, 0, .4, .15, 0, 0] }) : (() => { const R = mulberry32(s.id ^ Math.imul(s.loc + 3, 0x9E3779B1)), B = ARC[L.t], o = Object.assign({}, B), X = ARC[R() * 8 | 0];
     for (const k of ['cry', 'ten', 'deb', 'geo', 'fl', 'fr', 'dr', 'st', 'ti']) { if (typeof B[k] !== 'number') continue; o[k] = B[k] * (.25 + R() * 1.5); if (R() < .28 && typeof X[k] === 'number') o[k] = Math.max(o[k], X[k] * (.5 + R())); }
     o.deb = 0; o.fog = B.fog * (.35 + R() * R() * 4); o.rock = B.rock + (R() - .25) * .09; o.life = B.life.map((v, i) => R() < .3 ? 0 : Math.max(v, R() < .2 ? X.life[i] : 0) * (.4 + R() * 1.3)); return o; })(); s.atm = L.atm || 0; s.mat = REGT[L.t]; s.salt = hs(s.id ^ 0x5bd1e995 ^ Math.imul(s.loc + 1, 0x9E3779B1)) | 0;
   s.sky[2] = SKYW[L.t][2]; s.sky[3] = SKYW[L.t][3];
@@ -389,6 +408,12 @@ function setLoc(s, i) {
   for (let i = 0; i < 9; i += 3) { const m = (s.pal[i] + s.pal[i + 1] + s.pal[i + 2]) / 3; for (let j = 0; j < 3; j++) s.pal[i + j] = Math.max(.01, (m + (s.pal[i + j] - m) * (s.sat || 1.45)) * (s.bri || 1)); }
   s.seed = [s.seed0[0] + s.loc * 7.3, s.seed0[1] + s.loc * 3.1, s.seed0[2] - s.loc * 5.7];
   for (let k = 0; k < 3; k++) s.pl[k * 4 + 3] = L.body === k ? (k ? .3 : .6) : s.pr[k];
+  // one headline per sky: a black hole, a ringworld, or a rare phenomenon. Close stars and showpiece suns yield when one is already up.
+  if (s.atm) { s.sky[0] = 0; s.sky[1] = 0; s.ph = 0; s.headline = 0; }
+  else if (s.sky[0] > .35) { s.sky[1] = 0; s.sky[2] *= .15; s.sky[3] *= .2; s.ph = 0; s.headline = 1; }
+  else if (s.sky[1] > .35) { s.sky[0] = 0; s.sky[3] *= .25; s.ph = 0; s.headline = 2; }
+  else if (s.ph) { s.sky[0] = 0; s.sky[1] = 0; s.sky[3] *= .35; s.headline = 3; }
+  else s.headline = 0;
   return s;
 }
 
@@ -457,7 +482,7 @@ vec3 h3(float n){return fract(sin(vec3(n*127.1,n*269.5+1.3,n*419.2+2.7))*43758.5
 const VI = HD + `
 layout(location=0)in vec3 aP;layout(location=1)in vec3 aN;layout(location=2)in vec2 aU;
 layout(location=3)in vec4 iA;layout(location=4)in vec4 iB;layout(location=5)in vec4 iC;
-uniform vec3 uCell,uCam,uCN;
+uniform vec3 uCell,uCam,uCN;uniform float uVd;
 vec3 ctr(){if(uCN.y<.5)return iA.xyz-uCam;vec3 r=mod(iA.xyz-uCell+uCN.y*.5,uCN.y)-uCN.y*.5;return(r+iB.xyz)*uCN.x-uCam;}
 vec4 rockQ(float s,float sp){return quat(normalize(h3(s*91.7)-.5+1e-3),s*40.+TIME*sp*(h1(s*3.)-.5)*2.);}
 vec3 rockS(float s){return .6+.4*h3(s*33.3+5.);}
@@ -471,7 +496,7 @@ void main(){
  vec4 q=rockQ(sd,uSpin);
  vec3 s=uKind==0?rockS(sd):uKind==2?.05+.95*pow(h3(sd*7.7),vec3(2.2)):vec3(1);
  vec3 o=aP*s*sz;
- float k=1.-smoothstep(.9*uCN.z,uCN.z,length(c));
+ float k=(1.-smoothstep(.9*uCN.z,uCN.z,length(c)))*clamp(1.-uVd,0.,1.);
  vec3 p=c+qr(q,o)*k;
  vP=p;vN=qr(q,aN/s);vO=o/sz;vQ=q;vI=vec4(sd,iC.x,iC.y,sz);vJ=vec4(iC.z,iC.w,0,0);
  gl_Position=uVP*vec4(p,1);}`;
@@ -561,7 +586,7 @@ void main(){
   P0=cc+(o1*cos(t)+o2*sin(t))*rr*(1.+.3*sin(t*1.7+k))+ax*sin(t*.6+k)*sz*5.;
   Z=-normalize(-o1*sin(t)+o2*cos(t)+ax*.2*cos(t*.6+k));X=normalize(cross(ax,Z));Y=cross(Z,X);
  }
- float d=length(P0),fd=1.-smoothstep(.85*uCN.z,uCN.z,d);
+ float d=length(P0),fd=(1.-smoothstep(.85*uCN.z,uCN.z,d))*clamp(1.-uVd,0.,1.);
  vec3 p=P0+(X*lp.x+Y*lp.y+Z*lp.z)*sz*fd;
  vP=p;vN=X*aN.x+Y*aN.y+Z*aN.z;vO=lp;vQ=vec4(aN,aU.x);vI=vec4(sd+k*.13,uShip==4?k:iC.z,0,sz);vJ=vec4(0);
  gl_Position=uVP*vec4(p,1);}`;
@@ -635,7 +660,7 @@ void main(){
   vec3 o=iC.xyz*s*rs*.95+up*tt*ln+t*(aP.x*ln*.0018*(1.-.6*tt)+sin(TIME*.6+iC.w*40.-tt*3.)*tt*tt*ln*.13)+bb*cos(TIME*.45+iC.w*23.-tt*2.5)*tt*tt*ln*.1;
   P0=c;p=c+qr(q,o);vN=qr(q,bb);direct=true;
  }
- float d=length(P0),k=1.-smoothstep(.8*uCN.z,uCN.z,d);
+ float d=length(P0),k=(1.-smoothstep(.8*uCN.z,uCN.z,d))*clamp(1.-uVd,0.,1.);
  if(!direct){p=P0+(X*lp.x+Y*lp.y+Z*lp.z)*sz;vN=X*aN.x+Y*aN.y+Z*aN.z;}
  if(uKind==0&&iC.w<.5)k*=smoothstep(sz*.9,sz*2.6,d);                // a colossus fades as you fly into it, instead of filling the view with its bell
  vP=p;vU=aU;vI=vec4(hue,gl2,k*exp(-min(d*FOGD*.7,1.7)),0);
@@ -710,7 +735,7 @@ void main(){vec3 l=aP,n=aN;
 // materials: 0 hull, 1 trim, 2-4 screens, 5 lamps, 6 warm lamps, 7 grip, 8 red cap, 9 instrument panel, 10 glass,
 // 11 cyan strip, 12 frame alloy. uDm = how damaged the ship is (0..1).
 const COCK_F = HD + `
-in vec3 vL,vW,vN,vM;in vec2 vU;uniform vec2 uAt;uniform vec4 uCk,uSt,uCg;uniform float uDm;uniform vec3 uHc;uniform sampler2D uPip;out vec4 o;
+in vec3 vL,vW,vN,vM;in vec2 vU;uniform vec2 uAt;uniform vec4 uCk,uSt,uCg;uniform float uDm,uHt;uniform vec3 uHc;uniform sampler2D uPip;out vec4 o;
 float hh(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float bar(vec2 q,float y,float h,float f){return step(abs(q.y-y),h)*step(-.8,q.x)*step(q.x,-.8+1.6*f);}
 float pool(vec3 c,float k){vec3 d=vL-c;return exp(-dot(d,d)*k);}
@@ -776,7 +801,7 @@ void main(){
  else if(id<.5){alb=vec3(.011,.0115,.014)*(.85+.3*texture(uNz,vL*40.).r);sp=.2;gs=20.;}
  else if(id<1.5){alb=vec3(.005,.0055,.0068);sp=1.5;gs=240.;}
  else if(id<4.5){
-  alb=vec3(.003);sp=.2;gs=200.;vec3 sc=vec3(.008,.02,.03);vec2 q;float scan=(.8+.2*sin(vL.y*400.+TIME*6.))*(1.-.7*uDm*step(.82,hh(vec2(floor(TIME*9.),id))));
+  alb=vec3(.003);sp=.2;gs=200.;vec3 sc=vec3(.008,.02,.03);vec2 q;float scan=(.8+.2*sin(vL.y*400.+TIME*6.))*(1.-.7*uDm*step(.82,hh(vec2(floor(TIME*9.),id))))*(1.-uHt*.65*step(.5,fract(TIME*18.)));
   if(id<2.5){q=vec2(vL.x/.2,(vL.y+1.18)/.15);
    float bi=floor((q.x+.9)*2.78),bf=fract((q.x+.9)*2.78),lv=bi<1.?uCg.x:bi<2.?uCg.y:bi<3.?uCg.z:bi<4.?uCg.w:uSt.w,h=(q.y+.85)/1.2;
    vec3 bc=bi<1.?vec3(.75,.8,.9):bi<2.?vec3(.2,1.,.5):bi<3.?vec3(.25,.65,1.):bi<4.?vec3(.8,.35,1.):vec3(1.,.72,.2);
@@ -907,35 +932,39 @@ vec3 closeStar(vec3 d){
  if(st>5.5&&st<6.5){vec3 C2=normalize(L+T*R*2.3+B*R*.6);float t2=acos(clamp(dot(d,C2),-1.,1.)),R2=R*.35;   // a binary: the companion, small and blue, close by
   float rq=t2/(R*.03);o+=vec3(.6,.75,1.)*(exp(-rq*rq)*14.+.02/(rq*rq*.02+.02)*.06);}
  return o;}
-vec4 planet(vec3 d,vec3 P,float rp,vec3 ca,vec3 cb,float ring){
- float b=dot(d,P),ds=b*b-(1.-rp*rp);vec4 c=vec4(0);float ts=1e9;vec3 L=uSun.xyz,atm=mix(ca,vec3(.4,.68,1.),.65)*uSunC.rgb;
+vec4 planet(vec3 d,vec3 P,float rp,vec3 ca,vec3 cb,float ring,int ty){
+ float b=dot(d,P),ds=b*b-(1.-rp*rp);vec4 c=vec4(0);float ts=1e9;vec3 Ls0=uSun.xyz;
+ vec3 axis=normalize(abs(P.yzx)+vec3(.18,.9,.16));float spin=TIME*.008+P.x*4.+float(ty)*1.7;
+ vec3 L=normalize(Ls0*cos(spin)+cross(axis,Ls0)*sin(spin)+axis*sin(spin*.5)*.35);
+ vec3 atm=mix(ca,vec3(.45,.72,1.),.5);
  if(ds>0.&&b>0.){ts=b-sqrt(ds);vec3 n=normalize(d*ts-P);float nl=dot(n,L);
-  float w=tn(n*.6+.2),w2=tn(n*2.3+.5),w3=texture(uNz,n*7.).r;
-  vec3 s=mix(ca,cb,smoothstep(.3,.7,.5+.3*sin((n.y*2.5+w*1.3)*5.)+(w2-.5)*.9))*(.45+.7*w3);
-  // clouds: a storm swirl, two layers drifting at different rates, and the shadows they throw on the ground
-  vec3 sw=normalize(ca.zxy-.45+vec3(.07,.11,.03));float sdt=dot(n,sw),ga=smoothstep(.8,1.,sdt)*5.;vec3 nq=n*cos(ga)+cross(sw,n)*sin(ga)+sw*sdt*(1.-cos(ga));
-  float c1=smoothstep(.47,.72,tn(nq*1.5+vec3(TIME*.0015,0,.3))*.65+w3*.45),c2=smoothstep(.56,.8,tn(nq*3.1+vec3(-TIME*.003,.7,0))*.7+texture(uNz,nq*11.).r*.35)*.7,cl=max(c1*.85,c2);
-  vec3 nS=normalize(n+L*.035);float shd=smoothstep(.47,.72,tn(nS*1.5+vec3(TIME*.0015,0,.3))*.65+texture(uNz,nS*7.).r*.45);
-  s*=1.-.5*shd*(1.-cl);s=mix(s,vec3(.86,.88,.9)*(.72+.38*w2),cl*.85);
-  float lit=mix(smoothstep(-.06,.28,nl),smoothstep(-.16,.2,nl),cl),mu=max(dot(n,-d),0.),rim=pow(1.-mu,2.5),hz=pow(1.-mu,1.5),tw=exp(-nl*nl*50.)*smoothstep(-.25,.05,nl);
-  vec3 col=s*s*lit*uSunC.rgb*1.15+vec3(1.,.66,.3)*step(.78,w3)*step(.52,w2)*(1.-lit)*(1.-cl)*.35;
-  col+=vec3(1.,.45,.2)*uSunC.rgb*tw*(.12+.35*cl);                                              // a warm band where day turns to night
-  col=mix(col,atm*(.08+1.3*lit),hz*.7)+atm*.035*lit;                                           // haze thickens toward the edge of the disc
-  col+=atm*rim*pow(max(dot(d,L),0.),4.)*1.6;                                                    // backlit: the rim of air lights up
-  c=vec4(mix(col,atm*(.12+1.7*lit),rim*.9),1.);}
+  float w=tn(n*1.15+.2),w2=tn(n*2.6+.7),w3=tn(n*5.2+1.4);vec3 s;float cl,land=1.;
+  if(ty==1){land=smoothstep(.4,.62,w*.72+w2*.28);vec3 sea=mix(vec3(.03,.09,.18),ca,.45),grd=mix(cb,ca*.8+.08,smoothstep(.25,.75,w2));s=mix(sea,grd,land);cl=smoothstep(.62,.88,w2)*.42;}
+  else if(ty==2){s=mix(vec3(.8,.9,.97),mix(ca,vec3(.72,.86,.95),.45),.4+.2*w2);s=mix(s,vec3(.16,.26,.38),smoothstep(.045,0.,abs(fract(n.y*5.+w*2.4)-.5)-.47)*.6);cl=smoothstep(.66,.9,w)*.2;land=1.;}
+  else{float bd=.5+.5*sin(n.y*(7.+2.*w)+w2*1.6),bd2=.5+.5*sin(n.y*3.4+1.1+w);s=mix(ca*.62,cb*1.45,smoothstep(.15,.85,bd));s=mix(s,ca*vec3(1.35,.95,.7),smoothstep(.45,.9,bd2)*.7);
+   float sx=n.x*2.1,sy=(n.y-.12)*5.5;s=mix(s,cb*vec3(1.35,.8,.5),exp(-(sx*sx+sy*sy))*1.15);cl=smoothstep(.52,.8,w*.5+w2*.5)*.38;land=0.;}
+  s*=.93+.07*w3;
+  float shd=ty==2?0.:(ty==1?smoothstep(.4,.62,tn((n+L*.04)*1.15+.2)*.72+tn((n+L*.04)*2.6+.7)*.28):smoothstep(.52,.8,tn((n+L*.05)*1.2)))*(1.-cl);
+  s*=1.-.32*shd;s=mix(s,ty==0?mix(vec3(.96,.9,.8),ca,.3):vec3(.92,.93,.95),cl);
+  float lit=smoothstep(-.14,.2,nl),mu=max(dot(n,-d),0.),rim=pow(1.-mu,2.6),hz=pow(1.-mu,1.55),tw=exp(-nl*nl*36.)*smoothstep(-.22,.08,nl);
+  vec3 col=s*lit*(.45+.7*max(atm,vec3(.3)))*1.05+atm*.04*lit;
+  if(ty==1)col+=vec3(1.,.74,.4)*(1.-lit)*land*smoothstep(.7,.9,w3)*1.5;
+  if(ty==2)col+=vec3(.55,.75,1.)*(1.-lit)*.05;
+  col+=vec3(1.,.48,.22)*tw*(.12+.45*cl);
+  col=mix(col,atm*(.12+1.05*lit),hz*.62);
+  col+=atm*rim*pow(max(dot(d,Ls0),0.),4.)*1.15;
+  c=vec4(col,1.);}
  else if(b>0.&&rp>0.){float h=(acos(clamp(b,-1.,1.))-asin(min(rp,.999)))/rp;
-  if(h<.7){float lit=smoothstep(-.35,.35,dot(normalize(d-P*b),L)),a=(exp(-h*22.)*.75+exp(-h*6.)*.22)*(.08+lit),fs=pow(max(dot(d,L),0.),6.)*exp(-h*7.)*1.4;
-   c=vec4(atm*1.5*a+uSunC.rgb*fs*.5,min(1.,a+fs*.3));}}
- if(ring>0.){vec3 rn=normalize(vec3(.25,1,.35)),e1=normalize(cross(rn,vec3(0,0,1))),e2=cross(rn,e1);float t=dot(P,rn)/dot(d,rn);
-  vec3 hp=d*t-P;float r=length(hp)/rp,k=r*120.,lw=fwidth(k);
-  if(t>0.&&t<ts&&r>1.25&&r<3.1){                              // thousands of orbiting grains, each drawn as the path it travels
-   float li=floor(k),lf=fract(k),lh=hsh(vec3(li,3.,7.)),l2=hsh(vec3(li,11.,5.)),ang=atan(dot(hp,e2),dot(hp,e1));
-   float line=mix(smoothstep(.48,.2,abs(lf-.5)),.45,smoothstep(.5,1.4,lw));
-   float dd=fract(ang*(30.+floor(lh*110.))+TIME*.03*(l2-.4)+lh*9.),dot1=mix(1.,smoothstep(.5,.25,abs(dd-.5)),step(.3,l2)*smoothstep(1.2,.4,lw));
-   float env=smoothstep(1.25,1.4,r)*smoothstep(3.1,2.7,r)*(.25+.75*texture(uNz,vec3(r*.5,.3,.7)).r)*(1.-.8*smoothstep(.06,0.,abs(r-2.05)));
-   vec3 tc=l2<.1?vec3(1.,.22,.12):l2<.17?vec3(1.,.6,.3):mix(vec3(.3,.5,1.),vec3(1.),lh*lh*lh);
-   float sh=dot(hp,L),shd=length(hp-L*sh)<rp&&sh<0.?.08:1.,a=env*line*dot1;
-   c.rgb=c.rgb*(1.-a*.5)+tc*uSunC.rgb*(.3+7.*lh*lh*lh*lh*lh)*a*shd;c.a=max(c.a,a*.5);}}
+  if(h<.5){float lit=smoothstep(-.35,.35,dot(normalize(d-P*b),L)),a=(exp(-h*16.)*.65+exp(-h*4.5)*.16)*(.12+lit);
+   c=vec4(atm*a*1.25,min(.8,a));}}
+ if(ring>.5&&ty==0){vec3 rn=normalize(vec3(.25,1.,.35)),e1=normalize(cross(rn,vec3(0,0,1))),e2=cross(rn,e1);float t=dot(P,rn)/max(dot(d,rn),1e-4);
+  vec3 hp=d*t-P;float r=length(hp)/max(rp,.02),fw=fwidth(r);
+  if(t>0.&&t<ts&&r>1.32&&r<2.75){
+   float lane=smoothstep(.42,.16,abs(fract(r*2.6)-.5));lane=mix(lane,.62,smoothstep(.015,.07,fw));
+   float env=smoothstep(1.32,1.48,r)*smoothstep(2.75,2.45,r)*(1.-smoothstep(.05,0.,abs(r-1.92))*.8);
+   float sh=dot(hp,L),shd=length(hp-L*sh)<rp&&sh<0.?.15:1.,a=env*lane*.8;
+   vec3 ice=mix(vec3(.84,.88,.93),vec3(.5,.4,.3),smoothstep(1.45,2.55,r));
+   c.rgb=c.rgb*(1.-a*.5)+ice*shd*a*(.4+.6*max(dot(normalize(P),L),0.));c.a=max(c.a,a*.6);}}
  return c;}
 void main(){
  vec3 d=normalize(uFw.xyz+uRt.xyz*mix(uRt.w,uFw.w,vU.x)+uUp.xyz*mix(uUp.w,uVel.w,vU.y));
@@ -986,7 +1015,7 @@ void main(){
     c+=(vec3(1.,.22,.18)*exp(-q1*q1)*(.3+1.4*f2*f2)+vec3(.15,.75,.7)*exp(-q2*q2)*(.15+.8*fl*fl)+vec3(.25,.3,.6)*smoothstep(R,0.,an)*.05)*.9;}
    else if(ty<2.5){float R=.035+.03*sv,el=length(pp*vec2(1.,1.+.6*sv)),q1=(el-R)/(R*.22),q2=(el-R*1.25)/(R*.3);
     c+=vec3(.2,.9,.75)*exp(-q1*q1)*.9+vec3(.9,.3,.25)*exp(-q2*q2)*.35+vec3(.3,.5,.9)*smoothstep(R,0.,el)*.18+vec3(1.)*exp(-an*an*3e5)*3.;}
-   else if(ty<3.5){float th=TIME*(2.+3.*sv),bd=abs(pp.x*sin(th)-pp.y*cos(th)),pl=.6+.4*sin(TIME*(14.+20.*sv));
+   else if(ty<3.5){float th=TIME*(.012+.02*sv),bd=abs(pp.x*sin(th)-pp.y*cos(th)),pl=.75+.25*sin(TIME*(.4+.3*sv));
     c+=vec3(.7,.85,1.)*(exp(-an*an*2.5e5)*5.*pl+exp(-bd*bd*2.5e4)*exp(-length(pp)*16.)*.8+exp(-an*an*900.)*.12);}
    else if(ty<4.5){vec3 sc=mix(vec3(.6,.75,1.),vec3(1.,.5,.25),sv);c+=sc*(exp(-an*an*6e3)*6.+exp(-an*an*220.)*.35+exp(-an*18.)*.08);}
    else if(ty<5.5){vec3 aw=normalize(Q-uSun.xyz);vec2 td=normalize(vec2(dot(aw,U),dot(aw,W))+1e-4);float al0=dot(pp,td),al=max(al0,0.),pe=pp.x*td.y-pp.y*td.x+al*al*.6*(sv-.5),p2=pe-al*.25;
@@ -995,8 +1024,8 @@ void main(){
     c+=mix(vec3(1.,.8,.55),vec3(.8,.88,1.),hsh(vec3(gi,7.)))*(step(1.-fall*.9,h)*exp(-dot(gf,gf)*14.)*1.6+fall*.1);}
   }}
 
- for(int i=2;i>=0;i--)if(uPl[i].w>0.){vec4 p=planet(d,uPl[i].xyz,uPl[i].w,uPa[i].rgb,uPb[i],uPa[i].a);c=c*(1.-p.a)+p.rgb;m*=1.-p.a;}
- if(uOrb.x>0.){float R=90000.,h=uOrb.y,cl=R+h,b=-d.y*cl,q=2.*R*h+h*h,disc=b*b-q;vec3 L=uSun.xyz;
+ for(int i=2;i>=0;i--)if(uPl[i].w>0.){vec4 p=planet(d,uPl[i].xyz,uPl[i].w,uPa[i].rgb,uPb[i],uPa[i].a,i);c=c*(1.-p.a)+p.rgb;m*=1.-p.a;}
+ if(uOrb.x>0.){float R=90000.,h=uOrb.y,cl=R+h,b=-d.y*cl,q=2.*R*h+h*h,disc=b*b-q;float dayPh=TIME*.01+uSd.x*6.283;float sunEl=sin(dayPh);vec3 L=normalize(vec3(cos(dayPh)*.85,sunEl,sin(dayPh*.5+.4)*.55));
   vec3 at=mix(uOa,uSunC.rgb,.45);float sunH=smoothstep(-.25,.25,L.y+.15);
   // the horizon: ground and sky both melt into one band of haze, brightest toward the sun, with a thin glow along the limb
   float yh=-sqrt(q)/cl,hzv=d.y-yh,sdh=pow(max(dot(normalize(vec3(d.x,0.,d.z)+1e-4),normalize(vec3(L.x,0.,L.z)+1e-4)),0.),3.);
@@ -1016,7 +1045,7 @@ void main(){
    vec3 ccol=mix(vec3(1.),uOa*.6+.4,.55)+(ty<1.5?(uCE.rgb-.4)*.35*sin(c1*9.+big*6.):vec3(0));
    vec3 cc=mix(gnd,ccol*top*(lit*.95+at*.07),cov);
    float gp=smoothstep(.6,.8,tn(vec3(s*.00022,7.)))*(1.-cov*.85)*(.35+.65*smoothstep(.3,.7,tn(vec3(s*.004,2.))));
-   cc+=(ty<1.5?mix(uCE.rgb,vec3(1.,.72,.22),.7)*gp*(.5+1.2*(1.-ndl)):ty<2.5?vec3(1.,.75,.4)*gp*land*smoothstep(.5,.1,ndl)*1.5:vec3(.2,.7,1.)*gp*.15);
+   cc+=(ty<1.5?mix(uCE.rgb,vec3(1.,.72,.22),.7)*gp*(.5+1.2*(1.-ndl)):ty<2.5?vec3(1.,.75,.4)*gp*land*(smoothstep(.5,.1,ndl)*1.5+smoothstep(.05,-.4,sunEl)*1.8):vec3(.2,.7,1.)*gp*.15);
    cc+=uSunC.rgb*warm*pow(max(dot(reflect(d,N),L),0.),50.)*.3*cov*ndl;
    float sd2=pow(max(dot(d,L),0.),4.);vec3 air=mix(at*at*1.3,vec3(1.,.5,.2),sd2*.6)*(.05+.22*sunH+1.2*sd2);
    cc=mix(vec3(dot(cc,vec3(.33))),cc,1.45);float fg=1.-exp(-t/30000.);cc=mix(cc,air,fg*.85);
@@ -1594,39 +1623,21 @@ function cockpitMesh() {
       cq([cs(a0, .805, -1.075), cs(a1, .805, -1.075), cs(a1, .7, -1.6), cs(a0, .7, -1.6)], 14, inw);
       cq([cs(a0, .7, -1.6), cs(a1, .7, -1.6), cs(a1, .66, -3.7), cs(a0, .66, -3.7)], 0, [inw[0], 0, inw[2]]); } }
 
-  const cb0 = I.length;   // from here to the glass: the aux screen and the quarters, drawn with their own shader
-  // ---- living quarters: a long-haul cab. You only see it glancing round (, . /) or in a headset.
-  // the aux screen: a small monochrome CRT left of the dash (material 15, its picture is a live canvas)
-  screen([-1.15, -1.16, -2.06], .17, .0956, .28, -.35, 15);   // 16:9 ob([-1.15, -1.3, -2.0], .12, .018, .02, .28, -.35, 1);
-  // left: the bunk. Frame, mattress, a rumpled blanket, a pillow, a curtain half drawn, a shelf with books, a plant and a photo, string lights, a reading lamp
-  ob([-2.75, -2.7, 3.0], .7, .95, 2.3, 0, 0, 14); ob([-2.05, -1.72, 3.0], .025, .05, 2.3, 0, 0, 20);
-  ob([-2.74, -1.6, 3.0], .66, .14, 2.2, 0, 0, 13);
-  ob([-2.72, -1.43, 3.75], .69, .05, 1.45, 0, 0, 16); ob([-2.1, -1.62, 3.75], .05, .2, 1.45, 0, 0, 16); ob([-2.72, -1.4, 2.32], .66, .045, .14, 0, .25, 16);
-  ob([-2.78, -1.36, 1.35], .5, .1, .3, .08, .1, 13);
-  beam([[-1.98, .95, .85], [-1.98, .95, 5.3]], .015, .015, 12);
-  for (let i = 0; i < 9; i++) { const z = 4.05 + i * .14, w = i & 1 ? .05 : -.02; ob([-1.98 + w, -.35, z], .04, 1.28, .075, 0, 0, 19); }
-  ob([-3.28, .05, 3.1], .2, .025, 1.9, 0, 0, 20); ob([-3.28, -.05, 3.1], .2, .07, .02, 0, 0, 12);
-  for (let i = 0, z = 1.45; i < 11; i++) { const r = Math.abs(Math.sin(i * 12.9898) * 43758.5) % 1, h = .17 + .1 * r, w = .028 + .02 * r; ob([-3.3, .075 + h, z + w], .13, h, w, 0, i === 7 ? .3 : 0, 23 + r * .4); z += w * 2 + .006; }
-  lathe(V, I, -3.25, 3.55, [[.075, .06], [.12, .07], [.2, .085], [.215, .09]], 14, 21); for (let i = 0; i < 7; i++) { const a = i / 7 * 6.283; ob([-3.25 + Math.cos(a) * .09, .33 + .04 * (i & 1), 3.55 + Math.sin(a) * .09], .02, .12, .055, a, .5, 22); }
-  ob([-3.33, .25, 4.3], .02, .19, .14, 0, 0, 21); ob([-3.315, .25, 4.3], .006, .16, .115, 0, 0, 17.2);
-  for (let i = 0; i < 18; i++) ob([-3.12, -.12 - .03 * Math.sin(i * .9) ** 2, 1.4 + i * .22], .012, .012, .012, 0, 0, 18);
-  ob([-3.35, -.55, 4.95], .07, .03, .03, 0, 0, 1); ob([-3.22, -.62, 4.95], .06, .05, .06, 0, 0, 18);
-  ob([-3.44, -.75, 2.0], .01, .2, .25, 0, 0, 21); ob([-3.43, -.75, 2.0], .006, .15, .2, 0, 0, 17); ob([-3.44, -.85, 2.65], .01, .14, .18, 0, .1, 21); ob([-3.43, -.85, 2.65], .006, .1, .14, 0, .1, 17.1);
-  // right: the galley. A counter on the cupboards, a mug, a coffee maker with a lit button, a notebook, open cubbies with soft bins, an under-shelf lamp, a jacket on a hook by the hatch
-  ob([3.02, -1.51, 2.6], .5, .04, 1.62, 0, 0, 20);
-  lathe(V, I, 2.85, 2.05, [[-1.47, .065], [-1.3, .072], [-1.285, .07]], 16, 21); ob([2.85, -1.38, 2.135], .012, .045, .025, 0, 0, 21);
-  ob([3.15, -1.27, 3.1], .16, .2, .14, 0, 0, 1); ob([3.15, -1.06, 3.1], .14, .02, .12, 0, 0, 12); ob([2.985, -1.2, 3.1], .006, .015, .015, 0, 0, 6);
-  ob([2.8, -1.462, 2.55], .18, .008, .13, .3, 0, 17.3);
-  ob([3.44, .35, 2.6], .02, .55, 1.5, 0, 0, 14); ob([3.25, .88, 2.6], .21, .025, 1.52, 0, 0, 14); ob([3.25, .35, 2.6], .2, .018, 1.5, 0, 0, 20); for (const z of [1.1, 2.1, 3.1, 4.1]) ob([3.25, .35, z], .2, .53, .022, 0, 0, 14);   // open cubbies
-  ob([3.1, -.2, 2.6], .34, .02, 1.5, 0, 0, 20); ob([3.15, -.24, 2.6], .04, .01, 1.3, 0, 0, 18);
-  ob([3.22, -.02, 1.6], .17, .15, .4, 0, 0, 19); ob([3.22, -.04, 3.6], .17, .13, .38, 0, 0, 16); ob([3.22, .5, 2.6], .17, .13, .4, 0, 0, 13); ob([3.24, .43, 1.6], .16, .045, .36, 0, 0, 19); ob([3.24, .52, 1.6], .15, .04, .34, 0, 0, 16); ob([3.24, .6, 1.6], .14, .035, .32, 0, 0, 13);   // soft bins and a pile of folded clothes
-  ob([2.95, .3, 5.4], .03, .03, .06, 0, 0, 1); ob([2.95, -.35, 5.3], .3, .62, .12, .1, 0, 19); ob([2.72, -.5, 5.25], .07, .45, .08, .1, .05, 19);
-  // the deck: a worn rug between the bunk and the galley
-  ob([.2, -3.625, 2.9], 1.5, .012, 1.7, 0, 0, 16);
+  const cb0 = I.length;   // from here to the glass: the aux screen, then the quarters
+  // the aux screen: a small 16:9 CRT left of the dash (material 15)
+  screen([-1.15, -1.16, -2.06], .17, .0956, .28, -.35, 15);
+  const qt0 = I.length;   // quarters start here: skipped on desktop unless you glance aft
+  // a long-haul berth and a galley ledge. Same cabin size, almost no clutter: one pad, one counter, two light strips.
+  ob([-2.72, -2.55, 3.15], .62, .07, 2.2, 0, 0, 14);
+  ob([-2.72, -2.44, 3.15], .56, .045, 2.05, 0, 0, 13);
+  ob([-2.74, -2.38, 4.55], .5, .03, .48, 0, 0, 13);
+  ob([3.05, -1.5, 2.65], .4, .03, 1.5, 0, 0, 14);
+  ob([-3.2, .55, 3.2], .015, .012, 1.7, 0, 0, 18);
+  ob([3.28, .2, 2.65], .015, .012, 1.35, 0, 0, 18);
   const n0 = I.length, gs = V.length / 8;                       // the glass: one smooth curved sheet
   for (let j = 0; j <= GJ; j++) for (let i = 0; i <= CN; i++) { const p = cr(-1.5708 + i / CN * 3.1416, j / GJ), nx = -p[0] / 11.5, nz = -(p[2] + 1) / 4.4, l = Math.hypot(nx, .12, nz); V.push(p[0], p[1], p[2], nx / l, -.12 / l, nz / l, 10, 0); }
   for (let j = 0; j < GJ; j++) for (let i = 0; i < CN; i++) { const a = gs + j * (CN + 1) + i; I.push(a, a + 1, a + CN + 2, a, a + CN + 2, a + CN + 1); }
-  const me = mesh(V, I); me.ng = I.length - n0; me.nv = V.length / 8; me.cb = cb0; if (me.nv > 65535) console.error('cockpit mesh has too many vertices for 16-bit indices', me.nv);
+  const me = mesh(V, I); me.ng = I.length - n0; me.nv = V.length / 8; me.cb = cb0; me.qt = qt0; if (me.nv > 65535) console.error('cockpit mesh has too many vertices for 16-bit indices', me.nv);
   return me;
 }
 function quadMesh() { return mesh([-1, -1, 0, 0, 0, 1, 0, 0, 1, -1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 1, 1, 1, -1, 1, 0, 0, 0, 1, 0, 1], [0, 1, 2, 0, 2, 3]); }
@@ -1704,11 +1715,11 @@ const tierOf = (h) => h < .86 ? 0 : h < .94 ? 1 : h < .975 ? 2 : h < .99 ? 3 : h
 const typeAt = () => SYS.mat[gh >>> 5 & 7];
 // lists the generators fill: [shape family] for each size class, things growing on rocks, station kinds
 let HV, BF, BN, SV, LC, LTd, LTb, TV, RV, MV, FV;
-function titanAt(C, wx, wy, wz) { cellRnd(wx, wy, wz, 14); if (hx(1) > SYS.a.ti * .6) return 0; const r = hx(5), s = 2200 + 5200 * r * r; return gateClear(C, wx, wy, wz, s, 1500) ? 0 : s; }
-function hugeAt(C, wx, wy, wz) { if ((wx | wy | wz) & 1) return 0; cellRnd(wx, wy, wz, 2); const p = hx(1); if (p > .75 ||   // only every other cell on each axis: no two giants side by side
+function titanAt(C, wx, wy, wz) { if (SYS.atm) return 0; cellRnd(wx, wy, wz, 14); if (hx(1) > SYS.a.ti * .6) return 0; const r = hx(5), s = 2200 + 5200 * r * r; return gateClear(C, wx, wy, wz, s, 1500) ? 0 : s; }
+function hugeAt(C, wx, wy, wz) { if (SYS.atm || ((wx | wy | wz) & 1)) return 0; cellRnd(wx, wy, wz, 2); const p = hx(1); if (p > .75 ||   // only every other cell on each axis: no two giants side by side
   dead.has(gh) || p > .1 && fM((wx + gj0) * C, (wy + gj1) * C, (wz + gj2) * C) < .82) return 0; const r = hx(5), s = (170 + 400 * r * r) * ((SYS.fz && SYS.fz.kh) || 1); return gateClear(C, wx, wy, wz, s, 700) ? 0 : s; }
 function bigAt(C, wx, wy, wz) {
-  cellRnd(wx, wy, wz, 1); if (dead.has(gh)) return 0;
+  if (SYS.atm) return 0; cellRnd(wx, wy, wz, 1); if (dead.has(gh)) return 0;
   const a = fM((wx + gj0) * C, (wy + gj1) * C, (wz + gj2) * C) - .82 - SYS.a.rock - (hx(1) - .5) * .3;
   if (a <= 0) return 0;
   const r = hx(5), s = (13 + 66 * r * r * r) * Math.min(1, a * 8) * ((SYS.fz && SYS.fz.kb) || 1);
@@ -1730,7 +1741,7 @@ function genBig(L, wx, wy, wz, sx, sy, sz) {
   else if (hx(12) < SYS.a.ten * .3) grow(LTb, 4 + (hx(13) * 7 | 0), v, sx, sy, sz, s, hx(11));
 }
 function smallAt(C, wx, wy, wz) {
-  cellRnd(wx, wy, wz, 3); if (dead.has(gh)) return 0;
+  if (SYS.atm) return 0; cellRnd(wx, wy, wz, 3); if (dead.has(gh)) return 0;
   const a = fM((wx + gj0) * C, (wy + gj1) * C, (wz + gj2) * C) - .64 - SYS.a.rock - (hx(1) - .5) * .5;
   if (a <= 0 && hx(2) > .006) return 0;
   const r = hx(5); return .35 + 4.6 * r * r * r;
@@ -1740,22 +1751,22 @@ function genSmall(L, wx, wy, wz, sx, sy, sz) {
   put(SV[(gh >>> 3) % 3], sx, sy, sz, s, gj0, gj1, gj2, gsd, hx(6), hx(8) < .4 ? tierOf(hx(7)) : 0, typeAt(), 0);
 }
 // rarities: lone geodes, glowing in the colour of what is inside. Rarer minerals are rarer finds.
-function geodeAt(C, wx, wy, wz) { cellRnd(wx, wy, wz, 13); return hx(1) < SYS.a.geo * .5 && !dead.has(gh) ? 4 + 5 * hx(5) : 0; }
+function geodeAt(C, wx, wy, wz) { if (SYS.atm) return 0; cellRnd(wx, wy, wz, 13); return hx(1) < SYS.a.geo * .5 && !dead.has(gh) ? 4 + 5 * hx(5) : 0; }
 const geodeTier = () => { const h = hx(7); return h < .4 ? 1 : h < .7 ? 2 : h < .88 ? 3 : h < .97 ? 4 : 5; };
 function genGeode(L, wx, wy, wz, sx, sy, sz) { const s = geodeAt(L.C, wx, wy, wz); if (s) { const t = geodeTier(); put(L, sx, sy, sz, s + t, gj0, gj1, gj2, gsd, hx(6), t, 6, 0); } }
 function genDebris(L, wx, wy, wz, sx, sy, sz) {
-  cellRnd(wx, wy, wz, 4); const C = L.C, dk = SYS.a.deb;
+  if (SYS.atm) return; cellRnd(wx, wy, wz, 4); const C = L.C, dk = SYS.a.deb;
   if (!dk || fW((wx + gj0) * C, (wy + gj1) * C, (wz + gj2) * C) - .78 + .3 * dk - (hx(1) - .5) * .25 - .6 * fC((wx + gj0) * C, (wy + gj1) * C, (wz + gj2) * C) <= 0) return;
   const r = hx(5); put(L, sx, sy, sz, .4 + 3.2 * r * r, gj0, gj1, gj2, gsd, 0, 0, 0, 0);
 }
-function genRing(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 12); if (hx(1) < SYS.a.st * .6) put(RV[gh >>> 4 & 3], sx, sy, sz, 320 + 520 * hx(5), gj0, gj1, gj2, gsd, 0, 0, 0, 0); }
-function genMega(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 15); if (hx(1) < SYS.a.mega * .6) put(MV[gh >>> 4 & 1], sx, sy, sz, 7000 + 11000 * hx(5), gj0, gj1, gj2, gsd, 0, 0, 0, 0); }
+function genRing(L, wx, wy, wz, sx, sy, sz) { if (SYS.atm) return; cellRnd(wx, wy, wz, 12); if (hx(1) < SYS.a.st * .6) put(RV[gh >>> 4 & 3], sx, sy, sz, 320 + 520 * hx(5), gj0, gj1, gj2, gsd, 0, 0, 0, 0); }
+function genMega(L, wx, wy, wz, sx, sy, sz) { if (SYS.atm) return; cellRnd(wx, wy, wz, 15); if (hx(1) < SYS.a.mega * .6) put(MV[gh >>> 4 & 1], sx, sy, sz, 7000 + 11000 * hx(5), gj0, gj1, gj2, gsd, 0, 0, 0, 0); }
 function swarmAt(C, wx, wy, wz) { cellRnd(wx, wy, wz, 5); return fL((wx + gj0) * C, (wy + gj1) * C, (wz + gj2) * C) + (hx(1) - .5) * .4 > .8 - .3 * SYS.a.life[0] && SYS.a.life[0] > 0; }
 const pack = (L, s, hue, hv, w) => { rs = gh; for (let k = 0; k < L.per; k++) put(L, gsx, gsy, gsz, s, gj0, gj1, gj2, gsd, rnd(), rnd(), hue + (rnd() - .5) * hv, w < 0 ? k : w); };
 let gsx = 0, gsy = 0, gsz = 0;
-function genJelly(L, wx, wy, wz, sx, sy, sz) { if (swarmAt(L.C, wx, wy, wz)) { gsx = sx; gsy = sy; gsz = sz; pack(L, 1.8 + 3 * hx(5), hx(3), .18, -1); } }
+function genJelly(L, wx, wy, wz, sx, sy, sz) { if (SYS.atm) { const y = (wy + .5) * L.C; if (y < 2200 || y > 7600) return; } if (swarmAt(L.C, wx, wy, wz)) { gsx = sx; gsy = sy; gsz = sz; pack(L, 1.8 + 3 * hx(5), hx(3), .18, -1); } }
 function genColossus(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 16); if (hx(1) < SYS.a.life[1] * .7) { gsx = sx; gsy = sy; gsz = sz; pack(L, 45 + 60 * hx(5), hx(3), 0, 0); } }
-function genMinnow(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 6); if (hx(1) < SYS.a.life[2] * .7) { gsx = sx; gsy = sy; gsz = sz; pack(L, .9 + hx(5), hx(3), .1, -1); } }
+function genMinnow(L, wx, wy, wz, sx, sy, sz) { if (SYS.atm) { const y = (wy + .5) * L.C; if (y < 1800 || y > 8200) return; } cellRnd(wx, wy, wz, 6); if (hx(1) < SYS.a.life[2] * .7) { gsx = sx; gsy = sy; gsz = sz; pack(L, .9 + hx(5), hx(3), .1, -1); } }
 function genRay(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 7); if (hx(1) < SYS.a.life[3]) { gsx = sx; gsy = sy; gsz = sz; pack(L, 26 + 50 * hx(5), hx(3), 0, -1); } }
 function genWhale(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 17); if (hx(1) < SYS.a.life[4] * .8) { gsx = sx; gsy = sy; gsz = sz; pack(L, 220 + 420 * hx(5), hx(3), .05, -1); } }
 function genSerpent(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 18); if (hx(1) < SYS.a.life[5] * .6) { gsx = sx; gsy = sy; gsz = sz; pack(L, 45 + 90 * hx(5), hx(3), .2, -1); } }
@@ -1823,7 +1834,7 @@ const hudVA = gl.createVertexArray(), visVA = gl.createVertexArray(); let visN =
 { const s = document.createElement('style'); s.textContent = '#gm{display:none!important}'; document.head.appendChild(s); }
 
 // ---- the pilot's record: rank, standing with four factions, ship fittings, contracts, and the trail ----
-const FAC = [['Meridian Combine', 'haulage and refining'], ['Lantern Order', 'keepers of beacons and old routes'], ['Free Haulers Union', 'independent crews'], ['Deepfield Survey', 'cartographers and salvors']];
+const FAC = [['Meridian Combine', 'haulage, refining, and the law on the inner lanes'], ['Lantern Order', 'keepers of beacons and the old gate rites'], ['Free Haulers Union', 'independent crews, credit and grudges'], ['Deepfield Survey', 'cartographers of the Silence, and your licence']];
 const RANKS = [[0, 'Drifter'], [100, 'Deckhand'], [300, 'Pilot'], [700, 'Pathfinder'], [1500, 'Wayfarer'], [3000, 'Navigator'], [6000, 'Star-warden']];
 const UPS = [['eng', 'Engine tuning', 'More thrust at every throttle setting'], ['plt', 'Hull plating', 'Knocks take less out of the hull'], ['scn', 'Scanner array', 'Scan and hail from further away, faster'], ['ref', 'Refinery', 'A chance of extra yield from every mineral'], ['bay', 'Cargo bay', 'Four more slots in the hold'], ['shd', 'Shield generator', 'Stronger shields that come back faster']];
 const rp = () => ST.rp || (ST.rp = { xp: 0, rep: [0, 0, 0, 0], up: { eng: 0, plt: 0, scn: 0, ref: 0 }, jobs: [], done: 0, trail: 0, seen: {}, took: {} });
@@ -1870,7 +1881,7 @@ function route(sec) {                                         // the next sector
 }
 // the trail: six places, fixed by the universe's seed, each holding a piece of one story
 let TRAIL = null;
-const LORE = ['A relay, older than the gates. It carries one line: "We went quiet on purpose. Follow, if you still listen."', 'A cairn of hull plates. Scratched inside: the names of a crew, and under them, coordinates.', 'A garden pod with a working lamp. Its log says the others went on ahead, and that the fruit is for whoever comes.', 'A gate that was never finished. Someone left the plans in its frame, annotated in three hands.', 'A listening post. For a century it has recorded nothing but its own heartbeat, and, last week, you.', 'The end of the trail: a lit window in the dark, and a chair pulled out. Nobody is home. The kettle is warm.'];
+const LORE = ['A relay older than the Silence. One line, still live: "We went quiet on purpose. Follow, if you still listen."', 'Hull plates stacked as a cairn. Inside, a crew list from the lost survey, and coordinates in the Lantern cipher.', 'A garden pod with a working lamp. The log says the others went on ahead, and the fruit is for whoever still follows.', 'A gate frame that was never lit. Three hands annotated the plans: Combine, Order, Survey. They did not agree.', 'A listening post. For a century it recorded only its own heartbeat, and, last week, you.', 'The end of the trail: a lit window, a chair pulled out, a kettle still warm. Nobody is home. The Silence, it seems, is a door.'];
 function trail() {
   if (TRAIL) return TRAIL; TRAIL = []; const R = mulberry32(MASTER ^ 0x7A11); let sec = [0, 0, 0];
   for (let i = 0; i < 6; i++) { for (let st = 1 + (R() * 2 | 0); st > 0; st--) { const nb = reach(sec); if (nb.length) sec = nb[R() * nb.length | 0]; } const s = mkSys(sysIdAt(sec[0], sec[1], sec[2])), loc = R() * s.locs.length | 0; TRAIL.push({ sec: sec.slice(), loc, pl: s.locs[loc].name, sy: s.name }); }
@@ -1888,10 +1899,10 @@ function objective() {                                        // what to do next
   if (isHere(d)) return { text: pre + 'you are here', nav: '' };
   if (sameSec(d.sec, SYS.sec)) { const L = SYS.locs[d.loc];
     if (L && L.atm) return SYS.atm ? { text: `${pre}climb out, then fly down to ${SYS.planets[L.atm - 1].name}`, nav: '' } : { text: `${pre}fly down to ${SYS.planets[L.atm - 1].name} (hold course on it)`, nav: 'p' + (L.atm - 1) };
-    return { text: `${pre}warp gate → ${d.pl}`, nav: 'gate', loc: d.loc }; }
-  if (SYS.loc !== 0) return { text: `${pre}warp gate → ${SYS.locs[0].name}, this system's gate, then on toward ${d.sy}`, nav: 'gate', loc: 0 };
+    return SYS.atm ? { text: `${pre}climb out of the air, then the gate to ${d.pl}`, nav: 'settle' } : { text: `${pre}warp gate → ${d.pl}`, nav: 'gate', loc: d.loc }; }
+  if (SYS.loc !== 0) return SYS.atm ? { text: `${pre}climb out, then ${SYS.locs[0].name}, on toward ${d.sy}`, nav: 'settle' } : { text: `${pre}warp gate → ${SYS.locs[0].name}, this system's gate, then on toward ${d.sy}`, nav: 'gate', loc: 0 };
   const hop = route(d.sec);
-  return { text: hop ? `${pre}warp gate → ${mkSys(sysIdAt(hop[0], hop[1], hop[2])).name}, on the way to ${d.pl}, ${d.sy}` : `${pre}${d.pl}, ${d.sy} (sector ${d.sec.join(' ')}) is beyond charted routes`, nav: 'gate' };
+  return { text: hop ? `${pre}warp gate → ${mkSys(sysIdAt(hop[0], hop[1], hop[2])).name}, on the way to ${d.pl}, ${d.sy}` : `${pre}${d.pl}, ${d.sy} (sector ${d.sec.join(' ')}) is beyond charted routes`, nav: SYS.atm ? 'settle' : 'gate' };
 }
 const EV = [
   ['A hauler drifts dark off {p}. Its beacon asks, politely, for a jump-start.', [['Lend it power', 'It coughs awake. The crew send ore across and promise to speak well of you.', { min: [2, 3], rep: 6, xp: 15 }], ['Take a part for your trouble', 'Nobody is watching. Probably. The part sells well.', { cr: 140, rep: -8 }], ['Fly on', 'You leave it blinking behind you.', {}]]],
@@ -1907,16 +1918,32 @@ const EV = [
   ['Something large passes under your keel at {p}, and your instruments sing in a key you have not heard.', [['Hold still and listen', 'It circles once and leaves a wake of bright dust. Your hold is heavier.', { min: [4, 1], xp: 35 }], ['Follow it', 'It leads you a long way, to nothing, or to the point of it.', { xp: 50 }], ['Light the engines', 'You are gone before you find out.', {}]]],
   ['A gambler on the {p} band wants to race you to the gate and back.', [['Take the bet (50)', 'You win by a length. He pays up, laughing.', { cr: 100, xp: 25 }], ['Take the bet and coast', 'He wins. He needed to more than you did.', { cr: -50, rep: 6 }], ['No bets', 'He calls you sensible. It does not sound like praise.', {}]]],
 ];
+let ENC = null, trailPend = null;
 function eventPanel() {
   const R = mulberry32(SYS.salt ^ 0xE7E), e = EV[R() * EV.length | 0], f = (s) => s.replace('{p}', SYS.locs[SYS.loc].name).replace('{s}', SYS.name);
-  panel('Encounter', SYS.locs[SYS.loc].name + ' · ' + FAC[SYS.fac][0] + ' space', [{ name: 'On arrival', desc: f(e[0]) }].concat(e[1].map((o) => ({ name: o[0], desc: '', run: () => { gain(o[2]); panel('Encounter', SYS.locs[SYS.loc].name, [{ name: o[0], desc: f(o[1]) }, { name: 'Carry on', desc: '', run: () => {} }], 'Press a number · J to close'); } }))), 'Press a number to choose');
+  panel('Encounter', SYS.locs[SYS.loc].name + ' · ' + FAC[SYS.fac][0], [{ name: 'Contact', desc: f(e[0]) }].concat(e[1].map((o) => ({ name: o[0], desc: '', run: () => { gain(o[2]); panel('Encounter', SYS.locs[SYS.loc].name, [{ name: o[0], desc: f(o[1]) }, { name: 'Carry on', desc: '', run: () => {} }], 'Press a number · J to close'); } }))), 'Press a number to choose');
+}
+function encTick(dt) {
+  if (trailPend && flying() && !jpOpen && !jumpTo) {
+    trailPend.t += dt;
+    const d = Math.hypot(bcn[0] - px, bcn[1] - py, bcn[2] - pz);
+    if (trailPend.t > 5 && d < 1100) {
+      const i = trailPend.i; trailPend = null;
+      panel('The trail', `Part ${i + 1} of 6 · ${SYS.locs[SYS.loc].name}`, [{ name: 'Found', desc: LORE[i] }, { name: i < 5 ? 'Next' : 'Done', desc: i < 5 ? `It points on, to ${trail()[i + 1].pl} in ${trail()[i + 1].sy}.` : 'There is nothing further to follow. The rest is yours.' }], 'J to close');
+    }
+  }
+  if (!ENC || ENC.open || !flying() || SYS.atm || jumpTo || jpOpen) return;
+  ENC.t += dt;
+  put(DGm, ENC.x - px, ENC.y - py, ENC.z - pz, 7, 0, 0, 0, .22, .95, .62, .28, 0);
+  const d = Math.hypot(ENC.x - px, ENC.y - py, ENC.z - pz);
+  if (ENC.t > 10 && d < 480) { ENC.open = 1; eventPanel(); }
 }
 function rpgArrive() {
   const r = rp(); npcSpawn(); scanned = {}; { const R = mulberry32(SYS.salt ^ 0x5702), a = R() * 6.283, d = 1800 + R() * 2600; STORM = R() < (SYS.atm === 1 ? .85 : .3 + .1 * SYS.danger) ? { x: Math.cos(a) * d, y: (R() - .5) * 900, z: Math.sin(a) * d, r: 900 + R() * 900, warned: 0 } : null; } sysInit(); scK = 0; scOut = 0; navAuto = 1; navId = ''; scanT = 0; routeK = '';
   for (const j of r.jobs.slice()) { const d = jobDest(j); if (!isHere(d)) continue; if (j.ty === 0) jobDone(j); else if (j.stage && (j.ty === 1 || j.ty === 3)) { if (j.ty === 1) cargo[j.tier] = Math.max(0, cargo[j.tier] - j.n); jobDone(j); } }
-  const ok = () => flying() && !jpOpen && !jumpTo;
-  if (r.trail < 6 && isHere(trail()[r.trail])) { const i = r.trail++; gain({ xp: 80, cr: 100 }); setTimeout(() => { if (ok()) panel('The trail', `Part ${i + 1} of 6 · ${SYS.locs[SYS.loc].name}`, [{ name: 'Found', desc: LORE[i] }, { name: i < 5 ? 'Next' : 'Done', desc: i < 5 ? `It points on, to ${trail()[i + 1].pl} in ${trail()[i + 1].sy}.` : 'There is nothing further to follow. The rest is yours.' }], 'J to close'); }, 3000); }
-  else if (!r.seen[mkey()]) { r.seen[mkey()] = 1; if (mulberry32(SYS.salt ^ 0xE7)() < .45) setTimeout(() => { if (ok()) eventPanel(); }, 4000); }
+  ENC = null; trailPend = null;
+  if (r.trail < 6 && isHere(trail()[r.trail])) { const i = r.trail++; gain({ xp: 80, cr: 100 }); trailPend = { i, t: 0 }; }
+  else if (!SYS.atm && !r.seen[mkey()]) { r.seen[mkey()] = 1; if (mulberry32(SYS.salt ^ 0xE7)() < .45) { const R = mulberry32(SYS.salt ^ 0xE11C), a = R() * 6.283, el = (R() - .5) * .35, dist = 1600 + R() * 700, ce = Math.cos(el); ENC = { x: Math.cos(a) * ce * dist, y: Math.sin(el) * dist * .6, z: Math.sin(a) * ce * dist, t: 0, open: 0 }; } }
   save();
 }
 function rpgCollected(tier) {
@@ -1945,6 +1972,9 @@ function journalPanel() {
   for (const j of r.jobs) list.push({ name: j.title, kind: `${j.pay} cr · ${FAC[j.fac][0]}`, desc: j.text, run: () => { r.jobs = r.jobs.filter((x) => x !== j); gain({ rep: -3, fac: j.fac }); tip('Contract abandoned', 4000); } });
   list.push({ name: SYS.name, kind: SYS.star, desc: `${FAC[SYS.fac][0]} space · economy: ${SYS.econ}${SYS.ph ? ' · in its sky: ' + ['', 'a supernova remnant', 'a planetary nebula', 'a pulsar', 'a companion star', 'a comet', 'a globular cluster'][SYS.ph] : ''} · ` + SYS.planets.map((p) => `${p.name}: ${p.type}, ${p.orbit} AU, ${p.moons} moons${p.pop && p.pop !== 'none' ? ', ' + p.pop : ''}`).join(' · ') });
   list.push({ name: 'Standing', kind: '', desc: FAC.map((f, i) => `${f[0]}: ${repName(r.rep[i])} (${r.rep[i]})`).join(' · ') });
+  list.push({ name: 'The Infinite End', kind: 'why you are out here', desc: 'The outer gates went quiet three centuries ago. The Survey calls it the Silence. You hold a pathfinder licence to go past the last reliable lane and bring the charts home. The Combine pays for them. The Lantern Order says the old rites still open a door. The kettle at the end of the trail was warm.' });
+  { const arcs = Object.values(cast()).filter((c) => c.arc && !c.dead); if (arcs.length) list.push({ name: 'Oaths', kind: arcs.length + ' open', desc: arcs.slice(0, 4).map((c) => `${c.n} · ${c.arc.id} ${c.arc.done ? 'kept' : 'step ' + (c.arc.step + 1)}`).join(' · ') }); }
+  { const gone = (ST.deadNames || []).slice(-4); if (gone.length) list.push({ name: 'The dead', kind: 'they do not return', desc: gone.join(' · ') }); }
   panel('Journal', SYS.locs[SYS.loc].name, list, 'Press a contract\'s number to abandon it · B or J to close');
 }
 const RUM = ['They say the {k} here is worth the trip.', 'Traders pay better where the {e} runs short. Not here.', 'Watch the big ships: they keep to their lanes and expect you to keep to yours.', 'If your hull is singing, the outfitter sells plating. Mine saved me twice.'];
@@ -1964,6 +1994,21 @@ function hailPanel(a) {
 // come back, patrols fly a loop in formation, couriers arrive, cross and leave by the gate, frigates keep a lane.
 const NPCS = [], DAg = Dyn(40), DAgs = [DAg, Dyn(40), Dyn(40)], DAf = Dyn(6), ROLE = ['Hauler', 'Miner', 'Patrol', 'Courier', 'Frigate', 'Raider', 'Tender'];
 const NPN = NM.ship, RDN = NM.raider;   // ships carry Earth names; raiders, the names they gave themselves
+function nameBanned(n) { if (!n) return false; if ((ST.deadNames || []).includes(n)) return true; for (const c of Object.values(cast())) if (!c.dead && (c.n === n || c.sh === n)) return true; return false; }
+function freshRaiderName(R) {
+  const live = new Set(NPCS.map((a) => a.name));
+  for (let i = 0; i < 28; i++) { const n = pickN(R, RDN) + ' ' + pickN(R, NM.last); if (!live.has(n) && !nameBanned(n)) return n; }
+  return pickN(R, NM.first) + ' ' + pickN(R, RDN);
+}
+function noteKill(a) {
+  if (!a || !a.name) return;
+  ST.deadNames = ST.deadNames || [];
+  if (!ST.deadNames.includes(a.name)) ST.deadNames.push(a.name);
+  if (ST.deadNames.length > 240) ST.deadNames.splice(0, 40);
+  if (a.cast && cast()[a.cast]) { const ch = cast()[a.cast]; ch.dead = 1; ch.cool = 1e15; }
+  quietUntil = Math.max(quietUntil || 0, tm + 110);
+  cmT = Math.max(cmT, 190);
+}
 let NPT = null;
 function npcGoal(a) {
   const P = NPT, j = () => (Math.random() - .5) * 160;
@@ -1989,7 +2034,7 @@ function npcSpawn() {
   }
   for (let i = 0; i < 5; i++) { const d = dir(), ds = 900 + R() * 1500; NPCS.push({ i: 300 + i, role: 6, big: 0, x: d[0] * ds, y: d[1] * ds, z: d[2] * ds, vx: 0, vy: 0, vz: 0, fx: -d[0], fy: -d[1], fz: -d[2], ux: 0, uy: 1, uz: 0, sp: 42 + R() * 14, size: 4.5, st: 0, t: 0, hold: 0, wp: NPT.fields[i % 3], hue: .55, seed: R(), fac: SYS.fac, name: 'Tender ' + (i + 1), lead: null, k: i, anchor: null, orb: 380 + R() * 500 }); }   // small craft that work round the nearest station
   const nr = hostLv === 2 ? 2 + (R() * 3 | 0) : SYS.danger >= 2 ? 2 + (R() * 2 | 0) : 0;
-  for (let i = 0; i < nr; i++) { const d = dir(), ds = 2500 + R() * 2500; NPCS.push({ i: 100 + i, role: 5, big: 0, x: d[0] * ds, y: d[1] * ds, z: d[2] * ds, vx: 0, vy: 0, vz: 0, fx: -d[0], fy: -d[1], fz: -d[2], ux: 0, uy: 1, uz: 0, sp: 105 + R() * 25, size: 9, st: 0, t: 0, hold: 0, wp: [0, 0, 0], hue: .02, seed: R(), fac: SYS.fac, name: pickN(R, RDN), lead: null, k: 0, hp: 1.3, cd: 1, brk: 0 }); }
+  for (let i = 0; i < nr; i++) { const d = dir(), ds = 2500 + R() * 2500; NPCS.push({ i: 100 + i, role: 5, big: 0, x: d[0] * ds, y: d[1] * ds, z: d[2] * ds, vx: 0, vy: 0, vz: 0, fx: -d[0], fy: -d[1], fz: -d[2], ux: 0, uy: 1, uz: 0, sp: 105 + R() * 25, size: 9, st: 0, t: 0, hold: 0, wp: [0, 0, 0], hue: .02, seed: R(), fac: SYS.fac, name: freshRaiderName(R), lead: null, k: 0, hp: 1.3, cd: 1, brk: 0 }); }
   for (const j of rp().jobs) if (j.ty === 5 && !j.stage && isHere(jobDest(j))) { const d = dir(), ds = 1800 + R() * 1800; NPCS.push({ i: 200, role: 5, big: 0, x: d[0] * ds, y: d[1] * ds, z: d[2] * ds, vx: 0, vy: 0, vz: 0, fx: -d[0], fy: -d[1], fz: -d[2], ux: 0, uy: 1, uz: 0, sp: 120, size: 11, st: 0, t: 0, hold: 0, wp: [0, 0, 0], hue: .98, seed: R(), fac: SYS.fac, name: j.tn, lead: null, k: 0, hp: 3.2, cd: 1, brk: 0, bounty: j }); }
   const nb = SYS.a.fr > .1 ? 1 + (R() * 2 | 0) : R() < .35 ? 1 : 0;
   for (let i = 0; i < nb; i++) {
@@ -1997,7 +2042,7 @@ function npcSpawn() {
     const a = { i: n + i, role: 4, big: 1, x: A[0] + (B[0] - A[0]) * u, y: A[1] + (B[1] - A[1]) * u, z: A[2] + (B[2] - A[2]) * u, vx: 0, vy: 0, vz: 0, fx: -d[0], fy: 0, fz: -d[2], ux: 0, uy: 1, uz: 0, sp: 26 + R() * 10, size: 380 + R() * 420, st: 0, t: 0, hold: 0, A, B, hue: R(), seed: R(), fac: SYS.fac, name: 'ISV ' + pickN(R, NM.navy), lead: null, k: 0 };
     npcGoal(a); NPCS.push(a);
   }
-  for (const a of NPCS) { const hs2 = a.big ? [3000, 2000] : a.bounty ? [150, 120] : [[60, 40], [50, 30], [90, 80], [40, 50], 0, [70, 60], [35, 25]][a.role]; a.hpM = a.hp = hs2[0]; a.shM = a.sh = hs2[1]; a.shT = -99; a.s = 0; a.var = a.role === 2 || a.role === 5 ? 2 : a.role === 3 ? 1 : a.i & 1; }
+  for (const a of NPCS) { const hs2 = a.big ? [3000, 2000] : a.bounty ? [240, 320] : [[60, 40], [50, 30], [90, 80], [40, 50], 0, [150, 300], [35, 25]][a.role]; a.hpM = a.hp = hs2[0]; a.shM = a.sh = hs2[1]; a.shT = -99; a.s = 0; a.var = a.role === 2 || a.role === 5 ? 2 : a.role === 3 ? 1 : a.i & 1; }
 }
 const AVO = [];
 let trafT = 8;
@@ -2035,7 +2080,7 @@ function npcTick(dt) {
     if (a.role === 1 && a.hold && !(a.st & 1)) for (let k = 1; k < 9; k++) { const f = k / 9 * 130, w = .5 + .5 * Math.sin(tm * 40 + k); put(DPa, qx + a.fx * f, qy + a.fy * f - k * 1.5, qz + a.fz * f, 2.2 + w * 1.5 + (k === 8 ? 7 : 0), 0, 0, 0, k * .11, 1, .32, .1, 0); }
     if (a.role === 2) { let en = null, ed = 3500; for (const b of NPCS) if (b.role === 5) { const e = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z); if (e < ed) { ed = e; en = b; } }
       if (en) { a.hold = 0; a.wp = [en.x, en.y, en.z]; if (ed < 700) { const u = (tm * 2.2 + a.seed) % 1; for (let k = 0; k < 3; k++) { const f = (u + k / 3) % 1; put(DPa, qx + (en.x - a.x) * f, qy + (en.y - a.y) * f, qz + (en.z - a.z) * f, 3.5, 0, 0, 0, k * .3, .3, .8, 1, 0); } { const q = dt * 14, t = Math.min(en.sh, q); en.sh -= t; en.hp -= q - t; en.shT = tm; } en.brk = 2; if (en.hp <= 0) { fxAdd(en.x, en.y, en.z, 60, 1, .6, .3); en.dead = 1; navT = 0; } } } }
-    if (a.role === 2 && wantedT > 0) { a.hold = 0; a.wp = [px + vx * .6, py + vy * .6, pz + vz * .6]; a.cd = (a.cd || 0) - dt; if (flying() && qd < 520 && a.cd <= 0 && -(a.fx * qx + a.fy * qy + a.fz * qz) / qd > .97) { a.cd = .5; (hurtSrc = 'raider', hurtSrcT = tm, hurt(1.2)); trauma = Math.min(1, trauma + .15); thud(.2); } }
+    if (a.role === 2 && wantedT > 0) { a.hold = 0; a.wp = [px + vx * .6, py + vy * .6, pz + vz * .6]; a.cd = (a.cd || 0) - dt; if (flying() && qd < 520 && a.cd <= 0 && -(a.fx * qx + a.fy * qy + a.fz * qz) / qd > .97) { a.cd = .5; hurtSrc = 'raider'; hurtSrcT = tm; hitFromX = a.x; hitFromY = a.y; hitFromZ = a.z; hurt(1.2); trauma = Math.min(1, trauma + .15); thud(.2); } }
     if (a.dead) { NPCS.splice(n, 1); continue; }
     if (a.role === 5) {
       if (a.fled) continue;
@@ -2044,7 +2089,7 @@ function npcTick(dt) {
       if (!hunt) { a.brk -= dt; if (a.brk <= 0) { let en = null, ed = 4000; for (const b of NPCS) if (b.role === 2) { const e = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z); if (e < ed) { ed = e; en = b; } } if (en) { a.wp = [en.x, en.y, en.z]; if (ed < 600) { const u = (tm * 2 + a.seed) % 1; put(DPa, qx + (en.x - a.x) * u, qy + (en.y - a.y) * u, qz + (en.z - a.z) * u, 3.5, 0, 0, 0, .5, 1, .3, .15, 0); } if (ed < 120) { a.brk = 3; const j = () => (Math.random() - .5) * 2500; a.wp = [a.x + j(), a.y + j() * .3, a.z + j()]; } } } }
       else { a.brk -= dt; if (qd < 110 && a.brk <= 0) { a.brk = 3.5; const j = () => (Math.random() - .5) * 1800; a.wp = [px + j(), py + j() * .4, pz + j()]; }
       if (a.brk <= 0) a.wp = [px + vx * .8, py + vy * .8, pz + vz * .8];
-      a.cd -= dt; if (flying() && qd < 520 && a.cd <= 0 && -(a.fx * qx + a.fy * qy + a.fz * qz) / qd > .975) { a.cd = .4; (hurtSrc = 'raider', hurtSrcT = tm, hurt(1.4)); trauma = Math.min(1, trauma + .2); thud(.2); if (!a.warned) { a.warned = 1; tip('Under fire: ' + a.name + ' is on you', 4000); } } }
+      a.cd -= dt; if (flying() && qd < 520 && a.cd <= 0 && -(a.fx * qx + a.fy * qy + a.fz * qz) / qd > .975) { a.cd = .4; hurtSrc = 'raider'; hurtSrcT = tm; hitFromX = a.x; hitFromY = a.y; hitFromZ = a.z; hurt(1.4); trauma = Math.min(1, trauma + .2); thud(.2); if (!a.warned) { a.warned = 1; tip('Under fire: ' + a.name + ' is on you', 4000); } } }
     }
 
   }
@@ -2098,7 +2143,7 @@ let NAV = [], navId = '', navAuto = 1, navT = 0, scanT = 0, scanned = {}, psel =
 const wreckAt = (j) => { const R = mulberry32(SYS.salt ^ (j.pay * 977 + j.n * 31)), a = R() * 6.283, y = R() * .5 - .25, c = Math.sqrt(1 - y * y), d = 1500 + R() * 2500; return [Math.cos(a) * c * d, y * d, Math.sin(a) * c * d]; };
 const scanR = () => 1500 * (1 + .5 * upLv('scn')) * (crew('nav') ? 1.3 : 1);
 function navBuild() {
-  const N = [{ id: 'gate', name: 'WARP GATE', kind: 'gate', x: 0, y: 0, z: 0 }];
+  const N = SYS.atm ? [] : [{ id: 'gate', name: 'WARP GATE', kind: 'gate', x: 0, y: 0, z: 0 }];
   if (trader) N.push({ id: 'trader', name: 'TRADER', kind: 'dock', x: 430, y: -70, z: 260 });
   if (!ST.found[mkey()]) N.push({ id: 'signal', name: 'UNKNOWN SIGNAL', kind: 'signal', x: bcn[0], y: bcn[1], z: bcn[2] });
   for (const j of rp().jobs) if (j.ty === 3 && !j.stage && isHere(jobDest(j))) { const w = wreckAt(j); N.push({ id: 'wreck', name: 'WRECK SIGNAL', kind: 'wreck', x: w[0], y: w[1], z: w[2], job: j }); }
@@ -2116,8 +2161,9 @@ function navBuild() {
   ['MENDER SWARM', 'SIPHON SWARM', 'SPARK SWARM'].forEach((nm, k) => { const r = swN[k]; if (r && r[0] < 6000 * 6000) N.push({ id: 'sw' + k, name: nm, kind: 'swarm', x: px + r[1], y: py + r[2], z: pz + r[3] }); });
   NAV = N; obj = objective();
   { const lowK = ST.hull < 30 ? 0 : ST.fuel < 20 ? 1 : ST.wen < 12 ? 2 : -1; if (lowK >= 0 && navAuto && N.some((n) => n.id === 'sw' + lowK)) { obj = { ...obj, nav: 'sw' + lowK }; } }
-  if (navAuto) { const want = obj.nav === 'npc' ? (N.find((n) => n.npc) || {}).id : obj.nav === 'bounty' ? (N.find((n) => n.npc && n.npc.bounty) || {}).id : obj.nav; navId = N.some((n) => n.id === want) ? want : 'gate'; }
-  else if (!N.some((n) => n.id === navId)) navId = 'gate';
+  const homeNav = SYS.atm ? 'settle' : 'gate';
+  if (navAuto) { const want = obj.nav === 'npc' ? (N.find((n) => n.npc) || {}).id : obj.nav === 'bounty' ? (N.find((n) => n.npc && n.npc.bounty) || {}).id : obj.nav; navId = N.some((n) => n.id === want) ? want : homeNav; }
+  else if (!N.some((n) => n.id === navId)) navId = homeNav;
 }
 const navCur = () => { for (const n of NAV) if (n.id === navId) { if (n.npc) { n.x = n.npc.x; n.y = n.npc.y; n.z = n.npc.z; } return n; } return NAV[0]; };
 let atK = '', atT = 0, manT = -99;
@@ -2156,7 +2202,7 @@ function navTick(dt, fly) {
     if (scanT > 1.6) { scanned[c.id] = 1; scanT = 0; gain({ xp: 4 }); tip('Scanned: ' + c.name + (c.npc ? ` · ${FAC[c.npc.fac][0]}` : ''), 3500); for (const j of rp().jobs) if (j.ty === 2 && isHere(jobDest(j)) && ++j.got >= 3) jobDone(j); }
   } else scanT = Math.max(0, scanT - dt);
 }
-function rpgSim(dt, fly) { mslTick(dt); chatter(dt, fly); if (fly && crew('eng') && ST.hull < 100 && tm - shHit > 8) ST.hull = Math.min(100, ST.hull + dt * .25); if (wantedT > 0) { wantedT -= dt; if (wantedT <= 0) tip('The patrols have stood down. They will not forget.', 5000); } npcTick(dt); meteorTick(dt, fly); flareTick(dt, fly); if (!radioAir() && (!rdList || !CFG.radio)) playlistTick(dt, fly); fxTick(dt); droneTick(dt, fly); navTick(dt, fly); cruiseTick(dt, fly); stormTick(dt, fly); if (tm - shHit > 4) shield = Math.min(shMax(), shield + dt * (9 + 5 * upLv('shd'))); }
+function rpgSim(dt, fly) { encTick(dt); mslTick(dt); chatter(dt, fly); if (fly && crew('eng') && ST.hull < 100 && tm - shHit > 8) ST.hull = Math.min(100, ST.hull + dt * .25); if (wantedT > 0) { wantedT -= dt; if (wantedT <= 0) tip('The patrols have stood down. They will not forget.', 5000); } npcTick(dt); meteorTick(dt, fly); flareTick(dt, fly); if (!radioAir() && (!rdList || !CFG.radio)) playlistTick(dt, fly); fxTick(dt); droneTick(dt, fly); navTick(dt, fly); cruiseTick(dt, fly); stormTick(dt, fly); if (tm - shHit > 4) shield = Math.min(shMax(), shield + dt * (9 + 5 * upLv('shd'))); }
 
 // ---- controllers in a headset: everything that has a key has a button ----
 let hudForce = 0;
@@ -2188,13 +2234,14 @@ function hudPaint() {
   const nar = !xr && W / H < 1.05, OX = 300, LX = nar ? 300 : 0, RX = nar ? 300 : 600, at = (o) => c.setTransform(1, 0, 0, 1, o, 0);
   at(OX);
   line([[120, 30], [170, 104], [830, 104], [880, 30]]);
-  T('SHLD', 178, 63, 12, 'left', dim, 700); bar(232, 55, 190, shield / shMax(), tm - shHit < .4 ? '#ffffff' : cy);
-  T('HULL', 178, 48, 15, 'left', dim, 700); bar(232, 38, 190, hull / 100, gFlash[0] > .5 ? '#ffffff' : hull < 35 ? red : '#d2d4d8'); T((hull | 0) + '%', 430, 48, 15, 'left', hull < 35 ? red : '#d2d4d8');
+  T('SHLD', 178, 63, 12, 'left', dim, 700); bar(232, 55, 190, shield / shMax(), tm - shHit < .55 ? '#ffffff' : cy);
+  T('HULL', 178, 48, 15, 'left', dim, 700); bar(232, 38, 190, hull / 100, tm - hullHitT < .45 || gFlash[0] > .5 ? '#ffffff' : hull < 35 ? red : '#d2d4d8'); T((hull | 0) + '%', 430, 48, 15, 'left', tm - hullHitT < .45 ? '#ffffff' : hull < 35 ? red : '#d2d4d8');
   { const o2 = ST.o2 == null ? 100 : ST.o2, lo = o2 < 15, bl = lo && (tm * 3 | 0) % 2; T('O2', 178, 78, 12, 'left', lo ? red : dim, 700); bar(232, 70, 190, o2 / 100, bl ? '#ffffff' : lo ? red : '#7fd8ff'); if (SYS.atm && o2 < 100) T('REFILLING', 430, 78, 11, 'left', '#7fd8ff', 700); }
  if (wantedT > 0) T('WANTED  ' + Math.ceil(wantedT), 500, 228, 17, 'center', red, 700);
   T('THR', 822, 56, 15, 'right', dim, 700); bar(580, 46, 190, Math.abs(thr), thr < 0 ? red : bst > .3 ? amb : main); T(Math.round(thr * 100) + '%', 572, 56, 15, 'right', main);
   { const fu = ST.fuel == null ? 100 : ST.fuel, we = ST.wen == null ? 100 : ST.wen, spc = ST.spice || 0;
     T('FUEL', 822, 74, 12, 'right', dim, 700); bar(580, 66, 190, fu / 100, gFlash[1] > .5 ? '#ffffff' : fu < 15 ? red : '#ffd84a');
+    T(WPN[wpn][0].toUpperCase(), 822, 108, 11, 'right', dim, 600);
     T('WPNS' + (wpn === 4 ? ' ' + mslN : ''), 822, 92, 12, 'right', dim, 700); bar(580, 84, 190, we / 100, gFlash[2] > .5 ? '#ffffff' : we < 12 ? red : '#ff6a3d');
     T('SPICE', 178, 93, 12, 'left', dim, 700); bar(232, 85, 190, spc / 100, btT > 0 ? '#ffffff' : '#ff3b5c'); if (btT > 0) { T('SLOW TIME', 500, 252, 15, 'center', '#ff3b5c', 700); line([[500 - 80 * btT / btMax, 262], [500 + 80 * btT / btMax, 262]], '#ff3b5c', 2); } }
   const hd = Math.atan2(sFx, -sFz) * 57.29578, CARD = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'], wrap = (a) => ((a + 540) % 360) - 180;
@@ -2204,6 +2251,7 @@ function hudPaint() {
   let dist = 0;
   if (cur) { const dx = cur.x - px, dy = cur.y - py, dz = cur.z - pz; dist = Math.hypot(dx, dy, dz); const bx = Math.max(250, Math.min(750, 500 + wrap(Math.atan2(dx, -dz) * 57.29578 - hd) * 6.5)); c.fillStyle = amb; c.beginPath(); c.moveTo(bx, 108); c.lineTo(bx + 7, 116); c.lineTo(bx, 124); c.lineTo(bx - 7, 116); c.fill(); }
   // left: speed, hull state. right: target, distance
+  if (tm - hitPing < 1.2) { const u = 1 - (tm - hitPing) / 1.2, ang = hitAng || 0, rad = 230, cx = 500 + Math.sin(ang) * rad, cy = 460 - Math.cos(ang) * 150; c.save(); c.translate(cx, cy); c.rotate(ang); c.globalAlpha = .4 + .6 * u; c.fillStyle = '#ff5d4f'; c.beginPath(); c.moveTo(0, -16); c.lineTo(11, 10); c.lineTo(0, 4); c.lineTo(-11, 10); c.closePath(); c.fill(); c.restore(); }
   at(LX); tag('SPEED', 92, 236); T(String(spd | 0), 108, 290, 50, 'left', main, 700); T('U/S', 108 + gW(String(spd | 0), 50) + 10, 270, 15, 'left', dim, 700);
   tag(SYS.atm ? 'ALTITUDE' : 'CREDITS', 92, 366); T(SYS.atm ? ((Math.max(700, Math.min(9000, 2600 + py * .5)) / 100 | 0) / 10).toFixed(1) : String(ST.credits), 108, 420, 40, 'left', main, 700); if (SYS.atm) T('KM', 108 + gW('00.0', 40) + 12, 402, 15, 'left', dim, 700);
   at(RX); tag('TARGET', 908, 236, 'right'); T(cur ? cur.name : 'NONE', 892, 284, 22, 'right', amb, 700);
@@ -2302,7 +2350,7 @@ function setUi() {
   const hd = (t) => `<h3 style="margin:26px 0 6px;font-weight:600;letter-spacing:.25em;font-size:13px;color:var(--hc);text-shadow:0 0 10px rgb(var(--hcr) / .45)">${t}</h3>`;
   setP.innerHTML = `<div style="max-width:720px;margin:auto"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="font-weight:300;letter-spacing:.3em;margin:0">SETTINGS</h2><button data-k="close" style="background:rgb(var(--hcr) / .08);border:1px solid var(--hc);color:var(--hc);padding:6px 18px;font:inherit;cursor:pointer">Done</button></div>`
     + hd('DISPLAY') + row('hud', 'HUD colour', HCOL[CFG.hud][0]) + row('op', 'HUD brightness', Math.round(CFG.op * 100) + '%') + row('size', 'HUD size', Math.round(CFG.size * 100) + '%') + row('cin', 'Cinematic bars', CFG.cin ? 'on' : 'off') + row('fs', 'Full screen on launch', CFG.fs === 0 ? 'off' : 'on') + hd('LENS EFFECTS') + row('fxVisor', 'Curved visor (HUD wraps at the edges)', LV3(CFG.fxVisor)) + row('fxGlass', 'Visor glass (tinted rim)', LV3(CFG.fxGlass)) + row('fxBlur', 'Motion blur', LV3(CFG.fxBlur)) + row('fxCA', 'Colour fringing at the edges', LV3(CFG.fxCA)) + row('fxGrain', 'Film grain', LV3(CFG.fxGrain)) + row('fxBloom', 'Glow and sun rays', LV3(CFG.fxBloom)) + row('fxFlare', 'Lens flare from the sun', LV3(CFG.fxFlare)) + row('fxScan', 'Scanlines', CFG.fxScan ? 'on' : 'off') + row('fxVig', 'Darkened corners', CFG.fxVig ? 'on' : 'off') + hd('RADIO') + row('radio', 'Ikosagon radio', CFG.radio ? 'on' : 'off') + row('pl', 'My playlist (streams now and then)', CFG.pl ? 'on' : 'off') + hd('VOLUME') + row('vEng', 'Engine and boost', pct(CFG.vEng)) + row('vCht', 'Radio chatter (pilots, traffic control)', pct(CFG.vCht)) + row('vRad', 'Music stream', pct(CFG.vRad)) + row('suno', 'Suno playlist page', 'open in a new tab')
-    + hd('FLIGHT') + row('inv', 'Invert pitch', CFG.inv ? 'on' : 'off') + row('ctl', 'Controls', CFG.ctl ? 'space sim' : 'standard') + row('sens', 'Mouse sensitivity', Math.round(CFG.sens * 100) + '%') + row('host', 'Other pilots', ['peaceful', 'wary', 'hostile'][CFG.host]) + row('wipe', 'Reset game', wipeArm ? 'click again: erases everything' : 'erase the save')
+    + hd('FLIGHT') + row('inv', 'Invert pitch', CFG.inv ? 'on' : 'off') + row('ctl', 'Controls', CFG.ctl ? 'space sim' : 'standard') + row('sens', 'Mouse sensitivity', Math.round(CFG.sens * 100) + '%') + row('host', 'Other pilots', ['peaceful', 'wary', 'hostile'][CFG.host]) + row('wipe', 'New universe', 'start fresh, with a confirmation')
     + hd('KEYS · click one, then press the new key') + ACTS.map(([k, n]) => row('key:' + k, n, rebind === 'key:' + k ? 'press a key…' : keyName(CFG.keys[k] || k))).join('') + row('reset', 'All keys', 'reset to defaults') + '</div>';
   if (isPWA()) {   // the store app is played in a headset: desktop-only settings step aside, and the VR ones join
     for (const k of ['cin', 'fs', 'sens', 'ctl', 'reset', 'suno']) { const b = setP.querySelector(`[data-k="${k}"]`); if (b) b.parentNode.remove(); }
@@ -2320,7 +2368,7 @@ setP.onclick = (e) => {
   if (k.startsWith('key:')) rebind = rebind === k ? null : k;
   else if (k === 'reset') CFG.keys = {};
   else if (k === 'suno') window.open('https://suno.com/playlist/12f42e02-78a5-4eb2-bf7e-f605817e4c06', '_blank', 'noopener');
-  else if (k === 'wipe') { if (!wipeArm) wipeArm = 1; else { for (const q of Object.keys(ST)) delete ST[q]; Object.assign(ST, { v: 1, hull: 100, cargo: [0, 0, 0, 0, 0, 0], credits: 0, sec: [0, 0, 0], loc: 0, visited: {}, dead: [], missions: {}, found: {}, courier: null }); save(); try { localStorage.removeItem('esState'); } catch {} setTimeout(() => location.reload(), 1600); e.target.textContent = 'erasing…'; return; } }
+  else if (k === 'wipe') { setP.style.display = 'none'; newUniverse(); return; }
   else if (k === 'hud') CFG.hud = (CFG.hud + 1) % HCOL.length; else if (k === 'op') CFG.op = cyc(CFG.op, [1, .7, .45, .25]); else if (k === 'size') CFG.size = cyc(CFG.size, [1, 1.15, .85]);
   else if (k === 'ctl') CFG.ctl = CFG.ctl ? 0 : 1;
   else if (k === 'vrH') CFG.vrH = VRH[(vrHi() + 1) % VRH.length][1];
@@ -2384,17 +2432,17 @@ const CSC = [[1, .3, .06], [1, .42, .08], [1, .55, .12], [1, .8, .45], [.62, .78
 let csKey = '', csU = [0, 0, 0, 0], csC = [1, 1, 1], bsKey = '', bsS = new Float32Array(32), bsC = new Float32Array(32);
 function bigStarsSet() {
   const key = SYS.id + ':' + SYS.loc;
-  if (key !== bsKey) { bsKey = key; bsS.fill(0); bsC.fill(0); const R = mulberry32((SYS.salt ^ 0x51A75) >>> 0), closeOn = !SYS.atm && mulberry32((SYS.salt ^ 0xC105E) >>> 0)() < .32, show = !closeOn && R() < .5, n = closeOn ? (R() < .5 ? 0 : 1) : 1 + (R() < .4 ? 1 : 0);   // one or two per sky, never a crowd
+  if (key !== bsKey) { bsKey = key; bsS.fill(0); bsC.fill(0); const R = mulberry32((SYS.salt ^ 0x51A75) >>> 0), head = SYS.headline || 0, closeOn = !SYS.atm && !head && mulberry32((SYS.salt ^ 0xC105E) >>> 0)() < .32, show = !closeOn && !head && R() < .5, n = head ? 0 : closeOn ? (R() < .5 ? 0 : 1) : 1 + (R() < .4 ? 1 : 0);   // one headline already owns this sky
     for (let i = 0; i < n; i++) { let u = R() * BSK.reduce((a, k) => a + k[1], 0), K = BSK[0]; for (const k of BSK) { if ((u -= k[1]) <= 0) { K = k; break; } }
       if (i === 0 && show) K = BSK[[1, 2, 3, 6, 7][R() * 5 | 0]]; else if (!show && K[0] !== 0 && K[0] !== 4) K = BSK[0];   // a showpiece in about half the places; otherwise plain suns or a pulsar
       let x, y, z; do { z = R() * 2 - 1; const a = R() * 6.283, q = Math.sqrt(1 - z * z); x = Math.cos(a) * q; y = Math.sin(a) * q; } while (x * SUN[0] + y * SUN[1] + z * SUN[2] > .9);
       bsS.set([x, y, z, K[0]], i * 4); bsC.set([K[2][0], K[2][1], K[2][2], (K[3] + (K[4] - K[3]) * R()) * (i ? .8 : 1.2)], i * 4); } }
-  if (key !== csKey) { csKey = key; const R = mulberry32((SYS.salt ^ 0xC105E) >>> 0), on = !SYS.atm && R() < .32, sc = SYS.sc || 0, giant = sc <= 2 && R() < .35;
+  if (key !== csKey) { csKey = key; const R = mulberry32((SYS.salt ^ 0xC105E) >>> 0), on = !SYS.atm && !(SYS.headline) && R() < .32, sc = SYS.sc || 0, giant = sc <= 2 && R() < .35;
     const RR = [[.1, .18], [.1, .2], [.1, .22], [.08, .15], [.06, .12], [.14, .3], [.1, .18], [.02, .04]][sc], rad = giant ? .26 + R() * .12 : RR[0] + (RR[1] - RR[0]) * R();
     csU = [on ? rad : 0, sc, R() * 6.283, giant ? 1 : 0]; csC = giant ? [1, .34, .1] : CSC[sc]; }
   gl.uniform4fv(P_SKY.u['uBS[0]'], bsS); gl.uniform4fv(P_SKY.u['uBC[0]'], bsC); gl.uniform4f(P_SKY.u.uCS, ...csU); gl.uniform3f(P_SKY.u.uCC, ...csC);
 }
-function hop(loc) { const sv = [yaw, pitch, thr, vx, vy, vz]; palEase = 1; arrive(SYS.sec, loc, 1); [yaw, pitch, thr, vx, vy, vz] = sv; snap = 1; fogX = .0065; }   // change place without the gate's jolt: same heading, same speed, inside the haze
+function hop(loc) { const sv = [yaw, pitch, thr, vx, vy, vz]; palEase = 1; softArr = 1; arrive(SYS.sec, loc, 1); softArr = 0; [yaw, pitch, thr, vx, vy, vz] = sv; snap = 0; fogX = .0065; }   // same heading and speed; attitude eases instead of snapping
 function cruiseTick(dt, fly) {
   { const k = Math.min(1, dt * 8), d = Math.max(.001, dt); let dy = syaw - pYaw; pYaw = syaw; const dp = spit - pPit; pPit = spit; if (Math.abs(dy) > 1) dy = 0;
     mbx += (Math.max(-.03, Math.min(.03, dy / d * .011)) - mbx) * k; mby += (Math.max(-.03, Math.min(.03, -dp / d * .011)) - mby) * k; mbs += ((.01 + .05 * bst) * Math.min(1, Math.hypot(vx, vy, vz) / 300) - mbs) * k; }
@@ -2437,7 +2485,7 @@ function cruiseTick(dt, fly) {
     if (loc >= 0) { if (u < .5) veil = Math.max(veil, 1 - (u - .1) / .4);                         // the air closes in
       if (u < .1) { { const P = sysP[nk], rr = nrm([sysS[0] - P[0], sysS[1] - P[1], sysS[2] - P[2]]), dp = sFx * rr[0] + sFy * rr[1] + sFz * rr[2], tt = [sFx - rr[0] * dp, sFy - rr[1] * dp, sFz - rr[2] * dp];
           ent = { k: nk, sys: SYS.id, r0: rr, t0: Math.hypot(tt[0], tt[1], tt[2]) < .05 ? nrm(crs(rr, [0, 1, 0])) : nrm(tt), yaw: 0 }; }   // remember where on the planet you came in, and which way you were travelling
-        drift = 0; r.from = SYS.loc; hop(loc); py = 9000; pitch = -1.15; snap = 1; ent.yaw = yaw; { const cp = Math.cos(pitch), s2 = Math.max(sp, 120); vx = Math.sin(yaw) * cp * s2; vy = Math.sin(pitch) * s2; vz = -Math.cos(yaw) * cp * s2; } veil = 1; tip(`${SYS.locs[SYS.loc].name}: dive for the deck. Hold the nose up to climb back out.`, 7000); } }
+        drift = 0; r.from = SYS.loc; const yaw0 = yaw, pit0 = pitch; hop(loc); py = 9000; yaw = yaw0; pitch = Math.max(-.85, Math.min(.35, pit0)); levelAim = -.22; rightT = 6.2; rollBias = 0; snap = 0; ent.yaw = yaw; { const cp = Math.cos(pitch), s2 = Math.max(sp, 120); vx = Math.sin(yaw) * cp * s2; vy = Math.sin(pitch) * s2; vz = -Math.cos(yaw) * cp * s2; } veil = 1; quietUntil = tm + 150; cmT = Math.max(cmT, 200); tip(`${SYS.locs[SYS.loc].name}: the wings will settle. Hold the nose up to climb back out.`, 7000); } }
     else if (u < .25) { drift = 0; tip(`${SYS.planets[nk].name} has no air to fly in: holding off`, 5000); } }
 }
 let scBack = -1;
@@ -2851,11 +2899,14 @@ function spiceTick(dt, fly) {                              // spice: living thin
   btCool -= dt; if (cHit) cHitT = tm;
   if (!fly) return;
   let near = 0; for (const [L, R] of [[LJ, 420], [LY, 450], [LWh, 900], [LQ, 1300], [LM, 250]]) { const r = nearInst(L); if (r[0] < R * R) near = 1; }
+  if (SYS.atm) { near = 1; const cloud = Math.exp(-((py - 5200) * (py - 5200)) / 1.4e7);
+    if (cloud > .15 && ST.spice < 100) { const was = ST.spice; ST.spice = Math.min(100, ST.spice + dt * 5 * cloud); if (Math.random() < dt * 6 * cloud) fxAdd(px + (Math.random() - .5) * 50, py + (Math.random() - .5) * 24, pz + (Math.random() - .5) * 50, .35 + Math.random() * .7, 1.35, .22, .42); if (Math.floor(was / 25) < Math.floor(ST.spice / 25) && tm > spiceTip) { spiceTip = tm + 16; pop('SPICE IN THE CLOUDS', '#ff3b5c'); } } }
   if (!near && ST.spice > 0) ST.spice = Math.max(0, ST.spice - dt * (bst > .5 ? 1.1 : .35));   // spice thins away unless you are near life; boosting burns it faster
   if (near && ST.spice < 100) { const was = ST.spice; ST.spice = Math.min(100, ST.spice + dt * 5.5); if (Math.random() < dt * 6) fxAdd(px + sFx * 14 + (Math.random() - .5) * 30, py + sFy * 14 + (Math.random() - .5) * 20, pz + sFz * 14 + (Math.random() - .5) * 30, .12 + Math.random() * .2, 1.1, .2, .3);
     if (Math.floor(was / 25) < Math.floor(ST.spice / 25) && tm > spiceTip) { spiceTip = tm + 20; pop(`SPICE ${ST.spice | 0}%`, '#ff3b5c'); } }
   const sp = Math.hypot(vx, vy, vz);
-  bloomT -= dt; if (bloomT <= 0 && bst > .5 && sp > 400 && BLOOMS.length < 4) {      // a bloom ahead, a little off the line: worth a steer
+  bloomT -= dt; if (SYS.atm && bloomT <= 0 && BLOOMS.length < 3 && Math.exp(-((py - 4600) * (py - 4600)) / 2.4e6) > .35) { bloomT = 3 + Math.random() * 4; BLOOMS.push({ x: px + sFx * (500 + Math.random() * 900) + (Math.random() - .5) * 220, y: py + (Math.random() - .5) * 140, z: pz + sFz * (500 + Math.random() * 900), t: 0, v: 6 + (Math.random() * 5 | 0) }); }
+  if (bloomT <= 0 && !SYS.atm && bst > .5 && sp > 400 && BLOOMS.length < 4) {      // a bloom ahead, a little off the line: worth a steer
     bloomT = 4 + Math.random() * 5; const ux = vx / sp, uy = vy / sp, uz = vz / sp, d = Math.min(2600, 700 + sp * 1.4), off = 50 + Math.random() * 220, g = Math.random() * 6.283;
     const ox = sRx * Math.cos(g) + sUx * Math.sin(g), oy = sRy * Math.cos(g) + sUy * Math.sin(g), oz = sRz * Math.cos(g) + sUz * Math.sin(g);
     BLOOMS.push({ x: px + ux * d + ox * off, y: py + uy * d + oy * off, z: pz + uz * d + oz * off, t: 0, v: 8 + (Math.random() * 6 | 0) }); }
@@ -3081,7 +3132,7 @@ function npcHit(a, dmg, qd, hx, hy, hz, w = 0) {
   if (a.role === 5) a.brk = 1.2;
   else if (!a.hit) { a.hit = 1; if (a.cast && cast()[a.cast]) remember(cast()[a.cast], 'shot', -30); wantedT = Math.max(wantedT, 75); gain({ rep: -6, fac: a.fac }); comm(`Mayday, mayday, ${a.name} taking fire from ${call()}! ${ctl()}, respond!`); if (!a.big) { a.sp *= 1.5; a.hold = 0; a.wp = NPT.far[a.i % 3]; } }
   if (a.hp > 0) return;
-  a.dead = 1; fxAdd(a.x, a.y, a.z, a.size * 7, 1, .6, .3); fxAdd(a.x, a.y, a.z, a.size * 3, 1, 1, .9); boom(a.big ? 200 : 40, qd); flash = Math.max(flash, a.big ? .6 : .3); navT = 0;
+  a.dead = 1; noteKill(a); fxAdd(a.x, a.y, a.z, a.size * 7, 1, .6, .3); fxAdd(a.x, a.y, a.z, a.size * 3, 1, 1, .9); boom(a.big ? a.size : Math.max(36, a.size * 4), qd); flash = Math.max(flash, a.big ? .6 : .3); navT = 0;
   if (a.role === 5) { gain({ cr: 80, xp: 25, rep: 3 }); if (a.bounty) jobDone(a.bounty); tip('Raider destroyed · 80 credit bounty', 5000); comm(`${ctl()} to ${call()}: good kill. Bounty is on its way.`); }
   else { gain({ rep: -25, fac: a.fac }); wantedT = 150; tip(`${a.name} destroyed. ${FAC[a.fac][0]} have put a price on you.`, 7000); }
 }
@@ -3377,19 +3428,20 @@ function pipPaint(x, W, ink, big) {
   // footer: where you are, the clock, and the key that opens or closes it
   A(.55, () => x.fillRect(18, 314, 604, 2));
   const loc = SYS.locs && SYS.locs[SYS.loc] ? SYS.locs[SYS.loc].name : '', st = Math.floor(performance.now() / 1000), cl = [Math.floor(st / 3600) % 100, Math.floor(st / 60) % 60, st % 60].map((v) => String(v).padStart(2, '0')).join(':');
-  T(loc.toUpperCase().slice(0, 26), 22, 336, 17, 600); T('T+ ' + cl, 618, 336, 17, 600, 'right');
-  T((big ? '1-5 TABS · TAB CLOSES' : 'TAB · AUX DISPLAY') + ((t * 2 | 0) % 2 ? ' _' : ''), 320, 336, 15, 600, 'center');
+  T(loc.toUpperCase().slice(0, 20), 22, 336, 16, 600); T('T+ ' + cl, 618, 336, 16, 600, 'right');
+  T((big ? '1-5  TAB' : 'TAB') + ((t * 2 | 0) % 2 ? ' _' : ''), 430, 308, 14, 600, 'right');
 }
 function pipTick() {
   if (!PIP.c) pipInit();
   if (PIP.hud !== CFG.hud) { PIP.hud = CFG.hud; const h = HCOL[CFG.hud][1][3], v = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255); PIP.col = v.map((c) => Math.pow(c, 2.2) * 1.2); }
-  const now = performance.now(); if (now - PIP.t < 200) return; PIP.t = now;
+  if (PIP.big) return;
+  const now = performance.now(); if (now - PIP.t < 2200) return; PIP.t = now;
   pipPaint(PIP.x, 640, '#fff', 0); gl.activeTexture(gl.TEXTURE6); gl.bindTexture(gl.TEXTURE_2D, PIP.tex); gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, gl.RGBA, gl.UNSIGNED_BYTE, PIP.c); gl.activeTexture(gl.TEXTURE0);
 }
 // full screen: the same screen, close up, behind curved glass
 function pipOpen() {
   if (!PIP.o) {
-    const st = document.createElement('style'); st.textContent = `#pipO{position:fixed;inset:0;z-index:9;display:none;align-items:center;justify-content:center;background:radial-gradient(#000a,#000e)}
+    const st = document.createElement('style'); st.textContent = `#pipO{position:fixed;inset:0;z-index:9;display:none;align-items:center;justify-content:center;background:#05070c}body.pip #hud,body.pip #jp,body.pip #fire,body.pip #jb,body.pip #o{opacity:0!important;visibility:hidden!important}
 #pipF{position:relative;width:min(92vw,calc(86vh*16/9));aspect-ratio:16/9;border-radius:2.2vmin;padding:1.1vmin;background:#08090b;box-shadow:0 0 0 2px #1d2229,0 0 0 1.2vmin #0d0f12,0 2vmin 6vmin #000}
 #pipF canvas{width:100%;height:100%;display:block;border-radius:1.6vmin;filter:drop-shadow(0 0 .5vmin var(--pg))}
 #pipF i{position:absolute;inset:1.1vmin;border-radius:1.6vmin;pointer-events:none;background:repeating-linear-gradient(#0000 0 2px,#0006 2px 4px),radial-gradient(ellipse at 50% 50%,#0000 60%,#000b 100%),linear-gradient(160deg,#ffffff12,#0000 35%);animation:pipFl .09s steps(2) infinite}
@@ -3399,10 +3451,10 @@ function pipOpen() {
     PIP.bc.addEventListener('click', (e) => { const r = PIP.bc.getBoundingClientRect(), X = (e.clientX - r.left) / r.width * 640, Y = (e.clientY - r.top) / r.height * 360; PIP.tabR.forEach(([a, b, w, h], i) => { if (X > a && X < a + w && Y > b && Y < b + h) PIP.tab = i; }); });
     PIP.o.addEventListener('click', (e) => { if (e.target === PIP.o) pipClose(); });
   }
-  PIP.big = 1; PIP.o.style.display = 'flex'; PIP.o.style.setProperty('--pg', HCOL[CFG.hud][1][3] + '88'); try { document.exitPointerLock(); } catch {} K.KeyW = K.KeyS = 0;
+  PIP.big = 1; PIP.o.style.display = 'flex'; PIP.o.style.setProperty('--pg', HCOL[CFG.hud][1][3] + '88'); document.body.classList.add('pip'); try { document.exitPointerLock(); } catch {} K.KeyW = K.KeyS = 0;
   const loop = () => { if (!PIP.big) return; pipPaint(PIP.bx, 1280, HCOL[CFG.hud][1][3], 1); requestAnimationFrame(loop); }; loop();
 }
-function pipClose() { PIP.big = 0; if (PIP.o) PIP.o.style.display = 'none'; }
+function pipClose() { PIP.big = 0; if (PIP.o) PIP.o.style.display = 'none'; document.body.classList.remove('pip'); }
 function pipKey(e) {
   if (e.type !== 'keydown') return; const n = PIP.tabs.length;
   if (e.code === 'Escape' || e.code === 'Tab' || e.code === 'KeyU' || (CFG.keys.Tab && e.code === CFG.keys.Tab)) pipClose();
@@ -3441,7 +3493,7 @@ const VOICE = {      // {c} your callsign · {me} their name · {sh} their ship 
 const MEM = { saved: 'that run you flew with us', helped: 'the fuel you spared me', escorted: 'the convoy you brought home', lost: 'the ships we lost on your watch', left: 'you leaving us to the raiders', shot: 'you shooting up my ship', declined: 'you turning me down' };
 const CARGO = ['medical supplies', 'seed stock', 'reactor coils', 'mail and family parcels', 'water ice', 'machine parts', 'a cold-sleep pod', 'refinery catalysts', 'live coral', 'a disassembled telescope'];
 const FAULT = ['fuel line cracked', 'tanks ran dry two jumps ago', 'converter is coughing', 'navigator misread the burn', 'siphon swarm stripped my reserve'];
-let CM = null, ESC = null, cmT = 70 + Math.random() * 40, cmSeq = 0;
+let CM = null, ESC = null, cmT = 70 + Math.random() * 40, cmSeq = 0, quietUntil = 0;
 const PL = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, fx: 0, fy: 0, fz: -1, ux: 0, uy: 1, uz: 0 };   // the player, seen by a wingman as a formation leader
 const cast = () => ST.cast || (ST.cast = {});
 const say = (s, ch) => s.replace(/\{c\}/g, call()).replace(/\{me\}/g, ch.n).replace(/\{sh\}/g, ch.sh).replace(/\{pl\}/g, SYS.locs[SYS.loc].name).replace(/\{mem\}/g, ch.mem.length ? MEM[ch.mem[ch.mem.length - 1]] : 'last time');
@@ -3452,15 +3504,16 @@ function castNew() {
   const C = cast(), ks = Object.keys(C); if (ks.length >= 60) { ks.sort((a, b) => (C[a].met - C[b].met) || (C[a].t - C[b].t)); delete C[ks[0]]; }
   return C[id] = ch;
 }
+function castOk(c) { return c && !c.dead && Date.now() >= (c.cool || 0) && (ST.jumps || 0) >= (c.needJ || 0) && !nameBanned(c.dead ? c.n : ''); }
 function castPick() {                                                            // someone you know (more likely near their home), or someone new
-  const known = Object.values(cast()).filter((c) => c.met > 0 && !c.dead), local = known.filter((c) => sameSec(c.home, SYS.sec));
+  const known = Object.values(cast()).filter((c) => c.met > 0 && castOk(c)), local = known.filter((c) => sameSec(c.home, SYS.sec));
   const pool = local.length && Math.random() < .7 ? local : known;
   return pool.length && Math.random() < .55 ? pool[Math.random() * pool.length | 0] : castNew();
 }
 function remember(ch, m, d) { ch.mem.push(m); if (ch.mem.length > 6) ch.mem.shift(); ch.rel = Math.max(-100, Math.min(100, ch.rel + d)); save(); }
 function mkShip(role, x, y, z, name, extra) {
   const a = Object.assign({ i: 500 + (cmSeq++ % 400), role, big: 0, x, y, z, vx: 0, vy: 0, vz: 0, fx: sFx, fy: sFy, fz: sFz, ux: 0, uy: 1, uz: 0, sp: 90, size: [11, 9, 8, 7, 0, 9][role], st: 0, t: 0, hold: 0, wp: [x, y, z], hue: Math.random(), seed: Math.random(), fac: SYS.fac, name, lead: null, off: null, k: 0, greet: 1, toGate: 0 }, extra);
-  const hs2 = role === 5 ? [70, 60] : [60, 40]; a.hpM = a.hp = hs2[0]; a.shM = a.sh = hs2[1]; a.shT = -99; a.s = 0; a.var = role === 5 ? 2 : role === 3 ? 1 : a.i & 1; a.cd = 1; a.brk = 0;
+  const hs2 = role === 5 ? [150, 300] : [60, 40]; a.hpM = a.hp = hs2[0]; a.shM = a.sh = hs2[1]; a.shT = -99; a.s = 0; a.var = role === 5 ? 2 : role === 3 ? 1 : a.i & 1; a.cd = 1; a.brk = 0;
   NPCS.push(a); return a;
 }
 // ---- what they want: a small grammar of offers, filled from the world as it is ----
@@ -3479,8 +3532,13 @@ function mkOffer(ch) {
 }
 // ---- a ship flies in, holds station off your wing, talks, then peels away ----
 function cmStart() {
-  const ch = castPick(), off = mkOffer(ch), rx = sFy * sUz - sFz * sUy, ry = sFz * sUx - sFx * sUz, rz = sFx * sUy - sFy * sUx;
+  if (tm < quietUntil || SYS.atm) { cmT = 50 + Math.random() * 40; return; }
+  const ch = castPick(); if (!ch || !castOk(ch) && ch.met) { cmT = 40; return; }
+  const off = mkOffer(ch);
+  if ((off.ty === 'grudge' || ch.raider) && tm < quietUntil + 30) { cmT = 80 + Math.random() * 40; return; }
+  const rx = sFy * sUz - sFz * sUy, ry = sFz * sUx - sFx * sUz, rz = sFx * sUy - sFy * sUx;
   const a = mkShip(off.ty === 'escort' ? 0 : off.ty === 'grudge' ? 5 : 3, px - sFx * 1400 + rx * 350, py - sFy * 1400 + 60, pz - sFz * 1400 + rz * 350, ch.sh, { pilot: ch.n, cast: ch.id, comms: 1, fac: ch.fac });
+  if (ch.raider) { const pwr = 1 + (ch.returns || 1) * .6; a.hp = a.hpM = 150 * pwr; a.sh = a.shM = 300 * pwr; a.rival = ch.id; ch.returns = (ch.returns || 0) + 1; if (ch.returns > 1) mkShip(5, a.x + 90, a.y + 20, a.z + 70, freshRaiderName(Math.random), { hunter: 1, fac: ch.fac }); }
   a.lead = PL; a.off = [75, 12, -150]; a.sp = 420;                               // holds station ahead and to the right: in view on a screen, a glance in a headset
   CM = { a, ch, off, ph: 'approach', t: 0, n: 0 }; navId = 'n' + a.i; navAuto = 0;
 }
@@ -3491,7 +3549,7 @@ function cmTick(dt) {
   if (a.dead || !NPCS.includes(a)) { CM = null; return; }
   a.sp = Math.max(300, Math.hypot(vx, vy, vz) * 1.3);
   if (c.ph === 'approach') { if (d < 320 || c.t > 40) { c.ph = 'talk'; c.t = 0; const ch = c.ch;
-      if (c.off.ty === 'grudge' || ch.raider) { cmLine(say(pickL(VOICE.grudge), ch)); } else { cmLine(say(pickL(VOICE[ch.met ? 'again' : 'hello'][ch.tr]), ch)); if (ch.rel >= 15 && ch.mem.length) setTimeout(() => CM && CM.ch === ch && cmLine(say(pickL(VOICE.thanks), ch)), 3800); }
+      if (c.off.ty === 'grudge' || ch.raider) { cmLine(ch.ejected ? `I ejected last time, ${call()}. New hull, real shields${ch.returns > 1 ? ', and I did not come alone' : ''}.` : say(pickL(VOICE.grudge), ch)); } else { cmLine(say(pickL(VOICE[ch.met > 1 ? 'again' : 'hello'][ch.tr]), ch)); if (ch.rel >= 15 && ch.mem.length) setTimeout(() => CM && CM.ch === ch && cmLine(say(pickL(VOICE.thanks), ch)), 3800); }
       ch.met++; ch.t = Date.now(); save(); } return; }
   if (c.ph === 'talk' && c.t > 5.5) { c.t = 0;
     if (c.off.ty === 'grudge') { cmLine(ch2(c) < -40 && Math.random() < .6 ? 'I brought some friends this time.' : 'Stay out of my way, and I will stay out of yours.'); if (ch2(c) < -40) cmAmbush(2, 'player'); c.ph = 'leave'; return cmLeave(); }
@@ -3523,7 +3581,7 @@ function escStart(c) {
 function cmAmbush(n, target) {
   const lead = target === 'player' ? null : ESC && ESC.ships.find((s) => !s.dead), o = lead || { x: px, y: py, z: pz, fx: sFx, fy: sFy, fz: sFz };
   const side = Math.random() < .5 ? -1 : 1, out = [];
-  for (let k = 0; k < n; k++) { const r = mkShip(5, o.x + o.fx * 1600 - o.fz * side * 900 + k * 70, o.y + 120 + k * 40, o.z + o.fz * 1600 + o.fx * side * 900, pickL(RDN), { escHunt: target !== 'player', hunter: target === 'player', fac: SYS.fac, sp: 110 + Math.random() * 25, hue: .02 }); out.push(r); }
+  for (let k = 0; k < n; k++) { const r = mkShip(5, o.x + o.fx * 1600 - o.fz * side * 900 + k * 70, o.y + 120 + k * 40, o.z + o.fz * 1600 + o.fx * side * 900, freshRaiderName(Math.random), { escHunt: target !== 'player', hunter: target === 'player', fac: SYS.fac, sp: 110 + Math.random() * 25, hue: .02 }); out.push(r); }
   if (ESC && target !== 'player') ESC.raiders.push(...out);
   return out;
 }
@@ -3565,7 +3623,7 @@ function lifeTick(dt) {
   PL.x = px; PL.y = py; PL.z = pz; PL.vx = vx; PL.vy = vy; PL.vz = vz; PL.fx = sFx; PL.fy = sFy; PL.fz = sFz; PL.ux = sUx; PL.uy = sUy; PL.uz = sUz;
   if (!flying()) return; cmTick(dt); escTick(dt);
 }
-function lifeReset() { try { if (ESC) escEnd(0, 'left'); CM = null; cmT = Math.min(cmT, 45 + Math.random() * 40); } catch {} }   // a jump: the caller and any convoy are left behind
+function lifeReset() { try { if (ESC) escEnd(0, 'left'); CM = null; ST.jumps = (ST.jumps || 0) + 1; cmT = 210 + Math.random() * 100; quietUntil = tm + 120; } catch {} }   // a jump or a new sky: no one you know calls until you have actually travelled
 const lifeObjective = () => { if (!ESC) return null; const E = ESC, alive = E.ships.filter((s) => !s.dead && NPCS.includes(s)), L = alive[0]; if (!L) return null;
   const dd = Math.hypot(E.dest[0] - L.x, E.dest[1] - L.y, E.dest[2] - L.z), rd = E.raiders.find((r) => !r.dead && !r.fled && NPCS.includes(r));
   if (E.wait) return { text: `Rescue the ${L.name}: ${rd ? 'drive the raiders off' : 'come alongside'} · ${(Math.hypot(L.x - px, L.y - py, L.z - pz) / 1000).toFixed(1)} km`, nav: 'n' + (rd || L).i };
@@ -3649,7 +3707,7 @@ function rescueStart(c) {
   ESC.raiders.push(...cmAmbushAt(st, 3)); navId = 'n' + st.i; navAuto = 1;
   tip(`Rescue · drive the raiders off the ${st.name}, then come alongside`, 8000);
 }
-function cmAmbushAt(o, n) { const out = []; for (let k = 0; k < n; k++) { const g = k / n * 6.283; out.push(mkShip(5, o.x + Math.cos(g) * 500, o.y + 60, o.z + Math.sin(g) * 500, pickL(RDN), { escHunt: 1, fac: SYS.fac, sp: 110 + Math.random() * 25, hue: .02 })); } return out; }
+function cmAmbushAt(o, n) { const out = []; for (let k = 0; k < n; k++) { const g = k / n * 6.283; out.push(mkShip(5, o.x + Math.cos(g) * 500, o.y + 60, o.z + Math.sin(g) * 500, freshRaiderName(Math.random), { escHunt: 1, fac: SYS.fac, sp: 110 + Math.random() * 25, hue: .02 })); } return out; }
 const escTick0 = escTick;
 escTick = function (dt) {
   const E = ESC; if (!E) return;
@@ -3669,7 +3727,7 @@ function behaveTick(dt) {
     if (a.hpM && a.hp < a.hpM * .3 && !a.bounty && !a.rival) {                        // beaten: break off and run
       a.fled = 1; a.escHunt = 0; a.hunter = 0; a.cd = 1e9; a.sp *= 1.5; const ax = a.x - px, az = a.z - pz, l = Math.hypot(ax, az) || 1; a.wp = [a.x + ax / l * 9000, a.y + 800, a.z + az / l * 9000];
       comm(`${a.name} on open band: "${pickL(['I am out, I am out!', 'Not today. You will see me again, ' + call() + '.', 'Breaking off! This is not over.'])}"`);
-      if (Math.random() < .5) { const ch = castNew(); ch.n = a.name; ch.sh = a.name; ch.rel = -45; ch.mem = ['shot']; ch.met = 1; ch.raider = 1; ch.tr = 1; ch.arc = { id: 'rival', step: 0 }; save(); }   // some come back
+      if (Math.random() < .5 && !nameBanned(a.name)) { const ch = castNew(); ch.n = a.pilot || a.name; ch.sh = a.name; ch.rel = -45; ch.mem = ['shot']; ch.met = 1; ch.raider = 1; ch.ejected = 1; ch.tr = 1; ch.returns = 1; ch.cool = Date.now() + 8 * 60 * 1000; ch.needJ = (ST.jumps || 0) + 3; ch.arc = { id: 'rival', step: 0 }; save(); }   // ejected, not dead: they come back later, stronger
     }
   }
   for (const a of NPCS) if (a.fled && Math.hypot(a.x - px, a.y - py, a.z - pz) > 6000) { fxAdd(a.x, a.y, a.z, 40, .5, .8, 1); a.dead = 1; }
@@ -3706,19 +3764,38 @@ noiseTex();
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
+const BUILD = 'v1.20';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 const ST = { v: 1, hull: 100, cargo: [0, 0, 0, 0, 0, 0], credits: 0, sec: [0, 0, 0], loc: 0, visited: {}, dead: [], missions: {}, found: {}, courier: null };
 let idb = null, saveT = 0;
+function blankState(seed) {
+  return { v: 1, hull: 100, cargo: [0, 0, 0, 0, 0, 0], credits: 0, sec: [0, 0, 0], loc: 0, visited: {}, dead: [], missions: {}, found: {}, courier: null, build: BUILD, seed: seed >>> 0, o2: 100, fuel: 100, wen: 100, spice: 60, spiceV: 1, deadNames: [], jumps: 0 };
+}
+function migrateState() {
+  if (ST.seed == null) ST.seed = (Math.random() * 4294967296) >>> 0;
+  const d = blankState(ST.seed >>> 0);
+  for (const k of Object.keys(d)) if (ST[k] == null) ST[k] = d[k];
+  if (!Array.isArray(ST.cargo)) ST.cargo = [0, 0, 0, 0, 0, 0];
+  while (ST.cargo.length < 6) ST.cargo.push(0);
+  if (!Array.isArray(ST.deadNames)) ST.deadNames = [];
+  if (!Array.isArray(ST.sec) || ST.sec.length < 3) ST.sec = [0, 0, 0];
+  ST.build = BUILD; ST.v = 1;
+}
 async function loadState() {
   idb = await new Promise((r) => { try { const q = indexedDB.open('endless-space', 1); q.onupgradeneeded = () => q.result.createObjectStore('kv'); q.onsuccess = () => r(q.result); q.onerror = () => r(null); } catch { r(null); } });
   let d = null;
   if (idb) d = await new Promise((r) => { try { const q = idb.transaction('kv').objectStore('kv').get('state'); q.onsuccess = () => r(q.result); q.onerror = () => r(null); } catch { r(null); } });
   if (!d) try { d = JSON.parse(localStorage.esState || 'null'); } catch {}
   if (d && d.v === 1) Object.assign(ST, d);
-  // each build starts every player somewhere new: a fresh universe seed, a fresh home, a clean record
-  if (ST.build !== BUILD) { for (const q of Object.keys(ST)) delete ST[q]; Object.assign(ST, { v: 1, hull: 100, cargo: [0, 0, 0, 0, 0, 0], credits: 0, sec: [0, 0, 0], loc: 0, visited: {}, dead: [], missions: {}, found: {}, courier: null, build: BUILD, seed: (Math.random() * 4294967296) >>> 0 }); }
+  migrateState();
   MASTER = ST.seed >>> 0; HOME = hs(MASTER ^ 0x40E) >>> 0;
 }
-const BUILD = 'v1.18';                                          // shown on the pause screen; a new value also starts every player in a new universe
+function newUniverse() {
+  if (!confirm('Start a new universe? This pilot\'s charts, credits and crew will be left behind.')) return;
+  for (const q of Object.keys(ST)) delete ST[q];
+  Object.assign(ST, blankState((Math.random() * 4294967296) >>> 0));
+  try { if (idb) idb.transaction('kv', 'readwrite').objectStore('kv').put(ST, 'state'); else localStorage.esState = JSON.stringify(ST); } catch {}
+  setTimeout(() => location.reload(), 400);
+}
 function save() { clearTimeout(saveT); saveT = setTimeout(() => { try { if (idb) idb.transaction('kv', 'readwrite').objectStore('kv').put(ST, 'state'); else localStorage.esState = JSON.stringify(ST); } catch {} }, 1000); }
 if (!TEST || QS.has('keep')) await loadState();
 SYS = mkSys(sysIdAt(ST.sec[0], ST.sec[1], ST.sec[2])); SYS.sec = ST.sec;
@@ -3793,7 +3870,7 @@ addEventListener('resize', resize);
 
 // ---- ship state and input ----
 let syaw = .05, spit = .08, hurtTip = 0, subO = null, subG = null;
-let bHold = 0, bRamp = 0, bOd = 0, odOn = 0, QA = null, QAs = null, yawL = 0, pitchL = 0, rollIn = 0, atmWas = 0, rightT = 0;
+let bHold = 0, bRamp = 0, bOd = 0, odOn = 0, QA = null, QAs = null, yawL = 0, pitchL = 0, rollIn = 0, atmWas = 0, rightT = 0, softArr = 0, levelAim = -.28, rollBias = 0;
 const qmul = (a, b) => [a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1], a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0], a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3], a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2]];
 const qn = (q) => { const l = Math.hypot(q[0], q[1], q[2], q[3]) || 1; return [q[0] / l, q[1] / l, q[2] / l, q[3] / l]; };
 const qax = (x, y, z, a) => { const s = Math.sin(a / 2); return [x * s, y * s, z * s, Math.cos(a / 2)]; };
@@ -3834,7 +3911,7 @@ function arrive(sec, loc, quiet) {
   SYS.sec = sec; setLoc(SYS, loc || 0); bakeNebula(SYS.seed);    // each place has its own clouds
   rpgArrive();
   ST.sec = sec; ST.loc = SYS.loc;
-  px = 0; py = 30; pz = 760; yaw = Math.PI; pitch = 0; snap = 1; gateIn = 0; tradeIn = 0;
+  px = 0; py = 30; pz = 760; yaw = Math.PI; pitch = 0; if (!softArr) snap = 1; gateIn = 0; tradeIn = 0;
   for (const L of LAYERS) L.cx = 1e9;
   dKind.fill(0); bL.fill(0); pL.fill(0); mReg = -1;
   if (!palEase) { for (let i = 0; i < 12; i++) pal[i] = SYS.pal[i]; for (let i = 0; i < 4; i++) skyw[i] = SYS.sky[i]; }
@@ -3842,7 +3919,7 @@ function arrive(sec, loc, quiet) {
   // this place's quiet furniture, all from its seed: a signal beacon some kilometres out, and sometimes a trader by the gate
   const R = mulberry32(SYS.salt ^ 0xBEAC), a = R() * 6.283, e = (R() - .5) * .8, d = 3000 + 4000 * R();
   bcn = [Math.cos(a) * Math.cos(e) * d, Math.sin(e) * d, Math.sin(a) * Math.cos(e) * d]; bcnN = R() * 8 | 0;
-  trader = 1;          // hubs always; elsewhere on some days
+  trader = SYS.atm ? 0 : 1;          // a trader waits by the gate, never inside an atmosphere
   // the log of where you have been, and anything that completes by arriving
   const v = ST.visited[SYS.id] || (ST.visited[SYS.id] = { name: SYS.name, sec, locs: [], charted: 0 }), first = !v.locs.includes(SYS.loc);
   if (first) v.locs.push(SYS.loc);
@@ -3850,7 +3927,7 @@ function arrive(sec, loc, quiet) {
   if (!v.charted && v.locs.length >= SYS.locs.length) { v.charted = 1; const p = 50 * SYS.locs.length; ST.credits += p; note = `${SYS.name} fully charted · +${p} credits`; }
   const cj = ST.courier;
   if (cj && cj.sec[0] === sec[0] && cj.sec[1] === sec[1] && cj.sec[2] === sec[2] && cj.loc === SYS.loc) { ST.credits += cj.pay; ST.courier = null; note = `Case delivered · +${cj.pay} credits`; }
-  mission(); save(); showCargo();
+  mission(); save(); showCargo(); if (typeof navBuild === 'function') navBuild();
   if (!quiet) { flash = TEST ? 0 : 1; tip(note || SYS.locs[SYS.loc].name + ' · ' + SYS.name, 6000); cueStop(); swell(); setTimeout(() => cue(note ? 'outro' : 'intro', 1), 9000); }
   for (const f of hooks) try { f(describe()); } catch (er) { console.error(er); }
 }
@@ -3866,8 +3943,17 @@ function mission() {
   return t;
 }
 const taskText = (t) => t.done ? 'Task here complete' : t.ty === 0 ? `Survey: bring aboard three different minerals from this place (${t.got.length}/3)` : t.ty === 1 ? `Collect ${t.n} ${TIERS[t.tier]} here (${t.got}/${t.n})` : 'A faint signal repeats somewhere out here. Find its source.';
+let hitPing = -9, hitAng = 0, hitFromX = 0, hitFromY = 0, hitFromZ = 0, hullHitT = -9;
 function hurt(a) {
-  a *= 1 - .2 * upLv('plt'); a = shieldTake(a); if (a <= 0) return;
+  a *= 1 - .2 * upLv('plt');
+  const incoming = a;
+  a = shieldTake(a);
+  if (incoming > .2) {
+    hitPing = tm; hullHitT = tm; gFlash[0] = 1.2;
+    const dx = hitFromX - px, dy = hitFromY - py, dz = hitFromZ - pz;
+    hitAng = Math.atan2(dx * sRx + dy * sRy + dz * sRz, dx * sUx + dy * sUy + dz * sUz);
+  }
+  if (a <= 0) return;
   ST.hull = Math.max(0, ST.hull - a); save(); if (ST.hull <= 0) return shipLost();
   if (tm > hurtTip) { hurtTip = tm + 4; tip(ST.hull < 25 ? 'Hull critical · boost offline · find a trader to repair' : ST.hull < 60 ? `Hull ${ST.hull | 0}% · thrusters limited` : `Hull ${ST.hull | 0}%`, 3500); }
 }
@@ -4000,7 +4086,7 @@ function go() {
 }
 $('ver').textContent = BUILD;
 function menu() { closePanel(); B.className = 'm'; if (document.pointerLockElement) document.exitPointerLock(); for (const k in K) K[k] = 0; mFire = 0; steer = 0; }
-$('launch').onclick = go; $('o').onclick = menu;
+$('launch').onclick = go; $('o').onclick = menu; if ($('fresh')) $('fresh').onclick = () => { if (started) menu(); newUniverse(); };
 // Installed from the Meta Horizon Store (a packaged web app): VR is the only way in, so the main button enters the headset
 // and the desktop-only items (separate VR button, keyboard controls, the full-screen note) step aside.
 const PWA = typeof window.getDigitalGoodsService === 'function' || QS.has('pwa');
@@ -4111,7 +4197,18 @@ function thud(v) {
   o.frequency.setValueAtTime(70, t); o.frequency.exponentialRampToValueAtTime(28, t + .3); g.gain.setValueAtTime(a, t); g.gain.exponentialRampToValueAtTime(.0001, t + .45);
   o.connect(g).connect(AG); o.start(t); o.stop(t + .5); burst(t, .3, a * .6, 400, 60, 'lowpass');
 }
-const boom = (size, dist) => { if (AC && AC.state === 'running') { const v = Math.min(.4, size * .02) / (1 + dist / 250); if (v > .01) burst(AC.currentTime, .5 + Math.min(1.5, size * .02), v, 900, 50, 'lowpass'); } };
+function boom(size, dist) {
+  if (!AC || AC.state !== 'running') return;
+  const v = Math.min(.5, .07 + size * .01) / (1 + (dist || 0) / 420); if (v < .008) return;
+  const t = AC.currentTime, dur = .65 + Math.min(1.05, size * .012);
+  const o = AC.createOscillator(), g = AC.createGain(); o.type = 'sine';
+  o.frequency.setValueAtTime(70 + Math.min(36, 280 / (size + 6)), t); o.frequency.exponentialRampToValueAtTime(24, t + dur * .75);
+  g.gain.setValueAtTime(.0001, t); g.gain.linearRampToValueAtTime(v * .85, t + .018); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+  o.connect(g).connect(AG); o.start(t); o.stop(t + dur + .05);
+  burst(t, dur * .9, v * .42, 200, 38, 'lowpass');
+  burst(t + .04, .28, v * .16, 1600, 280, 'bandpass');
+  burst(t + .11, .18, v * .1, 2200, 420, 'highpass');
+}
 const blip = (tier) => { if (AC && AC.state === 'running') { const t = AC.currentTime, m = MUS[REG < 0 ? 0 : REG], r = m[0] + 12; note(mf(r + m[1][tier % 5]), t, .05, 'sine', .5, 1); note(mf(r + m[1][(tier + 2) % 5] + (tier > 2 ? 12 : 0)), t + .09, .04, 'sine', .7, 1); } };
 
 // ============================================================================
@@ -4266,11 +4363,14 @@ function simulate(dt, fly) {
     { const gl2 = k * (.55 + .25 * Math.sin(tm * 1.3 + o)); put(DPa, (rx + D[o + 4]) * LG.C - LG.fx, (ry + D[o + 5]) * LG.C - LG.fy, (rz + D[o + 6]) * LG.C - LG.fz, 16 + t * 7, 0, 0, 0, .37, TCOL[c] * gl2, TCOL[c + 1] * gl2, TCOL[c + 2] * gl2, 0); }
   }
   const gd = gateDist(), gp = .8 + .2 * Math.sin(tm * 2.3);
-  DGt.n = 0; put(DGt, -px, -py, -pz, GATE, 0, 0, 0, .37, 0, 0, 0, 0);
-  const gk = (i) => (pal[6 + i] * .5 + [.2, .5, 1][i] * .5) * gp;                             // the gate's field takes some of the place's colour
-  put(DPa, -px, -py, -pz, GATE * .9, 0, 0, 0, .21, .045 * gk(0), .045 * gk(1), .045 * gk(2), 1); put(DPa, -px, -py, -pz, GATE * .7, 0, 0, 0, .64, .03 * gk(0), .03 * gk(1), .03 * gk(2), 1);
-  put(DPa, -px, -py, -pz, GATE * .22, 0, 0, 0, .5, .08 * gk(0), .08 * gk(1), .08 * gk(2), 0);
-  if (fly && gd < GATE * .6 && !gateIn && !jumpTo) { gateIn = 1; gatePanel(); } else if (gd > GATE * 2) gateIn = 0;
+  DGt.n = 0;
+  if (!SYS.atm && veil < .45) {
+    put(DGt, -px, -py, -pz, GATE, 0, 0, 0, .37, 0, 0, 0, 0);
+    const gk = (i) => (pal[6 + i] * .5 + [.2, .5, 1][i] * .5) * gp;
+    put(DPa, -px, -py, -pz, GATE * .9, 0, 0, 0, .21, .045 * gk(0), .045 * gk(1), .045 * gk(2), 1); put(DPa, -px, -py, -pz, GATE * .7, 0, 0, 0, .64, .03 * gk(0), .03 * gk(1), .03 * gk(2), 1);
+    put(DPa, -px, -py, -pz, GATE * .22, 0, 0, 0, .5, .08 * gk(0), .08 * gk(1), .08 * gk(2), 0);
+    if (fly && gd < GATE * .6 && !gateIn && !jumpTo) { gateIn = 1; gatePanel(); } else if (gd > GATE * 2) gateIn = 0;
+  } else if (gd > GATE * 2) gateIn = 0;
   // the signal beacon: a small steady light and a thin beam until it has been found
   const bx = bcn[0] - px, by = bcn[1] - py, bz = bcn[2] - pz, bd = Math.hypot(bx, by, bz), fnd = ST.found[mkey()], bl = .5 + .5 * Math.sin(tm * 1.7);
   put(DGm, bx, by, bz, 2.5, 0, 0, 0, .4, 0, 3, 0, 0);
@@ -4324,18 +4424,22 @@ function eye(fb, x, y, w, h, tw, th) {
     const k = xr ? 1 / 6 : stereo ? .25 : 1, vib = .0015 + .004 * Math.abs(thr) + .012 * bst + trauma * .04, cg = (i) => Math.min(1, Math.log2(1 + cargo[i]) / 6);
     gl.depthRange(0, .01); pipTick(); gl.activeTexture(gl.TEXTURE6); gl.bindTexture(gl.TEXTURE_2D, PIP.tex); gl.activeTexture(gl.TEXTURE0); gl.bindVertexArray(VAC);
     M3[0] = sRx; M3[1] = sRy; M3[2] = sRz; M3[3] = sUx; M3[4] = sUy; M3[5] = sUz; M3[6] = -sFx; M3[7] = -sFy; M3[8] = -sFz;
-    for (const [C, a, b] of [[P_COCK, 0, mCock.cb], [P_CAB, mCock.cb, mCock.n - mCock.ng]]) {   // two draws: the dash with a lean shader, then the quarters with theirs
+    const showQ = xr || Math.abs(hlY) > .42 || Math.abs(hlP) > .28;
+    const cabEnd = showQ ? mCock.n - mCock.ng : (mCock.qt || mCock.n - mCock.ng);
+    for (const [C, a, b] of [[P_COCK, 0, mCock.cb], [P_CAB, mCock.cb, cabEnd]]) {
+      if (b <= a) continue;
       gl.useProgram(C.p);
       gl.uniformMatrix3fv(C.u.uShip, false, M3); if (xr) gl.uniform3f(C.u.uEye, cex, cey, cez); else gl.uniform3f(C.u.uEye, eox * k, eoy * k, eoz * k); gl.uniform1f(C.u.uWd, xr ? 1 : 1.3);
       gl.uniform4f(C.u.uMo, ckx + Math.sin(tm * 53) * vib, cky + Math.sin(tm * 67 + 2) * vib, ckz, ckr);
       gl.uniform4f(C.u.uCk, thr, gunSpin, Math.max(bst, jk), muzzle); gl.uniform4f(C.u.uSt, stx, sty, Math.min(1, Math.hypot(vx, vy, vz) / 660), cg(5)); gl.uniform4f(C.u.uCg, cg(1), cg(2), cg(3), cg(4)); gl.uniform1f(C.u.uDm, 1 - ST.hull / 100); gl.uniform2f(C.u.uAt, Math.asin(Math.max(-1, Math.min(1, sFy))), Math.atan2(sRy, sUy));
+      if (C.u.uHt) gl.uniform1f(C.u.uHt, Math.max(0, 1 - (tm - hitPing) / .5));
       if (C.u.uHc) gl.uniform3f(C.u.uHc, PIP.col[0], PIP.col[1], PIP.col[2]);
       gl.drawElements(gl.TRIANGLES, b - a, gl.UNSIGNED_SHORT, a * 2);
     }
     gl.depthRange(0, 1);
   }
-  const R = P_ROCK, ru = R.u;
-  gl.useProgram(R.p); gl.uniform1i(ru.uKind, 0); gl.uniform1f(ru.uFlat, 0);
+  const R = P_ROCK, ru = R.u, vd = Math.min(1, veil || 0);
+  gl.useProgram(R.p); if (ru.uVd) gl.uniform1f(ru.uVd, vd); gl.uniform1i(ru.uKind, 0); gl.uniform1f(ru.uFlat, 0);
   gl.uniform1f(ru.uSpin, .002); fam3(R, TV, mHi);
   gl.uniform1f(ru.uSpin, .012); fam3(R, HV, mHi);
   gl.uniform1f(ru.uSpin, .05); fam3(R, BF, mFar); fam3(R, BN, mMid);
@@ -4349,8 +4453,8 @@ function eye(fb, x, y, w, h, tw, th) {
   gl.uniform1i(ru.uKind, 1); gl.uniform1f(ru.uSpin, .02); draw(R, RV[0], mRing); draw(R, RV[1], mSpire); draw(R, RV[2], mHubS); draw(R, RV[3], mDockS);
   gl.uniform1f(ru.uSpin, .004); draw(R, MV[0], mRing); draw(R, MV[1], mSpire);
   gl.uniform1f(ru.uSpin, 0); draw(R, DGt, mGate);
-  gl.useProgram(P_CRY.p); gl.uniform1f(P_CRY.u.uSpin, .05); draw(P_CRY, LC, mCry);
-  gl.disable(gl.CULL_FACE); gl.useProgram(P_SHIP.p);        // traffic
+  gl.useProgram(P_CRY.p); if (P_CRY.u.uVd) gl.uniform1f(P_CRY.u.uVd, vd); gl.uniform1f(P_CRY.u.uSpin, .05); draw(P_CRY, LC, mCry);
+  gl.disable(gl.CULL_FACE); gl.useProgram(P_SHIP.p); if (P_SHIP.u.uVd) gl.uniform1f(P_SHIP.u.uVd, vd);
   gl.uniform1i(P_SHIP.u.uShip, 4); for (let i = 0; i < 3; i++) draw(P_SHIP, DAgs[i], mShips[i]); draw(P_SHIP, DAf, mFrig[0]);   // traffic, steered ship by ship
   gl.uniform1i(P_SHIP.u.uShip, 2); draw(P_SHIP, LDr, mDrone); draw(P_SHIP, LDs, mSiphon); draw(P_SHIP, LDe, mSpark);
   gl.uniform1i(P_SHIP.u.uShip, 3); draw(P_SHIP, DTr, mFrig[1]);
@@ -4362,7 +4466,7 @@ function eye(fb, x, y, w, h, tw, th) {
   // glowing things, added on top (alpha is left alone: it marks open sky for the star shafts)
   gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE); gl.disable(gl.CULL_FACE);
   const Lf = P_LIFE, lu = Lf.u;
-  gl.useProgram(Lf.p);
+  gl.useProgram(Lf.p); if (lu.uVd) gl.uniform1f(lu.uVd, vd);
   if (NO.includes('l')) LQ.n = LJ.n = LWh.n = 0;
   gl.uniform1i(lu.uKind, 0); draw(Lf, LJ, mJelly); draw(Lf, LQ, mJelly);
   gl.uniform1i(lu.uKind, 1); draw(Lf, LY, mRay);
@@ -4494,14 +4598,24 @@ function frame(now, xf) {
   if (!QA || snap || !CFG.ctl) { QA = qYP(yaw, pitch); if (!QAs || snap) QAs = QA.slice(); rollIn = 0; yawL = yaw; pitchL = pitch; }
   else { const dY = yaw - yawL, dP = pitch - pitchL; if (dY || dP || rollIn) QA = qn(qmul(qmul(qmul(QA, qax(0, 1, 0, -dY)), qax(1, 0, 0, dP)), qax(0, 0, 1, -rollIn))); }
   if (CFG.ctl) { rollIn = 0; const F = qv(QA, 0, 0, -1); pitch = Math.asin(Math.max(-1, Math.min(1, F[1]))); yaw = Math.atan2(F[0], -F[2]); yawL = yaw; pitchL = pitch; }
-  // Below a planet's clouds the ship rights itself: on entry it rolls level and upright over a couple of seconds (keeping its heading),
-  // and in a headset, which has no roll, it keeps easing back to level so the horizon never sits tilted.
+  // Below the clouds the wings ease level, shortest way, without pitching the long way round or reversing mid-turn.
+  // On entry this takes several seconds, like a plane settling. In a headset it keeps a gentle hand on the roll.
   if (fly && SYS.atm && QA) {
-    if (!atmWas) rightT = 2.2;
+    if (!atmWas) { rightT = 6.2; rollBias = 0; }
     if (rightT > 0 || xr) {
-      const F = qv(QA, 0, 0, -1), p = Math.max(-1.48, Math.min(1.48, Math.asin(Math.max(-1, Math.min(1, F[1]))))), y = Math.atan2(F[0], -F[2]), L = qYP(y, p);
-      QA = rightT > 0 ? qslerp(QA, L, 1 - Math.exp(-dt * 2.2)) : qslerp(QA, L, 1 - Math.exp(-dt * .9));
-      if (!CFG.ctl || rightT > 0) { yaw = y; pitch = p; yawL = y; pitchL = p; rollIn = 0; }
+      const F = qv(QA, 0, 0, -1), y = Math.atan2(F[0], -F[2]);
+      let p = Math.asin(Math.max(-1, Math.min(1, F[1])));
+      const pCap = rightT > 0 ? .95 : 1.15;
+      const pWant = rightT > 0 ? p + (levelAim - p) * .18 : p;
+      const pT = Math.max(-pCap, Math.min(pCap, pWant));
+      let target = qYP(y, pT);
+      let dot = QA[0] * target[0] + QA[1] * target[1] + QA[2] * target[2] + QA[3] * target[3];
+      if (dot < 0) { target = [-target[0], -target[1], -target[2], -target[3]]; dot = -dot; }
+      if (dot < .08) { if (!rollBias) rollBias = 1; target = qn(qmul(target, qax(0, 0, 1, rollBias * .2))); }
+      const rate = rightT > 0 ? .62 : .38;
+      QA = qslerp(QA, target, 1 - Math.exp(-dt * rate));
+      const F2 = qv(QA, 0, 0, -1);
+      pitch = Math.asin(Math.max(-1, Math.min(1, F2[1]))); yaw = Math.atan2(F2[0], -F2[2]); yawL = yaw; pitchL = pitch; rollIn = 0;
     }
   }
   rightT = Math.max(0, rightT - dt); atmWas = fly && SYS.atm ? 1 : 0;
@@ -4519,7 +4633,7 @@ function frame(now, xf) {
     const vn = vx * cNx + vy * cNy + vz * cNz;
     if (vn < 0) {
       vx -= cNx * vn * 1.45; vy -= cNy * vn * 1.45; vz -= cNz * vn * 1.45; vx *= .82; vy *= .82; vz *= .82; trauma = Math.min(1, trauma - vn / 90);
-      if (vn < -16) { hurtSrc = 'rock'; hurtSrcT = tm; hurt(Math.min(35, (-vn - 16) * .12)); thud(-vn); for (let i = 0; i < 12; i++) { rdir(); spark(px - cNx * 3, py - cNy * 3, pz - cNz * 3, vx + rd[0] * 30, vy + rd[1] * 30, vz + rd[2] * 30, .3 + Math.random() * .5, .1 + .15 * Math.random(), 0, 3.5, 1.8, .5, 0); } }
+      if (vn < -16) { hurtSrc = 'rock'; hurtSrcT = tm; hitFromX = px - cNx * 30; hitFromY = py - cNy * 30; hitFromZ = pz - cNz * 30; hurt(Math.min(35, (-vn - 16) * .12)); thud(-vn); for (let i = 0; i < 12; i++) { rdir(); spark(px - cNx * 3, py - cNy * 3, pz - cNz * 3, vx + rd[0] * 30, vy + rd[1] * 30, vz + rd[2] * 30, .3 + Math.random() * .5, .1 + .15 * Math.random(), 0, 3.5, 1.8, .5, 0); } }
     }
   }
   if (ST.hull < 50) ST.hull = Math.min(50, ST.hull + dt * .3); // field repairs, slowly, as far as half
@@ -4587,7 +4701,7 @@ function frame(now, xf) {
   if (speed > 380) { if ((fastT += dt) > 9) { fastT = 0; cue('surge'); } } else { fastT = 0; if (cueName === 'surge') { cueStop(); cueName = ''; } }
   {                                                          // a small marker shows where the gate is, and how far
     const e = $('gm'), X = -px, Y = -py, Z = -pz, d = Math.hypot(X, Y, Z);
-    if (!fly || xr || stereo || jpOpen || d < GATE * 1.6) e.style.opacity = 0;
+    if (!fly || xr || stereo || jpOpen || SYS.atm || veil > .4 || d < GATE * 1.6) e.style.opacity = 0;
     else {
       let w = G[3] * X + G[7] * Y + G[11] * Z, x = G[0] * X + G[4] * Y + G[8] * Z, y = G[1] * X + G[5] * Y + G[9] * Z;
       if (w > 0) { x /= w; y /= w; }
@@ -4613,7 +4727,7 @@ function frame(now, xf) {
 arrive(ST.sec, ST.loc, 1);
 resize();
 window.ES = { warpLook: (a, b) => { dbgJ = a; dbgT = b; }, zero: (i) => { const L = LAYERS[i]; L.n = 0; for (const s of L.slaves) s.n = 0; return LAYERS.length; }, dbg: (z) => { if (z) for (let i = 0; i < 3; i++) SYS.pl[i * 4 + 3] = 0; return Array.from(SYS.pl).map((v) => +v.toFixed(2)).concat(Array.from(SYS.pa).map((v) => +v.toFixed(2))); },
-  goto: (sec, loc) => arrive(sec, loc || 0, 1), market: marketPanel, ph: (t) => { SYS.ph = t; SYS.pq = [sFx, sFy, sFz]; }, bh: () => { SYS.sky[0] = 1; pitch = Math.asin(-.22); yaw = Math.atan2(.58, -.78); snap = 1; }, seeNpc: (i) => { const a = NPCS.filter((q) => !q.big && q.var === i)[0]; if (!a) return -1; px = a.x + 22; py = a.y + 7; pz = a.z + 22; const dx = a.x - px, dy = a.y - py, dz = a.z - pz, l = Math.hypot(dx, dy, dz); pitch = Math.asin(dy / l); yaw = Math.atan2(dx, -dz); snap = 1; vx = vy = vz = 0; thr = 0; return a.var; }, linger: () => { for (let i = 0; i < 90; i++) lingerTick(.05); return [lingT, lingId, jpOpen]; }, tp: (x, y, z) => { px = x; py = y; pz = z; vx = vy = vz = 0; thr = 0; }, navCur, interact, map: starMap, drift: driftToggle, near: (k, f) => { const P = sysP[k]; sysS = [P[0] * f, P[1] * f, P[2] * f]; }, dsys: () => [sysS.map((v) => v | 0), driftV | 0, +SYS.pl[3].toFixed(3), SYS.atm, +veil.toFixed(2)], aim: (k, s) => { const d = SYS.pl, q = s || 1; pitch = Math.asin(q * d[k * 4 + 1]); yaw = Math.atan2(q * d[k * 4], -q * d[k * 4 + 2]); snap = 1; }, good: goodPanel, sc: (k, t) => { scP = k; scT = t; }, scOut: (t) => { scOut = t; vy = 120; thr = 1; }, host: (v) => { hostLv = v; npcSpawn(); }, rp: () => ST.rp, head: (y, p) => { hlF = y == null ? null : [y, p || 0]; }, nav: () => NAV.map((n) => n.id), npcs: () => NPCS.length, journal: journalPanel, board: boardPanel, hail: () => hailPanel(NPCS[0]), cycle: navCycle, atm: () => arrive(SYS.sec, SYS.locs.findIndex((l) => l.atm), 1), vrPanel: (v) => { hudForce = v; }, jt: () => [jumpT, !!jumpTo, SYS.loc, SYS.name, slow], system: describe, on: (f) => hooks.push(f), kind: (t) => { for (let x = 1; x < 400; x++) if ((sysIdAt(x, 0, 0) & 7) === t) return arrive([x, 0, 0], 0, 1); }, place: (t) => { const l = SYS.locs.find((q) => q.t === t); if (l) arrive(SYS.sec, l.i, 1); return !!l; }, startJump, gatePanel, logPanel, tradePanel, closePanel, hull: () => ST.hull, beacon: () => { px = bcn[0] + 200; py = bcn[1]; pz = bcn[2]; }, trader: () => trader, go, vr, cock: setCock, thr: (v) => { thr = v; }, key: (c, v) => { K[c] = v; }, look: (y, p) => { yaw = y; pitch = p; snap = 1; }, at: (x, y, z) => { px = x; py = y; pz = z; snap = 1; }, stereo: (v) => { stereo = v; resize(); },
+  build: () => BUILD, cabin: () => ({ nv: mCock.nv, cb: mCock.cb, qt: mCock.qt, n: mCock.n, ng: mCock.ng }), newGame: newUniverse, goto: (sec, loc) => arrive(sec, loc || 0, 1), market: marketPanel, ph: (t) => { SYS.ph = t; SYS.pq = [sFx, sFy, sFz]; }, bh: () => { SYS.sky[0] = 1; pitch = Math.asin(-.22); yaw = Math.atan2(.58, -.78); snap = 1; }, seeNpc: (i) => { const a = NPCS.filter((q) => !q.big && q.var === i)[0]; if (!a) return -1; px = a.x + 22; py = a.y + 7; pz = a.z + 22; const dx = a.x - px, dy = a.y - py, dz = a.z - pz, l = Math.hypot(dx, dy, dz); pitch = Math.asin(dy / l); yaw = Math.atan2(dx, -dz); snap = 1; vx = vy = vz = 0; thr = 0; return a.var; }, linger: () => { for (let i = 0; i < 90; i++) lingerTick(.05); return [lingT, lingId, jpOpen]; }, tp: (x, y, z) => { px = x; py = y; pz = z; vx = vy = vz = 0; thr = 0; }, navCur, interact, map: starMap, drift: driftToggle, near: (k, f) => { const P = sysP[k]; sysS = [P[0] * f, P[1] * f, P[2] * f]; }, dsys: () => [sysS.map((v) => v | 0), driftV | 0, +SYS.pl[3].toFixed(3), SYS.atm, +veil.toFixed(2)], aim: (k, s) => { const d = SYS.pl, q = s || 1; pitch = Math.asin(q * d[k * 4 + 1]); yaw = Math.atan2(q * d[k * 4], -q * d[k * 4 + 2]); snap = 1; }, good: goodPanel, sc: (k, t) => { scP = k; scT = t; }, scOut: (t) => { scOut = t; vy = 120; thr = 1; }, host: (v) => { hostLv = v; npcSpawn(); }, rp: () => ST.rp, head: (y, p) => { hlF = y == null ? null : [y, p || 0]; }, nav: () => NAV.map((n) => n.id), npcs: () => NPCS.length, journal: journalPanel, board: boardPanel, hail: () => hailPanel(NPCS[0]), cycle: navCycle, atm: () => arrive(SYS.sec, SYS.locs.findIndex((l) => l.atm), 1), vrPanel: (v) => { hudForce = v; }, jt: () => [jumpT, !!jumpTo, SYS.loc, SYS.name, slow], system: describe, on: (f) => hooks.push(f), kind: (t) => { for (let x = 1; x < 400; x++) if ((sysIdAt(x, 0, 0) & 7) === t) return arrive([x, 0, 0], 0, 1); }, place: (t) => { const l = SYS.locs.find((q) => q.t === t); if (l) arrive(SYS.sec, l.i, 1); return !!l; }, startJump, gatePanel, logPanel, tradePanel, closePanel, hull: () => ST.hull, beacon: () => { px = bcn[0] + 200; py = bcn[1]; pz = bcn[2]; }, trader: () => trader, go, vr, cock: setCock, thr: (v) => { thr = v; }, key: (c, v) => { K[c] = v; }, look: (y, p) => { yaw = y; pitch = p; snap = 1; }, at: (x, y, z) => { px = x; py = y; pz = z; snap = 1; }, stereo: (v) => { stereo = v; resize(); },
   jelly: (d = 60, s = 0) => seek(LJ, swarmAt, d, s), rock: (d) => seek(LH, hugeAt, d), big: (d) => seek(LB, bigAt, d), titan: (d) => seek(LTi, titanAt, d), geode: (d = 40) => seek(LG, geodeAt, d),
   fleet: (d = 60) => seek(LF, cellHas(20, SYS.a.fl * .6), d), frig: (d = 1) => seek(LFr, cellHas(21, SYS.a.fr * .7), d), siph: (d = 40) => seek(LDs, cellHas(24, SYS.a.dr * .13 + .008), d), spark: (d = 40) => seek(LDe, cellHas(25, SYS.a.dr * .13 + .008), d), inv: (m) => invShow(m), closeStar: (sc, giant, rad) => { bigStarsSet(); csU = [rad || .2, sc, 1.3, giant ? 1 : 0]; csC = giant ? [1, .34, .1] : CSC[sc]; yaw = Math.atan2(SUN[0], -SUN[2]); pitch = Math.asin(SUN[1]); snap = 1; }, bigLook: (i, ty) => { bigStarsSet(); if (ty != null) bsS[i * 4 + 3] = ty; const x = bsS[i * 4], y = bsS[i * 4 + 1], z = bsS[i * 4 + 2]; yaw = Math.atan2(x, -z); pitch = Math.asin(y); snap = 1; return [bsS[i * 4 + 3], bsC[i * 4 + 3]]; }, musMeter: () => { if (!SC.an) { SC.an = AC.createAnalyser(); SC.an.fftSize = 2048; SC.lim.connect(SC.an); } if (!SC.mi) { const b = new Float32Array(2048); SC.mm = { pk: 0, ss: 0, n: 0 }; SC.mi = setInterval(() => { SC.an.getFloatTimeDomainData(b); for (const x of b) { SC.mm.pk = Math.max(SC.mm.pk, Math.abs(x)); SC.mm.ss += x * x; SC.mm.n++; } }, 20); } const r = { pk: +SC.mm.pk.toFixed(3), rms: +Math.sqrt(SC.mm.ss / Math.max(1, SC.mm.n)).toFixed(3), sec: SC.sec }; SC.mm = { pk: 0, ss: 0, n: 0 }; return r; }, musSec: (s) => { SC.sec = s; SC.secBar = 0; SC.secLen = SECS[s].len; }, jumpTest: (l) => startJump({ sec: SYS.sec, loc: l == null ? (SYS.loc + 1) % SYS.locs.length : l }), mus: () => { if (!SC.an && SC.lim) { SC.an = AC.createAnalyser(); SC.an.fftSize = 2048; SC.lim.connect(SC.an); } const T = SC.trk, b = new Float32Array(2048); let pk = 0, rms = 0; if (SC.an) { SC.an.getFloatTimeDomainData(b); for (const x of b) { pk = Math.max(pk, Math.abs(x)); rms += x * x; } rms = Math.sqrt(rms / 2048); } return { sec: SC.sec, bar: SC.bar, secBar: SC.secBar, e: +energy.toFixed(2), bpm: T && T.bpm, mode: T && T.mode, style: T && T.style, root: T && T.root, pk: +pk.toFixed(3), rms: +rms.toFixed(3), ac: AC && AC.state }; }, vel: (s) => { vx = sFx * s; vy = sFy * s; vz = sFz * s; bst = 1; }, bloomNow: () => { bloomT = 0; }, life: (cmd) => { if (cmd === 'call') { cmT = 0; } if (cmd === 'near' && CM) { const rx = sFy * sUz - sFz * sUy, rz = sFx * sUy - sFy * sUx; CM.a.x = px + rx * 75 + sFx * 150; CM.a.y = py + 12 + sFy * 150; CM.a.z = pz + rz * 75 + sFz * 150; CM.a.fx = sFx; CM.a.fy = sFy; CM.a.fz = sFz; } if (cmd === 'talk' && CM && CM.ph !== 'offer') CM.t = 99; if (cmd === 'esc' && CM) { for (let i = 0; i < 60 && CM.off.ty !== 'escort'; i++) CM.off = mkOffer(CM.ch); } if (cmd === 'accept') cmAccept(); if (CM && /^arc:/.test(cmd)) { const [, id, st] = cmd.split(':'); CM.ch.arc = { id, step: +st }; if (id === 'rival') CM.ch.raider = 1; CM.off = mkOffer(CM.ch); } if (CM && /^ty:/.test(cmd)) { const w = cmd.slice(3); for (let i = 0; i < 200 && !(CM.off.ty === w && (w !== 'job' || /scan|bounty|crate/i.test(CM.off.text))); i++) CM.off = mkOffer(CM.ch); } if (cmd === 'hurt') for (const a of NPCS) if (a.role === 5 && !a.dead) a.hp = a.hpM * .2; if (cmd === 'raid') cmAmbush(2, 'player'); if (cmd === 'amb' && ESC) { ESC.amb = 0; } return JSON.stringify({ cm: CM && { ph: CM.ph, ty: CM.off.ty, who: CM.ch.n, ship: CM.ch.sh, d: Math.round(Math.hypot(CM.a.x - px, CM.a.y - py, CM.a.z - pz)) }, esc: ESC && { n: ESC.ships.filter((s) => !s.dead).length, wave: ESC.wave, raiders: ESC.raiders.filter((r) => !r.dead).length, wait: ESC.wait }, off: CM && CM.off.text, npc: NPCS.filter((a) => a.role === 5 && !a.dead).map((a) => a.name + (a.fled ? '(fled)' : '') + (a.rival ? '(rival)' : '')).join(','), ally: NPCS.filter((a) => a.ally).length, cast: Object.keys(ST.cast || {}).length, comm: commS }); }, o2: (h) => { if (h != null) { o2Hyp = h; o2Out = 30; ST.o2 = 0; } return [ST.o2, o2Hyp, o2Out, flying()]; }, pip: (tab) => { if (tab != null) { PIP.tab = tab; if (!PIP.big) pipOpen(); } return [flying(), jpOpen, invOpen, PIP.big]; }, bh: (h) => { bHold = h; return [bRamp, bOd]; }, sys: () => ({ bl: BLOOMS.length, grv: grooveAt(bar), arp: ARPS.indexOf(arpAt(bar)), chord: chordAt(bar), ac: AC && AC.state, spd: Math.round(Math.hypot(vx, vy, vz)), thr: raThr && { t: raThr.t | 0, m: raThr.m | 0, R: raThr.R | 0 }, hull: ST.hull, fuel: ST.fuel, wen: ST.wen, spice: ST.spice, cargo: ST.cargo.slice(), warn: sysWarn, sw: swOn, slow, btT }), setSys: (o) => { if (o.cargo) { o.cargo.forEach((v, i) => cargo[i] = v); delete o.cargo; } Object.assign(ST, o); }, drone: (d = 40) => seek(LDr, cellHas(22, SYS.a.dr * .16 + .008), d),
   whale: (d = 900) => seek(LWh, cellHas(17, .55), d), serpent: (d = 250) => seek(LSp, cellHas(18, .4), d), colossus: (d = 900) => seek(LQ, cellHas(16, .4), d), ray: (d = 300) => seek(LY, cellHas(7, .65), d),
