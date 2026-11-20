@@ -2,6 +2,15 @@
 
 Shawn's QA findings, logged one by one. v1.20 (2026-11-19) worked the previous round. v1.21 is a feature build from Shawn's brief, not a new QA round. New findings stay logged only until Shawn says go.
 
+## v1.22 notes
+
+No new numbered findings. Decisions taken while building, so the next QA pass can check them:
+
+- Freighters, capitals, NASA stations, and Silence derelicts are procedural meshes in the existing instanced drawers. Capitals and the leviathan yaw in place so they stay where the layer put them; rings, turrets, shuttles, radiators, and fins still move.
+- Difficulty defaults to Pilot. Story is gentler. Silence is the harsh end. It is one control in desktop Settings and in the pause list, including the headset plate.
+- Oxygen, hull, fuel, and spice stay generous on Pilot. They get expensive when you boost, jump, cook the hull, or play Silence. A dry tank or an empty cabin still ends in a tug, not a soft lock.
+- v1.21 saves load. Missing `lens` is filled with 0. The universe seed is kept.
+
 ## v1.21 notes
 
 No new numbered findings. Decisions taken while building, so the next QA pass can check them:

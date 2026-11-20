@@ -1,6 +1,19 @@
 # The Infinite End (formerly Infinite Black): backlog and build log
 
-Standing rule from Shawn: every build takes a selection from this backlog alongside whatever is newly asked. Nothing here is to be dropped silently. Versions use point numbering (v1.0 = first rollback build … v1.4 = old "v5"; current test build v1.20). `BUILD` in `c_main.js`, shown on the title screen, bottom-right of the pause screen and in the Quest pause panel. Increment it on each release. **From v1.20 on, updates keep the player's progress** (Shawn, 2026-11-19) and a fresh universe happens only when the player chooses New universe. (v1.14 was skipped at Shawn's direction.)
+Standing rule from Shawn: every build takes a selection from this backlog alongside whatever is newly asked. Nothing here is to be dropped silently. Versions use point numbering (v1.0 = first rollback build … v1.4 = old "v5"; current test build v1.22). `BUILD` in `c_main.js`, shown on the title screen, bottom-right of the pause screen and in the Quest pause panel. Increment it on each release. **From v1.20 on, updates keep the player's progress** (Shawn, 2026-11-19) and a fresh universe happens only when the player chooses New universe. (v1.14 was skipped at Shawn's direction.)
+
+## v1.22 (2026-11-19, test site only)
+
+Shawn's showcase brief. v1.21 saves migrate (same seed, `ST.lens` filled, `ST.build` updated). Quest 3 / Touch Plus mapping is unchanged. Boost is still the paced Burnout rush: no extra debris.
+
+- Freighters are generated haulers: spine, cargo drums or containers, radiator fins, tug bells, greebles, running lights, faction paint, scorch plates. Traffic haulers and the gate trader use them. A dreadnought mesh also flies the old frigate lanes.
+- Capital ships (carrier, dreadnought, survey ark, faction flagship) are sparse, instanced, and yaw in place. Habitat rings spin, turrets yaw, shuttles orbit, radiators flex. They fade at the layer edge.
+- Human stations are NASA-lineage hardware: Stanford torus, Gateway truss with modules and solar wings, O'Neill yard, Bernal sphere. Megastructures use the same meshes at ringworld scale.
+- The Silence has a body: biomech ships, broken bone derelicts, pulsing organic stations, and a rare vertebral megastructure. Inspiration only. Human metal stays the hardware you dock with.
+- Creatures come from one generator: fish, medusa, worm, manta, and a colossal leviathan. They carry flock, flee, curiosity, and territorial motion, plus bioluminescent bands. Fins flex. The leviathan holds still enough to approach and pulses.
+- Meters choose routes. Oxygen drains (faster when the hull leaks or you boost) and refills on ocean, ice, and gas decks, at a friendly dock, or by cracking pyrite. Hull cooks in lava skies, toxic speed, and star coronas; ferrite patches it in the field; yards repair it for credits that follow reputation and difficulty. Fuel is spent by cruise, boost, and especially jumps; docks sell it; gas decks and coronas scoop it and heat the hull; dry tanks drift until a distress tug, for a fee. Spice stays in the hold, gathers in life, clouds, and dust, sells as trade goods, and fixes a long jump. A Silence lens at the outfitter spends spice or credits and makes jumps gentler.
+- Difficulty is Story / Pilot / Veteran / Silence, in the desktop settings list and in both pause menus (the headset one included). It scales damage, meter drain, AI, encounter rate, and prices. Pilot is the default.
+- Headless software WebGL, low detail, 1280×720, at the home gate: 57 draws and 667k vertices in one eye. v1.21 on the same harness was about 48 draws and 559k. The added draws are the capital, alien, creature, and leviathan passes. That fps number is the harness, not a Quest measurement.
 
 ## v1.21 (2026-11-19, test site only)
 
@@ -150,19 +163,19 @@ Design principles (Shawn):
 - Spacing for other massive things too (titans, megastructures, stations near huge rocks), if Shawn still sees bunching.
 - Sky audit: v1.20 gives each place one headline and slows the phenomenon pulsar. Still worth a pass if a close star and a planet disc crowd one view.
 - Music next steps: tune by ear; key changes between systems; counter-melodies.
-- Close stars: approach them (heat, glare, a danger zone) and a slow swell in the score.
+- Close stars: v1.22 adds corona heat and a fuel scoop when you hold the nose in a close star. A slow swell in the score is still open.
 - Nebula variety: if revisited, prototype in a screenshot first.
 - Visor: pull the DOM elements onto the curved visor too.
 - Boost-run layer: a run distance/streak counter, bloom trails that lead somewhere.
 - Collision detection for small rocks and NPCs.
 - NPC docking.
-- A real ship generator (many procedural forms).
+- Ship generator: freighters and four capital hulls landed in v1.22. Fighters and raiders are still the older three forms.
 - Space atmospherics: aurora, dust lanes, light shafts through fields.
 - Planet exit: crossfade the nebula texture too.
 - Quest: star map, full settings, controller remapping and the hold/trade screens inside the headset; gimballed aim; weapon pick on the controller.
 - Phone: roll control in space-sim mode; weapon pick by tap; a touch button for the aux display.
-- Stations could repair; trader stock limits.
-- Spice uses beyond slow time.
+- Trader stock limits. Yards already repair, refuel, and sell air and spice (v1.22).
+- Spice also fixes a long jump and buys the Silence lens (v1.22). It is still not a crafting tree.
 - Weapon name somewhere unobtrusive.
 - Carry the new voice into in-game text to match the title screen.
 

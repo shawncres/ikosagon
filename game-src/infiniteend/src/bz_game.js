@@ -141,7 +141,7 @@ function rpgArrive() {
   for (const j of r.jobs.slice()) { const d = jobDest(j); if (!isHere(d)) continue; if (j.ty === 0) jobDone(j); else if (j.stage && (j.ty === 1 || j.ty === 3)) { if (j.ty === 1) cargo[j.tier] = Math.max(0, cargo[j.tier] - j.n); jobDone(j); } }
   ENC = null; trailPend = null;
   if (r.trail < 6 && isHere(trail()[r.trail])) { const i = r.trail++; gain({ xp: 80, cr: 100 }); trailPend = { i, t: 0 }; }
-  else if (!SYS.atm && !r.seen[mkey()]) { r.seen[mkey()] = 1; if (mulberry32(SYS.salt ^ 0xE7)() < .45) { const R = mulberry32(SYS.salt ^ 0xE11C), a = R() * 6.283, el = (R() - .5) * .35, dist = 1600 + R() * 700, ce = Math.cos(el); ENC = { x: Math.cos(a) * ce * dist, y: Math.sin(el) * dist * .6, z: Math.sin(a) * ce * dist, t: 0, open: 0 }; } }
+  else if (!SYS.atm && !r.seen[mkey()]) { r.seen[mkey()] = 1; if (mulberry32(SYS.salt ^ 0xE7)() < (typeof encRate === 'function' ? encRate() : .45)) { const R = mulberry32(SYS.salt ^ 0xE11C), a = R() * 6.283, el = (R() - .5) * .35, dist = 1600 + R() * 700, ce = Math.cos(el); ENC = { x: Math.cos(a) * ce * dist, y: Math.sin(el) * dist * .6, z: Math.sin(a) * ce * dist, t: 0, open: 0 }; } }
   save();
 }
 function rpgCollected(tier) {
@@ -1077,7 +1077,7 @@ function droneTick(dt, fly) {
     const use = bst * (.035 + .05 * bRamp + .04 * bOd);                              // only boost (and the drift it carries you into) burns fuel, and slowly
     const was = ST.fuel; ST.fuel = Math.max(0, ST.fuel - use * dt);
     if (was > 0 && ST.fuel <= 0) { tip('Fuel dry · emergency thrusters only · find a siphon swarm, or hold on: your beacon is calling a tug', 8000); strandT = 0; }
-    if (ST.fuel <= 0) { strandT += dt; if (strandT > 50) { strandT = 0; const fee = Math.min(ST.credits, 60); ST.credits -= fee; ST.fuel = 25; showCargo(); save(); comm(`Salvage tug to ${call()}: tanks topped to a quarter.${fee ? ' That is ' + fee + ' credits.' : ' This one is on us.'}`); } }
+    if (ST.fuel <= 0) { strandT += dt; if (strandT > 50) { strandT = 0; const fee = Math.min(ST.credits, Math.round(60 * (typeof diffK === 'function' ? diffK() : 1))); ST.credits -= fee; ST.fuel = 25; showCargo(); save(); comm(`Distress beacon answered. Salvage tug to ${call()}: tanks topped to a quarter.${fee ? ' Tow is ' + fee + ' credits.' : ' This one is on us.'}`); } }
     o2Tick(dt);
     ST.wen = Math.min(100, ST.wen + dt * (ST.fuel > 0 ? 2.2 : .6) * (tm - lastFire > 1.5 ? 1 : .35));
     if (ST.hull < 60 && tm - shHit > 15) ST.hull = Math.min(60, ST.hull + dt * .2);              // field patching: a quiet ship slowly gets itself back to 60%   // the reactor recharges the guns, slowly
@@ -1111,7 +1111,7 @@ function spiceTick(dt, fly) {                              // spice: living thin
   let near = 0; for (const [L, R] of [[LJ, 420], [LY, 450], [LWh, 900], [LQ, 1300], [LM, 250]]) { const r = nearInst(L); if (r[0] < R * R) near = 1; }
   if (SYS.atm) { near = 1; const cloud = Math.exp(-((py - 5200) * (py - 5200)) / 1.4e7);
     if (cloud > .15 && ST.spice < 100) { const was = ST.spice; ST.spice = Math.min(100, ST.spice + dt * 5 * cloud); if (Math.random() < dt * 6 * cloud) fxAdd(px + (Math.random() - .5) * 50, py + (Math.random() - .5) * 24, pz + (Math.random() - .5) * 50, .35 + Math.random() * .7, 1.35, .22, .42); if (Math.floor(was / 25) < Math.floor(ST.spice / 25) && tm > spiceTip) { spiceTip = tm + 16; pop('SPICE IN THE CLOUDS', '#ff3b5c'); } } }
-  if (!near && ST.spice > 0) ST.spice = Math.max(0, ST.spice - dt * (bst > .5 ? 1.1 : .35));   // spice thins away unless you are near life; boosting burns it faster
+  if (!near && ST.spice > 0 && bst > .85) ST.spice = Math.max(0, ST.spice - dt * .04);   // spice stays in the hold; only a hard boost shakes a little loose
   if (near && ST.spice < 100) { const was = ST.spice; ST.spice = Math.min(100, ST.spice + dt * 5.5); if (Math.random() < dt * 6) fxAdd(px + sFx * 14 + (Math.random() - .5) * 30, py + sFy * 14 + (Math.random() - .5) * 20, pz + sFz * 14 + (Math.random() - .5) * 30, .12 + Math.random() * .2, 1.1, .2, .3);
     if (Math.floor(was / 25) < Math.floor(ST.spice / 25) && tm > spiceTip) { spiceTip = tm + 20; pop(`SPICE ${ST.spice | 0}%`, '#ff3b5c'); } }
   const sp = Math.hypot(vx, vy, vz);
@@ -1392,7 +1392,7 @@ function shipMeshC() {                                        // an interceptor:
   loft(V, I, [[-.62, .03, .02, .03], [-.2, .1, .06, .05], [.4, .12, .07, .05], [.76, .075, .05, .04]], 6, 0); loft(V, I, [[-.58, .02, .012, .058], [-.36, .055, .03, .088], [-.1, .04, .024, .086]], 6, 3);
   return mesh(V, I);
 }
-const mShips = [shipMeshA(), shipMeshB(), shipMeshC()];
+let mShips = [shipMeshA(), shipMeshB(), shipMeshC()];
 
 // ---- a pause menu that can be seen in a headset: time slows to a crawl while it is open ----
 function pausePanel() {
@@ -1418,7 +1418,7 @@ function vrMenu() {
     { name: 'Exit to main menu', desc: 'Leave the headset view; Enter VR brings you back', run: () => { try { xr.end(); } catch {} menu(); } }], 'Right stick to choose · A to select · B to close');
 }
 
-const mHubS = hubMesh(), mDockS = dockMesh();
+let mHubS = hubMesh(), mDockS = dockMesh();
 
 // ---- a click closes any panel that only has something to read ----
 addEventListener('mousedown', (e) => { try { if (jpOpen && !items.some((d) => d.run) && !(e.target.closest && e.target.closest('button'))) { closePanel(); e.stopPropagation(); e.preventDefault(); } } catch {} }, true);

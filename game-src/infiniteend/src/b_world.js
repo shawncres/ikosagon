@@ -269,24 +269,24 @@ function spireMesh() {                                      // a long spine thre
 }
 // ---- ships, built from lofted hulls, slabs and boxes ----
 // a face wound so its normal points along `out`
-function fq(V, I, pts, m, out) {
+function fq(V, I, pts, m, out, uy = 0) {
   const a = pts[0], b = pts[1], c = pts[2], n = crs([b[0] - a[0], b[1] - a[1], b[2] - a[2]], [c[0] - a[0], c[1] - a[1], c[2] - a[2]]);
-  face(V, I, n[0] * out[0] + n[1] * out[1] + n[2] * out[2] < 0 ? pts.slice().reverse() : pts, pts.map(() => m));
+  face(V, I, n[0] * out[0] + n[1] * out[1] + n[2] * out[2] < 0 ? pts.slice().reverse() : pts, pts.map(() => m), uy);
 }
 // a hull lofted through sections [z, half-width, half-height, y, x] with an n-sided cross-section
-function loft(V, I, secs, n, m, capA = m, capB = m) {
+function loft(V, I, secs, n, m, capA = m, capB = m, uy = 0) {
   const ring = (s) => { const p = []; for (let i = 0; i < n; i++) { const g = (i + .5) / n * 6.283; p.push([Math.cos(g) * s[1] + (s[4] || 0), Math.sin(g) * s[2] + (s[3] || 0), s[0]]); } return p; };
   const R = secs.map(ring);
-  for (let i = 0; i < R.length - 1; i++) for (let k = 0; k < n; k++) { const k2 = (k + 1) % n; face(V, I, [R[i][k], R[i][k2], R[i + 1][k2], R[i + 1][k]], [m, m, m, m]); }
-  fq(V, I, R[0], capA, [0, 0, -1]); fq(V, I, R[R.length - 1], capB, [0, 0, 1]);
+  for (let i = 0; i < R.length - 1; i++) for (let k = 0; k < n; k++) { const k2 = (k + 1) % n; face(V, I, [R[i][k], R[i][k2], R[i + 1][k2], R[i + 1][k]], [m, m, m, m], uy); }
+  fq(V, I, R[0], capA, [0, 0, -1], uy); fq(V, I, R[R.length - 1], capB, [0, 0, 1], uy);
 }
 // a flat panel of four corners, given thickness
-function slab(V, I, P, th, m) {
+function slab(V, I, P, th, m, uy = 0) {
   const n = nrm(crs([P[1][0] - P[0][0], P[1][1] - P[0][1], P[1][2] - P[0][2]], [P[2][0] - P[0][0], P[2][1] - P[0][1], P[2][2] - P[0][2]]));
   const T = P.map((p) => [p[0] + n[0] * th, p[1] + n[1] * th, p[2] + n[2] * th]), Bt = P.map((p) => [p[0] - n[0] * th, p[1] - n[1] * th, p[2] - n[2] * th]);
   const c = [0, 1, 2].map((k) => (P[0][k] + P[1][k] + P[2][k] + P[3][k]) / 4);
-  fq(V, I, T, m, n); fq(V, I, Bt, m, [-n[0], -n[1], -n[2]]);
-  for (let i = 0; i < 4; i++) { const j = (i + 1) % 4; fq(V, I, [T[i], T[j], Bt[j], Bt[i]], m, [(P[i][0] + P[j][0]) / 2 - c[0], (P[i][1] + P[j][1]) / 2 - c[1], (P[i][2] + P[j][2]) / 2 - c[2]]); }
+  fq(V, I, T, m, n, uy); fq(V, I, Bt, m, [-n[0], -n[1], -n[2]], uy);
+  for (let i = 0; i < 4; i++) { const j = (i + 1) % 4; fq(V, I, [T[i], T[j], Bt[j], Bt[i]], m, [(P[i][0] + P[j][0]) / 2 - c[0], (P[i][1] + P[j][1]) / 2 - c[1], (P[i][2] + P[j][2]) / 2 - c[2]], uy); }
 }
 const mirX = (P) => P.map((p) => [-p[0], p[1], p[2]]);
 // materials (uv.x): 0 hull, 1 squadron paint, 2 engine glow, 3 canopy glass, 4 running light. Nose at z = -1.

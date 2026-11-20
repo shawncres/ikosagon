@@ -481,7 +481,14 @@ void main(){
   vec2 q=ap.y>.6?q3.xz:ap.x>.6?q3.zy:q3.xy,g=q/ps,id=floor(g),f=fract(g);
   float pl=step(.04,f.x)*step(.04,f.y),r=hh(id+vI.x*7.),wr=texture(uNz,q3/ps*.07).r;
   alb=vec3(.13,.14,.16)*(.55+.5*r)*mix(.4,1.,pl)*(.55+.8*wr);sp=.8;gs=50.;
-  if(mid>4.5){alb=vec3(.01);em=(abs(vI.y-.67)<.06?vec3(.8,.86,1.):.5+.5*cos(6.283*(vI.y+vec3(0,.33,.67))))*5.*(.75+.25*sin(TIME*3.+vI.x*20.));}
+  if(mid>11.5){alb=vec3(.035,.04,.045);em=vec3(.35,.1,.04)*(.25+.12*sin(TIME*.35+vI.x));sp=.25;gs=12.;}
+  else if(mid>10.5){alb=vec3(.012,.014,.02);em=vec3(1.,.74,.42)*(.55+.28*sin(TIME*.9+vI.x*7.))*2.1;sp=.2;gs=10.;}
+  else if(mid>9.5){alb=vec3(.015,.03,.06);em=vec3(.08,.22,.45)*.35;sp=1.15;gs=64.;}
+  else if(mid>8.5){alb=vec3(.55,.36,.12)*(.82+.28*wr);sp=1.45;gs=96.;}
+  else if(mid>7.5){alb=vec3(.8,.82,.84)*(.92+.08*wr);sp=.55;gs=34.;}
+  else if(mid>6.5){float pulse=.62+.38*sin(TIME*1.15+vI.x*9.+q3.y*2.4);alb=mix(vec3(.025,.02,.022),vec3(.11,.045,.05),wr)*pulse;em=mix(vec3(.2,.85,.55),.5+.5*cos(6.283*(vI.y+vec3(0,.33,.67))),.4)*pow(abs(sin(q3.x*6.+q3.z*4.+TIME*.7)),6.)*1.8*pulse;sp=1.35;gs=28.;}
+  else if(mid>5.5){alb=vec3(.02,.014,.012)*(.45+.9*wr);em=vec3(.7,.16,.03)*smoothstep(.5,.88,wr)*.4;sp=.15;gs=8.;}
+  else if(mid>4.5){alb=vec3(.01);em=(abs(vI.y-.67)<.06?vec3(.8,.86,1.):.5+.5*cos(6.283*(vI.y+vec3(0,.33,.67))))*5.*(.75+.25*sin(TIME*3.+vI.x*20.));}
   else if(mid>3.5){alb=vec3(.01);em=vec3(1.,.15,.1)*3.*step(.5,fract(TIME*.8+vI.x*5.));}
   else if(mid>2.5){alb=vec3(.008,.01,.016);sp=2.5;gs=140.;}
   else if(mid>1.5){alb=vec3(.01);em=mix(vec3(.3,.6,1.),vec3(1.,.55,.25),step(.5,h1(vI.x*3.)))*7.*(.8+.2*sin(TIME*23.+vI.x*9.));}
@@ -509,7 +516,14 @@ out vec3 vP,vN,vO;flat out vec4 vQ,vI,vJ;
 vec3 loop(vec3 c,vec3 u,vec3 w,vec3 n,float sd,float t){float A=uCN.x*.33,g=sd*6.283+t*105./A;
  return c+(u*cos(g)+w*sin(g))*A*(1.+.3*sin(2.*g+sd*9.))+n*sin(3.*g+sd*5.)*A*.16;}
 void main(){
- vec3 c=ctr(),lp=aP,P0,X,Y,Z;float sd=iB.w,a=iC.x,b=iC.y,k=iC.w,sz=iA.w;
+ vec3 c=ctr(),lp=aP,P0,X,Y,Z,nrm=aN;float sd=iB.w,a=iC.x,b=iC.y,k=iC.w,sz=iA.w;
+ float part=aU.y;
+ if(part>5.5&&part<6.5){lp.y+=sin(TIME*(2.4+fract(part)*3.)+sd*5.)*.22*lp.z;}
+ else if(part>4.5&&part<5.5){float w=sin(TIME*1.25+lp.z*4.5+sd);lp.x*=1.+.05*w;lp.y*=1.+.035*w;}
+ else if(part>3.5&&part<4.5){lp.y+=sin(TIME*.55+abs(lp.x)*2.2)*.02*abs(lp.x);}
+ else if(part>2.5&&part<3.5){float ang=TIME*.62+fract(part)*6.283+sd*2.;float cs=cos(ang),sn=sin(ang),rad=.48;vec3 side=vec3(-sn,0.,cs);lp=vec3(cs*rad,.1+lp.y,sn*rad)+side*lp.x*.9+vec3(cs,0.,sn)*lp.z*.35;nrm=vec3(cs*nrm.x-sn*nrm.z,nrm.y,sn*nrm.x+cs*nrm.z);}
+ else if(part>1.5&&part<2.5){float id=floor(fract(part)*6.);float base=id*1.047,yaw=sin(TIME*.42+id+sd)* .55;float cs=cos(base+yaw),sn=sin(base+yaw),rad=.2;lp=vec3(cs*rad,.08+lp.y,sn*rad)+vec3(-sn,0.,cs)*lp.x+vec3(cs,0.,sn)*lp.z;nrm=vec3(cs*nrm.z-sn*nrm.x,nrm.y,sn*nrm.z+cs*nrm.x);}
+ else if(part>0.5&&part<1.5){float ang=TIME*.16+sd*.4;float cs=cos(ang),sn=sin(ang),x=lp.x,y=lp.y;lp.x=cs*x-sn*y;lp.y=sn*x+cs*y;float nx=nrm.x,ny=nrm.y;nrm.x=cs*nx-sn*ny;nrm.y=sn*nx+cs*ny;}
  vec3 n=normalize(h3(sd*3.3)-.5+vec3(0,1.4,0)),u=normalize(cross(n,vec3(1,0,.2))),w=cross(n,u);
  if(uShip==0){
   vec3 p0=loop(c,u,w,n,sd,TIME),p1=loop(c,u,w,n,sd,TIME+.25),p2=loop(c,u,w,n,sd,TIME+.5),F=normalize(p1-p0);
@@ -522,6 +536,17 @@ void main(){
   lp.xy*=.85+.4*b;
  }else if(uShip==4){P0=c;Z=-normalize(iB.xyz);Y=normalize(iC.xyz);X=normalize(cross(Y,Z));Y=cross(Z,X);
  }else if(uShip==3){P0=c;X=vec3(.8,0,.6);Y=vec3(0,1,0);Z=vec3(-.6,0,.8);
+ }else if(uShip==5||uShip==6||uShip==7){P0=c;float g=TIME*(uShip==7?.012:.02)+sd*(uShip==5?2.:5.);float cs=cos(g),sn=sin(g);
+  X=vec3(cs,0,sn);Y=vec3(0,1,0);Z=vec3(-sn,0,cs);
+  if(uShip==7)P0.y+=sin(TIME*.15+sd*4.)*uCN.x*.01;
+ }else if(uShip==8){float beh=k;vec3 nn=normalize(h3(sd*4.4)-.5+vec3(0,1.05,0)),uu=normalize(cross(nn,vec3(.21,1.,.04))),ww=cross(nn,uu);
+  float ro=uCN.x*(beh>2.5?.1:.2+.1*a),spd=beh<.5?26.:beh<1.5?34.:beh<2.5?12.:7.;
+  float an=sd*6.283+b*2.4+TIME*spd/max(ro,1.);
+  P0=c+(uu*cos(an)+ww*sin(an))*ro+nn*(b-.5)*uCN.x*.1;
+  float cam=length(P0);
+  if(beh>.5&&beh<1.5)P0+=normalize(P0+1e-3)*smoothstep(1100.,90.,cam)*sz*6.;
+  else if(beh>1.5&&beh<2.5)P0=mix(P0,vec3(0.),smoothstep(2200.,280.,cam)*.5);
+  Z=uu*sin(an)-ww*cos(an);Y=nn;X=cross(Y,Z);lp.y+=sin(TIME*(1.5+a*1.6)-lp.z*4.2)*.1*(.25+abs(lp.z));lp.x+=cos(TIME*1.05+lp.z*3.)*.05;
  }else{
   vec3 cc=c+vec3(sin(TIME*.02+sd*9.),sin(TIME*.017+sd*5.),cos(TIME*.019+sd*7.))*uCN.x*.25;
   vec3 ax=normalize(h3(sd*7.+k*1.37)-.5+vec3(.01)),o1=normalize(cross(ax,vec3(.3,1.,.2))),o2=cross(ax,o1);
@@ -530,8 +555,9 @@ void main(){
   Z=-normalize(-o1*sin(t)+o2*cos(t)+ax*.2*cos(t*.6+k));X=normalize(cross(ax,Z));Y=cross(Z,X);
  }
  float d=length(P0),fd=(1.-smoothstep(.85*uCN.z,uCN.z,d))*clamp(1.-uVd,0.,1.);
+ if(uShip==8&&sz>180.)fd*=smoothstep(sz*.28,sz*1.15,d);
  vec3 p=P0+(X*lp.x+Y*lp.y+Z*lp.z)*sz*fd;
- vP=p;vN=X*aN.x+Y*aN.y+Z*aN.z;vO=lp;vQ=vec4(aN,aU.x);vI=vec4(sd+k*.13,uShip==4?k:iC.z,0,sz);vJ=vec4(0);
+ vP=p;vN=X*nrm.x+Y*nrm.y+Z*nrm.z;vO=lp;vQ=vec4(nrm,aU.x);vI=vec4(sd+k*.13,uShip==4?k:iC.z,0,sz);vJ=vec4(0);
  gl_Position=uVP*vec4(p,1);}`;
 
 // glowing crystals rooted in the big asteroids: iC.xyz = the root on the unit rock, iC.w = hue
