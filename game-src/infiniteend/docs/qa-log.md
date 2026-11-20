@@ -8,6 +8,7 @@ Visual pass, started with the vertex budget. v1.23 saves migrate. Quest controls
 
 - Quest preset is detail Medium and Low (`LV >= 1`). Rock shells drop two subdivisions there and one on Desktop High. Large swarms spawn fewer bodies. `ES.budget()` reports the cap: 1,000,000 vertices and 80 draws per eye at the home gate. v1.23 high was about 3.87M vertices. The HUD reticle rebinds its program before drawing the fallback mark, which clears a one-shot WebGL warning. File-URL loads skip the radio fetch.
 - Skies: gas-giant bands with a vortex, domain-warped cloud decks and shadows, a Rayleigh/Mie limb and terminator, ocean specular, night-side city lights. Stars use a blackbody ramp. The nebula bake takes a second warp from the system seed.
+- Hulls get panel lines, weathering, windows, a lit docking bay, hazard marks and a star rim, fading with distance. Stations are a smooth torus with modules and wings. A finer arc covers the tube when you fly inside a ring.
 
 ## v1.23 notes
 
