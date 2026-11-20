@@ -669,6 +669,24 @@ void main(){
   else if(mid>.5)alb=mix(alb,(.5+.5*cos(6.283*(vI.y+vec3(0,.33,.67))))*.3,.8);
   else if(big>.5&&ap.y<.6){vec2 wg=q/(ps*.22),wi=floor(wg),wf=fract(wg);
    em=mix(vec3(1.,.8,.5),vec3(.6,.8,1.),step(.6,hh(wi+3.)))*step(.88,hh(wi*vec2(1.,.37)))*step(.45,hh(vec2(wi.y,7.)))*step(.25,wf.x)*step(wf.x,.75)*step(.3,wf.y)*step(wf.y,.7)*2.2;}
+  if(big>.5){
+   float dq=length(vP),det=1.-smoothstep(900.,4200.,dq);
+   vec3 wp=q3;
+   float nA=texture(uNz,wp*.0045).r,nB=texture(uNz,wp*.02).g;
+   vec3 cell=abs(fract(wp*vec3(.035,.028,.02))-.5);
+   float seam=smoothstep(.42,.49,max(cell.x,max(cell.y,cell.z)));
+   float fine=smoothstep(.455,.49,max(abs(fract(wp.x*.11)-.5),abs(fract(wp.z*.09)-.5)));
+   alb=mix(alb,alb*vec3(.55,.42,.32),smoothstep(.58,.86,nA)*.55);
+   alb=mix(alb,vec3(.02,.022,.028),seam*(.45+.35*det));
+   alb*=mix(1.,.62,fine*det);
+   float win=step(.62,nB)*step(.28,fract(wp.y*.015+nA))*step(.22,fract(wp.x*.012));
+   em+=mix(vec3(1.,.78,.45),vec3(.45,.7,1.),step(.55,nA))*win*(.35+.9*det)*(.65+.35*step(.15,fract(TIME*.04+nA*6.)));
+   vec3 tn=normalize(cross(N,vec3(.21,1.,.07)));
+   N=normalize(N+tn*(nA-.5)*det*.55+cross(N,tn)*(nB-.5)*det*.35);
+   sp=mix(sp,.22+.85*nB,.5);gs=mix(gs,16.+80.*nB,.45);
+   float stripe=step(.92,fract(wp.y*.008+wp.x*.001));
+   alb=mix(alb,vec3(.55,.32,.05),stripe*.35);em+=vec3(1.,.45,.05)*stripe*.15;
+  }
  }else if(uKind==2){
   alb=vec3(.24,.25,.3)*(.4+.9*h1(vI.x*5.));sp=1.;gs=50.;
   em=step(.9,h1(vI.x*9.))*vec3(1.,.42,.12)*3.*(.5+.5*sin(TIME*3.+vI.x*90.));
@@ -679,7 +697,7 @@ void main(){
  float nl=dot(N,L),df=clamp(nl*1.15+.06,0.,1.),fr=1.-max(dot(N,V),0.);
  vec3 amb=neb(N,6.)*1.6+.004,H=normalize(L+V);
  vec3 col=alb*(uSunC.rgb*df*3.2+amb)+uSunC.rgb*pow(max(dot(N,H),0.),gs)*sp*df;
- col+=fr*fr*fr*fr*neb(N,6.)*.55*rim+em+iri*(.5+.5*cos(6.283*(fr*1.6+vI.x+vec3(0,.33,.67))))*fr*fr*.1;
+ col+=fr*fr*fr*neb(N,6.)*.85*rim+uSunC.rgb*pow(fr,2.2)*.22*rim+em+iri*(.5+.5*cos(6.283*(fr*1.6+vI.x+vec3(0,.33,.67))))*fr*fr*.15;
  o=vec4(fog(col,vP,uCN.z),0);}`;
 
 // ships fly: uShip 0 = fighter wings holding formation round a patrol loop, 1 = frigates on a slow orbit,
@@ -822,7 +840,9 @@ void main(){
  else if(uKind==3)g=.04+.8*fr+pow(.5+.5*cos(vU.y*43.98),16.)*(.45+.9*pow(.5+.5*sin(vU.x*40.-TIME*1.5),6.))*smoothstep(0.,.15,vU.x);
  else if(uKind==4)g=.1+.8*fr+1.2*pow(.5+.5*sin(vU.x*70.-TIME*5.),8.);
  else g=(.05+1.1*vU.y*vU.y*vU.y+2.5*smoothstep(.94,1.,vU.y))*smoothstep(15.,90.,length(vP));
- o=vec4(cc*g*vI.z,0);}`;
+ float band=pow(.5+.5*sin(vU.y*16.+TIME*(.8+vI.x)+vU.x*7.),3.);
+ vec3 bio=mix(cc,cc.brg,.28+.4*sin(vI.x*6.2));
+ o=vec4((bio*(g+.65*band)+vec3(.2,.55,.7)*band*fr*1.4)*vI.z,0);}`;
 
 // soft sprites, additive. uMode 0 space dust (stretches into streaks at speed), 1 drifting spores, 2 nebula wisps
 const SPR_V = VI + `
@@ -928,17 +948,18 @@ void main(){
  }
  else if(id>11.5){alb=vec3(.03,.032,.037)*(.75+.5*texture(uNz,vL*vec3(3.,60.,3.)).r);sp=1.1;gs=45.;}        // brushed frame alloy
  else if(id>10.5){o=vec4(mix(vec3(.2,.9,1.),vec3(1.,.15,.1),warn)*(.5+.3*step(.5,fract(TIME*.5+vL.x*3.))),-1.);return;}
- else if(id>9.5){                                             // glass: a tinted pane that mirrors the sky and the cabin, thickest at its frame
-  vec3 Ng=faceforward(N,Vd,N),R=reflect(Vd,Ng);float fr=.04+.96*pow(1.-abs(dot(Ng,Vd)),4.),ty=(vL.y+.95)/2.2;
-  float e=min(vL.y+.97,1.5-vL.y),edge=smoothstep(0.,.24,e);
-  float n=texture(uNz,vL*vec3(2.,7.,2.)).r,n2=texture(uNz,vL*13.).r,sg=pow(max(dot(Vd,L),0.),5.);
-  vec2 cg=floor(vec2(vL.x,vL.y-vL.z)*7.);                                                               // the instruments, mirrored faintly
-  vec3 c=(neb(R,3.)*1.6+glow(R)*2.)*fr*(1.+1.5*(1.-edge))+uSunC.rgb*sg*.004;
-  c+AM*exp(-(vL.y+1.)*2.6)*.012;
-  c+=vec3(.5,.7,.8)*(1.-edge)*(1.-edge)*.02;
-  float ck=0.;                                                // damage no longer draws on the glass: the HUD and the lamps carry it
-  c+=uSunC.rgb*pow(max(dot(R,L),0.),220.)*fr*2.5+vec3(.2,.45,.9)*pow(1.-edge,3.)*.035+vec3(.9,.35,.15)*pow(1.-edge,7.)*.03;
-  o=vec4(c+vec3(.5,.55,.6)*ck*(.15+sg),.03+.12*(1.-edge)+ck*.2);return;}
+ else if(id>9.5){                                             // canopy: fresnel, edge thickness, faint scratches, a soft sun streak. One cheap pass, no refraction.
+  vec3 Ng=faceforward(N,Vd,N),R=reflect(Vd,Ng);float nd=abs(dot(Ng,Vd)),fr=.03+.97*pow(1.-nd,3.2);
+  float e=min(vL.y+.97,1.45-vL.y),edge=smoothstep(0.,.28,e);
+  float n=texture(uNz,vL*vec3(3.2,9.,2.4)).r,n2=texture(uNz,vL*vec3(40.,8.,40.)).r;
+  float scratch=smoothstep(.72,.9,n2)*smoothstep(.2,.8,abs(fract(vL.x*37.+vL.y*11.)-.5));
+  vec3 cabin=AM*exp(-abs(vL.y+1.05)*3.2)*.05+vec3(.25,.55,.7)*exp(-dot(vL.xz,vL.xz)*.08)*.02;
+  vec3 c=(neb(R,2.)*1.35+glow(R)*1.6)*fr*(.55+1.1*(1.-edge))+cabin*fr*1.4;
+  c+=uSunC.rgb*pow(max(dot(R,L),0.),90.)*fr*(.35+scratch*1.8);
+  c+=uSunC.rgb*pow(max(dot(Vd,L),0.),18.)*scratch*.08;
+  c+=vec3(.55,.75,.9)*pow(1.-edge,2.)*.045+vec3(.95,.55,.25)*pow(1.-edge,5.)*.04;
+  c+=vec3(.7,.85,1.)*pow(nd,6.)*.012;
+  o=vec4(c,.045+.16*(1.-edge)+scratch*.04);return;}
  if(id>12.5){}
  else if(id>11.5){}
  else if(id<.5){alb=vec3(.011,.0115,.014)*(.85+.3*texture(uNz,vL*40.).r);sp=.2;gs=20.;}
@@ -994,6 +1015,9 @@ void main(){
  col+=alb*(Lc*.9+neb(N,6.)*.4)*14.*pow(1.-max(dot(N,V),0.),3.)*step(6.5,id)*step(id,7.5);
  col*=.62+.38*smoothstep(-3.6,-1.,vL.y);
  col+=em;
+ col+=vec3(.55,.62,.7)*pow(1.-max(dot(N,V),0.),2.6)*.07;
+ col+=vec3(1.,.45,.12)*uCk.z*pool(vec3(0.,-1.15,-2.05),1.1)*.2;
+ col+=vec3(1.,.15,.08)*warn*uDm*.04;
  o=vec4(col,-1.);}`;
 
 // one big triangle for every full-screen pass
@@ -1966,7 +1990,7 @@ const P_HUD = prog(HD + `layout(location=0)in vec2 aP;layout(location=1)in vec2 
 void main(){vec2 q=aP*uR.zw;float c=cos(uZ.y),s=sin(uZ.y);q=vec2(q.x*c-q.y*s,q.x*s+q.y*c);
  float z=uZ.x*(1.-uZ.w*(aP.x*aP.x*.36+aP.y*aP.y*.16));q.x*=1.+uZ.w*aP.y*aP.y*.06;                // the visor curves: edges wrap toward the eye
  vec3 p=uShip*(vec3(uR.xy+q,z)+uMo)-uEye;vU=mix(uUV.xy,uUV.zw,aU);gl_Position=uVP*vec4(p,1);}`,
-  HD + `in vec2 vU;uniform sampler2D uTx;uniform vec4 uZ;out vec4 o;void main(){vec4 t=texture(uTx,vU);o=vec4(t.rgb*uZ.z,0);}`);
+  HD + `in vec2 vU;uniform sampler2D uTx;uniform vec4 uZ;out vec4 o;void main(){vec4 t=texture(uTx,vU);o=vec4(t.rgb*uZ.z,t.a);}`);
 const hudVA = gl.createVertexArray(), visVA = gl.createVertexArray(); let visN = 0;
 { const v = [], NX = 40, NY = 20, pt = (i, j) => { const x = i / NX, y = j / NY; v.push(x * 2 - 1, y * 2 - 1, x, 1 - y); };
   for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) { pt(i, j); pt(i + 1, j); pt(i, j + 1); pt(i + 1, j); pt(i + 1, j + 1); pt(i, j + 1); }
@@ -2157,19 +2181,36 @@ function noteKill(a) {
   if (!ST.deadNames.includes(a.name)) ST.deadNames.push(a.name);
   if (ST.deadNames.length > 240) ST.deadNames.splice(0, 40);
   if (a.cast && cast()[a.cast]) { const ch = cast()[a.cast]; ch.dead = 1; ch.cool = 1e15; }
-  quietUntil = Math.max(quietUntil || 0, tm + 110);
+  quietUntil = Math.max(quietUntil || 0, tm + (typeof v123Quiet === 'function' ? v123Quiet() : 38));
   cmT = Math.max(cmT, 190);
 }
 let NPT = null;
+function wpOk(a) { return !!(a && a.wp && a.wp.length >= 3 && a.wp[0] != null && a.wp[1] != null && a.wp[2] != null); }
+function ensureWp(a) {
+  if (!a) return;
+  if (wpOk(a)) return;
+  try { if (NPT) npcGoal(a); } catch (e) {}
+  if (!wpOk(a)) { const j = () => (Math.random() - .5) * 800; a.wp = [(a.x || 0) + j(), (a.y || 0) + j() * .3, (a.z || 0) + j()]; }
+}
+function leadLive(l) {
+  if (!l || l.x == null) return false;
+  if (typeof PL !== 'undefined' && l === PL) return true;
+  if (l.dead) return false;
+  return NPCS.includes(l);
+}
 function npcGoal(a) {
   const P = NPT, j = () => (Math.random() - .5) * 160;
+  const here = () => [a.x + j() * 5, a.y + j(), a.z + j() * 5];
   a.toGate = 0;
+  if (!P) { a.wp = here(); return; }
   if (a.role === 0) { a.toGate = a.st & 1; a.wp = a.toGate ? [j(), j(), j()] : [P.dock[0] + j(), P.dock[1] + j() * .5, P.dock[2] + j()]; }
-  else if (a.role === 1) { const f = P.fields[a.i % 3]; a.wp = a.st & 1 ? [P.dock[0] + j(), P.dock[1] + j(), P.dock[2] + j()] : [f[0] + j() * 2, f[1] + j() * 2, f[2] + j() * 2]; }
-  else if (a.role === 2) a.wp = P.loop[a.k % 4];
-  else if (a.role === 3) { a.toGate = !(a.st & 1); a.wp = a.toGate ? [j(), j(), j()] : P.far[a.i % 3]; }
-  else if (a.role === 6) { const s = a.anchor, t = a.k * 1.1 + a.i; a.wp = s ? [s[0] + Math.cos(t) * a.orb, s[1] + Math.sin(t * .7) * a.orb * .35, s[2] + Math.sin(t) * a.orb] : P.fields[a.i % 3]; }
-  else a.wp = a.st & 1 ? a.A : a.B;
+  else if (a.role === 1) { const f = P.fields[(a.i || 0) % 3] || P.fields[0]; a.wp = a.st & 1 ? [P.dock[0] + j(), P.dock[1] + j(), P.dock[2] + j()] : [f[0] + j() * 2, f[1] + j() * 2, f[2] + j() * 2]; }
+  else if (a.role === 2) a.wp = P.loop[(a.k || 0) % 4] || P.loop[0];
+  else if (a.role === 3) { a.toGate = !(a.st & 1); a.wp = a.toGate ? [j(), j(), j()] : (P.far[(a.i || 0) % 3] || P.far[0]); }
+  else if (a.role === 6) { const s = a.anchor, t = (a.k || 0) * 1.1 + (a.i || 0), orb = a.orb || 400; a.wp = s ? [s[0] + Math.cos(t) * orb, s[1] + Math.sin(t * .7) * orb * .35, s[2] + Math.sin(t) * orb] : (P.fields[(a.i || 0) % 3] || here()); }
+  else if (a.role === 5) a.wp = [a.x + j() * 10, a.y + j() * 2, a.z + j() * 10];
+  else { const p = (a.st & 1 ? a.A : a.B) || a.A || a.B; a.wp = (p && p.length >= 3 && p[0] != null) ? [p[0], p[1], p[2]] : here(); }
+  if (!wpOk(a)) a.wp = here();
 }
 function npcSpawn() {
   if (typeof lifeReset === 'function') lifeReset();
@@ -2181,7 +2222,7 @@ function npcSpawn() {
     const r = R(), role = r < .4 ? 0 : r < .62 ? 1 : r < .86 ? 2 : 3, d = dir(), ds = 400 + R() * 3000;
     const a = { i, role, big: 0, x: d[0] * ds, y: d[1] * ds, z: d[2] * ds, vx: 0, vy: 0, vz: 0, fx: -d[0], fy: -d[1], fz: -d[2], ux: 0, uy: 1, uz: 0, sp: [38, 30, 70, 95][role] * (.8 + R() * .4), size: [11, 9, 8, 7][role] * (.9 + R() * .3), st: R() * 2 | 0, t: 0, hold: 0, wp: null, hue: R(), seed: R(), fac: role === 2 ? SYS.fac : R() * 4 | 0, name: pickN(R, NPN), pilot: personName(R), lead: null, off: null, k: R() * 4 | 0 };
     if (role === 2) { if (lead && lead.n < 2) { lead.n++; a.lead = lead.a; a.off = [(lead.n === 1 ? -1 : 1) * 30, -4, 34]; a.hue = lead.a.hue; a.x = lead.a.x + a.off[0]; a.y = lead.a.y; a.z = lead.a.z + 30; } else lead = { a, n: 0 }; }
-    npcGoal(a); NPCS.push(a);
+    npcGoal(a); ensureWp(a); NPCS.push(a);
   }
   for (let i = 0; i < 5; i++) { const d = dir(), ds = 900 + R() * 1500; NPCS.push({ i: 300 + i, role: 6, big: 0, x: d[0] * ds, y: d[1] * ds, z: d[2] * ds, vx: 0, vy: 0, vz: 0, fx: -d[0], fy: -d[1], fz: -d[2], ux: 0, uy: 1, uz: 0, sp: 42 + R() * 14, size: 4.5, st: 0, t: 0, hold: 0, wp: NPT.fields[i % 3], hue: .55, seed: R(), fac: SYS.fac, name: 'Tender ' + (i + 1), lead: null, k: i, anchor: null, orb: 380 + R() * 500 }); }   // small craft that work round the nearest station
   const nr = hostLv === 2 ? 2 + (R() * 3 | 0) : SYS.danger >= 2 ? 2 + (R() * 2 | 0) : 0;
@@ -2191,9 +2232,9 @@ function npcSpawn() {
   for (let i = 0; i < nb; i++) {
     const d = dir(), s = dir(), o = 1500 + R() * 1500, A = [d[0] * 9000 + s[0] * o, d[1] * 2500 + s[1] * o, d[2] * 9000 + s[2] * o], B = [-d[0] * 9000 + s[0] * o, -d[1] * 2500 + s[1] * o, -d[2] * 9000 + s[2] * o], u = R();
     const a = { i: n + i, role: 4, big: 1, x: A[0] + (B[0] - A[0]) * u, y: A[1] + (B[1] - A[1]) * u, z: A[2] + (B[2] - A[2]) * u, vx: 0, vy: 0, vz: 0, fx: -d[0], fy: 0, fz: -d[2], ux: 0, uy: 1, uz: 0, sp: 26 + R() * 10, size: 380 + R() * 420, st: 0, t: 0, hold: 0, A, B, hue: R(), seed: R(), fac: SYS.fac, name: 'ISV ' + pickN(R, NM.navy), lead: null, k: 0 };
-    npcGoal(a); NPCS.push(a);
+    npcGoal(a); ensureWp(a); NPCS.push(a);
   }
-  for (const a of NPCS) { const hs2 = a.big ? [3000, 2000] : a.bounty ? [240, 320] : [[60, 40], [50, 30], [90, 80], [40, 50], 0, [150, 300], [35, 25]][a.role]; a.hpM = a.hp = hs2[0]; a.shM = a.sh = hs2[1]; a.shT = -99; a.s = 0; a.var = a.role === 2 || a.role === 5 ? 2 : a.role === 3 ? 1 : a.i & 1; }
+  for (const a of NPCS) { const hs2 = a.big ? [3000, 2000] : a.bounty ? [240, 320] : ([[60, 40], [50, 30], [90, 80], [40, 50], 0, [150, 300], [35, 25]][a.role] || [50, 30]); a.hpM = a.hp = hs2[0]; a.shM = a.sh = hs2[1]; a.shT = -99; a.s = 0; a.var = a.role === 2 || a.role === 5 ? 2 : a.role === 3 ? 1 : (a.i || 0) & 1; ensureWp(a); }
 }
 const AVO = [];
 let trafT = 8;
@@ -2246,10 +2287,13 @@ function npcTick(dt) {
     const bl = .6 + .4 * Math.sin(tm * 3 + a.i), s = ed * .0026, c = a.role === 5 ? [1.4, .25, .2] : a.role === 2 ? [.4, .9, 1.4] : [1.2, 1, .7];
     put(DPa, ex, ey, ez, s, 0, 0, 0, .3, c[0] * bl * .35, c[1] * bl * .35, c[2] * bl * .35, 0); }
   for (const a of NPCS) {
-    let tx, ty, tz, lv = 0; const arr = a.big ? 1200 : 150, l = a.lead;
-    if (l) { const rx = l.fy * l.uz - l.fz * l.uy, ry = l.fz * l.ux - l.fx * l.uz, rz = l.fx * l.uy - l.fy * l.ux; lv = Math.hypot(l.vx, l.vy, l.vz);
-      tx = l.x + rx * a.off[0] + l.ux * a.off[1] - l.fx * a.off[2] + l.vx * .6; ty = l.y + ry * a.off[0] + l.uy * a.off[1] - l.fy * a.off[2] + l.vy * .6; tz = l.z + rz * a.off[0] + l.uz * a.off[1] - l.fz * a.off[2] + l.vz * .6;
-    } else { tx = a.wp[0]; ty = a.wp[1]; tz = a.wp[2]; }
+    let tx, ty, tz, lv = 0; const arr = a.big ? 1200 : 150;
+    let l = a.lead;
+    try {
+    if (l && !leadLive(l)) { a.lead = null; l = null; ensureWp(a); }
+    if (l) { const off = a.off || [0, 0, 0]; const rx = l.fy * l.uz - l.fz * l.uy, ry = l.fz * l.ux - l.fx * l.uz, rz = l.fx * l.uy - l.fy * l.ux; lv = Math.hypot(l.vx || 0, l.vy || 0, l.vz || 0);
+      tx = l.x + rx * off[0] + (l.ux || 0) * off[1] - l.fx * off[2] + (l.vx || 0) * .6; ty = l.y + ry * off[0] + (l.uy || 1) * off[1] - l.fy * off[2] + (l.vy || 0) * .6; tz = l.z + rz * off[0] + (l.uz || 0) * off[1] - l.fz * off[2] + (l.vz || 0) * .6;
+    } else { ensureWp(a); tx = a.wp[0]; ty = a.wp[1]; tz = a.wp[2]; }
     const dx = tx - a.x, dy = ty - a.y, dz = tz - a.z, d = Math.hypot(dx, dy, dz) || 1;
     const sp = a.hold ? 0 : l ? Math.min(a.sp * 1.5, lv + d * .9) : a.sp * Math.min(1, .15 + d / arr);
     let ax = dx / d * sp - a.vx, ay = dy / d * sp - a.vy, az = dz / d * sp - a.vz;
@@ -2264,11 +2308,15 @@ function npcTick(dt) {
       for (const b of NPCS) { if (b === a) continue; const ex = a.x - b.x, ey = a.y - b.y, ez = a.z - b.z, r = b.big ? b.size * .8 : 26, e2 = ex * ex + ey * ey + ez * ez; if (e2 < r * r && e2 > .01) { const e = Math.sqrt(e2), k = (r - e) * (b.big ? 3 : 1.5) / e; ax += ex * k; ay += ey * k; az += ez * k; } }
     }
     { const wx = a.vx + ax, wy = a.vy + ay, wz = a.vz + az, wl = Math.hypot(wx, wy, wz) || 1, nx = wx / wl, ny = wy / wl, nz = wz / wl;
-      const dot = a.fx * nx + a.fy * ny + a.fz * nz, ang = Math.acos(Math.max(-1, Math.min(1, dot))), mt = (a.big ? .09 : a.role === 5 || a.role === 2 ? 1.5 : a.role === 3 ? 1.1 : .8) * dt, k = wl < 1.5 ? 0 : Math.min(1, mt / Math.max(ang, 1e-4));
+      const dot = a.fx * nx + a.fy * ny + a.fz * nz, ang = Math.acos(Math.max(-1, Math.min(1, dot))), mt = (a.big ? .05 : a.role === 0 ? .32 : a.role === 4 ? .14 : a.role === 1 ? .42 : a.role === 5 || a.role === 2 ? 1.35 : a.role === 3 ? .95 : .75) * dt, k = wl < 1.5 ? 0 : Math.min(1, mt / Math.max(ang, 1e-4));
       const bank = Math.max(-1, Math.min(1, ((nx - a.fx) * -a.fz + (nz - a.fz) * a.fx) * 2.4)) * (a.big ? .12 : 1);
       a.fx += (nx - a.fx) * k; a.fy += (ny - a.fy) * k; a.fz += (nz - a.fz) * k; const fl = Math.hypot(a.fx, a.fy, a.fz) || 1; a.fx /= fl; a.fy /= fl; a.fz /= fl;
       const want = Math.min(wl, a.sp * 1.6) * (dot < .3 ? .35 : 1), ds = want - a.s; a.s += Math.max(-a.sp * .9 * dt, Math.min(a.sp * (a.big ? .15 : .45) * dt, ds));
-      a.vx = a.fx * a.s; a.vy = a.fy * a.s; a.vz = a.fz * a.s; a.x += a.vx * dt; a.y += a.vy * dt; a.z += a.vz * dt;
+      { const mass = a.big ? 6.5 : a.role === 0 ? 3.2 : a.role === 4 ? 5 : a.role === 1 ? 2.3 : 1.15, ak = Math.min(1, dt * (3.1 / mass));
+        const tvx = a.fx * a.s, tvy = a.fy * a.s, tvz = a.fz * a.s, dvx = tvx - a.vx, dvy = tvy - a.vy, dvz = tvz - a.vz;
+        a.vx += dvx * ak; a.vy += dvy * ak; a.vz += dvz * ak;
+        if (!a.big && dvx * dvx + dvy * dvy + dvz * dvz > 280 && (a._rcs || 0) < tm) { a._rcs = tm + .42; put(DPa, a.x - px - a.fx * a.size * .4, a.y - py, a.z - pz - a.fz * a.size * .4, Math.max(.4, a.size * .12), 0, 0, 0, .15, .45, .62, .85, 0); } }
+      a.x += a.vx * dt; a.y += a.vy * dt; a.z += a.vz * dt;
       const k2 = Math.min(1, dt * 2.5); a.ux += (-a.fz * bank * .9 - a.ux) * k2; a.uy += (1 - a.uy) * k2; a.uz += (a.fx * bank * .9 - a.uz) * k2;
       if (tm - a.shT > 5) a.sh = Math.min(a.shM, a.sh + dt * a.shM * .12); }
     if (!l) {
@@ -2281,7 +2329,8 @@ function npcTick(dt) {
       }
     }
     if (a.s > 4) { const L2 = Math.min(a.big ? 900 : 60, a.s * (a.big ? 9 : .9)), w = a.big ? a.size * .03 : a.size * .05, k = Math.min(1, a.s / a.sp), bx3 = a.x - px - a.fx * a.size * .92, by3 = a.y - py - a.fy * a.size * .92, bz3 = a.z - pz - a.fz * a.size * .92; put(DT, bx3 - a.fx * L2 * .5, by3 - a.fy * L2 * .5, bz3 - a.fz * L2 * .5, w, -a.fx * L2, -a.fy * L2, -a.fz * L2, 0, (a.role === 5 ? 2.4 : .5) * k, (a.role === 5 ? .7 : 1.3) * k, (a.role === 5 ? .3 : 2.6) * k, 0); }   // a line of light behind the drives, longer the faster it goes
-    put(a.big ? DAf : DAgs[a.var || 0], a.x - px, a.y - py, a.z - pz, a.size, a.fx, a.fy, a.fz, a.seed, a.ux, a.uy, a.uz, a.hue);
+    put(a.big ? DAf : DAgs[(a.var || 0) % 3], a.x - px, a.y - py, a.z - pz, a.size, a.fx, a.fy, a.fz, a.seed, a.ux, a.uy, a.uz, a.hue);
+    } catch (e) { console.error('npc', a && a.name, e); a.lead = null; ensureWp(a); }
   }
   for (const j of rp().jobs) if (j.ty === 3 && !j.stage && isHere(jobDest(j))) { const w = wreckAt(j); put(DAf, w[0] - px, w[1] - py, w[2] - pz, 46, .6, .3, .7, .37, .5, .8, .2, .08); put(DPa, w[0] - px, w[1] - py, w[2] - pz, 18, 0, 0, 0, .3, .9, .45, .12, 0); }
   for (const q of DAgs) flush(q); flush(DAf);
@@ -2290,7 +2339,7 @@ function npcTick(dt) {
 // ---- navigation: what can be pointed at here, which one is selected, scanning ----
 let NAV = [], navId = '', navAuto = 1, navT = 0, scanT = 0, scanned = {}, psel = 0, hudTipS = '', hudTipT = 0, hudLast = 0, obj = { text: '', nav: '' };
 const wreckAt = (j) => { const R = mulberry32(SYS.salt ^ (j.pay * 977 + j.n * 31)), a = R() * 6.283, y = R() * .5 - .25, c = Math.sqrt(1 - y * y), d = 1500 + R() * 2500; return [Math.cos(a) * c * d, y * d, Math.sin(a) * c * d]; };
-const scanR = () => 1500 * (1 + .5 * upLv('scn')) * (crew('nav') ? 1.3 : 1);
+const scanR = () => 1500 * (1 + .5 * upLv('scn')) * (crew('nav') ? 1.3 : 1) * (typeof shipMul === 'function' ? shipMul('sc') : 1);
 function navBuild() {
   const N = SYS.atm ? [] : [{ id: 'gate', name: 'WARP GATE', kind: 'gate', x: 0, y: 0, z: 0 }];
   if (trader) N.push({ id: 'trader', name: 'TRADER', kind: 'dock', x: 430, y: -70, z: 260 });
@@ -2361,25 +2410,46 @@ function xrEdge(gp, h) {
   const down = (i) => { const b = gp.buttons[i]; return !!(b && (b.pressed || (i === 0 && b.value > .65))); };
   return (i) => { const p = down(i), r = p && !pv[i]; pv[i] = p; return r; };
 }
+let xrFace = { l4: 0, l5: 0, r4: 0, r5: 0, l3: 0 }, xrPauseHold = 0, xrStickHold = 0;
+function xrDown(gp, i) {
+  const b = gp.buttons[i];
+  if (!b) return false;
+  if (i === 6) return false;
+  if (i === 4 || i === 5) return !!(b.pressed || b.value > .65);
+  return !!(b.pressed || (i === 0 && b.value > .65));
+}
 function xrPad(src, gp) {
-  // Touch Plus, xr-standard: 0 trigger, 1 grip, 3 stick click, 4 X or A, 5 Y or B, 7 menu on the left only.
-  // The Meta button on the right is reserved by the system and never arrives here.
-  const h = src.handedness === 'left' ? 'left' : 'right';
-  if (h !== 'left' && h !== 'right') return 0;
-  const edge = xrEdge(gp, h), steerLeft = !CFG.vrHand, menuHand = steerLeft ? 'right' : 'left';
-  const hasMenu = h === 'left' && gp.buttons.length > 7;
+  // meta-quest-touch-plus, xr-standard: 0 trigger, 1 grip, 3 stick click, 4 X/A, 5 Y/B.
+  // Button 6 is the thumbrest. Button 7 is the left menu on the profile, and Quest often never reports it.
+  const h = src.handedness === 'left' ? 'left' : src.handedness === 'right' ? 'right' : '';
+  if (!h) return 0;
+  const pv = xprev[h];
+  const edge = (i) => { const p = xrDown(gp, i), r = p && !pv[i]; pv[i] = p; return r; };
+  if (h === 'left') { xrFace.l4 = xrDown(gp, 4); xrFace.l5 = xrDown(gp, 5); xrFace.l3 = xrDown(gp, 3); }
+  else { xrFace.r4 = xrDown(gp, 4); xrFace.r5 = xrDown(gp, 5); }
+  const steerLeft = !CFG.vrHand, menuHand = steerLeft ? 'right' : 'left';
+  const menuEdge = h === 'left' && gp.buttons.length > 7 && edge(7);
   if (jpOpen) {
-    if (h !== menuHand) { if (edge(5) || (hasMenu && edge(7))) closePanel(); return 0; }   // the steer hand keeps flying. Y or the menu button still backs out.
+    if (h !== menuHand) { if (edge(5) || menuEdge) closePanel(); return 0; }
     const ay = gp.axes[3] || 0, now = performance.now();
     if (Math.abs(ay) > .65) { if (items.length && (xNav[h] === 0 || now >= xNav[h])) { const first = xNav[h] === 0; psel = (psel + (ay > 0 ? 1 : -1) + items.length) % items.length; xNav[h] = now + (first ? 480 : 220); } } else if (Math.abs(ay) < .3) xNav[h] = 0;
-    if (edge(0) || edge(4)) pick(psel); else if (edge(5) || (hasMenu && edge(7))) closePanel();
+    if (edge(0) || edge(4)) pick(psel); else if (edge(5) || menuEdge) closePanel();
     return 1;
   }
-  if (hasMenu && edge(7)) pausePanel();
+  if (menuEdge) pausePanel();
   if (h === 'right') { if (edge(4)) interact(); if (edge(5)) navCycle(1); }
   else { if (edge(4)) journalPanel(); if (edge(5)) wpnCycle(); }
   if (h === (CFG.vrHand ? 'left' : 'right') && edge(3)) thr = 0;
   return 0;
+}
+function xrPauseWatch(dt) {
+  if (!xr || !flying()) { xrPauseHold = 0; xrStickHold = 0; return; }
+  const both = xrFace.l5 && xrFace.r5;
+  xrPauseHold = both ? xrPauseHold + dt : 0;
+  xrStickHold = xrFace.l3 ? xrStickHold + dt : 0;
+  if (!jpOpen && (xrPauseHold > .42 || xrStickHold > .62)) {
+    xrPauseHold = 0; xrStickHold = 0; pausePanel();
+  }
 }
 
 // ---- painting the HUD ----
@@ -2459,21 +2529,32 @@ function hudTick(now) { cinFit(); if (now - hudLast < (xr ? 70 : 45) || !flying(
 function hudDraw(k) {
   if (!flying()) return;
   const P = P_HUD; gl.useProgram(P.p); gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND);
-  if (xr && jpOpen) gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); else gl.blendFunc(gl.ONE, gl.ONE);
-  M3[0] = sRx; M3[1] = sRy; M3[2] = sRz; M3[3] = sUx; M3[4] = sUy; M3[5] = sUz; M3[6] = -sFx; M3[7] = -sFy; M3[8] = -sFz;
-  gl.uniformMatrix3fv(P.u.uShip, false, M3); if (xr) gl.uniform3f(P.u.uEye, cex, cey, cez); else gl.uniform3f(P.u.uEye, eox * k, eoy * k, eoz * k); gl.uniform3f(P.u.uMo, cockpit ? ckx : 0, cockpit ? cky : 0, cockpit ? ckz : 0);
+  if (xr && jpOpen) gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); else gl.blendFunc(gl.ONE, gl.ONE);
+  const visor = xr && jpOpen;
+  if (visor) {
+    M3[0] = eRx; M3[1] = eRy; M3[2] = eRz; M3[3] = eUx; M3[4] = eUy; M3[5] = eUz; M3[6] = -eFx; M3[7] = -eFy; M3[8] = -eFz;
+    gl.uniformMatrix3fv(P.u.uShip, false, M3); gl.uniform3f(P.u.uEye, eox, eoy, eoz); gl.uniform3f(P.u.uMo, 0, 0, 0);
+  } else {
+    M3[0] = sRx; M3[1] = sRy; M3[2] = sRz; M3[3] = sUx; M3[4] = sUy; M3[5] = sUz; M3[6] = -sFx; M3[7] = -sFy; M3[8] = -sFz;
+    gl.uniformMatrix3fv(P.u.uShip, false, M3); if (xr) gl.uniform3f(P.u.uEye, cex, cey, cez); else gl.uniform3f(P.u.uEye, eox * k, eoy * k, eoz * k); gl.uniform3f(P.u.uMo, cockpit ? ckx : 0, cockpit ? cky : 0, cockpit ? ckz : 0);
+  }
   gl.bindVertexArray(hudVA); gl.activeTexture(gl.TEXTURE8); gl.uniform1i(P.u.uTx, 8);
   gl.bindTexture(gl.TEXTURE_2D, hudTex); const asp = W / H, nar = !xr && asp < 1.05, hs2 = xr ? 1 : (nar ? Math.min(1.45, 1.5 * asp / 1.1) : Math.min(1.45, 1.55 * asp / 1.76, cinOn && asp > 1.6 ? 1.5 * asp / 2.39 : 9)) * CFG.size, cy0 = xr ? .2 : 0, hw = nar ? 1.1 * hs2 : 1.76 * hs2;                                   // on a flat screen the display is a visor across the whole view; in a headset it sits on the front glass
-  gl.uniform4f(P.u.uR, 0, cy0, hw, hs2); gl.uniform4f(P.u.uUV, nar ? .1875 : 0, 0, nar ? .8125 : 1, 1);
-  if (!xr && CFG.fxVisor) { gl.uniform4f(P.u.uZ, HZ, 0, .8 * hudOp, CFG.fxVisor); gl.bindVertexArray(visVA); gl.drawArrays(gl.TRIANGLES, 0, visN); gl.bindVertexArray(hudVA); }
+  if (visor) { gl.uniform4f(P.u.uR, 0, .05, 5.4, 3.05); gl.uniform4f(P.u.uZ, -9.2, 0, 1, 0); gl.uniform4f(P.u.uUV, 0, 0, 1, 1); }
+  else { gl.uniform4f(P.u.uR, 0, cy0, hw, hs2); gl.uniform4f(P.u.uUV, nar ? .1875 : 0, 0, nar ? .8125 : 1, 1); }
+  if (visor) gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  else if (!xr && CFG.fxVisor) { gl.uniform4f(P.u.uZ, HZ, 0, .8 * hudOp, CFG.fxVisor); gl.bindVertexArray(visVA); gl.drawArrays(gl.TRIANGLES, 0, visN); gl.bindVertexArray(hudVA); }
   else { gl.uniform4f(P.u.uZ, HZ, 0, .8 * hudOp, 0); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); }
   const c = navCur();
   if (c && !((xr || hudForce) && jpOpen)) {
-    const dx = c.x - px, dy = c.y - py, dz = c.z - pz, lx = dx * sRx + dy * sRy + dz * sRz, ly = dx * sUx + dy * sUy + dz * sUz, lz = -(dx * sFx + dy * sFy + dz * sFz);
-    let hx0 = 0, hy0 = 0, rot = 0, ic = 0;
-    if (lz < -1e-3) { hx0 = lx / -lz * -HZ; hy0 = ly / -lz * -HZ; }
-    if (!(lz < 0 && Math.abs(hx0) < .92 * hw && Math.abs(hy0 - cy0) < .8 * hs2)) { const a = Math.atan2(ly, lx); hx0 = Math.cos(a) * .82 * hw; hy0 = cy0 + Math.sin(a) * .68 * hs2; rot = a - 1.5708; ic = 1; }
-    gl.bindTexture(gl.TEXTURE_2D, icoTex); gl.uniform4f(P.u.uR, hx0, hy0, (ic ? .075 : .1) * hs2, (ic ? .075 : .1) * hs2); gl.uniform4f(P.u.uZ, HZ, rot, 1.1 * Math.max(.5, hudOp), 0); gl.uniform4f(P.u.uUV, ic ? .5 : 0, 0, ic ? 1 : .5, 1); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    if (typeof v123Bracket === 'function' && v123Bracket(c)) { /* world bracket */ }
+    else {
+      const dx = c.x - px, dy = c.y - py, dz = c.z - pz, lx = dx * sRx + dy * sRy + dz * sRz, ly = dx * sUx + dy * sUy + dz * sUz, lz = -(dx * sFx + dy * sFy + dz * sFz);
+      let hx0 = 0, hy0 = 0, rot = 0, ic = 0;
+      if (lz < -1e-3) { hx0 = lx / -lz * -HZ; hy0 = ly / -lz * -HZ; }
+      if (!(lz < 0 && Math.abs(hx0) < .92 * hw && Math.abs(hy0 - cy0) < .8 * hs2)) { const a = Math.atan2(ly, lx); hx0 = Math.cos(a) * .82 * hw; hy0 = cy0 + Math.sin(a) * .68 * hs2; rot = a - 1.5708; ic = 1; }
+      gl.bindTexture(gl.TEXTURE_2D, icoTex); gl.uniform4f(P.u.uR, hx0, hy0, (ic ? .04 : .045) * hs2, (ic ? .04 : .045) * hs2); gl.uniform4f(P.u.uZ, HZ, rot, .55 * Math.max(.5, hudOp), 0); gl.uniform4f(P.u.uUV, ic ? .5 : 0, 0, ic ? 1 : .5, 1); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
   }
   if (!xr && tm - lastFire < .6) { gl.bindTexture(gl.TEXTURE_2D, icoTex); gl.uniform4f(P.u.uR, gmx * -HZ, gmy * -HZ, .022, .022); gl.uniform4f(P.u.uZ, HZ, .785, .8, 0); gl.uniform4f(P.u.uUV, 0, 0, .5, 1); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); }   // where the guns point
   gl.activeTexture(gl.TEXTURE0); gl.disable(gl.BLEND); gl.bindVertexArray(VA0);
@@ -2700,7 +2781,7 @@ for (let t = 1; t < 6; t++) ITEMS.push({ id: 'o' + t, name: TIERS[t], col: TCSS[
 GOODS.forEach(([n], g) => ITEMS.push({ id: 'g' + g, name: n, col: '#d8c9a6', stack: 10, kind: 'good', get: () => (rp().hold || {})[g] || 0, set: (v) => { (rp().hold || (rp().hold = {}))[g] = v; }, sell: () => Math.round(priceAt(SYS, SYS.loc, g) * .92), buy: () => priceAt(SYS, SYS.loc, g), shape: 'crate' }));
 SUP.forEach(([n, col, , , p], s) => ITEMS.push({ id: 's' + s, name: n, col, stack: 5, kind: 'sup', get: () => (ST.sup || (ST.sup = [0, 0, 0]))[s], set: (v) => { (ST.sup || (ST.sup = [0, 0, 0]))[s] = v; }, sell: () => Math.round(p * .5), buy: () => p, shape: 'cell', use: s }));
 const IT = {}; for (const it of ITEMS) IT[it.id] = it;
-const holdSlots = () => 10 + 4 * upLv('bay');
+const holdSlots = () => Math.max(6, 10 + 4 * upLv('bay') + (typeof shipMul === 'function' ? shipMul('hold') : 0));
 const slotsUsed = () => ITEMS.reduce((a, it) => a + Math.ceil(it.get() / it.stack), 0);
 function roomFor(it) { const n = it.get(), part = n % it.stack ? it.stack - n % it.stack : 0; return Math.max(0, part + (holdSlots() - slotsUsed()) * it.stack); }
 function addItem(id, n) { const it = IT[id], k = Math.min(n, roomFor(it)); if (k > 0) it.set(it.get() + k); return k; }
@@ -2914,7 +2995,7 @@ function groove(t, s, e, rd, spb) {                              // the faster y
 
 // ---- shields: they take the knocks first and come back after four quiet seconds; the hull does not ----
 let shield = 100, shHit = -99;
-const shMax = () => 100 + 40 * upLv('shd');
+const shMax = () => (100 + 40 * upLv('shd')) * (typeof shipMul === 'function' ? shipMul('sh') : 1);
 function shieldTake(a) { shHit = tm; const t = Math.min(shield, a); shield -= t; return a - t; }
 
 // ---- ion storms: lightning that charges your capacitors (credits) and eats your shields ----
@@ -3785,7 +3866,7 @@ function lifeTick(dt) {
   PL.x = px; PL.y = py; PL.z = pz; PL.vx = vx; PL.vy = vy; PL.vz = vz; PL.fx = sFx; PL.fy = sFy; PL.fz = sFz; PL.ux = sUx; PL.uy = sUy; PL.uz = sUz;
   if (!flying()) return; cmTick(dt); escTick(dt);
 }
-function lifeReset() { try { if (ESC) escEnd(0, 'left'); CM = null; ST.jumps = (ST.jumps || 0) + 1; cmT = 210 + Math.random() * 100; quietUntil = tm + 120; } catch {} }   // a jump or a new sky: no one you know calls until you have actually travelled
+function lifeReset() { try { if (ESC) escEnd(0, 'left'); CM = null; ST.jumps = (ST.jumps || 0) + 1; const q = typeof v123Quiet === 'function' ? v123Quiet() : 38; cmT = q + 12 + Math.random() * 20; quietUntil = tm + q; } catch {} }   // a jump or a new sky: known pilots wait, but the lane itself is already busy
 const lifeObjective = () => { if (!ESC) return null; const E = ESC, alive = E.ships.filter((s) => !s.dead && NPCS.includes(s)), L = alive[0]; if (!L) return null;
   const dd = Math.hypot(E.dest[0] - L.x, E.dest[1] - L.y, E.dest[2] - L.z), rd = E.raiders.find((r) => !r.dead && !r.fled && NPCS.includes(r));
   if (E.wait) return { text: `Rescue the ${L.name}: ${rd ? 'drive the raiders off' : 'come alongside'} · ${(Math.hypot(L.x - px, L.y - py, L.z - pz) / 1000).toFixed(1)} km`, nav: 'n' + (rd || L).i };
@@ -4125,18 +4206,18 @@ function setUi() {
   if (tab === 'Comfort') {
     body = row('vrTurn', 'Turning', turnN) + row('vrVig', 'Comfort vignette', vigN) + row('vrHz', 'Refresh', hzN) + row('vrSeat', 'Posture', CFG.vrSeat ? 'standing' : 'seated') + row('vrH', 'Seat height', VRH[vrHi()][0]) + row('vrIpd', 'View scale', scaleN) + row('vrHand', 'Throttle hand', CFG.vrHand ? 'left' : 'right') + row('vrHap', 'Touch haptics', hapN) + row('ck', 'Cockpit', cockpit ? 'on' : 'off');
   } else if (tab === 'Display') {
-    body = row('hud', 'HUD colour', HCOL[CFG.hud][0]) + row('op', 'HUD brightness', Math.round(CFG.op * 100) + '%') + row('size', 'HUD size', Math.round(CFG.size * 100) + '%');
+    body = row('hud', 'HUD colour', HCOL[CFG.hud][0]) + row('op', 'HUD brightness', relSet(CFG.op, .7)) + row('size', 'HUD size', relSet(CFG.size, .85));
     if (headset) body += row('vrRs', 'Render scale', rsN + ' · next entry') + row('vrFov', 'Fixed foveation', fovN) + row('ck', 'Cockpit', cockpit ? 'on' : 'off') + `<p style="color:rgb(var(--hcr) / .8);margin:14px 0 0">Quest 3 budget is 13.9 ms at 72 Hz, 11.1 ms at 90, 8.3 ms at 120. A steady 72 is kinder than a 120 that drops frames. Foveation cheapens the edge of each eye. This game draws the world to an offscreen buffer first, so the foveation mostly helps the final pass. Drop the render scale if the frame time slips. Quest 3S has no 120 Hz mode.</p>`;
     else body += row('cin', 'Cinematic bars', CFG.cin ? 'on' : 'off') + row('fs', 'Full screen on launch', CFG.fs === 0 ? 'off' : 'on') + row('fxVisor', 'Curved visor', LV3(CFG.fxVisor)) + row('fxGlass', 'Visor glass', LV3(CFG.fxGlass)) + row('fxBlur', 'Motion blur', LV3(CFG.fxBlur)) + row('fxCA', 'Colour fringing', LV3(CFG.fxCA)) + row('fxGrain', 'Film grain', LV3(CFG.fxGrain)) + row('fxBloom', 'Glow', LV3(CFG.fxBloom)) + row('fxFlare', 'Lens flare', LV3(CFG.fxFlare)) + row('fxScan', 'Scanlines', CFG.fxScan ? 'on' : 'off') + row('fxVig', 'Darkened corners', CFG.fxVig ? 'on' : 'off');
   } else if (tab === 'Audio') {
-    body = row('radio', 'Ikosagon radio', CFG.radio ? 'on' : 'off') + row('pl', 'Playlist between songs', CFG.pl ? 'on' : 'off') + row('vEng', 'Engine and boost', pct(CFG.vEng)) + row('vCht', 'Radio chatter', pct(CFG.vCht)) + row('vRad', 'Music', pct(CFG.vRad));
+    body = row('radio', 'Ikosagon radio', CFG.radio ? 'on' : 'off') + row('pl', 'Playlist between songs', CFG.pl ? 'on' : 'off') + row('vEng', 'Engine and boost', relSet(CFG.vEng, .5)) + row('vCht', 'Radio chatter', relSet(CFG.vCht, 1)) + row('vRad', 'Music', relSet(CFG.vRad, 1));
     if (!headset && !touch) body += row('suno', 'Suno playlist', 'open');
   } else if (tab === 'Flight') {
     body = row('host', 'Other pilots', ['peaceful', 'wary', 'hostile'][CFG.host]) + row('inv', 'Invert pitch', CFG.inv ? 'on' : 'off') + row('wipe', 'New universe', 'asks first');
     if (!touch) body += row('ctl', 'Stick model', CFG.ctl ? 'space sim' : 'standard');
     if (touch) body += `<p style="color:rgb(var(--hcr) / .8);margin:14px 0 0">Hold to fly. Slide to steer. A second finger boosts. The FIRE button shoots. The aux display, gate and journal stay on their own controls.</p>`;
   } else {
-    body = row('sens', 'Mouse sensitivity', Math.round(CFG.sens * 100) + '%') + row('padL', 'Gamepad', CFG.padL === 0 ? 'match headset' : 'racer') + row('gpFire', 'Fire button', CFG.padL === 0 ? 'right trigger' : ({ 7: 'right trigger', 5: 'right bumper', 0: 'A', 2: 'X' }[CFG.gp.fire] || 'right trigger')) + row('gpBoost', 'Boost button', ({ 7: 'right trigger', 5: 'right bumper', 6: 'left trigger', 4: 'left bumper' }[CFG.gp.boost] || 'right bumper'))
+    body = row('sens', 'Mouse sensitivity', relSet(CFG.sens, 1)) + row('padL', 'Gamepad', CFG.padL === 0 ? 'match headset' : 'racer') + row('gpFire', 'Fire button', CFG.padL === 0 ? 'right trigger' : ({ 7: 'right trigger', 5: 'right bumper', 0: 'A', 2: 'X' }[CFG.gp.fire] || 'right trigger')) + row('gpBoost', 'Boost button', ({ 7: 'right trigger', 5: 'right bumper', 6: 'left trigger', 4: 'left bumper' }[CFG.gp.boost] || 'right bumper'))
       + `<h3 style="margin:22px 0 6px;font-weight:600;letter-spacing:.22em;font-size:12px;color:var(--hc)">KEYBOARD</h3>`
       + ACTS.map(([k, n]) => row('key:' + k, n, rebind === 'key:' + k ? 'press a key…' : keyName(CFG.keys[k] || k))).join('')
       + row('reset', 'All keys', 'defaults');
@@ -4182,6 +4263,7 @@ setP.onclick = (e) => {
   setUi();
 };
 
+function relSet(v, base) { if (v == null || !base) return 'Default'; const r = v / base; return Math.abs(r - 1) < .06 ? 'Default' : Math.round(r * 100) + '%'; }
 function pausePanel() {
   if (jpOpen) return closePanel();
   if (xr) return vrMenu();
@@ -4205,7 +4287,8 @@ function vrMenu() {
     { name: 'Comfort vignette', kind: vigN, desc: 'Darkens the edge of each eye while you boost', run: () => { CFG.vrVig = cyc(CFG.vrVig || 0, [0, .45, 1]); setUi(); vrMenu(); } },
     { name: 'Refresh', kind: (CFG.vrHz || 72) + ' Hz', desc: '72 is 13.9 ms. 90 is 11.1. 120 is 8.3 and Quest 3 only. The nearest rate the headset offers is used.', run: () => { CFG.vrHz = cyc(CFG.vrHz || 72, [72, 90, 120]); applyVrRate(); setUi(); vrMenu(); } },
     { name: 'Posture', kind: CFG.vrSeat ? 'standing' : 'seated', desc: 'Seated drops you into the chair. Standing uses the floor.', run: () => { CFG.vrSeat = CFG.vrSeat ? 0 : 1; setUi(); vrMenu(); } },
-    { name: 'Seat height', kind: VRH[vrHi()][0], desc: 'Where the cabin floor meets the room', run: () => { CFG.vrH = VRH[(vrHi() + 1) % VRH.length][1]; setUi(); vrMenu(); } },
+    { name: 'Seat height', kind: VRH[vrHi()][0], desc: 'A small nudge after the automatic seat line', run: () => { CFG.vrH = VRH[(vrHi() + 1) % VRH.length][1]; setUi(); vrMenu(); } },
+    { name: 'Recenter / Adjust seat height', desc: 'Puts your eyes over the dash, seated or standing. Also runs when the headset recenters.', run: () => { if (typeof xrRecenter === 'function') xrRecenter(); closePanel(); tip('Seat line set. You should see over the dash.', 3500); } },
     { name: 'View scale', kind: ({ .9: '90%', 1: '100%', 1.1: '110%' }[CFG.vrIpd || 1] || '100%'), desc: 'A small scale around the headset IPD. It does not replace it.', run: () => { CFG.vrIpd = cyc(CFG.vrIpd || 1, [.9, 1, 1.1]); setUi(); vrMenu(); } },
     { name: 'Throttle hand', kind: CFG.vrHand ? 'left' : 'right', desc: 'The cab has the stick on the left. Swap if you fly the other way.', run: () => { CFG.vrHand = CFG.vrHand ? 0 : 1; setUi(); vrMenu(); } },
     { name: 'Haptics', kind: hapN, desc: 'Touch Plus buzz on a panel, a snap turn, and a hit', run: () => { CFG.vrHap = ((CFG.vrHap || 0) + 1) % 3; setUi(); vrMenu(); } },
@@ -4223,7 +4306,9 @@ function vrMenu() {
       { name: 'B', desc: 'Next target in flight. Back, when a menu is open.' },
       { name: 'X', desc: 'Journal' },
       { name: 'Y', desc: 'Next weapon' },
-      { name: 'Menu, left controller', desc: 'This pause menu. The Meta button on the right belongs to the system.' },
+      { name: 'Menu, left controller', desc: 'Opens the system menu. Coming back pauses here. Hold B and Y, or press the left stick in, to pause without it.' },
+      { name: 'B + Y held', desc: 'Pause. The left menu button is not always sent to the page.' },
+      { name: 'Left stick press, held', desc: 'Pause, if B and Y are awkward.' },
       { name: 'Throttle stick click', desc: 'Throttle to zero' },
       { name: 'Hands', desc: 'Empty hands are ignored. The ship stays on Touch Plus.' },
     ], 'B to close') },
@@ -4234,7 +4319,10 @@ function vrMenu() {
 // a creature generator, and meters that choose a route. Quest 3 / Touch Plus controls are unchanged.
 const DIFFN = ['Story', 'Pilot', 'Veteran', 'Silence'];
 const DIFFHINT = ['Meters sip. Pilots miss. Docks stay kind.', 'The voyage as charted.', 'Sharper guns, thirstier tanks, dearer docks.', 'The dark keeps the books.'];
-if (CFG.diff == null) CFG.diff = 1;
+let diffWasSaved = false;
+try { diffWasSaved = Object.prototype.hasOwnProperty.call(JSON.parse(localStorage.ibCfg || '{}'), 'diff'); } catch {}
+if (!diffWasSaved || CFG.diff == null) CFG.diff = 1;
+if (CFG.diffPick == null) CFG.diffPick = 0;
 if ((CFG.fxMig || 0) < 7) CFG.fxMig = 7;
 function diffI() { const i = CFG.diff | 0; return i < 0 ? 0 : i > 3 ? 3 : i; }
 function diffK() { return [.45, 1, 1.55, 2.15][diffI()]; }
@@ -4791,7 +4879,7 @@ const panel121 = panel;
 panel = function (title, sub, list, foot) {
   if (title === 'Paused' && !list.some((d) => d.name === 'Difficulty')) {
     const d = diffI();
-    list.splice(1, 0, { name: 'Difficulty', kind: DIFFN[d], desc: DIFFHINT[d], run: () => { CFG.diff = (d + 1) % 4; keep('ibCfg', JSON.stringify(CFG)); setUi(); if (xr || hudForce) vrMenu(); else pausePanel(); } });
+    list.splice(1, 0, { name: 'Difficulty', kind: DIFFN[d], desc: DIFFHINT[d], run: () => { CFG.diff = (d + 1) % 4; CFG.diffPick = 1; keep('ibCfg', JSON.stringify(CFG)); setUi(); if (xr || hudForce) vrMenu(); else pausePanel(); } });
   }
   panel121(title, sub, list, foot);
 };
@@ -4809,7 +4897,7 @@ setUi = function () { setUi121(); v122Settings(); };
 const setClick121 = setP.onclick;
 setP.onclick = (e) => {
   const k = e.target.dataset && e.target.dataset.k;
-  if (k === 'diff') { CFG.diff = (diffI() + 1) % 4; setUi(); return; }
+  if (k === 'diff') { CFG.diff = (diffI() + 1) % 4; CFG.diffPick = 1; setUi(); return; }
   if (setClick121) setClick121(e);
 };
 
@@ -4849,6 +4937,423 @@ function v122Hooks() {
   E.hideSet = () => { setP.style.display = 'none'; };
   E.vrSet = () => { hudForce = 1; vrMenu(); };
 }
+// v1.23: the crash guard's neighbours, a vista worth arriving to, live events, voices, and loot.
+function v123Quiet() {
+  const d = typeof diffI === 'function' ? diffI() : 1;
+  return [24, 38, 52, 70][d] || 38;
+}
+function shipMul(k) {
+  const s = (ST && ST.ship) | 0;
+  if (k === 'sh') return [1, .86, 1.12, 1.4, .94][s] || 1;
+  if (k === 'sc') return [1, 1.15, .9, .85, 1.45][s] || 1;
+  if (k === 'hold') return [0, -2, 6, -2, 2][s] || 0;
+  if (k === 'mine') return s === 1 ? 1.35 : 1;
+  return 1;
+}
+
+const HULLS = [
+  ['Pathfinder', 'The ship you woke in. Balanced.', 0],
+  ['Prospector', 'A miner. The laser bites deeper. Less plate.', 900],
+  ['Haul', 'A freighter hull. The hold grows. She turns like a barge.', 1400],
+  ['Lance', 'A gunship. Shields and little else.', 1600],
+  ['Surveyor', 'Long eyes. The scanner reaches.', 1200]
+];
+function shipyardPanel() {
+  const cur = ST.ship | 0;
+  panel('Shipyard', HULLS[cur][0] + ' · ' + ST.credits + ' credits', HULLS.map((h, i) => ({
+    name: h[0], kind: i === cur ? 'fitted' : h[2] + ' cr', desc: h[1],
+    run: i === cur ? undefined : () => {
+      if (ST.credits < h[2]) return tip('The yard wants ' + h[2] + ' credits', 3000);
+      ST.credits -= h[2]; ST.ship = i; save(); showCargo(); tip(h[0] + ' is yours. She will feel different.', 4000); shipyardPanel();
+    }
+  })), 'A selects · B closes');
+}
+
+let commKind = 'pilot';
+function guessVoice(s) {
+  const t = s || '';
+  if (/silence|alien|it sings|nonhuman/i.test(t)) return 'silence';
+  if (/raider|pirate|cut your engines/i.test(t)) return 'pirate';
+  if (/control|patrol|combine|mc /i.test(t)) return 'combine';
+  if (/lantern|order|rite/i.test(t)) return 'lantern';
+  if (/hauler|union|trader/i.test(t)) return 'hauler';
+  if (/station|yard|dock/i.test(t)) return 'station';
+  return 'pilot';
+}
+const VOX = {
+  combine: { p: 118, rate: .92, f1: 700, f2: 1400, type: 'triangle', grit: .05, verb: 0, gain: .05 },
+  lantern: { p: 96, rate: .72, f1: 420, f2: 980, type: 'sine', grit: .02, verb: .35, gain: .045 },
+  hauler: { p: 88, rate: 1.05, f1: 500, f2: 1600, type: 'sawtooth', grit: .22, verb: 0, gain: .05 },
+  pirate: { p: 74, rate: 1.25, f1: 380, f2: 2100, type: 'square', grit: .45, verb: 0, gain: .05 },
+  silence: { p: 54, rate: .45, f1: 240, f2: 640, type: 'sine', grit: .08, verb: .5, gain: .04 },
+  station: { p: 132, rate: .85, f1: 800, f2: 1800, type: 'triangle', grit: .04, verb: .08, gain: .048 },
+  pilot: { p: 104, rate: 1, f1: 560, f2: 1500, type: 'sawtooth', grit: .1, verb: .05, gain: .046 },
+  rival: { p: 90, rate: 1.1, f1: 460, f2: 1900, type: 'square', grit: .3, verb: .1, gain: .05 }
+};
+let voxNoise = null, voxDelay = null;
+function voxBuf() {
+  if (voxNoise || !AC) return voxNoise;
+  const n = AC.sampleRate * 1, b = AC.createBuffer(1, n, AC.sampleRate), d = b.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+  voxNoise = b;
+  voxDelay = AC.createDelay(); voxDelay.delayTime.value = .11;
+  const g = AC.createGain(); g.gain.value = .28; voxDelay.connect(g); g.connect(voxDelay);
+  return b;
+}
+radioVoice = function (len) {
+  if (!AC || AC.state !== 'running' || !CFG.vCht) return;
+  const k = VOX[commKind] || VOX.pilot, t0 = AC.currentTime + .04;
+  const out = AC.createGain(), bp = AC.createBiquadFilter(), hp = AC.createBiquadFilter();
+  bp.type = 'bandpass'; bp.frequency.value = 1400; bp.Q.value = .8; hp.type = 'highpass'; hp.frequency.value = 280;
+  out.gain.value = k.gain * CFG.vCht;
+  bp.connect(hp).connect(out);
+  if (k.verb && voxBuf()) { const vg = AC.createGain(); vg.gain.value = k.verb; out.connect(vg).connect(voxDelay); voxDelay.connect(AG); }
+  out.connect(AG);
+  const src = AC.createBufferSource(); src.buffer = voxBuf(); src.loop = true;
+  const ng = AC.createGain(); ng.gain.setValueAtTime(.0001, t0); ng.gain.linearRampToValueAtTime(.02 + k.grit * .05, t0 + .03); ng.gain.linearRampToValueAtTime(.0001, t0 + len);
+  const nf = AC.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 1800; nf.Q.value = .6;
+  src.connect(nf).connect(ng).connect(bp); src.start(t0); src.stop(t0 + len + .05);
+  let t = t0, n = 0;
+  while (t < t0 + len && n < 16) {
+    const d = (.06 + Math.random() * .1) / k.rate, o = AC.createOscillator(), g = AC.createGain(), f1 = AC.createBiquadFilter(), f2 = AC.createBiquadFilter();
+    const p = k.p * (.82 + Math.random() * .36);
+    o.type = k.type; o.frequency.setValueAtTime(p, t); o.frequency.linearRampToValueAtTime(p * (.9 + Math.random() * .2), t + d);
+    f1.type = f2.type = 'bandpass'; f1.frequency.value = k.f1 * (.8 + Math.random() * .4); f1.Q.value = 6; f2.frequency.value = k.f2 * (.85 + Math.random() * .3); f2.Q.value = 5;
+    g.gain.setValueAtTime(.0001, t); g.gain.linearRampToValueAtTime(.8, t + .018); g.gain.linearRampToValueAtTime(.0001, t + d);
+    o.connect(f1).connect(g); o.connect(f2).connect(g); g.connect(bp); o.start(t); o.stop(t + d + .02);
+    t += d + (Math.random() < .2 ? .08 : .012); n++;
+  }
+};
+const comm0 = comm;
+comm = function (s, kind) { commKind = kind || guessVoice(s); comm0(s); };
+
+function codexAdd(id, title, text) {
+  ST.codex = ST.codex || [];
+  if (ST.codex.some((e) => e.id === id)) return;
+  ST.codex.push({ id, title, text });
+  if (ST.codex.length > 80) ST.codex.shift();
+  save();
+  tip('Codex · ' + title, 3500);
+}
+
+const shatter0 = shatter;
+shatter = function (x, y, z, size, hue, tier, type, ax, ay, az, ix, iy, iz) {
+  shatter0(x, y, z, size, hue, tier, type, ax, ay, az, ix, iy, iz);
+  v123Loot(x, y, z, size, type, ax, ay, az);
+};
+function v123Loot(x, y, z, size, type, ax, ay, az) {
+  const belt = (SYS && SYS.a && SYS.a.cry > .4) ? 2 : (SYS && SYS.t) || 0;
+  const ty = type || belt;
+  const n = 1 + (size > 14 ? 1 : 0) + (ty === 6 ? 1 : 0);
+  for (let k = 0; k < n; k++) {
+    const R = Math.random(), spec = R < .08 ? 14 : R < .2 ? 13 : R < .38 ? 12 : R < .55 ? 11 : 0;
+    let ore = 1;
+    if (ty === 2 || ty === 5) ore = R < .5 ? 1 : 2;
+    else if (ty === 3) ore = R < .4 ? 1 : R < .75 ? 2 : 3;
+    else if (ty === 4) ore = R < .45 ? 2 : 3;
+    else if (ty === 6) ore = R < .3 ? 3 : R < .7 ? 4 : 5;
+    else if (R < .12) ore = 3; else if (R < .4) ore = 2;
+    rdir();
+    const sp = 4 + Math.random() * 8;
+    spawnD(2, x + rd[0] * size * .2, y + rd[1] * size * .2, z + rd[2] * size * .2, ax + rd[0] * sp, ay + rd[1] * sp, az + rd[2] * sp, .6, ore, ore, spec, 90);
+  }
+}
+function v123Collect(i) {
+  const tag = dType[i];
+  if (!tag) return false;
+  const names = { 11: 'WATER ICE', 12: 'VOLATILES', 13: 'NICKEL-IRON', 14: 'RELIC' };
+  if (tag === 11) { ST.o2 = Math.min(100, (ST.o2 == null ? 100 : ST.o2) + 10); pop('WATER ICE · O2 +10', '#7fd8ff'); }
+  else if (tag === 12) { ST.fuel = Math.min(100, (ST.fuel || 0) + 8); pop('VOLATILES · FUEL +8', '#ffd84a'); }
+  else if (tag === 13) { if (ST.hull < 92) { ST.hull = Math.min(100, ST.hull + 4); pop('NICKEL-IRON · HULL +4', '#c3ccdc'); } else { cargo[1] = (cargo[1] || 0) + 1; pop('+1 FERRITE', '#c3ccdc'); } }
+  else if (tag === 14) { const cr = 80 + (Math.random() * 220 | 0); ST.credits += cr; ST.spice = Math.min(100, (ST.spice || 0) + 4); pop('RELIC · +' + cr + ' CR', '#cf6bff'); codexAdd('relic' + (cr % 7), 'A pocket relic', 'Something in the rock was older than the belt.'); }
+  else return false;
+  showCargo(); save();
+  return true;
+}
+
+let EVQ = null, evCool = 50;
+function v123Events(dt, fly) {
+  if (!fly || SYS.atm || jumpTo || jpOpen) return;
+  if (EVQ) { v123EventTick(dt); return; }
+  evCool -= dt;
+  if (evCool > 0) return;
+  const d = typeof diffI === 'function' ? diffI() : 1;
+  evCool = [150, 110, 85, 70][d] + Math.random() * 40;
+  const kinds = ['distress', 'ambush', 'silence', 'comet', 'flare', 'derelict'];
+  const kind = kinds[(Math.random() * kinds.length) | 0];
+  v123EventStart(kind);
+}
+function v123EventStart(kind) {
+  const R = Math.random;
+  const ang = R() * 6.28, dist = 900 + R() * 700;
+  const x = px + Math.cos(ang) * dist, z = pz + Math.sin(ang) * dist, y = py + (R() - .5) * 200;
+  if (kind === 'distress') {
+    const a = mkShip(0, x, y, z, pickN(Math.random, NPN), { distress: 1, hold: 1, sp: 0, fac: SYS.fac });
+    ensureWp(a); a.wp = [a.x, a.y, a.z];
+    EVQ = { kind, t: 0, ph: 'warn', a, x, y, z };
+    commKind = 'hauler'; comm(a.name + ' on distress: "Engines are cold. Anyone reading, we are drifting."', 'hauler');
+  } else if (kind === 'ambush') {
+    EVQ = { kind, t: 0, ph: 'warn', x, y, z };
+    comm('A tight-beam squeal, then nothing. Something is lining up on your lane.', 'pirate');
+  } else if (kind === 'silence') {
+    EVQ = { kind, t: 0, ph: 'warn', x, y, z };
+    comm('The band fills with a sound that is not a voice. It is coming closer.', 'silence');
+    codexAdd('sil' + (SYS.id % 9), 'A Silence on the band', 'It does not use words. The instruments still flinch.');
+  } else if (kind === 'comet') {
+    EVQ = { kind, t: 0, ph: 'live', x: px + 2000, y: py + 300, z: pz - 400, vx: -80, vy: -6, vz: 30 };
+    comm('Survey note: a comet is crossing this lane. Ice, if you can bear the dust.', 'station');
+  } else if (kind === 'flare') {
+    EVQ = { kind, t: 0, ph: 'warn' };
+    comm(SYS.name + ' control: solar flare in a few seconds. Put the hull in shadow. Point away from the star.', 'station');
+  } else {
+    EVQ = { kind: 'derelict', t: 0, ph: 'live', x, y, z, opened: 0 };
+    comm('A dead hull on the scope. No beacon. The hatch light is still drawing power.', 'pilot');
+  }
+}
+function v123EventTick(dt) {
+  const E = EVQ; E.t += dt;
+  if (E.kind === 'distress' && E.a && !E.a.dead) {
+    const d = Math.hypot(E.a.x - px, E.a.y - py, E.a.z - pz);
+    if (E.ph === 'warn' && d < 500) {
+      E.ph = 'choice';
+      panel('Distress', E.a.name, [
+        { name: 'Spare fuel and a tow', desc: 'Ten fuel. They pay you back, and the Union hears about it.', run: () => { if ((ST.fuel || 0) < 10) return tip('You do not have ten fuel to spare', 3000); ST.fuel -= 10; ST.credits += 160; gain({ rep: 6, xp: 20 }); pop('+160 CR · UNION', '#ffd84a'); E.a.wp = [E.a.x + 4000, E.a.y, E.a.z]; E.a.hold = 0; E.a.sp = 40; EVQ = null; } },
+        { name: 'Strip what you can', desc: 'They cannot stop you. The lane will remember.', run: () => { cargo[1] = (cargo[1] || 0) + 2; ST.credits += 40; gain({ rep: -8 }); pop('+2 FERRITE', '#c3ccdc'); E.a.dead = 1; EVQ = null; } },
+        { name: 'Call it in and leave', desc: 'Patrols are slow. You did the decent minimum.', run: () => { gain({ rep: 2, xp: 8 }); EVQ = null; } }
+      ], 'A selects · B closes');
+    }
+    if (E.t > 90 && E.ph === 'warn') { tip(E.a.name + ' goes quiet.', 3000); E.a.dead = 1; EVQ = null; }
+  } else if (E.kind === 'ambush') {
+    if (E.ph === 'warn' && E.t > 7) {
+      E.ph = 'live';
+      if (typeof cmAmbush === 'function') cmAmbush(2 + (Math.random() < .4 ? 1 : 0), 'player');
+      else mkShip(5, E.x, E.y, E.z, freshRaiderName(Math.random), { hunter: 1 });
+      comm('Raiders drop out of the clutter. "That one. Take the hold."', 'pirate');
+    }
+    if (E.t > 50) EVQ = null;
+  } else if (E.kind === 'silence') {
+    put(DPa, E.x - px, E.y - py, E.z - pz, 30 + Math.sin(tm * 2) * 8, 0, 0, 0, .2, .15, .9, .55, 0);
+    E.x += (px - E.x) * dt * .15; E.z += (pz - E.z) * dt * .15;
+    if (E.ph === 'warn' && E.t > 6) {
+      E.ph = 'choice';
+      panel('The Silence', 'It is alongside', [
+        { name: 'Hold still and listen', desc: 'Spice condenses on the canopy. The charts gain a page you cannot read.', run: () => { ST.spice = Math.min(100, (ST.spice || 0) + 12); gain({ xp: 30 }); codexAdd('listen' + (SYS.id % 5), 'What the Silence said', 'Not words. A direction, and the feeling of being measured.'); pop('SPICE +12', '#ff3b5c'); EVQ = null; } },
+        { name: 'Burn away', desc: 'It does not chase. It notes the choice.', run: () => { gain({ xp: 8 }); EVQ = null; } },
+        { name: 'Fire into it', desc: 'The sound stops. Your standing with everyone nearby drops.', run: () => { gain({ rep: -6, xp: 10 }); EVQ = null; } }
+      ], 'A selects · B closes');
+    }
+    if (E.t > 40 && E.ph !== 'choice') EVQ = null;
+  } else if (E.kind === 'comet') {
+    E.x += E.vx * dt; E.y += E.vy * dt; E.z += E.vz * dt;
+    put(DPa, E.x - px, E.y - py, E.z - pz, 22, 0, 0, 0, .3, .7, .85, 1, 0);
+    put(DPa, E.x - px - E.vx * .4, E.y - py, E.z - pz - E.vz * .4, 40, 0, 0, 0, .1, .25, .35, .5, 0);
+    const d = Math.hypot(E.x - px, E.y - py, E.z - pz);
+    if (d < 180 && !E.got) { E.got = 1; ST.o2 = Math.min(100, (ST.o2 == null ? 100 : ST.o2) + 16); ST.fuel = Math.min(100, (ST.fuel || 0) + 6); pop('COMET ICE · O2 +16 · FUEL +6', '#7fd8ff'); codexAdd('comet' + (SYS.id % 4), 'A comet in ' + SYS.name, 'Ice and a little fuel, if you fly through the dust.'); }
+    if (E.t > 40) EVQ = null;
+  } else if (E.kind === 'flare') {
+    if (E.t > 6 && E.t < 16) {
+      const sun = sFx * SUN[0] + sFy * SUN[1] + sFz * SUN[2];
+      if (sun > .35) { if (typeof cook === 'function') cook(.35 * dt * 8); }
+      else pop('IN SHADOW', '#7fd8ff');
+    }
+    if (E.t > 18) { tip('The flare passes.', 2500); EVQ = null; }
+  } else if (E.kind === 'derelict') {
+    put(DPa, E.x - px, E.y - py, E.z - pz, 14, 0, 0, 0, .4, .4, .5, .7, 0);
+    const d = Math.hypot(E.x - px, E.y - py, E.z - pz);
+    if (d < 160 && !E.opened && !jpOpen) {
+      E.opened = 1;
+      panel('Derelict', 'The hatch answers', [
+        { name: 'Board and search', desc: 'A cache, a log, or a surprise.', run: () => { const r = Math.random(); if (r < .4) { cargo[2] = (cargo[2] || 0) + 2; pop('+2 PYRITE', '#ffd84a'); } else if (r < .75) { ST.credits += 120; pop('+120 CR', '#ffd84a'); } else { ST.spice = Math.min(100, (ST.spice || 0) + 8); pop('SPICE +8', '#ff3b5c'); } codexAdd('der' + (SYS.id % 6), 'A boarded hull', 'Someone left the kettle and the log. The log stops mid-word.'); EVQ = null; } },
+        { name: 'Mark it and leave', desc: 'The charts keep the position.', run: () => { gain({ xp: 12 }); EVQ = null; } }
+      ], 'A selects · B closes');
+    }
+    if (E.t > 80) EVQ = null;
+  }
+}
+
+let HERO = null;
+const HST = Dyn(1), HCAP = Dyn(1), HLEV = Dyn(1), HSW = Dyn(8);
+function v123LayoutHero() {
+  const yaw0 = yaw, fx = Math.sin(yaw0), fz = -Math.cos(yaw0), rdx = -fz, rdz = fx;
+  const place = (dist, side, up) => ({ x: px + fx * dist + rdx * side, y: py + up, z: pz + fz * dist + rdz * side });
+  const R = mulberry32(((SYS && SYS.salt) || 1) ^ 0xB155);
+  HERO = {
+    station: place(1500 + R() * 300, -420 - R() * 200, -40),
+    capital: place(2400 + R() * 400, 620, 80),
+    whale: place(3200 + R() * 200, 180, -200),
+    swarm: place(980, -160, 30),
+    sail: R()
+  };
+}
+function v123PutHero() {}
+function v123Draw(vd) {
+  if (!LMore || !mSail || SYS.atm) return;
+  gl.useProgram(P_LIFE.p);
+  if (P_LIFE.u.uVd) gl.uniform1f(P_LIFE.u.uVd, vd);
+  gl.uniform1i(P_LIFE.u.uKind, 1);
+  draw(P_LIFE, LMore, mSail);
+}
+
+let mSail = null, mBag = null, mCrystal = null, LMore = null;
+function sailMesh() {
+  const V = [], I = [];
+  box(V, I, [0, 0, 0], [.02, 0, 0], [0, .55, 0], [0, 0, .04]);
+  box(V, I, [.7, .05, .05], [.62, 0, .2], [0, .015, 0], [.05, 0, .35]);
+  box(V, I, [-.7, .05, .05], [.62, 0, -.2], [0, .015, 0], [-.05, 0, .35]);
+  box(V, I, [0, -.2, -.55], [.06, 0, 0], [0, .28, 0], [0, 0, .4]);
+  return mesh(V, I);
+}
+function bagMesh() {
+  const V = [], I = [];
+  box(V, I, [0, .15, 0], [.55, 0, 0], [0, .42, 0], [0, 0, .38]);
+  box(V, I, [0, -.35, 0], [.12, 0, 0], [0, .2, 0], [0, 0, .1]);
+  for (let k = 0; k < 5; k++) { const a = k / 5 * 6.28; box(V, I, [Math.cos(a) * .35, -.55, Math.sin(a) * .25], [Math.cos(a) * .04, 0, Math.sin(a) * .04], [0, .22, 0], [-Math.sin(a) * .03, 0, Math.cos(a) * .03]); }
+  return mesh(V, I);
+}
+function crystalBeast() {
+  const V = [], I = [];
+  box(V, I, [0, 0, 0], [.18, 0, 0], [0, .18, 0], [0, 0, .28]);
+  for (let k = 0; k < 6; k++) { const a = k / 6 * 6.28; box(V, I, [Math.cos(a) * .45, Math.sin(a) * .2, 0], [Math.cos(a) * .28, 0, 0], [0, .05, 0], [0, 0, .05]); }
+  return mesh(V, I);
+}
+function genMore(L, wx, wy, wz, sx, sy, sz) {
+  if (SYS.atm) return;
+  cellRnd(wx, wy, wz, 41);
+  const show = (wx | wy | wz) === 0;
+  if (!show && hx(1) > .22) return;
+  const n = show ? 5 : 1 + (hx(1) > .5 ? 1 : 0);
+  for (let k = 0; k < n; k++) put(L, sx, sy, sz, (show ? 18 : 9) + 14 * hx(1), gj0, gj1, gj2, gsd, hx(3), hx(3), hx(1), k);
+}
+function v123Boot() {
+  mSail = sailMesh(); mBag = bagMesh(); mCrystal = crystalBeast();
+  LMore = Layer(2800, 4, 3, genMore, 41);
+  LAYERS.push(LMore);
+}
+const v122Boot0 = v122Boot;
+v122Boot = function () { v122Boot0(); v123Boot(); };
+const v122Draw0 = v122Draw;
+v122Draw = function (vd, pass) { v122Draw0(vd, pass); if (!pass && typeof v123Draw === 'function') v123Draw(vd); };
+
+function v123Near() {
+  if (SYS.atm || NPCS.length > 34) return;
+  const spots = [[520, 40, 980], [-480, -20, 860], [180, 80, 1240], [-220, 10, 1500], [640, -30, 1700], [40, 60, 2100]];
+  const roles = [0, 2, 1, 6, 0, 3];
+  for (let i = 0; i < spots.length && NPCS.length < 36; i++) {
+    const r = roles[i];
+    const a = mkShip(r, px + spots[i][0] * .35, py + spots[i][1], pz + spots[i][2] * .25, (r === 2 ? 'Patrol ' : r === 6 ? 'Survey ' : '') + pickN(Math.random, NPN), { fac: SYS.fac, greet: 0 });
+    ensureWp(a);
+    a.var = (a.fac || 0) % 3;
+  }
+}
+const npcSpawnV = npcSpawn;
+npcSpawn = function () { npcSpawnV(); try { v123Near(); for (const a of NPCS) ensureWp(a); } catch (e) { console.error(e); } };
+
+const arriveV = arrive;
+arrive = function (sec, loc, quiet) {
+  arriveV(sec, loc, quiet);
+  try {
+    if (!SYS.atm && SYS.pl) {
+      let best = 0, bi = 0;
+      for (let k = 0; k < 3; k++) if ((SYS.pl[k * 4 + 3] || 0) > best) { best = SYS.pl[k * 4 + 3]; bi = k; }
+      if (best > .02) {
+        yaw = Math.atan2(SYS.pl[bi * 4], -SYS.pl[bi * 4 + 2]);
+        pitch = Math.max(-.22, Math.min(.32, Math.asin(Math.max(-1, Math.min(1, SYS.pl[bi * 4 + 1] * .65)))));
+        snap = 1;
+      }
+    }
+    v123LayoutHero();
+  } catch (e) { console.error(e); }
+};
+
+let BR = null;
+function v123Bracket(c) {
+  try { return v123BracketDraw(c); } catch (e) { console.error('bracket', e); try { gl.useProgram(P_HUD.p); } catch (e2) {} BR = null; return false; }
+}
+function v123BracketDraw(c) {
+  if (!BR) {
+    const vs = `#version 300 es
+    uniform vec3 uC,uR,uU;uniform float uS,uA;uniform mat4 uP;
+    layout(location=0)in vec3 aP;void main(){vec3 p=uC+(uR*aP.x+uU*aP.y)*uS;gl_Position=uVP*vec4(p,1.);}`;
+    const fs = `#version 300 es
+    precision highp float;uniform float uA;out vec4 o;void main(){o=vec4(vec3(.85,.95,1.)*uA,uA);}`;
+    const srcV = HD + `uniform vec3 uC,uR,uU;uniform float uS;layout(location=0)in vec3 aP;void main(){vec3 p=uC+uR*aP.x*uS+uU*aP.y*uS;gl_Position=uVP*vec4(p,1.);}`;
+    const srcF = HD + `uniform float uA;out vec4 o;void main(){o=vec4(vec3(.8,.92,1.)*uA,uA);}`;
+    BR = prog(srcV, srcF);
+    const v = [], s = .5, t = .045, c = [[-1, -1, 1, 0], [-1, -1, 0, 1], [1, -1, -1, 0], [1, -1, 0, 1], [-1, 1, 1, 0], [-1, 1, 0, -1], [1, 1, -1, 0], [1, 1, 0, -1]];
+    for (const q of c) {
+      const x = q[0], y = q[1], dx = q[2], dy = q[3];
+      v.push(x * s, y * s, 0, x * s + dx * t, y * s, 0, x * s, y * s + dy * t, 0);
+    }
+    BR.buf = gl.createBuffer(); BR.vao = gl.createVertexArray(); BR.n = v.length / 3;
+    gl.bindVertexArray(BR.vao); gl.bindBuffer(gl.ARRAY_BUFFER, BR.buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 12, 0); gl.bindVertexArray(null);
+  }
+  const tx = c.x - px - eox, ty = c.y - py - eoy, tz = c.z - pz - eoz;
+  const dist = Math.hypot(tx, ty, tz) || 1;
+  const align = (tx * eFx + ty * eFy + tz * eFz) / dist;
+  if (align < .82) return false;
+  const depth = Math.max(16, Math.min(dist * .9, 90));
+  const k = depth / dist;
+  const fade = align > .94 ? 1 : (align - .82) / .12;
+  gl.useProgram(BR.p); gl.bindVertexArray(BR.vao);
+  gl.uniform3f(BR.u.uC, tx * k, ty * k, tz * k);
+  gl.uniform3f(BR.u.uR, eRx, eRy, eRz); gl.uniform3f(BR.u.uU, eUx, eUy, eUz);
+  gl.uniform1f(BR.u.uS, depth * .018); gl.uniform1f(BR.u.uA, .55 * fade);
+  gl.disable(gl.DEPTH_TEST); gl.drawArrays(gl.TRIANGLES, 0, BR.n);
+  gl.useProgram(P_HUD.p);
+  return true;
+}
+
+function v123Sim(dt, fly) {
+  try { v123PutHero(); } catch (e) { console.error(e); }
+  try { v123Events(dt, fly); } catch (e) { console.error('event', e); EVQ = null; }
+}
+
+const panelV = panel;
+panel = function (title, sub, list, foot) {
+  if (title === 'Trader' && list && !list.some((d) => d.name === 'Shipyard')) list.push({ name: 'Shipyard', kind: HULLS[ST.ship | 0][0], desc: 'A different hull. The yard keeps your charts.', run: shipyardPanel });
+  if (title === 'Journal' && ST.codex && ST.codex.length) list.push({ name: 'Codex', kind: ST.codex.length + ' entries', desc: ST.codex.slice(-3).map((e) => e.title).join(' · ') });
+  panelV(title, sub, list, foot);
+};
+
+function v123Hooks() {
+  if (ST.ship == null) ST.ship = 0;
+  if (!ST.codex) ST.codex = [];
+  const E = window.ES;
+  E.stressNpc = (sec) => {
+    const secs = sec || 180, errs = [];
+    npcSpawn();
+    for (let i = 0; i < 4; i++) {
+      const lead = mkShip(2, px + i * 40, py, pz + 200, 'Lead ' + i, {});
+      const wing = mkShip(2, lead.x + 30, lead.y, lead.z + 20, 'Wing ' + i, { lead, off: [30, 0, 24] });
+      ensureWp(wing);
+    }
+    let t = 0;
+    while (t < secs) {
+      try {
+        if ((t * 20 | 0) % 30 === 0) {
+          const lead = NPCS.find((a) => NPCS.some((b) => b.lead === a));
+          if (lead) { lead.dead = 1; lead.hp = 0; }
+        }
+        npcTick(.05);
+        for (let i = NPCS.length - 1; i >= 0; i--) if (NPCS[i].dead) NPCS.splice(i, 1);
+        if (NPCS.length < 6) npcSpawn();
+      } catch (e) { errs.push(String(e && e.message || e)); if (errs.length > 8) break; }
+      t += .05;
+    }
+    const bad = NPCS.filter((a) => !a.lead && !wpOk(a)).length;
+    return { sec: t, errs, bad, n: NPCS.length };
+  };
+  E.xrPress = (name) => {
+    if (name === 'a' || name === 'A') interact();
+    else if (name === 'x' || name === 'X') journalPanel();
+    else if (name === 'pause') pausePanel();
+    return [!!jpOpen, $('jh') && $('jh').textContent];
+  };
+  E.recenter = () => { if (typeof xrRecenter === 'function') xrRecenter(); return 1; };
+  E.event = (k) => { v123EventStart(k || 'distress'); return EVQ && EVQ.kind; };
+  E.loot = () => v123Loot(px + 5, py, pz + 5, 8, 0, 0, 0, 0);
+}
 // ============================================================================
 // Build everything (with a loading bar), then fly
 // ============================================================================
@@ -4857,7 +5362,7 @@ noiseTex();
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.22';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
+const BUILD = 'v1.23';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 let draws = 0, verts = 0, frameDraws = 0, frameVerts = 0;
 const _dei = gl.drawElementsInstanced.bind(gl), _de = gl.drawElements.bind(gl), _da = gl.drawArrays.bind(gl);
 gl.drawElementsInstanced = (m, c, ty, off, n) => { draws++; verts += c * n; return _dei(m, c, ty, off, n); };
@@ -4892,6 +5397,7 @@ async function loadState() {
 }
 function newUniverse() {
   if (!confirm('Start a new universe? This pilot\'s charts, credits and crew will be left behind.')) return;
+  CFG.diff = 1; CFG.diffPick = 0; try { localStorage.ibCfg = JSON.stringify(CFG); } catch {}
   for (const q of Object.keys(ST)) delete ST[q];
   Object.assign(ST, blankState((Math.random() * 4294967296) >>> 0));
   try { if (idb) idb.transaction('kv', 'readwrite').objectStore('kv').put(ST, 'state'); else localStorage.esState = JSON.stringify(ST); } catch {}
@@ -4913,7 +5419,7 @@ const P_ROCK = prog(ROCK_V, ROCK_F), P_CRY = prog(CRY_V, CRY_F), P_LIFE = prog(L
 const P_SKY = prog(TRI_V, SKY_F), P_BLUR = prog(TRI_V, BLUR_F), P_RAY = prog(TRI_V, RAY_F.replace('precision', `#define NS ${Q.rays}\nprecision`)), P_COMP = prog(TRI_V, COMP_F), P_COCK = prog(COCK_V, COCK_F), P_SHIP = prog(SHIP_V, ROCK_F);
 const P_CAB = prog(COCK_V, COCK_F.replace('#version 300 es', '#version 300 es\n#define CABIN'));   // the quarters and the aux screen: their materials stay out of the dash's shader
 gl.useProgram(P_CAB.p); gl.uniform1i(P_CAB.u.uPip, 6);   // the aux screen's picture lives in texture slot 6
-gl.uniform3fv(P_SHIP.u['uTier[0]'], TCOL); gl.uniform1i(P_SHIP.u.uKind, 4); gl.uniform1f(P_SHIP.u.uFlat, 0);
+gl.useProgram(P_SHIP.p); gl.uniform3fv(P_SHIP.u['uTier[0]'], TCOL); gl.uniform1i(P_SHIP.u.uKind, 4); gl.uniform1f(P_SHIP.u.uFlat, 0);
 gl.useProgram(P_ROCK.p); gl.uniform3fv(P_ROCK.u['uTier[0]'], TCOL);
 await step(.8, 'Rousing the swarms…');
 
@@ -5445,6 +5951,7 @@ function simulate(dt, fly) {
     } else if (kd === 2) {
       const d = Math.sqrt(d2);
       if (d < 6) { if (!addItem('o' + dTier[i], 1)) { if (tm > fullTip) { fullTip = tm + 8; tip('Hold full · I to open it: jettison, or sell to a trader · swarms turn ore into fuel and repairs', 5000); } continue; }
+        if (typeof v123Collect === 'function' && v123Collect(i)) { dKind[i] = 0; continue; }
         dKind[i] = 0; showCargo(); oreCue(dTier[i], 1); if (dTier[i] > 2) cue('outro'); collected(dTier[i]); continue; }
       if (d < 140) { const f = dt * (60 + 9000 / (d + 10)) / d; dV[o] += (vx - dV[o]) * dt * 3 - x * f; dV[o + 1] += (vy - dV[o + 1]) * dt * 3 - y * f; dV[o + 2] += (vz - dV[o + 2]) * dt * 3 - z * f; }
       if ((dLife[i] -= dt) <= 0 || d2 > 4e6) { dKind[i] = 0; continue; }
@@ -5496,8 +6003,9 @@ function simulate(dt, fly) {
   // the trader, parked off the gate
   DTr.n = 0;
   if (trader) { const tx = 430 - px, ty = -70 - py, tz = 260 - pz, td = Math.hypot(tx, ty, tz); put(DTr, tx, ty, tz, 70, 0, 0, 0, .61, 0, 0, .12, 0); if (fly && td < 190 && !tradeIn && !jumpTo) { tradeIn = 1; tradePanel(); } else if (td > 400) tradeIn = 0; }
-  rpgSim(dt, fly);
-  if (typeof v122Sim === 'function') v122Sim(dt, fly);
+  try { rpgSim(dt, fly); } catch (e) { console.error('rpg', e); }
+  try { if (typeof v122Sim === 'function') v122Sim(dt, fly); } catch (e) { console.error('v122', e); }
+  try { if (typeof v123Sim === 'function') v123Sim(dt, fly); } catch (e) { console.error('v123', e); }
   flush(DC[0]); flush(DC[1]); flush(DGm); flush(DT); flush(DPa); flush(DGt); flush(DTr);
 }
 
@@ -5508,7 +6016,8 @@ let ckx = 0, cky = 0, ckz = 0, ckr = 0, stx = 0, sty = 0, ovx = 0, ovy = 0, ovz 
 let eRx, eRy, eRz, eUx, eUy, eUz, eFx, eFy, eFz, tL, tR, tB, tT, eox = 0, eoy = 0, eoz = 0, cex = 0, cey = 0, cez = 0;
 const CKM = 2.5, CK_FLOOR = -3.64;   // cockpit units per metre in a headset (2.1 m floor to ceiling, seat ~0.65 m, bunk and counter ~0.9 m), and the cabin floor's height
 function draw(P, L, m) {
-  if (!L.n) return;
+  if (!L || !L.n || !m) return;
+  gl.useProgram(P.p);
   const u = P.u;
   gl.uniform3f(u.uCell, L.mx, L.my, L.mz); gl.uniform3f(u.uCam, L.fx + eox, L.fy + eoy, L.fz + eoz); gl.uniform3f(u.uCN, L.C, L.N, L.R);
   gl.bindVertexArray(vaoFor(L, m)); gl.drawElementsInstanced(gl.TRIANGLES, m.n, gl.UNSIGNED_SHORT, 0, L.n);
@@ -5639,7 +6148,8 @@ function eye(fb, x, y, w, h, tw, th) {
 }
 
 // ---- VR: a headset through WebXR where there is one, otherwise a side-by-side stereo view ----
-let xr = null, xrRef = null, xrFloor = 0;
+let xr = null, xrRef = null, xrFloor = 0, xrCal = null, xrNeedCal = 1, xrBlur = 0;
+function xrRecenter() { xrNeedCal = 1; xrCal = null; }
 function foveationLevel() { const v = CFG.vrFov || 0; return v >= .9 ? 1 : v >= .4 ? .66 : 0; }
 function applyFoveation() { if (xrLayer && 'fixedFoveation' in xrLayer) { try { xrLayer.fixedFoveation = foveationLevel(); } catch (e) {} } }
 function applyVrRate() {
@@ -5670,7 +6180,15 @@ async function vr(auto) {
       const rs = CFG.vrRs == null ? 1 : CFG.vrRs, layer = new XRWebGLLayer(s, gl, { antialias: false, depth: false, stencil: false, framebufferScaleFactor: rs });
       xrLayer = layer; applyFoveation();
       s.updateRenderState({ baseLayer: layer });
-      xrFloor = 1; xrRef = await s.requestReferenceSpace('local-floor').catch(() => { xrFloor = 0; return s.requestReferenceSpace('local'); });   // floor-level tracking puts the cabin floor on the room's floor, seated or standing
+      xrFloor = 0; xrNeedCal = 1; xrCal = null;
+      try { xrRef = await s.requestReferenceSpace('local-floor'); xrFloor = 1; }
+      catch (e) { xrRef = await s.requestReferenceSpace('local'); xrFloor = 0; }
+      xrRef.addEventListener('reset', () => { xrNeedCal = 1; });
+      s.addEventListener('visibilitychange', () => {
+        const st = s.visibilityState;
+        if (st === 'hidden' || st === 'visible-blurred') xrBlur = 1;
+        else if (xrBlur) { xrBlur = 0; if (flying() && !jpOpen) pausePanel(); }
+      });
       s.addEventListener('end', () => { xr = null; xrLayer = null; xFire = 0; requestAnimationFrame(frame); });
       xr = s; applyVrRate(); if (document.pointerLockElement) document.exitPointerLock();
       go(); s.requestAnimationFrame(frame);
@@ -5761,7 +6279,7 @@ function frame(now, xf) {
           pitch -= IY() * ay * dt * 1.05;
         } else { yaw += YS() * ax * dt * 1.35; pitch -= IY() * ay * dt * 1.15; dyaw += ax * dt * 1.35; }
       } else { thr = Math.max(-.25, Math.min(1, thr - ay * dt * .85)); ms += ax; }
-    } }
+    } if (typeof xrPauseWatch === 'function') xrPauseWatch(dt); }
     if (gpBoost) boost = 1;
     fwd = thr * 230 * eff * (1 + .12 * upLv('eng'));
   } else { yaw += dt * .018; gpFire = 0; }
@@ -5856,10 +6374,12 @@ function frame(now, xf) {
       tL = (p[8] - 1) / p[0]; tR = (p[8] + 1) / p[0]; tB = (p[9] - 1) / p[5]; tT = (p[9] + 1) / p[5];
       const ipd = CFG.vrIpd == null ? 1 : CFG.vrIpd, ox = (ep.x - hp.x) * 6 * ipd, oy = (ep.y - hp.y) * 6 * ipd, oz = (ep.z - hp.z) * 6 * ipd;   // eyes set wide apart, so the asteroids nearby have depth. View scale stays near 1 so it never fights the headset's IPD.
       eox = sRx * ox + sUx * oy - sFx * oz; eoy = sRy * ox + sUy * oy - sFy * oz; eoz = sRz * ox + sUz * oy - sFz * oz;
-      { const lift = (CFG.vrH || 0) * CKM, cx = Math.max(-3.1, Math.min(3.1, ep.x * CKM)), cz = Math.max(-1.7, Math.min(4.9, ep.z * CKM)),   // the eye inside the cabin: the head's real place in the room, so leaning and standing up work
-          cy = Math.max(-3.3, Math.min(1.35, (xrFloor ? CK_FLOOR + ep.y * CKM : ep.y * CKM - .55) + lift));   // with floor tracking the cabin floor is the room floor; without it, assume a seated head
-        const posture = (CFG.vrSeat ? 0 : -.28) * CKM;
-        cex = sRx * cx + sUx * (cy + posture) - sFx * cz; cey = sRy * cx + sUy * (cy + posture) - sFy * cz; cez = sRz * cx + sUz * (cy + posture) - sFz * cz; }
+      { if (xrNeedCal || !xrCal) { xrCal = { x: hp.x, y: hp.y, z: hp.z }; xrNeedCal = 0; }
+        const lift = (CFG.vrH || 0) * CKM;
+        const dx = (ep.x - xrCal.x) * CKM, dy = (ep.y - xrCal.y) * CKM, dz = (ep.z - xrCal.z) * CKM;
+        const cx = Math.max(-2.6, Math.min(2.6, dx)), cz = Math.max(-1.4, Math.min(3.4, .12 + dz));
+        const cy = Math.max(-.72, Math.min(1.28, .22 + dy + lift));
+        cex = sRx * cx + sUx * cy - sFx * cz; cey = sRy * cx + sUy * cy - sFy * cz; cez = sRz * cx + sUz * cy - sFz * cz; }
       eye(bl.framebuffer, vp.x, vp.y, vp.width, vp.height, Math.round(vp.width * .8), Math.round(vp.height * .8));
     }
   } else {
@@ -5914,6 +6434,7 @@ window.ES = { warpLook: (a, b) => { dbgJ = a; dbgT = b; }, zero: (i) => { const 
   info: () => ({ cue: cueName, up: [sUx, sUy, sUz].map((v) => +v.toFixed(2)), fw: [sFx, sFy, sFz].map((v) => +v.toFixed(2)), fps, W, H, S, pos: [px, py, pz], reg: REG, sys: SYS.name, broken, cargo, live: nLive, dyn: DC[0].n + DC[1].n + DGm.n, n: LAYERS.map((l) => l.n) }),
 };
 if (typeof v122Hooks === 'function') v122Hooks();
+if (typeof v123Hooks === 'function') v123Hooks();
 requestAnimationFrame((t) => { last = t; frame(t); });
 await step(1, 'The dark is ready');
 B.className = 'm';

@@ -6,7 +6,7 @@ noiseTex();
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.22';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
+const BUILD = 'v1.23';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 let draws = 0, verts = 0, frameDraws = 0, frameVerts = 0;
 const _dei = gl.drawElementsInstanced.bind(gl), _de = gl.drawElements.bind(gl), _da = gl.drawArrays.bind(gl);
 gl.drawElementsInstanced = (m, c, ty, off, n) => { draws++; verts += c * n; return _dei(m, c, ty, off, n); };
@@ -41,6 +41,7 @@ async function loadState() {
 }
 function newUniverse() {
   if (!confirm('Start a new universe? This pilot\'s charts, credits and crew will be left behind.')) return;
+  CFG.diff = 1; CFG.diffPick = 0; try { localStorage.ibCfg = JSON.stringify(CFG); } catch {}
   for (const q of Object.keys(ST)) delete ST[q];
   Object.assign(ST, blankState((Math.random() * 4294967296) >>> 0));
   try { if (idb) idb.transaction('kv', 'readwrite').objectStore('kv').put(ST, 'state'); else localStorage.esState = JSON.stringify(ST); } catch {}
@@ -62,7 +63,7 @@ const P_ROCK = prog(ROCK_V, ROCK_F), P_CRY = prog(CRY_V, CRY_F), P_LIFE = prog(L
 const P_SKY = prog(TRI_V, SKY_F), P_BLUR = prog(TRI_V, BLUR_F), P_RAY = prog(TRI_V, RAY_F.replace('precision', `#define NS ${Q.rays}\nprecision`)), P_COMP = prog(TRI_V, COMP_F), P_COCK = prog(COCK_V, COCK_F), P_SHIP = prog(SHIP_V, ROCK_F);
 const P_CAB = prog(COCK_V, COCK_F.replace('#version 300 es', '#version 300 es\n#define CABIN'));   // the quarters and the aux screen: their materials stay out of the dash's shader
 gl.useProgram(P_CAB.p); gl.uniform1i(P_CAB.u.uPip, 6);   // the aux screen's picture lives in texture slot 6
-gl.uniform3fv(P_SHIP.u['uTier[0]'], TCOL); gl.uniform1i(P_SHIP.u.uKind, 4); gl.uniform1f(P_SHIP.u.uFlat, 0);
+gl.useProgram(P_SHIP.p); gl.uniform3fv(P_SHIP.u['uTier[0]'], TCOL); gl.uniform1i(P_SHIP.u.uKind, 4); gl.uniform1f(P_SHIP.u.uFlat, 0);
 gl.useProgram(P_ROCK.p); gl.uniform3fv(P_ROCK.u['uTier[0]'], TCOL);
 await step(.8, 'Rousing the swarms…');
 
@@ -594,6 +595,7 @@ function simulate(dt, fly) {
     } else if (kd === 2) {
       const d = Math.sqrt(d2);
       if (d < 6) { if (!addItem('o' + dTier[i], 1)) { if (tm > fullTip) { fullTip = tm + 8; tip('Hold full · I to open it: jettison, or sell to a trader · swarms turn ore into fuel and repairs', 5000); } continue; }
+        if (typeof v123Collect === 'function' && v123Collect(i)) { dKind[i] = 0; continue; }
         dKind[i] = 0; showCargo(); oreCue(dTier[i], 1); if (dTier[i] > 2) cue('outro'); collected(dTier[i]); continue; }
       if (d < 140) { const f = dt * (60 + 9000 / (d + 10)) / d; dV[o] += (vx - dV[o]) * dt * 3 - x * f; dV[o + 1] += (vy - dV[o + 1]) * dt * 3 - y * f; dV[o + 2] += (vz - dV[o + 2]) * dt * 3 - z * f; }
       if ((dLife[i] -= dt) <= 0 || d2 > 4e6) { dKind[i] = 0; continue; }
@@ -645,8 +647,9 @@ function simulate(dt, fly) {
   // the trader, parked off the gate
   DTr.n = 0;
   if (trader) { const tx = 430 - px, ty = -70 - py, tz = 260 - pz, td = Math.hypot(tx, ty, tz); put(DTr, tx, ty, tz, 70, 0, 0, 0, .61, 0, 0, .12, 0); if (fly && td < 190 && !tradeIn && !jumpTo) { tradeIn = 1; tradePanel(); } else if (td > 400) tradeIn = 0; }
-  rpgSim(dt, fly);
-  if (typeof v122Sim === 'function') v122Sim(dt, fly);
+  try { rpgSim(dt, fly); } catch (e) { console.error('rpg', e); }
+  try { if (typeof v122Sim === 'function') v122Sim(dt, fly); } catch (e) { console.error('v122', e); }
+  try { if (typeof v123Sim === 'function') v123Sim(dt, fly); } catch (e) { console.error('v123', e); }
   flush(DC[0]); flush(DC[1]); flush(DGm); flush(DT); flush(DPa); flush(DGt); flush(DTr);
 }
 
@@ -657,7 +660,8 @@ let ckx = 0, cky = 0, ckz = 0, ckr = 0, stx = 0, sty = 0, ovx = 0, ovy = 0, ovz 
 let eRx, eRy, eRz, eUx, eUy, eUz, eFx, eFy, eFz, tL, tR, tB, tT, eox = 0, eoy = 0, eoz = 0, cex = 0, cey = 0, cez = 0;
 const CKM = 2.5, CK_FLOOR = -3.64;   // cockpit units per metre in a headset (2.1 m floor to ceiling, seat ~0.65 m, bunk and counter ~0.9 m), and the cabin floor's height
 function draw(P, L, m) {
-  if (!L.n) return;
+  if (!L || !L.n || !m) return;
+  gl.useProgram(P.p);
   const u = P.u;
   gl.uniform3f(u.uCell, L.mx, L.my, L.mz); gl.uniform3f(u.uCam, L.fx + eox, L.fy + eoy, L.fz + eoz); gl.uniform3f(u.uCN, L.C, L.N, L.R);
   gl.bindVertexArray(vaoFor(L, m)); gl.drawElementsInstanced(gl.TRIANGLES, m.n, gl.UNSIGNED_SHORT, 0, L.n);
@@ -788,7 +792,8 @@ function eye(fb, x, y, w, h, tw, th) {
 }
 
 // ---- VR: a headset through WebXR where there is one, otherwise a side-by-side stereo view ----
-let xr = null, xrRef = null, xrFloor = 0;
+let xr = null, xrRef = null, xrFloor = 0, xrCal = null, xrNeedCal = 1, xrBlur = 0;
+function xrRecenter() { xrNeedCal = 1; xrCal = null; }
 function foveationLevel() { const v = CFG.vrFov || 0; return v >= .9 ? 1 : v >= .4 ? .66 : 0; }
 function applyFoveation() { if (xrLayer && 'fixedFoveation' in xrLayer) { try { xrLayer.fixedFoveation = foveationLevel(); } catch (e) {} } }
 function applyVrRate() {
@@ -819,7 +824,15 @@ async function vr(auto) {
       const rs = CFG.vrRs == null ? 1 : CFG.vrRs, layer = new XRWebGLLayer(s, gl, { antialias: false, depth: false, stencil: false, framebufferScaleFactor: rs });
       xrLayer = layer; applyFoveation();
       s.updateRenderState({ baseLayer: layer });
-      xrFloor = 1; xrRef = await s.requestReferenceSpace('local-floor').catch(() => { xrFloor = 0; return s.requestReferenceSpace('local'); });   // floor-level tracking puts the cabin floor on the room's floor, seated or standing
+      xrFloor = 0; xrNeedCal = 1; xrCal = null;
+      try { xrRef = await s.requestReferenceSpace('local-floor'); xrFloor = 1; }
+      catch (e) { xrRef = await s.requestReferenceSpace('local'); xrFloor = 0; }
+      xrRef.addEventListener('reset', () => { xrNeedCal = 1; });
+      s.addEventListener('visibilitychange', () => {
+        const st = s.visibilityState;
+        if (st === 'hidden' || st === 'visible-blurred') xrBlur = 1;
+        else if (xrBlur) { xrBlur = 0; if (flying() && !jpOpen) pausePanel(); }
+      });
       s.addEventListener('end', () => { xr = null; xrLayer = null; xFire = 0; requestAnimationFrame(frame); });
       xr = s; applyVrRate(); if (document.pointerLockElement) document.exitPointerLock();
       go(); s.requestAnimationFrame(frame);
@@ -910,7 +923,7 @@ function frame(now, xf) {
           pitch -= IY() * ay * dt * 1.05;
         } else { yaw += YS() * ax * dt * 1.35; pitch -= IY() * ay * dt * 1.15; dyaw += ax * dt * 1.35; }
       } else { thr = Math.max(-.25, Math.min(1, thr - ay * dt * .85)); ms += ax; }
-    } }
+    } if (typeof xrPauseWatch === 'function') xrPauseWatch(dt); }
     if (gpBoost) boost = 1;
     fwd = thr * 230 * eff * (1 + .12 * upLv('eng'));
   } else { yaw += dt * .018; gpFire = 0; }
@@ -1005,10 +1018,12 @@ function frame(now, xf) {
       tL = (p[8] - 1) / p[0]; tR = (p[8] + 1) / p[0]; tB = (p[9] - 1) / p[5]; tT = (p[9] + 1) / p[5];
       const ipd = CFG.vrIpd == null ? 1 : CFG.vrIpd, ox = (ep.x - hp.x) * 6 * ipd, oy = (ep.y - hp.y) * 6 * ipd, oz = (ep.z - hp.z) * 6 * ipd;   // eyes set wide apart, so the asteroids nearby have depth. View scale stays near 1 so it never fights the headset's IPD.
       eox = sRx * ox + sUx * oy - sFx * oz; eoy = sRy * ox + sUy * oy - sFy * oz; eoz = sRz * ox + sUz * oy - sFz * oz;
-      { const lift = (CFG.vrH || 0) * CKM, cx = Math.max(-3.1, Math.min(3.1, ep.x * CKM)), cz = Math.max(-1.7, Math.min(4.9, ep.z * CKM)),   // the eye inside the cabin: the head's real place in the room, so leaning and standing up work
-          cy = Math.max(-3.3, Math.min(1.35, (xrFloor ? CK_FLOOR + ep.y * CKM : ep.y * CKM - .55) + lift));   // with floor tracking the cabin floor is the room floor; without it, assume a seated head
-        const posture = (CFG.vrSeat ? 0 : -.28) * CKM;
-        cex = sRx * cx + sUx * (cy + posture) - sFx * cz; cey = sRy * cx + sUy * (cy + posture) - sFy * cz; cez = sRz * cx + sUz * (cy + posture) - sFz * cz; }
+      { if (xrNeedCal || !xrCal) { xrCal = { x: hp.x, y: hp.y, z: hp.z }; xrNeedCal = 0; }
+        const lift = (CFG.vrH || 0) * CKM;
+        const dx = (ep.x - xrCal.x) * CKM, dy = (ep.y - xrCal.y) * CKM, dz = (ep.z - xrCal.z) * CKM;
+        const cx = Math.max(-2.6, Math.min(2.6, dx)), cz = Math.max(-1.4, Math.min(3.4, .12 + dz));
+        const cy = Math.max(-.72, Math.min(1.28, .22 + dy + lift));
+        cex = sRx * cx + sUx * cy - sFx * cz; cey = sRy * cx + sUy * cy - sFy * cz; cez = sRz * cx + sUz * cy - sFz * cz; }
       eye(bl.framebuffer, vp.x, vp.y, vp.width, vp.height, Math.round(vp.width * .8), Math.round(vp.height * .8));
     }
   } else {
@@ -1063,6 +1078,7 @@ window.ES = { warpLook: (a, b) => { dbgJ = a; dbgT = b; }, zero: (i) => { const 
   info: () => ({ cue: cueName, up: [sUx, sUy, sUz].map((v) => +v.toFixed(2)), fw: [sFx, sFy, sFz].map((v) => +v.toFixed(2)), fps, W, H, S, pos: [px, py, pz], reg: REG, sys: SYS.name, broken, cargo, live: nLive, dyn: DC[0].n + DC[1].n + DGm.n, n: LAYERS.map((l) => l.n) }),
 };
 if (typeof v122Hooks === 'function') v122Hooks();
+if (typeof v123Hooks === 'function') v123Hooks();
 requestAnimationFrame((t) => { last = t; frame(t); });
 await step(1, 'The dark is ready');
 B.className = 'm';
