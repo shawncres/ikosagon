@@ -1,16 +1,6 @@
 # The Infinite End (formerly Infinite Black): backlog and build log
 
-Standing rule from Shawn: every build takes a selection from this backlog alongside whatever is newly asked. Nothing here is to be dropped silently. Versions use point numbering (v1.0 = first rollback build … v1.4 = old "v5"; current test build v1.24). `BUILD` in `c_main.js`, shown on the title screen, bottom-right of the pause screen and in the Quest pause panel. Increment it on each release. **From v1.20 on, updates keep the player's progress** (Shawn, 2026-11-19) and a fresh universe happens only when the player chooses New universe. (v1.14 was skipped at Shawn's direction.)
-
-## v1.24 (2026-11-20, test site only)
-
-Visual fidelity pass. v1.23 saves migrate. Gameplay fixes from v1.23 stay.
-
-- Vertex budget first. Quest (`LV >= 1`), one eye, 1280×720, home gate: **70 draws, about 862k vertices** (cap 1,000,000 / 80). Desktop High: **79 draws, about 2.63M** (v1.23 high was 72 draws and 3.87M). Headless software WebGL, not a headset frame time.
-- Skies: limb glow, terminator, warped clouds, city lights, ocean glint, gas-giant storms, blackbody stars.
-- Stations are a smooth torus. A near-field arc covers the hoop when you fly inside it. Hull shading adds panels, windows and a star rim.
-- Cabin materials: soft-touch, brushed metal, holo displays, boost and alert light. Glass is unchanged.
-- Nine creature plans, three per system. The first look at a gate shows a station, a freighter, a capital, a creature and a leviathan.
+Standing rule from Shawn: every build takes a selection from this backlog alongside whatever is newly asked. Nothing here is to be dropped silently. Versions use point numbering (v1.0 = first rollback build … v1.4 = old "v5"; current test build v1.23). `BUILD` in `c_main.js`, shown on the title screen, bottom-right of the pause screen and in the Quest pause panel. Increment it on each release. **From v1.20 on, updates keep the player's progress** (Shawn, 2026-11-19) and a fresh universe happens only when the player chooses New universe. (v1.14 was skipped at Shawn's direction.)
 
 ## v1.23 (2026-11-20, test site only)
 

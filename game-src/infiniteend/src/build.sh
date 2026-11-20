@@ -3,7 +3,7 @@
 cd "$(dirname "$0")"
 { cat head.html
   printf "'use strict';\n(async()=>{\n"
-  cat a_core.js b_world.js bz_game.js e_v121.js f_v122.js g_v123.js h_v124.js c_main.js
+  cat a_core.js b_world.js bz_game.js e_v121.js f_v122.js g_v123.js c_main.js
   printf "\n})().catch(e=>{console.error(e);document.body.className='l e';document.getElementById('st').textContent=(e.cause?'':'Failed to start: ')+e.message});\n</script>\n"
   printf "</body>\n</html>\n"
 } > index.html
