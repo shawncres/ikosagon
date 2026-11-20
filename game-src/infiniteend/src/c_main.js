@@ -6,7 +6,7 @@ noiseTex();
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.23';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
+const BUILD = 'v1.24';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 let draws = 0, verts = 0, frameDraws = 0, frameVerts = 0;
 const _dei = gl.drawElementsInstanced.bind(gl), _de = gl.drawElements.bind(gl), _da = gl.drawArrays.bind(gl);
 gl.drawElementsInstanced = (m, c, ty, off, n) => { draws++; verts += c * n; return _dei(m, c, ty, off, n); };
@@ -54,7 +54,8 @@ await step(.18, 'Pouring nebulae into the void…');
 bakeNebula(SYS.seed);
 await step(.36, 'Seeding ore in the rocks…');
 const fam = (sub) => [0, 1, 2].map((v) => rockMesh(sub, (x, y, z) => rockR(v, x, y, z)));
-const mHi = fam(LV > 1 ? 4 : 5), mMid = fam(4), mFar = fam(LV > 1 ? 2 : 3), mLo = fam(1), mShard = [0, 1].map((v) => rockMesh(3, (x, y, z) => shardR(v, x, y, z)));
+const QLOD = LV >= 1;
+const mHi = fam(QLOD ? 3 : 4), mMid = fam(QLOD ? 2 : 3), mFar = fam(2), mLo = fam(1), mShard = [0, 1].map((v) => rockMesh(QLOD ? 2 : 3, (x, y, z) => shardR(v, x, y, z)));
 await step(.5, 'Waking the leviathans…');
 const mSiphon = siphonMesh(), mSpark = sparkMesh(), mCry = crystalMesh(), mJelly = jellyMesh(), mRay = rayMesh(), mDart = dartMesh(), mRing = ringMesh(), mSpire = spireMesh(), mWhale = whaleMesh(), mSerp = serpentMesh(), mTen = tendrilMesh(), mQuad = quadMesh(), mBox = boxMesh(), mCock = cockpitMesh(), mFighter = fighterMesh(), mFrig = [frigateMesh(0), frigateMesh(1)], mDrone = droneMesh(), mGate = gateMesh();
 for (const g of ST.dead) dead.add(g);
@@ -1079,6 +1080,7 @@ window.ES = { warpLook: (a, b) => { dbgJ = a; dbgT = b; }, zero: (i) => { const 
 };
 if (typeof v122Hooks === 'function') v122Hooks();
 if (typeof v123Hooks === 'function') v123Hooks();
+if (typeof v124Hooks === 'function') v124Hooks();
 requestAnimationFrame((t) => { last = t; frame(t); });
 await step(1, 'The dark is ready');
 B.className = 'm';

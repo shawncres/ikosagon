@@ -2,6 +2,16 @@
 
 Shawn's QA findings, logged one by one. v1.20 (2026-11-19) worked the previous round. v1.21 is a feature build from Shawn's brief, not a new QA round. New findings stay logged only until Shawn says go.
 
+## v1.24 notes
+
+Visual pass, started with the vertex budget. v1.23 saves migrate. Quest controls, the seat line, A/X panels, pause, the bracket, and difficulty stay.
+
+- Quest preset is detail Medium and Low (`LV >= 1`). Rock shells drop two subdivisions there and one on Desktop High. Large swarms spawn fewer bodies. `ES.budget()` caps that preset at 1,000,000 vertices and 80 draws per eye at the home gate. Headless software WebGL, 1280×720, one eye: Quest preset **70 draws and about 862k vertices**. Desktop High **79 draws and about 2.63M vertices**. v1.23 on the same harness was 69 draws / 1.92M at medium and 72 draws / 3.87M at high. The HUD reticle rebinds its program before drawing the fallback mark, which clears a one-shot WebGL warning. File-URL loads skip the radio fetch.
+- Skies: gas-giant bands with a vortex, domain-warped cloud decks and shadows, a Rayleigh/Mie limb and terminator, ocean specular, night-side city lights. Stars use a blackbody ramp. The nebula bake takes a second warp from the system seed.
+- Hulls get panel lines, weathering, windows, a lit docking bay, hazard marks and a star rim, fading with distance. Stations are a smooth torus with modules and wings. A finer arc covers the tube when you fly inside a ring.
+- Cabin: soft-touch panels, brushed frame, emissive trim, holographic scans on the three displays, and boost and damage light. The glass pass and the seat line are unchanged.
+- Creatures: nine body plans, three per system, with herd, flee and hunt motion. Arrival parks a station, a freighter, a capital, a creature and a leviathan in front of the largest planet. The set follows the system salt.
+
 ## v1.23 notes
 
 Shawn's Quest 3 pass on v1.22, plus the `npcTick` crash (`a.wp[0]`).

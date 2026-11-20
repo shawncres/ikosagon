@@ -600,7 +600,7 @@ function bigAt(C, wx, wy, wz) {
   const r = hx(5), s = (13 + 66 * r * r * r) * Math.min(1, a * 8) * ((SYS.fz && SYS.fz.kb) || 1);
   return gateClear(C, wx, wy, wz, s, 420) ? 0 : s;
 }
-const grow = (L, n, v, sx, sy, sz, s, w) => { rs = gh; for (let k = 0; k < n; k++) { const d = nrm([rnd() - .5, rnd() - .5, rnd() - .5]), r = rockR(v, d[0], d[1], d[2]) * .97; put(L, sx, sy, sz, s, gj0, gj1, gj2, gsd, d[0] * r, d[1] * r, d[2] * r, w * .25 + rnd() * .75); } };
+let grow = (L, n, v, sx, sy, sz, s, w) => { rs = gh; for (let k = 0; k < n; k++) { const d = nrm([rnd() - .5, rnd() - .5, rnd() - .5]), r = rockR(v, d[0], d[1], d[2]) * .97; put(L, sx, sy, sz, s, gj0, gj1, gj2, gsd, d[0] * r, d[1] * r, d[2] * r, w * .25 + rnd() * .75); } };
 function genTitan(L, wx, wy, wz, sx, sy, sz) { const s = titanAt(L.C, wx, wy, wz); if (s) put(TV[(gh >>> 3) % 3], sx, sy, sz, s, gj0, gj1, gj2, gsd, hx(6), 0, typeAt(), 0); }
 function genHuge(L, wx, wy, wz, sx, sy, sz) {
   const s = hugeAt(L.C, wx, wy, wz); if (!s) return;
@@ -637,7 +637,7 @@ function genDebris(L, wx, wy, wz, sx, sy, sz) {
 function genRing(L, wx, wy, wz, sx, sy, sz) { if (SYS.atm) return; cellRnd(wx, wy, wz, 12); if (hx(1) < SYS.a.st * .6) put(RV[gh >>> 4 & 3], sx, sy, sz, 320 + 520 * hx(5), gj0, gj1, gj2, gsd, 0, 0, 0, 0); }
 function genMega(L, wx, wy, wz, sx, sy, sz) { if (SYS.atm) return; cellRnd(wx, wy, wz, 15); if (hx(1) < SYS.a.mega * .6) put(MV[gh >>> 4 & 1], sx, sy, sz, 7000 + 11000 * hx(5), gj0, gj1, gj2, gsd, 0, 0, 0, 0); }
 function swarmAt(C, wx, wy, wz) { cellRnd(wx, wy, wz, 5); return fL((wx + gj0) * C, (wy + gj1) * C, (wz + gj2) * C) + (hx(1) - .5) * .4 > .8 - .3 * SYS.a.life[0] && SYS.a.life[0] > 0; }
-const pack = (L, s, hue, hv, w) => { rs = gh; for (let k = 0; k < L.per; k++) put(L, gsx, gsy, gsz, s, gj0, gj1, gj2, gsd, rnd(), rnd(), hue + (rnd() - .5) * hv, w < 0 ? k : w); };
+let pack = (L, s, hue, hv, w) => { rs = gh; for (let k = 0; k < L.per; k++) put(L, gsx, gsy, gsz, s, gj0, gj1, gj2, gsd, rnd(), rnd(), hue + (rnd() - .5) * hv, w < 0 ? k : w); };
 let gsx = 0, gsy = 0, gsz = 0;
 function genJelly(L, wx, wy, wz, sx, sy, sz) { if (SYS.atm) { const y = (wy + .5) * L.C; if (y < 2200 || y > 7600) return; } if (swarmAt(L.C, wx, wy, wz)) { gsx = sx; gsy = sy; gsz = sz; pack(L, 1.8 + 3 * hx(5), hx(3), .18, -1); } }
 function genColossus(L, wx, wy, wz, sx, sy, sz) { cellRnd(wx, wy, wz, 16); if (hx(1) < SYS.a.life[1] * .7) { gsx = sx; gsy = sy; gsz = sz; pack(L, 45 + 60 * hx(5), hx(3), 0, 0); } }
