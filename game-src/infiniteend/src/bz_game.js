@@ -573,6 +573,7 @@ function hudDraw(k) {
   if (c && !((xr || hudForce) && jpOpen)) {
     if (typeof v123Bracket === 'function' && v123Bracket(c)) { /* world bracket */ }
     else {
+      gl.useProgram(P.p);
       const dx = c.x - px, dy = c.y - py, dz = c.z - pz, lx = dx * sRx + dy * sRy + dz * sRz, ly = dx * sUx + dy * sUy + dz * sUz, lz = -(dx * sFx + dy * sFy + dz * sFz);
       let hx0 = 0, hy0 = 0, rot = 0, ic = 0;
       if (lz < -1e-3) { hx0 = lx / -lz * -HZ; hy0 = ly / -lz * -HZ; }
@@ -1264,7 +1265,7 @@ function meteorTick(dt, fly) {
 const TRACKS = ['8bca2649-ef58-4337-99da-96bc09457d8e', 'cab7667f-c12b-4b52-89f8-790cadf115f8', 'a8499c7c-09f5-47a4-82ba-ef1ed1d11704', '98987f77-6a7a-4fff-ab98-d48bdb3035e3', '53a8bb5c-0b30-4a08-85b1-628a4a3b71b8', '6ad0e9ff-0b1c-4904-8a12-44d2e5d90187', '00607acb-f516-4f98-8b2a-4fb7b4afa93c', '0f9a39ab-36f0-4090-91a6-1168566e464c'];
 const PHOST = ['https://cdn1.suno.ai/', 'https://cdn2.suno.ai/'];
 let plA = null, plOn = 0, plNext = 75, plEnd = 0, plVol = 0, plBad = 0, plWant = .3, plLast = -1, plH = 0;
-let plLocal = null; const plLoadLocal = () => { if (plLocal) return; plLocal = []; try { fetch('music/tracks.json').then((r) => r.ok ? r.json() : []).then((a) => { plLocal = Array.isArray(a) ? a : []; }).catch(() => {}); } catch {} };   // looked for only when the fallback playlist is actually needed
+let plLocal = null; const plLoadLocal = () => { if (plLocal || location.protocol === 'file:') return; plLocal = []; try { fetch('music/tracks.json').then((r) => r.ok ? r.json() : []).then((a) => { plLocal = Array.isArray(a) ? a : []; }).catch(() => {}); } catch {} };   // looked for only when the fallback playlist is actually needed
 const plLevel = (v) => { plWant = Math.max(0, Math.min(1, v)); };   // the one place the game sets how loud the stream is: it dips for hails and fights and comes back
 function playlistTick(dt, fly) {
   plLoadLocal();
@@ -1295,7 +1296,7 @@ function lifeScan(N) {
 // so a song added to the site is on the air the next time one is picked. The game plays the files itself and sets the level.
 const RADIO = 'https://ikosagon.com/api/radio';
 let rdList = null, rdA = null, rdT = 20, rdVol = 0, rdName = '', rdLast = '', rdFetchT = 0, rdBad = 0, rdGap = 0, rdRetry = 0, rdOn = 0;
-function radioLoad() { try { fetch(RADIO, { cache: 'no-store' }).then((r) => r.json()).then((a) => { if (Array.isArray(a)) { const l = a.filter((t) => t && t.url); if (l.length) rdList = l; } }).catch(() => { rdBad++; }); } catch { rdBad++; } }
+function radioLoad() { if (location.protocol === 'file:') return; try { fetch(RADIO, { cache: 'no-store' }).then((r) => r.json()).then((a) => { if (Array.isArray(a)) { const l = a.filter((t) => t && t.url); if (l.length) rdList = l; } }).catch(() => { rdBad++; }); } catch { rdBad++; } }
 function radioNext(seek) {
   radioLoad(); if (!rdList || !rdA) return;
   let t = rdList[Math.random() * rdList.length | 0]; if (rdList.length > 1) while (t.url === rdLast) t = rdList[Math.random() * rdList.length | 0];

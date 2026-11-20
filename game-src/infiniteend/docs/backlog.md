@@ -1,6 +1,12 @@
 # The Infinite End (formerly Infinite Black): backlog and build log
 
-Standing rule from Shawn: every build takes a selection from this backlog alongside whatever is newly asked. Nothing here is to be dropped silently. Versions use point numbering (v1.0 = first rollback build … v1.4 = old "v5"; current test build v1.23). `BUILD` in `c_main.js`, shown on the title screen, bottom-right of the pause screen and in the Quest pause panel. Increment it on each release. **From v1.20 on, updates keep the player's progress** (Shawn, 2026-11-19) and a fresh universe happens only when the player chooses New universe. (v1.14 was skipped at Shawn's direction.)
+Standing rule from Shawn: every build takes a selection from this backlog alongside whatever is newly asked. Nothing here is to be dropped silently. Versions use point numbering (v1.0 = first rollback build … v1.4 = old "v5"; current test build v1.24). `BUILD` in `c_main.js`, shown on the title screen, bottom-right of the pause screen and in the Quest pause panel. Increment it on each release. **From v1.20 on, updates keep the player's progress** (Shawn, 2026-11-19) and a fresh universe happens only when the player chooses New universe. (v1.14 was skipped at Shawn's direction.)
+
+## v1.24 (2026-11-20, test site only)
+
+Visual fidelity pass. v1.23 saves migrate. Gameplay fixes from v1.23 stay.
+
+- Vertex budget first. Quest (`LV >= 1`) uses coarser rock shells and thinner swarms. Cap: 1,000,000 vertices and 80 draws per eye at the home gate. Desktop High may exceed it. v1.23 high was about 3.87M vertices.
 
 ## v1.23 (2026-11-20, test site only)
 

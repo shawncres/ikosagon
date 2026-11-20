@@ -2,6 +2,12 @@
 
 Shawn's QA findings, logged one by one. v1.20 (2026-11-19) worked the previous round. v1.21 is a feature build from Shawn's brief, not a new QA round. New findings stay logged only until Shawn says go.
 
+## v1.24 notes
+
+Visual pass, started with the vertex budget. v1.23 saves migrate. Quest controls, the seat line, A/X panels, pause, the bracket, and difficulty stay.
+
+- Quest preset is detail Medium and Low (`LV >= 1`). Rock shells drop two subdivisions there and one on Desktop High. Large swarms spawn fewer bodies. `ES.budget()` reports the cap: 1,000,000 vertices and 80 draws per eye at the home gate. v1.23 high was about 3.87M vertices. The HUD reticle rebinds its program before drawing the fallback mark, which clears a one-shot WebGL warning. File-URL loads skip the radio fetch.
+
 ## v1.23 notes
 
 Shawn's Quest 3 pass on v1.22, plus the `npcTick` crash (`a.wp[0]`).
