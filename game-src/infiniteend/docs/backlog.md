@@ -7,6 +7,7 @@ Standing rule from Shawn: every build takes a selection from this backlog alongs
 Visual fidelity pass. v1.23 saves migrate. Gameplay fixes from v1.23 stay.
 
 - Vertex budget first. Quest (`LV >= 1`) uses coarser rock shells and thinner swarms. Cap: 1,000,000 vertices and 80 draws per eye at the home gate. Desktop High may exceed it. v1.23 high was about 3.87M vertices.
+- Skies: limb glow, terminator, warped clouds, city lights, ocean glint, gas-giant storms, blackbody stars.
 
 ## v1.23 (2026-11-20, test site only)
 
