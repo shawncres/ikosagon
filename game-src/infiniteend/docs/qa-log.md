@@ -10,6 +10,7 @@ Visual pass, started with the vertex budget. v1.23 saves migrate. Quest controls
 - Skies: gas-giant bands with a vortex, domain-warped cloud decks and shadows, a Rayleigh/Mie limb and terminator, ocean specular, night-side city lights. Stars use a blackbody ramp. The nebula bake takes a second warp from the system seed.
 - Hulls get panel lines, weathering, windows, a lit docking bay, hazard marks and a star rim, fading with distance. Stations are a smooth torus with modules and wings. A finer arc covers the tube when you fly inside a ring.
 - Cabin: soft-touch panels, brushed frame, emissive trim, holographic scans on the three displays, and boost and damage light. The glass pass and the seat line are unchanged.
+- Creatures: nine body plans, three per system, with herd, flee and hunt motion. Arrival parks a station, a freighter, a capital, a creature and a leviathan in front of the largest planet. The set follows the system salt.
 
 ## v1.23 notes
 

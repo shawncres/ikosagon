@@ -5368,6 +5368,7 @@ pack = function (L, s, hue, hv, w) {
   packV(L, s, hue, hv, w);
   L.per = old;
 };
+genMore = function () {};
 const growV = grow;
 grow = function (L, n, v, sx, sy, sz, s, w) {
   growV(L, QUEST ? Math.max(1, n * .45 | 0) : n, v, sx, sy, sz, s, w);
@@ -5418,12 +5419,223 @@ function v124Must(src, from, to) {
 }
 
 
+function v124HeroDraw(vd) {
+  if (!HSta || SYS.atm) return;
+  gl.useProgram(P_SHIP.p);
+  if (P_SHIP.u.uVd) gl.uniform1f(P_SHIP.u.uVd, vd);
+  gl.uniform1i(P_SHIP.u.uShip, 6);
+  draw(P_SHIP, HSta, HSta.mesh);
+  draw(P_SHIP, HCap, HCap.mesh);
+  draw(P_SHIP, HLv, HLv.mesh);
+  gl.uniform1i(P_SHIP.u.uShip, 3);
+  draw(P_SHIP, HFr, HFr.mesh);
+  gl.uniform1i(P_SHIP.u.uShip, 9);
+  draw(P_SHIP, HCr, HCr.mesh);
+}
+function v124EcoDraw(vd) {
+  if (!FAU2 || SYS.atm) return;
+  gl.useProgram(P_SHIP.p);
+  if (P_SHIP.u.uVd) gl.uniform1f(P_SHIP.u.uVd, vd);
+  gl.uniform1i(P_SHIP.u.uShip, 9);
+  const plans = v124Plans();
+  for (let i = 0; i < 3; i++) if (mPlan[plans[i]]) draw(P_SHIP, FAU2[i], mPlan[plans[i]]);
+}
+
 function v124Draw(vd, pass) {
   if (pass) return;
   v124Arc(vd);
+  v124HeroDraw(vd);
+  v124EcoDraw(vd);
 }
 const v122DrawPrev = v122Draw;
 v122Draw = function (vd, pass) { v122DrawPrev(vd, pass); v124Draw(vd, pass); };
+
+function arm(V, I, x, y, z, dx, dy, dz, mat, part) {
+  const len = Math.hypot(dx, dy, dz) || 1, dir = [dx / len, dy / len, dz / len];
+  const up = Math.abs(dir[1]) > .85 ? [1, 0, 0] : [0, 1, 0];
+  let side = [dir[1] * up[2] - dir[2] * up[1], dir[2] * up[0] - dir[0] * up[2], dir[0] * up[1] - dir[1] * up[0]];
+  const sl = Math.hypot(side[0], side[1], side[2]) || 1;
+  side = [side[0] / sl, side[1] / sl, side[2] / sl];
+  const bin = [dir[1] * side[2] - dir[2] * side[1], dir[2] * side[0] - dir[0] * side[2], dir[0] * side[1] - dir[1] * side[0]];
+  const n = 5;
+  for (let i = 0; i < n; i++) {
+    const t = (i + .5) / n, w = .028 * (1 - i / n * .65);
+    const c = [x + dx * t, y + dy * t, z + dz * t];
+    const uy = part > 2 ? 3 + t : part;
+    box(V, I, c, [dir[0] * len / n * .55, dir[1] * len / n * .55, dir[2] * len / n * .55], [side[0] * w, side[1] * w, side[2] * w], [bin[0] * w, bin[1] * w, bin[2] * w], mat, uy);
+  }
+}
+function planRadial() {
+  const V = [], I = [];
+  loft(V, I, [[-.12, .08, .05], [0, .16, .1], [.14, .06, .04]], 8, 7);
+  for (let k = 0; k < 8; k++) {
+    const g = k / 8 * 6.2831853;
+    arm(V, I, Math.cos(g) * .12, Math.sin(g) * .04, 0, Math.cos(g) * .55, Math.sin(g) * .12, Math.sin(g) * .2, 7, 1);
+    lamp(V, I, Math.cos(g) * .62, Math.sin(g) * .14, Math.sin(g) * .18, .02);
+  }
+  return shipOut(V, I);
+}
+function planSegment() {
+  const V = [], I = [], prof = [];
+  for (let j = 0; j <= 16; j++) {
+    const t = j / 16, bell = .04 + .07 * Math.sin(t * Math.PI) * (1 + .35 * Math.sin(j * 1.7));
+    prof.push([t * 2 - 1, bell, bell * .72]);
+  }
+  tubeBody(V, I, prof, 8, 7, 0);
+  for (let j = 2; j < 14; j += 3) fin(V, I, .05, 0, -1 + j * .12, .16, .03, .06);
+  return shipOut(V, I);
+}
+function planSail() {
+  const V = [], I = [];
+  loft(V, I, [[-.35, .04, .03], [0, .08, .05], [.4, .03, .025]], 7, 7);
+  slab(V, I, [[0, .02, -.15], [.85, .05, .05], [.7, .02, .55], [0, 0, .25]], .008, 7, 2);
+  slab(V, I, [[0, .02, -.15], [-.8, -.02, .05], [-.62, .01, .5], [0, 0, .22]], .008, 7, 2);
+  fin(V, I, 0, .04, .35, .22, .08, .3);
+  return shipOut(V, I);
+}
+function planColony() {
+  const V = [], I = [];
+  loft(V, I, [[-.05, .05, .04], [.05, .08, .06], [.12, .03, .03]], 8, 7);
+  for (let k = 0; k < 5; k++) {
+    const g = k / 5 * 6.2831853, c = Math.cos(g) * .22, s = Math.sin(g) * .16;
+    loft(V, I, [[.05 + s * .2, .02 + c, s], [.16 + s * .2, .1 + c, s], [.28 + s * .2, .02 + c, s]], 6, 7);
+    arm(V, I, c, -.02, s, c * .3, -.45, s * .2, 7, 3);
+  }
+  return shipOut(V, I);
+}
+function planCrystal() {
+  const V = [], I = [];
+  box(V, I, [0, 0, 0], [.12, 0, 0], [0, .1, 0], [0, 0, .16], 7);
+  for (let k = 0; k < 7; k++) {
+    const g = k / 7 * 6.2831853, c = Math.cos(g), s = Math.sin(g);
+    box(V, I, [c * .34, s * .12, s * .08], [c * .22, 0, 0], [s * .04, .05, 0], [0, 0, .04], k & 1 ? 5 : 7, 1);
+  }
+  lamp(V, I, 0, .16, 0, .03);
+  return shipOut(V, I);
+}
+function planBag() {
+  const V = [], I = [], prof = [];
+  for (let j = 0; j <= 10; j++) {
+    const t = j / 10, r = Math.sin(t * Math.PI) * .22 + .03;
+    prof.push([(t - .35) * .7, r, r * .8]);
+  }
+  tubeBody(V, I, prof, 10, 7, 0);
+  for (let k = 0; k < 6; k++) {
+    const g = k / 6 * 6.2831853;
+    arm(V, I, Math.cos(g) * .12, -.16, Math.sin(g) * .08, Math.cos(g) * .08, -.5, Math.sin(g) * .05, 7, 3);
+  }
+  return shipOut(V, I);
+}
+function planHunter() {
+  const V = [], I = [];
+  loft(V, I, [[-.4, .03, .05], [-.1, .1, .08], [.15, .08, .06], [.35, .03, .03]], 8, 7);
+  for (let k = 0; k < 4; k++) {
+    const g = k / 4 * 6.2831853;
+    arm(V, I, Math.cos(g) * .08, -.02, .1, Math.cos(g) * .35, -.15 - (k & 1) * .1, .55, 7, 3);
+  }
+  box(V, I, [0, .08, -.32], [.03, 0, 0], [0, .03, 0], [0, 0, .03], 5);
+  return shipOut(V, I);
+}
+function planSwarm() {
+  const V = [], I = [];
+  for (let k = 0; k < 9; k++) {
+    const g = k * 2.4, r = .08 + (k % 3) * .12, y = ((k % 4) - 1.5) * .1;
+    loft(V, I, [[-.04, .03, .025, y, Math.cos(g) * r], [.05, .045, .035, y, Math.cos(g) * r + Math.sin(g) * .04]], 6, k & 1 ? 5 : 7);
+  }
+  return shipOut(V, I);
+}
+function planLevi() {
+  const V = [], I = [], prof = [];
+  for (let j = 0; j <= 18; j++) {
+    const t = j / 18, bell = Math.sin(Math.pow(t, .65) * Math.PI);
+    prof.push([t * 2 - 1, .03 + .14 * Math.pow(bell, .85), .02 + .08 * bell]);
+  }
+  tubeBody(V, I, prof, 8, 7, 0);
+  fin(V, I, 0, .02, .15, .55, .04, .4);
+  fin(V, I, 0, 0, .1, -.5, -.06, .36);
+  fin(V, I, 0, 0, .7, .28, .02, .24);
+  return shipOut(V, I);
+}
+
+let mPlan = null, LEco = null, FAU2 = null, HSta = null, HFr = null, HCap = null, HCr = null, HLv = null, mArc = null, DArc = null;
+function v124Plans() {
+  const R = mulberry32(((SYS && SYS.salt) || 1) ^ 0xE050);
+  const a = R() * 9 | 0;
+  let b = (a + 2 + (R() * 3 | 0)) % 9; if (b === a) b = (a + 4) % 9;
+  let c = (a + 6) % 9; if (c === a || c === b) c = (c + 1) % 9;
+  return [a, b, c];
+}
+function genEco(L, wx, wy, wz, sx, sy, sz) {
+  if (!FAU2) return;
+  if (SYS.atm) { const y = (wy + .5) * L.C; if (y < 1400 || y > 8600) return; }
+  cellRnd(wx, wy, wz, 44);
+  const home = (wx | wy | wz) === 0;
+  if (!home && hx(1) > (QUEST ? .08 : .18)) return;
+  if (!home && QUEST && gr2 > 7) return;
+  const plans = v124Plans();
+  const n = home ? 3 : 1;
+  for (let i = 0; i < n; i++) {
+    const pi = plans[i];
+    const beh = pi === 6 || pi === 8 ? 3 : pi === 7 ? 1 : i === 2 ? 2 : 0;
+    const g0 = home ? .2 + i * .18 : gj0;
+    const g1 = home ? .5 + (i - 1) * .06 : gj1;
+    const g2 = home ? .42 + i * .12 : gj2;
+    const sc = pi === 8 ? (home ? 420 : 260 + hx(5) * 180) : (home ? 26 + i * 8 : 9 + hx(5) * 16);
+    put(FAU2[i % 3], sx, sy, sz, sc, g0, g1, g2, gsd, hx(3), hx(3), .12 + ((SYS && SYS.fac) || 0) * .18, beh);
+  }
+}
+function v124Boot() {
+  mPlan = [planRadial(), planSegment(), planSail(), planColony(), planCrystal(), planBag(), planHunter(), planSwarm(), planLevi()];
+  LEco = Layer(QUEST ? 2000 : 1700, QUEST ? 4 : 4, 1, genEco, 44);
+  FAU2 = [LEco, Sub(LEco, 1), Sub(LEco, 1)];
+  LAYERS.push(LEco);
+  HSta = Dyn(1); HFr = Dyn(1); HCap = Dyn(1); HCr = Dyn(1); HLv = Dyn(1);
+  const boot = mesh([0, 0, 0, 0, 1, 0, 0, 0], [0, 0, 0]);
+  mArc = boot; DArc = Dyn(1);
+}
+const v123BootPrev = v123Boot;
+v123Boot = function () { v123BootPrev(); v124Boot(); };
+
+const v123LayoutPrev = v123LayoutHero;
+v123LayoutHero = function () {
+  v123LayoutPrev();
+  const R = mulberry32(((SYS && SYS.salt) || 1) ^ 0x51A7);
+  const yaw0 = yaw, fx = Math.sin(yaw0), fz = -Math.cos(yaw0), rx = -fz, rz = fx;
+  const place = (dist, side, up) => ({ x: px + fx * dist + rx * side, y: py + up, z: pz + fz * dist + rz * side });
+  HERO.freighter = place(680 + R() * 40, -170 - R() * 40, -10);
+  HERO.creature = place(520 + R() * 30, 90, 24);
+  HERO.station = place(1560 + R() * 80, 340, 20);
+  HERO.capital = place(2360 + R() * 120, -420, 70);
+  HERO.whale = place(2920 + R() * 80, 120, -30);
+  HERO.pick = R();
+};
+function heroPut(L, p, sc, mat, hue, beh) {
+  L.n = 0;
+  if (!p) return;
+  L.sz = sc; L.hue = hue;
+  put(L, p.x - px, p.y - py, p.z - pz, sc, 0, 0, 0, ((SYS.salt || 1) % 997) / 997, hue, mat, hue, beh);
+  flush(L);
+}
+v123PutHero = function () {
+  if (!HSta || !HERO || SYS.atm) {
+    if (HSta) { HSta.n = HFr.n = HCap.n = HCr.n = HLv.n = 0; }
+    return;
+  }
+  const fac = (SYS.fac || 0) % 4, alien = !!(SYS.dead || ((SYS.salt >>> 3) % 6 === 0));
+  const stations = [mRing, mHubS, mDockS, mSpire];
+  HSta.mesh = alien && mAli ? mAli[2] : stations[(SYS.salt >>> 2) % 4];
+  HFr.mesh = mShips[(SYS.salt >>> 1) % 2];
+  HCap.mesh = mCap[fac];
+  const plans = v124Plans();
+  HCr.mesh = mPlan[plans[0]];
+  HLv.mesh = mLev;
+  const hue = [.55, .08, .62, .15][fac];
+  heroPut(HSta, HERO.station, alien ? 640 : 280, alien ? 7 : 0, hue, 0);
+  heroPut(HFr, HERO.freighter, 62, 0, hue, 0);
+  heroPut(HCap, HERO.capital, 520, 0, hue, 0);
+  heroPut(HCr, HERO.creature, plans[0] === 8 ? 90 : 34, 7, .2 + fac * .15, 10);
+  heroPut(HLv, HERO.whale, 460, 7, .25, 0);
+};
 
 function v124Arc(vd) {
   if (!mArc || !RV || SYS.atm) return;
@@ -5538,7 +5750,31 @@ function v124Shaders() {
     em+=mix(vec3(1.,.8,.5),vec3(.6,.8,1.),step(.6,hh(wi+3.)))*step(.88,hh(wi*vec2(1.,.37)))*step(.45,hh(vec2(wi.y,7.)))*step(.25,wf.x)*step(wf.x,.75)*step(.3,wf.y)*step(wf.y,.7)*1.6*det;}
   }`);
   rock = v124Must(rock, 'col+=fr*fr*fr*neb(N,6.)*.85*rim+uSunC.rgb*pow(fr,2.2)*.22*rim+em', 'col+=fr*fr*fr*neb(N,6.)*.95*rim+uSunC.rgb*pow(fr,2.2)*.48*rim+em');
-  const shipP = prog(SHIP_V, rock);
+    let ship = SHIP_V;
+  ship = v124Must(ship, `lp.y+=sin(TIME*(1.5+a*1.6)-lp.z*4.2)*.1*(.25+abs(lp.z));lp.x+=cos(TIME*1.05+lp.z*3.)*.05;
+ }else{`, `lp.y+=sin(TIME*(1.5+a*1.6)-lp.z*4.2)*.1*(.25+abs(lp.z));lp.x+=cos(TIME*1.05+lp.z*3.)*.05;
+ }else if(uShip==9){
+  float beh=k,hold=step(9.5,beh);
+  vec3 nn=normalize(h3(sd*2.6)-.5+vec3(0.,1.25,0.)),uu=normalize(cross(nn,vec3(.19,1.,.05))),ww=cross(nn,uu);
+  float ro=max(80.,uCN.x*(.14+.1*a)),spd=beh>2.5&&hold<.5?11.:beh<1.5?7.:9.;
+  float an=sd*6.283+b*2.2+TIME*spd/ro;
+  P0=c;
+  if(hold<.5){P0=c+(uu*cos(an)+ww*sin(an))*ro*.35+nn*(b-.5)*40.;
+   float pd=length(P0);
+   if(beh<1.5&&pd<520.)P0+=normalize(P0+vec3(.01))* (520.-pd)*.4;
+   else if(beh>2.5&&pd>80.&&pd<1400.)P0=mix(P0,normalize(P0)*90.,.3);
+  }
+  float yg=hold>.5?TIME*.15+sd*3.:an;float cs=cos(yg),sn=sin(yg);
+  X=vec3(cs,0.,sn);Y=vec3(0.,1.,0.);Z=vec3(-sn,0.,cs);
+  lp.y+=sin(TIME*1.8+lp.z*4.2+sd)*.07*(.3+abs(lp.z));
+  lp.x+=sin(TIME*1.1+lp.z*2.5)*.03;
+  float part=aU.y;
+  if(part>.5&&part<1.5){float s=sin(TIME*1.45+sd+aP.x);lp.y+=s*.04;lp.x+=aP.z*s*.12;}
+  else if(part>1.5&&part<2.5){lp.y+=sin(TIME*.8+lp.x*2.2+sd)*abs(lp.x)*.2;lp.z+=cos(TIME*.6+lp.x)*lp.x*.04;}
+  else if(part>2.5){float t=clamp(part-3.,0.,1.25);lp.x+=sin(TIME*1.7-t*4.4+sd)*t*t*.45;lp.y+=cos(TIME*1.2-t*3.2+b*2.)*t*.25;}
+ }else{`);
+  ship = v124Must(ship, 'if(uShip==8&&sz>180.)fd*=smoothstep(sz*.28,sz*1.15,d);', 'if((uShip==8||uShip==9)&&sz>180.)fd*=smoothstep(sz*.28,sz*1.15,d);');
+  const shipP = prog(ship, rock);
   P_SHIP.p = shipP.p; P_SHIP.u = shipP.u;
   gl.useProgram(P_SHIP.p); gl.uniform3fv(P_SHIP.u['uTier[0]'], TCOL); gl.uniform1i(P_SHIP.u.uKind, 4); gl.uniform1f(P_SHIP.u.uFlat, 0);
 
@@ -5597,6 +5833,17 @@ function v124Hooks() {
   catch (e) { console.error('v124 shader', e); }
   const E = window.ES;
   E.budget = () => ({ questVerts: IE_BUDGET.questVerts, questDraws: IE_BUDGET.questDraws, quest: QUEST, lv: LV, perf: E.perf() });
+
+  E.hero = () => HERO;
+  E.plans = () => (typeof v124Plans === 'function' ? v124Plans() : []);
+  E.beast = (i) => {
+    const pi = ((i == null ? (E.plans()[0] || 0) : i) | 0) % 9;
+    if (!HCr || !HERO || !HERO.creature) return pi;
+    HCr.mesh = mPlan[pi];
+    const q = HERO.creature;
+    E.frame(q.x, q.y, q.z, pi === 8 ? 160 : 42);
+    return pi;
+  };
 }
 // ============================================================================
 // Build everything (with a loading bar), then fly

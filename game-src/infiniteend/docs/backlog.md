@@ -10,6 +10,7 @@ Visual fidelity pass. v1.23 saves migrate. Gameplay fixes from v1.23 stay.
 - Skies: limb glow, terminator, warped clouds, city lights, ocean glint, gas-giant storms, blackbody stars.
 - Stations are a smooth torus. A near-field arc covers the hoop when you fly inside it. Hull shading adds panels, windows and a star rim.
 - Cabin materials: soft-touch, brushed metal, holo displays, boost and alert light. Glass is unchanged.
+- Nine creature plans, three per system. The first look at a gate shows a station, a freighter, a capital, a creature and a leviathan.
 
 ## v1.23 (2026-11-20, test site only)
 
