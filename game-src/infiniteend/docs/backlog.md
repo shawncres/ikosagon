@@ -2,6 +2,16 @@
 
 Standing rule from Shawn: every build takes a selection from this backlog alongside whatever is newly asked. Nothing here is to be dropped silently. Versions use point numbering (v1.0 = first rollback build … v1.4 = old "v5"; current test build v1.23). `BUILD` in `c_main.js`, shown on the title screen, bottom-right of the pause screen and in the Quest pause panel. Increment it on each release. **From v1.20 on, updates keep the player's progress** (Shawn, 2026-11-19) and a fresh universe happens only when the player chooses New universe. (v1.14 was skipped at Shawn's direction.)
 
+
+## Tried in v1.24, rolled back by Shawn (2026-11-20). Redo carefully, one item at a time
+
+- Vertex budget: Quest preset (LV>=1) cap 1,000,000 vertices / 80 draws per eye at home gate; coarser rock shells (-2 subdivisions Quest, -1 High), thinner swarms; panel lines, windows, normals from shaders. Measured 862k/70 draws Quest, 2.63M/79 High (v1.23: 1.92M medium, 3.87M high).
+- Skies: gas-giant bands with vortex storms, domain-warped clouds and shadows, Rayleigh/Mie limb and terminator, ocean specular, night-side city lights, blackbody star colours, per-system nebula warp.
+- Hulls: shader panel lines, weathering, windows, lit docking bay, hazard marks, star rim, fading with distance. Stations as smooth torus with modules and wings; finer near-field arc when flying inside a ring.
+- Cabin: soft-touch panels, brushed frame, emissive trim, holographic displays, boost/damage bezel light (glass and seat line untouched).
+- Creatures: nine body plans, three per system, herd/flee/hunt motion; arrival showcase (station, freighter, capital, creature, leviathan) in front of the largest planet, varying with system.
+- Small fixes: HUD reticle rebinds its program before the fallback mark (clears a WebGL warning); file-URL loads skip the radio fetch.
+
 ## v1.23 (2026-11-20, test site only)
 
 Quest 3 notes from Shawn's v1.22 flight, plus the frame-loop crash. v1.22 saves migrate. New games, and configs that never stored a difficulty, start on Pilot.
