@@ -6,7 +6,7 @@ noiseTex();
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.21';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
+const BUILD = 'v1.22';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 let draws = 0, verts = 0, frameDraws = 0, frameVerts = 0;
 const _dei = gl.drawElementsInstanced.bind(gl), _de = gl.drawElements.bind(gl), _da = gl.drawArrays.bind(gl);
 gl.drawElementsInstanced = (m, c, ty, off, n) => { draws++; verts += c * n; return _dei(m, c, ty, off, n); };
@@ -15,7 +15,7 @@ gl.drawArrays = (m, a, c) => { draws++; verts += c; return _da(m, a, c); };
 const ST = { v: 1, hull: 100, cargo: [0, 0, 0, 0, 0, 0], credits: 0, sec: [0, 0, 0], loc: 0, visited: {}, dead: [], missions: {}, found: {}, courier: null };
 let idb = null, saveT = 0;
 function blankState(seed) {
-  return { v: 1, hull: 100, cargo: [0, 0, 0, 0, 0, 0], credits: 0, sec: [0, 0, 0], loc: 0, visited: {}, dead: [], missions: {}, found: {}, courier: null, build: BUILD, seed: seed >>> 0, o2: 100, fuel: 100, wen: 100, spice: 60, spiceV: 1, deadNames: [], jumps: 0 };
+  return { v: 1, hull: 100, cargo: [0, 0, 0, 0, 0, 0], credits: 0, sec: [0, 0, 0], loc: 0, visited: {}, dead: [], missions: {}, found: {}, courier: null, build: BUILD, seed: seed >>> 0, o2: 100, fuel: 100, wen: 100, spice: 60, spiceV: 1, deadNames: [], jumps: 0, lens: 0 };
 }
 function migrateState() {
   if (ST.seed == null) ST.seed = (Math.random() * 4294967296) >>> 0;
@@ -26,6 +26,8 @@ function migrateState() {
   if (!Array.isArray(ST.deadNames)) ST.deadNames = [];
   if (!Array.isArray(ST.sec) || ST.sec.length < 3) ST.sec = [0, 0, 0];
   if (!ST.chart || typeof ST.chart !== 'object') ST.chart = {};
+  if (ST.lens == null) ST.lens = 0;
+  if (ST.spice == null) ST.spice = 60;
   ST.build = BUILD; ST.v = 1;
 }
 async function loadState() {
@@ -77,6 +79,7 @@ FV = [LFr, Sub(LFr, 2)];
 const LW = Layer(520, 6, 2, genWisp, 8), LU = Layer(14, 28, 1, genDust, 9), LP = Layer(110, 10, 1, genSpore, 10);
 const LDs = Layer(600, 6, Math.round(40 * Q.per), genSiphon, 24), LDe = Layer(600, 6, Math.round(40 * Q.per), genSpark, 25);
 const LAYERS = [LTi, LH, LB, LS, LG, LD, LR, LMg, LJ, LQ, LM, LY, LWh, LSp, LW, LU, LP, LF, LFr, LDr, LDk, LDs, LDe];
+if (typeof v122Boot === 'function') v122Boot();
 const SHOOT = [...HV, ...BF, ...BN, ...SV, LG];             // everything the gun can break
 const DGt = Dyn(1), DTr = Dyn(1), GATE = 280, DC = [Dyn(420), Dyn(420)], DGm = Dyn(240), DT = Dyn(200), DPa = Dyn(900);
 
@@ -251,7 +254,8 @@ function tradePanel() {
   const R = mulberry32(SYS.salt ^ 0x7EADE0 ^ Math.floor(Date.now() / 864e5)), others = SYS.locs.filter((l) => l.i !== SYS.loc), to = others[R() * others.length | 0], pay = 60 + (R() * 15 | 0) * 10, list = [];
   list.push({ name: 'Trade', kind: `${slotsUsed()}/${holdSlots()} slots`, desc: 'Open your hold beside the trader\'s stock: ore, fuel cells, energy cells, repair kits', run: () => { closePanel(); invShow('trader'); } });
   list.push(v ? { name: 'Sell all minerals', kind: `${v} credits`, desc: 'Every mineral aboard, at the going rate', run: () => { ST.credits += v; cargo.fill(0); showCargo(); save(); tip(`Hold sold · +${v} credits`, 4000); } } : { name: 'Nothing to sell', desc: 'Your hold is empty' });
-  if (ST.hull < 99) { const cost = Math.ceil((100 - ST.hull) * 1.5); list.push(ST.credits >= cost ? { name: 'Repair the hull', kind: `${cost} credits`, desc: `Hull is at ${ST.hull | 0}%`, run: () => { ST.credits -= cost; ST.hull = 100; save(); showCargo(); tip('Hull repaired', 3000); } } : { name: 'Repair the hull', kind: `${cost} credits`, desc: `Hull is at ${ST.hull | 0}%. Not enough credits yet: sell the hold first.` }); }
+  if (ST.hull < 99) { const cost = Math.ceil((100 - ST.hull) * 1.5 * (typeof berthMul === 'function' ? berthMul() : 1)); list.push(ST.credits >= cost ? { name: 'Repair the hull', kind: `${cost} credits`, desc: `Hull is at ${ST.hull | 0}%. ${typeof berthNote === 'function' ? berthNote() : 'The yard will plate it.'}`, run: () => { ST.credits -= cost; ST.hull = 100; gain({ rep: 1, xp: 4 }); save(); showCargo(); tip('Hull repaired', 3000); } } : { name: 'Repair the hull', kind: `${cost} credits`, desc: `Hull is at ${ST.hull | 0}%. Not enough credits yet: sell the hold, or crack ferrite in the field.` }); }
+  if (typeof v122Berth === 'function') v122Berth(list);
   list.push(ST.courier ? { name: 'You are carrying a case', kind: ST.courier.name, desc: `${ST.courier.pay} credits on delivery` } : { name: 'Carry a sealed case', kind: to.name, desc: `${pay} credits when it arrives. No hurry.`, run: () => { ST.courier = { sec: SYS.sec, loc: to.i, name: to.name, pay }; save(); tip(`Case aboard for ${to.name}`, 4000); } });
   list.push(...rpgTrade());
   panel('Trader', `A quiet word off ${SYS.locs[SYS.loc].name} · you hold ${ST.credits} credits`, list, 'Press a number · J to close');
@@ -642,6 +646,7 @@ function simulate(dt, fly) {
   DTr.n = 0;
   if (trader) { const tx = 430 - px, ty = -70 - py, tz = 260 - pz, td = Math.hypot(tx, ty, tz); put(DTr, tx, ty, tz, 70, 0, 0, 0, .61, 0, 0, .12, 0); if (fly && td < 190 && !tradeIn && !jumpTo) { tradeIn = 1; tradePanel(); } else if (td > 400) tradeIn = 0; }
   rpgSim(dt, fly);
+  if (typeof v122Sim === 'function') v122Sim(dt, fly);
   flush(DC[0]); flush(DC[1]); flush(DGm); flush(DT); flush(DPa); flush(DGt); flush(DTr);
 }
 
@@ -713,14 +718,16 @@ function eye(fb, x, y, w, h, tw, th) {
   gl.uniform1i(ru.uKind, 3); gl.uniform1f(ru.uSpin, 4); draw(R, DGm, mDart);
   gl.uniform1f(ru.uFlat, 0);
   gl.uniform1i(ru.uKind, 2); gl.uniform1f(ru.uSpin, 1.1); draw(R, LD, mBox);
-  gl.uniform1i(ru.uKind, 1); gl.uniform1f(ru.uSpin, .02); draw(R, RV[0], mRing); draw(R, RV[1], mSpire); draw(R, RV[2], mHubS); draw(R, RV[3], mDockS);
-  gl.uniform1f(ru.uSpin, .004); draw(R, MV[0], mRing); draw(R, MV[1], mSpire);
+  gl.uniform1i(ru.uKind, 1); gl.uniform1f(ru.uSpin, .02);
   gl.uniform1f(ru.uSpin, 0); draw(R, DGt, mGate);
   gl.useProgram(P_CRY.p); if (P_CRY.u.uVd) gl.uniform1f(P_CRY.u.uVd, vd); gl.uniform1f(P_CRY.u.uSpin, .05); draw(P_CRY, LC, mCry);
   gl.disable(gl.CULL_FACE); gl.useProgram(P_SHIP.p); if (P_SHIP.u.uVd) gl.uniform1f(P_SHIP.u.uVd, vd);
   gl.uniform1i(P_SHIP.u.uShip, 4); for (let i = 0; i < 3; i++) draw(P_SHIP, DAgs[i], mShips[i]); draw(P_SHIP, DAf, mFrig[0]);   // traffic, steered ship by ship
   gl.uniform1i(P_SHIP.u.uShip, 2); draw(P_SHIP, LDr, mDrone); draw(P_SHIP, LDs, mSiphon); draw(P_SHIP, LDe, mSpark);
   gl.uniform1i(P_SHIP.u.uShip, 3); draw(P_SHIP, DTr, mFrig[1]);
+  gl.uniform1i(P_SHIP.u.uShip, 1); draw(P_SHIP, LFr, mFrig[1]); if (FV[1]) draw(P_SHIP, FV[1], mFrig[0]);
+  gl.uniform1i(P_SHIP.u.uShip, 6); draw(P_SHIP, RV[0], mRing); draw(P_SHIP, RV[1], mSpire); draw(P_SHIP, RV[2], mHubS); draw(P_SHIP, RV[3], mDockS); draw(P_SHIP, MV[0], mRing); draw(P_SHIP, MV[1], mSpire);
+  if (typeof v122Draw === 'function') v122Draw(vd, 0);
   // the sky fills whatever is left
   gl.depthFunc(gl.LEQUAL); gl.depthMask(false);
   if (NO.includes('k')) skyw.fill(0);
@@ -740,6 +747,7 @@ function eye(fb, x, y, w, h, tw, th) {
   gl.uniform1i(lu.uKind, 3); draw(Lf, LWh, mWhale);
   gl.uniform1i(lu.uKind, 4); draw(Lf, LSp, mSerp);
   gl.uniform1i(lu.uKind, 5); gl.uniform1f(lu.uSpin, .012); draw(Lf, LTd, mTen); gl.uniform1f(lu.uSpin, .05); draw(Lf, LTb, mTen);
+  if (typeof v122Draw === 'function') v122Draw(vd, 1);
   const Sp = P_SPR;
   gl.useProgram(Sp.p);
   gl.uniform1i(Sp.u.uMode, 2); gl.uniform1f(Sp.u.uDark, 1); gl.blendFuncSeparate(gl.ZERO, gl.ONE_MINUS_SRC_COLOR, gl.ZERO, gl.ONE); draw(Sp, LDk, mQuad);
@@ -868,7 +876,7 @@ function frame(now, xf) {
   const fly = flying(); hudTick(now);
 
   // steer and throttle
-  const eff = .55 + .45 * Math.min(1, ST.hull / 70);          // a damaged hull gives less thrust
+  const eff = (.48 + .52 * Math.min(1, ST.hull / 78)) * (ST.hull < 32 ? .74 : 1);          // a damaged hull gives less thrust, and a failing one slurs the controls
   let ms = 0, mu = 0, boost = 0, fwd = 9;
   if (fly) {
     const fw = K.KeyW || K.ArrowUp ? 1 : 0, bk = K.KeyS || K.ArrowDown ? 1 : 0, rt = K.KeyD || K.ArrowRight ? 1 : 0, lf = K.KeyA || K.ArrowLeft ? 1 : 0;
@@ -955,7 +963,7 @@ function frame(now, xf) {
       if (vn < -16) { hurtSrc = 'rock'; hurtSrcT = tm; hitFromX = px - cNx * 30; hitFromY = py - cNy * 30; hitFromZ = pz - cNz * 30; hurt(Math.min(35, (-vn - 16) * .12)); thud(-vn); for (let i = 0; i < 12; i++) { rdir(); spark(px - cNx * 3, py - cNy * 3, pz - cNz * 3, vx + rd[0] * 30, vy + rd[1] * 30, vz + rd[2] * 30, .3 + Math.random() * .5, .1 + .15 * Math.random(), 0, 3.5, 1.8, .5, 0); } }
     }
   }
-  if (ST.hull < 50) ST.hull = Math.min(50, ST.hull + dt * .3); // field repairs, slowly, as far as half
+  if (ST.hull < 50) ST.hull = Math.min(50, ST.hull + dt * .045); // a quiet ship creeps back toward half; real plate comes from ferrite or a yard
   const speed = Math.hypot(vx, vy, vz);
 
   simulate(dt, fly);
@@ -1054,6 +1062,7 @@ window.ES = { warpLook: (a, b) => { dbgJ = a; dbgT = b; }, zero: (i) => { const 
   whale: (d = 900) => seek(LWh, cellHas(17, .55), d), serpent: (d = 250) => seek(LSp, cellHas(18, .4), d), colossus: (d = 900) => seek(LQ, cellHas(16, .4), d), ray: (d = 300) => seek(LY, cellHas(7, .65), d),
   info: () => ({ cue: cueName, up: [sUx, sUy, sUz].map((v) => +v.toFixed(2)), fw: [sFx, sFy, sFz].map((v) => +v.toFixed(2)), fps, W, H, S, pos: [px, py, pz], reg: REG, sys: SYS.name, broken, cargo, live: nLive, dyn: DC[0].n + DC[1].n + DGm.n, n: LAYERS.map((l) => l.n) }),
 };
+if (typeof v122Hooks === 'function') v122Hooks();
 requestAnimationFrame((t) => { last = t; frame(t); });
 await step(1, 'The dark is ready');
 B.className = 'm';

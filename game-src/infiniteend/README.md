@@ -1,6 +1,6 @@
 # The Infinite End: handoff brief (v1.21)
 
-You're taking over development of **The Infinite End**, a single-file WebGL/WebXR space flight, mining, trading and story game by Shawn (Ikosagon). v1.21 is the current test build (`BUILD` in `c_main.js`). The next handoff is v1.22: faster, fixes whatever Shawn logs next, and adds from the backlog. Deliver it the same way: one self-contained `index.html` on the test site.
+You're taking over development of **The Infinite End**, a single-file WebGL/WebXR space flight, mining, trading and story game by Shawn (Ikosagon). v1.22 is the current test build (`BUILD` in `c_main.js`). The next handoff is v1.23: faster, fixes whatever Shawn logs next, and adds from the backlog. Deliver it the same way: one self-contained `index.html` on the test site.
 
 v1.21 targets **Meta Quest 3 and newer** (Quest 3 / 3S, Touch Plus). Desktop keyboard, mouse and gamepad stay a separate scheme. See "Quest 3 controls" below.
 
@@ -32,6 +32,7 @@ src/                              the source, the only thing you edit
   b_world.js                      world geometry: rocks, giants, cockpit/cabin meshes
   bz_game.js                      game: jobs, NPCs, comms, escorts, story arcs, HUD, settings, aux display (PIP), oxygen, audio score
   e_v121.js                       v1.21 layer: charts, reputation prices, dogfight, faction kits, split settings
+  f_v122.js                       v1.22 layer: freighters, capitals, NASA stations, Silence biomech, creatures, meters, difficulty
   c_main.js                       main loop, rendering passes, input, XR, save/load, BUILD label, debug hooks (window.ES)
   build.sh                        joins them → src/index.html (store flavour) and src/dist/test/index.html (test flavour)
 current/infiniteendtest-index.html   the build Shawn was testing before v1.20 (v1.19 content, mislabelled v1.18).
@@ -45,7 +46,7 @@ Build: `sh src/build.sh` (needs only a POSIX shell). Sources are concatenated in
 
 Syntax check before every build:
 ```
-(printf "(async()=>{"; cat src/a_core.js src/b_world.js src/bz_game.js src/c_main.js; printf "})()") > /tmp/chk.js && node --check /tmp/chk.js
+(printf "(async()=>{"; cat src/a_core.js src/b_world.js src/bz_game.js src/e_v121.js src/f_v122.js src/c_main.js; printf "})()") > /tmp/chk.js && node --check /tmp/chk.js
 ```
 
 ## 3. v1.20 is in the tree. The next build (v1.21) starts from new QA.

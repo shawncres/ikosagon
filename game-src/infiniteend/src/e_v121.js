@@ -144,7 +144,7 @@ navBuild = function () {
 function v121Dog(a, dt, qx, qy, qz, qd) {
   if (!a.df) a.df = { mode: 0, t: 1.2, tel: 0, told: 0 };
   const df = a.df;
-  const dif = Math.max(.5, Math.min(1.4, .58 + (SYS.danger || 0) * .15 + (a.bounty ? .14 : 0) + (a.rival ? .2 : 0)));
+  const dif = Math.max(.35, Math.min(1.85, (.58 + (SYS.danger || 0) * .15 + (a.bounty ? .14 : 0) + (a.rival ? .2 : 0)) * (typeof diffAi === 'function' ? diffAi() : 1)));
   const pers = a.fac === 1 ? 1 : a.fac === 2 ? 2 : 0;
   if (!a._winged) {
     a._winged = 1;
