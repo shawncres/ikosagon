@@ -5558,6 +5558,42 @@ function v124Shaders() {
   let bake = v124Must(BAKE_F, 'vec3 w=(vec3(fbm(d*2.+3.),fbm(d*2.+11.),fbm(d*2.+19.))-.5)*(0.55+uSty.w*1.35);', 'vec3 w=(vec3(fbm(d*2.+3.),fbm(d*2.+11.),fbm(d*2.+19.))-.5)*(0.55+uSty.w*1.35);w+=(vec3(n3(d*2.6+w*1.7+uSeed),n3(d*2.4+w.yzx*1.8+uSeed.yxy+4.),n3(d*2.1+w.zxy+uSeed.z+9.))-.5)*(0.7+uSty.y*1.4);');
   if (NEB) { const nb = prog(TRI_V, bake); NEB.p = nb; }
 
+  let cock = COCK_F;
+  cock = v124Must(cock, `void plate(inout vec3 alb,inout vec3 em,inout float sp,inout float gs,vec3 AM){   // clean panelling: matte composite plates, fine seams, recessed fasteners, the odd status light
+ vec2 q=abs(vM.y)>.5?vL.xz:abs(vM.x)>.7?vL.zy:vL.xy,g=q*vec2(2.4,3.),f=fract(g),e=min(f,1.-f);
+ float seam=smoothstep(.016,.004,min(e.x,e.y)),bolt=smoothstep(.022,.012,length(e-.07));
+ alb=vec3(.012,.013,.015)*(.85+.3*texture(uNz,vL*22.).r)*(1.-.7*seam)+.006*bolt;sp=.3;gs=22.;
+ em=AM*step(.88,hh(floor(g)+3.1))*smoothstep(.025,.012,length((f-vec2(.86,.16))*vec2(1.,1.4)))*.9;}`,
+    `void plate(inout vec3 alb,inout vec3 em,inout float sp,inout float gs,vec3 AM){
+ vec2 q=abs(vM.y)>.5?vL.xz:abs(vM.x)>.7?vL.zy:vL.xy,g=q*vec2(3.2,4.4),f=fract(g),e=min(f,1.-f);
+ float n=texture(uNz,vL*16.).r,br=texture(uNz,vL*vec3(2.5,48.,2.5)).r;
+ float seam=smoothstep(.022,.003,min(e.x,e.y)),bolt=smoothstep(.03,.012,length(e-vec2(.055,.07)));
+ float soft=smoothstep(.2,.7,n);
+ alb=mix(vec3(.018,.019,.022),vec3(.05,.053,.058),soft*.4)*(.8+.25*n)*(1.-seam*.8);
+ alb=mix(alb,vec3(.012,.013,.016),bolt*.8);alb*=.82+.18*br;
+ sp=mix(.08,.62,soft);gs=mix(8.,64.,soft);
+ float trim=smoothstep(.014,.002,min(e.x,e.y*.55))*step(.4,f.y);
+ em=AM*trim*(.45+.55*step(.25,fract(TIME*.12+n*5.)));
+ em+=mix(AM,vec3(.3,.85,1.),.35)*step(.91,hh(floor(g)+2.))*smoothstep(.028,.008,length(f-vec2(.8,.22)))*(.35+.65*step(.55,fract(TIME*.07+hh(floor(g)))));}`);
+  cock = v124Must(cock, 'else if(id>11.5){alb=vec3(.03,.032,.037)*(.75+.5*texture(uNz,vL*vec3(3.,60.,3.)).r);sp=1.1;gs=45.;}',
+    'else if(id>11.5){float br=texture(uNz,vL*vec3(1.5,70.,1.5)).r;alb=vec3(.055,.058,.062)*(.7+.45*br);sp=.95;gs=70.;}');
+  cock = v124Must(cock, 'else if(id<.5){alb=vec3(.011,.0115,.014)*(.85+.3*texture(uNz,vL*40.).r);sp=.2;gs=20.;}',
+    'else if(id<.5){float n=texture(uNz,vL*28.).r,fib=texture(uNz,vL*vec3(8.,36.,8.)).r;alb=vec3(.02,.021,.024)*(.75+.4*n)*(.9+.1*fib);sp=.1;gs=12.;}');
+  cock = v124Must(cock, ` col+=vec3(1.,.15,.08)*warn*uDm*.04;
+ o=vec4(col,-1.);}`, ` col+=vec3(1.,.15,.08)*warn*uDm*.04;
+ float ao=mix(.78,1.,clamp(N.y*.5+.6,0.,1.))*mix(.86,1.,texture(uNz,vL*2.4).r);
+ col*=ao;
+ if(id>11.2&&id<12.6){vec3 T=normalize(cross(N,vec3(.04,1.,.02)));float an=1.-abs(dot(T,normalize(L+V)));col+=uSunC.rgb*pow(an,6.)*.28;}
+ if(id>1.5&&id<4.5){float hs=fract(vL.x*22.+TIME*.45)+fract(vL.y*30.-TIME*.3);col+=vec3(.35,.85,1.)*smoothstep(1.15,1.7,hs)*.16;col+=vec3(.55,.9,1.)*pow(1.-max(dot(N,V),0.),1.5)*.25;}
+ col+=vec3(1.,.58,.22)*uCk.z*pow(1.-max(dot(N,V),0.),2.)*.2;
+ col+=vec3(.4,.8,1.)*max(uCk.w,0.)*.05;
+ col+=vec3(1.,.06,.04)*warn*(.03+.1*pow(1.-max(dot(N,V),0.),2.));
+ o=vec4(col,-1.);}`);
+  const c1 = prog(COCK_V, cock), c2 = prog(COCK_V, cock.replace('#version 300 es', '#version 300 es\n#define CABIN'));
+  P_COCK.p = c1.p; P_COCK.u = c1.u;
+  P_CAB.p = c2.p; P_CAB.u = c2.u;
+  gl.useProgram(P_CAB.p); gl.uniform1i(P_CAB.u.uPip, 6);
+
 }
 function v124Hooks() {
   try { v124Shaders(); if (NEB && SYS) bakeNebula(SYS.seed); }
