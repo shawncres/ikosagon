@@ -6,7 +6,7 @@ Standing rule from Shawn: every build takes a selection from this backlog alongs
 
 Visual fidelity pass. v1.23 saves migrate. Gameplay fixes from v1.23 stay.
 
-- Vertex budget first. Quest (`LV >= 1`) uses coarser rock shells and thinner swarms. Cap: 1,000,000 vertices and 80 draws per eye at the home gate. Desktop High may exceed it. v1.23 high was about 3.87M vertices.
+- Vertex budget first. Quest (`LV >= 1`), one eye, 1280×720, home gate: **70 draws, about 862k vertices** (cap 1,000,000 / 80). Desktop High: **79 draws, about 2.63M** (v1.23 high was 72 draws and 3.87M). Headless software WebGL, not a headset frame time.
 - Skies: limb glow, terminator, warped clouds, city lights, ocean glint, gas-giant storms, blackbody stars.
 - Stations are a smooth torus. A near-field arc covers the hoop when you fly inside it. Hull shading adds panels, windows and a star rim.
 - Cabin materials: soft-touch, brushed metal, holo displays, boost and alert light. Glass is unchanged.
