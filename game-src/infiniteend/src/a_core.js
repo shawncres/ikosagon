@@ -495,6 +495,24 @@ void main(){
   else if(mid>.5)alb=mix(alb,(.5+.5*cos(6.283*(vI.y+vec3(0,.33,.67))))*.3,.8);
   else if(big>.5&&ap.y<.6){vec2 wg=q/(ps*.22),wi=floor(wg),wf=fract(wg);
    em=mix(vec3(1.,.8,.5),vec3(.6,.8,1.),step(.6,hh(wi+3.)))*step(.88,hh(wi*vec2(1.,.37)))*step(.45,hh(vec2(wi.y,7.)))*step(.25,wf.x)*step(wf.x,.75)*step(.3,wf.y)*step(wf.y,.7)*2.2;}
+  if(big>.5){
+   float dq=length(vP),det=1.-smoothstep(900.,4200.,dq);
+   vec3 wp=q3;
+   float nA=texture(uNz,wp*.0045).r,nB=texture(uNz,wp*.02).g;
+   vec3 cell=abs(fract(wp*vec3(.035,.028,.02))-.5);
+   float seam=smoothstep(.42,.49,max(cell.x,max(cell.y,cell.z)));
+   float fine=smoothstep(.455,.49,max(abs(fract(wp.x*.11)-.5),abs(fract(wp.z*.09)-.5)));
+   alb=mix(alb,alb*vec3(.55,.42,.32),smoothstep(.58,.86,nA)*.55);
+   alb=mix(alb,vec3(.02,.022,.028),seam*(.45+.35*det));
+   alb*=mix(1.,.62,fine*det);
+   float win=step(.62,nB)*step(.28,fract(wp.y*.015+nA))*step(.22,fract(wp.x*.012));
+   em+=mix(vec3(1.,.78,.45),vec3(.45,.7,1.),step(.55,nA))*win*(.35+.9*det)*(.65+.35*step(.15,fract(TIME*.04+nA*6.)));
+   vec3 tn=normalize(cross(N,vec3(.21,1.,.07)));
+   N=normalize(N+tn*(nA-.5)*det*.55+cross(N,tn)*(nB-.5)*det*.35);
+   sp=mix(sp,.22+.85*nB,.5);gs=mix(gs,16.+80.*nB,.45);
+   float stripe=step(.92,fract(wp.y*.008+wp.x*.001));
+   alb=mix(alb,vec3(.55,.32,.05),stripe*.35);em+=vec3(1.,.45,.05)*stripe*.15;
+  }
  }else if(uKind==2){
   alb=vec3(.24,.25,.3)*(.4+.9*h1(vI.x*5.));sp=1.;gs=50.;
   em=step(.9,h1(vI.x*9.))*vec3(1.,.42,.12)*3.*(.5+.5*sin(TIME*3.+vI.x*90.));
@@ -505,7 +523,7 @@ void main(){
  float nl=dot(N,L),df=clamp(nl*1.15+.06,0.,1.),fr=1.-max(dot(N,V),0.);
  vec3 amb=neb(N,6.)*1.6+.004,H=normalize(L+V);
  vec3 col=alb*(uSunC.rgb*df*3.2+amb)+uSunC.rgb*pow(max(dot(N,H),0.),gs)*sp*df;
- col+=fr*fr*fr*fr*neb(N,6.)*.55*rim+em+iri*(.5+.5*cos(6.283*(fr*1.6+vI.x+vec3(0,.33,.67))))*fr*fr*.1;
+ col+=fr*fr*fr*neb(N,6.)*.85*rim+uSunC.rgb*pow(fr,2.2)*.22*rim+em+iri*(.5+.5*cos(6.283*(fr*1.6+vI.x+vec3(0,.33,.67))))*fr*fr*.15;
  o=vec4(fog(col,vP,uCN.z),0);}`;
 
 // ships fly: uShip 0 = fighter wings holding formation round a patrol loop, 1 = frigates on a slow orbit,
@@ -648,7 +666,9 @@ void main(){
  else if(uKind==3)g=.04+.8*fr+pow(.5+.5*cos(vU.y*43.98),16.)*(.45+.9*pow(.5+.5*sin(vU.x*40.-TIME*1.5),6.))*smoothstep(0.,.15,vU.x);
  else if(uKind==4)g=.1+.8*fr+1.2*pow(.5+.5*sin(vU.x*70.-TIME*5.),8.);
  else g=(.05+1.1*vU.y*vU.y*vU.y+2.5*smoothstep(.94,1.,vU.y))*smoothstep(15.,90.,length(vP));
- o=vec4(cc*g*vI.z,0);}`;
+ float band=pow(.5+.5*sin(vU.y*16.+TIME*(.8+vI.x)+vU.x*7.),3.);
+ vec3 bio=mix(cc,cc.brg,.28+.4*sin(vI.x*6.2));
+ o=vec4((bio*(g+.65*band)+vec3(.2,.55,.7)*band*fr*1.4)*vI.z,0);}`;
 
 // soft sprites, additive. uMode 0 space dust (stretches into streaks at speed), 1 drifting spores, 2 nebula wisps
 const SPR_V = VI + `
@@ -754,17 +774,18 @@ void main(){
  }
  else if(id>11.5){alb=vec3(.03,.032,.037)*(.75+.5*texture(uNz,vL*vec3(3.,60.,3.)).r);sp=1.1;gs=45.;}        // brushed frame alloy
  else if(id>10.5){o=vec4(mix(vec3(.2,.9,1.),vec3(1.,.15,.1),warn)*(.5+.3*step(.5,fract(TIME*.5+vL.x*3.))),-1.);return;}
- else if(id>9.5){                                             // glass: a tinted pane that mirrors the sky and the cabin, thickest at its frame
-  vec3 Ng=faceforward(N,Vd,N),R=reflect(Vd,Ng);float fr=.04+.96*pow(1.-abs(dot(Ng,Vd)),4.),ty=(vL.y+.95)/2.2;
-  float e=min(vL.y+.97,1.5-vL.y),edge=smoothstep(0.,.24,e);
-  float n=texture(uNz,vL*vec3(2.,7.,2.)).r,n2=texture(uNz,vL*13.).r,sg=pow(max(dot(Vd,L),0.),5.);
-  vec2 cg=floor(vec2(vL.x,vL.y-vL.z)*7.);                                                               // the instruments, mirrored faintly
-  vec3 c=(neb(R,3.)*1.6+glow(R)*2.)*fr*(1.+1.5*(1.-edge))+uSunC.rgb*sg*.004;
-  c+AM*exp(-(vL.y+1.)*2.6)*.012;
-  c+=vec3(.5,.7,.8)*(1.-edge)*(1.-edge)*.02;
-  float ck=0.;                                                // damage no longer draws on the glass: the HUD and the lamps carry it
-  c+=uSunC.rgb*pow(max(dot(R,L),0.),220.)*fr*2.5+vec3(.2,.45,.9)*pow(1.-edge,3.)*.035+vec3(.9,.35,.15)*pow(1.-edge,7.)*.03;
-  o=vec4(c+vec3(.5,.55,.6)*ck*(.15+sg),.03+.12*(1.-edge)+ck*.2);return;}
+ else if(id>9.5){                                             // canopy: fresnel, edge thickness, faint scratches, a soft sun streak. One cheap pass, no refraction.
+  vec3 Ng=faceforward(N,Vd,N),R=reflect(Vd,Ng);float nd=abs(dot(Ng,Vd)),fr=.03+.97*pow(1.-nd,3.2);
+  float e=min(vL.y+.97,1.45-vL.y),edge=smoothstep(0.,.28,e);
+  float n=texture(uNz,vL*vec3(3.2,9.,2.4)).r,n2=texture(uNz,vL*vec3(40.,8.,40.)).r;
+  float scratch=smoothstep(.72,.9,n2)*smoothstep(.2,.8,abs(fract(vL.x*37.+vL.y*11.)-.5));
+  vec3 cabin=AM*exp(-abs(vL.y+1.05)*3.2)*.05+vec3(.25,.55,.7)*exp(-dot(vL.xz,vL.xz)*.08)*.02;
+  vec3 c=(neb(R,2.)*1.35+glow(R)*1.6)*fr*(.55+1.1*(1.-edge))+cabin*fr*1.4;
+  c+=uSunC.rgb*pow(max(dot(R,L),0.),90.)*fr*(.35+scratch*1.8);
+  c+=uSunC.rgb*pow(max(dot(Vd,L),0.),18.)*scratch*.08;
+  c+=vec3(.55,.75,.9)*pow(1.-edge,2.)*.045+vec3(.95,.55,.25)*pow(1.-edge,5.)*.04;
+  c+=vec3(.7,.85,1.)*pow(nd,6.)*.012;
+  o=vec4(c,.045+.16*(1.-edge)+scratch*.04);return;}
  if(id>12.5){}
  else if(id>11.5){}
  else if(id<.5){alb=vec3(.011,.0115,.014)*(.85+.3*texture(uNz,vL*40.).r);sp=.2;gs=20.;}
@@ -820,6 +841,9 @@ void main(){
  col+=alb*(Lc*.9+neb(N,6.)*.4)*14.*pow(1.-max(dot(N,V),0.),3.)*step(6.5,id)*step(id,7.5);
  col*=.62+.38*smoothstep(-3.6,-1.,vL.y);
  col+=em;
+ col+=vec3(.55,.62,.7)*pow(1.-max(dot(N,V),0.),2.6)*.07;
+ col+=vec3(1.,.45,.12)*uCk.z*pool(vec3(0.,-1.15,-2.05),1.1)*.2;
+ col+=vec3(1.,.15,.08)*warn*uDm*.04;
  o=vec4(col,-1.);}`;
 
 // one big triangle for every full-screen pass

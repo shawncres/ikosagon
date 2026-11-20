@@ -2,7 +2,10 @@
 // a creature generator, and meters that choose a route. Quest 3 / Touch Plus controls are unchanged.
 const DIFFN = ['Story', 'Pilot', 'Veteran', 'Silence'];
 const DIFFHINT = ['Meters sip. Pilots miss. Docks stay kind.', 'The voyage as charted.', 'Sharper guns, thirstier tanks, dearer docks.', 'The dark keeps the books.'];
-if (CFG.diff == null) CFG.diff = 1;
+let diffWasSaved = false;
+try { diffWasSaved = Object.prototype.hasOwnProperty.call(JSON.parse(localStorage.ibCfg || '{}'), 'diff'); } catch {}
+if (!diffWasSaved || CFG.diff == null) CFG.diff = 1;
+if (CFG.diffPick == null) CFG.diffPick = 0;
 if ((CFG.fxMig || 0) < 7) CFG.fxMig = 7;
 function diffI() { const i = CFG.diff | 0; return i < 0 ? 0 : i > 3 ? 3 : i; }
 function diffK() { return [.45, 1, 1.55, 2.15][diffI()]; }
@@ -559,7 +562,7 @@ const panel121 = panel;
 panel = function (title, sub, list, foot) {
   if (title === 'Paused' && !list.some((d) => d.name === 'Difficulty')) {
     const d = diffI();
-    list.splice(1, 0, { name: 'Difficulty', kind: DIFFN[d], desc: DIFFHINT[d], run: () => { CFG.diff = (d + 1) % 4; keep('ibCfg', JSON.stringify(CFG)); setUi(); if (xr || hudForce) vrMenu(); else pausePanel(); } });
+    list.splice(1, 0, { name: 'Difficulty', kind: DIFFN[d], desc: DIFFHINT[d], run: () => { CFG.diff = (d + 1) % 4; CFG.diffPick = 1; keep('ibCfg', JSON.stringify(CFG)); setUi(); if (xr || hudForce) vrMenu(); else pausePanel(); } });
   }
   panel121(title, sub, list, foot);
 };
@@ -577,7 +580,7 @@ setUi = function () { setUi121(); v122Settings(); };
 const setClick121 = setP.onclick;
 setP.onclick = (e) => {
   const k = e.target.dataset && e.target.dataset.k;
-  if (k === 'diff') { CFG.diff = (diffI() + 1) % 4; setUi(); return; }
+  if (k === 'diff') { CFG.diff = (diffI() + 1) % 4; CFG.diffPick = 1; setUi(); return; }
   if (setClick121) setClick121(e);
 };
 

@@ -1,6 +1,24 @@
 # The Infinite End (formerly Infinite Black): backlog and build log
 
-Standing rule from Shawn: every build takes a selection from this backlog alongside whatever is newly asked. Nothing here is to be dropped silently. Versions use point numbering (v1.0 = first rollback build … v1.4 = old "v5"; current test build v1.22). `BUILD` in `c_main.js`, shown on the title screen, bottom-right of the pause screen and in the Quest pause panel. Increment it on each release. **From v1.20 on, updates keep the player's progress** (Shawn, 2026-11-19) and a fresh universe happens only when the player chooses New universe. (v1.14 was skipped at Shawn's direction.)
+Standing rule from Shawn: every build takes a selection from this backlog alongside whatever is newly asked. Nothing here is to be dropped silently. Versions use point numbering (v1.0 = first rollback build … v1.4 = old "v5"; current test build v1.23). `BUILD` in `c_main.js`, shown on the title screen, bottom-right of the pause screen and in the Quest pause panel. Increment it on each release. **From v1.20 on, updates keep the player's progress** (Shawn, 2026-11-19) and a fresh universe happens only when the player chooses New universe. (v1.14 was skipped at Shawn's direction.)
+
+## v1.23 (2026-11-20, test site only)
+
+Quest 3 notes from Shawn's v1.22 flight, plus the frame-loop crash. v1.22 saves migrate. New games, and configs that never stored a difficulty, start on Pilot.
+
+- Crash: a ship with no waypoint (a raider or wingman whose lead was gone, and `npcGoal` wrote `A`/`B` that did not exist) threw in `npcTick` every frame. Every role now gets a real waypoint. A dead or missing lead is dropped and given a route. One bad ship is caught so the frame continues. `ES.stressNpc(180)` ran 180 seconds of simulated time with lead deaths and zero exceptions.
+- WebGL: ship tint uniforms were set while the cabin program was bound. The ship program is bound first. `draw()` binds its own program.
+- Touch Plus: A hails, docks, accepts, selects. X opens the journal. The plate is drawn with the canvas alpha (it was blended with alpha 0, so the HUD vanished). In a headset the plate sits on the visor. The left menu button is often not in the gamepad; returning from the system UI pauses, and holding B+Y or the left stick opens the same plate.
+- Seat: the first pose, and the headset recenter, puts the eyes on a line over the dash. Leaning and standing still move you. Settings has Recenter / Adjust seat height.
+- Target bracket is a thin world-space mark at a clamped depth along the line to the target, and it fades as you look away.
+- Rocks always drop something. Ice feeds oxygen, volatiles feed fuel, nickel-iron patches the hull, and a rare pocket is a relic.
+- Quiet after a jump or a kill is about 38 seconds on Pilot, scaled by difficulty. Several ships are already in the first kilometre.
+- Ships carry mass: freighters and capitals turn and accelerate more slowly, fighters stay quick, and a hard correction throws a small thruster puff.
+- Live events, one at a time and telegraphed: distress, ambush, a Silence alongside, a comet, a solar flare, a boardable derelict. Choices pay or cost standing.
+- Radio voices are synthesized per speaker (Combine, Lantern, Haulers, pirates, Silence, station, rivals) with squelch and a short band-limited phrase, in time with the subtitle.
+- Shipyard at the trader: Pathfinder, Prospector, Haul, Lance, Surveyor. A codex list grows in the journal.
+- Shading: large hulls get panel lines, weathering, windows and a rim; canopy glass has fresnel, edge thickness and faint scratches; creatures carry bioluminescent bands. Arrival faces the largest planet so the first look has a world in it.
+- Not in this build (queued): photo mode (dropped), shield facing, subsystem targeting, a full creature IK set, faction wars as a simulation, and megastructure meshes that stay smooth when you are inside the ring. The ring silhouette is still the old mesh; the new detail is shading.
 
 ## v1.22 (2026-11-19, test site only)
 

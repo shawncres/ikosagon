@@ -2,6 +2,19 @@
 
 Shawn's QA findings, logged one by one. v1.20 (2026-11-19) worked the previous round. v1.21 is a feature build from Shawn's brief, not a new QA round. New findings stay logged only until Shawn says go.
 
+## v1.23 notes
+
+Shawn's Quest 3 pass on v1.22, plus the `npcTick` crash (`a.wp[0]`).
+
+- Fixed: missing waypoints, and the frame no longer dies if one ship is bad. Stress test: 180 simulated seconds, lead deaths, zero throws.
+- Fixed: ship uniforms were applied on the cabin program.
+- Fixed: A and X opened panels that drew with alpha 0, so the HUD disappeared. The plate is opaque and, in a headset, visor-locked. Pause is B+Y, left-stick hold, or coming back from the system menu.
+- Fixed: seat line is calibrated from the first pose and from recenter.
+- Partly: the target mark is a thin bracket at a sensible depth. Very distant targets are clamped so the eyes are not asked to converge at kilometres.
+- Partly: megastructure and station shading is richer. The underlying ring mesh is still coarse up close.
+- New games and configs with no saved difficulty start on Pilot. HUD brightness and size show Default at the picture v1.22 shipped (the old 70% and 85%).
+- Headless Chrome, high detail, 1280×720: about 70 draws and 3.9M vertices in one eye at the home gate. That count is the harness, not a Quest frame time.
+
 ## v1.22 notes
 
 No new numbered findings. Decisions taken while building, so the next QA pass can check them:

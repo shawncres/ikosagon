@@ -205,18 +205,18 @@ function setUi() {
   if (tab === 'Comfort') {
     body = row('vrTurn', 'Turning', turnN) + row('vrVig', 'Comfort vignette', vigN) + row('vrHz', 'Refresh', hzN) + row('vrSeat', 'Posture', CFG.vrSeat ? 'standing' : 'seated') + row('vrH', 'Seat height', VRH[vrHi()][0]) + row('vrIpd', 'View scale', scaleN) + row('vrHand', 'Throttle hand', CFG.vrHand ? 'left' : 'right') + row('vrHap', 'Touch haptics', hapN) + row('ck', 'Cockpit', cockpit ? 'on' : 'off');
   } else if (tab === 'Display') {
-    body = row('hud', 'HUD colour', HCOL[CFG.hud][0]) + row('op', 'HUD brightness', Math.round(CFG.op * 100) + '%') + row('size', 'HUD size', Math.round(CFG.size * 100) + '%');
+    body = row('hud', 'HUD colour', HCOL[CFG.hud][0]) + row('op', 'HUD brightness', relSet(CFG.op, .7)) + row('size', 'HUD size', relSet(CFG.size, .85));
     if (headset) body += row('vrRs', 'Render scale', rsN + ' · next entry') + row('vrFov', 'Fixed foveation', fovN) + row('ck', 'Cockpit', cockpit ? 'on' : 'off') + `<p style="color:rgb(var(--hcr) / .8);margin:14px 0 0">Quest 3 budget is 13.9 ms at 72 Hz, 11.1 ms at 90, 8.3 ms at 120. A steady 72 is kinder than a 120 that drops frames. Foveation cheapens the edge of each eye. This game draws the world to an offscreen buffer first, so the foveation mostly helps the final pass. Drop the render scale if the frame time slips. Quest 3S has no 120 Hz mode.</p>`;
     else body += row('cin', 'Cinematic bars', CFG.cin ? 'on' : 'off') + row('fs', 'Full screen on launch', CFG.fs === 0 ? 'off' : 'on') + row('fxVisor', 'Curved visor', LV3(CFG.fxVisor)) + row('fxGlass', 'Visor glass', LV3(CFG.fxGlass)) + row('fxBlur', 'Motion blur', LV3(CFG.fxBlur)) + row('fxCA', 'Colour fringing', LV3(CFG.fxCA)) + row('fxGrain', 'Film grain', LV3(CFG.fxGrain)) + row('fxBloom', 'Glow', LV3(CFG.fxBloom)) + row('fxFlare', 'Lens flare', LV3(CFG.fxFlare)) + row('fxScan', 'Scanlines', CFG.fxScan ? 'on' : 'off') + row('fxVig', 'Darkened corners', CFG.fxVig ? 'on' : 'off');
   } else if (tab === 'Audio') {
-    body = row('radio', 'Ikosagon radio', CFG.radio ? 'on' : 'off') + row('pl', 'Playlist between songs', CFG.pl ? 'on' : 'off') + row('vEng', 'Engine and boost', pct(CFG.vEng)) + row('vCht', 'Radio chatter', pct(CFG.vCht)) + row('vRad', 'Music', pct(CFG.vRad));
+    body = row('radio', 'Ikosagon radio', CFG.radio ? 'on' : 'off') + row('pl', 'Playlist between songs', CFG.pl ? 'on' : 'off') + row('vEng', 'Engine and boost', relSet(CFG.vEng, .5)) + row('vCht', 'Radio chatter', relSet(CFG.vCht, 1)) + row('vRad', 'Music', relSet(CFG.vRad, 1));
     if (!headset && !touch) body += row('suno', 'Suno playlist', 'open');
   } else if (tab === 'Flight') {
     body = row('host', 'Other pilots', ['peaceful', 'wary', 'hostile'][CFG.host]) + row('inv', 'Invert pitch', CFG.inv ? 'on' : 'off') + row('wipe', 'New universe', 'asks first');
     if (!touch) body += row('ctl', 'Stick model', CFG.ctl ? 'space sim' : 'standard');
     if (touch) body += `<p style="color:rgb(var(--hcr) / .8);margin:14px 0 0">Hold to fly. Slide to steer. A second finger boosts. The FIRE button shoots. The aux display, gate and journal stay on their own controls.</p>`;
   } else {
-    body = row('sens', 'Mouse sensitivity', Math.round(CFG.sens * 100) + '%') + row('padL', 'Gamepad', CFG.padL === 0 ? 'match headset' : 'racer') + row('gpFire', 'Fire button', CFG.padL === 0 ? 'right trigger' : ({ 7: 'right trigger', 5: 'right bumper', 0: 'A', 2: 'X' }[CFG.gp.fire] || 'right trigger')) + row('gpBoost', 'Boost button', ({ 7: 'right trigger', 5: 'right bumper', 6: 'left trigger', 4: 'left bumper' }[CFG.gp.boost] || 'right bumper'))
+    body = row('sens', 'Mouse sensitivity', relSet(CFG.sens, 1)) + row('padL', 'Gamepad', CFG.padL === 0 ? 'match headset' : 'racer') + row('gpFire', 'Fire button', CFG.padL === 0 ? 'right trigger' : ({ 7: 'right trigger', 5: 'right bumper', 0: 'A', 2: 'X' }[CFG.gp.fire] || 'right trigger')) + row('gpBoost', 'Boost button', ({ 7: 'right trigger', 5: 'right bumper', 6: 'left trigger', 4: 'left bumper' }[CFG.gp.boost] || 'right bumper'))
       + `<h3 style="margin:22px 0 6px;font-weight:600;letter-spacing:.22em;font-size:12px;color:var(--hc)">KEYBOARD</h3>`
       + ACTS.map(([k, n]) => row('key:' + k, n, rebind === 'key:' + k ? 'press a key…' : keyName(CFG.keys[k] || k))).join('')
       + row('reset', 'All keys', 'defaults');
@@ -262,6 +262,7 @@ setP.onclick = (e) => {
   setUi();
 };
 
+function relSet(v, base) { if (v == null || !base) return 'Default'; const r = v / base; return Math.abs(r - 1) < .06 ? 'Default' : Math.round(r * 100) + '%'; }
 function pausePanel() {
   if (jpOpen) return closePanel();
   if (xr) return vrMenu();
@@ -285,7 +286,8 @@ function vrMenu() {
     { name: 'Comfort vignette', kind: vigN, desc: 'Darkens the edge of each eye while you boost', run: () => { CFG.vrVig = cyc(CFG.vrVig || 0, [0, .45, 1]); setUi(); vrMenu(); } },
     { name: 'Refresh', kind: (CFG.vrHz || 72) + ' Hz', desc: '72 is 13.9 ms. 90 is 11.1. 120 is 8.3 and Quest 3 only. The nearest rate the headset offers is used.', run: () => { CFG.vrHz = cyc(CFG.vrHz || 72, [72, 90, 120]); applyVrRate(); setUi(); vrMenu(); } },
     { name: 'Posture', kind: CFG.vrSeat ? 'standing' : 'seated', desc: 'Seated drops you into the chair. Standing uses the floor.', run: () => { CFG.vrSeat = CFG.vrSeat ? 0 : 1; setUi(); vrMenu(); } },
-    { name: 'Seat height', kind: VRH[vrHi()][0], desc: 'Where the cabin floor meets the room', run: () => { CFG.vrH = VRH[(vrHi() + 1) % VRH.length][1]; setUi(); vrMenu(); } },
+    { name: 'Seat height', kind: VRH[vrHi()][0], desc: 'A small nudge after the automatic seat line', run: () => { CFG.vrH = VRH[(vrHi() + 1) % VRH.length][1]; setUi(); vrMenu(); } },
+    { name: 'Recenter / Adjust seat height', desc: 'Puts your eyes over the dash, seated or standing. Also runs when the headset recenters.', run: () => { if (typeof xrRecenter === 'function') xrRecenter(); closePanel(); tip('Seat line set. You should see over the dash.', 3500); } },
     { name: 'View scale', kind: ({ .9: '90%', 1: '100%', 1.1: '110%' }[CFG.vrIpd || 1] || '100%'), desc: 'A small scale around the headset IPD. It does not replace it.', run: () => { CFG.vrIpd = cyc(CFG.vrIpd || 1, [.9, 1, 1.1]); setUi(); vrMenu(); } },
     { name: 'Throttle hand', kind: CFG.vrHand ? 'left' : 'right', desc: 'The cab has the stick on the left. Swap if you fly the other way.', run: () => { CFG.vrHand = CFG.vrHand ? 0 : 1; setUi(); vrMenu(); } },
     { name: 'Haptics', kind: hapN, desc: 'Touch Plus buzz on a panel, a snap turn, and a hit', run: () => { CFG.vrHap = ((CFG.vrHap || 0) + 1) % 3; setUi(); vrMenu(); } },
@@ -303,7 +305,9 @@ function vrMenu() {
       { name: 'B', desc: 'Next target in flight. Back, when a menu is open.' },
       { name: 'X', desc: 'Journal' },
       { name: 'Y', desc: 'Next weapon' },
-      { name: 'Menu, left controller', desc: 'This pause menu. The Meta button on the right belongs to the system.' },
+      { name: 'Menu, left controller', desc: 'Opens the system menu. Coming back pauses here. Hold B and Y, or press the left stick in, to pause without it.' },
+      { name: 'B + Y held', desc: 'Pause. The left menu button is not always sent to the page.' },
+      { name: 'Left stick press, held', desc: 'Pause, if B and Y are awkward.' },
       { name: 'Throttle stick click', desc: 'Throttle to zero' },
       { name: 'Hands', desc: 'Empty hands are ignored. The ship stays on Touch Plus.' },
     ], 'B to close') },

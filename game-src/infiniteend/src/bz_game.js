@@ -14,7 +14,7 @@ const P_HUD = prog(HD + `layout(location=0)in vec2 aP;layout(location=1)in vec2 
 void main(){vec2 q=aP*uR.zw;float c=cos(uZ.y),s=sin(uZ.y);q=vec2(q.x*c-q.y*s,q.x*s+q.y*c);
  float z=uZ.x*(1.-uZ.w*(aP.x*aP.x*.36+aP.y*aP.y*.16));q.x*=1.+uZ.w*aP.y*aP.y*.06;                // the visor curves: edges wrap toward the eye
  vec3 p=uShip*(vec3(uR.xy+q,z)+uMo)-uEye;vU=mix(uUV.xy,uUV.zw,aU);gl_Position=uVP*vec4(p,1);}`,
-  HD + `in vec2 vU;uniform sampler2D uTx;uniform vec4 uZ;out vec4 o;void main(){vec4 t=texture(uTx,vU);o=vec4(t.rgb*uZ.z,0);}`);
+  HD + `in vec2 vU;uniform sampler2D uTx;uniform vec4 uZ;out vec4 o;void main(){vec4 t=texture(uTx,vU);o=vec4(t.rgb*uZ.z,t.a);}`);
 const hudVA = gl.createVertexArray(), visVA = gl.createVertexArray(); let visN = 0;
 { const v = [], NX = 40, NY = 20, pt = (i, j) => { const x = i / NX, y = j / NY; v.push(x * 2 - 1, y * 2 - 1, x, 1 - y); };
   for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) { pt(i, j); pt(i + 1, j); pt(i, j + 1); pt(i + 1, j); pt(i + 1, j + 1); pt(i, j + 1); }
@@ -205,19 +205,36 @@ function noteKill(a) {
   if (!ST.deadNames.includes(a.name)) ST.deadNames.push(a.name);
   if (ST.deadNames.length > 240) ST.deadNames.splice(0, 40);
   if (a.cast && cast()[a.cast]) { const ch = cast()[a.cast]; ch.dead = 1; ch.cool = 1e15; }
-  quietUntil = Math.max(quietUntil || 0, tm + 110);
+  quietUntil = Math.max(quietUntil || 0, tm + (typeof v123Quiet === 'function' ? v123Quiet() : 38));
   cmT = Math.max(cmT, 190);
 }
 let NPT = null;
+function wpOk(a) { return !!(a && a.wp && a.wp.length >= 3 && a.wp[0] != null && a.wp[1] != null && a.wp[2] != null); }
+function ensureWp(a) {
+  if (!a) return;
+  if (wpOk(a)) return;
+  try { if (NPT) npcGoal(a); } catch (e) {}
+  if (!wpOk(a)) { const j = () => (Math.random() - .5) * 800; a.wp = [(a.x || 0) + j(), (a.y || 0) + j() * .3, (a.z || 0) + j()]; }
+}
+function leadLive(l) {
+  if (!l || l.x == null) return false;
+  if (typeof PL !== 'undefined' && l === PL) return true;
+  if (l.dead) return false;
+  return NPCS.includes(l);
+}
 function npcGoal(a) {
   const P = NPT, j = () => (Math.random() - .5) * 160;
+  const here = () => [a.x + j() * 5, a.y + j(), a.z + j() * 5];
   a.toGate = 0;
+  if (!P) { a.wp = here(); return; }
   if (a.role === 0) { a.toGate = a.st & 1; a.wp = a.toGate ? [j(), j(), j()] : [P.dock[0] + j(), P.dock[1] + j() * .5, P.dock[2] + j()]; }
-  else if (a.role === 1) { const f = P.fields[a.i % 3]; a.wp = a.st & 1 ? [P.dock[0] + j(), P.dock[1] + j(), P.dock[2] + j()] : [f[0] + j() * 2, f[1] + j() * 2, f[2] + j() * 2]; }
-  else if (a.role === 2) a.wp = P.loop[a.k % 4];
-  else if (a.role === 3) { a.toGate = !(a.st & 1); a.wp = a.toGate ? [j(), j(), j()] : P.far[a.i % 3]; }
-  else if (a.role === 6) { const s = a.anchor, t = a.k * 1.1 + a.i; a.wp = s ? [s[0] + Math.cos(t) * a.orb, s[1] + Math.sin(t * .7) * a.orb * .35, s[2] + Math.sin(t) * a.orb] : P.fields[a.i % 3]; }
-  else a.wp = a.st & 1 ? a.A : a.B;
+  else if (a.role === 1) { const f = P.fields[(a.i || 0) % 3] || P.fields[0]; a.wp = a.st & 1 ? [P.dock[0] + j(), P.dock[1] + j(), P.dock[2] + j()] : [f[0] + j() * 2, f[1] + j() * 2, f[2] + j() * 2]; }
+  else if (a.role === 2) a.wp = P.loop[(a.k || 0) % 4] || P.loop[0];
+  else if (a.role === 3) { a.toGate = !(a.st & 1); a.wp = a.toGate ? [j(), j(), j()] : (P.far[(a.i || 0) % 3] || P.far[0]); }
+  else if (a.role === 6) { const s = a.anchor, t = (a.k || 0) * 1.1 + (a.i || 0), orb = a.orb || 400; a.wp = s ? [s[0] + Math.cos(t) * orb, s[1] + Math.sin(t * .7) * orb * .35, s[2] + Math.sin(t) * orb] : (P.fields[(a.i || 0) % 3] || here()); }
+  else if (a.role === 5) a.wp = [a.x + j() * 10, a.y + j() * 2, a.z + j() * 10];
+  else { const p = (a.st & 1 ? a.A : a.B) || a.A || a.B; a.wp = (p && p.length >= 3 && p[0] != null) ? [p[0], p[1], p[2]] : here(); }
+  if (!wpOk(a)) a.wp = here();
 }
 function npcSpawn() {
   if (typeof lifeReset === 'function') lifeReset();
@@ -229,7 +246,7 @@ function npcSpawn() {
     const r = R(), role = r < .4 ? 0 : r < .62 ? 1 : r < .86 ? 2 : 3, d = dir(), ds = 400 + R() * 3000;
     const a = { i, role, big: 0, x: d[0] * ds, y: d[1] * ds, z: d[2] * ds, vx: 0, vy: 0, vz: 0, fx: -d[0], fy: -d[1], fz: -d[2], ux: 0, uy: 1, uz: 0, sp: [38, 30, 70, 95][role] * (.8 + R() * .4), size: [11, 9, 8, 7][role] * (.9 + R() * .3), st: R() * 2 | 0, t: 0, hold: 0, wp: null, hue: R(), seed: R(), fac: role === 2 ? SYS.fac : R() * 4 | 0, name: pickN(R, NPN), pilot: personName(R), lead: null, off: null, k: R() * 4 | 0 };
     if (role === 2) { if (lead && lead.n < 2) { lead.n++; a.lead = lead.a; a.off = [(lead.n === 1 ? -1 : 1) * 30, -4, 34]; a.hue = lead.a.hue; a.x = lead.a.x + a.off[0]; a.y = lead.a.y; a.z = lead.a.z + 30; } else lead = { a, n: 0 }; }
-    npcGoal(a); NPCS.push(a);
+    npcGoal(a); ensureWp(a); NPCS.push(a);
   }
   for (let i = 0; i < 5; i++) { const d = dir(), ds = 900 + R() * 1500; NPCS.push({ i: 300 + i, role: 6, big: 0, x: d[0] * ds, y: d[1] * ds, z: d[2] * ds, vx: 0, vy: 0, vz: 0, fx: -d[0], fy: -d[1], fz: -d[2], ux: 0, uy: 1, uz: 0, sp: 42 + R() * 14, size: 4.5, st: 0, t: 0, hold: 0, wp: NPT.fields[i % 3], hue: .55, seed: R(), fac: SYS.fac, name: 'Tender ' + (i + 1), lead: null, k: i, anchor: null, orb: 380 + R() * 500 }); }   // small craft that work round the nearest station
   const nr = hostLv === 2 ? 2 + (R() * 3 | 0) : SYS.danger >= 2 ? 2 + (R() * 2 | 0) : 0;
@@ -239,9 +256,9 @@ function npcSpawn() {
   for (let i = 0; i < nb; i++) {
     const d = dir(), s = dir(), o = 1500 + R() * 1500, A = [d[0] * 9000 + s[0] * o, d[1] * 2500 + s[1] * o, d[2] * 9000 + s[2] * o], B = [-d[0] * 9000 + s[0] * o, -d[1] * 2500 + s[1] * o, -d[2] * 9000 + s[2] * o], u = R();
     const a = { i: n + i, role: 4, big: 1, x: A[0] + (B[0] - A[0]) * u, y: A[1] + (B[1] - A[1]) * u, z: A[2] + (B[2] - A[2]) * u, vx: 0, vy: 0, vz: 0, fx: -d[0], fy: 0, fz: -d[2], ux: 0, uy: 1, uz: 0, sp: 26 + R() * 10, size: 380 + R() * 420, st: 0, t: 0, hold: 0, A, B, hue: R(), seed: R(), fac: SYS.fac, name: 'ISV ' + pickN(R, NM.navy), lead: null, k: 0 };
-    npcGoal(a); NPCS.push(a);
+    npcGoal(a); ensureWp(a); NPCS.push(a);
   }
-  for (const a of NPCS) { const hs2 = a.big ? [3000, 2000] : a.bounty ? [240, 320] : [[60, 40], [50, 30], [90, 80], [40, 50], 0, [150, 300], [35, 25]][a.role]; a.hpM = a.hp = hs2[0]; a.shM = a.sh = hs2[1]; a.shT = -99; a.s = 0; a.var = a.role === 2 || a.role === 5 ? 2 : a.role === 3 ? 1 : a.i & 1; }
+  for (const a of NPCS) { const hs2 = a.big ? [3000, 2000] : a.bounty ? [240, 320] : ([[60, 40], [50, 30], [90, 80], [40, 50], 0, [150, 300], [35, 25]][a.role] || [50, 30]); a.hpM = a.hp = hs2[0]; a.shM = a.sh = hs2[1]; a.shT = -99; a.s = 0; a.var = a.role === 2 || a.role === 5 ? 2 : a.role === 3 ? 1 : (a.i || 0) & 1; ensureWp(a); }
 }
 const AVO = [];
 let trafT = 8;
@@ -294,10 +311,13 @@ function npcTick(dt) {
     const bl = .6 + .4 * Math.sin(tm * 3 + a.i), s = ed * .0026, c = a.role === 5 ? [1.4, .25, .2] : a.role === 2 ? [.4, .9, 1.4] : [1.2, 1, .7];
     put(DPa, ex, ey, ez, s, 0, 0, 0, .3, c[0] * bl * .35, c[1] * bl * .35, c[2] * bl * .35, 0); }
   for (const a of NPCS) {
-    let tx, ty, tz, lv = 0; const arr = a.big ? 1200 : 150, l = a.lead;
-    if (l) { const rx = l.fy * l.uz - l.fz * l.uy, ry = l.fz * l.ux - l.fx * l.uz, rz = l.fx * l.uy - l.fy * l.ux; lv = Math.hypot(l.vx, l.vy, l.vz);
-      tx = l.x + rx * a.off[0] + l.ux * a.off[1] - l.fx * a.off[2] + l.vx * .6; ty = l.y + ry * a.off[0] + l.uy * a.off[1] - l.fy * a.off[2] + l.vy * .6; tz = l.z + rz * a.off[0] + l.uz * a.off[1] - l.fz * a.off[2] + l.vz * .6;
-    } else { tx = a.wp[0]; ty = a.wp[1]; tz = a.wp[2]; }
+    let tx, ty, tz, lv = 0; const arr = a.big ? 1200 : 150;
+    let l = a.lead;
+    try {
+    if (l && !leadLive(l)) { a.lead = null; l = null; ensureWp(a); }
+    if (l) { const off = a.off || [0, 0, 0]; const rx = l.fy * l.uz - l.fz * l.uy, ry = l.fz * l.ux - l.fx * l.uz, rz = l.fx * l.uy - l.fy * l.ux; lv = Math.hypot(l.vx || 0, l.vy || 0, l.vz || 0);
+      tx = l.x + rx * off[0] + (l.ux || 0) * off[1] - l.fx * off[2] + (l.vx || 0) * .6; ty = l.y + ry * off[0] + (l.uy || 1) * off[1] - l.fy * off[2] + (l.vy || 0) * .6; tz = l.z + rz * off[0] + (l.uz || 0) * off[1] - l.fz * off[2] + (l.vz || 0) * .6;
+    } else { ensureWp(a); tx = a.wp[0]; ty = a.wp[1]; tz = a.wp[2]; }
     const dx = tx - a.x, dy = ty - a.y, dz = tz - a.z, d = Math.hypot(dx, dy, dz) || 1;
     const sp = a.hold ? 0 : l ? Math.min(a.sp * 1.5, lv + d * .9) : a.sp * Math.min(1, .15 + d / arr);
     let ax = dx / d * sp - a.vx, ay = dy / d * sp - a.vy, az = dz / d * sp - a.vz;
@@ -312,11 +332,15 @@ function npcTick(dt) {
       for (const b of NPCS) { if (b === a) continue; const ex = a.x - b.x, ey = a.y - b.y, ez = a.z - b.z, r = b.big ? b.size * .8 : 26, e2 = ex * ex + ey * ey + ez * ez; if (e2 < r * r && e2 > .01) { const e = Math.sqrt(e2), k = (r - e) * (b.big ? 3 : 1.5) / e; ax += ex * k; ay += ey * k; az += ez * k; } }
     }
     { const wx = a.vx + ax, wy = a.vy + ay, wz = a.vz + az, wl = Math.hypot(wx, wy, wz) || 1, nx = wx / wl, ny = wy / wl, nz = wz / wl;
-      const dot = a.fx * nx + a.fy * ny + a.fz * nz, ang = Math.acos(Math.max(-1, Math.min(1, dot))), mt = (a.big ? .09 : a.role === 5 || a.role === 2 ? 1.5 : a.role === 3 ? 1.1 : .8) * dt, k = wl < 1.5 ? 0 : Math.min(1, mt / Math.max(ang, 1e-4));
+      const dot = a.fx * nx + a.fy * ny + a.fz * nz, ang = Math.acos(Math.max(-1, Math.min(1, dot))), mt = (a.big ? .05 : a.role === 0 ? .32 : a.role === 4 ? .14 : a.role === 1 ? .42 : a.role === 5 || a.role === 2 ? 1.35 : a.role === 3 ? .95 : .75) * dt, k = wl < 1.5 ? 0 : Math.min(1, mt / Math.max(ang, 1e-4));
       const bank = Math.max(-1, Math.min(1, ((nx - a.fx) * -a.fz + (nz - a.fz) * a.fx) * 2.4)) * (a.big ? .12 : 1);
       a.fx += (nx - a.fx) * k; a.fy += (ny - a.fy) * k; a.fz += (nz - a.fz) * k; const fl = Math.hypot(a.fx, a.fy, a.fz) || 1; a.fx /= fl; a.fy /= fl; a.fz /= fl;
       const want = Math.min(wl, a.sp * 1.6) * (dot < .3 ? .35 : 1), ds = want - a.s; a.s += Math.max(-a.sp * .9 * dt, Math.min(a.sp * (a.big ? .15 : .45) * dt, ds));
-      a.vx = a.fx * a.s; a.vy = a.fy * a.s; a.vz = a.fz * a.s; a.x += a.vx * dt; a.y += a.vy * dt; a.z += a.vz * dt;
+      { const mass = a.big ? 6.5 : a.role === 0 ? 3.2 : a.role === 4 ? 5 : a.role === 1 ? 2.3 : 1.15, ak = Math.min(1, dt * (3.1 / mass));
+        const tvx = a.fx * a.s, tvy = a.fy * a.s, tvz = a.fz * a.s, dvx = tvx - a.vx, dvy = tvy - a.vy, dvz = tvz - a.vz;
+        a.vx += dvx * ak; a.vy += dvy * ak; a.vz += dvz * ak;
+        if (!a.big && dvx * dvx + dvy * dvy + dvz * dvz > 280 && (a._rcs || 0) < tm) { a._rcs = tm + .42; put(DPa, a.x - px - a.fx * a.size * .4, a.y - py, a.z - pz - a.fz * a.size * .4, Math.max(.4, a.size * .12), 0, 0, 0, .15, .45, .62, .85, 0); } }
+      a.x += a.vx * dt; a.y += a.vy * dt; a.z += a.vz * dt;
       const k2 = Math.min(1, dt * 2.5); a.ux += (-a.fz * bank * .9 - a.ux) * k2; a.uy += (1 - a.uy) * k2; a.uz += (a.fx * bank * .9 - a.uz) * k2;
       if (tm - a.shT > 5) a.sh = Math.min(a.shM, a.sh + dt * a.shM * .12); }
     if (!l) {
@@ -329,7 +353,8 @@ function npcTick(dt) {
       }
     }
     if (a.s > 4) { const L2 = Math.min(a.big ? 900 : 60, a.s * (a.big ? 9 : .9)), w = a.big ? a.size * .03 : a.size * .05, k = Math.min(1, a.s / a.sp), bx3 = a.x - px - a.fx * a.size * .92, by3 = a.y - py - a.fy * a.size * .92, bz3 = a.z - pz - a.fz * a.size * .92; put(DT, bx3 - a.fx * L2 * .5, by3 - a.fy * L2 * .5, bz3 - a.fz * L2 * .5, w, -a.fx * L2, -a.fy * L2, -a.fz * L2, 0, (a.role === 5 ? 2.4 : .5) * k, (a.role === 5 ? .7 : 1.3) * k, (a.role === 5 ? .3 : 2.6) * k, 0); }   // a line of light behind the drives, longer the faster it goes
-    put(a.big ? DAf : DAgs[a.var || 0], a.x - px, a.y - py, a.z - pz, a.size, a.fx, a.fy, a.fz, a.seed, a.ux, a.uy, a.uz, a.hue);
+    put(a.big ? DAf : DAgs[(a.var || 0) % 3], a.x - px, a.y - py, a.z - pz, a.size, a.fx, a.fy, a.fz, a.seed, a.ux, a.uy, a.uz, a.hue);
+    } catch (e) { console.error('npc', a && a.name, e); a.lead = null; ensureWp(a); }
   }
   for (const j of rp().jobs) if (j.ty === 3 && !j.stage && isHere(jobDest(j))) { const w = wreckAt(j); put(DAf, w[0] - px, w[1] - py, w[2] - pz, 46, .6, .3, .7, .37, .5, .8, .2, .08); put(DPa, w[0] - px, w[1] - py, w[2] - pz, 18, 0, 0, 0, .3, .9, .45, .12, 0); }
   for (const q of DAgs) flush(q); flush(DAf);
@@ -338,7 +363,7 @@ function npcTick(dt) {
 // ---- navigation: what can be pointed at here, which one is selected, scanning ----
 let NAV = [], navId = '', navAuto = 1, navT = 0, scanT = 0, scanned = {}, psel = 0, hudTipS = '', hudTipT = 0, hudLast = 0, obj = { text: '', nav: '' };
 const wreckAt = (j) => { const R = mulberry32(SYS.salt ^ (j.pay * 977 + j.n * 31)), a = R() * 6.283, y = R() * .5 - .25, c = Math.sqrt(1 - y * y), d = 1500 + R() * 2500; return [Math.cos(a) * c * d, y * d, Math.sin(a) * c * d]; };
-const scanR = () => 1500 * (1 + .5 * upLv('scn')) * (crew('nav') ? 1.3 : 1);
+const scanR = () => 1500 * (1 + .5 * upLv('scn')) * (crew('nav') ? 1.3 : 1) * (typeof shipMul === 'function' ? shipMul('sc') : 1);
 function navBuild() {
   const N = SYS.atm ? [] : [{ id: 'gate', name: 'WARP GATE', kind: 'gate', x: 0, y: 0, z: 0 }];
   if (trader) N.push({ id: 'trader', name: 'TRADER', kind: 'dock', x: 430, y: -70, z: 260 });
@@ -409,25 +434,46 @@ function xrEdge(gp, h) {
   const down = (i) => { const b = gp.buttons[i]; return !!(b && (b.pressed || (i === 0 && b.value > .65))); };
   return (i) => { const p = down(i), r = p && !pv[i]; pv[i] = p; return r; };
 }
+let xrFace = { l4: 0, l5: 0, r4: 0, r5: 0, l3: 0 }, xrPauseHold = 0, xrStickHold = 0;
+function xrDown(gp, i) {
+  const b = gp.buttons[i];
+  if (!b) return false;
+  if (i === 6) return false;
+  if (i === 4 || i === 5) return !!(b.pressed || b.value > .65);
+  return !!(b.pressed || (i === 0 && b.value > .65));
+}
 function xrPad(src, gp) {
-  // Touch Plus, xr-standard: 0 trigger, 1 grip, 3 stick click, 4 X or A, 5 Y or B, 7 menu on the left only.
-  // The Meta button on the right is reserved by the system and never arrives here.
-  const h = src.handedness === 'left' ? 'left' : 'right';
-  if (h !== 'left' && h !== 'right') return 0;
-  const edge = xrEdge(gp, h), steerLeft = !CFG.vrHand, menuHand = steerLeft ? 'right' : 'left';
-  const hasMenu = h === 'left' && gp.buttons.length > 7;
+  // meta-quest-touch-plus, xr-standard: 0 trigger, 1 grip, 3 stick click, 4 X/A, 5 Y/B.
+  // Button 6 is the thumbrest. Button 7 is the left menu on the profile, and Quest often never reports it.
+  const h = src.handedness === 'left' ? 'left' : src.handedness === 'right' ? 'right' : '';
+  if (!h) return 0;
+  const pv = xprev[h];
+  const edge = (i) => { const p = xrDown(gp, i), r = p && !pv[i]; pv[i] = p; return r; };
+  if (h === 'left') { xrFace.l4 = xrDown(gp, 4); xrFace.l5 = xrDown(gp, 5); xrFace.l3 = xrDown(gp, 3); }
+  else { xrFace.r4 = xrDown(gp, 4); xrFace.r5 = xrDown(gp, 5); }
+  const steerLeft = !CFG.vrHand, menuHand = steerLeft ? 'right' : 'left';
+  const menuEdge = h === 'left' && gp.buttons.length > 7 && edge(7);
   if (jpOpen) {
-    if (h !== menuHand) { if (edge(5) || (hasMenu && edge(7))) closePanel(); return 0; }   // the steer hand keeps flying. Y or the menu button still backs out.
+    if (h !== menuHand) { if (edge(5) || menuEdge) closePanel(); return 0; }
     const ay = gp.axes[3] || 0, now = performance.now();
     if (Math.abs(ay) > .65) { if (items.length && (xNav[h] === 0 || now >= xNav[h])) { const first = xNav[h] === 0; psel = (psel + (ay > 0 ? 1 : -1) + items.length) % items.length; xNav[h] = now + (first ? 480 : 220); } } else if (Math.abs(ay) < .3) xNav[h] = 0;
-    if (edge(0) || edge(4)) pick(psel); else if (edge(5) || (hasMenu && edge(7))) closePanel();
+    if (edge(0) || edge(4)) pick(psel); else if (edge(5) || menuEdge) closePanel();
     return 1;
   }
-  if (hasMenu && edge(7)) pausePanel();
+  if (menuEdge) pausePanel();
   if (h === 'right') { if (edge(4)) interact(); if (edge(5)) navCycle(1); }
   else { if (edge(4)) journalPanel(); if (edge(5)) wpnCycle(); }
   if (h === (CFG.vrHand ? 'left' : 'right') && edge(3)) thr = 0;
   return 0;
+}
+function xrPauseWatch(dt) {
+  if (!xr || !flying()) { xrPauseHold = 0; xrStickHold = 0; return; }
+  const both = xrFace.l5 && xrFace.r5;
+  xrPauseHold = both ? xrPauseHold + dt : 0;
+  xrStickHold = xrFace.l3 ? xrStickHold + dt : 0;
+  if (!jpOpen && (xrPauseHold > .42 || xrStickHold > .62)) {
+    xrPauseHold = 0; xrStickHold = 0; pausePanel();
+  }
 }
 
 // ---- painting the HUD ----
@@ -507,21 +553,32 @@ function hudTick(now) { cinFit(); if (now - hudLast < (xr ? 70 : 45) || !flying(
 function hudDraw(k) {
   if (!flying()) return;
   const P = P_HUD; gl.useProgram(P.p); gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND);
-  if (xr && jpOpen) gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); else gl.blendFunc(gl.ONE, gl.ONE);
-  M3[0] = sRx; M3[1] = sRy; M3[2] = sRz; M3[3] = sUx; M3[4] = sUy; M3[5] = sUz; M3[6] = -sFx; M3[7] = -sFy; M3[8] = -sFz;
-  gl.uniformMatrix3fv(P.u.uShip, false, M3); if (xr) gl.uniform3f(P.u.uEye, cex, cey, cez); else gl.uniform3f(P.u.uEye, eox * k, eoy * k, eoz * k); gl.uniform3f(P.u.uMo, cockpit ? ckx : 0, cockpit ? cky : 0, cockpit ? ckz : 0);
+  if (xr && jpOpen) gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); else gl.blendFunc(gl.ONE, gl.ONE);
+  const visor = xr && jpOpen;
+  if (visor) {
+    M3[0] = eRx; M3[1] = eRy; M3[2] = eRz; M3[3] = eUx; M3[4] = eUy; M3[5] = eUz; M3[6] = -eFx; M3[7] = -eFy; M3[8] = -eFz;
+    gl.uniformMatrix3fv(P.u.uShip, false, M3); gl.uniform3f(P.u.uEye, eox, eoy, eoz); gl.uniform3f(P.u.uMo, 0, 0, 0);
+  } else {
+    M3[0] = sRx; M3[1] = sRy; M3[2] = sRz; M3[3] = sUx; M3[4] = sUy; M3[5] = sUz; M3[6] = -sFx; M3[7] = -sFy; M3[8] = -sFz;
+    gl.uniformMatrix3fv(P.u.uShip, false, M3); if (xr) gl.uniform3f(P.u.uEye, cex, cey, cez); else gl.uniform3f(P.u.uEye, eox * k, eoy * k, eoz * k); gl.uniform3f(P.u.uMo, cockpit ? ckx : 0, cockpit ? cky : 0, cockpit ? ckz : 0);
+  }
   gl.bindVertexArray(hudVA); gl.activeTexture(gl.TEXTURE8); gl.uniform1i(P.u.uTx, 8);
   gl.bindTexture(gl.TEXTURE_2D, hudTex); const asp = W / H, nar = !xr && asp < 1.05, hs2 = xr ? 1 : (nar ? Math.min(1.45, 1.5 * asp / 1.1) : Math.min(1.45, 1.55 * asp / 1.76, cinOn && asp > 1.6 ? 1.5 * asp / 2.39 : 9)) * CFG.size, cy0 = xr ? .2 : 0, hw = nar ? 1.1 * hs2 : 1.76 * hs2;                                   // on a flat screen the display is a visor across the whole view; in a headset it sits on the front glass
-  gl.uniform4f(P.u.uR, 0, cy0, hw, hs2); gl.uniform4f(P.u.uUV, nar ? .1875 : 0, 0, nar ? .8125 : 1, 1);
-  if (!xr && CFG.fxVisor) { gl.uniform4f(P.u.uZ, HZ, 0, .8 * hudOp, CFG.fxVisor); gl.bindVertexArray(visVA); gl.drawArrays(gl.TRIANGLES, 0, visN); gl.bindVertexArray(hudVA); }
+  if (visor) { gl.uniform4f(P.u.uR, 0, .05, 5.4, 3.05); gl.uniform4f(P.u.uZ, -9.2, 0, 1, 0); gl.uniform4f(P.u.uUV, 0, 0, 1, 1); }
+  else { gl.uniform4f(P.u.uR, 0, cy0, hw, hs2); gl.uniform4f(P.u.uUV, nar ? .1875 : 0, 0, nar ? .8125 : 1, 1); }
+  if (visor) gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  else if (!xr && CFG.fxVisor) { gl.uniform4f(P.u.uZ, HZ, 0, .8 * hudOp, CFG.fxVisor); gl.bindVertexArray(visVA); gl.drawArrays(gl.TRIANGLES, 0, visN); gl.bindVertexArray(hudVA); }
   else { gl.uniform4f(P.u.uZ, HZ, 0, .8 * hudOp, 0); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); }
   const c = navCur();
   if (c && !((xr || hudForce) && jpOpen)) {
-    const dx = c.x - px, dy = c.y - py, dz = c.z - pz, lx = dx * sRx + dy * sRy + dz * sRz, ly = dx * sUx + dy * sUy + dz * sUz, lz = -(dx * sFx + dy * sFy + dz * sFz);
-    let hx0 = 0, hy0 = 0, rot = 0, ic = 0;
-    if (lz < -1e-3) { hx0 = lx / -lz * -HZ; hy0 = ly / -lz * -HZ; }
-    if (!(lz < 0 && Math.abs(hx0) < .92 * hw && Math.abs(hy0 - cy0) < .8 * hs2)) { const a = Math.atan2(ly, lx); hx0 = Math.cos(a) * .82 * hw; hy0 = cy0 + Math.sin(a) * .68 * hs2; rot = a - 1.5708; ic = 1; }
-    gl.bindTexture(gl.TEXTURE_2D, icoTex); gl.uniform4f(P.u.uR, hx0, hy0, (ic ? .075 : .1) * hs2, (ic ? .075 : .1) * hs2); gl.uniform4f(P.u.uZ, HZ, rot, 1.1 * Math.max(.5, hudOp), 0); gl.uniform4f(P.u.uUV, ic ? .5 : 0, 0, ic ? 1 : .5, 1); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    if (typeof v123Bracket === 'function' && v123Bracket(c)) { /* world bracket */ }
+    else {
+      const dx = c.x - px, dy = c.y - py, dz = c.z - pz, lx = dx * sRx + dy * sRy + dz * sRz, ly = dx * sUx + dy * sUy + dz * sUz, lz = -(dx * sFx + dy * sFy + dz * sFz);
+      let hx0 = 0, hy0 = 0, rot = 0, ic = 0;
+      if (lz < -1e-3) { hx0 = lx / -lz * -HZ; hy0 = ly / -lz * -HZ; }
+      if (!(lz < 0 && Math.abs(hx0) < .92 * hw && Math.abs(hy0 - cy0) < .8 * hs2)) { const a = Math.atan2(ly, lx); hx0 = Math.cos(a) * .82 * hw; hy0 = cy0 + Math.sin(a) * .68 * hs2; rot = a - 1.5708; ic = 1; }
+      gl.bindTexture(gl.TEXTURE_2D, icoTex); gl.uniform4f(P.u.uR, hx0, hy0, (ic ? .04 : .045) * hs2, (ic ? .04 : .045) * hs2); gl.uniform4f(P.u.uZ, HZ, rot, .55 * Math.max(.5, hudOp), 0); gl.uniform4f(P.u.uUV, ic ? .5 : 0, 0, ic ? 1 : .5, 1); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
   }
   if (!xr && tm - lastFire < .6) { gl.bindTexture(gl.TEXTURE_2D, icoTex); gl.uniform4f(P.u.uR, gmx * -HZ, gmy * -HZ, .022, .022); gl.uniform4f(P.u.uZ, HZ, .785, .8, 0); gl.uniform4f(P.u.uUV, 0, 0, .5, 1); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); }   // where the guns point
   gl.activeTexture(gl.TEXTURE0); gl.disable(gl.BLEND); gl.bindVertexArray(VA0);
@@ -748,7 +805,7 @@ for (let t = 1; t < 6; t++) ITEMS.push({ id: 'o' + t, name: TIERS[t], col: TCSS[
 GOODS.forEach(([n], g) => ITEMS.push({ id: 'g' + g, name: n, col: '#d8c9a6', stack: 10, kind: 'good', get: () => (rp().hold || {})[g] || 0, set: (v) => { (rp().hold || (rp().hold = {}))[g] = v; }, sell: () => Math.round(priceAt(SYS, SYS.loc, g) * .92), buy: () => priceAt(SYS, SYS.loc, g), shape: 'crate' }));
 SUP.forEach(([n, col, , , p], s) => ITEMS.push({ id: 's' + s, name: n, col, stack: 5, kind: 'sup', get: () => (ST.sup || (ST.sup = [0, 0, 0]))[s], set: (v) => { (ST.sup || (ST.sup = [0, 0, 0]))[s] = v; }, sell: () => Math.round(p * .5), buy: () => p, shape: 'cell', use: s }));
 const IT = {}; for (const it of ITEMS) IT[it.id] = it;
-const holdSlots = () => 10 + 4 * upLv('bay');
+const holdSlots = () => Math.max(6, 10 + 4 * upLv('bay') + (typeof shipMul === 'function' ? shipMul('hold') : 0));
 const slotsUsed = () => ITEMS.reduce((a, it) => a + Math.ceil(it.get() / it.stack), 0);
 function roomFor(it) { const n = it.get(), part = n % it.stack ? it.stack - n % it.stack : 0; return Math.max(0, part + (holdSlots() - slotsUsed()) * it.stack); }
 function addItem(id, n) { const it = IT[id], k = Math.min(n, roomFor(it)); if (k > 0) it.set(it.get() + k); return k; }
@@ -962,7 +1019,7 @@ function groove(t, s, e, rd, spb) {                              // the faster y
 
 // ---- shields: they take the knocks first and come back after four quiet seconds; the hull does not ----
 let shield = 100, shHit = -99;
-const shMax = () => 100 + 40 * upLv('shd');
+const shMax = () => (100 + 40 * upLv('shd')) * (typeof shipMul === 'function' ? shipMul('sh') : 1);
 function shieldTake(a) { shHit = tm; const t = Math.min(shield, a); shield -= t; return a - t; }
 
 // ---- ion storms: lightning that charges your capacitors (credits) and eats your shields ----
@@ -1833,7 +1890,7 @@ function lifeTick(dt) {
   PL.x = px; PL.y = py; PL.z = pz; PL.vx = vx; PL.vy = vy; PL.vz = vz; PL.fx = sFx; PL.fy = sFy; PL.fz = sFz; PL.ux = sUx; PL.uy = sUy; PL.uz = sUz;
   if (!flying()) return; cmTick(dt); escTick(dt);
 }
-function lifeReset() { try { if (ESC) escEnd(0, 'left'); CM = null; ST.jumps = (ST.jumps || 0) + 1; cmT = 210 + Math.random() * 100; quietUntil = tm + 120; } catch {} }   // a jump or a new sky: no one you know calls until you have actually travelled
+function lifeReset() { try { if (ESC) escEnd(0, 'left'); CM = null; ST.jumps = (ST.jumps || 0) + 1; const q = typeof v123Quiet === 'function' ? v123Quiet() : 38; cmT = q + 12 + Math.random() * 20; quietUntil = tm + q; } catch {} }   // a jump or a new sky: known pilots wait, but the lane itself is already busy
 const lifeObjective = () => { if (!ESC) return null; const E = ESC, alive = E.ships.filter((s) => !s.dead && NPCS.includes(s)), L = alive[0]; if (!L) return null;
   const dd = Math.hypot(E.dest[0] - L.x, E.dest[1] - L.y, E.dest[2] - L.z), rd = E.raiders.find((r) => !r.dead && !r.fled && NPCS.includes(r));
   if (E.wait) return { text: `Rescue the ${L.name}: ${rd ? 'drive the raiders off' : 'come alongside'} · ${(Math.hypot(L.x - px, L.y - py, L.z - pz) / 1000).toFixed(1)} km`, nav: 'n' + (rd || L).i };
