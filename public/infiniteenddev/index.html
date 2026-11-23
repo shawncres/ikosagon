@@ -58,7 +58,7 @@ h1 span + span { color: #0000; -webkit-text-stroke: 1.5px var(--t); letter-spaci
 #cargo { display: none !important; }
 /* v1.45 tuning console */
 #tune { display: none; position: fixed; left: 0; top: 0; bottom: 0; width: 380px; max-width: 92vw; overflow-y: auto; z-index: 70; padding: 10px 12px 40px; background: #050a12e8; color: #cfe7ee; font: 12px/1.35 system-ui, sans-serif; border-right: 1px solid #35f2d633; }
-.tune #tune { display: block; }
+#tune.on { display: block; }
 #tune .th { display: flex; justify-content: space-between; align-items: baseline; letter-spacing: .12em; color: var(--t); margin-bottom: 6px; } #tune .th span { font-size: 10px; letter-spacing: 0; opacity: .7; }
 #tune .tb { display: flex; gap: 6px; margin-bottom: 6px; } #tune button { background: #0d1a24; color: #cfe7ee; border: 1px solid #35f2d655; border-radius: 3px; padding: 3px 8px; font: inherit; cursor: pointer; }
 #tune details { margin: 6px 0; border-top: 1px solid #35f2d622; padding-top: 4px; } #tune summary { cursor: pointer; font-weight: 600; color: var(--t); display: flex; justify-content: space-between; align-items: center; } #tune summary i { font-weight: 400; font-style: normal; opacity: .6; font-size: 10px; }
@@ -231,8 +231,8 @@ const TUNE_DEF = [
   ['plScale', 'Planets', 'Planet size (×, next arrival)', .5, 5, .1, 2.2], ['spread', 'Planets', 'Planet spacing (×, next arrival)', .5, 5, .1, 1.5], ['dayLen', 'Planets', 'Day length (×)', .1, 10, .1, 1],
   ['apNearR', 'Approach', 'Slow zone (planet radii)', 2, 20, .5, 6], ['apK', 'Approach', 'Pace in the slow zone', .02, .5, .01, .11], ['apFarK', 'Approach', 'Pace further out', .05, 1, .01, .42],
   ['apEng', 'Approach', 'Throttle starts approach within (radii)', 2, 30, .5, 8],
-  ['heatStart', 'Re-entry', 'Heat starts (km above the ground)', 21, 150, 1, 60], ['heatPeak', 'Re-entry', 'Flare strength at the switch', 0, 1.5, .05, 1], ['heatFlareT', 'Re-entry', 'Flare length (s)', .1, 3, .05, .7],
-  ['heatFade', 'Re-entry', 'Heat burn-off (s)', 1, 20, .5, 6], ['vigStr', 'Re-entry', 'Plasma vignette strength', 0, 2, .05, 1], ['shake', 'Re-entry', 'Shake', 0, 1.5, .05, .4],
+  ['heatStart', 'Re-entry', 'Heat starts (km above the ground)', 21, 150, 1, 60], ['heatPeak', 'Re-entry', 'Flare strength at the switch', 0, 1.5, .05, 1], ['heatFlareT', 'Re-entry', 'Flare length (s)', .1, 3, .05, 1.4],
+  ['heatFade', 'Re-entry', 'Heat burn-off (s)', 1, 20, .5, 9], ['vigStr', 'Re-entry', 'Plasma vignette strength', 0, 2, .05, 1], ['shake', 'Re-entry', 'Shake', 0, 1.5, .05, .4],
   ['skyPale', 'Sky', 'Horizon paleness', 0, 1, .02, .5], ['skyBright', 'Sky', 'Sky brightness', .3, 2, .05, 1], ['skyTwi', 'Sky', 'Twilight floor', 0, 1, .02, .3], ['skyHaze', 'Sky', 'Air thickness scale (m)', 3000, 30000, 500, 11000],
   ['cldBase', 'Clouds', 'Cloud base (km)', 2, 20, .25, 8.5], ['cldTop', 'Clouds', 'Cloud tops (km)', 4, 30, .25, 15.5], ['cldCover', 'Clouds', 'Coverage', .5, 3, .05, 1.6],
   ['cldThresh', 'Clouds', 'Clear-sky threshold', .5, 2, .02, 1.12], ['cldPuff', 'Clouds', 'Puffiness', .2, 2, .05, .95], ['cldBright', 'Clouds', 'Sunlit brightness', .3, 3, .05, 1.45],
@@ -250,6 +250,13 @@ const TUNE_ON = !/\/infiniteend\/?$/.test(location.pathname) || /[?&]tune/.test(
 // v1.45: the event log: everything the game tells you (tips, comms, events, panels, hits, sounds), newest first, for the console
 const EVLOG = []; let evLast0 = '', evLastT = 0, tuneOpen = false, tuneEl = null;
 function evLog(t) { if (!t) return; t = String(t); const now = performance.now(); if (t === evLast0 && now - evLastT < 4000) return; evLast0 = t; evLastT = now; EVLOG.unshift([now, t]); if (EVLOG.length > 120) EVLOG.length = 120; if (typeof tuneLog === 'function') tuneLog(); }
+// v1.50: one shader build at a time, with a pause between, and never on the title screen. Chrome compiles every page's graphics in one
+// shared GPU process, so several big programs at once could stall the whole browser. A planet you're approaching jumps the queue.
+const BQ = []; let bqCur = '', bqGo = 0;
+function bq(name, mk, front) { if (bqCur === name) return; const j = BQ.findIndex((b) => b[0] === name); if (j >= 0) { if (!front) return; BQ.splice(j, 1); }
+  if (front) BQ.unshift([name, mk]); else BQ.push([name, mk]); bqRun(); }
+function bqRun() { if (bqCur || !BQ.length || !bqGo) return; const [n, mk] = BQ.shift(), t0 = performance.now(); bqCur = n;
+  Promise.resolve().then(mk).catch((e) => console.error(n, e)).then(() => { evLog(`Load · ${n} built (${Math.round(performance.now() - t0)} ms)`); setTimeout(() => { bqCur = ''; bqRun(); }, 1500); }); }
 const step = (p, t) => { $('bf').style.transform = `scaleX(${p})`; $('pc').textContent = Math.round(p * 100) + '%'; $('st').textContent = t; return new Promise((r) => setTimeout(r, 30)); };
 
 // ---- integer hashing (the whole world is a pure function of these) ----
@@ -449,7 +456,7 @@ function fillWorld(s, id, R) {
     if (id === HOME && i === 1) kind = 3;
     const rad = kind === 0 ? 32 + Math.pow(mass, .32) * 7.5 : kind === 7 ? 1.1 + mass * .35 : kind === 5 ? 1.5 + Math.pow(mass, .38) * 2.4 : 2.4 + Math.pow(Math.max(mass, .2), .4) * 3.2;
     const band = GASBAND[R() * GASBAND.length | 0];
-    const base = kind === 0 ? band : [
+    let base = kind === 0 ? band : [
       [[.15, .05, .03], [.95, .32, .06]],
       [[.55, .36, .18], [.9, .7, .38]],
       [[.05, .16, .32], [.28, .48, .28]],
@@ -466,6 +473,9 @@ function fillWorld(s, id, R) {
     const moons = kind === 0 ? 2 + (R() * 10 | 0) : kind === 7 ? 0 : R() * (1 + mass) | 0;
     const air = kind !== 7 && !(rogue && kind === 1);
     const pop = (kind === 3 || kind === 2) && Teq > 200 && Teq < 360 && !dead ? ['outposts', 'a mining colony', 'domed cities', 'no one'][R() * 4 | 0] : 'none';
+    { const wr = mulberry32(hs(Math.imul(id, 31) + i * 977 ^ 0x504C4E54)), ex = wr() < .17, hr = ex ? wr() * 6.2832 : (wr() - .5) * 1.1, sa = 1 + wr() * 1.1, va = .85 + wr() * .45;   // v1.51: every world its own colours (exotic ones any hue); own RNG so the universe's layout is unchanged
+      const co = Math.cos(hr), k = (1 - co) / 3, q = Math.sin(hr) * .57735, turn = (c) => { const r = co * c[0] + k * (c[0] + c[1] + c[2]) + q * (c[2] - c[1]), g = co * c[1] + k * (c[0] + c[1] + c[2]) + q * (c[0] - c[2]), b = co * c[2] + k * (c[0] + c[1] + c[2]) + q * (c[1] - c[0]), m = (r + g + b) / 3; return [r, g, b].map((v) => Math.max(.015, Math.min(1.2, (m + (v - m) * sa) * va))); };
+      base = base.map(turn); }
     worlds.push({ au: a, mass, Teq, kind, rad, base, rare, anomaly, rings, moons, air, pop });
   }
   const slot = [null, null, null];
@@ -518,7 +528,7 @@ function fillWorld(s, id, R) {
     s.pl.set(w ? [d[0], d[1], d[2], ang] : [0, 1, 0, 0], i * 4);
     (s.pd || (s.pd = []))[i] = w ? [d[0], d[1], d[2]] : null;   // v1.34: the planet's direction from the gate, kept: the system's one map is built from it
     const A = w ? w.base[0] : [.2, .2, .2], B = w ? w.base[1] : [.4, .4, .4];
-    const mix = (c, p, i0) => Math.max(.02, c * .78 + p * .22);
+    const mix = (c, p, i0) => Math.max(.02, c * .7 + p * .3);
     s.pa.set([mix(A[0], s.pal[3]), mix(A[1], s.pal[4]), mix(A[2], s.pal[5]), w && w.rings ? 1 : 0], i * 4);
     s.pb.set([mix(B[0], s.pal[0]), mix(B[1], s.pal[1]), mix(B[2], s.pal[2])], i * 3);
     const airName = !w || !w.air ? '' : w.kind === 0 ? 'Cloud Tops, ' + nm : w.kind === 5 ? 'Ice Skies of ' + nm : 'Skies of ' + nm;
@@ -536,6 +546,17 @@ function mkSys(id) {
   const th = (rnd() - .5) * .9, co = Math.cos(th), si = Math.sin(th), k = (1 - co) / 3, q = si * .57735, P = PAL[t];
   for (let i = 0; i < 12; i += 3) { const r = P[i], g = P[i + 1], b = P[i + 2], w = i < 9 ? 1 : .3; s.pal[i] = r + w * ((co + k - 1) * r + (k - q) * g + (k + q) * b); s.pal[i + 1] = g + w * ((k + q) * r + (co + k - 1) * g + (k - q) * b); s.pal[i + 2] = b + w * ((k - q) * r + (k + q) * g + (co + k - 1) * b); }
   for (let i = 0; i < 12; i++) s.pal[i] = Math.max(.01, s.pal[i]);
+  // v1.47: every system rolls a colour mood, so the galaxy runs from teal to crimson, gold, violet, dreary and dark, rainbow and iridescent.
+  // (v1.21 to v1.46 pulled every sky 50-60% toward a colour from the star's near-white temperature, which made them all one mauve.)
+  { const mr = mulberry32(hs(hs(id ^ 0x4D4F4F44) + 0x9E3779B9)), h = mr() < .5 ? mr() * .42 : mr();   // half the time warm through green (red, orange, gold, yellow, lime, green)   // v1.48: every part of the palette is continuous, so no two systems share a look
+    const hv = (hh, sa, va) => { hh = ((hh % 1) + 1) % 1; const f = (n) => { const k = (n + hh * 6) % 6; return va - va * sa * Math.max(0, Math.min(k, 4 - k, 1)); }; return [f(5), f(3), f(1)]; };
+    const sp = Math.pow(mr(), 1.6), o1 = (mr() - .5) * (.08 + sp * .95), o2 = (mr() - .5) * (.08 + sp * .95), gl = Math.pow(mr(), 2.6);   // spread: shades of one hue → complementary → triadic; gloom: mostly bright, sometimes very dark
+    const C = [hv(h, .35 + mr() * .6, .55 + mr() * .45), hv(h + o1, .35 + mr() * .6, .45 + mr() * .5), hv(h + o2, .15 + mr() * .6, .7 + mr() * .3)];
+    s.moodB = 1.45 - gl * 1.0 + mr() * .15; s.moodS = 1.2 - gl * .6;
+    const rb = Math.max(0, Math.min(1, mr() * 2.2 - 1.6)), ir = Math.max(0, Math.min(1, mr() * 2.1 - 1.4));   // ~27% of systems carry some rainbow, ~19% some iridescence, in any amount and both at once
+    s.moodFx = rb || ir ? 1 + Math.round(rb * 15) + Math.round(ir * 15) / 16 : 0;
+    s.mood = `h${(h * 360) | 0} spread ${sp.toFixed(2)} gloom ${gl.toFixed(2)}${rb ? ' rainbow ' + rb.toFixed(2) : ''}${ir ? ' iridescent ' + ir.toFixed(2) : ''}`;
+    for (let j = 0; j < 3; j++) for (let c = 0; c < 3; c++) s.pal[j * 3 + c] = Math.max(.01, C[j][c] * .85 + s.pal[j * 3 + c] * .15); }
   s.seed0 = [rnd() * 40, rnd() * 40, rnd() * 40]; s.seed = s.seed0.slice(); s.rot = [co, k, q]; s.th = th;
   fillWorld(s, id, rnd);
   // the places in it. The first is the system's signature; the rest are drawn from the other kinds.
@@ -581,10 +602,11 @@ function setLoc(s, i) {
   // The star keeps its colour. Places in one system are relatives, not twins.
   if (!s.pal0) s.pal0 = s.pal.slice();
   // every place turns the hue its own way, well beyond the system's, and is pushed away from grey: no two skies alike
-  const th2 = s.th + (((hs(s.id ^ Math.imul(s.loc + 1, 7919)) >>> 0) % 1000) / 1000 - .5) * 2.8, co = Math.cos(th2), k = (1 - co) / 3, q = Math.sin(th2) * .57735, P = PAL[L.t];
+  const th2 = (((hs(s.id ^ Math.imul(s.loc + 1, 7919)) >>> 0) % 1000) / 1000 - .5) * 1.1, co = Math.cos(th2), k = (1 - co) / 3, q = Math.sin(th2) * .57735, P = PAL[L.t];
   for (let i = 0; i < 9; i += 3) { const r = P[i], g = P[i + 1], b = P[i + 2];
-    s.pal[i] = Math.max(.01, s.pal0[i] * .3 + .7 * (co * r + k * (r + g + b) + q * (b - g))); s.pal[i + 1] = Math.max(.01, s.pal0[i + 1] * .3 + .7 * (co * g + k * (r + g + b) + q * (r - b))); s.pal[i + 2] = Math.max(.01, s.pal0[i + 2] * .3 + .7 * (co * b + k * (r + g + b) + q * (g - r))); }
-  for (let i = 0; i < 9; i += 3) { const m = (s.pal[i] + s.pal[i + 1] + s.pal[i + 2]) / 3; for (let j = 0; j < 3; j++) s.pal[i + j] = Math.max(.01, (m + (s.pal[i + j] - m) * (s.sat || 1.45)) * (s.bri || 1)); }
+    const R0 = s.pal0[i], G0 = s.pal0[i + 1], B0 = s.pal0[i + 2];   // v1.47: a place is the system's mood, turned a little its own way, with a touch of its kind
+    s.pal[i] = Math.max(.01, .82 * (co * R0 + k * (R0 + G0 + B0) + q * (B0 - G0)) + .18 * r); s.pal[i + 1] = Math.max(.01, .82 * (co * G0 + k * (R0 + G0 + B0) + q * (R0 - B0)) + .18 * g); s.pal[i + 2] = Math.max(.01, .82 * (co * B0 + k * (R0 + G0 + B0) + q * (G0 - R0)) + .18 * b); }
+  for (let i = 0; i < 9; i += 3) { const m = (s.pal[i] + s.pal[i + 1] + s.pal[i + 2]) / 3; for (let j = 0; j < 3; j++) s.pal[i + j] = Math.max(.01, (m + (s.pal[i + j] - m) * (s.sat || 1.45) * (s.moodS || 1)) * (s.bri || 1) * (s.moodB || 1)); }
   s.seed = [s.seed0[0] + s.loc * 7.3, s.seed0[1] + s.loc * 3.1, s.seed0[2] - s.loc * 5.7];
   for (let k = 0; k < 3; k++) s.pl[k * 4 + 3] = L.body === k ? (k ? .3 : .6) : s.pr[k];
   // one headline per sky: a black hole, a ringworld, or a rare phenomenon. Close stars and showpiece suns yield when one is already up.
@@ -593,7 +615,7 @@ function setLoc(s, i) {
   else if (s.sky[1] > .35) { s.sky[0] = 0; s.sky[3] *= .25; s.ph = 0; s.headline = 2; }
   else if (s.ph) { s.sky[0] = 0; s.sky[1] = 0; s.sky[3] *= .35; s.headline = 3; }
   else s.headline = 0;
-  if (s.neb) { for (let i = 0; i < 3; i++) { s.pal[i] = Math.max(.01, s.pal[i] * .4 + s.neb[i] * .6); s.pal[3 + i] = Math.max(.01, s.pal[3 + i] * .48 + s.neb[3 + i] * .52); } }
+  if (s.neb) { for (let i = 0; i < 3; i++) s.pal[3 + i] = Math.max(.01, s.pal[3 + i] * .85 + s.neb[3 + i] * .15); }   // v1.47: the star's emission only tints (was a 50-60% override)
   if (s.dead && s.a) s.a.deb = Math.max(s.a.deb || 0, .9);
   if (s.sty && s.age != null) { s.sty[0] = Math.min(2.2, s.sty[0] * (.75 + s.age * .7)); s.sty[2] = Math.min(1.8, s.sty[2] * (.65 + (s.Z || .4) + (s.dead ? .4 : 0))); }
   return s;
@@ -659,7 +681,11 @@ uniform samplerCube uNeb;uniform sampler3D uNz;
 #define FOGD uSunC.w
 vec3 neb(vec3 d,float l){vec4 t=textureLod(uNeb,d,l);
  vec3 c=uCA.rgb*t.r*t.r*t.r*.13+uCB.rgb*t.g*t.g*t.g*.13+mix(uCB.rgb,uCE.rgb,.6)*t.a*.022;
- return c*(1.-.6*t.b)+(uCA.rgb+uCB.rgb)*.002;}
+ c=c*(1.-.6*t.b)+(uCA.rgb+uCB.rgb)*.002;
+ if(uCE.w>.5){vec3 hb=vec3(0.,2.094,4.189);float lu=dot(c,vec3(.3,.5,.2)),W=uCE.w-1.,ra=floor(W)/15.,ia=fract(W)*16./15.;   // v1.48: rainbow and iridescence as amounts, together or apart
+  if(ra>0.)c=mix(c,(.5+.5*cos(6.2832*(d.x*.33+d.y*.5+d.z*.21+t.r*.5)+hb))*lu*3.2,ra);
+  if(ia>0.){vec3 ph=uCA.rgb*2.7+uCB.rgb*1.3;float fq=1.6+uCB.g*3.+uCA.b*2.;c=mix(c,(.5+.5*cos(6.2832*(fq*(t.g*1.4+t.r*.9+t.a*.6)+d.y*.4)+ph+hb*(.6+uCE.r*.5)))*lu*2.6,ia);}}   // holographic bands: spacing and colour phase from the system's own palette
+ return c;}
 vec3 glow(vec3 d){float s=max(dot(d,uSun.xyz),0.);return uSunC.rgb*(pow(s,8.)*.035+pow(s,90.)*.22);}
 vec3 fog(vec3 c,vec3 p,float R){float d=length(p);vec3 v=p/d;float f=1.-exp(-d*FOGD);
  f=mix(min(f,R>2e4?.8:1.),1.,smoothstep(.5*R,.92*R,d));return mix(c,neb(v,4.5)+glow(v),f);}
@@ -988,7 +1014,7 @@ void plate(inout vec3 alb,inout vec3 em,inout float sp,inout float gs,vec3 AM){
  float trim=smoothstep(.014,.002,min(e.x,e.y*.55))*step(.4,f.y);
  em=AM*trim*(.45+.55*step(.25,fract(TIME*.12+n*5.)));
  em+=mix(AM,vec3(.3,.85,1.),.35)*step(.91,hh(floor(g)+2.))*smoothstep(.028,.008,length(f-vec2(.8,.22)))*(.35+.65*step(.55,fract(TIME*.07+hh(floor(g)))));}
-void main(){
+void cockMain(){
  vec3 N=normalize(vN),Vd=normalize(vW),V=-Vd,L=uSun.xyz,alb=vec3(.014,.016,.021),em=vec3(0),AM=vec3(1.,.5,.13);float id=vU.x,sp=.35,gs=40.;
  float fn=texture(uNz,vL*7.).r,warn=step(.3,uDm)*step(.5,fract(TIME*1.3));
  if(id>12.5){                                                  // the living quarters: fabrics, wood, paper, ceramic, warm bulbs; and the aux screen
@@ -1106,9 +1132,32 @@ void main(){
  col+=vec3(1.,.58,.22)*uCk.z*pow(1.-max(dot(N,V),0.),2.)*.2;
  col+=vec3(.4,.8,1.)*max(uCk.w,0.)*.05;
  col+=vec3(1.,.06,.04)*warn*(.03+.1*pow(1.-max(dot(N,V),0.),2.));
- o=vec4(col,-1.);}`;
+ o=vec4(col,-1.);}
+uniform vec4 uPh;uniform mat3 uShip;
+void main(){cockMain();                                       // v1.46: the re-entry plasma lights the cockpit from the nose: dash tops, rims, the glass
+ if(uPh.x+uPh.y>.003){vec3 N=normalize(vN),V=-normalize(vW),Lf=-uShip[2],Up=uShip[1];float fr=pow(1.-abs(dot(N,V)),3.),fl=.75+.25*sin(uPh.z*31.)*sin(uPh.z*17.3+1.);
+  vec3 pc=mix(vec3(1.,.48,.12),vec3(1.,.86,.58),uPh.y);o.rgb+=pc*(max(dot(N,Lf),0.)*.55+max(dot(N,Up),0.)*.3+fr*.7)*(uPh.x*uPh.x*.6+uPh.y*1.1)*fl*uPh.w;}}`;
 
 // one big triangle for every full-screen pass
+// v1.46: the bow shock: turbulent plasma driven outward from the nose, white-yellow at the core, orange, then violet wisps at the edge,
+// with incandescent sparks. Drawn into the scene just behind the cockpit's depth, so the canopy frame and dash mask it.
+const PLS_V = `#version 300 es
+out vec2 vU;void main(){vec2 p=vec2(gl_VertexID<<1&2,gl_VertexID&2);vU=p;gl_Position=vec4(p*2.-1.,-.97,1);}`;
+const PLS_F = `#version 300 es
+precision highp float;uniform vec4 uPs,uPq;in vec2 vU;out vec4 o;
+float h2(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
+float vnp(vec2 p,float P){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);float a=mod(i.x,P),b=mod(i.x+1.,P);
+ return mix(mix(h2(vec2(a,i.y)),h2(vec2(b,i.y)),f.x),mix(h2(vec2(a,i.y+1.)),h2(vec2(b,i.y+1.)),f.x),f.y);}
+void main(){vec2 q=vU*2.-1.;q.x*=uPs.w;float r=length(q),u=atan(q.y,q.x)/6.2832+.5,t=uPs.z,H=uPs.x,F=uPs.y,S=uPq.x,lr=log(r+.03);
+ float n1=vnp(vec2(u*150.,lr*1.3-t*5.5),150.),n2=vnp(vec2(u*340.,lr*2.6-t*11.),340.),n3=vnp(vec2(u*40.,lr*.9-t*1.8),40.);
+ float jag=pow(clamp(n1*.65+n2*.35+n3*.45-.2,0.,1.),3.2)*3.2+pow(1.-abs(2.*n2-1.),10.)*.9*n3;
+ float rh=mix(1.2,-.35,pow(H,1.3)),m=smoothstep(rh,rh+.6,r);
+ float I=(m*jag*(.5+1.1*H)+exp(-r*r*mix(7.,1.1,H))*H*H*1.6)*S;
+ vec3 col=mix(vec3(1.,.95,.78)*2.6,vec3(1.,.42,.07)*1.5,smoothstep(.05,.75,r));col=mix(col,vec3(.5,.14,.78)*1.1,smoothstep(1.05,1.75,r)*(.25+.45*n3));
+ float ac=floor(u*150.),rn=h2(vec2(ac,7.3)),sp=fract(rn*13.+t*(1.2+rn*2.6)),rs=mix(.1,1.7,sp),fu=fract(u*150.)-.5;
+ float sk=exp(-fu*fu*300.)*exp(-pow((r-rs)/(.02+.16*sp),2.))*step(.6,rn)*smoothstep(.15,.6,H)*S;
+ I+=F*S*1.4;col=mix(col,vec3(1.,.9,.7)*2.2,clamp(F,0.,1.)*.7);
+ o=vec4(col*I+vec3(1.,.82,.5)*sk*5.,clamp(I*.5+F*.95+sk*.3,0.,.97));}`;
 const TRI_V = `#version 300 es
 out vec2 vU;void main(){vec2 p=vec2(gl_VertexID<<1&2,gl_VertexID&2);vU=p;gl_Position=vec4(p*2.-1.,1,1);}`;
 
@@ -1200,15 +1249,15 @@ float cloudA(vec3 n){return cloudD(n,0.);}
 vec3 sDet(vec3 n,float cz){return cz<=0.?n:n+((vec3(sn(n*37.+1.),sn(n*41.+2.),sn(n*39.+3.))-.5)*.03+(vec3(sn(n*170.+4.),sn(n*163.+5.),sn(n*177.+6.))-.5)*.007)*cz;}   // v1.38: finer layers of the same pattern, fading in as you close in: same coasts, more detail
 vec3 surfS(vec3 n,int k,vec3 ca,vec3 cb,vec3 L,out float land,out float cl){float w=sn(n*1.15+.2),w2=sn(n*2.6+.7),w3=sn(n*5.2+1.4);vec3 s=mix(ca,cb,w2);cl=0.;land=1.;
   if(k==0){}
-  else if(k==1){s=mix(vec3(.045,.016,.01),vec3(.2,.07,.03),w2);land=smoothstep(.07,0.,abs(fract(w*2.4+w2)-.5)-.4);cl=0.;}
+  else if(k==1){s=mix(mix(vec3(.045,.016,.01),ca*.3,.6),mix(vec3(.2,.07,.03),cb*.3,.6),w2);land=smoothstep(.07,0.,abs(fract(w*2.4+w2)-.5)-.4);cl=0.;}
   else if(k==2){float dune=.5+.5*sin(n.x*16.+w*5.);s=mix(ca,cb,smoothstep(.15,.85,w2*.55+dune*.45));cl=smoothstep(.74,.94,w)*.16;land=1.;}
-  else if(k==3){land=smoothstep(.46,.64,w*.7+w2*.3);vec3 sea=mix(vec3(.02,.07,.16),ca,.4),grd=mix(cb,ca*.75+.08,smoothstep(.25,.75,w2));s=mix(sea,grd,land);cl=smoothstep(.58,.86,w2)*.48;}
-  else if(k==4){float bd=.5+.5*sin(n.y*5.2+w*2.4);s=mix(ca,cb,bd);s=mix(s,vec3(.12,.32,.06),smoothstep(.35,.8,w3)*.45);cl=smoothstep(.38,.72,w)*.55;land=0.;}
-  else if(k==6){float hot=smoothstep(-.08,.4,dot(n,L));vec3 cold=mix(vec3(.5,.66,.8),cb,.35),hotc=mix(vec3(.16,.04,.02),vec3(.95,.32,.06),smoothstep(.1,0.,abs(w-.48)));s=mix(cold,hotc,hot);cl=smoothstep(.72,.92,w2)*.12;land=hot;}
-  else if(k==7){float br=smoothstep(.12,0.,abs(w-.4)-.07);s=mix(vec3(.1,.09,.08),cb,w2)*(1.-br*.7);cl=0.;land=0.;}
-  else{s=mix(vec3(.8,.9,.97),mix(ca,vec3(.72,.86,.95),.45),.4+.2*w2);s=mix(s,vec3(.16,.26,.38),smoothstep(.045,0.,abs(fract(n.y*5.+w*2.4)-.5)-.47)*.6);cl=smoothstep(.66,.9,w)*.2;land=1.;}
+  else if(k==3){land=smoothstep(.46,.64,w*.7+w2*.3);vec3 sea=mix(vec3(.02,.07,.16),ca*.8,.62),grd=mix(cb,ca*.75+.08,smoothstep(.25,.75,w2));s=mix(sea,grd,land);cl=smoothstep(.58,.86,w2)*.38;}
+  else if(k==4){float bd=.5+.5*sin(n.y*5.2+w*2.4);s=mix(ca,cb,bd);s=mix(s,mix(vec3(.12,.32,.06),cb.brg*.55,.55),smoothstep(.35,.8,w3)*.45);cl=smoothstep(.38,.72,w)*.42;land=0.;}
+  else if(k==6){float hot=smoothstep(-.08,.4,dot(n,L));vec3 cold=mix(vec3(.5,.66,.8),cb,.6),hotc=mix(ca*.3,mix(vec3(.95,.32,.06),ca,.45),smoothstep(.1,0.,abs(w-.48)));s=mix(cold,hotc,hot);cl=smoothstep(.72,.92,w2)*.12;land=hot;}
+  else if(k==7){float br=smoothstep(.12,0.,abs(w-.4)-.07);s=mix(ca*.5+.03,cb,w2)*(1.-br*.7);cl=0.;land=0.;}
+  else{s=mix(mix(vec3(.8,.9,.97),cb,.4),mix(ca,vec3(.72,.86,.95),.2),.4+.2*w2);s=mix(s,ca*.4,smoothstep(.045,0.,abs(fract(n.y*5.+w*2.4)-.5)-.47)*.6);cl=smoothstep(.66,.9,w)*.2;land=1.;}
 
- s=mix(vec3(dot(s,vec3(.3,.5,.2))),s,1.22);s*=.94+.06*w3;return s;}
+ s=mix(vec3(dot(s,vec3(.3,.5,.2))),s,1.38);s*=.94+.06*w3;return s;}
 vec4 planet(vec3 d,vec3 P,float rp,vec3 ca,vec3 cb,float ring,float kd,vec4 Lo){
  float b=dot(d,P),ds=b*b-(1.-rp*rp);vec4 c=vec4(0);float ts=1e9;vec3 Ls0=Lo.w>0.?Lo.xyz:uSun.xyz;
  vec3 axis=normalize(abs(P.yzx)+vec3(.18,.9,.16));float spin=TIME*.008+P.x*4.+kd*1.7;int k=int(kd+.5);
@@ -1216,21 +1265,22 @@ vec4 planet(vec3 d,vec3 P,float rp,vec3 ca,vec3 cb,float ring,float kd,vec4 Lo){
  // colour language: the air's own colour (by world type), lit by the star's colour. Airless worlds get no limb at all.
  vec3 sunT=uSunC.rgb/max(max(uSunC.r,uSunC.g),max(uSunC.b,.05));
  vec3 airC=k==3||k==4?vec3(.32,.58,1.):k==2?vec3(.95,.7,.42):k==1?vec3(1.,.5,.22):k==5?vec3(.62,.86,1.):k==0?mix(ca,vec3(1.,.9,.75),.5):k==6?vec3(.75,.72,.85):vec3(0.);
+ {vec3 tn=ca/max(max(ca.r,ca.g),max(ca.b,.02))*.9+.1;if(k!=7)airC=mix(airC,tn,.5);}   // v1.51: half the type's air, half the world's own hue (same rule in JS airOf)
  float airK=k==7?0.:k==1||k==6?.5:1.;
  vec3 atm=mix(airC,ca,.2)*mix(vec3(1.),sunT,.55)*airK;
  if(ds>0.&&b>0.){ts=b-sqrt(ds);vec3 n=normalize(d*ts-P);float nl=dot(n,L);
   float cz=smoothstep(.55,.97,rp);vec3 nq=sDet(n,cz);float w=sn(nq*1.15+.2),w2=sn(nq*2.6+.7),w3=sn(nq*5.2+1.4);vec3 s;float cl,land=1.;
   if(k==0){float psd=dot(ca+cb,vec3(3.71,2.13,4.77)),freq=7.+6.*fract(psd*1.7);vec3 nw=n+vec3(sn(n*1.8+3.),sn(n*2.2+9.),sn(n*1.6+1.))*.22;float bd=.5+.5*sin(nw.y*freq+w2*1.8),bd2=.5+.5*sin(nw.y*(freq*.37)+1.4+w);s=mix(ca*.55,cb*1.55,smoothstep(.12,.88,bd));s=mix(s,ca*vec3(1.4,.9,.55),smoothstep(.4,.92,bd2)*.75);float sx=nw.x*2.4,sy=(nw.y-.2)*6.;s=mix(s,cb*vec3(1.2,.7,.45),exp(-(sx*sx+sy*sy))*1.3);vec2 st=vec2(atan(n.z,n.x)+psd*6.,n.y*5.5);float vr=length(st-vec2(.8,.15));float arm=.5+.5*sin(atan(st.y-.15,st.x-.8)*4.-vr*18.);s=mix(s,cb*vec3(1.35,.8,.5),exp(-vr*vr*8.)*(.45+.55*arm));s*=mix(1.,.78+.44*sn(vec3(nw.x*26.,nw.y*190.,nw.z*26.)),smoothstep(.35,.95,rp));cl=smoothstep(.48,.78,w*.45+w2*.55)*.28;land=0.;}
-  else if(k==1){s=mix(vec3(.045,.016,.01),vec3(.2,.07,.03),w2);land=smoothstep(.07,0.,abs(fract(w*2.4+w2)-.5)-.4);cl=0.;}
+  else if(k==1){s=mix(mix(vec3(.045,.016,.01),ca*.3,.6),mix(vec3(.2,.07,.03),cb*.3,.6),w2);land=smoothstep(.07,0.,abs(fract(w*2.4+w2)-.5)-.4);cl=0.;}
   else if(k==2){float dune=.5+.5*sin(n.x*16.+w*5.);s=mix(ca,cb,smoothstep(.15,.85,w2*.55+dune*.45));cl=smoothstep(.74,.94,w)*.16;land=1.;}
-  else if(k==3){land=smoothstep(.46,.64,w*.7+w2*.3);vec3 sea=mix(vec3(.02,.07,.16),ca,.4),grd=mix(cb,ca*.75+.08,smoothstep(.25,.75,w2));s=mix(sea,grd,land);cl=smoothstep(.58,.86,w2)*.48;}
-  else if(k==4){float bd=.5+.5*sin(n.y*5.2+w*2.4);s=mix(ca,cb,bd);s=mix(s,vec3(.12,.32,.06),smoothstep(.35,.8,w3)*.45);cl=smoothstep(.38,.72,w)*.55;land=0.;}
-  else if(k==6){float hot=smoothstep(-.08,.4,dot(n,L));vec3 cold=mix(vec3(.5,.66,.8),cb,.35),hotc=mix(vec3(.16,.04,.02),vec3(.95,.32,.06),smoothstep(.1,0.,abs(w-.48)));s=mix(cold,hotc,hot);cl=smoothstep(.72,.92,w2)*.12;land=hot;}
-  else if(k==7){float br=smoothstep(.12,0.,abs(w-.4)-.07);s=mix(vec3(.1,.09,.08),cb,w2)*(1.-br*.7);cl=0.;land=0.;}
-  else{s=mix(vec3(.8,.9,.97),mix(ca,vec3(.72,.86,.95),.45),.4+.2*w2);s=mix(s,vec3(.16,.26,.38),smoothstep(.045,0.,abs(fract(n.y*5.+w*2.4)-.5)-.47)*.6);cl=smoothstep(.66,.9,w)*.2;land=1.;}
+  else if(k==3){land=smoothstep(.46,.64,w*.7+w2*.3);vec3 sea=mix(vec3(.02,.07,.16),ca*.8,.62),grd=mix(cb,ca*.75+.08,smoothstep(.25,.75,w2));s=mix(sea,grd,land);cl=smoothstep(.58,.86,w2)*.38;}
+  else if(k==4){float bd=.5+.5*sin(n.y*5.2+w*2.4);s=mix(ca,cb,bd);s=mix(s,mix(vec3(.12,.32,.06),cb.brg*.55,.55),smoothstep(.35,.8,w3)*.45);cl=smoothstep(.38,.72,w)*.42;land=0.;}
+  else if(k==6){float hot=smoothstep(-.08,.4,dot(n,L));vec3 cold=mix(vec3(.5,.66,.8),cb,.6),hotc=mix(ca*.3,mix(vec3(.95,.32,.06),ca,.45),smoothstep(.1,0.,abs(w-.48)));s=mix(cold,hotc,hot);cl=smoothstep(.72,.92,w2)*.12;land=hot;}
+  else if(k==7){float br=smoothstep(.12,0.,abs(w-.4)-.07);s=mix(ca*.5+.03,cb,w2)*(1.-br*.7);cl=0.;land=0.;}
+  else{s=mix(mix(vec3(.8,.9,.97),cb,.4),mix(ca,vec3(.72,.86,.95),.2),.4+.2*w2);s=mix(s,ca*.4,smoothstep(.045,0.,abs(fract(n.y*5.+w*2.4)-.5)-.47)*.6);cl=smoothstep(.66,.9,w)*.2;land=1.;}
   s=mix(vec3(dot(s,vec3(.3,.5,.2))),s,1.22);s*=.94+.06*w3;if(k!=1&&k!=7){vec3 cw=n+vec3(sn(n*2.+5.),sn(n*2.3+11.),sn(n*1.8+2.))*.32;float cA=smoothstep(.52,.84,sn(cw*1.3)+(cz>0.?((sn(cw*22.+3.)-.5)*.2+(sn(cw*85.+7.)-.5)*.08)*cz:0.)),cB=smoothstep(.52,.84,sn((cw+L*.07)*1.3));s=mix(s,mix(vec3(.94,.96,.98),ca,.22),cA*(k==0?.4:.82));s*=1.-clamp(cB-cA,0.,1.)*(k==3?.35:.5);}
   float shd=k==5||k==7?0.:(k==3?smoothstep(.46,.64,sn((n+L*.04)*1.15+.2)*.7+sn((n+L*.04)*2.6+.7)*.3):smoothstep(.52,.8,sn((n+L*.05)*1.2)))*(1.-cl);
-  s*=1.-.32*shd;s=mix(s,k==0?mix(vec3(.96,.9,.8),ca,.3):vec3(.92,.93,.95),cl);
+  s*=1.-.32*shd;s=mix(s,k==0?mix(vec3(.96,.9,.8),ca,.45):mix(vec3(.92,.93,.95),airC,.18),cl);
   float nr=smoothstep(.45,.9,rp),lit=smoothstep(-.14,.2,nl),mu=max(dot(n,-d),0.),rim=pow(1.-mu,2.6)*(1.-nr*.85),hz=pow(1.-mu,1.55)*(1.-nr*.9),tw=exp(-nl*nl*36.)*smoothstep(-.22,.08,nl);
   vec3 col=s*lit*(.45+.7*max(atm,vec3(.3)))*1.05+atm*.04*lit;
   if(k==1)col+=vec3(1.,.32,.04)*land*(1.6+.5*sin(TIME*.35+w*18.));
@@ -1238,7 +1288,7 @@ vec4 planet(vec3 d,vec3 P,float rp,vec3 ca,vec3 cb,float ring,float kd,vec4 Lo){
   if(k==5)col+=vec3(.55,.75,1.)*(1.-lit)*.05;
   if(k==6)col+=vec3(1.,.4,.08)*land*(1.-smoothstep(.2,.8,dot(n,L)))*.35;
   col+=vec3(1.,.48,.22)*tw*(.12+.45*cl);
-  col=mix(col,atm*(.12+1.05*lit),hz*.62);
+  col=mix(col,atm*(.12+1.05*lit),hz*.45);
   col+=atm*rim*pow(max(dot(d,Ls0),0.),4.)*1.35;{float ray=pow(1.-mu,2.5);vec3 rayC=airK*mix(airC*vec3(.55,.66,1.),vec3(1.,.52,.25)*sunT,pow(max(dot(d,Ls0),0.),2.2));col+=rayC*ray*(.2+.95*max(nl,0.))*1.25+uSunC.rgb*pow(max(dot(d,Ls0),0.),7.)*ray*.5;}if(k==3){vec3 Rv=reflect(-L,n);col+=uSunC.rgb*pow(max(dot(Rv,-d),0.),48.)*(1.-land)*lit*(1.4+.8*w3);}if((k==2||k==3||k==5)&&nl<.08){float ct=step(.74,sn(n*22.))*step(.58,sn(n*6.5+2.));col+=mix(vec3(1.,.74,.38),vec3(.5,.72,1.),sn(n*3.))*ct*smoothstep(.2,-.5,nl)*2.6;}
   c=vec4(col,1.);}
  else if(b>0.&&rp>0.){float h=(acos(clamp(b,-1.,1.))-asin(min(rp,.999)))/rp;
@@ -1403,9 +1453,10 @@ void main(){vec2 dl=(uSunS.xy-vU)/float(NS)*.92;
 const COMP_F = HD + `
 uniform sampler2D uH,uB,uR;uniform vec2 uPx,uJc;uniform vec3 uFl,uJ,uFc;uniform vec4 uFx,uFy,uFz,uHt;uniform float uFs;in vec2 vU;out vec4 o;
 vec3 aces(vec3 x){return clamp(x*(2.51*x+.03)/(x*(2.43*x+.59)+.14),0.,1.);}
-void main(){vec2 q=vU-.5;float bs=uCA.w;
- vec2 of=q*dot(q,q)*(.004+.05*bs)*uFx.x;
- vec3 c=vec3(texture(uH,vU+of).r,texture(uH,vU).g,texture(uH,vU-of).b);
+void main(){vec2 q=vU-.5;float bs=uCA.w;bool pp=uHt.z<0.;float vs=abs(uHt.z);
+ vec2 of=q*dot(q,q)*(.004+.05*bs)*uFx.x,hd=vec2(0);
+ if(uHt.x+uHt.y>.001){float hz=(uHt.x+uHt.y*.6)*vs;hd=vec2(sin(vU.y*83.+uHt.w*21.)+sin(vU.y*37.-uHt.w*13.),cos(vU.x*71.-uHt.w*19.)+sin(vU.x*29.+uHt.w*9.))*.0011*hz*smoothstep(.0,.35,length(q));}   // heat shimmer
+ vec3 c=vec3(texture(uH,vU+of+hd).r,texture(uH,vU+hd).g,texture(uH,vU-of+hd).b);
  vec2 mv=uFx.zw+q*dot(q,q)*uFs;                               // motion blur: the turn, plus speed streaming past the edges
  if(texture(uH,vU).a>-.5&&dot(mv,mv)>2e-7){float jt=fract(52.98*fract(dot(gl_FragCoord.xy,vec2(.0671,.00584))));vec3 mb=c,c0=c;for(int i=1;i<7;i++){vec2 u=vU+mv*(float(i)-jt)/6.;vec4 sg=texture(uH,u);mb+=sg.a<-.5?c0:vec3(texture(uH,u+of).r,sg.g,texture(uH,u-of).b);}c=mb/7.;}   // the cabin is not moving relative to you: it stays sharp
  vec2 qj=vU-uJc;   // the jump is centred on the point dead ahead of the ship, projected for this eye: in a headset both eyes agree, so the tunnel has depth
@@ -1424,7 +1475,7 @@ void main(){vec2 q=vU-.5;float bs=uCA.w;
   float gm=smoothstep(-.02,.06,rim)*uFz.x;vec2 rq=vU-q*.035*gm;vec3 bent=texture(uH,rq).rgb;
   c=mix(c,bent*vec3(.55,.62,.7),gm*.8);c+=vec3(.55,.75,1.)*exp(-abs(rim-.005)*320.)*.01*uFz.x;
   c+=vec3(.6,.8,1.)*smoothstep(.55,1.,1.-vU.y)*smoothstep(.2,.9,abs(q.x)*2.)*.012*uFz.x;}
- c*=uCE.w*(1.-dot(q,q)*1.15*uFy.z);                           // vignette
+ c*=.85*(1.-dot(q,q)*1.15*uFy.z);                           // vignette
  if(uFy.w>0.){float hy=uFy.w;c=mix(c,vec3(dot(c,vec3(.3,.5,.2))),hy*.7);c*=1.-hy*smoothstep(.12,.75,length(q*vec2(1.25,1.)));c*=1.-hy*.25*(.5+.5*sin(uSun.w*4.));}   // hypoxia: colour drains, sight closes in, a slow pulse
  c=pow(aces(c),vec3(1./2.2));c=mix(c,c*c*(3.-2.*c),.55);c*=mix(vec3(.9,.98,1.1),vec3(1.),smoothstep(0.,.5,dot(c,vec3(.33))));
  c*=1.-.045*step(fract(gl_FragCoord.y/3.),.34)*uFy.x;                // faint scanlines: the view as a screen
@@ -1432,11 +1483,12 @@ void main(){vec2 q=vU-.5;float bs=uCA.w;
  c=mix(c,uFc,uCB.w);
  // v1.45: re-entry as a plasma sheath round the canopy: gold at the leading edge, orange, then dark red at the rim, streaks flowing back;
  // at the switch the whole canopy lights up for a moment (that is when the planet-side view takes over)
- if(uHt.x+uHt.y>.001){vec2 q=vU*2.-1.;q.x*=uPx.y/uPx.x;float r=length(q),an=atan(q.y,q.x),hv=uHt.x*uHt.z;
-  float sh=smoothstep(.2,1.3,r),st=.6+.4*sin(an*21.+uHt.w*7.+sin(an*5.+uHt.w)*2.5)*smoothstep(.35,1.,r);
+ if(pp&&uHt.x+uHt.y>.001){c*=1.+vec3(.22,.06,-.06)*uHt.x*vs;c=mix(c,c*vec3(1.2,.95,.8)+vec3(.08,.04,.01),clamp(uHt.y,0.,1.)*.35);}
+ else if(uHt.x+uHt.y>.001){vec2 q=vU*2.-1.;q.x*=uPx.y/uPx.x;float r=length(q),an=atan(q.y,q.x),hv=uHt.x*vs;
+  float sh=smoothstep(mix(.2,-.5,hv*hv),1.3,r),st=.6+.4*sin(an*21.+uHt.w*7.+sin(an*5.+uHt.w)*2.5)*smoothstep(.35,1.,r);
   vec3 pc=mix(mix(vec3(1.,.84,.55),vec3(1.,.5,.17),smoothstep(.35,.85,r)),vec3(.42,.11,.04),smoothstep(.85,1.45,r));
   float a=clamp(hv*sh*st*1.3,0.,1.);c=c*(1.-a*.6)+pc*a*1.15;
-  c=mix(c,vec3(1.,.8,.52)*1.05,clamp(uHt.y*uHt.y,0.,.96));}
+  c=mix(c,mix(vec3(1.,.86,.6),pc,.35)*1.05,clamp(smoothstep(0.,.5,uHt.y),0.,.97));}
  o=vec4(c,1);}`;
 // ============================================================================
 // Textures built at start-up
@@ -2843,8 +2895,11 @@ function hop(loc) { const sv = [yaw, pitch, thr, vx, vy, vz]; palEase = 1; softA
 // ---- v1.36: hyperlight. Space only. Hold a world or a place in your sights until it reads READY, press G: the drive spools, the nose
 // locks on, and you cross the system in seconds, with only a few degrees of play. It drops out by itself before a planet's air (the
 // approach takes over), on arrival at a place, or if another world's mass is in the way.
-let hl = 0, hlT = 0, hlRdy = 0, hlFx = 0;
+let hl = 0, hlT = 0, hlRdy = 0, hlFx = 0, hlCurveT = 0;
 const hlPos = (c) => { if (!c || !sysP) return null; if (c.kind === 'planet') { const k = +c.id[1]; return sysP[k] || null; } if (c.kind === 'place') { const O = sysPL[c.loc]; return O ? [O[0] - sysO[0], O[1] - sysO[1], O[2] - sysO[2]] : null; } return null; };
+// v1.51: a world only blocks hyperlight when it's actually in the path ahead (leaving the planet you just climbed out of no longer counts)
+function hlBlock(j, u, rem) { const P = sysP[j]; if (!P) return false; const x = P[0] - sysS[0], y = P[1] - sysS[1], z = P[2] - sysS[2], al = x * u[0] + y * u[1] + z * u[2];
+  if (al <= 0 || al > rem + PR[j]) return false; return Math.hypot(x - u[0] * al, y - u[1] * al, z - u[2] * al) < PR[j] * 1.15; }
 function hlStop(msg) { hl = 0; hlT = 0; hlRdy = 0; if (msg) tip(msg, 4000); }
 function hlKey() {
   if (SYS.atm) { tip('Hyperlight needs open space: climb out of the air first', 3000); return; }
@@ -2861,14 +2916,17 @@ function hlTick(dt, near, nk) {
     else hlRdy = 0;
     return; }
   hlT += dt; if (!P) { hlStop('Hyperlight lost its lock'); return; }
-  const k = c.kind === 'planet' ? +c.id[1] : -1, dx = P[0] - sysS[0], dy = P[1] - sysS[1], dz = P[2] - sysS[2], d = Math.hypot(dx, dy, dz) || 1, rem = k >= 0 ? d - PR[k] * TUNE.hlDrop : d - .004, u = [dx / d, dy / d, dz / d];
+  const k = c.kind === 'planet' ? +c.id[1] : -1, dx = P[0] - sysS[0], dy = P[1] - sysS[1], dz = P[2] - sysS[2], d = Math.hypot(dx, dy, dz) || 1, rem = k >= 0 ? d - PR[k] * TUNE.hlDrop : d - .004; let u = [dx / d, dy / d, dz / d];
+  for (let j = 0; j < 3; j++) if (j !== k && sysP[j] && hlBlock(j, u, rem)) {   // v1.51: a world in the way: curve out around it, then straight on
+    const Q = sysP[j], nl = Math.hypot(sysS[0] - Q[0], sysS[1] - Q[1], sysS[2] - Q[2]) || 1, n = [(sysS[0] - Q[0]) / nl, (sysS[1] - Q[1]) / nl, (sysS[2] - Q[2]) / nl], w = Math.max(0, -(u[0] * n[0] + u[1] * n[1] + u[2] * n[2])) + .35;
+    u = nrm([u[0] + n[0] * w, u[1] + n[1] * w, u[2] + n[2] * w]); if (tm > (hlCurveT || 0)) { hlCurveT = tm + 8; tip(`Hyperlight · curving around ${SYS.planets[j].name}`, 2500); } break; }
   const ypu = ypFromDir(u), ty = ypu[0], tp = ypu[1], lim = hl === 1 ? 3 : TUNE.hlPlay, ease = Math.min(1, dt * (hl === 1 ? 2.2 : 5));
   let dyw = yaw - ty; dyw = Math.atan2(Math.sin(dyw), Math.cos(dyw));
   yaw = ty + Math.max(-lim, Math.min(lim, dyw)) * (1 - ease); pitch = tp + Math.max(-lim, Math.min(lim, pitch - tp)) * (1 - ease); snap = 1;   // the nose locks on: only a few degrees of play
   if (hl === 1) { trauma = Math.max(trauma, Math.min(.45, .3 * hlT)); if (hlT > TUNE.hlSpool) { hl = 2; hlT = 0; flash = Math.max(flash, .18); trauma = Math.max(trauma, .7); if (AC && AC.state === 'running') burst(AC.currentTime, 2.2, .26, 120, 1600, 'lowpass'); } return; }
   const v = Math.max(.015, Math.min(TUNE.hlMax, rem * TUNE.hlRate)) * Math.min(1, .15 + hlT * 1.4), st = Math.max(0, Math.min(rem, v * dt));
-  sysS[0] += u[0] * st; sysS[1] += u[1] * st; sysS[2] += u[2] * st; trauma = Math.max(trauma, .12 * hlFx);
-  if (nk >= 0 && nk !== k && near < PR[nk] * 2) { hlStop(`Dropped out of hyperlight · ${SYS.planets[nk].name}'s mass is in the way`); trauma = .6; return; }
+  sysS[0] += u[0] * st; sysS[1] += u[1] * st; sysS[2] += u[2] * st; locMove(u[0], u[1], u[2], st, dt, 9000); trauma = Math.max(trauma, .12 * hlFx);
+  if (nk >= 0 && nk !== k && near < PR[nk] * 2 && hlBlock(nk, u, rem)) { hlStop(`Dropped out of hyperlight · ${SYS.planets[nk].name}'s mass is in the way`); trauma = .6; return; }
   if (rem < .0015 || (hlT > .8 && rem < v * .04)) {
     trauma = Math.max(trauma, .55); flash = Math.max(flash, .12);
     if (c.kind === 'place') { const L = c.loc; hlStop(); hop(L); tip(`Arrived · ${SYS.locs[L].name}`, 3000); }
@@ -2926,7 +2984,9 @@ function cruiseTick(dt, fly) {
   let near = 1e9, nk = -1;
   for (let k = 0; k < 3; k++) { const P = sysP[k]; if (!P) continue; const x = P[0] - sysS[0], y = P[1] - sysS[1], z = P[2] - sysS[2], d = Math.hypot(x, y, z) || 1; SYS.pl[k * 4] = x / d; SYS.pl[k * 4 + 1] = y / d; SYS.pl[k * 4 + 2] = z / d; SYS.pl[k * 4 + 3] = Math.min(1.35, PR[k] / d); if (d - PR[k] < near) { near = d - PR[k]; nk = k; } }
   hlTick(dt, near, nk);   // v1.44: no frame turning in space (qfAlign retired): your view never moves by itself
-  if (nk >= 0 && contK((SYS.pk || [])[nk]) && SYS.locs.some((l) => l.atm === nk + 1) && (drift || orbAp || nk === aimK)) { const pre = tss(TUNE.heatStart / 1000, .0205, near); v126Heat = pre > v126Heat ? pre : Math.max(0, v126Heat - dt * .4); } else if (!SYS.atm && v126Heat > 0) v126Heat = Math.max(0, v126Heat - dt * .4);   // v1.43: the heat builds on the way in if (hl) { drift = 0; driftV = 0; apOn = 0; scE = hlFx * .7; fogX = Math.max(fogX, .0032 * hlFx); return; }   // v1.36: hyperlight carries you; boost no longer creeps you across the system
+  { const cl = near < heatNear - 2e-6 && tm > heatBlk; heatNear = near;   // v1.46: the heat only builds while you're closing on a world with air; moving away it burns off fast
+  if (cl && nk >= 0 && contK((SYS.pk || [])[nk]) && SYS.locs.some((l) => l.atm === nk + 1) && (drift || orbAp || nk === aimK)) { const pre = tss(TUNE.heatStart / 1000, .0205, near); v126Heat = pre > v126Heat ? pre : Math.max(0, v126Heat - dt * .4); } else if (!SYS.atm && v126Heat > 0) v126Heat = Math.max(0, v126Heat - dt * (cl ? .4 : 1.5)); }
+  if (hl) { drift = 0; driftV = 0; apOn = 0; scE = hlFx * .7; fogX = Math.max(fogX, .0032 * hlFx); return; }   // v1.36: hyperlight carries you; boost no longer creeps you across the system
   if (!drift) { driftV = 0; apOn = 0;
     // light drift is the top of the boost range: a planet targeted and ahead, boost held until it has built all the way, and the drive tips over into drift
     const c = navCur(), k = c && c.kind === 'planet' ? +c.id[1] : -1;
@@ -2945,7 +3005,7 @@ function cruiseTick(dt, fly) {
     const tgt = nr ? Math.max(.0012, near * k) * bo * Math.max(.25, pw) : Math.max(.3, Math.min(900, near * k)) * (crew('nav') ? 1.3 : 1) * pw;
     driftV += (tgt - driftV) * Math.min(1, dt * (nr ? .9 : 1.2)); }
   if (drift === 2 && bst < .15 && driftV < 1) { drift = 0; noAuto = -1; tip('Dropped out of light drift', 3000); }   // let go of boost and the drift runs down and ends
-  sysS[0] += sFx * driftV * dt; sysS[1] += sFy * driftV * dt; sysS[2] += sFz * driftV * dt;
+  sysS[0] += sFx * driftV * dt; sysS[1] += sFy * driftV * dt; sysS[2] += sFz * driftV * dt; locMove(sFx, sFy, sFz, driftV * dt, dt, 3200);
   scE = Math.min(1, driftV / 40) * .7; fogX = Math.max(fogX, .0032);                           // the field around you streams and thins while the sky holds still
   if (nk >= 0) { const R = PR[nk], loc = SYS.locs.findIndex((l) => l.atm === nk + 1), u = near / R;
     if (loc >= 0) { const cont = contK((SYS.pk || [])[nk]), uH = cont ? (TENTRY - TGB) / (R * 1e6) : .05;   // one planet: hand over at the altitude you arrive at, nothing to hide
@@ -2959,6 +3019,9 @@ function cruiseTick(dt, fly) {
 }
 let scBack = -1;
 const PR = [70, 6.4, 2.6];                                  // planet radii in thousands of km
+// v1.46: crossing the system also carries you through the scene around you (rocks, stations, ships stream past and fall behind),
+// at the true speed up to a cap per second: beyond a few km/s the field would only flicker. The field's lattice wraps, so it never runs out.
+function locMove(x, y, z, st, dt, cap) { const m = Math.min(st * 1e6, cap * dt); if (!(m > 0) || px * px + py * py + pz * pz > 4e12) return; px += x * m; py += y * m; pz += z * m; }
 let sysS = [0, 0, 0], sysP = null, drift = 0, driftV = 0, veil = 0, aimK = -1, aimT = 0, apT = 0, apTip = 0, noAuto = -1, apOn = 0, apDist = 0, apGate = 0, ent = null;
 const gameR = (rad, kind) => (kind === 0 ? .2 + rad * .0012 : .055 + rad * .013) * TUNE.plScale;   // v1.32: planets at game scale, so a world is round from orbit and a descent takes a minute, not an hour
 function syncPR() { if (SYS && SYS.prad) for (let k = 0; k < 3; k++) if (SYS.prad[k] > 0) PR[k] = gameR(SYS.prad[k], (SYS.pk || [])[k]); }
@@ -5624,7 +5687,8 @@ let v126tf = 0, dayOff = null, v126Key = '', v126bf = 0, v126ceil = 3000, v126Ai
 const TGB = -6000; let TCLOUD = 2500, TCTOP = 9500; const TENTRY = 14000, TOUT = 16500;   // world y. Altitudes above the ground base: deck 9-12.5 km, the air's top 20 km, orbit again above 22.5 km   // world y: ground base, the cloud deck's underside and top, where you arrive from orbit, where orbit begins again
 // per world type: hills, ridges, canyon depth, sea level (metres), vegetation density, snow line
 const TK = { 1: [900, 3000, 900, -1e9, 0, 1e9], 2: [800, 2800, 1200, -1e9, .12, 1e9], 3: [1400, 4200, 700, 0, .55, 2700], 4: [900, 2600, 500, -120, .85, 1e9], 5: [1200, 4500, 800, -1e9, 0, -1e9], 6: [1000, 3200, 900, -1e9, .1, 2300] };   // hills, mountain ranges, canyons, sea, trees, snow line
-const airOf = (kind, pa) => kind === 3 || kind === 4 ? [.32, .58, 1] : kind === 2 ? [.95, .7, .42] : kind === 1 ? [1, .5, .22] : kind === 5 ? [.62, .86, 1] : kind === 0 ? [(pa[0] + 1) / 2, (pa[1] + .9) / 2, (pa[2] + .75) / 2] : kind === 6 ? [.75, .72, .85] : [0, 0, 0];
+const airOf0 = (kind, pa) => kind === 3 || kind === 4 ? [.32, .58, 1] : kind === 2 ? [.95, .7, .42] : kind === 1 ? [1, .5, .22] : kind === 5 ? [.62, .86, 1] : kind === 0 ? [(pa[0] + 1) / 2, (pa[1] + .9) / 2, (pa[2] + .75) / 2] : kind === 6 ? [.75, .72, .85] : [0, 0, 0];
+const airOf = (kind, pa) => { const a = airOf0(kind, pa); if (kind === 7) return a; const m = Math.max(pa[0], pa[1], pa[2], .02); return a.map((v, i) => v * .5 + (pa[i] / m * .9 + .1) * .5); };
 const tKind = () => SYS.atm ? (SYS.pk || [0, 0, 0])[SYS.atm - 1] : -1;
 const hasTerr = () => !!(SYS.atm && TK[tKind()]);
 const contK = (k) => k != null && k >= 0 && k !== 7;   // every world with air is one continuous planet (gas giants too: their floor is the cloud tops)
@@ -5672,15 +5736,15 @@ float sn(vec3 p){p*=4.;return .55*sv3(p)+.3*sv3(p*2.03+7.)+.15*sv3(p*4.1+3.);}
 float cloudA(vec3 n){vec3 cw=n+vec3(sn(n*2.+5.),sn(n*2.3+11.),sn(n*1.8+2.))*.32;return smoothstep(.52,.84,sn(cw*1.3));}
 vec3 surfS(vec3 n,int k,vec3 ca,vec3 cb,vec3 L,out float land,out float cl){float w=sn(n*1.15+.2),w2=sn(n*2.6+.7),w3=sn(n*5.2+1.4);vec3 s=mix(ca,cb,w2);cl=0.;land=1.;
   if(k==0){}
-  else if(k==1){s=mix(vec3(.045,.016,.01),vec3(.2,.07,.03),w2);land=smoothstep(.07,0.,abs(fract(w*2.4+w2)-.5)-.4);cl=0.;}
+  else if(k==1){s=mix(mix(vec3(.045,.016,.01),ca*.3,.6),mix(vec3(.2,.07,.03),cb*.3,.6),w2);land=smoothstep(.07,0.,abs(fract(w*2.4+w2)-.5)-.4);cl=0.;}
   else if(k==2){float dune=.5+.5*sin(n.x*16.+w*5.);s=mix(ca,cb,smoothstep(.15,.85,w2*.55+dune*.45));cl=smoothstep(.74,.94,w)*.16;land=1.;}
-  else if(k==3){land=smoothstep(.46,.64,w*.7+w2*.3);vec3 sea=mix(vec3(.02,.07,.16),ca,.4),grd=mix(cb,ca*.75+.08,smoothstep(.25,.75,w2));s=mix(sea,grd,land);cl=smoothstep(.58,.86,w2)*.48;}
-  else if(k==4){float bd=.5+.5*sin(n.y*5.2+w*2.4);s=mix(ca,cb,bd);s=mix(s,vec3(.12,.32,.06),smoothstep(.35,.8,w3)*.45);cl=smoothstep(.38,.72,w)*.55;land=0.;}
-  else if(k==6){float hot=smoothstep(-.08,.4,dot(n,L));vec3 cold=mix(vec3(.5,.66,.8),cb,.35),hotc=mix(vec3(.16,.04,.02),vec3(.95,.32,.06),smoothstep(.1,0.,abs(w-.48)));s=mix(cold,hotc,hot);cl=smoothstep(.72,.92,w2)*.12;land=hot;}
-  else if(k==7){float br=smoothstep(.12,0.,abs(w-.4)-.07);s=mix(vec3(.1,.09,.08),cb,w2)*(1.-br*.7);cl=0.;land=0.;}
-  else{s=mix(vec3(.8,.9,.97),mix(ca,vec3(.72,.86,.95),.45),.4+.2*w2);s=mix(s,vec3(.16,.26,.38),smoothstep(.045,0.,abs(fract(n.y*5.+w*2.4)-.5)-.47)*.6);cl=smoothstep(.66,.9,w)*.2;land=1.;}
+  else if(k==3){land=smoothstep(.46,.64,w*.7+w2*.3);vec3 sea=mix(vec3(.02,.07,.16),ca*.8,.62),grd=mix(cb,ca*.75+.08,smoothstep(.25,.75,w2));s=mix(sea,grd,land);cl=smoothstep(.58,.86,w2)*.38;}
+  else if(k==4){float bd=.5+.5*sin(n.y*5.2+w*2.4);s=mix(ca,cb,bd);s=mix(s,mix(vec3(.12,.32,.06),cb.brg*.55,.55),smoothstep(.35,.8,w3)*.45);cl=smoothstep(.38,.72,w)*.42;land=0.;}
+  else if(k==6){float hot=smoothstep(-.08,.4,dot(n,L));vec3 cold=mix(vec3(.5,.66,.8),cb,.6),hotc=mix(ca*.3,mix(vec3(.95,.32,.06),ca,.45),smoothstep(.1,0.,abs(w-.48)));s=mix(cold,hotc,hot);cl=smoothstep(.72,.92,w2)*.12;land=hot;}
+  else if(k==7){float br=smoothstep(.12,0.,abs(w-.4)-.07);s=mix(ca*.5+.03,cb,w2)*(1.-br*.7);cl=0.;land=0.;}
+  else{s=mix(mix(vec3(.8,.9,.97),cb,.4),mix(ca,vec3(.72,.86,.95),.2),.4+.2*w2);s=mix(s,ca*.4,smoothstep(.045,0.,abs(fract(n.y*5.+w*2.4)-.5)-.47)*.6);cl=smoothstep(.66,.9,w)*.2;land=1.;}
 
- s=mix(vec3(dot(s,vec3(.3,.5,.2))),s,1.22);s*=.94+.06*w3;return s;}
+ s=mix(vec3(dot(s,vec3(.3,.5,.2))),s,1.38);s*=.94+.06*w3;return s;}
 
 uint thu(ivec2 p){uvec2 q=uvec2(p)*uvec2(1597334673u,3812015801u);return (q.x^q.y)*1597334673u;}
 float thv(ivec2 p){return float(thu(p)>>8u)*(1./16777216.);}
@@ -5749,10 +5813,16 @@ void main(){vec3 N=normalize(vN2),L=uSun.xyz,d=vW-uCam;float dist=length(d);d/=d
  if(N.y<-.5)c=vec3(.12,.08,.05);
  vec3 col=c*(uSunC.rgb*(max(dot(N,L),0.)*.8+.2)*1.05+at*at*(.15+.25*sunH)+.01);
  float f=(1.-exp(-dist/9000.))*.85;o=vec4(mix(col,tHaze(d),max(f,smoothstep(900.,1150.,dist))),1.);}`;
+let terBusy = 0;
+let P_PLS = null;
+function plsQ(front) { if (P_PLS) return; bq('plasma', () => progA(PLS_V, PLS_F).then((p) => { P_PLS = p; }), front); }
+function terBuild(front) {   // the ground and the trees
+  const g = () => !TP && bq('ground', () => progA(TER_V, TER_F).then((p) => { TP = p; }), front), t = () => !VP && bq('trees', () => progA(VEG_V, VEG_F).then((p) => { VP = p; }), front);
+  if (front) { t(); g(); } else { g(); t(); } }
 let TP = null, VP = null, tVA = null, tN0 = 0, tVA1 = null, tN1 = 0, vVA = null, vIB = null, vN = 0, vCnt = 0, vAt = [1e9, 1e9], vData = null;
 function v126Boot() {
   try {
-    TP = prog(TER_V, TER_F); VP = prog(VEG_V, VEG_F);
+    // v1.46: the ground's programs build in the background (terBuild), not here at load
     const mk = (ring) => { const v = [], idx = [], id = (x, z) => (z + 32) * 65 + (x + 32);
       for (let z = -32; z <= 32; z++) for (let x = -32; x <= 32; x++) v.push(x, z);
       for (let z = -32; z < 32; z++) for (let x = -32; x < 32; x++) { if (ring && x >= -15 && x < 15 && z >= -15 && z < 15) continue; idx.push(id(x, z), id(x, z + 1), id(x + 1, z), id(x + 1, z), id(x, z + 1), id(x + 1, z + 1)); }
@@ -5772,7 +5842,7 @@ function v126Boot() {
     const nb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, nb); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(Nn), gl.STATIC_DRAW); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 12, 0);
     vIB = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, vIB); gl.bufferData(gl.ARRAY_BUFFER, 4 * 4 * 9000, gl.DYNAMIC_DRAW); gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 4, gl.FLOAT, false, 16, 0); gl.vertexAttribDivisor(2, 1);
     gl.bindVertexArray(null); vN = P.length / 3; vData = new Float32Array(4 * 9000);
-  } catch (e) { console.error('v126 terrain', e); TP = null; }
+  } catch (e) { console.error('v126 terrain', e); TP = null; terBusy = 2; }
 }
 function vegBuild() {                                            // trees around you, re-placed as you move: density by noise, never on steep ground or water
   const den = tPar[4]; vCnt = 0; if (!den) return;
@@ -5797,7 +5867,7 @@ function v126Draw(vd) {
   set(TP); const lv = LV >= 1 ? 7 : 8, rMax = 12 * (1 << (lv - 1)) * 32;
   gl.uniform4f(TP.u.uC, TUNE.grFog, tPar[5], 1, rMax);   // v1.33: denser aerial haze, so height reads
   for (let l = 0; l < lv; l++) { gl.uniform4f(TP.u.uLv, 12 * (1 << l), l === lv - 1 ? 1 : 0, 0, 0); gl.bindVertexArray(l ? tVA1 : tVA); gl.drawElements(gl.TRIANGLES, l ? tN1 : tN0, gl.UNSIGNED_SHORT, 0); }
-  if (vCnt) { set(VP); gl.bindVertexArray(vVA); gl.drawArraysInstanced(gl.TRIANGLES, 0, vN, vCnt); }
+  if (vCnt && VP) { set(VP); gl.bindVertexArray(vVA); gl.drawArraysInstanced(gl.TRIANGLES, 0, vN, vCnt); }
   gl.bindVertexArray(VA0); gl.depthFunc(gl.LEQUAL);
   if (!dT) gl.disable(gl.DEPTH_TEST); if (cF) gl.enable(gl.CULL_FACE); if (!bl) gl.disable(gl.BLEND); gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE);
 }
@@ -5806,10 +5876,10 @@ function v126Draw(vd) {
 let keepNeb = 0, v126Hh = 0, v126KeyC = '', v126Heat = 0;
 // v1.43: re-entry hides the switch. The heat builds while you're still in space (from ~50 km up), peaks in a plasma flare at the exact
 // moment the planet-side view takes over, then burns off as you descend.
-let heatFlare = 0;
+let heatFlare = 0, heatNear = 1e9, heatBlk = 0;
 function heatTick(dt) { TCLOUD = TGB + TUNE.cldBase * 1000; TCTOP = TGB + Math.max(TUNE.cldBase + .5, TUNE.cldTop) * 1000;
   if (heatFlare > 0) heatFlare = Math.max(0, heatFlare - dt / TUNE.heatFlareT);
-  if (v126Heat > 0 || heatFlare > 0) { if (SYS.atm) v126Heat = Math.max(0, v126Heat - dt / TUNE.heatFade); const h = v126Heat * v126Heat; v126Fc = [1, .55 + .3 * (1 - h), .25 + .5 * (1 - h)];
+  if (v126Heat > 0 || heatFlare > 0) { if (SYS.atm) v126Heat = Math.max(0, v126Heat - dt / TUNE.heatFade * (vy > 0 ? 3 : 1)); const h = v126Heat * v126Heat; v126Fc = [1, .55 + .3 * (1 - h), .25 + .5 * (1 - h)];
     flash = Math.max(flash, heatFlare * heatFlare * .25 * TUNE.heatPeak); trauma = Math.max(trauma, (h * .3 + heatFlare * .4) * TUNE.shake / .4); }
 }
 function v126Burn() { v126Heat = 1; heatFlare = 1; trauma = Math.max(trauma, .45); tip('Atmospheric entry · the air takes your speed', 4000); }   // re-entry: a few seconds of heat on the canopy while the air bleeds the speed off   // set just before a continuous hop: the sky you are in stays the sky you were in
@@ -5896,7 +5966,7 @@ function wxFor() {                                            // each sky its ow
   return k === 3 ? (r < .5 ? 0 : -1) : k === 4 ? (r < .75 ? 0 : -1) : k === 5 ? (r < .85 ? 1 : -1) : k === 2 ? (r < .65 ? 2 : -1) : k === 1 ? (r < .85 ? 3 : -1) : k === 6 ? (r < .4 ? 1 : r < .7 ? 3 : -1) : -1;
 }
 function v126Weather() {
-  if (WXP === null) { try { WXP = prog(WX_V, WX_F); } catch (e) { console.error('wx', e); WXP = false; } }
+  if (WXP === null) { WXP = 0; bq('weather', () => progA(WX_V, WX_F).then((p) => { WXP = p; }, (e) => { console.error('wx', e); WXP = false; })); }
   if (!WXP) return;
   const u = WXP.u, cam = [px + eox, py + eoy, pz + eoz], q = LV >= 1 ? .5 : 1;
   gl.useProgram(WXP.p); gl.bindVertexArray(VA0); gl.uniform3f(u.uCam, ...cam); gl.uniform3f(u.uVl, vx, vy, vz);
@@ -5913,7 +5983,7 @@ function v126Weather() {
 }
 
 // leaving: back to space at the matching altitude, over the point you are above, facing the way you face
-function v126Exit(k) {
+function v126Exit(k) { v126Heat = 0; heatFlare = 0; heatNear = 1e9; heatBlk = tm + 8;
   if (!cOn || !sysP || !sysP[k]) return false;
   const P = sysP[k], R0 = PR[k], Rm = R0 * 1e6, na = nrm([px - cC[0], py - TGB + Rm, pz - cC[1]]), alt = Math.max(0, Math.hypot(px - cC[0], py - TGB + Rm, pz - cC[1]) - Rm) / 1e6, n = mv(cM, na), cp = Math.cos(pitch), Fa = [Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp], F = mv(cM, Fa);
   // over the point you are above now, not where you came down
@@ -5964,14 +6034,15 @@ void main(){
   float a=1.-exp(-den*ds*uC1.z*.001);acc+=T*a*col;T*=1.-a;if(T<.02)break;}
  float hz=1.-exp(-(t0+ds*3.)/uC1.w);acc=mix(acc,hcol*(1.-T),hz*.85);o=vec4(acc,T);}`;
 
-let P_CLD = null, cldBusy = 0;
-function cldWant(force) {   // the clouds' program builds in the background once a world with air is close (or you're in its sky)
-  if (P_CLD || cldBusy) return;
+let P_CLD = null;
+function cldQ(front) { if (P_CLD !== null) return; bq('clouds', () => progA(TRI_V, CLD_F).then((p) => { P_CLD = p; }, (e) => { console.error('clouds', e); P_CLD = false; }), front); }
+function cldWant(force) {   // a world with air within ~14 radii (or its sky): its programs jump the queue, in the order they're needed
+  if (P_CLD !== null && TP && VP && P_SKYA && P_PLS) return;
+  if (B.className[0] !== 'g') return;   // never on the title screen
   let want = force || SYS.atm && isCont();
   if (!want && sysP) for (let k = 0; k < 3; k++) if (sysP[k] && SYS.locs.some((l) => l.atm === k + 1) && Math.hypot(sysP[k][0] - sysS[0], sysP[k][1] - sysS[1], sysP[k][2] - sysS[2]) < PR[k] * 14) want = true;
   if (!want) return;
-  if (!P_SKYA && !skyaBusy) { skyaBusy = 1; progA(TRI_V, SKYA_F()).then((p) => { if (!P_SKYA) P_SKYA = p; }).catch((e) => console.error('skyA', e)); }
-  cldBusy = 1; progA(TRI_V, CLD_F).then((p) => { P_CLD = p; }).catch((e) => { console.error('clouds', e); P_CLD = false; });
+  bqGo = 1; cldQ(true); terBuild(true); skyaQ(true); plsQ(true);
 }
 function cldDraw() {
   cldWant(); if (!P_CLD || !(SYS.atm && isCont())) return; const kk = tKind(); if (kk === 0 || kk === 1 || kk === 7) return;
@@ -5988,7 +6059,7 @@ noiseTex();
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.45';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
+const BUILD = 'v1.51';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 let draws = 0, verts = 0, frameDraws = 0, frameVerts = 0;
 const _dei = gl.drawElementsInstanced.bind(gl), _de = gl.drawElements.bind(gl), _da = gl.drawArrays.bind(gl);
 gl.drawElementsInstanced = (m, c, ty, off, n) => { draws++; verts += c * n; return _dei(m, c, ty, off, n); };
@@ -6041,7 +6112,7 @@ await step(.5, 'Waking the leviathans…');
 const mSiphon = siphonMesh(), mSpark = sparkMesh(), mCry = crystalMesh(), mJelly = jellyMesh(), mRay = rayMesh(), mDart = dartMesh(), mRing = ringMesh(), mSpire = spireMesh(), mWhale = whaleMesh(), mSerp = serpentMesh(), mTen = tendrilMesh(), mQuad = quadMesh(), mBox = boxMesh(), mCock = cockpitMesh(), mFighter = fighterMesh(), mFrig = [frigateMesh(0), frigateMesh(1)], mDrone = droneMesh(), mGate = gateMesh();
 for (const g of ST.dead) dead.add(g);
 await step(.62, 'Growing crystal…');
-const pStep = async (p, t, vs, fs) => { await step(p, t); return progA(vs, fs); };   // one step per program: the bar moves as each one is ready
+const pStep = async (p, t, vs, fs) => { await step(p, t); const t0 = performance.now(), r = await progA(vs, fs), ms = Math.round(performance.now() - t0); if (ms > 120) evLog(`Load · ${Math.round(p * 100)}% ${t} ${ms} ms`); return r; };   // one step per program: the bar moves as each one is ready
 const P_ROCK = await pStep(.63, 'Carving the rocks…', ROCK_V, ROCK_F), P_CRY = await pStep(.645, 'Growing crystal…', CRY_V, CRY_F), P_LIFE = await pStep(.66, 'Waking the drifters…', LIFE_V, LIFE_F), P_SPR = await pStep(.675, 'Scattering motes…', SPR_V, SPR_F);
 const P_SKY = await pStep(.69, 'Painting the sky, star by star…', TRI_V, SKY_F), P_BLUR = await pStep(.72, 'Softening the glare…', TRI_V, BLUR_F), P_RAY = await pStep(.73, 'Bending the light…', TRI_V, RAY_F.replace('precision', `#define NS ${Q.rays}\nprecision`)), P_COMP = await pStep(.745, 'Grinding the lens…', TRI_V, COMP_F), P_COCK = await pStep(.76, 'Lighting the dash…', COCK_V, COCK_F), P_SHIP = await pStep(.775, 'Plating the hulls…', SHIP_V, ROCK_F);
 const P_CAB = await pStep(.79, 'Warming the cab…', COCK_V, COCK_F.replace('#version 300 es', '#version 300 es\n#define CABIN'));   // the quarters and the aux screen: their materials stay out of the dash's shader
@@ -6333,7 +6404,7 @@ for (const [t, v] of [['touchstart', 1], ['touchend', 0], ['touchcancel', 0]]) $
 const tip = (t, ms = 7000) => { pipLog(t); evLog(t); hudTipS = t; hudTipT = performance.now() + Math.min(ms, 6000); const e = $('tip'); e.textContent = t; e.className = 'on'; clearTimeout(tip.t); tip.t = setTimeout(() => { e.className = ''; }, ms); };
 function go() {
   if (!started) setTimeout(() => cue('theme', 1), 9000);     // the first flight opens with the theme
-  B.className = 'g'; started = 1; $('launch').textContent = 'Back to the dark'; audio(); cv.focus();
+  B.className = 'g'; if (!started) setTimeout(bgBuild, 3000); started = 1; $('launch').textContent = 'Back to the dark'; audio(); cv.focus();
   const fsP = !TEST && !xr && CFG.fs !== 0 && !document.fullscreenElement && document.documentElement.requestFullscreen ? document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {}) : null;   // launching goes full screen (Settings can turn it off; F11 works any time)
   if (!mob && !TEST && !xr) {
     lock();
@@ -6371,8 +6442,8 @@ bootOK = 1;
 // browser can), or on the way into a planet otherwise
 let SKP = P_SKY, P_SKYA = null, skyaBusy = 0;
 const SKYA_F = () => SKY_F.replace('#version 300 es', '#version 300 es\n#define ATM');
-function bgBuild() { if (!PSC) return; if (!P_SKYA && !skyaBusy) { skyaBusy = 1; progA(TRI_V, SKYA_F()).then((p) => { if (!P_SKYA) P_SKYA = p; setTimeout(() => cldWant(true), 400); }).catch((e) => console.error('skyA', e)); } }
-setTimeout(bgBuild, 1800);   // v1.41: the sound system exists from here: timers that touch it may run
+function skyaQ(front) { if (P_SKYA) return; bq('planet sky', () => progA(TRI_V, SKYA_F()).then((p) => { if (!P_SKYA) P_SKYA = p; }), front); }
+function bgBuild() { bqGo = 1; bqRun(); if (!PSC) return; plsQ(); skyaQ(); terBuild(); cldQ(); }   // v1.50: starts a few seconds after you launch, not on the title screen   // v1.41: the sound system exists from here: timers that touch it may run
 let AC = null, AG = null, DL = null, NB = null, windG = null, windF = null, boostG = null, boostF = null, gatG = null, padF = null, padO = [], mT = 0, mStep = 0, mReg = -1, mWalk = 5, combat = 0, energy = 0;
 const mf = (m) => 440 * 2 ** ((m - 69) / 12);
 // the recorded score: five passages cut from the track, laid end to end in one file (start, length, level).
@@ -6697,7 +6768,7 @@ function eye(fb, x, y, w, h, tw, th) {
   G[20] = pal[9] * 1.1; G[21] = pal[10] * 1.1; G[22] = pal[11] * 1.1; G[23] = fogD;
   G[24] = pal[0]; G[25] = pal[1]; G[26] = pal[2]; G[27] = xr || stereo ? 0 : Math.max(bst, jk);
   G[28] = pal[3]; G[29] = pal[4]; G[30] = pal[5]; G[31] = flash;
-  G[32] = pal[6]; G[33] = pal[7]; G[34] = pal[8]; G[35] = .85;
+  G[32] = pal[6]; G[33] = pal[7]; G[34] = pal[8]; G[35] = SYS.moodFx || 0;   // v1.47: the system's sky effect (was a constant 0.85 exposure, now fixed in the composite)
   G[36] = vx + sFx * jk * 2500; G[37] = vy + sFy * jk * 2500; G[38] = vz + sFz * jk * 2500; G[39] = tT;
   G[40] = eRx; G[41] = eRy; G[42] = eRz; G[43] = tL; G[44] = eUx; G[45] = eUy; G[46] = eUz; G[47] = tB; G[48] = eFx; G[49] = eFy; G[50] = eFz; G[51] = tR;
   gl.bindBuffer(gl.UNIFORM_BUFFER, ubo); gl.bufferSubData(gl.UNIFORM_BUFFER, 0, G);
@@ -6718,7 +6789,7 @@ function eye(fb, x, y, w, h, tw, th) {
       gl.uniformMatrix3fv(C.u.uShip, false, M3); if (xr) gl.uniform3f(C.u.uEye, cex, cey, cez); else gl.uniform3f(C.u.uEye, eox * k, eoy * k, eoz * k); gl.uniform1f(C.u.uWd, xr ? 1 : 1.3);
       gl.uniform4f(C.u.uMo, ckx + Math.sin(tm * 53) * vib, cky + Math.sin(tm * 67 + 2) * vib, ckz, ckr);
       gl.uniform4f(C.u.uCk, thr, gunSpin, Math.max(bst, jk), muzzle); gl.uniform4f(C.u.uSt, stx, sty, Math.min(1, Math.hypot(vx, vy, vz) / 660), cg(5)); gl.uniform4f(C.u.uCg, cg(1), cg(2), cg(3), cg(4)); gl.uniform1f(C.u.uDm, 1 - ST.hull / 100); gl.uniform2f(C.u.uAt, Math.asin(Math.max(-1, Math.min(1, sFy))), Math.atan2(sRy, sUy));
-      if (C.u.uHt) gl.uniform1f(C.u.uHt, Math.max(0, 1 - (tm - hitPing) / .5));
+      if (C.u.uHt) gl.uniform1f(C.u.uHt, Math.max(0, 1 - (tm - hitPing) / .5)); if (C.u.uPh) gl.uniform4f(C.u.uPh, v126Heat, heatFlare * TUNE.heatPeak, tm, TUNE.vigStr);
       if (C.u.uHc) gl.uniform3f(C.u.uHc, PIP.col[0], PIP.col[1], PIP.col[2]);
       gl.drawElements(gl.TRIANGLES, b - a, gl.UNSIGNED_SHORT, a * 2);
     }
@@ -6778,6 +6849,9 @@ function eye(fb, x, y, w, h, tw, th) {
   if (!NO.includes('p')) { gl.uniform1i(Sp.u.uMode, 1); draw(Sp, LP, mQuad); }
   if (!NO.includes('t')) { gl.uniform1i(Sp.u.uMode, 3); draw(Sp, DT, mQuad); }
   if (!NO.includes('a')) { gl.uniform1i(Sp.u.uMode, 4); draw(Sp, DPa, mQuad); }
+  if (P_PLS && flying() && (v126Heat > .003 || heatFlare > .003)) {   // v1.46: the bow shock, behind the cockpit's depth
+    const cf = gl.isEnabled(gl.CULL_FACE); gl.useProgram(P_PLS.p); gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE); gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS); gl.depthMask(false); gl.disable(gl.CULL_FACE);
+    gl.uniform4f(P_PLS.u.uPs, Math.pow(v126Heat, 1.4), heatFlare * TUNE.heatPeak, tm, tw / th); gl.uniform4f(P_PLS.u.uPq, TUNE.vigStr, 0, 0, 0); gl.bindVertexArray(VA0); gl.drawArrays(gl.TRIANGLES, 0, 3); if (cf) gl.enable(gl.CULL_FACE); }
   if (cockpit && flying()) {                                 // the glass, over everything outside
     gl.depthRange(0, .01); gl.useProgram(P_COCK.p); gl.bindVertexArray(VAC); gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE);   // glass adds its reflections and takes a little light away
     gl.drawElements(gl.TRIANGLES, mCock.ng, gl.UNSIGNED_SHORT, (mCock.n - mCock.ng) * 2); gl.depthRange(0, 1);
@@ -6802,7 +6876,7 @@ function eye(fb, x, y, w, h, tw, th) {
   // tone-map into the destination
   gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.viewport(x, y, w, h);
   gl.useProgram(P_COMP.p); gl.uniform2f(P_COMP.u.uPx, 1 / tw, 1 / th); { const v = (k) => xr ? 0 : CFG[k], fb = v('fxBlur') * 1.1, fc = v('fxCA'), vig = xr ? (CFG.vrVig || 0) * (.4 + .6 * Math.min(1, bst)) : v('fxVig'); gl.uniform4f(P_COMP.u.uFx, fc ? fc * 1.9 : 0, v('fxGrain') * .09, mbx * fb, mby * fb); gl.uniform1f(P_COMP.u.uFs, fb * mbs); gl.uniform4f(P_COMP.u.uFy, v('fxScan'), CFG.fxBloom, vig, o2Hyp); gl.uniform4f(P_COMP.u.uFz, v('fxGlass'), 0, 0, 0); } gl.uniform3f(P_COMP.u.uJ, Math.max(jk, dbgJ, scE * .22, hlFx * .6) * .9, Math.max(tun, dbgT, hlFx * .26), jumpT + tm + hlT * 2.5); { const fx = sFx * eRx + sFy * eRy + sFz * eRz, fy = sFx * eUx + sFy * eUy + sFz * eUz, fz = Math.max(.15, sFx * eFx + sFy * eFy + sFz * eFz), cl = (v) => Math.max(-.5, Math.min(1.5, v));   // where the ship's nose falls in this eye's picture
-    gl.uniform2f(P_COMP.u.uJc, cl((fx / fz - tL) / (tR - tL)), cl((fy / fz - tB) / (tT - tB))); } if (P_COMP.u.uFc) gl.uniform3f(P_COMP.u.uFc, v126Fc[0], v126Fc[1], v126Fc[2]); if (P_COMP.u.uHt) gl.uniform4f(P_COMP.u.uHt, v126Heat * v126Heat, heatFlare * TUNE.heatPeak, TUNE.vigStr, tm); gl.uniform3f(P_COMP.u.uFl, sux, suy, sux > -.2 && sux < 1.2 && suy > -.2 && suy < 1.2 ? sus * CFG.fxFlare * (csU[0] ? .2 : 1) : 0);
+    gl.uniform2f(P_COMP.u.uJc, cl((fx / fz - tL) / (tR - tL)), cl((fy / fz - tB) / (tT - tB))); } if (P_COMP.u.uFc) gl.uniform3f(P_COMP.u.uFc, v126Fc[0], v126Fc[1], v126Fc[2]); if (P_COMP.u.uHt) gl.uniform4f(P_COMP.u.uHt, v126Heat * v126Heat, heatFlare * TUNE.heatPeak, P_PLS ? -TUNE.vigStr : TUNE.vigStr, tm); gl.uniform3f(P_COMP.u.uFl, sux, suy, sux > -.2 && sux < 1.2 && suy > -.2 && suy < 1.2 ? sus * CFG.fxFlare * (csU[0] ? .2 : 1) : 0);
   gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, T.hdr.t); gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, bl[0].t); gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, T.ray.t);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   hudDraw(xr ? 1 / 6 : stereo ? .25 : 1);                     // the display goes on last, over the finished picture, so blur, grain and fringing never touch its text
@@ -6888,11 +6962,12 @@ function readPad(dt) {
     { const hb = !!(gp.buttons[3] && gp.buttons[3].pressed); if (hb && !padHl && flying()) hlKey(); padHl = hb; }   // v1.36: Y / triangle engages hyperlight
   }
 }
+let frEma = 0;
 function frame(now, xf) {
   if (!xf !== !xr) return;                                   // a callback left over from the other display loop
   (xr || window).requestAnimationFrame(frame);
   frameDraws = draws; frameVerts = verts; draws = 0; verts = 0;
-  const raw = (now - last) / 1000; last = now;
+  const raw = (now - last) / 1000; last = now; frEma = frEma ? frEma * .95 + Math.min(raw, 1) * .05 : raw; if (raw > .35 && raw > frEma * 3 && bootOK && raw < 60) evLog(`Hitch · a frame took ${Math.round(raw * 1000)} ms` + (SYS.atm ? ' (in a sky)' : ''));
   const rdt = Math.min(.05, Math.max(.001, raw)); btT = Math.max(0, btT - rdt); slow += (((jpOpen || invOpen || PIP.big) && flying() ? .12 : btT > 0 ? .14 + .86 * Math.pow(1 - btT / btMax, 2.4) : 1) - slow) * Math.min(1, rdt * (btT > 0 ? 14 : 4));
   const dt = rdt * slow; tm += dt;                             // with a panel open the world all but stops, and eases back when it closes
   acc += raw; nf++;
@@ -7118,7 +7193,7 @@ function tuneSave() { const o = {}; for (const d of TUNE_DEF) if (TUNE[d[0]] !==
 function tuneSet(k, v) { TUNE[k] = v; const r = tuneEl && tuneEl.querySelector(`input[data-k="${k}"]`); if (r) r.value = v; const o = tuneEl && tuneEl.querySelector('#tv_' + k); if (o) o.textContent = tuneFmt(v); }
 function tuneCopy() {
   const o = {}; for (const d of TUNE_DEF) if (TUNE[d[0]] !== d[6]) o[d[0]] = TUNE[d[0]];
-  const txt = `Infinite End tuning · ${BUILD}\n` + (Object.keys(o).length ? JSON.stringify(o, null, 1) : '(all defaults)');
+  const txt = `Infinite End tuning · ${BUILD}\n` + (Object.keys(o).length ? JSON.stringify(o, null, 1) : '(all defaults)') + (() => { const L = EVLOG.filter((e) => /^(Load|Hitch)/.test(e[1])).slice(0, 25).map((e) => e[1]); return L.length ? '\nLoad and hitches:\n' + L.join('\n') : ''; })();
   const fall = () => { const ta = tuneEl.querySelector('#tcopy'); ta.value = txt; ta.style.display = 'block'; ta.select(); tip('Select-all is done: copy it with Ctrl+C', 3000); };
   try { navigator.clipboard.writeText(txt).then(() => tip('Tuning copied: paste it to Claude', 3000), fall); } catch { fall(); }
 }
@@ -7141,7 +7216,7 @@ function tuneBuild() {
 function tuneLog() { if (!tuneOpen || !tuneEl) return; const now = performance.now(), L = tuneEl.querySelector('#tlog');
   L.innerHTML = EVLOG.slice(0, 60).map(([t, s]) => `<p><i>${Math.round((now - t) / 1000)}s</i>${s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c])}</p>`).join('') || '<p>Nothing yet.</p>'; }
 function tuneToggle() {
-  if (!tuneEl) tuneBuild(); tuneOpen = !tuneOpen; document.body.classList.toggle('tune', tuneOpen);
+  if (!tuneEl) tuneBuild(); tuneOpen = !tuneOpen; tuneEl.classList.toggle('on', tuneOpen);
   if (tuneOpen) { if (document.pointerLockElement) document.exitPointerLock(); tuneLog(); }
   else if (flying() && !xr && matchMedia('(pointer:fine)').matches) { try { const r = cv.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch {} }
 }
