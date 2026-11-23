@@ -45,6 +45,10 @@ h1 span + span { color: #0000; -webkit-text-stroke: 1.5px var(--t); letter-spaci
 #ld { margin-top: 2.2em; font-size: .8em; letter-spacing: .28em; text-transform: uppercase; color: var(--t); }
 #ld b { display: inline-block; width: 3.2em; color: var(--ink); font-weight: 600; }
 .m #ld { display: none; }
+#cargo { display: none !important; }   /* v1.37: the cargo list lives in the hold (I), not on the screen */
+#ld::after { content: ''; display: inline-block; width: .55em; height: .55em; margin-left: 1em; border: 1px solid var(--t); vertical-align: .05em; animation: ldsp 1.1s linear infinite; }   /* runs off the main thread: the loader never looks frozen */
+@keyframes ldsp { to { transform: rotate(360deg); } }
+.e #ld::after { display: none; }
 .e #ld { color: #ff8f8f; letter-spacing: .02em; text-transform: none; font-size: 1em; }
 .e #ld b { display: none; }
 #bf { position: absolute; left: 0; bottom: 0; width: 100%; height: 3px; background: linear-gradient(90deg, var(--t), var(--a)); transform: scaleX(0); transform-origin: 0; transition: transform .25s; }
@@ -453,14 +457,15 @@ function fillWorld(s, id, R) {
     const ang = !w ? 0 : i === feat ? .11 + .14 * Rp() : Math.max(.026, Math.min(.075, raw * 9 + .01 * Rp()));
     let d = [0, 1, 0], guard = 0, ok = false;
     if (w) do {
-      const th = .7 + Rp() * 1.3, el = (Rp() - .5) * .22, ce = Math.cos(el), cs = Math.cos(th) * ce, sn = Math.sin(th) * ce, se = Math.sin(el);
+      const th = .5 + Rp() * 2.1, el = (Rp() - .5) * .5, ce = Math.cos(el), cs = Math.cos(th) * ce, sn = Math.sin(th) * ce, se = Math.sin(el);
       d = [SUN0[0] * cs + EC[0] * sn + EN[0] * se, SUN0[1] * cs + EC[1] * sn + EN[1] * se, SUN0[2] * cs + EC[2] * sn + EN[2] * se];
       let nearP = false;
-      for (let k = 0; k < i; k++) if (s.pl[k * 4 + 3] > 0 && Math.acos(Math.min(1, d[0] * s.pl[k * 4] + d[1] * s.pl[k * 4 + 1] + d[2] * s.pl[k * 4 + 2])) < (ang + s.pl[k * 4 + 3]) * 1.6 + .1) nearP = true;
+      for (let k = 0; k < i; k++) if (s.pl[k * 4 + 3] > 0 && Math.acos(Math.min(1, d[0] * s.pl[k * 4] + d[1] * s.pl[k * 4 + 1] + d[2] * s.pl[k * 4 + 2])) < Math.max(.8, (ang + s.pl[k * 4 + 3]) * 1.6 + .1)) nearP = true;   // v1.33: at least ~46° apart, so a view rarely holds more than two
       ok = !nearP; guard++;
-    } while (!ok && guard < 48);
+    } while (!ok && guard < 96);
     s.pr[i] = ang; s.prad[i] = w ? w.rad : 0; s.pk[i] = w ? w.kind : 5;
     s.pl.set(w ? [d[0], d[1], d[2], ang] : [0, 1, 0, 0], i * 4);
+    (s.pd || (s.pd = []))[i] = w ? [d[0], d[1], d[2]] : null;   // v1.34: the planet's direction from the gate, kept: the system's one map is built from it
     const A = w ? w.base[0] : [.2, .2, .2], B = w ? w.base[1] : [.4, .4, .4];
     const mix = (c, p, i0) => Math.max(.02, c * .78 + p * .22);
     s.pa.set([mix(A[0], s.pal[3]), mix(A[1], s.pal[4]), mix(A[2], s.pal[5]), w && w.rings ? 1 : 0], i * 4);
@@ -554,15 +559,24 @@ const TCSS = ['', '#c3ccdc', '#ffd84a', '#ff6a3d', '#cf6bff', '#bff4ff'];
 // ============================================================================
 // WebGL helpers
 // ============================================================================
-function prog(vs, fs) {
-  const p = gl.createProgram();
-  for (const [t, s] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]]) {
-    const sh = gl.createShader(t); gl.shaderSource(sh, s); gl.compileShader(sh);
-    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw Error(gl.getShaderInfoLog(sh) + '\n' + s.split('\n').map((l, i) => (i + 1) + ': ' + l).join('\n').slice(0, 6000));
-    gl.attachShader(p, sh);
+const PSC = gl.getExtension('KHR_parallel_shader_compile');   // lets the driver compile in the background while the loader keeps moving
+function progStart(vs, fs) {
+  const p = gl.createProgram(), sh = [];
+  for (const [t, s] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]]) { const h = gl.createShader(t); gl.shaderSource(h, s); gl.compileShader(h); gl.attachShader(p, h); sh.push([h, s]); }
+  gl.linkProgram(p); return { p, sh };
+}
+async function progA(vs, fs) {                                  // the same program, but the page stays alive while the GPU works on it
+  const st = progStart(vs, fs);
+  if (PSC) { let n = 0; while (!gl.getProgramParameter(st.p, PSC.COMPLETION_STATUS_KHR) && n++ < 900) await new Promise((r) => setTimeout(r, 16)); }
+  return progEnd(st);
+}
+function prog(vs, fs) { return progEnd(progStart(vs, fs)); }
+function progEnd(st) {
+  const p = st.p;
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+    for (const [h, s] of st.sh) if (!gl.getShaderParameter(h, gl.COMPILE_STATUS)) throw Error(gl.getShaderInfoLog(h) + '\n' + s.split('\n').map((l, i) => (i + 1) + ': ' + l).join('\n').slice(0, 6000));
+    throw Error(gl.getProgramInfoLog(p));
   }
-  gl.linkProgram(p);
-  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw Error(gl.getProgramInfoLog(p));
   gl.useProgram(p);
   const bi = gl.getUniformBlockIndex(p, 'G'); if (bi !== gl.INVALID_INDEX) gl.uniformBlockBinding(p, bi, 0);
   const u = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
@@ -685,11 +699,12 @@ void main(){
    vec3 cell=abs(fract(wp*vec3(.035,.028,.02))-.5);
    float seam=smoothstep(.42,.49,max(cell.x,max(cell.y,cell.z)));
    float fine=smoothstep(.455,.49,max(abs(fract(wp.x*.11)-.5),abs(fract(wp.z*.09)-.5)));
-   alb=mix(alb,alb*vec3(.55,.42,.32),smoothstep(.58,.86,nA)*.55);
+   alb=mix(alb,alb*vec3(.7,.62,.55),smoothstep(.6,.9,nA)*.3);
    alb=mix(alb,vec3(.02,.022,.028),seam*(.45+.35*det));
    alb*=mix(1.,.62,fine*det);
-   float win=step(.62,nB)*step(.28,fract(wp.y*.015+nA))*step(.22,fract(wp.x*.012));
-   em+=mix(vec3(1.,.78,.45),vec3(.45,.7,1.),step(.55,nA))*win*(.35+.9*det)*(.65+.35*step(.15,fract(TIME*.04+nA*6.)));
+   vec2 wg=vec2((ap.x>ap.z?wp.z:wp.x)*.22,wp.y*.16),wi=floor(wg),wf=fract(wg);   // v1.33: windows in neat rows, lit in runs, not noise blobs
+   float win=step(.5,hh(vec2(wi.y,floor(wi.x/9.))+vI.x))*step(.25,hh(wi+vI.x*3.))*step(.3,wf.x)*step(wf.x,.7)*step(.38,wf.y)*step(wf.y,.62)*(1.-smoothstep(.25,.55,length(fwidth(wg))));
+   em+=mix(vec3(1.,.8,.52),vec3(.6,.78,1.),step(.82,hh(wi*.37+2.)))*win*1.1;
    vec3 tn=normalize(cross(N,vec3(.21,1.,.07)));
    N=normalize(N+tn*(nA-.5)*det*.55+cross(N,tn)*(nB-.5)*det*.35);
    sp=mix(sp,.22+.85*nB,.5);gs=mix(gs,16.+80.*nB,.45);
@@ -1048,7 +1063,7 @@ out vec2 vU;void main(){vec2 p=vec2(gl_VertexID<<1&2,gl_VertexID&2);vU=p;gl_Posi
 
 // the sky: nebula, stars, the sun, and a ringed giant with a moon
 const SKY_F = HD + `
-in vec2 vU;uniform vec4 uBS[8],uBC[8],uCS;uniform vec3 uCC;uniform vec4 uSky,uPl[3],uPa[3],uOrb,uPh,uPk;uniform vec3 uPb[3],uSd,uOa,uOb,uPq,uAir;out vec4 o;
+in vec2 vU;uniform vec4 uBS[8],uBC[8],uCS;uniform vec3 uCC;uniform vec4 uSky,uPl[3],uPa[3],uOrb,uPh,uPk;uniform vec3 uPb[3],uPLd[3],uSd,uOa,uOb,uPq,uAir,uPD;uniform vec3 uPo;uniform mat3 uPM;uniform vec4 uPG;out vec4 o;
 float hsh(vec3 p){p=fract(p*.3183099+.1);p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
 float n3(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.-2.*f);
  return mix(mix(mix(hsh(i),hsh(i+vec3(1,0,0)),f.x),mix(hsh(i+vec3(0,1,0)),hsh(i+vec3(1,1,0)),f.x),f.y),
@@ -1121,18 +1136,17 @@ vec3 closeStar(vec3 d){
  if(st>5.5&&st<6.5){vec3 C2=normalize(L+T*R*2.3+B*R*.6);float t2=acos(clamp(dot(d,C2),-1.,1.)),R2=R*.35;   // a binary: the companion, small and blue, close by
   float rq=t2/(R*.03);o+=vec3(.6,.75,1.)*(exp(-rq*rq)*14.+.02/(rq*rq*.02+.02)*.06);}
  return o;}
-vec4 planet(vec3 d,vec3 P,float rp,vec3 ca,vec3 cb,float ring,float kd){
- float b=dot(d,P),ds=b*b-(1.-rp*rp);vec4 c=vec4(0);float ts=1e9;vec3 Ls0=uSun.xyz;
- vec3 axis=normalize(abs(P.yzx)+vec3(.18,.9,.16));float spin=TIME*.008+P.x*4.+kd*1.7;int k=int(kd+.5);
- vec3 L=normalize(Ls0*1.6-P);   // v1.26: lit from where the star actually is (the star lies beyond, on its side of the sky): real phases
- // colour language: the air's own colour (by world type), lit by the star's colour. Airless worlds get no limb at all.
- vec3 sunT=uSunC.rgb/max(max(uSunC.r,uSunC.g),max(uSunC.b,.05));
- vec3 airC=k==3||k==4?vec3(.32,.58,1.):k==2?vec3(.95,.7,.42):k==1?vec3(1.,.5,.22):k==5?vec3(.62,.86,1.):k==0?mix(ca,vec3(1.,.9,.75),.5):k==6?vec3(.75,.72,.85):vec3(0.);
- float airK=k==7?0.:k==1||k==6?.5:1.;
- vec3 atm=mix(airC,ca,.2)*mix(vec3(1.),sunT,.55)*airK;
- if(ds>0.&&b>0.){ts=b-sqrt(ds);vec3 n=normalize(d*ts-P);float nl=dot(n,L);
-  float w=tn(n*1.15+.2),w2=tn(n*2.6+.7),w3=tn(n*5.2+1.4);vec3 s;float cl,land=1.;
-  if(k==0){float freq=7.+6.*fract(abs(P.x)*7.3+P.z*2.1);vec3 nw=n+vec3(tn(n*1.8+3.),tn(n*2.2+9.),tn(n*1.6+1.))*.22;float bd=.5+.5*sin(nw.y*freq+w2*1.8),bd2=.5+.5*sin(nw.y*(freq*.37)+1.4+w);s=mix(ca*.55,cb*1.55,smoothstep(.12,.88,bd));s=mix(s,ca*vec3(1.4,.9,.55),smoothstep(.4,.92,bd2)*.75);float sx=nw.x*2.4,sy=(nw.y-.2)*6.;s=mix(s,cb*vec3(1.2,.7,.45),exp(-(sx*sx+sy*sy))*1.3);vec2 st=vec2(atan(n.z,n.x)+P.x*6.,n.y*5.5);float vr=length(st-vec2(.8,.15));float arm=.5+.5*sin(atan(st.y-.15,st.x-.8)*4.-vr*18.);s=mix(s,cb*vec3(1.35,.8,.5),exp(-vr*vr*8.)*(.45+.55*arm));cl=smoothstep(.48,.78,w*.45+w2*.55)*.28;land=0.;}
+// v1.35: one planet. The orbit view, the clouds and the ground all read the same recipe on the unit sphere: integer-hashed
+// noise, identical on the GPU and in JS (the ground's collision samples it too).
+uint sh3(ivec3 p){uvec3 q=uvec3(p)*uvec3(1597334673u,3812015801u,2798796415u);return (q.x^q.y^q.z)*1597334673u;}
+float shv(ivec3 p){return float(sh3(p)>>8u)*(1./16777216.);}
+float sv3(vec3 x){vec3 i=floor(x),f=x-i;f=f*f*(3.-2.*f);ivec3 j=ivec3(i);
+ float a=mix(mix(shv(j),shv(j+ivec3(1,0,0)),f.x),mix(shv(j+ivec3(0,1,0)),shv(j+ivec3(1,1,0)),f.x),f.y);
+ float b=mix(mix(shv(j+ivec3(0,0,1)),shv(j+ivec3(1,0,1)),f.x),mix(shv(j+ivec3(0,1,1)),shv(j+ivec3(1,1,1)),f.x),f.y);return mix(a,b,f.z);}
+float sn(vec3 p){p*=4.;return .55*sv3(p)+.3*sv3(p*2.03+7.)+.15*sv3(p*4.1+3.);}
+float cloudA(vec3 n){vec3 cw=n+vec3(sn(n*2.+5.),sn(n*2.3+11.),sn(n*1.8+2.))*.32;return smoothstep(.52,.84,sn(cw*1.3));}
+vec3 surfS(vec3 n,int k,vec3 ca,vec3 cb,vec3 L,out float land,out float cl){float w=sn(n*1.15+.2),w2=sn(n*2.6+.7),w3=sn(n*5.2+1.4);vec3 s=mix(ca,cb,w2);cl=0.;land=1.;
+  if(k==0){}
   else if(k==1){s=mix(vec3(.045,.016,.01),vec3(.2,.07,.03),w2);land=smoothstep(.07,0.,abs(fract(w*2.4+w2)-.5)-.4);cl=0.;}
   else if(k==2){float dune=.5+.5*sin(n.x*16.+w*5.);s=mix(ca,cb,smoothstep(.15,.85,w2*.55+dune*.45));cl=smoothstep(.74,.94,w)*.16;land=1.;}
   else if(k==3){land=smoothstep(.46,.64,w*.7+w2*.3);vec3 sea=mix(vec3(.02,.07,.16),ca,.4),grd=mix(cb,ca*.75+.08,smoothstep(.25,.75,w2));s=mix(sea,grd,land);cl=smoothstep(.58,.86,w2)*.48;}
@@ -1140,10 +1154,31 @@ vec4 planet(vec3 d,vec3 P,float rp,vec3 ca,vec3 cb,float ring,float kd){
   else if(k==6){float hot=smoothstep(-.08,.4,dot(n,L));vec3 cold=mix(vec3(.5,.66,.8),cb,.35),hotc=mix(vec3(.16,.04,.02),vec3(.95,.32,.06),smoothstep(.1,0.,abs(w-.48)));s=mix(cold,hotc,hot);cl=smoothstep(.72,.92,w2)*.12;land=hot;}
   else if(k==7){float br=smoothstep(.12,0.,abs(w-.4)-.07);s=mix(vec3(.1,.09,.08),cb,w2)*(1.-br*.7);cl=0.;land=0.;}
   else{s=mix(vec3(.8,.9,.97),mix(ca,vec3(.72,.86,.95),.45),.4+.2*w2);s=mix(s,vec3(.16,.26,.38),smoothstep(.045,0.,abs(fract(n.y*5.+w*2.4)-.5)-.47)*.6);cl=smoothstep(.66,.9,w)*.2;land=1.;}
-  s=mix(vec3(dot(s,vec3(.3,.5,.2))),s,1.22);s*=.94+.06*w3;if(k!=1&&k!=7){vec3 cw=n+vec3(tn(n*2.+5.),tn(n*2.3+11.),tn(n*1.8+2.))*.32;float cA=smoothstep(.52,.84,tn(cw*1.3)),cB=smoothstep(.52,.84,tn((cw+L*.07)*1.3));s=mix(s,mix(vec3(.94,.96,.98),ca,.22),cA*(k==0?.4:.82));s*=1.-clamp(cB-cA,0.,1.)*(k==3?.35:.5);}
-  float shd=k==5||k==7?0.:(k==3?smoothstep(.46,.64,tn((n+L*.04)*1.15+.2)*.7+tn((n+L*.04)*2.6+.7)*.3):smoothstep(.52,.8,tn((n+L*.05)*1.2)))*(1.-cl);
+
+ s=mix(vec3(dot(s,vec3(.3,.5,.2))),s,1.22);s*=.94+.06*w3;return s;}
+vec4 planet(vec3 d,vec3 P,float rp,vec3 ca,vec3 cb,float ring,float kd,vec4 Lo){
+ float b=dot(d,P),ds=b*b-(1.-rp*rp);vec4 c=vec4(0);float ts=1e9;vec3 Ls0=Lo.w>0.?Lo.xyz:uSun.xyz;
+ vec3 axis=normalize(abs(P.yzx)+vec3(.18,.9,.16));float spin=TIME*.008+P.x*4.+kd*1.7;int k=int(kd+.5);
+ vec3 L=Lo.w>0.?Lo.xyz:normalize(Ls0*1.6-P);   // v1.26: lit from where the star actually is (the star lies beyond, on its side of the sky): real phases
+ // colour language: the air's own colour (by world type), lit by the star's colour. Airless worlds get no limb at all.
+ vec3 sunT=uSunC.rgb/max(max(uSunC.r,uSunC.g),max(uSunC.b,.05));
+ vec3 airC=k==3||k==4?vec3(.32,.58,1.):k==2?vec3(.95,.7,.42):k==1?vec3(1.,.5,.22):k==5?vec3(.62,.86,1.):k==0?mix(ca,vec3(1.,.9,.75),.5):k==6?vec3(.75,.72,.85):vec3(0.);
+ float airK=k==7?0.:k==1||k==6?.5:1.;
+ vec3 atm=mix(airC,ca,.2)*mix(vec3(1.),sunT,.55)*airK;
+ if(ds>0.&&b>0.){ts=b-sqrt(ds);vec3 n=normalize(d*ts-P);float nl=dot(n,L);
+  float w=sn(n*1.15+.2),w2=sn(n*2.6+.7),w3=sn(n*5.2+1.4);vec3 s;float cl,land=1.;
+  if(k==0){float psd=dot(ca+cb,vec3(3.71,2.13,4.77)),freq=7.+6.*fract(psd*1.7);vec3 nw=n+vec3(sn(n*1.8+3.),sn(n*2.2+9.),sn(n*1.6+1.))*.22;float bd=.5+.5*sin(nw.y*freq+w2*1.8),bd2=.5+.5*sin(nw.y*(freq*.37)+1.4+w);s=mix(ca*.55,cb*1.55,smoothstep(.12,.88,bd));s=mix(s,ca*vec3(1.4,.9,.55),smoothstep(.4,.92,bd2)*.75);float sx=nw.x*2.4,sy=(nw.y-.2)*6.;s=mix(s,cb*vec3(1.2,.7,.45),exp(-(sx*sx+sy*sy))*1.3);vec2 st=vec2(atan(n.z,n.x)+psd*6.,n.y*5.5);float vr=length(st-vec2(.8,.15));float arm=.5+.5*sin(atan(st.y-.15,st.x-.8)*4.-vr*18.);s=mix(s,cb*vec3(1.35,.8,.5),exp(-vr*vr*8.)*(.45+.55*arm));s*=mix(1.,.78+.44*sn(vec3(nw.x*26.,nw.y*190.,nw.z*26.)),smoothstep(.35,.95,rp));cl=smoothstep(.48,.78,w*.45+w2*.55)*.28;land=0.;}
+  else if(k==1){s=mix(vec3(.045,.016,.01),vec3(.2,.07,.03),w2);land=smoothstep(.07,0.,abs(fract(w*2.4+w2)-.5)-.4);cl=0.;}
+  else if(k==2){float dune=.5+.5*sin(n.x*16.+w*5.);s=mix(ca,cb,smoothstep(.15,.85,w2*.55+dune*.45));cl=smoothstep(.74,.94,w)*.16;land=1.;}
+  else if(k==3){land=smoothstep(.46,.64,w*.7+w2*.3);vec3 sea=mix(vec3(.02,.07,.16),ca,.4),grd=mix(cb,ca*.75+.08,smoothstep(.25,.75,w2));s=mix(sea,grd,land);cl=smoothstep(.58,.86,w2)*.48;}
+  else if(k==4){float bd=.5+.5*sin(n.y*5.2+w*2.4);s=mix(ca,cb,bd);s=mix(s,vec3(.12,.32,.06),smoothstep(.35,.8,w3)*.45);cl=smoothstep(.38,.72,w)*.55;land=0.;}
+  else if(k==6){float hot=smoothstep(-.08,.4,dot(n,L));vec3 cold=mix(vec3(.5,.66,.8),cb,.35),hotc=mix(vec3(.16,.04,.02),vec3(.95,.32,.06),smoothstep(.1,0.,abs(w-.48)));s=mix(cold,hotc,hot);cl=smoothstep(.72,.92,w2)*.12;land=hot;}
+  else if(k==7){float br=smoothstep(.12,0.,abs(w-.4)-.07);s=mix(vec3(.1,.09,.08),cb,w2)*(1.-br*.7);cl=0.;land=0.;}
+  else{s=mix(vec3(.8,.9,.97),mix(ca,vec3(.72,.86,.95),.45),.4+.2*w2);s=mix(s,vec3(.16,.26,.38),smoothstep(.045,0.,abs(fract(n.y*5.+w*2.4)-.5)-.47)*.6);cl=smoothstep(.66,.9,w)*.2;land=1.;}
+  s=mix(vec3(dot(s,vec3(.3,.5,.2))),s,1.22);s*=.94+.06*w3;if(k!=1&&k!=7){vec3 cw=n+vec3(sn(n*2.+5.),sn(n*2.3+11.),sn(n*1.8+2.))*.32;float cA=smoothstep(.52,.84,sn(cw*1.3)),cB=smoothstep(.52,.84,sn((cw+L*.07)*1.3));s=mix(s,mix(vec3(.94,.96,.98),ca,.22),cA*(k==0?.4:.82));s*=1.-clamp(cB-cA,0.,1.)*(k==3?.35:.5);}
+  float shd=k==5||k==7?0.:(k==3?smoothstep(.46,.64,sn((n+L*.04)*1.15+.2)*.7+sn((n+L*.04)*2.6+.7)*.3):smoothstep(.52,.8,sn((n+L*.05)*1.2)))*(1.-cl);
   s*=1.-.32*shd;s=mix(s,k==0?mix(vec3(.96,.9,.8),ca,.3):vec3(.92,.93,.95),cl);
-  float lit=smoothstep(-.14,.2,nl),mu=max(dot(n,-d),0.),rim=pow(1.-mu,2.6),hz=pow(1.-mu,1.55),tw=exp(-nl*nl*36.)*smoothstep(-.22,.08,nl);
+  float nr=smoothstep(.45,.9,rp),lit=smoothstep(-.14,.2,nl),mu=max(dot(n,-d),0.),rim=pow(1.-mu,2.6)*(1.-nr*.85),hz=pow(1.-mu,1.55)*(1.-nr*.9),tw=exp(-nl*nl*36.)*smoothstep(-.22,.08,nl);
   vec3 col=s*lit*(.45+.7*max(atm,vec3(.3)))*1.05+atm*.04*lit;
   if(k==1)col+=vec3(1.,.32,.04)*land*(1.6+.5*sin(TIME*.35+w*18.));
   if(k==3)col+=vec3(1.,.74,.4)*(1.-lit)*land*smoothstep(.7,.9,w3)*1.5;
@@ -1151,10 +1186,10 @@ vec4 planet(vec3 d,vec3 P,float rp,vec3 ca,vec3 cb,float ring,float kd){
   if(k==6)col+=vec3(1.,.4,.08)*land*(1.-smoothstep(.2,.8,dot(n,L)))*.35;
   col+=vec3(1.,.48,.22)*tw*(.12+.45*cl);
   col=mix(col,atm*(.12+1.05*lit),hz*.62);
-  col+=atm*rim*pow(max(dot(d,Ls0),0.),4.)*1.35;{float ray=pow(1.-mu,2.5);vec3 rayC=airK*mix(airC*vec3(.55,.66,1.),vec3(1.,.52,.25)*sunT,pow(max(dot(d,Ls0),0.),2.2));col+=rayC*ray*(.2+.95*max(nl,0.))*1.25+uSunC.rgb*pow(max(dot(d,Ls0),0.),7.)*ray*.5;}if(k==3){vec3 Rv=reflect(-L,n);col+=uSunC.rgb*pow(max(dot(Rv,-d),0.),48.)*(1.-land)*lit*(1.4+.8*w3);}if((k==2||k==3||k==5)&&nl<.08){float ct=step(.74,tn(n*22.))*step(.58,tn(n*6.5+2.));col+=mix(vec3(1.,.74,.38),vec3(.5,.72,1.),tn(n*3.))*ct*smoothstep(.2,-.5,nl)*2.6;}
+  col+=atm*rim*pow(max(dot(d,Ls0),0.),4.)*1.35;{float ray=pow(1.-mu,2.5);vec3 rayC=airK*mix(airC*vec3(.55,.66,1.),vec3(1.,.52,.25)*sunT,pow(max(dot(d,Ls0),0.),2.2));col+=rayC*ray*(.2+.95*max(nl,0.))*1.25+uSunC.rgb*pow(max(dot(d,Ls0),0.),7.)*ray*.5;}if(k==3){vec3 Rv=reflect(-L,n);col+=uSunC.rgb*pow(max(dot(Rv,-d),0.),48.)*(1.-land)*lit*(1.4+.8*w3);}if((k==2||k==3||k==5)&&nl<.08){float ct=step(.74,sn(n*22.))*step(.58,sn(n*6.5+2.));col+=mix(vec3(1.,.74,.38),vec3(.5,.72,1.),sn(n*3.))*ct*smoothstep(.2,-.5,nl)*2.6;}
   c=vec4(col,1.);}
  else if(b>0.&&rp>0.){float h=(acos(clamp(b,-1.,1.))-asin(min(rp,.999)))/rp;
-  if(h<.5){float lit=smoothstep(-.35,.35,dot(normalize(d-P*b),L)),a=(exp(-h*16.)*.65+exp(-h*4.5)*.16*smoothstep(.5,.2,h))*(.015+lit+.6*pow(max(dot(d,Ls0),0.),8.));   // the air glows where the star lights it (and when the star is behind it), not as a ring all the way round
+  if(h<.5){float lit=smoothstep(-.35,.35,dot(normalize(d-P*b),L)),a=(exp(-h*16.)*.65+exp(-h*4.5)*.16*smoothstep(.5,.2,h))*(.015+lit+.6*pow(max(dot(d,Ls0),0.),8.))*(1.-smoothstep(.45,.9,rp)*.92);   // the air glows where the star lights it (and when the star is behind it), not as a ring all the way round
    c=vec4((mix(atm,airC*airK,.4)*a*1.55+vec3(1.,.62,.32)*sunT*pow(max(dot(d,Ls0),0.),5.)*a*.8*airK),min(.88,a*1.2)*airK);}}
  if(ring>.5&&(k==0||k==5||k==7)){vec3 rn=normalize(vec3(.25,1.,.35)),e1=normalize(cross(rn,vec3(0,0,1))),e2=cross(rn,e1);float t=dot(P,rn)/max(dot(d,rn),1e-4);
   vec3 hp=d*t-P;float r=length(hp)/max(rp,.02),fw=fwidth(r);
@@ -1223,13 +1258,23 @@ void main(){
     c+=mix(vec3(1.,.8,.55),vec3(.8,.88,1.),hsh(vec3(gi,7.)))*(step(1.-fall*.9,h)*exp(-dot(gf,gf)*14.)*1.6+fall*.1);}
   }}
 
- for(int i=2;i>=0;i--)if(uPl[i].w>0.){float kd=i==0?uPk.x:i==1?uPk.y:uPk.z;vec4 p=planet(d,uPl[i].xyz,uPl[i].w,uPa[i].rgb,uPb[i],uPa[i].a,kd);c=c*(1.-p.a)+p.rgb;m*=1.-p.a;}
- if(uOrb.x>0.){float R=90000.,h=uOrb.y,cl=R+h,b=-d.y*cl,q=2.*R*h+h*h,disc=b*b-q;vec3 L=uSun.xyz;float sunEl=L.y;c*=1.-.85*smoothstep(-.1,.25,sunEl)*uPh.z;m*=1.-.85*smoothstep(-.1,.25,sunEl)*uPh.z;   // v1.26: under a day sky the stars go: the sun here is the planet's day, set from where you came down
+ for(int j=0;j<3;j++){int i=int(j==0?uPo.x:j==1?uPo.y:uPo.z);if(uPl[i].w>0.&&!(uPG.x>.5&&float(i)==uPk.w)){float kd=i==0?uPk.x:i==1?uPk.y:uPk.z;vec4 p=planet(uPG.x>.5?uPM*d:d,uPl[i].xyz,uPG.x>.5?min(uPl[i].w,.08):uPl[i].w,uPa[i].rgb,uPb[i],uPa[i].a,kd,vec4(uPLd[i],dot(uPLd[i],uPLd[i])>.5?1.:0.));c=c*(1.-p.a)+p.rgb;m*=1.-p.a;}}
+ if(uOrb.x>0.){float R=uPG.x>.5?uPG.w:90000.,h=uOrb.y,cl=R+h,b=-d.y*cl,q=2.*R*h+h*h,disc=b*b-q;vec3 L=uSun.xyz;float sunEl=L.y;c*=1.-.85*smoothstep(-.1,.25,sunEl)*uPh.z;m*=1.-.85*smoothstep(-.1,.25,sunEl)*uPh.z;   // v1.26: under a day sky the stars go: the sun here is the planet's day, set from where you came down
   vec3 sunT=uSunC.rgb/max(max(uSunC.r,uSunC.g),max(uSunC.b,.05)),at=mix(uAir*mix(vec3(1.),sunT,.55),uOa,.25);float sunH=smoothstep(-.25,.25,L.y+.15);
   // the horizon: ground and sky both melt into one band of haze, brightest toward the sun, with a thin glow along the limb
   float yh=-sqrt(q)/cl,hzv=d.y-yh,sdh=pow(max(dot(normalize(vec3(d.x,0.,d.z)+1e-4),normalize(vec3(L.x,0.,L.z)+1e-4)),0.),3.);
   vec3 hcol=at*at*(.22+.55*sunH)+mix(vec3(1.,.55,.25),uSunC.rgb,.4)*sdh*(.15+.6*sunH)*(.4+.6*smoothstep(.35,-.05,L.y));
-  if(b>0.&&disc>0.){float t=b-sqrt(disc);vec3 P=d*t,N=normalize(P+vec3(0,cl,0));vec2 s=P.xz+uOrb.zw;
+  float dens=uPG.x>.5?exp(-h/11000.):1.;   // the air thins with height: at the top of the sky there is almost none
+  vec4 pp=uPG.x>.5?planet(uPM*d,uPM*uPD,uPG.y,uOa,uOb,0.,uPG.z,vec4(uPM*L,1.)):vec4(0.);
+  if(b>0.&&disc>0.){float t=b-sqrt(disc);vec3 cc;
+   if(uPG.x>.5){cc=pp.rgb;int kk=int(uPG.z+.5);
+    {vec2 gq=d.xz*t+uOrb.zw;float d1=tn(vec3(gq*.00004,3.3)),d2=tn(vec3(gq*.00025,5.1)),d3=tn(vec3(gq*.0016,7.7)),det=d1*.5+d2*.33+d3*.17;   // ground detail at three scales: it sharpens as you come down
+     cc*=mix(1.,.6+.8*det,1.-smoothstep(4e4,2.5e5,t));if(kk==2)cc*=1.-.12*smoothstep(.4,.9,sin(gq.x*.0021+d2*5.))*(1.-smoothstep(2e4,9e4,t));}float ca2=(kk==0?1.:kk==1?.5:kk==2?.25:kk==3?.65:kk==4?.75:kk==5?.5:kk==6?.4:0.),ct=12500.;
+    if(h>ct+40.&&ca2>0.){float clc=R+h,bc=-d.y*clc,qc=clc*clc-(R+ct)*(R+ct),dc=bc*bc-qc;   // the cloud deck seen from above: the same pattern as its underside, lit from the sun
+     if(bc>0.&&dc>0.){float tc=bc-sqrt(dc);vec2 qq=d.xz*tc+uOrb.zw;float nn=tn(vec3(qq*.00012,1.7))*.62+tn(vec3(qq*.0005,4.1))*.38,cv=clamp(cloudA(uPM*normalize(d*tc-uPD*(R+h)))*1.15+(nn-.5)*.55,0.,1.)*(kk==0||kk==1||kk==7?0.:1.);
+      vec3 ccl=mix(vec3(.96),at*1.2+.15,.22)*(.06+.95*smoothstep(-.12,.5,L.y));if(kk==0)ccl=mix(ccl,uOa*1.3+.1,.35);ccl*=.82+.18*tn(vec3(qq*.002,2.3));
+      ccl=mix(ccl,hcol,1.-exp(-tc/120000.));cc=mix(cc,ccl,cv);}}}
+   else{vec3 P=d*t,N=normalize(P+vec3(0,cl,0));vec2 s=P.xz+uOrb.zw;
    float big=tn(vec3(s*.000035,.3)),c1=tn(vec3(s*.00011+big*.6,1.7)),c2=tn(vec3(s*.0005,4.1));
    {float h0=smoothstep(.4,.85,big*.5+c1*.4+c2*.18);vec2 pv=d.xz/max(.18,dot(-d,N))*1400.*h0;s+=pv;big=tn(vec3(s*.000035,.3));c1=tn(vec3(s*.00011+big*.6,1.7));c2=tn(vec3(s*.0005,4.1));}
    float cov=smoothstep(.46,.8,big*.5+c1*.4+c2*.18),cov2=smoothstep(.46,.8,tn(vec3((s+L.xz*900.)*.000035,.3))*.5+tn(vec3((s+L.xz*900.)*.00011+big*.6,1.7))*.4+c2*.18);
@@ -1242,22 +1287,25 @@ void main(){
    vec3 gnd=surf*(lit*.85+at*.05);
    if(ty>1.5&&ty<2.5)gnd+=uSunC.rgb*pow(max(dot(reflect(d,N),L),0.),90.)*(1.-land)*1.6*ndl;
    vec3 ccol=mix(vec3(1.),uOa*.6+.4,.55)+(ty<1.5?(uCE.rgb-.4)*.35*sin(c1*9.+big*6.):vec3(0));
-   vec3 cc=mix(gnd,ccol*top*(lit*.95+at*.07),cov);
+   cc=mix(gnd,ccol*top*(lit*.95+at*.07),cov);
    float gp=smoothstep(.6,.8,tn(vec3(s*.00022,7.)))*(1.-cov*.85)*(.35+.65*smoothstep(.3,.7,tn(vec3(s*.004,2.))));
    cc+=(ty<1.5?mix(uCE.rgb,vec3(1.,.72,.22),.7)*gp*(.5+1.2*(1.-ndl)):ty<2.5?vec3(1.,.75,.4)*gp*land*(smoothstep(.5,.1,ndl)*1.5+smoothstep(.05,-.4,sunEl)*1.8):vec3(.2,.7,1.)*gp*.15);
    cc+=uSunC.rgb*warm*pow(max(dot(reflect(d,N),L),0.),50.)*.3*cov*ndl;
+   }
    float sd2=pow(max(dot(d,L),0.),4.);vec3 air=mix(at*at*1.3,vec3(1.,.5,.2),sd2*.6)*(.05+.22*sunH+1.2*sd2);
-   cc=mix(vec3(dot(cc,vec3(.33))),cc,1.45);float fg=1.-exp(-t/30000.);cc=mix(cc,air,fg*.85);
-   cc=mix(cc,hcol,smoothstep(-.09,0.,hzv)*.92);                        // far ground dissolves into the horizon haze
-   {float ah=abs(hzv);cc+=hcol*(exp(-ah*140.)*.55+exp(-ah*9.)*.12)*(1.-uPh.z);}
+   if(uPG.x<.5)cc=mix(vec3(dot(cc,vec3(.33))),cc,1.45);float fg=1.-exp(-t/30000.*dens);cc=mix(cc,air,fg*.85);
+   cc=mix(cc,hcol,smoothstep(-.09,0.,hzv)*.92*dens);                        // far ground dissolves into the horizon haze
+   {float ah=abs(hzv);cc+=hcol*(exp(-ah*140.)*.55+exp(-ah*9.)*.12)*(1.-uPh.z)*dens;}
    cc=mix(cc,hcol,uPh.z);   // below the deck the real ground is drawn; what lies beyond it is haze
    c=cc;m=0.;}
   else{float bb=max(b,0.),alt=sqrt(max(cl*cl-bb*bb,0.))-R;
-   float g=exp(-max(alt,0.)/1500.)+.25*exp(-max(alt,0.)/7000.);c+=at*at*g*(.08+.3*sunH+1.6*pow(max(dot(d,L),0.),5.));
-   float hz=max(mix(hzv,d.y,uPh.z),0.);c=mix(c,hcol,exp(-hz*26.)*(.9+.1*uPh.z));c+=hcol*(exp(-hz*140.)*.55+exp(-hz*9.)*.12)*(1.-uPh.z);m*=1.-exp(-hz*26.)*.9;
-   if(uPh.z>0.&&d.y>=0.){vec3 sky=mix(hcol,at*(.16+.62*sunH)*vec3(.72,.86,1.),smoothstep(0.,.55,d.y));c=mix(c,sky+c*(1.-sunH)*.6*smoothstep(0.,.12,d.y),uPh.z);}   // a day sky from below: pale at the horizon, deeper overhead; at night the stars come back
+   c=c*(1.-pp.a)+pp.rgb;
+   float g=uPG.x>.5?exp(-max(h,0.)/11000.)*1.4:exp(-max(alt,0.)/1500.)+.25*exp(-max(alt,0.)/7000.);c+=at*at*g*(.08+.3*sunH+1.6*pow(max(dot(d,L),0.),5.));
+   float hz=max(mix(hzv,d.y,uPh.z),0.);c=mix(c,hcol,exp(-hz*26.)*(.9+.1*uPh.z)*dens);c+=hcol*(exp(-hz*140.)*.55+exp(-hz*9.)*.12)*(1.-uPh.z);m*=1.-exp(-hz*26.)*.9;
+   if(uPG.x>.5&&uPh.z<1.){float dA=(1.-smoothstep(3500.,19500.,h))*(1.-uPh.z)*smoothstep(-.15,.1,L.y)*.9,yy=max(d.y-yh,0.);vec3 sky=mix(hcol,at*(.3+.48*sunH)*vec3(.72,.86,1.),smoothstep(0.,.55,yy));c=mix(c,sky+c*(1.-sunH)*.6,dA);m*=1.-dA*.8;}   // upper air: the black of space gives way to day sky as you come down toward the deck
+   if(uPh.z>0.&&d.y>=0.){vec3 sky=mix(hcol,at*(.3+.48*sunH)*vec3(.72,.86,1.),smoothstep(0.,.55,d.y));c=mix(c,sky+c*(1.-sunH)*.6*smoothstep(0.,.12,d.y),uPh.z);}   // a day sky from below: pale at the horizon, deeper overhead; at night the stars come back
    if(uPh.z>0.&&d.y<0.){c=mix(c,hcol,uPh.z);m*=1.-uPh.z;}   // below the deck, everything under the level line is the far haze the ground fades into
-   if(uPh.z>0.&&d.y>0.){float t=uPh.w/max(d.y,.03);vec2 q=d.xz*t+uOrb.zw;float cv=smoothstep(.42,.72,tn(vec3(q*.00012,1.7))*.62+tn(vec3(q*.0005,4.1))*.38);   // the deck seen from below: an uneven ceiling, darker underneath, lit by the sun
+   if(uPh.z>0.&&d.y>0.){float t=uPh.w/max(d.y,.03);vec2 q=d.xz*t+uOrb.zw;int k3=int(uPG.z+.5);float ca3=uPG.x<.5?.58:k3==0?1.:k3==1?.5:k3==2?.25:k3==3?.65:k3==4?.75:k3==5?.5:k3==6?.4:0.,cv=uPG.x<.5?smoothstep(1.-ca3,1.-ca3+.3,tn(vec3(q*.00012,1.7))*.62+tn(vec3(q*.0005,4.1))*.38):clamp(cloudA(uPM*normalize(d*t-uPD*(R+h)))*1.15+(tn(vec3(q*.00012,1.7))*.62+tn(vec3(q*.0005,4.1))*.38-.5)*.55,0.,1.)*step(.01,ca3);   // the deck seen from below: an uneven ceiling, darker underneath, lit by the sun
     vec3 cu=mix(vec3(.82,.84,.88),at,.3)*(.12+.75*sunH)+uSunC.rgb*pow(max(dot(d,L),0.),6.)*.5*sunH;float fd=smoothstep(0.,.18,d.y)*(1.-exp(-1.5e4/t));c=mix(c,cu,cv*fd*uPh.z*.92);m*=1.-cv*fd*uPh.z*.92;}}   // haze above the horizon, and the glow along it
  }
  o=vec4(c,m);}`;
@@ -2020,7 +2068,7 @@ const P_HUD = prog(HD + `layout(location=0)in vec2 aP;layout(location=1)in vec2 
 void main(){vec2 q=aP*uR.zw;float c=cos(uZ.y),s=sin(uZ.y);q=vec2(q.x*c-q.y*s,q.x*s+q.y*c);
  float z=uZ.x*(1.-uZ.w*(aP.x*aP.x*.36+aP.y*aP.y*.16));q.x*=1.+uZ.w*aP.y*aP.y*.06;                // the visor curves: edges wrap toward the eye
  vec3 p=uShip*(vec3(uR.xy+q,z)+uMo)-uEye;vU=mix(uUV.xy,uUV.zw,aU);gl_Position=uVP*vec4(p,1);}`,
-  HD + `in vec2 vU;uniform sampler2D uTx;uniform vec4 uZ;out vec4 o;void main(){vec4 t=texture(uTx,vU);o=vec4(t.rgb*uZ.z,t.a);}`);
+  HD + `in vec2 vU;uniform sampler2D uTx;uniform vec4 uZ;out vec4 o;void main(){vec4 t=texture(uTx,vU);o=vec4(t.rgb*uZ.z,t.a*(uZ.z>.999&&uZ.w==0.?1.:.75));}`);
 const hudVA = gl.createVertexArray(), visVA = gl.createVertexArray(); let visN = 0;
 { const v = [], NX = 40, NY = 20, pt = (i, j) => { const x = i / NX, y = j / NY; v.push(x * 2 - 1, y * 2 - 1, x, 1 - y); };
   for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) { pt(i, j); pt(i + 1, j); pt(i, j + 1); pt(i + 1, j); pt(i + 1, j + 1); pt(i, j + 1); }
@@ -2381,6 +2429,7 @@ function navBuild() {
   const near = NPCS.map((a) => [(a.x - px) ** 2 + (a.y - py) ** 2 + (a.z - pz) ** 2, a]).sort((p, q) => p[0] - q[0]).slice(0, 5);
   for (const [, a] of near) N.push({ id: 'n' + a.i, name: (ROLE[a.role] + ' ' + a.name).toUpperCase(), kind: 'ship', x: a.x, y: a.y, z: a.z, npc: a });
   for (let k = 0; k < 3; k++) if (!SYS.atm && SYS.pr[k] > 0) N.push({ id: 'p' + k, name: SYS.planets[k].name.toUpperCase() + (SYS.locs.some((l) => l.atm === k + 1) ? '' : ' · NO AIR'), kind: 'planet', far: 1, x: px + SYS.pl[k * 4] * 4e6, y: py + SYS.pl[k * 4 + 1] * 4e6, z: pz + SYS.pl[k * 4 + 2] * 4e6 });
+  if (!SYS.atm && sysP) SYS.locs.forEach((l, i) => { if (l.atm || i === SYS.loc || !sysPL[i]) return; const O = sysPL[i], x = O[0] - sysO[0] - sysS[0], y = O[1] - sysO[1] - sysS[1], z = O[2] - sysO[2] - sysS[2], d = Math.hypot(x, y, z) || 1; N.push({ id: 'L' + i, name: l.name.toUpperCase(), kind: 'place', loc: i, far: 1, x: px + x / d * 4e6, y: py + y / d * 4e6, z: pz + z / d * 4e6 }); });   // v1.36: the system's other places, where they really are: hyperlight there
   if (STORM) N.push({ id: 'storm', name: 'ION STORM', kind: 'storm', x: STORM.x, y: STORM.y, z: STORM.z });
   if (SYS.atm) N.push({ id: 'settle', name: SYS.atm === 1 ? 'CLOUD HARVESTER' : SYS.atm === 2 ? 'SETTLEMENT' : 'ICE STATION', kind: 'settle', x: 2600, y: -1400, z: 2600 });
   if (ESC || CM) for (const a of NPCS) if ((a.esc || a.escHunt || a.comms || a.hunter) && !a.dead && !N.some((n) => n.npc === a)) N.push({ id: 'n' + a.i, name: ((a.role === 5 ? 'RAIDER ' : a.esc ? 'CONVOY ' : '') + a.name).toUpperCase(), kind: 'ship', x: a.x, y: a.y, z: a.z, npc: a });
@@ -2514,9 +2563,21 @@ function hudPaint() {
   if (tm - hitPing < 1.2) { const u = 1 - (tm - hitPing) / 1.2, ang = hitAng || 0, rad = 230, cx = 500 + Math.sin(ang) * rad, cy = 460 - Math.cos(ang) * 150; c.save(); c.translate(cx, cy); c.rotate(ang); c.globalAlpha = .4 + .6 * u; c.fillStyle = '#ff5d4f'; c.beginPath(); c.moveTo(0, -16); c.lineTo(11, 10); c.lineTo(0, 4); c.lineTo(-11, 10); c.closePath(); c.fill(); c.restore(); }
   at(LX); tag('SPEED', 92, 236); T(String(spd | 0), 108, 290, 50, 'left', main, 700); T('U/S', 108 + gW(String(spd | 0), 50) + 10, 270, 15, 'left', dim, 700);
   tag(SYS.atm ? 'ALTITUDE' : 'CREDITS', 92, 366); T(SYS.atm ? (v126Alt() != null ? v126Alt().toFixed(v126Alt() < 10 ? 2 : 1) : ((Math.max(700, Math.min(30000, 2600 + py * .5)) / 100 | 0) / 10).toFixed(1)) : String(ST.credits), 108, 420, 40, 'left', main, 700); if (SYS.atm) T('KM', 108 + gW('00.0', 40) + 12, 402, 15, 'left', dim, 700);
+  if (SYS.atm) {   // v1.34: attitude: a small horizon ball under the altitude, banked and pitched with the ship, and the pitch in degrees
+    const ax = 152, ay = 520, ar = 46, pi = Math.asin(Math.max(-1, Math.min(1, sFy))), bk = Math.atan2(-sRy, sUy), off = Math.max(-1, Math.min(1, pi / .8)) * ar, ca = Math.cos(bk), sa = Math.sin(bk);
+    c.save(); c.beginPath(); c.arc(ax, ay, ar, 0, 6.2832); c.clip();
+    c.translate(ax, ay); c.rotate(bk); c.fillStyle = 'rgba(160,210,240,.10)'; c.fillRect(-ar * 1.6, -ar * 1.6 + off, ar * 3.2, ar * 1.6);
+    c.strokeStyle = main; c.lineWidth = 2; c.beginPath(); c.moveTo(-ar * 1.5, off); c.lineTo(ar * 1.5, off); c.stroke();
+    c.strokeStyle = dim; c.lineWidth = 1; for (const d of [-20, -10, 10, 20]) { const y = off - d / 45.8 * ar, w = Math.abs(d) === 10 ? ar * .32 : ar * .5; c.beginPath(); c.moveTo(-w, y); c.lineTo(w, y); c.stroke(); }
+    c.restore();
+    line([[ax - ar * .55, ay], [ax - ar * .18, ay], [ax - ar * .08, ay + 7], [ax, ay], [ax + ar * .08, ay + 7], [ax + ar * .18, ay], [ax + ar * .55, ay]], amb, 2);
+    c.strokeStyle = dim; c.lineWidth = 1.5; c.beginPath(); c.arc(ax, ay, ar, 0, 6.2832); c.stroke();
+    T((pi >= 0 ? '+' : '') + Math.round(pi * 57.3) + '°', ax + ar + 12, ay + 6, 17, 'left', main, 700); }
   at(RX); tag('TARGET', 908, 236, 'right'); T(cur ? cur.name : 'NONE', 892, 284, 22, 'right', amb, 700);
+  if (cur && cur.kind === 'planet' && SYS.planets[+cur.id[1]]) { const k = +cur.id[1], pl = SYS.planets[k], air = SYS.locs.some((l) => l.atm === k + 1); T((pl.type + (air ? pl.kind === 0 ? ' · fly the cloud tops' : ' · air · can descend' : ' · no air · orbit only')).toUpperCase(), 892, 306, 12, 'right', dim, 600); }
   if (cur && cur.npc) { T('SHD', 736, 304, 11, 'right', dim, 700); bar(742, 296, 150, cur.npc.sh / cur.npc.shM, cy); T('HULL', 736, 318, 11, 'right', dim, 700); bar(742, 310, 150, cur.npc.hp / cur.npc.hpM, cur.npc.hp < cur.npc.hpM * .35 ? red : main); }
-  tag('DISTANCE', 908, 366, 'right'); const ds = dist >= 10000 ? (dist / 1000).toFixed(0) : dist >= 1000 ? (dist / 1000).toFixed(1) : String(dist | 0); T(cur && cur.far ? 'MM' : dist >= 1000 ? 'KM' : 'M', 892, 420, 15, 'right', dim, 700); T(cur && cur.far ? plDist(cur) : ds, 860, 420, 40, 'right', main, 700); if (drift) { T('LIGHT DRIFT  ' + (driftV / 300).toFixed(driftV < 30 ? 3 : 2) + ' c', 892, 500, 15, 'right', amb, 700); bar(742, 508, 150, Math.min(1, driftV / 300), amb); } else if (!SYS.atm && apOn && aimK >= 0) { const inR = apDist < apGate, air = SYS.locs.some((l) => l.atm === aimK + 1); T(!air && apDist < PR[aimK] * 3 ? 'NO ATMOSPHERE · ORBIT ONLY' : bRamp <= 0 ? 'HOLD BOOST TO APPROACH' : inR ? 'APPROACH  ' + SYS.planets[aimK].name.toUpperCase() : 'CLOSING · DRIFT AT ' + Math.round(apGate) + ' MM', 892, 500, 15, 'right', amb, 700); bar(742, 508, 150, inR ? bRamp : Math.min(1, apGate / apDist), amb); } else if (SYS.atm && scK > 0) { T('TERMINAL VELOCITY', 892, 500, 15, 'right', amb, 700); bar(742, 508, 150, scK, amb); }
+  tag('DISTANCE', 908, 366, 'right'); const ds = dist >= 10000 ? (dist / 1000).toFixed(0) : dist >= 1000 ? (dist / 1000).toFixed(1) : String(dist | 0); T(cur && cur.far ? (plRaw(cur) < .1 ? 'KM' : 'MM') : dist >= 1000 ? 'KM' : 'M', 892, 420, 15, 'right', dim, 700); T(cur && cur.far ? plDist(cur) : ds, 860, 420, 40, 'right', main, 700); if (drift) { T(orbAp ? 'ORBITAL APPROACH  ' + (driftV * 1000).toFixed(1) + ' KM/S' : 'LIGHT DRIFT  ' + (driftV / 300).toFixed(driftV < 30 ? 3 : 2) + ' c', 892, 500, 15, 'right', amb, 700); bar(742, 508, 150, Math.min(1, driftV / 300), amb); } else if (!SYS.atm && apOn && aimK >= 0) { const inR = apDist < apGate, air = SYS.locs.some((l) => l.atm === aimK + 1); T(!air && apDist < PR[aimK] * 3 ? 'NO ATMOSPHERE · ORBIT ONLY' : bRamp <= 0 ? (air ? (drift ? 'DESCENDING · THROTTLE SETS THE PACE' : 'THROTTLE TOWARD IT TO APPROACH') : 'HOLD BOOST TO APPROACH') : inR ? 'APPROACH  ' + SYS.planets[aimK].name.toUpperCase() : 'CLOSING · DRIFT AT ' + Math.round(apGate) + ' MM', 892, 500, 15, 'right', amb, 700); bar(742, 508, 150, inR ? bRamp : Math.min(1, apGate / apDist), amb); } else if (SYS.atm && scK > 0) { T('TERMINAL VELOCITY', 892, 500, 15, 'right', amb, 700); bar(742, 508, 150, scK, amb); }
+  if (!SYS.atm && (hl || hlRdy > 0)) { const c = navCur(); T(hl === 2 ? 'HYPERLIGHT · ' + (c && c.far ? plDist(c) + (plRaw(c) < .1 ? ' KM' : ' MM') : '') : hl === 1 ? 'HYPERLIGHT SPOOLING' : hlRdy >= 1.2 ? 'HYPERLIGHT READY · G' : 'HYPERLIGHT · HOLD ON TARGET', 892, 540, 15, 'right', hl || hlRdy >= 1.2 ? cy : dim, 700); bar(742, 548, 150, hl === 2 ? 1 : hl === 1 ? Math.min(1, hlT / 1.4) : Math.min(1, hlRdy / 1.2), hl || hlRdy >= 1.2 ? cy : dim); }   // v1.36
   if (cur && scanT > 0) { T('SCANNING', 892, 462, 14, 'right', cy, 700); bar(742, 470, 150, scanT / 1.6, cy); } else if (cur && scanned[cur.id]) T('SCANNED', 892, 462, 14, 'right', dim, 700);
   else if (cur && (cur.npc || cur.id === 'trader' || cur.id === 'gate') && dist < (cur.npc ? scanR() : cur.id === 'gate' ? 2600 : 900)) T(cur.npc ? 'F · HAIL' : 'F · OPEN', 892, 462, 14, 'right', cy, 700);
   // throttle reads only in the top bar; the side ladders (throttle, pitch) are gone
@@ -2556,10 +2617,10 @@ function hudPaint() {
   c.setTransform(1, 0, 0, 1, 0, 0);
 }
 function hudTick(now) { cinFit(); if (now - hudLast < (xr ? 70 : 45) || !flying()) return; hudLast = now; hudPaint(); texFrom(hudTex, hudC); }
-function hudDraw(k) {
+function hudDraw(k) { if (hudOp <= .01 && !(xr && jpOpen)) return;   // v1.37: HUD brightness 0% means no HUD at all
   if (!flying()) return;
   const P = P_HUD; gl.useProgram(P.p); gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND);
-  if (xr && jpOpen) gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); else gl.blendFunc(gl.ONE, gl.ONE);
+  gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);   // v1.33: the HUD still glows on dark space, but dims what is behind its lines, so it reads over bright skies and cloud
   const visor = xr && jpOpen;
   if (visor) {
     M3[0] = eRx; M3[1] = eRy; M3[2] = eRz; M3[3] = eUx; M3[4] = eUy; M3[5] = eUz; M3[6] = -eFx; M3[7] = -eFy; M3[8] = -eFz;
@@ -2583,7 +2644,7 @@ function hudDraw(k) {
       let hx0 = 0, hy0 = 0, rot = 0, ic = 0;
       if (lz < -1e-3) { hx0 = lx / -lz * -HZ; hy0 = ly / -lz * -HZ; }
       if (!(lz < 0 && Math.abs(hx0) < .92 * hw && Math.abs(hy0 - cy0) < .8 * hs2)) { const a = Math.atan2(ly, lx); hx0 = Math.cos(a) * .82 * hw; hy0 = cy0 + Math.sin(a) * .68 * hs2; rot = a - 1.5708; ic = 1; }
-      gl.bindTexture(gl.TEXTURE_2D, icoTex); gl.uniform4f(P.u.uR, hx0, hy0, (ic ? .04 : .045) * hs2, (ic ? .04 : .045) * hs2); gl.uniform4f(P.u.uZ, HZ, rot, .55 * Math.max(.5, hudOp), 0); gl.uniform4f(P.u.uUV, ic ? .5 : 0, 0, ic ? 1 : .5, 1); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      gl.bindTexture(gl.TEXTURE_2D, icoTex); gl.uniform4f(P.u.uR, hx0, hy0, (ic ? .04 : .045) * hs2, (ic ? .04 : .045) * hs2); gl.uniform4f(P.u.uZ, HZ, rot, Math.min(1, .55 * Math.max(.5, hudOp) + .45 * Math.min(1, (veil || 0) * 1.6)), 0); gl.uniform4f(P.u.uUV, ic ? .5 : 0, 0, ic ? 1 : .5, 1); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
   }
   if (!xr && tm - lastFire < .6) { gl.bindTexture(gl.TEXTURE_2D, icoTex); gl.uniform4f(P.u.uR, gmx * -HZ, gmy * -HZ, .022, .022); gl.uniform4f(P.u.uZ, HZ, .785, .8, 0); gl.uniform4f(P.u.uUV, 0, 0, .5, 1); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); }   // where the guns point
@@ -2642,7 +2703,7 @@ setP.onclick = (e) => {
   else if (k === 'reset') CFG.keys = {};
   else if (k === 'suno') window.open('https://suno.com/playlist/12f42e02-78a5-4eb2-bf7e-f605817e4c06', '_blank', 'noopener');
   else if (k === 'wipe') { setP.style.display = 'none'; newUniverse(); return; }
-  else if (k === 'hud') CFG.hud = (CFG.hud + 1) % HCOL.length; else if (k === 'op') CFG.op = cyc(CFG.op, [1, .7, .45, .25]); else if (k === 'size') CFG.size = cyc(CFG.size, [1, 1.15, .85]);
+  else if (k === 'hud') CFG.hud = (CFG.hud + 1) % HCOL.length; else if (k === 'op') CFG.op = cyc(CFG.op, [1, .7, .45, .25, 0]); else if (k === 'size') CFG.size = cyc(CFG.size, [1, 1.15, .85]);
   else if (k === 'ctl') CFG.ctl = CFG.ctl ? 0 : 1;
   else if (k === 'vrH') CFG.vrH = VRH[(vrHi() + 1) % VRH.length][1];
   else if (k === 'ck') { const b = $('ck'); if (b) b.click(); }
@@ -2705,17 +2766,51 @@ const CSC = [[1, .3, .06], [1, .42, .08], [1, .55, .12], [1, .8, .45], [.62, .78
 let csKey = '', csU = [0, 0, 0, 0], csC = [1, 1, 1], bsKey = '', bsS = new Float32Array(32), bsC = new Float32Array(32);
 function bigStarsSet() {
   const key = SYS.id + ':' + SYS.loc;
-  if (key !== bsKey) { bsKey = key; bsS.fill(0); bsC.fill(0); const R = mulberry32((SYS.salt ^ 0x51A75) >>> 0), head = SYS.headline || 0, closeOn = !SYS.atm && mulberry32((SYS.salt ^ 0xC105E) >>> 0)() < .26, show = !closeOn && !head && R() < .5, n = head ? 0 : closeOn ? (R() < .5 ? 0 : 1) : 1 + (R() < .4 ? 1 : 0);   // one headline already owns this sky
+  if (key !== bsKey) { bsKey = key; bsS.fill(0); bsC.fill(0); const R = mulberry32((SYS.salt ^ 0x51A75) >>> 0), head = SYS.headline || 0, closeOn = !SYS.atm && mulberry32(((SYS.id >>> 0) ^ 0xC105E) >>> 0)() < .3, show = !closeOn && !head && R() < .5, n = head || SYS.atm ? 0 : closeOn ? (R() < .5 ? 0 : 1) : 1 + (R() < .4 ? 1 : 0);   // one headline already owns this sky
     for (let i = 0; i < n; i++) { let u = R() * BSK.reduce((a, k) => a + k[1], 0), K = BSK[0]; for (const k of BSK) { if ((u -= k[1]) <= 0) { K = k; break; } }
       if (i === 0 && show) K = BSK[[1, 2, 3, 6, 7][R() * 5 | 0]]; else if (!show && K[0] !== 0 && K[0] !== 4) K = BSK[0];   // a showpiece in about half the places; otherwise plain suns or a pulsar
       let x, y, z; do { z = R() * 2 - 1; const a = R() * 6.283, q = Math.sqrt(1 - z * z); x = Math.cos(a) * q; y = Math.sin(a) * q; } while (x * SUN[0] + y * SUN[1] + z * SUN[2] > .9);
       bsS.set([x, y, z, K[0]], i * 4); bsC.set([K[2][0], K[2][1], K[2][2], (K[3] + (K[4] - K[3]) * R()) * (i ? .8 : 1.2)], i * 4); } }
-  if (key !== csKey) { csKey = key; const R = mulberry32((SYS.salt ^ 0xC105E) >>> 0), on = !SYS.atm && R() < .26, sc = SYS.sc || 0, giant = sc <= 2 && R() < .35;
+  if (key !== csKey) { csKey = key; const R = mulberry32(((SYS.id >>> 0) ^ 0xC105E) >>> 0), on = !SYS.atm && R() < .3, sc = SYS.sc || 0, giant = sc <= 2 && R() < .35;
     const RR = [[.05, .09], [.05, .1], [.05, .11], [.04, .08], [.03, .06], [.07, .13], [.05, .09], [.015, .03]][sc], rad = giant ? .11 + R() * .06 : RR[0] + (RR[1] - RR[0]) * R();
-    csU = [on ? rad : 0, sc, R() * 6.283, giant ? 1 : 0]; csC = giant ? [1, .34, .1] : CSC[sc]; if (on && SYS.headline && SYS.sky) { SYS.sky[0] *= .25; SYS.sky[1] *= .25; SYS.ph = 0; } }   // one standout per sky: the star wins
+    const dG = Math.hypot(STARG[0], STARG[1], STARG[2]) || 1, dH = Math.hypot(STARG[0] - sysO[0], STARG[1] - sysO[1], STARG[2] - sysO[2]) || dG; csU = [on ? Math.min(.2, rad * dG / dH) : 0, sc, R() * 6.283, giant ? 1 : 0]; csC = giant ? [1, .34, .1] : CSC[sc]; if (on && SYS.headline && SYS.sky) { SYS.sky[0] *= .25; SYS.sky[1] *= .25; SYS.ph = 0; } }   // one standout per sky: the star wins
   gl.uniform4fv(P_SKY.u['uBS[0]'], bsS); gl.uniform4fv(P_SKY.u['uBC[0]'], bsC); gl.uniform4f(P_SKY.u.uCS, ...csU); gl.uniform3f(P_SKY.u.uCC, ...csC);
 }
 function hop(loc) { const sv = [yaw, pitch, thr, vx, vy, vz]; palEase = 1; softArr = 1; arrive(SYS.sec, loc, 1); softArr = 0; [yaw, pitch, thr, vx, vy, vz] = sv; snap = 0; fogX = .0065; }   // same heading and speed; attitude eases instead of snapping
+// ---- v1.36: hyperlight. Space only. Hold a world or a place in your sights until it reads READY, press G: the drive spools, the nose
+// locks on, and you cross the system in seconds, with only a few degrees of play. It drops out by itself before a planet's air (the
+// approach takes over), on arrival at a place, or if another world's mass is in the way.
+let hl = 0, hlT = 0, hlRdy = 0, hlFx = 0;
+const hlPos = (c) => { if (!c || !sysP) return null; if (c.kind === 'planet') { const k = +c.id[1]; return sysP[k] || null; } if (c.kind === 'place') { const O = sysPL[c.loc]; return O ? [O[0] - sysO[0], O[1] - sysO[1], O[2] - sysO[2]] : null; } return null; };
+function hlStop(msg) { hl = 0; hlT = 0; hlRdy = 0; if (msg) tip(msg, 4000); }
+function hlKey() {
+  if (SYS.atm) { tip('Hyperlight needs open space: climb out of the air first', 3000); return; }
+  if (hl) { hlStop('Hyperlight disengaged'); return; }
+  if (hlRdy >= 1.2) { hl = 1; hlT = 0; tip('Hyperlight spooling…', 1500); if (AC && AC.state === 'running') burst(AC.currentTime, 1.4, .16, 60, 600, 'lowpass'); }
+  else tip('Hyperlight: target a world or a place, hold it in your sights until it reads READY, then G', 4500);
+}
+function hlTick(dt, near, nk) {
+  hlFx += ((hl === 2 ? 1 : hl === 1 ? Math.min(1, hlT / 1.4) * .6 : 0) - hlFx) * Math.min(1, dt * (hl ? 3 : 1.4));
+  const c = navCur(), P = hlPos(c);
+  if (!hl) {
+    if (P && !jumpTo) { const dx = P[0] - sysS[0], dy = P[1] - sysS[1], dz = P[2] - sysS[2], d = Math.hypot(dx, dy, dz) || 1, cs = (sFx * dx + sFy * dy + sFz * dz) / d, k = c.kind === 'planet' ? +c.id[1] : -1, far = k >= 0 ? d - PR[k] > PR[k] * 5 : d > .03;
+      hlRdy = cs > .985 && far ? Math.min(2, hlRdy + dt) : Math.max(0, hlRdy - dt * 2); }
+    else hlRdy = 0;
+    return; }
+  hlT += dt; if (!P) { hlStop('Hyperlight lost its lock'); return; }
+  const k = c.kind === 'planet' ? +c.id[1] : -1, dx = P[0] - sysS[0], dy = P[1] - sysS[1], dz = P[2] - sysS[2], d = Math.hypot(dx, dy, dz) || 1, rem = k >= 0 ? d - PR[k] * 3.2 : d - .004, u = [dx / d, dy / d, dz / d];
+  const ty = Math.atan2(u[0], -u[2]), tp = Math.asin(Math.max(-1, Math.min(1, u[1]))), lim = hl === 1 ? 3 : .07, ease = Math.min(1, dt * (hl === 1 ? 2.2 : 5));
+  let dyw = yaw - ty; dyw = Math.atan2(Math.sin(dyw), Math.cos(dyw));
+  yaw = ty + Math.max(-lim, Math.min(lim, dyw)) * (1 - ease); pitch = tp + Math.max(-lim, Math.min(lim, pitch - tp)) * (1 - ease); snap = 1;   // the nose locks on: only a few degrees of play
+  if (hl === 1) { trauma = Math.max(trauma, Math.min(.45, .3 * hlT)); if (hlT > 1.4) { hl = 2; hlT = 0; flash = Math.max(flash, .18); trauma = Math.max(trauma, .7); if (AC && AC.state === 'running') burst(AC.currentTime, 2.2, .26, 120, 1600, 'lowpass'); } return; }
+  const v = Math.max(.015, Math.min(7, rem * 1.5)) * Math.min(1, .15 + hlT * 1.4), st = Math.max(0, Math.min(rem, v * dt));
+  sysS[0] += u[0] * st; sysS[1] += u[1] * st; sysS[2] += u[2] * st; trauma = Math.max(trauma, .12 * hlFx);
+  if (nk >= 0 && nk !== k && near < PR[nk] * 2) { hlStop(`Dropped out of hyperlight · ${SYS.planets[nk].name}'s mass is in the way`); trauma = .6; return; }
+  if (rem < .0015 || (hlT > .8 && rem < v * .04)) {
+    trauma = Math.max(trauma, .55); flash = Math.max(flash, .12);
+    if (c.kind === 'place') { const L = c.loc; hlStop(); hop(L); tip(`Arrived · ${SYS.locs[L].name}`, 3000); }
+    else hlStop(`Out of hyperlight · ${SYS.planets[k].name} ahead · throttle toward it to approach`); }
+}
 function cruiseTick(dt, fly) {
   { const k = Math.min(1, dt * 8), d = Math.max(.001, dt); let dy = syaw - pYaw; pYaw = syaw; const dp = spit - pPit; pPit = spit; if (Math.abs(dy) > 1) dy = 0;
     mbx += (Math.max(-.03, Math.min(.03, dy / d * .011)) - mbx) * k; mby += (Math.max(-.03, Math.min(.03, -dp / d * .011)) - mby) * k; mbs += ((.012 + .09 * bst * bst) * Math.min(1, Math.hypot(vx, vy, vz) / 280) - mbs) * k; }
@@ -2724,11 +2819,14 @@ function cruiseTick(dt, fly) {
   const sp = Math.hypot(vx, vy, vz), r = rp();
   if (SYS.atm) {
     if (sFy > .42 && (thr > .7 || bst > .5) && sp > 60 && py > TOUT) scOut += dt; else scOut = Math.max(0, scOut - dt * 2);
+    if (isCont() && cOn && v126Hh > TOUT - TGB && v126Hh > hhPrev + .5 * dt) scOut = 14;   // v1.34: true height above the planet, climbing in any direction (flying level over the curve counts too)
+    hhPrev = v126Hh;
     if (sFy > .42 && (thr > .7 || bst > .5) && py < TOUT && tm > scTip) { scTip = tm + 20; tip(`Climb above the cloud tops to reach orbit · ${((TOUT - py) / 1000).toFixed(1)} km to go`, 4500); }
     scK = Math.min(1, scOut / 13); scE = scK * scK * (3 - 2 * scK); { const want = scE * scE * .0065; fogX += (want - fogX) * Math.min(1, dt * (fogX > want ? .18 : .6)); veil += (scE * scE - veil) * Math.min(1, dt * (veil > scE * scE ? .16 : 2)); }
     if (scOut > 1.2 && py > TOUT && tm > scTip) { scTip = tm + 20; tip('Terminal velocity: hold the nose up, throttle open or boost held, to break out of the atmosphere', 5000); }
-    if (scOut > 13) { const k = SYS.atm - 1, back = r.from != null && SYS.locs[r.from] && !SYS.locs[r.from].atm ? r.from : 0; hop(back); const P = sysP[k];
-      if (P) {   // come out still facing the way you climbed: no turn, no cut. The planet sits behind you and below, where the climb left it
+    if (scOut > 13) { const k = SYS.atm - 1, back = r.from != null && SYS.locs[r.from] && !SYS.locs[r.from].atm ? r.from : 0, wasC = cOn && isCont(), yS = yaw, pS = pitch, pyS = py, pxS = px, pzS = pz; if (wasC) keepNeb = 1; hop(back); const P = sysP[k];
+      if (wasC) { const pxN = px, pzN = pz; px = pxS; py = pyS; pz = pzS; const ok = v126Exit(k); px = pxN; py = 0; pz = pzN; if (ok) tip('Breaking orbit · open space', 3000); if (ok) { drift = bst > .3 ? 2 : thr > .3 ? 1 : 0; driftV = 0; veil = 0; ent = null; } else { yaw = yS; pitch = pS; } }
+      else if (P) {   // come out still facing the way you climbed: no turn, no cut. The planet sits behind you and below, where the climb left it
         const R0 = PR[k], cp = Math.cos(pitch), F = [Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp], n = nrm([F[0], F[1] + .45, F[2]]);
         sysS = [P[0] + n[0] * 1.45 * R0, P[1] + n[1] * 1.45 * R0, P[2] + n[2] * 1.45 * R0];
         vx = F[0] * sp; vy = F[1] * sp; vz = F[2] * sp; drift = bst > .3 ? 2 : thr > .3 ? 1 : 0; driftV = 0; veil = .8; ent = null; }
@@ -2739,37 +2837,69 @@ function cruiseTick(dt, fly) {
   if (!sysP) return;
   let near = 1e9, nk = -1;
   for (let k = 0; k < 3; k++) { const P = sysP[k]; if (!P) continue; const x = P[0] - sysS[0], y = P[1] - sysS[1], z = P[2] - sysS[2], d = Math.hypot(x, y, z) || 1; SYS.pl[k * 4] = x / d; SYS.pl[k * 4 + 1] = y / d; SYS.pl[k * 4 + 2] = z / d; SYS.pl[k * 4 + 3] = Math.min(1.35, PR[k] / d); if (d - PR[k] < near) { near = d - PR[k]; nk = k; } }
-  if (!drift && bRamp > 0) { const v = bRamp * bRamp * .04 * Math.max(.3, near); sysS[0] += sFx * v * dt; sysS[1] += sFy * v * dt; sysS[2] += sFz * v * dt; }   // sustained boost covers real distance: worlds grow or fall away as you go
+  hlTick(dt, near, nk); if (hl) { drift = 0; driftV = 0; apOn = 0; scE = hlFx * .7; fogX = Math.max(fogX, .0032 * hlFx); return; }   // v1.36: hyperlight carries you; boost no longer creeps you across the system
   if (!drift) { driftV = 0; apOn = 0;
     // light drift is the top of the boost range: a planet targeted and ahead, boost held until it has built all the way, and the drive tips over into drift
     const c = navCur(), k = c && c.kind === 'planet' ? +c.id[1] : -1;
     if (k >= 0 && sysP[k]) { const w = SYS.pl[k * 4 + 3], cs = sFx * SYS.pl[k * 4] + sFy * SYS.pl[k * 4 + 1] + sFz * SYS.pl[k * 4 + 2];
       if (cs > Math.cos(Math.max(.14, w * 1.4)) && k !== noAuto) { const P = sysP[k], dist = Math.hypot(P[0] - sysS[0], P[1] - sysS[1], P[2] - sysS[2]); aimK = k;
         apOn = 1; apDist = dist; apGate = PR[k] * 12;                                   // close to within twelve of its radii under boost; then the drift takes you in
-        if (dist < PR[k] * 8 && thr > .35 && SYS.locs.some((l) => l.atm === k + 1) && !drift) { drift = 1; tip(`Approaching ${SYS.planets[k].name} · throttle sets the pace`, 4000); }
+        if (dist < PR[k] * 8 && thr > .35 && SYS.locs.some((l) => l.atm === k + 1) && !drift) {  drift = 1; tip(`Approaching ${SYS.planets[k].name} · throttle sets the pace`, 4000); }
         else if (dist < apGate && bRamp >= 1) { drift = 2; tip(`In range: light drift toward ${SYS.planets[k].name}. Let go of boost to drop out.`, 6000); }
         else if (bRamp >= 1 && tm > apTip) { apTip = tm + 25; tip(`Closing on ${SYS.planets[k].name}: light drift engages within ${Math.round(apGate)} Mm.`, 5000); } }
       else if (cs < .9) noAuto = -1; }
     return; }
   // light drift: speed is set by how far the nearest surface is, so an approach eases in by itself and deep space is crossed quickly
-  driftV += (Math.max(.3, Math.min(900, near * .42)) * (crew('nav') ? 1.3 : 1) * (drift === 2 ? bst : Math.max(0, thr)) - driftV) * Math.min(1, dt * 1.2);
+  if (nk >= 0 && near < PR[nk] && drift && !orbAp) { orbAp = 1; tip(`Orbital approach · ${SYS.planets[nk].name} · boost to close faster`, 5000); } if (nk < 0 || near > PR[nk] * 1.2) orbAp = 0;
+  {   // v1.33: like a pulse drive dropping out: far off the gap closes fast; within six radii the speed follows the distance left, so the world swells at a steady pace (~25 s from six radii to the air)
+    const nr = nk >= 0 && near < PR[nk] * 6, k = nr ? .11 : .42, pw = drift === 2 ? bst : Math.max(0, thr), bo = nr && bst > .3 ? 1.8 : 1;
+    const tgt = nr ? Math.max(.0012, near * k) * bo * Math.max(.25, pw) : Math.max(.3, Math.min(900, near * k)) * (crew('nav') ? 1.3 : 1) * pw;
+    driftV += (tgt - driftV) * Math.min(1, dt * (nr ? .9 : 1.2)); }
   if (drift === 2 && bst < .15 && driftV < 1) { drift = 0; noAuto = -1; tip('Dropped out of light drift', 3000); }   // let go of boost and the drift runs down and ends
   sysS[0] += sFx * driftV * dt; sysS[1] += sFy * driftV * dt; sysS[2] += sFz * driftV * dt;
   scE = Math.min(1, driftV / 40) * .7; fogX = Math.max(fogX, .0032);                           // the field around you streams and thins while the sky holds still
   if (nk >= 0) { const R = PR[nk], loc = SYS.locs.findIndex((l) => l.atm === nk + 1), u = near / R;
-    if (loc >= 0) { if (u < .2) veil = Math.max(veil, Math.min(1, 1 - (u - .05) / .15));                         // the air closes in
-      if (u < .05) { { const P = sysP[nk], rr = nrm([sysS[0] - P[0], sysS[1] - P[1], sysS[2] - P[2]]), dp = sFx * rr[0] + sFy * rr[1] + sFz * rr[2], tt = [sFx - rr[0] * dp, sFy - rr[1] * dp, sFz - rr[2] * dp];
+    if (loc >= 0) { const cont = contK((SYS.pk || [])[nk]), uH = cont ? (TENTRY - TGB) / (R * 1e6) : .05;   // one planet: hand over at the altitude you arrive at, nothing to hide
+      if (!cont && u < .2) veil = Math.max(veil, Math.min(1, 1 - (u - .05) / .15));                         // the air closes in
+      let skim = 0; if (u < uH) { const P = sysP[nk], rr = nrm([sysS[0] - P[0], sysS[1] - P[1], sysS[2] - P[2]]), dp = sFx * rr[0] + sFy * rr[1] + sFz * rr[2];   // v1.33: only drop into a sky you are diving into, or the world you chose
+        if (nk !== aimK && dp > -.25) { skim = 1; const h = R * uH * 1.02; sysS = [P[0] + rr[0] * (R + h), P[1] + rr[1] * (R + h), P[2] + rr[2] * (R + h)]; if (tm > (skimT || 0)) { skimT = tm + 12; tip(`Skimming ${SYS.planets[nk].name}'s air · nose down into it to descend, or fly on`, 4500); } } }
+      if (u < uH && !skim) { { const P = sysP[nk], rr = nrm([sysS[0] - P[0], sysS[1] - P[1], sysS[2] - P[2]]), dp = sFx * rr[0] + sFy * rr[1] + sFz * rr[2], tt = [sFx - rr[0] * dp, sFy - rr[1] * dp, sFz - rr[2] * dp];
           ent = { k: nk, sys: SYS.id, r0: rr, t0: Math.hypot(tt[0], tt[1], tt[2]) < .05 ? nrm(crs(rr, [0, 1, 0])) : nrm(tt), yaw: 0 }; }   // remember where on the planet you came in, and which way you were travelling
-        drift = 0; r.from = SYS.loc; const yaw0 = yaw, r0 = ent.r0, dpE = sFx * r0[0] + sFy * r0[1] + sFz * r0[2], upR = sRx * r0[0] + sRy * r0[1] + sRz * r0[2], upU = sUx * r0[0] + sUy * r0[1] + sUz * r0[2]; hop(loc); py = TENTRY; yaw = yaw0; pitch = Math.max(-.85, Math.min(.2, Math.asin(Math.max(-1, Math.min(1, dpE))))); { const bk = Math.atan2(upR, upU) * .6, q0 = qYP(yaw, pitch), qa = qn(qmul(q0, qax(0, 0, 1, bk))), qb = qn(qmul(q0, qax(0, 0, 1, -bk))); QA = Math.sign(qv(qa, 1, 0, 0)[1]) === Math.sign(upR) ? qa : qb; QAs = QA.slice(); yawL = yaw; pitchL = pitch; } v126Entry(nk, r0); levelAim = -.12; rightT = 9; rollBias = 0; snap = 0; tip('Atmospheric entry · thrusters easing you level', 4500); ent.yaw = yaw; { const cp = Math.cos(pitch), s2 = Math.max(sp, 120); vx = Math.sin(yaw) * cp * s2; vy = Math.sin(pitch) * s2; vz = -Math.cos(yaw) * cp * s2; } veil = 1; quietUntil = tm + 150; cmT = Math.max(cmT, 200); tip(`${SYS.locs[SYS.loc].name}: the wings will settle. Hold the nose up to climb back out.`, 7000); } }
+        drift = 0; r.from = SYS.loc; const Pn = sysP[nk].slice(), yaw0 = yaw, r0 = ent.r0, dpE = sFx * r0[0] + sFy * r0[1] + sFz * r0[2], upR = sRx * r0[0] + sRy * r0[1] + sRz * r0[2], upU = sUx * r0[0] + sUy * r0[1] + sUz * r0[2]; if (cont) keepNeb = 1; hop(loc); py = TENTRY; yaw = yaw0; pitch = Math.max(-.85, Math.min(.2, Math.asin(Math.max(-1, Math.min(1, dpE))))); { const bk = Math.atan2(upR, upU) * (cont ? 1 : .6), q0 = qYP(yaw, pitch), qa = qn(qmul(q0, qax(0, 0, 1, bk))), qb = qn(qmul(q0, qax(0, 0, 1, -bk))); QA = Math.sign(qv(qa, 1, 0, 0)[1]) === Math.sign(upR) ? qa : qb; QAs = QA.slice(); yawL = yaw; pitchL = pitch; } v126Entry(nk, r0, ent.t0, yaw0, Pn); if (cont) { veil = 0; fogX = 0; palEase = 0; v126Burn(); } levelAim = -.12; rightT = 9; rollBias = 0; snap = 0; tip('Atmospheric entry · thrusters easing you level', 4500); ent.yaw = yaw; { const cp = Math.cos(pitch), s2 = Math.max(sp, cont ? 650 : 120); vx = Math.sin(yaw) * cp * s2; vy = Math.sin(pitch) * s2; vz = -Math.cos(yaw) * cp * s2; } veil = cont ? 0 : 1; quietUntil = tm + 150; cmT = Math.max(cmT, 200); tip(`${SYS.locs[SYS.loc].name}: the wings will settle. Hold the nose up to climb back out.`, 7000); } }
     else if (u < 1.2 && drift) { drift = 0; driftV = 0; tip(`${SYS.planets[nk].name} has no atmosphere to fly down into: holding orbit. Pick a world with air to go down.`, 6000); } }
 }
 let scBack = -1;
 const PR = [70, 6.4, 2.6];                                  // planet radii in thousands of km
 let sysS = [0, 0, 0], sysP = null, drift = 0, driftV = 0, veil = 0, aimK = -1, aimT = 0, apT = 0, apTip = 0, noAuto = -1, apOn = 0, apDist = 0, apGate = 0, ent = null;
-function syncPR() { if (SYS && SYS.prad) for (let k = 0; k < 3; k++) if (SYS.prad[k] > 0) PR[k] = SYS.prad[k]; }
-function sysInit() { syncPR(); sysS = [0, 0, 0]; drift = 0; driftV = 0; aimK = -1; aimT = apT = 0; noAuto = -1; sysP = SYS.atm ? null : [0, 1, 2].map((k) => { const w = SYS.pl[k * 4 + 3]; return w > 0 ? [SYS.pl[k * 4] * PR[k] / w, SYS.pl[k * 4 + 1] * PR[k] / w, SYS.pl[k * 4 + 2] * PR[k] / w] : null; }); }
+const gameR = (rad, kind) => kind === 0 ? .2 + rad * .0012 : .055 + rad * .013;   // v1.32: planets at game scale, so a world is round from orbit and a descent takes a minute, not an hour
+function syncPR() { if (SYS && SYS.prad) for (let k = 0; k < 3; k++) if (SYS.prad[k] > 0) PR[k] = gameR(SYS.prad[k], (SYS.pk || [])[k]); }
+// v1.34: one map per system, in Mm, centred on the gate. Planets sit where the gate's sky shows them (spread a little wider);
+// every other place has its own fixed point in that same space: stations and fields in orbit of their planet, the rest out between
+// the worlds. The star lies far off along SUNSP. Whatever place you are at, planets, their sizes, their phases and the sun are
+// worked out from where you really are, so the system looks the same system from everywhere.
+let sysG = null, sysO = [0, 0, 0], STARG = [0, 0, 0], sysPL = [];
+const SPREAD = 1.5;
+function sysMap() {
+  const pd = SYS.pd || [];
+  sysG = [0, 1, 2].map((k) => { const d = pd[k], w = (SYS.pr || [])[k]; if (!d || !(w > 0)) return null; const D = PR[k] / w * SPREAD; return [d[0] * D, d[1] * D, d[2] * D]; });
+  const ds = sysG.filter(Boolean).map((g) => Math.hypot(g[0], g[1], g[2])), Dm = ds.length ? ds.reduce((a, b) => a + b, 0) / ds.length : 3, Dx = ds.length ? Math.max(...ds) : 3;
+  STARG = [SUNSP[0] * (Dx * 2.6 + 6), SUNSP[1] * (Dx * 2.6 + 6), SUNSP[2] * (Dx * 2.6 + 6)];
+  const place = (loc) => {
+    if (!loc) return [0, 0, 0];
+    const L = SYS.locs[loc] || {}, R = mulberry32((Math.imul((SYS.id >>> 0) ^ 0x9e37, 2654435761) ^ Math.imul(loc + 1, 40503)) >>> 0), rv = () => { const z = R() * 2 - 1, a = R() * 6.283, q = Math.sqrt(1 - z * z); return [q * Math.cos(a), z, q * Math.sin(a)]; };
+    if (L.body >= 0 && sysG[L.body]) { const G = sysG[L.body], v = rv(), u = nrm([SUNSP[0] * .8 + v[0], SUNSP[1] * .8 + v[1] * .5, SUNSP[2] * .8 + v[2]]), r = PR[L.body] * (3.2 + 2.6 * R());   // in orbit, mostly on the sunlit side
+      return [G[0] + u[0] * r, G[1] + u[1] * r, G[2] + u[2] * r]; }
+    for (let t = 0; t < 12; t++) { const v = rv(), r = Dm * (.45 + .7 * R()), O = [v[0] * r, v[1] * r * .35, v[2] * r];   // out between the worlds, near the system's plane
+      if (sysG.every((g, k) => !g || Math.hypot(O[0] - g[0], O[1] - g[1], O[2] - g[2]) > PR[k] * 6)) return O; }
+    return [0, Dm * .4, 0];
+  };
+  sysO = place(SYS.loc); sysPL = SYS.locs.map((l, i) => l.atm ? null : place(i));
+}
+function sysInit() { syncPR(); sysS = [0, 0, 0]; drift = 0; driftV = 0; aimK = -1; aimT = apT = 0; noAuto = -1; if (SYS.atm) { sysP = null; return; } sysMap(); sysP = sysG.map((g) => g ? [g[0] - sysO[0], g[1] - sysO[1], g[2] - sysO[2]] : null); }
 function driftToggle() { if (SYS.atm) return tip('Climb out of the atmosphere first: hold the nose up at full throttle', 4000); drift = drift ? 0 : 1; if (!drift) { noAuto = aimK; aimT = apT = 0; bHold = 0; } tip(drift ? 'Light drift: throttle sets the pace, the sky is the map. Point at a world and hold. G drops out.' : 'Dropped out of light drift', 5000); }
-const plDist = (c) => { const k = +c.id[1], P = sysP && sysP[k]; if (!P) return '—'; const d = Math.hypot(P[0] - sysS[0], P[1] - sysS[1], P[2] - sysS[2]) - PR[k]; return d < 100 ? d.toFixed(1) : String(d | 0); };
+let orbAp = 0, skimT = 0, hhPrev = 0;
+const plRaw = (c) => { if (c.kind === 'place') { const P = hlPos(c); return P ? Math.hypot(P[0] - sysS[0], P[1] - sysS[1], P[2] - sysS[2]) : 1e9; } const k = +c.id[1], P = sysP && sysP[k]; return P ? Math.hypot(P[0] - sysS[0], P[1] - sysS[1], P[2] - sysS[2]) - PR[k] : 1e9; };
+const plDist = (c) => { const d = plRaw(c); if (d > 1e8) return '—'; return d < .1 ? String(Math.max(0, d * 1000) | 0) : d < 100 ? d.toFixed(1) : String(d | 0); };   // close in, kilometres
 
 // ---- trade: eight goods; what a place makes is cheap there and what it lacks is dear; your own trading moves the price ----
 const GOODS = [['Water ice', 12], ['Ore', 20], ['Alloys', 55], ['Provisions', 30], ['Machinery', 90], ['Medicine', 140], ['Luxuries', 210], ['Data cores', 320]];
@@ -3730,7 +3860,7 @@ function pipOpen() {
   PIP.big = 1; PIP.o.style.display = 'flex'; PIP.o.style.setProperty('--pg', HCOL[CFG.hud][1][3] + '88'); document.body.classList.add('pip'); try { document.exitPointerLock(); } catch {} K.KeyW = K.KeyS = 0;
   const loop = () => { if (!PIP.big) return; pipPaint(PIP.bx, 1280, HCOL[CFG.hud][1][3], 1); requestAnimationFrame(loop); }; loop();
 }
-function pipClose() { PIP.big = 0; if (PIP.o) PIP.o.style.display = 'none'; document.body.classList.remove('pip'); }
+function pipClose() { PIP.big = 0; if (PIP.o) PIP.o.style.display = 'none'; document.body.classList.remove('pip'); if (flying() && !xr && matchMedia('(pointer:fine)').matches) { try { const r = cv.requestPointerLock(); if (r && r.catch) r.catch(() => tip('Click to take the stick', 2500)); } catch { tip('Click to take the stick', 2500); } } }   // straight back to flight: take the mouse again
 function pipKey(e) {
   if (e.type !== 'keydown') return; const n = PIP.tabs.length;
   if (e.code === 'Escape' || e.code === 'Tab' || e.code === 'KeyU' || (CFG.keys.Tab && e.code === CFG.keys.Tab)) pipClose();
@@ -4266,7 +4396,7 @@ setP.onclick = (e) => {
   else if (k === 'suno') window.open('https://suno.com/playlist/12f42e02-78a5-4eb2-bf7e-f605817e4c06', '_blank', 'noopener');
   else if (k === 'wipe') { setP.style.display = 'none'; newUniverse(); return; }
   else if (k === 'hud') CFG.hud = (CFG.hud + 1) % HCOL.length;
-  else if (k === 'op') CFG.op = cyc(CFG.op, [1, .7, .45, .25]);
+  else if (k === 'op') CFG.op = cyc(CFG.op, [1, .7, .45, .25, 0]);
   else if (k === 'size') CFG.size = cyc(CFG.size, [1, 1.15, .85]);
   else if (k === 'ctl') CFG.ctl = CFG.ctl ? 0 : 1;
   else if (k === 'vrH') CFG.vrH = VRH[(vrHi() + 1) % VRH.length][1];
@@ -5400,13 +5530,16 @@ function v123Hooks() {
 // relief, ridges and canyons, water on ocean worlds, vegetation near the surface. A first pass, built to a fixed budget:
 // one shared grid drawn as nested rings (about 21k vertices), trees only within a kilometre, everything fogged into the same haze as the sky.
 const SUNSP = [.45 / .9966, .32 / .9966, -.83 / .9966];                         // the sun's direction out in space; planet-side it follows the planet's day
-let dayOff = null, v126Key = '', v126bf = 0, v126ceil = 3000, v126Air = [.32, .58, 1], v126Fc = [1, .97, .95], spaceSun = null;
-const TGB = -6000, TCLOUD = 3000, TCTOP = 6500, TENTRY = 22000, TOUT = 18000;   // world y: ground base, the cloud deck's underside and top, where you arrive from orbit, where orbit begins again
+let v126tf = 0, dayOff = null, v126Key = '', v126bf = 0, v126ceil = 3000, v126Air = [.32, .58, 1], v126Fc = [1, .97, .95], spaceSun = null, spacePal = null;
+const TGB = -6000, TCLOUD = 4800, TCTOP = 6500, TENTRY = 14000, TOUT = 16500;   // world y. Altitudes above the ground base: deck 9-12.5 km, the air's top 20 km, orbit again above 22.5 km   // world y: ground base, the cloud deck's underside and top, where you arrive from orbit, where orbit begins again
 // per world type: hills, ridges, canyon depth, sea level (metres), vegetation density, snow line
 const TK = { 1: [900, 3000, 900, -1e9, 0, 1e9], 2: [800, 2800, 1200, -1e9, .12, 1e9], 3: [1400, 4200, 700, 0, .55, 2700], 4: [900, 2600, 500, -120, .85, 1e9], 5: [1200, 4500, 800, -1e9, 0, -1e9], 6: [1000, 3200, 900, -1e9, .1, 2300] };   // hills, mountain ranges, canyons, sea, trees, snow line
 const airOf = (kind, pa) => kind === 3 || kind === 4 ? [.32, .58, 1] : kind === 2 ? [.95, .7, .42] : kind === 1 ? [1, .5, .22] : kind === 5 ? [.62, .86, 1] : kind === 0 ? [(pa[0] + 1) / 2, (pa[1] + .9) / 2, (pa[2] + .75) / 2] : kind === 6 ? [.75, .72, .85] : [0, 0, 0];
 const tKind = () => SYS.atm ? (SYS.pk || [0, 0, 0])[SYS.atm - 1] : -1;
 const hasTerr = () => !!(SYS.atm && TK[tKind()]);
+const contK = (k) => k != null && k >= 0 && k !== 7;   // every world with air is one continuous planet (gas giants too: their floor is the cloud tops)
+const isCont = () => !!(SYS.atm && contK(tKind()));
+const CLOUDAMT = [1, .5, .25, .65, .75, .5, .4, 0];   // how much of the sky the cloud deck covers, by world type
 // ---- the height field: integer-hashed value noise, identical here and on the GPU ----
 const thv = (x, y) => { const a = Math.imul(x, 1597334673) >>> 0, b = Math.imul(y, 3812015801 | 0) >>> 0; return (Math.imul((a ^ b) >>> 0, 1597334673) >>> 8) / 16777216; };
 const tvn = (x, y) => { const ix = Math.floor(x), iy = Math.floor(y); let fx = x - ix, fy = y - iy; fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
@@ -5421,9 +5554,43 @@ function tH(x, z) {                                             // height above 
   const rg = r1 + .5 * r2 * r1 + .25 * r3 * r2, cn = Math.abs(tvn(px0 * .00016 + w * 2, pz0 * .00016 + 1.3) - .5), can = tss(.05, 0, cn) * (1 - belt);
   return (c - .45) * tPar[0] + rg * belt * tPar[1] * .62 - can * tPar[2];
 }
-const tGround = (x, z) => TGB + Math.max(tH(x, z), tPar[3]);
+let tRm = 1e9;   // the planet's radius (m) in the frame planet-side; the ground curves away by d²/2R
+const tDrop = (x, z) => { const dx = x - cC[0], dz = z - cC[1]; return (dx * dx + dz * dz) / (2 * tRm); };
+// v1.35: the planet's recipe in JS: the same integer-hashed sphere noise as the shaders, so collision and trees sit on the ground you see
+const sh3 = (x, y, z) => (Math.imul((Math.imul(x, 1597334673) ^ Math.imul(y, 3812015801 | 0) ^ Math.imul(z, 2798796415 | 0)) >>> 0, 1597334673) >>> 8) / 16777216;
+const sv3 = (x, y, z) => { const ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z); let fx = x - ix, fy = y - iy, fz = z - iz; fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy); fz = fz * fz * (3 - 2 * fz);
+  const L = (a, b, t) => a + (b - a) * t, A = L(L(sh3(ix, iy, iz), sh3(ix + 1, iy, iz), fx), L(sh3(ix, iy + 1, iz), sh3(ix + 1, iy + 1, iz), fx), fy), B = L(L(sh3(ix, iy, iz + 1), sh3(ix + 1, iy, iz + 1), fx), L(sh3(ix, iy + 1, iz + 1), sh3(ix + 1, iy + 1, iz + 1), fx), fy); return L(A, B, fz); };
+const snJ = (x, y, z) => { x *= 4; y *= 4; z *= 4; return .55 * sv3(x, y, z) + .3 * sv3(x * 2.03 + 7, y * 2.03 + 7, z * 2.03 + 7) + .15 * sv3(x * 4.1 + 3, y * 4.1 + 3, z * 4.1 + 3); };
+const cloudJ = (n) => { const w = [n[0] + snJ(n[0] * 2 + 5, n[1] * 2 + 5, n[2] * 2 + 5) * .32, n[1] + snJ(n[0] * 2.3 + 11, n[1] * 2.3 + 11, n[2] * 2.3 + 11) * .32, n[2] + snJ(n[0] * 1.8 + 2, n[1] * 1.8 + 2, n[2] * 1.8 + 2) * .32]; return tss(.52, .84, snJ(w[0] * 1.3, w[1] * 1.3, w[2] * 1.3)); };
+const tSphJ = (x, z) => mvP(v126PM, nrm([x - cC[0], tRm, z - cC[1]]));
+const mvP = (M, v) => [M[0] * v[0] + M[3] * v[1] + M[6] * v[2], M[1] * v[0] + M[4] * v[1] + M[7] * v[2], M[2] * v[0] + M[5] * v[1] + M[8] * v[2]];
+function tHM(x, z) { const n = tSphJ(x, z), k = tKind(), W1 = snJ(n[0] * 1.15 + .2, n[1] * 1.15 + .2, n[2] * 1.15 + .2), W2 = snJ(n[0] * 2.6 + .7, n[1] * 2.6 + .7, n[2] * 2.6 + .7); let mac, f = 1;
+  if (k === 3) { const lm = W1 * .7 + W2 * .3; mac = (lm - .55) * 9000; f = tss(.5, .6, lm); } else if (k === 1) mac = (W1 - .5) * 1600; else mac = (W1 - .5) * 2400;
+  return tH(x, z) * f + mac; }
+const tGround = (x, z) => TGB + Math.max(tHM(x, z), tPar[3]) - tDrop(x, z);
 const TGL = `
-uniform vec4 uK,uT;uniform vec3 uCam,uOa,uOb,uAir;
+uniform vec4 uK,uT,uCv;uniform vec3 uCam,uOa,uOb,uAir;uniform mat3 uPMt;
+// v1.35: one planet. The orbit view, the clouds and the ground all read the same recipe on the unit sphere: integer-hashed
+// noise, identical on the GPU and in JS (the ground's collision samples it too).
+uint sh3(ivec3 p){uvec3 q=uvec3(p)*uvec3(1597334673u,3812015801u,2798796415u);return (q.x^q.y^q.z)*1597334673u;}
+float shv(ivec3 p){return float(sh3(p)>>8u)*(1./16777216.);}
+float sv3(vec3 x){vec3 i=floor(x),f=x-i;f=f*f*(3.-2.*f);ivec3 j=ivec3(i);
+ float a=mix(mix(shv(j),shv(j+ivec3(1,0,0)),f.x),mix(shv(j+ivec3(0,1,0)),shv(j+ivec3(1,1,0)),f.x),f.y);
+ float b=mix(mix(shv(j+ivec3(0,0,1)),shv(j+ivec3(1,0,1)),f.x),mix(shv(j+ivec3(0,1,1)),shv(j+ivec3(1,1,1)),f.x),f.y);return mix(a,b,f.z);}
+float sn(vec3 p){p*=4.;return .55*sv3(p)+.3*sv3(p*2.03+7.)+.15*sv3(p*4.1+3.);}
+float cloudA(vec3 n){vec3 cw=n+vec3(sn(n*2.+5.),sn(n*2.3+11.),sn(n*1.8+2.))*.32;return smoothstep(.52,.84,sn(cw*1.3));}
+vec3 surfS(vec3 n,int k,vec3 ca,vec3 cb,vec3 L,out float land,out float cl){float w=sn(n*1.15+.2),w2=sn(n*2.6+.7),w3=sn(n*5.2+1.4);vec3 s=mix(ca,cb,w2);cl=0.;land=1.;
+  if(k==0){}
+  else if(k==1){s=mix(vec3(.045,.016,.01),vec3(.2,.07,.03),w2);land=smoothstep(.07,0.,abs(fract(w*2.4+w2)-.5)-.4);cl=0.;}
+  else if(k==2){float dune=.5+.5*sin(n.x*16.+w*5.);s=mix(ca,cb,smoothstep(.15,.85,w2*.55+dune*.45));cl=smoothstep(.74,.94,w)*.16;land=1.;}
+  else if(k==3){land=smoothstep(.46,.64,w*.7+w2*.3);vec3 sea=mix(vec3(.02,.07,.16),ca,.4),grd=mix(cb,ca*.75+.08,smoothstep(.25,.75,w2));s=mix(sea,grd,land);cl=smoothstep(.58,.86,w2)*.48;}
+  else if(k==4){float bd=.5+.5*sin(n.y*5.2+w*2.4);s=mix(ca,cb,bd);s=mix(s,vec3(.12,.32,.06),smoothstep(.35,.8,w3)*.45);cl=smoothstep(.38,.72,w)*.55;land=0.;}
+  else if(k==6){float hot=smoothstep(-.08,.4,dot(n,L));vec3 cold=mix(vec3(.5,.66,.8),cb,.35),hotc=mix(vec3(.16,.04,.02),vec3(.95,.32,.06),smoothstep(.1,0.,abs(w-.48)));s=mix(cold,hotc,hot);cl=smoothstep(.72,.92,w2)*.12;land=hot;}
+  else if(k==7){float br=smoothstep(.12,0.,abs(w-.4)-.07);s=mix(vec3(.1,.09,.08),cb,w2)*(1.-br*.7);cl=0.;land=0.;}
+  else{s=mix(vec3(.8,.9,.97),mix(ca,vec3(.72,.86,.95),.45),.4+.2*w2);s=mix(s,vec3(.16,.26,.38),smoothstep(.045,0.,abs(fract(n.y*5.+w*2.4)-.5)-.47)*.6);cl=smoothstep(.66,.9,w)*.2;land=1.;}
+
+ s=mix(vec3(dot(s,vec3(.3,.5,.2))),s,1.22);s*=.94+.06*w3;return s;}
+
 uint thu(ivec2 p){uvec2 q=uvec2(p)*uvec2(1597334673u,3812015801u);return (q.x^q.y)*1597334673u;}
 float thv(ivec2 p){return float(thu(p)>>8u)*(1./16777216.);}
 float tvn(vec2 x){vec2 i=floor(x),f=x-i;f=f*f*(3.-2.*f);ivec2 j=ivec2(i);
@@ -5433,17 +5600,22 @@ float tH(vec2 p){p+=vec2(uT.w,uT.w*.73);float c=0.,a=.5,f=.00011;for(int i=0;i<5
  float r1=1.-abs(2.*tvn(p*.00021+3.7)-1.);r1*=r1;float r2=1.-abs(2.*tvn(vec2(p.x*.00047+1.9,p.y*.00047+6.1))-1.);r2*=r2;float r3=1.-abs(2.*tvn(vec2(p.x*.0011+8.3,p.y*.0011+2.2))-1.);r3*=r3;
  float rg=r1+.5*r2*r1+.25*r3*r2,cn=abs(tvn(vec2(p.x*.00016+w*2.,p.y*.00016+1.3))-.5),can=smoothstep(.05,0.,cn)*(1.-belt);
  return (c-.45)*uK.x+rg*belt*uK.y*.62-can*uK.z;}
+
+vec3 tSph(vec2 w){return uPMt*normalize(vec3(w.x-uCv.x,uCv.z,w.y-uCv.y));}
+float tHM(vec2 w){vec3 n=tSph(w);int k=int(uT.x+.5);float W1=sn(n*1.15+.2),W2=sn(n*2.6+.7),f=1.,mac;   // the ground's big shapes come from the planet's own recipe: seas where orbit shows sea
+ if(k==3){float lm=W1*.7+W2*.3;mac=(lm-.55)*9000.;f=smoothstep(.5,.6,lm);}else if(k==1)mac=(W1-.5)*1600.;else mac=(W1-.5)*2400.;
+ return tH(w)*f+mac;}
 vec3 tHaze(vec3 d){vec3 L=uSun.xyz;float sunH=smoothstep(-.25,.25,L.y+.15);vec3 sunT=uSunC.rgb/max(max(uSunC.r,uSunC.g),max(uSunC.b,.05));
  vec3 at=mix(uAir*mix(vec3(1.),sunT,.55),uOa,.25);float sdh=pow(max(dot(normalize(vec3(d.x,0.,d.z)+1e-4),normalize(vec3(L.x,0.,L.z)+1e-4)),0.),3.);
  return at*at*(.22+.55*sunH)+mix(vec3(1.,.55,.25),uSunC.rgb,.4)*sdh*(.15+.6*sunH)*(.4+.6*smoothstep(.35,-.05,L.y));}
 `;
-const TER_V = HD + TGL + `uniform vec4 uLv;layout(location=0)in vec2 aG;out vec3 vW,vN;out float vH;
+const TER_V = HD + TGL + `uniform vec4 uLv;layout(location=0)in vec2 aG;out vec3 vW,vN,vS;out float vH;
 void main(){float cell=uLv.x;vec2 cam=uCam.xz,o=floor(cam/(cell*2.))*cell*2.;vec2 w=o+aG*cell;
  float dm=max(abs(w.x-cam.x),abs(w.y-cam.y))/(32.*cell),mo=uLv.y>.5?0.:smoothstep(.72,.94,dm);w-=mod(aG,2.)*cell*mo;
- float h=tH(w),e=max(cell,6.),hx=tH(w+vec2(e,0.)),hz=tH(w+vec2(0.,e));vH=h;float hs=max(h,uK.w);
- vN=normalize(vec3(-(max(hx,uK.w)-hs)/e,1.,-(max(hz,uK.w)-hs)/e));vW=vec3(w.x,uT.z+hs,w.y);
+ float h=tHM(w),e=max(cell,6.),hx=tHM(w+vec2(e,0.)),hz=tHM(w+vec2(0.,e));vH=h;vS=tSph(w);float hs=max(h,uK.w);
+ vN=normalize(vec3(-(max(hx,uK.w)-hs)/e,1.,-(max(hz,uK.w)-hs)/e));vec2 dc=w-uCv.xy;vW=vec3(w.x,uT.z+hs-dot(dc,dc)/(2.*uCv.z),w.y);
  gl_Position=uVP*vec4(vW-uCam,1.);}`;
-const TER_F = HD + TGL + `uniform vec4 uC;in vec3 vW,vN;in float vH;out vec4 o;
+const TER_F = HD + TGL + `uniform vec4 uC;uniform float uTf,uTe;in vec3 vW,vN,vS;in float vH;out vec4 o;
 void main(){vec3 N=normalize(vN),L=uSun.xyz,d=vW-uCam;float dist=length(d);d/=dist;int k=int(uT.x+.5);
  float slope=1.-N.y,pn=tvn(vW.xz*.004),pf=tvn(vW.xz*.035);vec3 sunT=uSunC.rgb/max(max(uSunC.r,uSunC.g),max(uSunC.b,.05));
  vec3 ca=uOa,cb=uOb,s;float dune=.5+.5*sin(vW.x*.0021+pn*5.);
@@ -5454,6 +5626,7 @@ void main(){vec3 N=normalize(vN),L=uSun.xyz,d=vW-uCam;float dist=length(d);d/=di
  else if(k==5)s=mix(vec3(.8,.9,.97),mix(ca,vec3(.72,.86,.95),.45),.4+.2*pn);
  else s=mix(vec3(.5,.66,.8),cb,.35);
  s=mix(vec3(dot(s,vec3(.3,.5,.2))),s,1.22);
+ {float ld,clv;vec3 so=surfS(normalize(vS),k,ca,cb,uPMt*L,ld,clv);s=mix(s,so,.6);s=mix(s,vec3(.92,.93,.95),clv*.5);}   // the colours you saw from orbit, with the close-up detail on top
  vec3 rock=mix(s*.5,vec3(.2,.19,.18),.45)*(.75+.5*pf),sand=mix(ca,vec3(.76,.62,.42),.4);
  vec3 c=mix(s,rock,smoothstep(.2,.48,slope)*(k==5?.6:1.));
  if(uK.w>-1e8&&vH<uK.w+18.&&k!=2)c=mix(c,sand,smoothstep(uK.w+18.,uK.w+4.,vH));                         // beaches
@@ -5464,8 +5637,8 @@ void main(){vec3 N=normalize(vN),L=uSun.xyz,d=vW-uCam;float dist=length(d);d/=di
  if(uK.w>-1e8&&vH<uK.w){vec3 wc=mix(vec3(.02,.07,.16),uOa,.4)*.45;vec3 R=reflect(d,vec3(0,1,0));                // water: deep, sky-tinted, a glint of sun
   col=wc*(.25+.75*sunH)+uSunC.rgb*pow(max(dot(R,L),0.),180.)*2.*sunH+tHaze(R)*.25*pow(1.-max(-d.y,0.),4.);}
  if(k==1){float cn=smoothstep(.62,1.,uC.z*(1.-smoothstep(-500.,-80.,vH)));col+=vec3(1.,.32,.05)*cn*(1.5+.5*sin(TIME*.6+pf*9.));}  // lava pooled in the canyon floors
- float f=(1.-exp(-dist/uC.x))*.85;f=max(f,smoothstep(uC.w*.8,uC.w*.97,dist));
- o=vec4(mix(col,tHaze(d),f),1.);}`;
+ float f=(1.-exp(-dist/uC.x))*.9;float ea=uTf*(1.-smoothstep(uC.w*.55,uC.w*.95,dist)*uTe);   // v1.33: the ground fades in over the planet seen from above, and its far edge melts into it
+ o=vec4(mix(col,tHaze(d),f),ea);}`;
 // trees: a few triangles each, instanced, only near the ground
 const VEG_V = HD + TGL + `layout(location=0)in vec3 aP;layout(location=1)in vec3 aN;layout(location=2)in vec4 aI;out vec3 vW,vN2;out float vR;
 void main(){vec3 p=aP*aI.w;vW=aI.xyz+p;vN2=aN;vR=fract(aI.x*.137+aI.z*.071);gl_Position=uVP*vec4(vW-uCam,1.);}`;
@@ -5508,51 +5681,79 @@ function vegBuild() {                                            // trees around
     const h0 = thv(gx * 7 + 11, gz * 13 + 5); if (h0 > den * 1.15) continue;
     const x = (gx + thv(gx, gz + 77)) * C, z = (gz + thv(gx + 91, gz)) * C, dx = x - px, dz = z - pz; if (dx * dx + dz * dz > R * R) continue;
     if (tvn((x + tSeed) * .0021, (z + tSeed) * .0021) < 1 - den) continue;
-    const h = tH(x, z); if (h < tPar[3] + 6 || h > tPar[5] - 60) continue;
-    const s = Math.abs(tH(x + 8, z) - h) + Math.abs(tH(x, z + 8) - h); if (s > 7) continue;
+    const h = tHM(x, z); if (h < tPar[3] + 6 || h > tPar[5] - 60) continue;
+    const s = Math.abs(tHM(x + 8, z) - h) + Math.abs(tHM(x, z + 8) - h); if (s > 7) continue;
     const sc = (tKind() === 4 ? 34 : tKind() === 2 ? 7 : 22) * (.6 + .8 * thv(gx + 5, gz + 3));
-    vData.set([x, TGB + h, z, sc], vCnt * 4); vCnt++; }
+    vData.set([x, TGB + h - tDrop(x, z), z, sc], vCnt * 4); vCnt++; }
   gl.bindBuffer(gl.ARRAY_BUFFER, vIB); gl.bufferSubData(gl.ARRAY_BUFFER, 0, vData, 0, vCnt * 4);
 }
 function v126Draw(vd) {
-  if (!TP || !hasTerr() || v126bf <= .02) return;
+  if (!TP || !hasTerr() || v126tf <= .02) return;
   const dT = gl.isEnabled(gl.DEPTH_TEST), cF = gl.isEnabled(gl.CULL_FACE), bl = gl.isEnabled(gl.BLEND);
-  gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS); gl.depthMask(true); gl.disable(gl.CULL_FACE); gl.disable(gl.BLEND);
+  gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS); gl.depthMask(true); gl.disable(gl.CULL_FACE); gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
   const k = SYS.atm - 1, kind = tKind(), oa = [SYS.pa[k * 4], SYS.pa[k * 4 + 1], SYS.pa[k * 4 + 2]], ob = [SYS.pb[k * 3], SYS.pb[k * 3 + 1], SYS.pb[k * 3 + 2]];
   const set = (P) => { const u = P.u; gl.useProgram(P.p); gl.uniform4f(u.uK, tPar[0], tPar[1], tPar[2], tPar[3] > -1e8 ? tPar[3] : -1e9); gl.uniform4f(u.uT, kind, 0, TGB, tSeed);
-    gl.uniform3f(u.uCam, px + eox, py + eoy, pz + eoz); gl.uniform3f(u.uOa, ...oa); gl.uniform3f(u.uOb, ...ob); gl.uniform3f(u.uAir, ...v126Air); };
-  set(TP); const lv = LV >= 1 ? 6 : 7, rMax = 12 * (1 << (lv - 1)) * 32;
-  gl.uniform4f(TP.u.uC, rMax * 1.25, tPar[5], 1, rMax);
+    gl.uniform3f(u.uCam, px + eox, py + eoy, pz + eoz); if (u.uCv) gl.uniform4f(u.uCv, cC[0], cC[1], tRm, 1); gl.uniform3f(u.uOa, ...oa); gl.uniform3f(u.uOb, ...ob); gl.uniform3f(u.uAir, ...v126Air); if (u.uPMt) gl.uniformMatrix3fv(u.uPMt, false, v126PM); if (u.uTf) gl.uniform1f(u.uTf, v126tf); if (u.uTe) gl.uniform1f(u.uTe, tss(TCLOUD - 2500, TCLOUD + 200, py)); };
+  set(TP); const lv = LV >= 1 ? 7 : 8, rMax = 12 * (1 << (lv - 1)) * 32;
+  gl.uniform4f(TP.u.uC, 40000, tPar[5], 1, rMax);   // v1.33: denser aerial haze, so height reads
   for (let l = 0; l < lv; l++) { gl.uniform4f(TP.u.uLv, 12 * (1 << l), l === lv - 1 ? 1 : 0, 0, 0); gl.bindVertexArray(l ? tVA1 : tVA); gl.drawElements(gl.TRIANGLES, l ? tN1 : tN0, gl.UNSIGNED_SHORT, 0); }
   if (vCnt) { set(VP); gl.bindVertexArray(vVA); gl.drawArraysInstanced(gl.TRIANGLES, 0, vN, vCnt); }
   gl.bindVertexArray(VA0); gl.depthFunc(gl.LEQUAL);
-  if (!dT) gl.disable(gl.DEPTH_TEST); if (cF) gl.enable(gl.CULL_FACE); if (bl) gl.enable(gl.BLEND);
+  if (!dT) gl.disable(gl.DEPTH_TEST); if (cF) gl.enable(gl.CULL_FACE); if (!bl) gl.disable(gl.BLEND); gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE);
+}
+// ---- v1.30: one planet. The ground below is the planet seen from space, drawn from the inside: same surface, true radius, same light.
+// cM maps the planet-side frame (y up, x/z across the ground) to the space frame at the point where you came down.
+let keepNeb = 0, v126Hh = 0, v126KeyC = '', v126Heat = 0;
+function v126Burn() { v126Heat = 1; trauma = Math.max(trauma, .45); tip('Atmospheric entry · the air takes your speed', 4000); }   // re-entry: a few seconds of heat on the canopy while the air bleeds the speed off   // set just before a continuous hop: the sky you are in stays the sky you were in
+let cOn = 0, cM = [1, 0, 0, 0, 1, 0, 0, 0, 1], cC = [0, 0], cS0 = [0, 1, 0], cAx = [1, 0, 0], cT0 = 0;
+const v126PM = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+const v126PL = new Float32Array(9);   // each planet's light: from its star, fixed per place, the same from far off, up close and from inside
+function v126Lights() { if (SYS.atm || !sysP) return; for (let k = 0; k < 3; k++) { const P = sysP[k]; if (!P) { v126PL.fill(0, k * 3, k * 3 + 3); continue; } const L = starDir(P); v126PL.set(L, k * 3); } }
+// v1.34: one star, at one place in the system: every world lit from where it really is
+const starDir = (P) => nrm([STARG[0] - sysO[0] - P[0], STARG[1] - sysO[1] - P[1], STARG[2] - sysO[2] - P[2]]);
+let v126PG = [0, 0, 0, 0], v126PD = [0, -1, 0];
+const mv = (M, v) => [M[0] * v[0] + M[3] * v[1] + M[6] * v[2], M[1] * v[0] + M[4] * v[1] + M[7] * v[2], M[2] * v[0] + M[5] * v[1] + M[8] * v[2]];   // column-major
+const mtv = (M, v) => [M[0] * v[0] + M[1] * v[1] + M[2] * v[2], M[3] * v[0] + M[4] * v[1] + M[5] * v[2], M[6] * v[0] + M[7] * v[1] + M[8] * v[2]];
+const cr3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const rot3 = (v, ax, an) => { const c = Math.cos(an), s = Math.sin(an), d = ax[0] * v[0] + ax[1] * v[1] + ax[2] * v[2], x = cr3(ax, v); return [v[0] * c + x[0] * s + ax[0] * d * (1 - c), v[1] * c + x[1] * s + ax[1] * d * (1 - c), v[2] * c + x[2] * s + ax[2] * d * (1 - c)]; };
+function v126Cont(nk, r0, t0, yaw0, P) {
+  const up = r0, fw = nrm(t0), rs = nrm(cr3(fw, up)), fa = [Math.sin(yaw0), 0, -Math.cos(yaw0)], ra = nrm(cr3(fa, [0, 1, 0]));
+  const B = [rs, up, fw], A = [ra, [0, 1, 0], fa]; for (let c = 0; c < 3; c++) for (let r = 0; r < 3; r++) cM[c * 3 + r] = B[0][r] * A[0][c] + B[1][r] * A[1][c] + B[2][r] * A[2][c];   // M = [rs up fw]·[ra ya fa]ᵀ
+  const Ls = starDir(P);
+  cS0 = mtv(cM, Ls); const ax = cr3([0, 1, 0], cS0); cAx = Math.hypot(...ax) > .05 ? nrm(ax) : [1, 0, 0]; cT0 = tm; cC = [px, pz]; cOn = 1; v126PM.set(cM);
 }
 // the planet's day: where you came down decides the local time, then the star rises and sets
-function v126Entry(nk, r0) {
-  try { const P = sysP[nk], D = Math.hypot(P[0], P[1], P[2]) || 1, L = nrm([SUNSP[0] * 1.6 * D - P[0], SUNSP[1] * 1.6 * D - P[1], SUNSP[2] * 1.6 * D - P[2]]);
+function v126Entry(nk, r0, t0, yaw0, P) {
+  try { if (contK((SYS.pk || [])[nk]) && t0 != null) v126Cont(nk, r0, t0, yaw0, P || sysP[nk]); else cOn = 0; } catch (e) { console.error('cont', e); cOn = 0; }
+  try { const P = sysP[nk], L = starDir(P);
     const el = Math.max(-1, Math.min(1, r0[0] * L[0] + r0[1] * L[1] + r0[2] * L[2])); dayOff = Math.asin(el) - tm * .006; } catch (e) { dayOff = null; }
 }
 let v126Crash = 0, v126Tip = 0;
 function v126Tick(dt, fly) {
   if (SYS.atm) {
     const key = SYS.id + ':' + SYS.loc;
-    if (key !== v126Key && spaceSun) { SYS.pal[9] = spaceSun[0]; SYS.pal[10] = spaceSun[1]; SYS.pal[11] = spaceSun[2]; }   // the same star lights the sky down here
+    if (key !== v126Key && spacePal && isCont() && cOn) { for (let i = 0; i < 12; i++) SYS.pal[i] = spacePal[i]; for (let i = 0; i < 12; i++) pal[i] = spacePal[i]; }   // one planet, one sky: the space you came from carries on above you
+    else if (key !== v126Key && spaceSun) { SYS.pal[9] = spaceSun[0]; SYS.pal[10] = spaceSun[1]; SYS.pal[11] = spaceSun[2]; }   // the same star lights the sky down here
     if (key !== v126Key) { v126Key = key; setTimeout(() => { wxKind = wxFor(); if (wxKind >= 0 && SYS.atm) tip(['Rain below the cloud deck', 'Snow falling below the deck', 'A dust storm over the plains', 'Ash on the wind'][wxKind], 4000); }, 0); if (dayOff == null) dayOff = (SYS.seed[0] % 6.283) - tm * .006; const k = SYS.atm - 1; tSeed = (SYS.salt % 50000) + 1000; tPar = TK[tKind()] || TK[3]; v126Air = airOf(tKind(), [SYS.pa[k * 4], SYS.pa[k * 4 + 1], SYS.pa[k * 4 + 2]]); vAt = [1e9, 1e9]; }
-    const ph = tm * .006 + dayOff, L = nrm([Math.cos(ph) * .85, Math.sin(ph), Math.sin(ph * .5 + .4) * .55]); SUN[0] = L[0]; SUN[1] = L[1]; SUN[2] = L[2];
+    let L; if (cOn && isCont()) L = rot3(cS0, cAx, (tm - cT0) * .0015); else { const ph = tm * .006 + dayOff; L = nrm([Math.cos(ph) * .85, Math.sin(ph), Math.sin(ph * .5 + .4) * .55]); }
+    SUN[0] = L[0]; SUN[1] = L[1]; SUN[2] = L[2];
+    if (isCont()) { const k = SYS.atm - 1, Rm = PR[k] * 1e6; tRm = Rm; if (!cOn && key !== v126KeyC) { v126KeyC = key; cC = [px, pz]; } { const cx = cC[0] - px, cy = TGB - Rm - py, cz = cC[1] - pz, dd = Math.hypot(cx, cy, cz); v126PD = [cx / dd, cy / dd, cz / dd]; v126PG = [1, Math.min(.99999, Rm / dd), tKind(), Rm]; v126Hh = dd - Rm; if (!cOn) v126PM.set([1, 0, 0, 0, 1, 0, 0, 0, 1]); } } else { v126PG = [0, 0, 0, 0]; tRm = 1e9; }
     if (hasTerr()) {
-      v126bf = tss(TCLOUD + 500, TCLOUD - 700, py); v126ceil = Math.max(150, TCLOUD - py);
+      v126bf = tss(TCLOUD + 300, TCLOUD - 600, py); v126ceil = Math.max(150, TCLOUD - py); v126tf = tss(TCTOP + 600, TCLOUD - 200, py);   // the ground emerges through the deck as it thins, not all at once below it
       const deck = tss(TCLOUD - 300, TCLOUD + 300, py) * tss(TCTOP + 400, TCTOP - 200, py);   // inside the deck: patchy cloud, thicker and thinner as you go
-      if (deck > .02) veil = Math.max(veil, deck * (.35 + .5 * tvn(px * .0012 + py * .0009, pz * .0012)));
+      if (deck > .02 && CLOUDAMT[tKind()] > 0) { const cv = Math.min(1, Math.max(0, cloudJ(tSphJ(px, pz)) * 1.15 + (tvn(px * .0012 + py * .0009, pz * .0012) - .5) * .55)); veil = Math.max(veil, deck * (.06 + .84 * tss(.3, .7, cv))); }   // inside the deck: white-out where the planet's clouds are, clear sky where they aren't   // breaks and holes: a white-out, then clear, then cloud again
       if (v126bf > .02 && (Math.hypot(px - vAt[0], pz - vAt[1]) > 110)) { vAt = [px, pz]; vegBuild(); }
       const g = tGround(px, pz);
       if (fly && py < g + 14) { const imp = -vy; py = g + 14; if (vy < 0) vy = 0; if (imp > 70 && tm > v126Crash) { v126Crash = tm + 1.5; hurtSrc = 'ground'; hurtSrcT = tm; hurt(Math.min(35, imp * .08)); trauma = Math.max(trauma, .6); } else if (tm > v126Tip) { v126Tip = tm + 8; tip('Ground contact · pull up', 2500); } }
-    } else { v126bf = 0; vCnt = 0; }
+    } else { v126bf = 0; v126tf = 0; vCnt = 0;
+      if (isCont() && fly && py < TCTOP - 300) { py = TCTOP - 300; if (vy < 0) vy = 0; if (tm > v126Tip) { v126Tip = tm + 8; tip('The pressure below the cloud tops would crush the hull · holding here', 3500); } }
+      if (isCont()) { const deck = tss(TCTOP - 900, TCTOP - 200, py) * tss(TCTOP + 500, TCTOP, py); if (deck > .02) veil = Math.max(veil, deck * (.3 + .4 * tvn(px * .0012 + py * .0009, pz * .0012))); } }
     const ac = v126Air; v126Fc = [.5 + .5 * ac[0], .5 + .5 * ac[1], .5 + .5 * ac[2]];
-  } else { spaceSun = [SYS.pal[9], SYS.pal[10], SYS.pal[11]]; { const k = typeof aimK === 'number' ? aimK : -1; v126Fc = k >= 0 && SYS.pk ? (() => { const a = airOf(SYS.pk[k], [SYS.pa[k * 4], SYS.pa[k * 4 + 1], SYS.pa[k * 4 + 2]]); return [.5 + .5 * a[0], .5 + .5 * a[1], .5 + .5 * a[2]]; })() : [1, .97, .95]; } v126Key = ''; dayOff = null; v126bf = 0; vCnt = 0; SUN[0] = SUNSP[0]; SUN[1] = SUNSP[1]; SUN[2] = SUNSP[2]; }
+    if (v126Heat > 0) { v126Heat = Math.max(0, v126Heat - dt / 6); const h = v126Heat * v126Heat; v126Fc = [1, .55 + .3 * (1 - h), .25 + .5 * (1 - h)]; flash = Math.max(flash, h * .22); trauma = Math.max(trauma, h * .3); }
+  } else { v126Lights(); if (sysP) { const sd = nrm([STARG[0] - sysO[0] - sysS[0], STARG[1] - sysO[1] - sysS[1], STARG[2] - sysO[2] - sysS[2]]); SUN[0] = sd[0]; SUN[1] = sd[1]; SUN[2] = sd[2]; } spaceSun = [SYS.pal[9], SYS.pal[10], SYS.pal[11]]; spacePal = Array.from(SYS.pal); { const k = typeof aimK === 'number' ? aimK : -1; v126Fc = k >= 0 && SYS.pk ? (() => { const a = airOf(SYS.pk[k], [SYS.pa[k * 4], SYS.pa[k * 4 + 1], SYS.pa[k * 4 + 2]]); return [.5 + .5 * a[0], .5 + .5 * a[1], .5 + .5 * a[2]]; })() : [1, .97, .95]; } v126Key = ''; dayOff = null; v126bf = 0; vCnt = 0; v126PG = [0, 0, 0, 0]; SUN[0] = SUNSP[0]; SUN[1] = SUNSP[1]; SUN[2] = SUNSP[2]; }
 }
 // altitude above the real ground when there is one, kilometres
-function v126Alt() { return hasTerr() ? Math.max(0, py - tGround(px, pz)) / 1000 : null; }
+function v126Alt() { return hasTerr() ? Math.max(0, py - tGround(px, pz)) / 1000 : isCont() ? Math.max(0, v126Hh) / 1000 : null; }
 const v123SimV = v123Sim;
 v123Sim = function (dt, fly) { v123SimV(dt, fly); try { v126Tick(dt, fly); } catch (e) { console.error('v126', e); } };
 const v122DrawV126 = v122Draw;
@@ -5569,9 +5770,9 @@ void main(){int id=gl_VertexID,i=uP.z<.5?id/2:id,e=uP.z<.5?id-(id/2)*2:0;float f
  if(uP.z>.5&&uP.z<1.5)p.x+=sin(TIME*.8+fi)*1.2;
  vec3 r=p;if(e==1)r-=(uWind-uVl)*uP.w;
  float d=length(p);vA=smoothstep(uP.y*.5,uP.y*.22,d)*smoothstep(1.,5.,d);
- gl_Position=uVP*vec4(r,1.);gl_PointSize=uP.z>3.5?clamp(3.e4/max(d,1.),4.,256.):clamp((uP.z<1.5?170.:110.)/max(d,1.),1.5,14.);}`;
+ gl_Position=uVP*vec4(r,1.);gl_PointSize=uP.z>3.5?clamp(2.e4/max(d,1.),4.,140.):clamp((uP.z<1.5?170.:110.)/max(d,1.),1.5,14.);}`;
 const WX_F = HD + `uniform vec4 uC,uP;in float vA;out vec4 o;
-void main(){float a=vA*uC.a;if(uP.z>.5){vec2 q=gl_PointCoord-.5;float r=dot(q,q)*4.;a*=uP.z>3.5?exp(-r*2.6):smoothstep(1.,.25,r);}o=vec4(uC.rgb*a,a);}`;
+void main(){float a=vA*uC.a;if(uP.z>.5){vec2 q=gl_PointCoord-.5;float r=dot(q,q)*4.;a*=uP.z>3.5?exp(-r*4.)*smoothstep(1.,.55,r):smoothstep(1.,.25,r);}o=vec4(uC.rgb*a,a);}`;
 let WXP = null, wxKind = -1;   // null: not built yet; false: failed, leave it
 const WXK = [ // mode, count, box (m), wind xyz, streak (s), colour rgba
   [0, 2600, 140, [6, -34, 2], .035, [.75, .8, .9, .35]],     // rain
@@ -5592,10 +5793,20 @@ function v126Weather() {
   if (w >= 0 && v126bf > .05) { const W = WXK[w], sunH = Math.max(.15, Math.min(1, (SUN[1] + .4) / .65));
     gl.uniform3f(u.uWind, ...W[3]); gl.uniform4f(u.uP, 0, W[2], W[0], W[4]); gl.uniform4f(u.uC, W[5][0] * sunH, W[5][1] * sunH, W[5][2] * sunH, W[5][3] * v126bf);
     const n = W[1] * q | 0; gl.drawArrays(W[0] === 0 ? gl.LINES : gl.POINTS, 0, W[0] === 0 ? n * 2 : n); }
+  if (v126Heat > .05) { gl.uniform3f(u.uWind, -sFx * 1400, -sFy * 1400, -sFz * 1400); gl.uniform4f(u.uP, 0, 900, 4, 0); gl.uniform4f(u.uC, 1, .45, .15, Math.min(.5, v126Heat * .6)); gl.drawArrays(gl.POINTS, 0, 110 * q | 0); }   // re-entry: hot plasma streaming past
   if (veil > .08) {                                            // passing through cloud: soft wisps rushing past, in the colour of the air
     gl.uniform3f(u.uWind, -sFx * 900, -sFy * 900, -sFz * 900); gl.uniform4f(u.uP, 0, 1400, 4, 0);
     gl.uniform4f(u.uC, v126Fc[0] * .9, v126Fc[1] * .9, v126Fc[2] * .9, Math.min(.75, veil * .85)); gl.drawArrays(gl.POINTS, 0, 160 * q | 0); }
   gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE);
+}
+
+// leaving: back to space at the matching altitude, over the point you are above, facing the way you face
+function v126Exit(k) {
+  if (!cOn || !sysP || !sysP[k]) return false;
+  const P = sysP[k], R0 = PR[k], Rm = R0 * 1e6, na = nrm([px - cC[0], py - TGB + Rm, pz - cC[1]]), alt = Math.max(0, Math.hypot(px - cC[0], py - TGB + Rm, pz - cC[1]) - Rm) / 1e6, n = mv(cM, na), cp = Math.cos(pitch), Fa = [Math.sin(yaw) * cp, Math.sin(pitch), -Math.cos(yaw) * cp], F = mv(cM, Fa);
+  // over the point you are above now, not where you came down
+  sysS = [P[0] + n[0] * (R0 + alt), P[1] + n[1] * (R0 + alt), P[2] + n[2] * (R0 + alt)];
+  yaw = Math.atan2(F[0], -F[2]); pitch = Math.asin(Math.max(-1, Math.min(1, F[1]))); snap = 1; cOn = 0; return true;
 }
 // ============================================================================
 // Build everything (with a loading bar), then fly
@@ -5605,7 +5816,7 @@ noiseTex();
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.29';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
+const BUILD = 'v1.37';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 let draws = 0, verts = 0, frameDraws = 0, frameVerts = 0;
 const _dei = gl.drawElementsInstanced.bind(gl), _de = gl.drawElements.bind(gl), _da = gl.drawArrays.bind(gl);
 gl.drawElementsInstanced = (m, c, ty, off, n) => { draws++; verts += c * n; return _dei(m, c, ty, off, n); };
@@ -5658,9 +5869,10 @@ await step(.5, 'Waking the leviathans…');
 const mSiphon = siphonMesh(), mSpark = sparkMesh(), mCry = crystalMesh(), mJelly = jellyMesh(), mRay = rayMesh(), mDart = dartMesh(), mRing = ringMesh(), mSpire = spireMesh(), mWhale = whaleMesh(), mSerp = serpentMesh(), mTen = tendrilMesh(), mQuad = quadMesh(), mBox = boxMesh(), mCock = cockpitMesh(), mFighter = fighterMesh(), mFrig = [frigateMesh(0), frigateMesh(1)], mDrone = droneMesh(), mGate = gateMesh();
 for (const g of ST.dead) dead.add(g);
 await step(.62, 'Growing crystal…');
-const P_ROCK = prog(ROCK_V, ROCK_F), P_CRY = prog(CRY_V, CRY_F), P_LIFE = prog(LIFE_V, LIFE_F), P_SPR = prog(SPR_V, SPR_F);
-const P_SKY = prog(TRI_V, SKY_F), P_BLUR = prog(TRI_V, BLUR_F), P_RAY = prog(TRI_V, RAY_F.replace('precision', `#define NS ${Q.rays}\nprecision`)), P_COMP = prog(TRI_V, COMP_F), P_COCK = prog(COCK_V, COCK_F), P_SHIP = prog(SHIP_V, ROCK_F);
-const P_CAB = prog(COCK_V, COCK_F.replace('#version 300 es', '#version 300 es\n#define CABIN'));   // the quarters and the aux screen: their materials stay out of the dash's shader
+const pStep = async (p, t, vs, fs) => { await step(p, t); return progA(vs, fs); };   // one step per program: the bar moves as each one is ready
+const P_ROCK = await pStep(.63, 'Carving the rocks…', ROCK_V, ROCK_F), P_CRY = await pStep(.645, 'Growing crystal…', CRY_V, CRY_F), P_LIFE = await pStep(.66, 'Waking the drifters…', LIFE_V, LIFE_F), P_SPR = await pStep(.675, 'Scattering motes…', SPR_V, SPR_F);
+const P_SKY = await pStep(.69, 'Painting the sky, star by star…', TRI_V, SKY_F), P_BLUR = await pStep(.72, 'Softening the glare…', TRI_V, BLUR_F), P_RAY = await pStep(.73, 'Bending the light…', TRI_V, RAY_F.replace('precision', `#define NS ${Q.rays}\nprecision`)), P_COMP = await pStep(.745, 'Grinding the lens…', TRI_V, COMP_F), P_COCK = await pStep(.76, 'Lighting the dash…', COCK_V, COCK_F), P_SHIP = await pStep(.775, 'Plating the hulls…', SHIP_V, ROCK_F);
+const P_CAB = await pStep(.79, 'Warming the cab…', COCK_V, COCK_F.replace('#version 300 es', '#version 300 es\n#define CABIN'));   // the quarters and the aux screen: their materials stay out of the dash's shader
 gl.useProgram(P_CAB.p); gl.uniform1i(P_CAB.u.uPip, 6);   // the aux screen's picture lives in texture slot 6
 gl.useProgram(P_SHIP.p); gl.uniform3fv(P_SHIP.u['uTier[0]'], TCOL); gl.uniform1i(P_SHIP.u.uKind, 4); gl.uniform1f(P_SHIP.u.uFlat, 0);
 gl.useProgram(P_ROCK.p); gl.uniform3fv(P_ROCK.u['uTier[0]'], TCOL);
@@ -5759,7 +5971,7 @@ const hooks = [];
 function arrive(sec, loc, quiet) {
   const id = sysIdAt(sec[0], sec[1], sec[2]);
   if (!SYS || SYS.id !== id) SYS = mkSys(id);
-  SYS.sec = sec; setLoc(SYS, loc || 0); bakeNebula(SYS.seed);    // each place has its own clouds
+  SYS.sec = sec; setLoc(SYS, loc || 0); if (!keepNeb) bakeNebula(SYS.seed); keepNeb = 0;    // each place has its own clouds
   rpgArrive();
   ST.sec = sec; ST.loc = SYS.loc;
   px = 0; py = 30; pz = 760; yaw = Math.PI; pitch = 0; if (!softArr) snap = 1; gateIn = 0; tradeIn = 0;
@@ -5893,6 +6105,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyB' && flying()) jpOpen ? closePanel() : journalPanel();
   if (e.code === 'KeyT' && flying() && !jpOpen) navCycle(e.shiftKey ? -1 : 1);
   if (e.code === 'KeyF' && flying()) interact();
+  if (e.code === 'KeyG' && flying()) hlKey();   // v1.36 hyperlight
   if (e.code === 'Escape' && flying() && !locked) jpOpen ? closePanel() : menu();
   if (flying() && jpOpen && /^Digit[1-9]$/.test(e.code)) { const ri = items.map((d, i) => d.run ? i : -1).filter((i) => i >= 0); pick(ri[+e.code[5] - 1]); }   // the n-th row you can choose: text rows carry no number
   if (flying() && /^(Key[WASDQEX]|Space|Arrow|Tab)/.test(e.code)) e.preventDefault();
@@ -5908,11 +6121,17 @@ addEventListener('mousemove', (e) => {
   else { const r = cv.getBoundingClientRect(), h = r.height / 2; mxn = (e.clientX - r.left - r.width / 2) / h; myn = (e.clientY - r.top - h) / h; }
 });
 cv.addEventListener('mouseleave', () => { mxn = myn = 0; });
-addEventListener('wheel', (e) => { if (flying()) thr = Math.max(-.25, Math.min(1, thr - e.deltaY * .0007)); }, { passive: true });
+addEventListener('wheel', (e) => { if (flying()) thrMove(-e.deltaY * .0007); }, { passive: true });
+// v1.36: the throttle stops at zero on the way down; reverse takes a fresh push (let go a moment, then pull again)
+let thrStop = 0, thrDecT = -9, thrTip = 0, airK = 1, gateBrT = 0;
+function thrMove(d) { if (!d) return; const prevT = thrDecT; if (d < 0) thrDecT = tm;
+  if (d < 0 && thr > 0 && thr + d <= 0) { thr = 0; thrStop = 1; if (tm > thrTip) { thrTip = tm + 30; tip('Throttle at zero · let go and pull again for reverse', 2500); } return; }
+  if (d < 0 && thr === 0 && thrStop && tm - prevT < .3) return;
+  thrStop = 0; thr = Math.max(-.25, Math.min(1, thr + d)); }
 document.addEventListener('pointerlockchange', () => {
   const was = locked; locked = document.pointerLockElement === cv;
   if (locked) steer = 0;   // a late capture (after full screen settles) takes over from cursor steering
-  if (flying()) { B.className = locked ? 'g p' : 'g'; if (was && !locked) menu(); }
+  if (flying()) { B.className = locked ? 'g p' : 'g'; if (was && !locked && !PIP.big) menu(); }   // the aux display lets go of the mouse on purpose: that is not a pause
 });
 const tp = (t) => { const pr = matchMedia('(orientation:portrait) and (pointer:coarse)').matches; return pr ? [t.clientY, -t.clientX] : [t.clientX, t.clientY]; };
 const touch = (e) => {
@@ -6053,6 +6272,7 @@ function thud(v) {
 }
 function boom(size, dist) {
   if (!AC || AC.state !== 'running') return;
+  if (!isFinite(size)) size = 20; if (!isFinite(dist)) dist = 0;   // v1.37: a hit on a ship with no size used to throw
   const v = Math.min(.5, .07 + size * .01) / (1 + (dist || 0) / 420); if (v < .008) return;
   const t = AC.currentTime, dur = .65 + Math.min(1.05, size * .012);
   const o = AC.createOscillator(), g = AC.createGain(); o.type = 'sine';
@@ -6335,17 +6555,18 @@ function eye(fb, x, y, w, h, tw, th) {
   // the sky fills whatever is left
   gl.depthFunc(gl.LEQUAL); gl.depthMask(false);
   if (NO.includes('k')) skyw.fill(0);
-  gl.useProgram(P_SKY.p); bigStarsSet(); gl.uniform4fv(P_SKY.u.uSky, skyw); gl.uniform4fv(P_SKY.u['uPl[0]'], SYS.pl); gl.uniform4fv(P_SKY.u['uPa[0]'], SYS.pa); gl.uniform3fv(P_SKY.u['uPb[0]'], SYS.pb); gl.uniform3f(P_SKY.u.uSd, SYS.seed[0], SYS.seed[1], SYS.seed[2]); gl.uniform4f(P_SKY.u.uPh, SYS.atm ? 0 : SYS.ph, SYS.phs, SYS.atm ? v126bf : 0, v126ceil); if (P_SKY.u.uAir) gl.uniform3f(P_SKY.u.uAir, ...v126Air); gl.uniform3f(P_SKY.u.uPq, SYS.pq[0], SYS.pq[1], SYS.pq[2]);
-  { const pk = SYS.pk || [0, 3, 5, 0]; if (P_SKY.u.uPk) gl.uniform4f(P_SKY.u.uPk, pk[0], pk[1], pk[2], 0);
+  gl.useProgram(P_SKY.p); bigStarsSet(); gl.uniform4fv(P_SKY.u.uSky, skyw); gl.uniform4fv(P_SKY.u['uPl[0]'], SYS.pl); { const dk = [0, 1, 2].map((k) => { const w = SYS.pl[k * 4 + 3]; return w > 0 ? PR[k] / w : 1e18; }); const o = [0, 1, 2].sort((a, b) => dk[b] - dk[a]); gl.uniform3f(P_SKY.u.uPo, o[0], o[1], o[2]); }   // draw order: farthest first gl.uniform4fv(P_SKY.u['uPa[0]'], SYS.pa); gl.uniform3fv(P_SKY.u['uPb[0]'], SYS.pb); gl.uniform3f(P_SKY.u.uSd, SYS.seed[0], SYS.seed[1], SYS.seed[2]); gl.uniform4f(P_SKY.u.uPh, SYS.atm ? 0 : SYS.ph, SYS.phs, SYS.atm ? v126bf : 0, v126ceil); if (P_SKY.u.uAir) gl.uniform3f(P_SKY.u.uAir, ...v126Air); gl.uniform3f(P_SKY.u.uPq, SYS.pq[0], SYS.pq[1], SYS.pq[2]);
+  { const pk = SYS.pk || [0, 3, 5, 0]; if (P_SKY.u.uPk) gl.uniform4f(P_SKY.u.uPk, pk[0], pk[1], pk[2], SYS.atm ? SYS.atm - 1 : -1); if (P_SKY.u['uPLd[0]']) gl.uniform3fv(P_SKY.u['uPLd[0]'], v126PL); if (P_SKY.u.uPG) { gl.uniform4f(P_SKY.u.uPG, v126PG[0], v126PG[1], v126PG[2], v126PG[3]); gl.uniformMatrix3fv(P_SKY.u.uPM, false, v126PM); gl.uniform3f(P_SKY.u.uPD, v126PD[0], v126PD[1], v126PD[2]); }
     const k = SYS.atm ? SYS.atm - 1 : 0, skin = SYS.atm && SYS.locs[SYS.loc] ? SYS.locs[SYS.loc].skin : 0;
     const look = !SYS.atm ? 0 : skin === 0 || skin === 4 ? 1 : skin === 5 || skin === 7 ? 3 : 2;
-    gl.uniform4f(P_SKY.u.uOrb, look, (hasTerr() ? Math.max(300, Math.min(30000, py - TCTOP + 600)) : Math.max(700, Math.min(30000, 2600 + py * .5))), px, pz); gl.uniform3f(P_SKY.u.uOa, SYS.pa[k * 4], SYS.pa[k * 4 + 1], SYS.pa[k * 4 + 2]); gl.uniform3f(P_SKY.u.uOb, SYS.pb[k * 3], SYS.pb[k * 3 + 1], SYS.pb[k * 3 + 2]); } gl.bindVertexArray(VA0); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.uniform4f(P_SKY.u.uOrb, look, (isCont() ? Math.max(20, v126Hh) : Math.max(700, Math.min(30000, 2600 + py * .5))), px, pz); gl.uniform3f(P_SKY.u.uOa, SYS.pa[k * 4], SYS.pa[k * 4 + 1], SYS.pa[k * 4 + 2]); gl.uniform3f(P_SKY.u.uOb, SYS.pb[k * 3], SYS.pb[k * 3 + 1], SYS.pb[k * 3 + 2]); } gl.bindVertexArray(VA0); gl.drawArrays(gl.TRIANGLES, 0, 3);
   // glowing things, added on top (alpha is left alone: it marks open sky for the star shafts)
   gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE); gl.disable(gl.CULL_FACE);
   const Lf = P_LIFE, lu = Lf.u;
   gl.useProgram(Lf.p); if (lu.uVd) gl.uniform1f(lu.uVd, vd);
   if (NO.includes('l') || SYS.atm) LQ.n = LJ.n = LWh.n = 0;   // v1.26: space life stays in space
-  if (SYS.atm) { LY.n = LM.n = LSp.n = LTd.n = LTb.n = 0; LDk.n = 0; if (v126bf > .3) LW.n = 0; }   // no dust lanes in a planet's air; below the deck the sky's own stars do the night
+  if (SYS.atm) { LY.n = LM.n = LSp.n = LTd.n = LTb.n = 0; LDk.n = 0; if (v126bf > .3) LW.n = 0; }
+  if (SYS.atm && isCont()) for (const L of [LDr, LDs, LDe, LJ, LWh, LQ, LF, LFr, LTi, LH, LB, LS, LG, LD, LR, LMg, LP]) { L.n = 0; if (L.slaves) for (const q of L.slaves) q.n = 0; }   // v1.33: a planet's sky holds the planet: no swarms, space life, fleets or rock fields   // no dust lanes in a planet's air; below the deck the sky's own stars do the night
   gl.uniform1i(lu.uKind, 0); draw(Lf, LJ, mJelly); draw(Lf, LQ, mJelly);
   gl.uniform1i(lu.uKind, 1); draw(Lf, LY, mRay);
   gl.uniform1i(lu.uKind, 2); draw(Lf, LM, mDart);
@@ -6385,7 +6606,7 @@ function eye(fb, x, y, w, h, tw, th) {
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   // tone-map into the destination
   gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.viewport(x, y, w, h);
-  gl.useProgram(P_COMP.p); gl.uniform2f(P_COMP.u.uPx, 1 / tw, 1 / th); { const v = (k) => xr ? 0 : CFG[k], fb = v('fxBlur') * 1.1, fc = v('fxCA'), vig = xr ? (CFG.vrVig || 0) * (.4 + .6 * Math.min(1, bst)) : v('fxVig'); gl.uniform4f(P_COMP.u.uFx, fc ? fc * 1.9 : 0, v('fxGrain') * .09, mbx * fb, mby * fb); gl.uniform1f(P_COMP.u.uFs, fb * mbs); gl.uniform4f(P_COMP.u.uFy, v('fxScan'), CFG.fxBloom, vig, o2Hyp); gl.uniform4f(P_COMP.u.uFz, v('fxGlass'), 0, 0, 0); } gl.uniform3f(P_COMP.u.uJ, Math.max(jk, dbgJ, scE * .22) * .9, Math.max(tun, dbgT), jumpT + tm); { const fx = sFx * eRx + sFy * eRy + sFz * eRz, fy = sFx * eUx + sFy * eUy + sFz * eUz, fz = Math.max(.15, sFx * eFx + sFy * eFy + sFz * eFz), cl = (v) => Math.max(-.5, Math.min(1.5, v));   // where the ship's nose falls in this eye's picture
+  gl.useProgram(P_COMP.p); gl.uniform2f(P_COMP.u.uPx, 1 / tw, 1 / th); { const v = (k) => xr ? 0 : CFG[k], fb = v('fxBlur') * 1.1, fc = v('fxCA'), vig = xr ? (CFG.vrVig || 0) * (.4 + .6 * Math.min(1, bst)) : v('fxVig'); gl.uniform4f(P_COMP.u.uFx, fc ? fc * 1.9 : 0, v('fxGrain') * .09, mbx * fb, mby * fb); gl.uniform1f(P_COMP.u.uFs, fb * mbs); gl.uniform4f(P_COMP.u.uFy, v('fxScan'), CFG.fxBloom, vig, o2Hyp); gl.uniform4f(P_COMP.u.uFz, v('fxGlass'), 0, 0, 0); } gl.uniform3f(P_COMP.u.uJ, Math.max(jk, dbgJ, scE * .22, hlFx * .6) * .9, Math.max(tun, dbgT, hlFx * .26), jumpT + tm + hlT * 2.5); { const fx = sFx * eRx + sFy * eRy + sFz * eRz, fy = sFx * eUx + sFy * eUy + sFz * eUz, fz = Math.max(.15, sFx * eFx + sFy * eFy + sFz * eFz), cl = (v) => Math.max(-.5, Math.min(1.5, v));   // where the ship's nose falls in this eye's picture
     gl.uniform2f(P_COMP.u.uJc, cl((fx / fz - tL) / (tR - tL)), cl((fy / fz - tB) / (tT - tB))); } if (P_COMP.u.uFc) gl.uniform3f(P_COMP.u.uFc, v126Fc[0], v126Fc[1], v126Fc[2]); gl.uniform3f(P_COMP.u.uFl, sux, suy, sux > -.2 && sux < 1.2 && suy > -.2 && suy < 1.2 ? sus * CFG.fxFlare * (csU[0] ? .2 : 1) : 0);
   gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, T.hdr.t); gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, bl[0].t); gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, T.ray.t);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -6453,21 +6674,23 @@ let slowTip = 0, last = 0, acc = 0, nf = 0, fps = 0, hold = 0, cool = 4000, hudN
 const YS = () => Math.cos(pitch) < 0 ? -1 : 1;                // past vertical the ship is on its back, so left and right swap: this keeps the stick's sense
 const curve = (v) => { const a = Math.min(1, Math.abs(v)) - .08; return a > 0 ? Math.sign(v) * a * Math.sqrt(a) : 0; };
 
-let gpFire = 0, gpBoost = 0, thrustT = 0, snapL = 0, snapR = 0;
+let padHl = false, padOff = 0, gpFire = 0, gpBoost = 0, thrustT = 0, snapL = 0, snapR = 0;
 function readPad(dt) {
   gpFire = 0; gpBoost = 0;
-  if (!navigator.getGamepads) return;
+  if (!navigator.getGamepads || padOff) return;
   const map = CFG.gp || { fire: 7, boost: 5 }, racer = CFG.padL !== 0;
   const fireB = racer ? (map.fire == null ? 7 : map.fire) : 7, boostB = racer ? (map.boost == null ? 5 : map.boost) : 6;
   const dead = (v) => Math.abs(v) < .18 ? 0 : v;
-  for (const gp of navigator.getGamepads()) {
+  let pads; try { pads = navigator.getGamepads(); } catch (e) { padOff = 1; console.warn('gamepads blocked here; keyboard and mouse only'); return; }   // inside a frame that forbids gamepads the call throws every time: stop asking
+  for (const gp of pads) {
     if (!gp || !gp.connected) continue;
     const ax = dead(gp.axes[0] || 0), ay = dead(gp.axes[1] || 0), ry = dead(gp.axes[3] || 0);
     if (!CFG.ctl) { yaw += YS() * ax * dt * 1.45; pitch -= IYS() * ay * dt * 1.2; dyaw += ax * dt * 1.45; }
     else { pitch -= IYS() * ay * dt * 1.15; rollIn += ax * dt * 1.5; }
-    thr = Math.max(-.25, Math.min(1, thr - ry * dt * .85));
+    thrMove(-ry * dt * .85);
     if (gp.buttons[fireB] && (gp.buttons[fireB].pressed || gp.buttons[fireB].value > .45)) gpFire = 1;
     if (gp.buttons[boostB] && (gp.buttons[boostB].pressed || gp.buttons[boostB].value > .45)) gpBoost = 1;
+    { const hb = !!(gp.buttons[3] && gp.buttons[3].pressed); if (hb && !padHl && flying()) hlKey(); padHl = hb; }   // v1.36: Y / triangle engages hyperlight
   }
 }
 function frame(now, xf) {
@@ -6495,10 +6718,10 @@ function frame(now, xf) {
   if (fly) {
     const fw = K.KeyW || K.ArrowUp ? 1 : 0, bk = K.KeyS || K.ArrowDown ? 1 : 0, rt = K.KeyD || K.ArrowRight ? 1 : 0, lf = K.KeyA || K.ArrowLeft ? 1 : 0;
     if (CFG.ctl) {                                                   // space sim: W S pitch, A D roll, Q E throttle, Z X altitude
-      thr = Math.max(-.25, Math.min(1, thr + ((K.KeyE ? 1 : 0) - (K.KeyQ ? 1 : 0)) * dt * .75));
+      thrMove(((K.KeyE ? 1 : 0) - (K.KeyQ ? 1 : 0)) * dt * .75);
       pitch -= IY() * (fw - bk) * dt * 1.2; rollIn += (rt - lf) * dt * 1.9; mu = (K.KeyX ? 1 : 0) - (K.KeyZ ? 1 : 0);
     } else {                                                         // standard: W S throttle, A D slide, Q E down and up
-      thr = Math.max(-.25, Math.min(1, thr + (fw - bk) * dt * .75));
+      thrMove((fw - bk) * dt * .75);
       ms = rt - lf; mu = (K.KeyE ? 1 : 0) - (K.KeyQ ? 1 : 0);
     }
     boost = K.ShiftLeft || K.ShiftRight ? 1 : 0;
@@ -6523,14 +6746,15 @@ function frame(now, xf) {
           else if (Math.abs(ax) < .3) { if (src.handedness === 'left') snapL = 0; else snapR = 0; }
           pitch -= IYS() * ay * dt * 1.05;
         } else { yaw += YS() * ax * dt * 1.35; pitch -= IYS() * ay * dt * 1.15; dyaw += ax * dt * 1.35; }
-      } else { thr = Math.max(-.25, Math.min(1, thr - ay * dt * .85)); ms += ax; }
+      } else { thrMove(-ay * dt * .85); ms += ax; }
     } if (typeof xrPauseWatch === 'function') xrPauseWatch(dt); }
     if (gpBoost) boost = 1;
     fwd = thr * 230 * eff * (1 + .12 * upLv('eng'));
+    airK = SYS.atm && isCont() ? 1 + 5 * tss(10800, 22000, v126Hh) : 1; fwd *= airK;   // v1.36: the higher and thinner the air, the faster you go: the top of the sky is crossed in seconds, up or down
   } else { yaw += dt * .018; gpFire = 0; }
   if (ST.hull < 25 || ST.fuel <= 0) boost = 0;
   if (fly && ST.fuel <= 0) fwd *= .18;                              // dry tanks: emergency thrusters only
-  bst += (boost - bst) * (1 - Math.exp(-dt * 2.5));
+  bst += (boost - bst) * (1 - Math.exp(-dt * (boost > bst ? 7 : 2.5)));   // v1.36: boost bites at once, eases off on release
   bHold = boost && fly ? bHold + dt : 0; bRamp = Math.min(1, Math.max(0, (bHold - 1) / 5));   // keep holding boost and it keeps building, to the top of the range
   bOd = SYS.atm ? 0 : Math.min(1, Math.max(0, (bHold - 7) / 18)); if (bOd > 0 && !odOn && !drift) { odOn = 1; pop('OVERDRIVE · ASSIST OFF', '#ffb347'); } if (!boost) odOn = 0;   // hold on past full boost: faster and faster, and the rocks are yours to dodge
   // the ship's attitude is a free rotation: every input turns it about its own axes, so it can roll, loop and fly inverted; code that points the ship sets yaw and pitch and raises snap
@@ -6564,8 +6788,10 @@ function frame(now, xf) {
   const sh = trauma * trauma * .02 + (xr ? 0 : bst * bst * .0035), Qb = roll ? qmul(QAs, qax(0, 0, 1, roll)) : QAs, Qv = sh > 0 ? qmul(Qb, qmul(qax(0, 1, 0, Math.sin(tm * 71) * sh), qax(1, 0, 0, Math.sin(tm * 93 + 1) * sh))) : Qb;
   { const R = qv(Qv, 1, 0, 0), U = qv(Qv, 0, 1, 0), F = qv(Qv, 0, 0, -1); sRx = R[0]; sRy = R[1]; sRz = R[2]; sUx = U[0]; sUy = U[1]; sUz = U[2]; sFx = F[0]; sFy = F[1]; sFz = F[2];
     spit = Math.asin(Math.max(-1, Math.min(1, F[1]))); syaw = Math.atan2(F[0], -F[2]); }
-  fwd += bst * 400 * eff * (1 + .55 * bRamp + .85 * bOd * (2 - bOd) * (drift ? 0 : 1));                                            // local rush tops out near 620; overdrive (held 7 s+) climbs toward ~960 over the next 18 s; the long-range drive carries you across the system                                          // Shift is thrust on its own: no need to hold forward
-  const k = 1 - Math.exp(-dt * (bst > .3 ? 1.5 : 1.05));
+  fwd = fwd * (1 - bst) + bst * 630 * eff * (1 + .35 * bRamp + .55 * bOd * (2 - bOd) * (drift ? 0 : 1)) * (SYS.atm && isCont() ? airK : 1);   // v1.36: boost is its own tier: straight to top speed, whatever the throttle says (and the throttle stays where you left it)                                            // local rush tops out near 620; overdrive (held 7 s+) climbs toward ~960 over the next 18 s; the long-range drive carries you across the system                                          // Shift is thrust on its own: no need to hold forward
+  if (!SYS.atm && !jumpTo && fly) { const gd2 = Math.hypot(px, py, pz) || 1, toward = -(sFx * px + sFy * py + sFz * pz) / gd2;   // v1.36: the gate brakes you in: you come to rest in front of the ring instead of shooting past
+    if (gd2 < 3200 && toward > .55 && (navId === 'gate' || gd2 < 1500)) { const cap = Math.max(20, (gd2 - 110) * .3); if (fwd > cap) { fwd = cap; if (tm > gateBrT) { gateBrT = tm + 25; tip('Gate approach · braking', 2200); } } } }
+  const k = 1 - Math.exp(-dt * (bst > .3 ? 3 : 1.05));
   vx += (sFx * fwd + (sRx * ms + sUx * mu) * 45 - vx) * k; vy += (sFy * fwd + (sRy * ms + sUy * mu) * 45 - vy) * k; vz += (sFz * fwd + (sRz * ms + sUz * mu) * 45 - vz) * k;
   if (fly) rockAssist(dt);
   px += vx * dt; py += vy * dt; pz += vz * dt;
@@ -6585,10 +6811,10 @@ function frame(now, xf) {
   // the jump: the drive winds up, space stretches, and the new system is there when the flash clears
   if (jumpTo) {
     // wind-up (the view stretches and the stars smear), the tunnel (the new place is loaded behind it), and the drop out
-    jumpT += rdt; jk = sm(0, 1.6, jumpT) * (1 - sm(3.3, 4.1, jumpT)); tun = sm(1.4, 2, jumpT) * (1 - sm(3.1, 3.7, jumpT));
-    trauma = Math.min(1, trauma + rdt * (1.2 * jk + 1.5 * tun)); thr = Math.max(thr, .5 * jk);
-    if (jumpT > 2.5 && !jumped) { jumped = 1; arrive(jumpTo.sec, jumpTo.loc); flash = TEST ? 0 : .3; trauma = 1; if (AC && AC.state === 'running') { note(32, AC.currentTime, .18, 'sine', 2.5, 0); burst(AC.currentTime, 1.4, .2, 700, 50, 'lowpass'); } }
-    if (jumpT > 4.1) { jumpTo = null; jk = 0; tun = 0; }
+    jumpT += rdt; jk = sm(0, 2.8, jumpT) * (1 - sm(5.8, 7.2, jumpT)); tun = sm(2.4, 3.4, jumpT) * (1 - sm(5.4, 6.5, jumpT));   // v1.36: a longer, heavier jump: wind-up, a full tunnel, then out
+    trauma = Math.min(1, trauma + rdt * (.9 * jk + 1.6 * tun)); thr = Math.max(thr, .5 * jk); if (tun > .5) flash = Math.max(flash, .06 * tun * (.5 + .5 * Math.sin(jumpT * 31)));
+    if (jumpT > 4.4 && !jumped) { jumped = 1; arrive(jumpTo.sec, jumpTo.loc); flash = TEST ? 0 : .3; trauma = 1; if (AC && AC.state === 'running') { note(32, AC.currentTime, .18, 'sine', 2.5, 0); burst(AC.currentTime, 1.4, .2, 700, 50, 'lowpass'); } }
+    if (jumpT > 7.2) { jumpTo = null; jk = 0; tun = 0; }
   }
   // the cockpit rides on the ship: it lags behind hard acceleration, leans into turns, and the stick follows your hand
   const il = 1 / dt, axl = ((vx - ovx) * sRx + (vy - ovy) * sRy + (vz - ovz) * sRz) * il, ayl = ((vx - ovx) * sUx + (vy - ovy) * sUy + (vz - ovz) * sUz) * il, azl = ((vx - ovx) * sFx + (vy - ovy) * sFy + (vz - ovz) * sFz) * il;
@@ -6607,7 +6833,7 @@ function frame(now, xf) {
   for (let i = 0; i < LAYERS.length; i++) upd(LAYERS[i]);
 
   // views
-  const fov = Math.tan((64 + 6 * Math.abs(thr) + 30 * bst * bst + 6 * bRamp + 34 * jk) * Math.PI / 360);
+  const fov = Math.tan((64 + 6 * Math.abs(thr) + 30 * bst * bst + 22 * hlFx + 6 * bRamp + 34 * jk) * Math.PI / 360);
   if (xr) {
     const pose = xf.getViewerPose(xrRef), bl = xr.renderState.baseLayer;
     if (pose) for (const v of pose.views) {
