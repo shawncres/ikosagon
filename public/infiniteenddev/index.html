@@ -31,7 +31,17 @@ p, h1, ul { margin: 0; padding: 0; }
 /* title screen: the scene stays sharp; a scrim on the left carries a stacked title and a numbered list */
 #m { position: absolute; inset: 0; display: grid; grid-template-columns: minmax(0, 34em) 1fr; align-items: end; transition: opacity .5s, visibility .5s; }
 #m::before { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, #04050af2 0, #04050ab8 30%, #04050a00 62%), linear-gradient(0deg, #04050acc, #04050a00 30%); }
-.l #m::before { background: #04050a; }
+.l #m::before { background: linear-gradient(100deg, #04050ad0 0, #04050a80 34%, #04050a00 64%); }
+/* v1.42: while loading, a light sky of its own (CSS only, drifts on the compositor so it never looks stalled): stars and nebula, no game scene */
+#ldsky { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity 1.4s; overflow: hidden;
+  background: radial-gradient(ellipse 55% 38% at 72% 34%, #6a2f7a48, transparent 70%), radial-gradient(ellipse 48% 34% at 30% 72%, #1f5a8a40, transparent 70%),
+  radial-gradient(ellipse 30% 22% at 58% 58%, #c0704a22, transparent 70%), radial-gradient(ellipse 80% 60% at 50% 50%, #0b0e1c, #04050a); }
+.l #ldsky { opacity: 1; }
+#ldsky::before, #ldsky::after { content: ''; position: absolute; inset: -60%; background-repeat: repeat; will-change: transform; }
+#ldsky::before { background-image: radial-gradient(1.5px 1.5px at 82px 38px,#fff,transparent),radial-gradient(2px 2px at 18px 210px,#fff,transparent),radial-gradient(1px 1px at 93px 149px,#dfe8ff,transparent),radial-gradient(1.5px 1.5px at 9px 22px,#cfe3ff,transparent),radial-gradient(1px 1px at 17px 61px,#cfe3ff,transparent),radial-gradient(2px 2px at 15px 211px,#fff,transparent),radial-gradient(2px 2px at 57px 161px,#fff,transparent),radial-gradient(1.5px 1.5px at 147px 149px,#fff,transparent),radial-gradient(2px 2px at 56px 11px,#dfe8ff,transparent),radial-gradient(1px 1px at 74px 107px,#fff,transparent),radial-gradient(2px 2px at 146px 78px,#dfe8ff,transparent),radial-gradient(2px 2px at 26px 148px,#dfe8ff,transparent),radial-gradient(2px 2px at 95px 24px,#fff,transparent),radial-gradient(2px 2px at 144px 15px,#dfe8ff,transparent),radial-gradient(2px 2px at 127px 174px,#cfe3ff,transparent),radial-gradient(1.5px 1.5px at 198px 80px,#cfe3ff,transparent),radial-gradient(1px 1px at 92px 76px,#dfe8ff,transparent),radial-gradient(1px 1px at 178px 199px,#fff,transparent),radial-gradient(2px 2px at 147px 76px,#cfe3ff,transparent),radial-gradient(1.5px 1.5px at 224px 87px,#ffe9d0,transparent),radial-gradient(1px 1px at 155px 18px,#cfe3ff,transparent),radial-gradient(1px 1px at 42px 193px,#dfe8ff,transparent),radial-gradient(1.5px 1.5px at 238px 125px,#fff,transparent),radial-gradient(2px 2px at 171px 19px,#ffe9d0,transparent),radial-gradient(1px 1px at 87px 177px,#cfe3ff,transparent),radial-gradient(1.5px 1.5px at 148px 204px,#fff,transparent); background-size: 240px 240px; animation: ldd 140s linear infinite; }
+#ldsky::after { background-image: radial-gradient(1px 1px at 47px 138px,#cfe3ff,transparent),radial-gradient(1px 1px at 356px 340px,#fff,transparent),radial-gradient(1px 1px at 31px 374px,#ffe9d0,transparent),radial-gradient(1px 1px at 331px 295px,#cfe3ff,transparent),radial-gradient(1px 1px at 145px 366px,#cfe3ff,transparent),radial-gradient(1px 1px at 342px 177px,#fff,transparent),radial-gradient(1px 1px at 236px 181px,#dfe8ff,transparent),radial-gradient(1px 1px at 312px 59px,#cfe3ff,transparent),radial-gradient(1px 1px at 30px 111px,#ffe9d0,transparent),radial-gradient(1px 1px at 66px 378px,#dfe8ff,transparent),radial-gradient(1px 1px at 203px 200px,#cfe3ff,transparent),radial-gradient(1px 1px at 41px 85px,#cfe3ff,transparent),radial-gradient(1px 1px at 205px 281px,#ffe9d0,transparent),radial-gradient(1px 1px at 70px 220px,#ffe9d0,transparent),radial-gradient(1px 1px at 361px 212px,#ffe9d0,transparent),radial-gradient(1px 1px at 349px 194px,#dfe8ff,transparent),radial-gradient(1px 1px at 77px 42px,#dfe8ff,transparent),radial-gradient(1px 1px at 77px 118px,#dfe8ff,transparent); background-size: 390px 390px; opacity: .55; animation: ldd 260s linear infinite reverse; }
+@keyframes ldd { to { transform: translate3d(-240px, -120px, 0); } }
+#bf { transition: transform .45s ease-out; }
 .g #m { opacity: 0; visibility: hidden; }
 #col { position: relative; padding: 0 0 8vh 6vw; }
 #col::before { content: ""; position: absolute; left: 3.2vw; top: 0; bottom: 8vh; width: 1px; background: linear-gradient(var(--t), #35f2d600); }
@@ -139,6 +149,7 @@ body[class^="g"] #tip{display:none!important}   /* in flight the HUD shows messa
 </style>
 </head>
 <body class=l>
+<div id=ldsky></div>
 <div id=ver></div>
 <canvas id=c tabindex=0></canvas>
 <div id=hud><p id=gm></p><p id=sec></p><div id=thr><div id=tf></div></div><div id=cargo></div><p id=tip></p></div>
@@ -1063,7 +1074,7 @@ out vec2 vU;void main(){vec2 p=vec2(gl_VertexID<<1&2,gl_VertexID&2);vU=p;gl_Posi
 
 // the sky: nebula, stars, the sun, and a ringed giant with a moon
 const SKY_F = HD + `
-in vec2 vU;uniform vec4 uBS[8],uBC[8],uCS;uniform vec3 uCC;uniform vec4 uSky,uPl[3],uPa[3],uOrb,uPh,uPk;uniform vec3 uPb[3],uPLd[3],uSd,uOa,uOb,uPq,uAir,uPD;uniform vec3 uPo;uniform mat3 uPM;uniform vec4 uPG;out vec4 o;
+in vec2 vU;uniform vec4 uBS[8],uBC[8],uCS;uniform vec3 uCC;uniform vec4 uSky,uPl[3],uPa[3],uOrb,uPh,uPk;uniform vec3 uPb[3],uPLd[3],uSd,uOa,uOb,uPq,uAir,uPD;uniform vec3 uPo;uniform ivec3 uLoop;uniform mat3 uPM;uniform vec4 uPG;out vec4 o;
 float hsh(vec3 p){p=fract(p*.3183099+.1);p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
 float n3(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.-2.*f);
  return mix(mix(mix(hsh(i),hsh(i+vec3(1,0,0)),f.x),mix(hsh(i+vec3(0,1,0)),hsh(i+vec3(1,1,0)),f.x),f.y),
@@ -1218,7 +1229,7 @@ void main(){
  float st=stars(d,110.,.93)*3.+stars(d,230.,.9)*1.6+stars(d,60.,.985)*9.,fine=stars(d,470.,.62),hc=hsh(floor(d*230.));
  float Tk=mix(2800.,18000.,pow(hc,1.15));vec3 scol=mix(vec3(1.,.42,.16),mix(vec3(1.,.9,.7),vec3(.55,.7,1.),smoothstep(5200.,11000.,Tk)),smoothstep(3000.,5600.,Tk));
  c+=(st*1.5+fine*.9)*scol*(1.-.9*t.b);
- for(int i=0;i<8;i++)c+=bigStar(d,uBS[i],uBC[i])*(1.-.7*t.b);
+ for(int i=0;i<uLoop.x;i++)c+=bigStar(d,uBS[i],uBC[i])*(1.-.7*t.b);
  // one soft ribbon of light following a level curve of a smooth, gently warped field
  {vec3 q1=(d+uSd*.07)*.9;q1+=vec3(n3(q1*.8+3.),n3(q1*.8+13.),n3(q1*.8+23.))*1.5;
   float phi=n3(q1+50.)*.7+n3(q1*2.+9.)*.3,den=smoothstep(.5,.85,n3(q1*1.3+31.)*.75+t.r*.35);
@@ -1260,7 +1271,7 @@ void main(){
     c+=mix(vec3(1.,.8,.55),vec3(.8,.88,1.),hsh(vec3(gi,7.)))*(step(1.-fall*.9,h)*exp(-dot(gf,gf)*14.)*1.6+fall*.1);}
   }}
 
- for(int j=0;j<3;j++){int i=int(j==0?uPo.x:j==1?uPo.y:uPo.z);if(uPl[i].w>0.&&!(uPG.x>.5&&float(i)==uPk.w)){float kd=i==0?uPk.x:i==1?uPk.y:uPk.z;vec4 p=planet(uPG.x>.5?uPM*d:d,uPl[i].xyz,uPG.x>.5?min(uPl[i].w,.08):uPl[i].w,uPa[i].rgb,uPb[i],uPa[i].a,kd,vec4(uPLd[i],dot(uPLd[i],uPLd[i])>.5?1.:0.));c=c*(1.-p.a)+p.rgb;m*=1.-p.a;}}
+ for(int j=0;j<uLoop.y;j++){int i=int(j==0?uPo.x:j==1?uPo.y:uPo.z);if(uPl[i].w>0.&&!(uPG.x>.5&&float(i)==uPk.w)){float kd=i==0?uPk.x:i==1?uPk.y:uPk.z;vec4 p=planet(uPG.x>.5?uPM*d:d,uPl[i].xyz,uPG.x>.5?min(uPl[i].w,.08):uPl[i].w,uPa[i].rgb,uPb[i],uPa[i].a,kd,vec4(uPLd[i],dot(uPLd[i],uPLd[i])>.5?1.:0.));c=c*(1.-p.a)+p.rgb;m*=1.-p.a;}}
  if(uOrb.x>0.){float R=uPG.x>.5?uPG.w:90000.,h=uOrb.y,cl=R+h,b=-d.y*cl,q=2.*R*h+h*h,disc=b*b-q;vec3 L=uSun.xyz;float sunEl=L.y;c*=1.-.85*smoothstep(-.1,.25,sunEl)*uPh.z;m*=1.-.85*smoothstep(-.1,.25,sunEl)*uPh.z;   // v1.26: under a day sky the stars go: the sun here is the planet's day, set from where you came down
   vec3 sunT=uSunC.rgb/max(max(uSunC.r,uSunC.g),max(uSunC.b,.05)),at=mix(uAir*mix(vec3(1.),sunT,.55),uOa,.25);float sunH=smoothstep(-.25,.25,L.y+.15);
   // the horizon: ground and sky both melt into one band of haze, brightest toward the sun, with a thin glow along the limb
@@ -1309,24 +1320,6 @@ void main(){
    if(uPh.z>0.&&d.y<0.){c=mix(c,hcol,uPh.z);m*=1.-uPh.z;}   // below the deck, everything under the level line is the far haze the ground fades into
    if(uPh.z>0.&&d.y>0.){float t=uPh.w/max(d.y,.03);vec2 q=d.xz*t+uOrb.zw;int k3=int(uPG.z+.5);float ca3=uPG.x<.5?.58:k3==0?1.:k3==1?.5:k3==2?.25:k3==3?.65:k3==4?.75:k3==5?.5:k3==6?.4:0.,cv=uPG.x<.5?smoothstep(1.-ca3,1.-ca3+.3,tn(vec3(q*.00012,1.7))*.62+tn(vec3(q*.0005,4.1))*.38):clamp(cloudD(uPM*normalize(d*t-uPD*(R+h)),1.)*1.1+.45*(tn(vec3(q*.00012,1.7))*.62+tn(vec3(q*.0005,4.1))*.38-.5)*.55,0.,1.)*step(.01,ca3)*(k3==0||uPG.x<.5?1.:0.);   // the deck seen from below: an uneven ceiling, darker underneath, lit by the sun
     vec3 cu=mix(vec3(.82,.84,.88),at,.3)*(.24+.63*sunH)+uSunC.rgb*pow(max(dot(d,L),0.),6.)*.5*sunH;float fd=smoothstep(0.,.18,d.y)*(1.-exp(-1.5e4/t));c=mix(c,cu,cv*fd*uPh.z*.92);m*=1.-cv*fd*uPh.z*.92;}}   // haze above the horizon, and the glow along it
-  // v1.40: real clouds. A layer of cloud wrapped round the planet (10.8–12.6 km up), marched along the view ray: where it forms is
-  // the cloud cover you saw from orbit, the billows are 3D noise, each step is lit by looking a little way toward the sun.
-  if(uPG.x>.5){int kv=int(uPG.z+.5);if(kv!=0&&kv!=1&&kv!=7){
-   float rb=R+10800.,rt=R+12600.,rc=R+h;vec3 C=uPD*rc;float bd=dot(d,C),k0=bd*bd-rc*rc,dT=k0+rt*rt,dB=k0+rb*rb,t0=0.,t1=-1.;
-   if(dT>0.){float sT=sqrt(dT);t0=rc>rt?max(bd-sT,0.):0.;t1=bd+sT;
-    if(dB>0.){float sB=sqrt(dB);if(rc<rb)t0=max(bd+sB,0.);else if(bd-sB>0.)t1=min(t1,bd-sB);}}
-   float tG=(b>0.&&disc>0.)?b-sqrt(disc):1e9;t1=min(min(t1,tG),t0+80000.);
-   if(t1>t0){float covA=cloudD(uPM*normalize(d*(t0+(t1-t0)*.15)-C),1.),covB=cloudD(uPM*normalize(d*(t0+(t1-t0)*.85)-C),1.);
-    if(max(covA,covB)>.03){float ds=(t1-t0)/10.,jit=hsh(vec3(gl_FragCoord.xy*.73,fract(TIME*3.7)*97.)),T=1.;vec3 acc=vec3(0.);
-     vec3 sunC=uSunC.rgb*mix(vec3(1.,.58,.36),vec3(1.),smoothstep(-.05,.4,L.y)),amb=mix(hcol,at*vec3(.8,.9,1.1),.5);
-     for(int i=0;i<10;i++){float tt=t0+(float(i)+jit)*ds;vec3 X=d*tt;float r=length(X-C),hn=(r-rb)/(rt-rb);if(hn<0.||hn>1.)continue;
-      float cv=mix(covA,covB,(float(i)+jit)*.1);vec3 wp=vec3(X.x+uOrb.z,r-R,X.z+uOrb.w);
-      float dn=tn(wp*.00021)*.62+tn(wp*.00085+3.1)*.38,pf=smoothstep(0.,.2,hn)*smoothstep(1.,.5,hn),den=clamp((cv*1.4+dn*.8-1.05)*2.8,0.,1.)*pf;if(den<.01)continue;
-      vec3 Xl=X+L*380.;vec3 wl=vec3(Xl.x+uOrb.z,length(Xl-C)-R,Xl.z+uOrb.w);float dl=clamp((cv*1.4+(tn(wl*.00021)*.62+tn(wl*.00085+3.1)*.38)*.8-1.05)*2.8,0.,1.);
-      float Tl=exp(-dl*2.4),pw=1.-exp(-den*2.5);
-      vec3 col=(sunC*Tl*pw*1.35*sunH+amb*(.42+.3*hn))*(.3+.7*sunH)+vec3(.035,.04,.055);
-      float a=1.-exp(-den*ds*.0017);acc+=T*a*col;T*=1.-a;if(T<.03)break;}
-     float hz=1.-exp(-(t0+ds*3.)/140000.);acc=mix(acc,hcol*(1.-T),hz*.85);c=c*T+acc;m*=T;}}}}
  }
  o=vec4(c,m);}`;
 
@@ -2882,7 +2875,8 @@ function cruiseTick(dt, fly) {
   if (!sysP) return;
   let near = 1e9, nk = -1;
   for (let k = 0; k < 3; k++) { const P = sysP[k]; if (!P) continue; const x = P[0] - sysS[0], y = P[1] - sysS[1], z = P[2] - sysS[2], d = Math.hypot(x, y, z) || 1; SYS.pl[k * 4] = x / d; SYS.pl[k * 4 + 1] = y / d; SYS.pl[k * 4 + 2] = z / d; SYS.pl[k * 4 + 3] = Math.min(1.35, PR[k] / d); if (d - PR[k] < near) { near = d - PR[k]; nk = k; } }
-  qfAlign(dt, near, nk); hlTick(dt, near, nk); if (hl) { drift = 0; driftV = 0; apOn = 0; scE = hlFx * .7; fogX = Math.max(fogX, .0032 * hlFx); return; }   // v1.36: hyperlight carries you; boost no longer creeps you across the system
+  qfAlign(dt, near, nk); hlTick(dt, near, nk);
+  if (nk >= 0 && contK((SYS.pk || [])[nk]) && SYS.locs.some((l) => l.atm === nk + 1) && (drift || orbAp || nk === aimK)) { const pre = tss(.05, .0205, near); v126Heat = pre > v126Heat ? pre : Math.max(0, v126Heat - dt * .4); } else if (!SYS.atm && v126Heat > 0) v126Heat = Math.max(0, v126Heat - dt * .4);   // v1.43: the heat builds on the way in if (hl) { drift = 0; driftV = 0; apOn = 0; scE = hlFx * .7; fogX = Math.max(fogX, .0032 * hlFx); return; }   // v1.36: hyperlight carries you; boost no longer creeps you across the system
   if (!drift) { driftV = 0; apOn = 0;
     // light drift is the top of the boost range: a planet targeted and ahead, boost held until it has built all the way, and the drive tips over into drift
     const c = navCur(), k = c && c.kind === 'planet' ? +c.id[1] : -1;
@@ -3525,7 +3519,8 @@ function radioTick(dt) {
 }
 let rdAirT = -1e9;
 const radioAir = () => !!CFG.radio && performance.now() - rdAirT < 8000;   // true while a song is playing, and through the moment between songs
-setInterval(() => radioTick(.25), 250);
+let bootOK = 0;
+setInterval(() => { if (bootOK) radioTick(.25); }, 250);   // v1.41: the radio waited for nothing and ran into the sound system before it existed, 4 times a second while loading
 for (const ev of ['pointerdown', 'keydown', 'touchend']) addEventListener(ev, () => { if (CFG.radio && rdA && rdA.paused && !rdHold) { const p = rdA.play(); if (p && p.catch) p.catch(() => {}); } }, true);   // browsers hold sound until the first tap or key
 
 // ---- solar flares: a warning, then a wash of light that strips shields. Getting behind something big is not modelled; riding it out is. ----
@@ -5576,7 +5571,7 @@ function v123Hooks() {
 // one shared grid drawn as nested rings (about 21k vertices), trees only within a kilometre, everything fogged into the same haze as the sky.
 const SUNSP = [.45 / .9966, .32 / .9966, -.83 / .9966];                         // the sun's direction out in space; planet-side it follows the planet's day
 let v126tf = 0, dayOff = null, v126Key = '', v126bf = 0, v126ceil = 3000, v126Air = [.32, .58, 1], v126Fc = [1, .97, .95], spaceSun = null, spacePal = null;
-const TGB = -6000, TCLOUD = 4800, TCTOP = 6500, TENTRY = 14000, TOUT = 16500;   // world y. Altitudes above the ground base: deck 9-12.5 km, the air's top 20 km, orbit again above 22.5 km   // world y: ground base, the cloud deck's underside and top, where you arrive from orbit, where orbit begins again
+const TGB = -6000, TCLOUD = 2500, TCTOP = 9500, TENTRY = 14000, TOUT = 16500;   // world y. Altitudes above the ground base: deck 9-12.5 km, the air's top 20 km, orbit again above 22.5 km   // world y: ground base, the cloud deck's underside and top, where you arrive from orbit, where orbit begins again
 // per world type: hills, ridges, canyon depth, sea level (metres), vegetation density, snow line
 const TK = { 1: [900, 3000, 900, -1e9, 0, 1e9], 2: [800, 2800, 1200, -1e9, .12, 1e9], 3: [1400, 4200, 700, 0, .55, 2700], 4: [900, 2600, 500, -120, .85, 1e9], 5: [1200, 4500, 800, -1e9, 0, -1e9], 6: [1000, 3200, 900, -1e9, .1, 2300] };   // hills, mountain ranges, canyons, sea, trees, snow line
 const airOf = (kind, pa) => kind === 3 || kind === 4 ? [.32, .58, 1] : kind === 2 ? [.95, .7, .42] : kind === 1 ? [1, .5, .22] : kind === 5 ? [.62, .86, 1] : kind === 0 ? [(pa[0] + 1) / 2, (pa[1] + .9) / 2, (pa[2] + .75) / 2] : kind === 6 ? [.75, .72, .85] : [0, 0, 0];
@@ -5752,7 +5747,15 @@ function v126Draw(vd) {
 // ---- v1.30: one planet. The ground below is the planet seen from space, drawn from the inside: same surface, true radius, same light.
 // cM maps the planet-side frame (y up, x/z across the ground) to the space frame at the point where you came down.
 let keepNeb = 0, v126Hh = 0, v126KeyC = '', v126Heat = 0;
-function v126Burn() { v126Heat = 1; trauma = Math.max(trauma, .45); tip('Atmospheric entry · the air takes your speed', 4000); }   // re-entry: a few seconds of heat on the canopy while the air bleeds the speed off   // set just before a continuous hop: the sky you are in stays the sky you were in
+// v1.43: re-entry hides the switch. The heat builds while you're still in space (from ~50 km up), peaks in a plasma flare at the exact
+// moment the planet-side view takes over, then burns off as you descend.
+let heatFlare = 0;
+function heatTick(dt) {
+  if (heatFlare > 0) heatFlare = Math.max(0, heatFlare - dt * 1.8);
+  if (v126Heat > 0 || heatFlare > 0) { if (SYS.atm) v126Heat = Math.max(0, v126Heat - dt / 6); const h = v126Heat * v126Heat; v126Fc = [1, .55 + .3 * (1 - h), .25 + .5 * (1 - h)];
+    flash = Math.max(flash, h * .34 + heatFlare * heatFlare * .8); trauma = Math.max(trauma, h * .3 + heatFlare * .4); }
+}
+function v126Burn() { v126Heat = 1; heatFlare = 1; trauma = Math.max(trauma, .45); tip('Atmospheric entry · the air takes your speed', 4000); }   // re-entry: a few seconds of heat on the canopy while the air bleeds the speed off   // set just before a continuous hop: the sky you are in stays the sky you were in
 let cOn = 0, cM = [1, 0, 0, 0, 1, 0, 0, 0, 1], cC = [0, 0], cS0 = [0, 1, 0], cAx = [1, 0, 0], cT0 = 0;
 const v126PM = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
 const v126PL = new Float32Array(9);   // each planet's light: from its star, fixed per place, the same from far off, up close and from inside
@@ -5789,9 +5792,11 @@ function v126Tick(dt, fly) {
     SUN[0] = L[0]; SUN[1] = L[1]; SUN[2] = L[2];
     if (isCont()) { const k = SYS.atm - 1, Rm = PR[k] * 1e6; tRm = Rm; if (!cOn && key !== v126KeyC) { v126KeyC = key; cC = [px, pz]; } { const cx = cC[0] - px, cy = TGB - Rm - py, cz = cC[1] - pz, dd = Math.hypot(cx, cy, cz); v126PD = [cx / dd, cy / dd, cz / dd]; v126PG = [1, Math.min(.99999, Rm / dd), tKind(), Rm]; v126Hh = dd - Rm; if (!cOn) v126PM.set([1, 0, 0, 0, 1, 0, 0, 0, 1]); } } else { v126PG = [0, 0, 0, 0]; tRm = 1e9; }
     if (hasTerr()) {
-      v126bf = tss(TCLOUD + 300, TCLOUD - 600, py); v126ceil = Math.max(150, TCLOUD - py); v126tf = tss(TCLOUD + 300, TCLOUD - 1600, py);   // the ground emerges through the deck as it thins, not all at once below it
+      v126bf = tss(TCLOUD + 300, TCLOUD - 600, py); v126ceil = Math.max(150, TCLOUD - py); v126tf = tss(TCLOUD + 2600, TCLOUD + 400, py);   // the ground emerges through the deck as it thins, not all at once below it
       const deck = tss(TCLOUD - 300, TCLOUD + 300, py) * tss(TCTOP + 400, TCTOP - 200, py);   // inside the deck: patchy cloud, thicker and thinner as you go
-      if (deck > .02 && CLOUDAMT[tKind()] > 0) { const cv = Math.min(1, Math.max(0, cloudJ(tSphJ(px, pz)) * 1.1 + (tvn(px * .0012 + py * .0009, pz * .0012) - .5) * .25)); veil = Math.max(veil, deck * (.02 + .3 * tss(.3, .7, cv))); }   // inside the deck: white-out where the planet's clouds are, clear sky where they aren't   // breaks and holes: a white-out, then clear, then cloud again
+      { const rv = v126tf > .01 && v126tf < .99 ? Math.sin(Math.PI * v126tf) : 0;   // v1.43: the ground switches on inside the cloud; where the cloud is thin, a haze closes in for that moment
+        if ((deck > .02 || rv > 0) && CLOUDAMT[tKind()] > 0) { const cv = tss(.3, .7, Math.min(1, Math.max(0, cloudJ(tSphJ(px, pz)) * 1.1 + (tvn(px * .0012 + py * .0009, pz * .0012) - .5) * .25))); veil = Math.max(veil, deck * (.02 + .3 * cv), rv * (.55 + .3 * (1 - cv))); }
+        else if (rv > 0) veil = Math.max(veil, rv * .7); }
       if (v126bf > .02 && (Math.hypot(px - vAt[0], pz - vAt[1]) > 110)) { vAt = [px, pz]; vegBuild(); }
       const g = tGround(px, pz);
       if (fly && py < g + 14) { const imp = -vy; py = g + 14; if (vy < 0) vy = 0; if (imp > 70 && tm > v126Crash) { v126Crash = tm + 1.5; hurtSrc = 'ground'; hurtSrcT = tm; hurt(Math.min(35, imp * .08)); trauma = Math.max(trauma, .6); } else if (tm > v126Tip) { v126Tip = tm + 8; tip('Ground contact · pull up', 2500); } }
@@ -5799,8 +5804,8 @@ function v126Tick(dt, fly) {
       if (isCont() && fly && py < TCTOP - 300) { py = TCTOP - 300; if (vy < 0) vy = 0; if (tm > v126Tip) { v126Tip = tm + 8; tip('The pressure below the cloud tops would crush the hull · holding here', 3500); } }
       if (isCont()) { const deck = tss(TCTOP - 900, TCTOP - 200, py) * tss(TCTOP + 500, TCTOP, py); if (deck > .02) veil = Math.max(veil, deck * (.3 + .4 * tvn(px * .0012 + py * .0009, pz * .0012))); } }
     const ac = v126Air; v126Fc = [.5 + .5 * ac[0], .5 + .5 * ac[1], .5 + .5 * ac[2]];
-    if (v126Heat > 0) { v126Heat = Math.max(0, v126Heat - dt / 6); const h = v126Heat * v126Heat; v126Fc = [1, .55 + .3 * (1 - h), .25 + .5 * (1 - h)]; flash = Math.max(flash, h * .22); trauma = Math.max(trauma, h * .3); }
-  } else { v126Lights(); if (sysP) { const sd = nrm([STARG[0] - sysO[0] - sysS[0], STARG[1] - sysO[1] - sysS[1], STARG[2] - sysO[2] - sysS[2]]); SUN[0] = sd[0]; SUN[1] = sd[1]; SUN[2] = sd[2]; } spaceSun = [SYS.pal[9], SYS.pal[10], SYS.pal[11]]; spacePal = Array.from(SYS.pal); { const k = typeof aimK === 'number' ? aimK : -1; v126Fc = k >= 0 && SYS.pk ? (() => { const a = airOf(SYS.pk[k], [SYS.pa[k * 4], SYS.pa[k * 4 + 1], SYS.pa[k * 4 + 2]]); return [.5 + .5 * a[0], .5 + .5 * a[1], .5 + .5 * a[2]]; })() : [1, .97, .95]; } v126Key = ''; dayOff = null; v126bf = 0; vCnt = 0; v126PG = [0, 0, 0, 0]; SUN[0] = SUNSP[0]; SUN[1] = SUNSP[1]; SUN[2] = SUNSP[2]; }
+    heatTick(dt);
+  } else { heatTick(dt); v126Lights(); if (sysP) { const sd = nrm([STARG[0] - sysO[0] - sysS[0], STARG[1] - sysO[1] - sysS[1], STARG[2] - sysO[2] - sysS[2]]); SUN[0] = sd[0]; SUN[1] = sd[1]; SUN[2] = sd[2]; } spaceSun = [SYS.pal[9], SYS.pal[10], SYS.pal[11]]; spacePal = Array.from(SYS.pal); { const k = typeof aimK === 'number' ? aimK : -1; v126Fc = k >= 0 && SYS.pk ? (() => { const a = airOf(SYS.pk[k], [SYS.pa[k * 4], SYS.pa[k * 4 + 1], SYS.pa[k * 4 + 2]]); return [.5 + .5 * a[0], .5 + .5 * a[1], .5 + .5 * a[2]]; })() : [1, .97, .95]; } v126Key = ''; dayOff = null; v126bf = 0; vCnt = 0; v126PG = [0, 0, 0, 0]; SUN[0] = SUNSP[0]; SUN[1] = SUNSP[1]; SUN[2] = SUNSP[2]; }
 }
 // altitude above the real ground when there is one, kilometres
 function v126Alt() { return hasTerr() ? Math.max(0, py - tGround(px, pz)) / 1000 : isCont() ? Math.max(0, v126Hh) / 1000 : null; }
@@ -5858,6 +5863,67 @@ function v126Exit(k) {
   sysS = [P[0] + n[0] * (R0 + alt), P[1] + n[1] * (R0 + alt), P[2] + n[2] * (R0 + alt)];
   yaw = Math.atan2(F[0], -F[2]); pitch = Math.asin(Math.max(-1, Math.min(1, F[1]))); snap = 1; cOn = 0; return true;
 }
+
+// ---- v1.42: the clouds, as their own pass: compiled in the background when a planet with air comes near (not at load), drawn over the
+// planet sky. A layer of cloud wrapped round the planet, marched along the view ray; where it forms is the cloud cover seen from orbit,
+// billows are 3D noise, each step is lit by looking a little toward the sun. Output: colour added, and what's behind dimmed by T.
+const CLD_F = HD + `
+#define CB 8500.
+#define CT 15500.
+in vec2 vU;uniform vec4 uOrb,uPG;uniform vec3 uPD,uOa,uAir;uniform mat3 uPM;uniform int uNC;out vec4 o;
+float hsh(vec3 p){p=fract(p*.3183099+.1);p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
+float vn(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*f*(f*(f*6.-15.)+10.);
+ return mix(mix(mix(hsh(i),hsh(i+vec3(1,0,0)),f.x),mix(hsh(i+vec3(0,1,0)),hsh(i+vec3(1,1,0)),f.x),f.y),
+  mix(mix(hsh(i+vec3(0,0,1)),hsh(i+vec3(1,0,1)),f.x),mix(hsh(i+vec3(0,1,1)),hsh(i+vec3(1,1,1)),f.x),f.y),f.z);}
+float tn(vec3 p){p*=4.;return .55*vn(p)+.3*vn(p*2.03+7.)+.15*vn(p*4.1+3.);}
+uint sh3(ivec3 p){uvec3 q=uvec3(p)*uvec3(1597334673u,3812015801u,2798796415u);return (q.x^q.y^q.z)*1597334673u;}
+float shv(ivec3 p){return float(sh3(p)>>8u)*(1./16777216.);}
+float sv3(vec3 x){vec3 i=floor(x),f=x-i;f=f*f*(3.-2.*f);ivec3 j=ivec3(i);
+ float a=mix(mix(shv(j),shv(j+ivec3(1,0,0)),f.x),mix(shv(j+ivec3(0,1,0)),shv(j+ivec3(1,1,0)),f.x),f.y);
+ float b=mix(mix(shv(j+ivec3(0,0,1)),shv(j+ivec3(1,0,1)),f.x),mix(shv(j+ivec3(0,1,1)),shv(j+ivec3(1,1,1)),f.x),f.y);return mix(a,b,f.z);}
+float sn(vec3 p){p*=4.;return .55*sv3(p)+.3*sv3(p*2.03+7.)+.15*sv3(p*4.1+3.);}
+float cloudD(vec3 n,float cz){vec3 cw=n+vec3(sn(n*2.+5.),sn(n*2.3+11.),sn(n*1.8+2.))*.32;float v=sn(cw*1.3);if(cz>0.)v+=((sn(cw*22.+3.)-.5)*.2+(sn(cw*85.+7.)-.5)*.08)*cz;return smoothstep(.52,.84,v);}
+float cloudA(vec3 n){return cloudD(n,0.);}
+void main(){
+ vec3 d=normalize(uFw.xyz+uRt.xyz*mix(uRt.w,uFw.w,vU.x)+uUp.xyz*mix(uUp.w,uVel.w,vU.y));
+ float R=uPG.w,h=uOrb.y,cl=R+h,b=-d.y*cl,q=2.*R*h+h*h,disc=b*b-q;vec3 L=uSun.xyz;
+ vec3 sunT=uSunC.rgb/max(max(uSunC.r,uSunC.g),max(uSunC.b,.05)),at=mix(uAir*mix(vec3(1.),sunT,.55),uOa,.25);float sunH=smoothstep(-.25,.25,L.y+.15);
+ float sdh=pow(max(dot(normalize(vec3(d.x,0.,d.z)+1e-4),normalize(vec3(L.x,0.,L.z)+1e-4)),0.),3.);
+ vec3 hcol=at*at*(.22+.55*sunH)+mix(vec3(1.,.55,.25),uSunC.rgb,.4)*sdh*(.15+.6*sunH)*(.4+.6*smoothstep(.35,-.05,L.y));
+ float rb=R+CB,rt=R+CT,rc=R+h;vec3 C=uPD*rc;float bd=dot(d,C),k0=bd*bd-rc*rc,dT=k0+rt*rt,dB=k0+rb*rb,t0=0.,t1=-1.;
+ if(dT>0.){float sT=sqrt(dT);t0=rc>rt?max(bd-sT,0.):0.;t1=bd+sT;
+  if(dB>0.){float sB=sqrt(dB);if(rc<rb)t0=max(bd+sB,0.);else if(bd-sB>0.)t1=min(t1,bd-sB);}}
+ float tG=(b>0.&&disc>0.)?b-sqrt(disc):1e9;t1=min(min(t1,tG),t0+110000.);
+ o=vec4(0.,0.,0.,1.);if(t1<=t0)return;
+ float covA=cloudD(uPM*normalize(d*(t0+(t1-t0)*.15)-C),1.),covB=cloudD(uPM*normalize(d*(t0+(t1-t0)*.85)-C),1.);
+ if(max(covA,covB)<.02)return;
+ float ns=float(uNC),ds=(t1-t0)/ns,jit=hsh(vec3(gl_FragCoord.xy*.73,fract(TIME*3.7)*97.)),T=1.;vec3 acc=vec3(0.);
+ vec3 sunC=uSunC.rgb*mix(vec3(1.,.58,.36),vec3(1.),smoothstep(-.05,.4,L.y)),amb=mix(hcol,at*vec3(.8,.9,1.1),.5);
+ for(int i=0;i<uNC;i++){float tt=t0+(float(i)+jit)*ds;vec3 X=d*tt;float r=length(X-C),hn=(r-rb)/(rt-rb);if(hn<0.||hn>1.)continue;
+  float cv=mix(covA,covB,(float(i)+jit)/ns);vec3 wp=vec3(X.x+uOrb.z,r-R,X.z+uOrb.w);
+  float big=tn(wp*.00009),dn=big*.5+tn(wp*.00032+3.1)*.33+tn(wp*.0011+7.3)*.17;   // big rolling masses, then billows, then fine edges
+  float top=.4+.6*big,pf=smoothstep(0.,.06,hn)*smoothstep(top,top*.55,hn),den=clamp((cv*1.6+dn*.95-1.12)*3.,0.,1.)*pf;if(den<.01)continue;   // flat bases, towering uneven tops
+  vec3 Xl=X+L*650.;float rl=length(Xl-C);vec3 wl=vec3(Xl.x+uOrb.z,rl-R,Xl.z+uOrb.w);float bl=tn(wl*.00009),dl=clamp((cv*1.6+(bl*.5+tn(wl*.00032+3.1)*.33)*1.13-1.12)*3.,0.,1.)*smoothstep(.4+.6*bl,(.4+.6*bl)*.55,(rl-rb)/(rt-rb));
+  float Tl=exp(-dl*2.6),pw=1.-exp(-den*2.4);
+  vec3 col=(sunC*Tl*pw*1.45*sunH+amb*(.38+.42*hn))*(.3+.7*sunH)+vec3(.035,.04,.055);
+  float a=1.-exp(-den*ds*.0016);acc+=T*a*col;T*=1.-a;if(T<.02)break;}
+ float hz=1.-exp(-(t0+ds*3.)/160000.);acc=mix(acc,hcol*(1.-T),hz*.85);o=vec4(acc,T);}`;
+
+let P_CLD = null, cldBusy = 0;
+function cldWant() {   // the clouds' program builds in the background once a world with air is close (or you're in its sky)
+  if (P_CLD || cldBusy) return;
+  let want = SYS.atm && isCont();
+  if (!want && sysP) for (let k = 0; k < 3; k++) if (sysP[k] && SYS.locs.some((l) => l.atm === k + 1) && Math.hypot(sysP[k][0] - sysS[0], sysP[k][1] - sysS[1], sysP[k][2] - sysS[2]) < PR[k] * 14) want = true;
+  if (!want) return;
+  cldBusy = 1; progA(TRI_V, CLD_F).then((p) => { P_CLD = p; }).catch((e) => { console.error('clouds', e); P_CLD = false; });
+}
+function cldDraw() {
+  cldWant(); if (!P_CLD || !(SYS.atm && isCont())) return; const kk = tKind(); if (kk === 0 || kk === 1 || kk === 7) return;
+  const u = P_CLD.u; gl.useProgram(P_CLD.p);
+  gl.uniform4f(u.uOrb, 0, Math.max(20, v126Hh), px, pz); gl.uniform4f(u.uPG, v126PG[0], v126PG[1], v126PG[2], v126PG[3]); gl.uniform3f(u.uPD, v126PD[0], v126PD[1], v126PD[2]); gl.uniformMatrix3fv(u.uPM, false, v126PM);
+  const k = SYS.atm - 1; gl.uniform3f(u.uOa, SYS.pa[k * 4], SYS.pa[k * 4 + 1], SYS.pa[k * 4 + 2]); if (u.uAir) gl.uniform3f(u.uAir, ...v126Air); gl.uniform1i(u.uNC, 12);
+  gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.ONE, gl.SRC_ALPHA, gl.ZERO, gl.SRC_ALPHA); gl.bindVertexArray(VA0); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.disable(gl.BLEND);
+}
 // ============================================================================
 // Build everything (with a loading bar), then fly
 // ============================================================================
@@ -5866,7 +5932,7 @@ noiseTex();
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.40';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
+const BUILD = 'v1.43';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 let draws = 0, verts = 0, frameDraws = 0, frameVerts = 0;
 const _dei = gl.drawElementsInstanced.bind(gl), _de = gl.drawElements.bind(gl), _da = gl.drawArrays.bind(gl);
 gl.drawElementsInstanced = (m, c, ty, off, n) => { draws++; verts += c * n; return _dei(m, c, ty, off, n); };
@@ -6243,6 +6309,7 @@ labels();
 // Sound. Nothing is recorded: a pad, a walking melody, bass and drums are synthesized, and each region has
 // its own key, scale and tempo. Speed adds energy; gunfire brings in the percussion.
 // ============================================================================
+bootOK = 1;   // v1.41: the sound system exists from here: timers that touch it may run
 let AC = null, AG = null, DL = null, NB = null, windG = null, windF = null, boostG = null, boostF = null, gatG = null, padF = null, padO = [], mT = 0, mStep = 0, mReg = -1, mWalk = 5, combat = 0, energy = 0;
 const mf = (m) => 440 * 2 ** ((m - 69) / 12);
 // the recorded score: five passages cut from the track, laid end to end in one file (start, length, level).
@@ -6619,11 +6686,11 @@ function eye(fb, x, y, w, h, tw, th) {
   // the sky fills whatever is left
   gl.depthFunc(gl.LEQUAL); gl.depthMask(false);
   if (NO.includes('k')) skyw.fill(0);
-  gl.useProgram(P_SKY.p); bigStarsSet(); gl.uniform4fv(P_SKY.u.uSky, skyw); gl.uniform4fv(P_SKY.u['uPl[0]'], SYS.pl); { const dk = [0, 1, 2].map((k) => { const w = SYS.pl[k * 4 + 3]; return w > 0 ? PR[k] / w : 1e18; }); const o = [0, 1, 2].sort((a, b) => dk[b] - dk[a]); gl.uniform3f(P_SKY.u.uPo, o[0], o[1], o[2]); }   // draw order: farthest first gl.uniform4fv(P_SKY.u['uPa[0]'], SYS.pa); gl.uniform3fv(P_SKY.u['uPb[0]'], SYS.pb); gl.uniform3f(P_SKY.u.uSd, SYS.seed[0], SYS.seed[1], SYS.seed[2]); gl.uniform4f(P_SKY.u.uPh, SYS.atm ? 0 : SYS.ph, SYS.phs, SYS.atm ? v126bf : 0, v126ceil); if (P_SKY.u.uAir) gl.uniform3f(P_SKY.u.uAir, ...v126Air); gl.uniform3f(P_SKY.u.uPq, SYS.pq[0], SYS.pq[1], SYS.pq[2]);
+  gl.useProgram(P_SKY.p); bigStarsSet(); gl.uniform4fv(P_SKY.u.uSky, skyw); gl.uniform4fv(P_SKY.u['uPl[0]'], SYS.pl); { const dk = [0, 1, 2].map((k) => { const w = SYS.pl[k * 4 + 3]; return w > 0 ? PR[k] / w : 1e18; }); const o = [0, 1, 2].sort((a, b) => dk[b] - dk[a]); gl.uniform3f(P_SKY.u.uPo, o[0], o[1], o[2]); } if (P_SKY.u.uLoop) gl.uniform3i(P_SKY.u.uLoop, 8, 3, 0);   // v1.41: loop counts come in as uniforms, so the shader compiler can't copy the loop bodies out (compile time on Windows)   // draw order: farthest first gl.uniform4fv(P_SKY.u['uPa[0]'], SYS.pa); gl.uniform3fv(P_SKY.u['uPb[0]'], SYS.pb); gl.uniform3f(P_SKY.u.uSd, SYS.seed[0], SYS.seed[1], SYS.seed[2]); gl.uniform4f(P_SKY.u.uPh, SYS.atm ? 0 : SYS.ph, SYS.phs, SYS.atm ? v126bf : 0, v126ceil); if (P_SKY.u.uAir) gl.uniform3f(P_SKY.u.uAir, ...v126Air); gl.uniform3f(P_SKY.u.uPq, SYS.pq[0], SYS.pq[1], SYS.pq[2]);
   { const pk = SYS.pk || [0, 3, 5, 0]; if (P_SKY.u.uPk) gl.uniform4f(P_SKY.u.uPk, pk[0], pk[1], pk[2], SYS.atm ? SYS.atm - 1 : -1); if (P_SKY.u['uPLd[0]']) gl.uniform3fv(P_SKY.u['uPLd[0]'], v126PL); if (P_SKY.u.uPG) { gl.uniform4f(P_SKY.u.uPG, v126PG[0], v126PG[1], v126PG[2], v126PG[3]); gl.uniformMatrix3fv(P_SKY.u.uPM, false, v126PM); gl.uniform3f(P_SKY.u.uPD, v126PD[0], v126PD[1], v126PD[2]); }
     const k = SYS.atm ? SYS.atm - 1 : 0, skin = SYS.atm && SYS.locs[SYS.loc] ? SYS.locs[SYS.loc].skin : 0;
     const look = !SYS.atm ? 0 : skin === 0 || skin === 4 ? 1 : skin === 5 || skin === 7 ? 3 : 2;
-    gl.uniform4f(P_SKY.u.uOrb, look, (isCont() ? Math.max(20, v126Hh) : Math.max(700, Math.min(30000, 2600 + py * .5))), px, pz); gl.uniform3f(P_SKY.u.uOa, SYS.pa[k * 4], SYS.pa[k * 4 + 1], SYS.pa[k * 4 + 2]); gl.uniform3f(P_SKY.u.uOb, SYS.pb[k * 3], SYS.pb[k * 3 + 1], SYS.pb[k * 3 + 2]); } gl.bindVertexArray(VA0); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.uniform4f(P_SKY.u.uOrb, look, (isCont() ? Math.max(20, v126Hh) : Math.max(700, Math.min(30000, 2600 + py * .5))), px, pz); gl.uniform3f(P_SKY.u.uOa, SYS.pa[k * 4], SYS.pa[k * 4 + 1], SYS.pa[k * 4 + 2]); gl.uniform3f(P_SKY.u.uOb, SYS.pb[k * 3], SYS.pb[k * 3 + 1], SYS.pb[k * 3 + 2]); } gl.bindVertexArray(VA0); gl.drawArrays(gl.TRIANGLES, 0, 3); cldDraw();
   // glowing things, added on top (alpha is left alone: it marks open sky for the star shafts)
   gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE); gl.disable(gl.CULL_FACE);
   const Lf = P_LIFE, lu = Lf.u;
@@ -6961,7 +7028,7 @@ function frame(now, xf) {
   }
 }
 
-arrive(ST.sec, ST.loc, 1);
+arrive(ST.sec, ST.loc, 1); if (SYS.atm) arrive(ST.sec, 0, 1);   // v1.42: a session always starts in space (a save made in a planet's sky resumes at the system's gate)
 resize();
 window.ES = { warpLook: (a, b) => { dbgJ = a; dbgT = b; }, zero: (i) => { const L = LAYERS[i]; L.n = 0; for (const s of L.slaves) s.n = 0; return LAYERS.length; }, dbg: (z) => { if (z) for (let i = 0; i < 3; i++) SYS.pl[i * 4 + 3] = 0; return Array.from(SYS.pl).map((v) => +v.toFixed(2)).concat(Array.from(SYS.pa).map((v) => +v.toFixed(2))); },
   build: () => BUILD, perf: () => ({ fps: +fps.toFixed(1), draws: frameDraws, verts: frameVerts, w: W, h: H, scale: +S.toFixed(2), lv: LV }), gen: () => ({ name: SYS.name, star: SYS.star, temp: SYS.temp | 0, fac: SYS.fac, danger: SYS.danger, belt: SYS.belt, dead: !!SYS.dead, planets: (SYS.planets || []).filter((p) => p.type !== 'none').map((p) => ({ name: p.name, type: p.type, rare: p.rare, au: p.orbit, moons: p.moons, anomaly: p.anomaly || '' })) }), cabin: () => ({ nv: mCock.nv, cb: mCock.cb, qt: mCock.qt, n: mCock.n, ng: mCock.ng }), newGame: newUniverse, goto: (sec, loc) => arrive(sec, loc || 0, 1), market: marketPanel, ph: (t) => { SYS.ph = t; SYS.pq = [sFx, sFy, sFz]; }, bh: () => { SYS.sky[0] = 1; pitch = Math.asin(-.22); yaw = Math.atan2(.58, -.78); snap = 1; }, seeNpc: (i) => { const a = NPCS.filter((q) => !q.big && q.var === i)[0]; if (!a) return -1; px = a.x + 22; py = a.y + 7; pz = a.z + 22; const dx = a.x - px, dy = a.y - py, dz = a.z - pz, l = Math.hypot(dx, dy, dz); pitch = Math.asin(dy / l); yaw = Math.atan2(dx, -dz); snap = 1; vx = vy = vz = 0; thr = 0; return a.var; }, linger: () => { for (let i = 0; i < 90; i++) lingerTick(.05); return [lingT, lingId, jpOpen]; }, tp: (x, y, z) => { px = x; py = y; pz = z; vx = vy = vz = 0; thr = 0; }, navCur, interact, map: starMap, drift: driftToggle, near: (k, f) => { const P = sysP[k]; sysS = [P[0] * f, P[1] * f, P[2] * f]; }, dsys: () => [sysS.map((v) => v | 0), driftV | 0, +SYS.pl[3].toFixed(3), SYS.atm, +veil.toFixed(2)], aim: (k, s) => { const d = SYS.pl, q = s || 1; pitch = Math.asin(q * d[k * 4 + 1]); yaw = Math.atan2(q * d[k * 4], -q * d[k * 4 + 2]); snap = 1; }, good: goodPanel, sc: (k, t) => { scP = k; scT = t; }, scOut: (t) => { scOut = t; vy = 120; thr = 1; }, host: (v) => { hostLv = v; npcSpawn(); }, rp: () => ST.rp, head: (y, p) => { hlF = y == null ? null : [y, p || 0]; }, nav: () => NAV.map((n) => n.id), npcs: () => NPCS.length, journal: journalPanel, board: boardPanel, hail: () => hailPanel(NPCS[0]), cycle: navCycle, atm: () => arrive(SYS.sec, SYS.locs.findIndex((l) => l.atm), 1), vrPanel: (v) => { hudForce = v; }, jt: () => [jumpT, !!jumpTo, SYS.loc, SYS.name, slow], system: describe, on: (f) => hooks.push(f), kind: (t) => { for (let x = 1; x < 400; x++) if ((sysIdAt(x, 0, 0) & 7) === t) return arrive([x, 0, 0], 0, 1); }, place: (t) => { const l = SYS.locs.find((q) => q.t === t); if (l) arrive(SYS.sec, l.i, 1); return !!l; }, startJump, gatePanel, logPanel, tradePanel, closePanel, hull: () => ST.hull, beacon: () => { px = bcn[0] + 200; py = bcn[1]; pz = bcn[2]; }, trader: () => trader, go, vr, cock: setCock, thr: (v) => { thr = v; }, key: (c, v) => { K[c] = v; }, look: (y, p) => { yaw = y; pitch = p; snap = 1; }, at: (x, y, z) => { px = x; py = y; pz = z; snap = 1; }, stereo: (v) => { stereo = v; resize(); },
