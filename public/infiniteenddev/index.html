@@ -473,7 +473,7 @@ function fillWorld(s, id, R) {
     const moons = kind === 0 ? 2 + (R() * 10 | 0) : kind === 7 ? 0 : R() * (1 + mass) | 0;
     const air = kind !== 7 && !(rogue && kind === 1);
     const pop = (kind === 3 || kind === 2) && Teq > 200 && Teq < 360 && !dead ? ['outposts', 'a mining colony', 'domed cities', 'no one'][R() * 4 | 0] : 'none';
-    { const wr = mulberry32(hs(Math.imul(id, 31) + i * 977 ^ 0x504C4E54)), ex = wr() < .17, hr = ex ? wr() * 6.2832 : (wr() - .5) * 1.1, sa = 1 + wr() * 1.1, va = .85 + wr() * .45;   // v1.51: every world its own colours (exotic ones any hue); own RNG so the universe's layout is unchanged
+    { const wr = mulberry32(hs(Math.imul(id, 31) + i * 977 ^ 0x504C4E54)), ex = wr() < .17, hr = ex ? wr() * 6.2832 : (wr() - .5) * 1.1, sa = .85 + wr() * .55, va = .62 + wr() * .3;   // v1.51: every world its own colours (exotic ones any hue); own RNG so the universe's layout is unchanged
       const co = Math.cos(hr), k = (1 - co) / 3, q = Math.sin(hr) * .57735, turn = (c) => { const r = co * c[0] + k * (c[0] + c[1] + c[2]) + q * (c[2] - c[1]), g = co * c[1] + k * (c[0] + c[1] + c[2]) + q * (c[0] - c[2]), b = co * c[2] + k * (c[0] + c[1] + c[2]) + q * (c[1] - c[0]), m = (r + g + b) / 3; return [r, g, b].map((v) => Math.max(.015, Math.min(1.2, (m + (v - m) * sa) * va))); };
       base = base.map(turn); }
     worlds.push({ au: a, mass, Teq, kind, rad, base, rare, anomaly, rings, moons, air, pop });
@@ -948,7 +948,7 @@ void main(){
 // soft sprites, additive. uMode 0 space dust (stretches into streaks at speed), 1 drifting spores, 2 nebula wisps
 const SPR_V = VI + `
 uniform int uMode;uniform float uDark;
-out vec2 vC;out vec4 vK;out vec3 vT;
+out vec2 vC;out vec4 vK;out vec3 vT;out vec3 vP;
 void main(){
  vec3 c=ctr(),p;float sd=iB.w,sz=iA.w,R=uCN.z,a;
  if(uMode<2){
@@ -970,9 +970,9 @@ void main(){
  }else{
   p=c+(uRt.xyz*aP.x+uUp.xyz*aP.y)*sz;vK=vec4(iC.rgb,4.+iC.w);
  }
- vC=aP.xy;vT=vec3(aP.xy*.22+sd*7.,sd*3.);gl_Position=uVP*vec4(p,1);}`;
+ vC=aP.xy;vT=vec3(aP.xy*.22+sd*7.,sd*3.);vP=p;gl_Position=uVP*vec4(p,1);}`;
 const SPR_F = HD + `
-in vec2 vC;in vec4 vK;in vec3 vT;out vec4 o;
+in vec2 vC;in vec4 vK;in vec3 vT;in vec3 vP;out vec4 o;uniform vec4 uPlS[3];
 void main(){float r=dot(vC,vC),a;
  vec3 jt=vT+(fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(.06711056,.00583715))))-.5)*.012;
  if(vK.w<.5)a=exp(-r*4.)-.018;
@@ -981,6 +981,7 @@ void main(){float r=dot(vC,vC),a;
  else if(vK.w<3.5)a=exp(-vC.x*vC.x*5.)*smoothstep(1.,.5,abs(vC.y));
  else if(vK.w<4.5)a=exp(-r*4.)-.018;
  else{float n=texture(uNz,jt).r*texture(uNz,jt*2.7+.4).r*4.;a=smoothstep(1.,.1,r)*smoothstep(.15,1.,n);}
+ if(vK.w>1.5&&vK.w<2.5){vec3 dd=normalize(vP);for(int i=0;i<3;i++){vec4 Q=uPlS[i];if(Q.w>0.){float an=acos(clamp(dot(dd,Q.xyz),-1.,1.)),rr=asin(min(Q.w,.999));a*=smoothstep(rr*.985,rr*1.03,an);}}}   // v1.52: the nebula sheets lie beyond the planets: a planet's disc hides them (they used to veil every world)
  o=vec4(vK.rgb*max(a,0.),0);}`;
 
 // the cockpit: solid metal lit by the system's star and sky, so light slides across it as the ship turns.
@@ -1257,7 +1258,7 @@ vec3 surfS(vec3 n,int k,vec3 ca,vec3 cb,vec3 L,out float land,out float cl){floa
   else if(k==7){float br=smoothstep(.12,0.,abs(w-.4)-.07);s=mix(ca*.5+.03,cb,w2)*(1.-br*.7);cl=0.;land=0.;}
   else{s=mix(mix(vec3(.8,.9,.97),cb,.4),mix(ca,vec3(.72,.86,.95),.2),.4+.2*w2);s=mix(s,ca*.4,smoothstep(.045,0.,abs(fract(n.y*5.+w*2.4)-.5)-.47)*.6);cl=smoothstep(.66,.9,w)*.2;land=1.;}
 
- s=mix(vec3(dot(s,vec3(.3,.5,.2))),s,1.38);s*=.94+.06*w3;return s;}
+ s=mix(vec3(dot(s,vec3(.3,.5,.2))),s,1.25);s*=.94+.06*w3;return s;}
 vec4 planet(vec3 d,vec3 P,float rp,vec3 ca,vec3 cb,float ring,float kd,vec4 Lo){
  float b=dot(d,P),ds=b*b-(1.-rp*rp);vec4 c=vec4(0);float ts=1e9;vec3 Ls0=Lo.w>0.?Lo.xyz:uSun.xyz;
  vec3 axis=normalize(abs(P.yzx)+vec3(.18,.9,.16));float spin=TIME*.008+P.x*4.+kd*1.7;int k=int(kd+.5);
@@ -1282,13 +1283,13 @@ vec4 planet(vec3 d,vec3 P,float rp,vec3 ca,vec3 cb,float ring,float kd,vec4 Lo){
   float shd=k==5||k==7?0.:(k==3?smoothstep(.46,.64,sn((n+L*.04)*1.15+.2)*.7+sn((n+L*.04)*2.6+.7)*.3):smoothstep(.52,.8,sn((n+L*.05)*1.2)))*(1.-cl);
   s*=1.-.32*shd;s=mix(s,k==0?mix(vec3(.96,.9,.8),ca,.45):mix(vec3(.92,.93,.95),airC,.18),cl);
   float nr=smoothstep(.45,.9,rp),lit=smoothstep(-.14,.2,nl),mu=max(dot(n,-d),0.),rim=pow(1.-mu,2.6)*(1.-nr*.85),hz=pow(1.-mu,1.55)*(1.-nr*.9),tw=exp(-nl*nl*36.)*smoothstep(-.22,.08,nl);
-  vec3 col=s*lit*(.45+.7*max(atm,vec3(.3)))*1.05+atm*.04*lit;
+  vec3 col=s*lit*(.22+.78*max(nl,0.))*(.45+.7*max(atm,vec3(.3)))*.92+atm*.04*lit;   // v1.52: falls off toward the terminator (was flat lit, so worlds glowed like discs)
   if(k==1)col+=vec3(1.,.32,.04)*land*(1.6+.5*sin(TIME*.35+w*18.));
   if(k==3)col+=vec3(1.,.74,.4)*(1.-lit)*land*smoothstep(.7,.9,w3)*1.5;
   if(k==5)col+=vec3(.55,.75,1.)*(1.-lit)*.05;
   if(k==6)col+=vec3(1.,.4,.08)*land*(1.-smoothstep(.2,.8,dot(n,L)))*.35;
   col+=vec3(1.,.48,.22)*tw*(.12+.45*cl);
-  col=mix(col,atm*(.12+1.05*lit),hz*.45);
+  col=mix(col,atm*(.12+1.05*lit),hz*.55);
   col+=atm*rim*pow(max(dot(d,Ls0),0.),4.)*1.35;{float ray=pow(1.-mu,2.5);vec3 rayC=airK*mix(airC*vec3(.55,.66,1.),vec3(1.,.52,.25)*sunT,pow(max(dot(d,Ls0),0.),2.2));col+=rayC*ray*(.2+.95*max(nl,0.))*1.25+uSunC.rgb*pow(max(dot(d,Ls0),0.),7.)*ray*.5;}if(k==3){vec3 Rv=reflect(-L,n);col+=uSunC.rgb*pow(max(dot(Rv,-d),0.),48.)*(1.-land)*lit*(1.4+.8*w3);}if((k==2||k==3||k==5)&&nl<.08){float ct=step(.74,sn(n*22.))*step(.58,sn(n*6.5+2.));col+=mix(vec3(1.,.74,.38),vec3(.5,.72,1.),sn(n*3.))*ct*smoothstep(.2,-.5,nl)*2.6;}
   c=vec4(col,1.);}
  else if(b>0.&&rp>0.){float h=(acos(clamp(b,-1.,1.))-asin(min(rp,.999)))/rp;
@@ -2631,9 +2632,8 @@ function xrPad(src, gp) {
     return 1;
   }
   if (menuEdge) pausePanel();
-  if (h === 'right') { if (edge(4)) interact(); if (edge(5)) navCycle(1); }
-  else { if (edge(4)) journalPanel(); if (edge(5)) wpnCycle(); }
-  if (h === (CFG.vrHand ? 'left' : 'right') && edge(3)) thr = 0;
+  const ed = { 3: edge(3), 4: edge(4), 5: edge(5) };   // v1.53: face buttons and stick clicks run whatever Settings binds to them
+  for (const [act] of VR_ACTS) { const b = vb(act); if (b && b[0] === h[0] && ed[+b.slice(1)]) padAct(act); }
   return 0;
 }
 function xrPauseWatch(dt) {
@@ -2860,6 +2860,7 @@ addEventListener('pointerdown', (e) => { if ($('card').className === 'on' && !$(
 const canon = new Set(ACTS.map((a) => a[0]));
 const relay = (e) => {
   if (!e.isTrusted) return;
+  if (rebind && !rebind.startsWith('key:') && e.type === 'keydown') { if (e.code === 'Escape') { rebind = null; setUi(); } e.stopImmediatePropagation(); e.preventDefault(); return; }
   if (rebind && e.type === 'keydown') { e.stopImmediatePropagation(); e.preventDefault(); if (e.code !== 'Escape') { const a = rebind.slice(4); for (const k in CFG.keys) if (CFG.keys[k] === e.code) delete CFG.keys[k]; if (e.code === a) delete CFG.keys[a]; else CFG.keys[a] = e.code; } rebind = null; setUi(); return; }
   if (PIP.big) { pipKey(e); e.stopImmediatePropagation(); e.preventDefault(); return; }   // the aux display has the keys while it is open
   if (invOpen) { if (e.type === 'keydown' && (e.code === 'Escape' || e.code === 'KeyI')) invClose(); e.stopImmediatePropagation(); return; }
@@ -2900,11 +2901,11 @@ const hlPos = (c) => { if (!c || !sysP) return null; if (c.kind === 'planet') { 
 // v1.51: a world only blocks hyperlight when it's actually in the path ahead (leaving the planet you just climbed out of no longer counts)
 function hlBlock(j, u, rem) { const P = sysP[j]; if (!P) return false; const x = P[0] - sysS[0], y = P[1] - sysS[1], z = P[2] - sysS[2], al = x * u[0] + y * u[1] + z * u[2];
   if (al <= 0 || al > rem + PR[j]) return false; return Math.hypot(x - u[0] * al, y - u[1] * al, z - u[2] * al) < PR[j] * 1.15; }
-function hlStop(msg) { hl = 0; hlT = 0; hlRdy = 0; if (msg) tip(msg, 4000); }
+function hlStop(msg) { if (hl) buzz(.55, 300); hl = 0; hlT = 0; hlRdy = 0; if (msg) tip(msg, 4000); }
 function hlKey() {
   if (SYS.atm) { tip('Hyperlight needs open space: climb out of the air first', 3000); return; }
   if (hl) { hlStop('Hyperlight disengaged'); return; }
-  if (hlRdy >= TUNE.hlReady) { hl = 1; hlT = 0; tip('Hyperlight spooling…', 1500); if (AC && AC.state === 'running') burst(AC.currentTime, 1.4, .16, 60, 600, 'lowpass'); }
+  if (hlRdy >= TUNE.hlReady) { hl = 1; hlT = 0; buzz(.45, 1300); tip('Hyperlight spooling…', 1500); if (AC && AC.state === 'running') burst(AC.currentTime, 1.4, .16, 60, 600, 'lowpass'); }
   else tip('Hyperlight: target a world or a place, hold it in your sights until it reads READY, then G', 4500);
 }
 function hlTick(dt, near, nk) {
@@ -2923,7 +2924,7 @@ function hlTick(dt, near, nk) {
   const ypu = ypFromDir(u), ty = ypu[0], tp = ypu[1], lim = hl === 1 ? 3 : TUNE.hlPlay, ease = Math.min(1, dt * (hl === 1 ? 2.2 : 5));
   let dyw = yaw - ty; dyw = Math.atan2(Math.sin(dyw), Math.cos(dyw));
   yaw = ty + Math.max(-lim, Math.min(lim, dyw)) * (1 - ease); pitch = tp + Math.max(-lim, Math.min(lim, pitch - tp)) * (1 - ease); snap = 1;   // the nose locks on: only a few degrees of play
-  if (hl === 1) { trauma = Math.max(trauma, Math.min(.45, .3 * hlT)); if (hlT > TUNE.hlSpool) { hl = 2; hlT = 0; flash = Math.max(flash, .18); trauma = Math.max(trauma, .7); if (AC && AC.state === 'running') burst(AC.currentTime, 2.2, .26, 120, 1600, 'lowpass'); } return; }
+  if (hl === 1) { trauma = Math.max(trauma, Math.min(.45, .3 * hlT)); if (hlT > TUNE.hlSpool) { hl = 2; hlT = 0; buzz(1, 600); flash = Math.max(flash, .18); trauma = Math.max(trauma, .7); if (AC && AC.state === 'running') burst(AC.currentTime, 2.2, .26, 120, 1600, 'lowpass'); } return; }
   const v = Math.max(.015, Math.min(TUNE.hlMax, rem * TUNE.hlRate)) * Math.min(1, .15 + hlT * 1.4), st = Math.max(0, Math.min(rem, v * dt));
   sysS[0] += u[0] * st; sysS[1] += u[1] * st; sysS[2] += u[2] * st; locMove(u[0], u[1], u[2], st, dt, 9000); trauma = Math.max(trauma, .12 * hlFx);
   if (nk >= 0 && nk !== k && near < PR[nk] * 2 && hlBlock(nk, u, rem)) { hlStop(`Dropped out of hyperlight · ${SYS.planets[nk].name}'s mass is in the way`); trauma = .6; return; }
@@ -4506,7 +4507,7 @@ function setUi() {
   cinFit();
   if (setP.style.display === 'none') return;
   const headset = !!(xr || isPWA()), touch = mob && !headset;
-  const tabs = headset ? ['Comfort', 'Display', 'Audio'] : touch ? ['Display', 'Audio', 'Flight'] : ['Display', 'Audio', 'Flight', 'Controls'];
+  const tabs = headset ? ['Comfort', 'Display', 'Audio', 'Controls'] : touch ? ['Display', 'Audio', 'Flight'] : ['Display', 'Audio', 'Flight', 'Controls'];
   if (setTab >= tabs.length) setTab = 0;
   const row = (k, name, val) => `<div style="display:flex;justify-content:space-between;align-items:center;gap:16px;border-bottom:1px solid rgb(var(--hcr) / .14);padding:8px 0"><span>${name}</span><button data-k="${k}" style="min-width:168px;padding:7px 14px;background:${rebind === k ? 'var(--hc)' : 'rgb(var(--hcr) / .06)'};color:${rebind === k ? '#041018' : 'var(--hc)'};border:1px solid rgb(var(--hcr) / .5);font:inherit;cursor:pointer">${val}</button></div>`;
   const tabBtn = tabs.map((t, i) => `<button data-k="tab:${i}" style="margin:0 8px 0 0;padding:6px 12px;letter-spacing:.14em;text-transform:uppercase;font:inherit;cursor:pointer;background:${i === setTab ? 'var(--hc)' : 'transparent'};color:${i === setTab ? '#041018' : 'var(--hc)'};border:1px solid var(--hc)">${t}</button>`).join('');
@@ -4533,10 +4534,17 @@ function setUi() {
     if (!touch) body += row('ctl', 'Stick model', CFG.ctl ? 'space sim' : 'standard');
     if (touch) body += `<p style="color:rgb(var(--hcr) / .8);margin:14px 0 0">Hold to fly. Slide to steer. A second finger boosts. The FIRE button shoots. The aux display, gate and journal stay on their own controls.</p>`;
   } else {
-    body = row('sens', 'Mouse sensitivity', relSet(CFG.sens, 1)) + row('padL', 'Gamepad', CFG.padL === 0 ? 'match headset' : 'racer') + row('gpFire', 'Fire button', CFG.padL === 0 ? 'right trigger' : ({ 7: 'right trigger', 5: 'right bumper', 0: 'A', 2: 'X' }[CFG.gp.fire] || 'right trigger')) + row('gpBoost', 'Boost button', ({ 7: 'right trigger', 5: 'right bumper', 6: 'left trigger', 4: 'left bumper' }[CFG.gp.boost] || 'right bumper'))
+    const h3 = (t) => `<h3 style="margin:22px 0 6px;font-weight:600;letter-spacing:.22em;font-size:12px;color:var(--hc)">${t}</h3>`;   // v1.53: gamepad and headset sections, every action remappable
+    const vrRows = h3('HEADSET') + row('vrMo', 'Grip motion control', CFG.vrMo === 0 ? 'off' : 'on') + row('vrMoK', 'Motion sensitivity', relSet(CFG.vrMoK || 1, 1)) + row('vrMoInv', 'Motion pitch', CFG.vrMoInv ? 'inverted' : 'normal')
+      + `<p style="color:rgb(var(--hcr) / .7);margin:8px 0">Hold the grip on your stick hand to take the dashboard joystick (tilt to pitch, tilt or twist to turn); hold the other grip and push or pull for the throttle. Right trigger fires, left trigger boosts.</p>`
+      + VR_ACTS.map(([k, n]) => row('vb:' + k, n, VRN[vb(k)] || 'none')).join('');
+    const padRows = h3('GAMEPAD · click one, then press the button') + row('padRum', 'Rumble', ['off', 'low', 'full'][CFG.padRum == null ? 2 : CFG.padRum]) + row('padRoll', 'Right stick sideways', CFG.padRoll === 0 ? 'turn' : 'roll')
+      + PAD_ACTS.map(([k, n]) => row('pad:' + k, n, rebind === 'pad:' + k ? 'press a button… (Esc cancels)' : PADN[pb(k)] || 'button ' + pb(k))).join('') + row('padReset', 'All buttons', 'defaults');
+    if (headset) { body = vrRows + padRows; } else {
+    body = row('sens', 'Mouse sensitivity', relSet(CFG.sens, 1)) + padRows + vrRows
       + `<h3 style="margin:22px 0 6px;font-weight:600;letter-spacing:.22em;font-size:12px;color:var(--hc)">KEYBOARD</h3>`
       + ACTS.map(([k, n]) => row('key:' + k, n, rebind === 'key:' + k ? 'press a key…' : keyName(CFG.keys[k] || k))).join('')
-      + row('reset', 'All keys', 'defaults');
+      + row('reset', 'All keys', 'defaults'); }
   }
   setP.innerHTML = `<div style="max-width:760px;margin:auto"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px"><h2 style="font-weight:300;letter-spacing:.28em;margin:0">SETTINGS</h2><button data-k="close" style="background:rgb(var(--hcr) / .08);border:1px solid var(--hc);color:var(--hc);padding:6px 18px;font:inherit;cursor:pointer">Done</button></div><div style="margin:18px 0 8px">${tabBtn}</div>${body}<p style="margin-top:18px;color:rgb(var(--hcr) / .65);font-size:13px;letter-spacing:.08em">${BUILD}</p></div>`;
 }
@@ -4544,7 +4552,14 @@ setP.onclick = (e) => {
   const k = e.target.dataset && e.target.dataset.k; if (!k) return;
   if (k === 'close') { setP.style.display = 'none'; rebind = null; return; }
   if (k.startsWith('tab:')) { setTab = +k.slice(4); rebind = null; setUi(); return; }
-  if (k.startsWith('key:')) { rebind = rebind === k ? null : k; setUi(); return; }
+  if (k.startsWith('key:') || k.startsWith('pad:')) { rebind = rebind === k ? null : k; setUi(); return; }
+  if (k.startsWith('vb:')) { const a = k.slice(3), L = Object.keys(VRN), cur = vb(a); CFG.vb = CFG.vb || {}; CFG.vb[a] = L[(L.indexOf(cur) + 1) % L.length]; setUi(); return; }
+  if (k === 'padReset') { CFG.pb = {}; setUi(); return; }
+  if (k === 'padRum') { CFG.padRum = ((CFG.padRum == null ? 2 : CFG.padRum) + 1) % 3; if (CFG.padRum) padBuzz(.6, .6, 220); setUi(); return; }
+  if (k === 'padRoll') { CFG.padRoll = CFG.padRoll === 0 ? 1 : 0; setUi(); return; }
+  if (k === 'vrMo') { CFG.vrMo = CFG.vrMo === 0 ? 1 : 0; setUi(); return; }
+  if (k === 'vrMoK') { CFG.vrMoK = cyc(CFG.vrMoK || 1, [1, 1.3, 1.7, .6, .8]); setUi(); return; }
+  if (k === 'vrMoInv') { CFG.vrMoInv = CFG.vrMoInv ? 0 : 1; setUi(); return; }
   if (k === 'reset') CFG.keys = {};
   else if (k === 'suno') window.open('https://suno.com/playlist/12f42e02-78a5-4eb2-bf7e-f605817e4c06', '_blank', 'noopener');
   else if (k === 'wipe') { setP.style.display = 'none'; newUniverse(); return; }
@@ -5744,7 +5759,7 @@ vec3 surfS(vec3 n,int k,vec3 ca,vec3 cb,vec3 L,out float land,out float cl){floa
   else if(k==7){float br=smoothstep(.12,0.,abs(w-.4)-.07);s=mix(ca*.5+.03,cb,w2)*(1.-br*.7);cl=0.;land=0.;}
   else{s=mix(mix(vec3(.8,.9,.97),cb,.4),mix(ca,vec3(.72,.86,.95),.2),.4+.2*w2);s=mix(s,ca*.4,smoothstep(.045,0.,abs(fract(n.y*5.+w*2.4)-.5)-.47)*.6);cl=smoothstep(.66,.9,w)*.2;land=1.;}
 
- s=mix(vec3(dot(s,vec3(.3,.5,.2))),s,1.38);s*=.94+.06*w3;return s;}
+ s=mix(vec3(dot(s,vec3(.3,.5,.2))),s,1.25);s*=.94+.06*w3;return s;}
 
 uint thu(ivec2 p){uvec2 q=uvec2(p)*uvec2(1597334673u,3812015801u);return (q.x^q.y)*1597334673u;}
 float thv(ivec2 p){return float(thu(p)>>8u)*(1./16777216.);}
@@ -6059,7 +6074,7 @@ noiseTex();
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.51';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
+const BUILD = 'v1.53';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 let draws = 0, verts = 0, frameDraws = 0, frameVerts = 0;
 const _dei = gl.drawElementsInstanced.bind(gl), _de = gl.drawElements.bind(gl), _da = gl.drawArrays.bind(gl);
 gl.drawElementsInstanced = (m, c, ty, off, n) => { draws++; verts += c * n; return _dei(m, c, ty, off, n); };
@@ -6250,7 +6265,7 @@ function mission() {
 }
 const taskText = (t) => t.done ? 'Task here complete' : t.ty === 0 ? `Survey: bring aboard three different minerals from this place (${t.got.length}/3)` : t.ty === 1 ? `Collect ${t.n} ${TIERS[t.tier]} here (${t.got}/${t.n})` : 'A faint signal repeats somewhere out here. Find its source.';
 let hitPing = -9, hitAng = 0, hitFromX = 0, hitFromY = 0, hitFromZ = 0, hullHitT = -9;
-function hurt(a) { a *= TUNE.dmg;
+function hurt(a) { a *= TUNE.dmg; buzz(Math.min(1, .35 + a / 25), 170);
   a *= 1 - .2 * upLv('plt');
   const incoming = a;
   a = shieldTake(a);
@@ -6537,7 +6552,7 @@ function thud(v) {
 }
 function boom(size, dist) {
   if (!AC || AC.state !== 'running') return;
-  if (!isFinite(size)) size = 20; if (!isFinite(dist)) dist = 0; evLog('Sound · explosion' + (dist > 600 ? ' (distant)' : ''));   // v1.37: a hit on a ship with no size used to throw
+  if (!isFinite(size)) size = 20; if (!isFinite(dist)) dist = 0; if (dist < 5000) buzz(Math.min(1, size / 50 + .15) * (1 - dist / 5000), 260); evLog('Sound · explosion' + (dist > 600 ? ' (distant)' : ''));   // v1.37: a hit on a ship with no size used to throw
   const v = Math.min(.5, .07 + size * .01) / (1 + (dist || 0) / 420); if (v < .008) return;
   const t = AC.currentTime, dur = .65 + Math.min(1.05, size * .012);
   const o = AC.createOscillator(), g = AC.createGain(); o.type = 'sine';
@@ -6581,6 +6596,7 @@ const rdir = () => { let x, y, z, l; do { x = Math.random() * 2 - 1; y = Math.ra
 const bW = new Uint8Array(NBU), WCOL = [[7, 3.6, 1], [1.4, 7, 2.6], [6.5, 1.6, 9], [1.2, 4.5, 6], [8, 4, 1]], WSH = [[1, .007, 1600, 1.4], [6, .07, 1300, .45], [1, .002, 3400, 1.7], [1, .004, 3000, .26]];
 let gmx = 0, gmy = 0, lastFire = -99, dryTip = 0, fullTip = 0, palEase = 0;                                         // where the guns are pointing, off the nose: they follow the cursor a little   // each weapon has its own light: amber rounds, green shot, violet lance
 function shoot() {
+  if (!xr) padBuzz(.04, .2, 40);
   if (wpn === 4) return seekerFire();
   const sd = shotN++ & 1 ? 1 : -1, ox = sRx * sd * 2.7 - sUx * 1.3 + sFx * 4, oy = sRy * sd * 2.7 - sUy * 1.3 + sFy * 4, oz = sRz * sd * 2.7 - sUz * 1.3 + sFz * 4;   // the guns sit well out on either side
   const [n, spr, v0, life] = WSH[wpn], col = WCOL[wpn];
@@ -6821,7 +6837,10 @@ function eye(fb, x, y, w, h, tw, th) {
   gl.depthFunc(gl.LEQUAL); gl.depthMask(false);
   if (NO.includes('k')) skyw.fill(0);
   SKP = SYS.atm ? (P_SKYA || (P_SKYA = prog(TRI_V, SKYA_F()))) : P_SKY;   // v1.44: the planet-side sky is its own program, built in the background after load
-  gl.useProgram(SKP.p); bigStarsSet(); gl.uniform4fv(SKP.u.uSky, skyw); gl.uniform4fv(SKP.u['uPl[0]'], SYS.pl); { const dk = [0, 1, 2].map((k) => { const w = SYS.pl[k * 4 + 3]; return w > 0 ? PR[k] / w : 1e18; }); const o = [0, 1, 2].sort((a, b) => dk[b] - dk[a]); gl.uniform3f(SKP.u.uPo, o[0], o[1], o[2]); } if (SKP.u.uLoop) gl.uniform3i(SKP.u.uLoop, 8, 3, 0); if (SKP.u.uSkT) gl.uniform4f(SKP.u.uSkT, TUNE.skyPale, TUNE.skyBright, TUNE.skyTwi, TUNE.skyHaze);   // v1.41: loop counts come in as uniforms, so the shader compiler can't copy the loop bodies out (compile time on Windows)   // draw order: farthest first gl.uniform4fv(SKP.u['uPa[0]'], SYS.pa); gl.uniform3fv(SKP.u['uPb[0]'], SYS.pb); gl.uniform3f(SKP.u.uSd, SYS.seed[0], SYS.seed[1], SYS.seed[2]); gl.uniform4f(SKP.u.uPh, SYS.atm ? 0 : SYS.ph, SYS.phs, SYS.atm ? v126bf : 0, v126ceil); if (SKP.u.uAir) gl.uniform3f(SKP.u.uAir, ...v126Air); gl.uniform3f(SKP.u.uPq, SYS.pq[0], SYS.pq[1], SYS.pq[2]);
+  gl.useProgram(SKP.p); bigStarsSet(); gl.uniform4fv(SKP.u.uSky, skyw); gl.uniform4fv(SKP.u['uPl[0]'], SYS.pl); { const dk = [0, 1, 2].map((k) => { const w = SYS.pl[k * 4 + 3]; return w > 0 ? PR[k] / w : 1e18; }); const o = [0, 1, 2].sort((a, b) => dk[b] - dk[a]); gl.uniform3f(SKP.u.uPo, o[0], o[1], o[2]); } if (SKP.u.uLoop) gl.uniform3i(SKP.u.uLoop, 8, 3, 0); if (SKP.u.uSkT) gl.uniform4f(SKP.u.uSkT, TUNE.skyPale, TUNE.skyBright, TUNE.skyTwi, TUNE.skyHaze);
+  // v1.41: loop counts come in as uniforms, so the shader compiler can't copy the loop bodies out (compile time on Windows)
+  // v1.52: the line below sat inside that comment from v1.41 to v1.51, so planets in space got no surface colour at all
+  gl.uniform4fv(SKP.u['uPa[0]'], SYS.pa); gl.uniform3fv(SKP.u['uPb[0]'], SYS.pb); gl.uniform3f(SKP.u.uSd, SYS.seed[0], SYS.seed[1], SYS.seed[2]); gl.uniform4f(SKP.u.uPh, SYS.atm ? 0 : SYS.ph, SYS.phs, SYS.atm ? v126bf : 0, v126ceil); if (SKP.u.uAir) gl.uniform3f(SKP.u.uAir, ...v126Air); gl.uniform3f(SKP.u.uPq, SYS.pq[0], SYS.pq[1], SYS.pq[2]);
   { const pk = SYS.pk || [0, 3, 5, 0]; if (SKP.u.uPk) gl.uniform4f(SKP.u.uPk, pk[0], pk[1], pk[2], SYS.atm ? SYS.atm - 1 : -1); if (SKP.u['uPLd[0]']) gl.uniform3fv(SKP.u['uPLd[0]'], v126PL); if (SKP.u.uPG) { gl.uniform4f(SKP.u.uPG, v126PG[0], v126PG[1], v126PG[2], v126PG[3]); gl.uniformMatrix3fv(SKP.u.uPM, false, v126PM); gl.uniform3f(SKP.u.uPD, v126PD[0], v126PD[1], v126PD[2]); }
     const k = SYS.atm ? SYS.atm - 1 : 0, skin = SYS.atm && SYS.locs[SYS.loc] ? SYS.locs[SYS.loc].skin : 0;
     const look = !SYS.atm ? 0 : skin === 0 || skin === 4 ? 1 : skin === 5 || skin === 7 ? 3 : 2;
@@ -6841,7 +6860,7 @@ function eye(fb, x, y, w, h, tw, th) {
   gl.uniform1i(lu.uKind, 5); gl.uniform1f(lu.uSpin, .012); draw(Lf, LTd, mTen); gl.uniform1f(lu.uSpin, .05); draw(Lf, LTb, mTen);
   if (typeof v122Draw === 'function') v122Draw(vd, 1);
   const Sp = P_SPR;
-  gl.useProgram(Sp.p);
+  gl.useProgram(Sp.p); if (Sp.u['uPlS[0]']) gl.uniform4fv(Sp.u['uPlS[0]'], SYS.atm ? Z12 : SYS.pl);
   gl.uniform1i(Sp.u.uMode, 2); gl.uniform1f(Sp.u.uDark, 1); gl.blendFuncSeparate(gl.ZERO, gl.ONE_MINUS_SRC_COLOR, gl.ZERO, gl.ONE); draw(Sp, LDk, mQuad);
   gl.uniform1f(Sp.u.uDark, 0); gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE);
   if (!NO.includes('w')) draw(Sp, LW, mQuad);
@@ -6944,25 +6963,84 @@ const YS = () => Math.cos(pitch) < 0 ? -1 : 1;                // past vertical t
 const curve = (v) => { const a = Math.min(1, Math.abs(v)) - .08; return a > 0 ? Math.sign(v) * a * Math.sqrt(a) : 0; };
 
 let padHl = false, padOff = 0, gpFire = 0, gpBoost = 0, thrustT = 0, snapL = 0, snapR = 0;
+// ---- v1.53: controllers. Every action has a default button on a gamepad (standard mapping: a DualSense or Xbox pad) and in a headset,
+// and each can be remapped in Settings. Pads rumble; headsets buzz.
+const PADN = ['✕ / A', '○ / B', '□ / X', '△ / Y', 'L1 / LB', 'R1 / RB', 'L2 / LT', 'R2 / RT', 'Create / View', 'Options / Menu', 'L3', 'R3', 'D-pad up', 'D-pad down', 'D-pad left', 'D-pad right', 'PS / Home', 'Touchpad'];
+const PAD_ACTS = [['fire', 'Fire', 7], ['boost', 'Boost', 6], ['hyper', 'Hyperlight', 3], ['interact', 'Interact / dock', 0], ['jump', 'Warp gate', 1], ['journal', 'Journal', 2], ['target', 'Next target', 5], ['weapon', 'Next weapon', 4],
+  ['map', 'Star map', 12], ['hold', 'Hold', 13], ['log', 'Log', 14], ['radio', 'Radio: next song', 15], ['aux', 'Aux display', 17], ['menu', 'Pause menu', 9], ['thrZero', 'Throttle to zero', 10], ['cockpit', 'Cockpit view', 11]];
+const VRN = { r4: 'A (right)', r5: 'B (right)', l4: 'X (left)', l5: 'Y (left)', l3: 'left stick click', r3: 'right stick click', '': 'none' };
+const VR_ACTS = [['hyper', 'Hyperlight', 'r5'], ['interact', 'Interact / dock', 'r4'], ['target', 'Next target', 'l4'], ['weapon', 'Next weapon', 'l5'], ['journal', 'Journal', ''], ['thrZero', 'Throttle to zero', 'r3']];
+const pb = (a) => { const v = CFG.pb && CFG.pb[a]; if (v != null) return v; const d = PAD_ACTS.find((x) => x[0] === a); return d ? d[2] : -1; };
+const vb = (a) => { const v = CFG.vb && CFG.vb[a]; if (v != null) return v; const d = VR_ACTS.find((x) => x[0] === a); return d ? d[2] : ''; };
+function padAct(a) {
+  if (a === 'menu') { jpOpen ? closePanel() : menu(); return; }
+  if (!flying()) return;
+  if (a === 'hyper') hlKey(); else if (a === 'interact') interact(); else if (a === 'jump') jpOpen ? closePanel() : gatePanel();
+  else if (a === 'journal') jpOpen ? closePanel() : journalPanel(); else if (a === 'target') navCycle(1); else if (a === 'weapon') wpnCycle();
+  else if (a === 'map') starMap(); else if (a === 'hold') { if (!jpOpen) invShow('hold'); } else if (a === 'log') jpOpen ? closePanel() : logPanel();
+  else if (a === 'radio') { if (CFG.radio) radioJump(); } else if (a === 'aux') { if (!jpOpen && !invOpen) pipOpen(); }
+  else if (a === 'thrZero') thr = 0; else if (a === 'cockpit') setCock(!cockpit);
+}
+let padLast = null, padPrev = [], padLatch = 0, padNav = 0;
+// rumble: strong (low motor) and weak (high motor), scaled by the setting. Chrome and Edge drive a DualSense or Xbox pad this way.
+function padBuzz(st, wk, ms) {
+  const k = [0, .45, 1][CFG.padRum == null ? 2 : CFG.padRum]; if (!k || !padLast) return; const va = padLast.vibrationActuator; if (!va || !va.playEffect) return;
+  try { const r = va.playEffect('dual-rumble', { duration: ms, strongMagnitude: Math.min(1, st * k), weakMagnitude: Math.min(1, wk * k) }); if (r && r.catch) r.catch(() => {}); } catch (e) {}
+}
+function buzz(s, ms) { if (xr) xrBuzz(s, ms); else padBuzz(s, Math.min(1, s * .8 + .1), ms); }
+const ctlF = () => CFG.ctl || (padLatch && CFG.padRoll !== 0 && !xr);   // a pad's right stick rolls: the ship turns freely about its own axes
 function readPad(dt) {
   gpFire = 0; gpBoost = 0;
   if (!navigator.getGamepads || padOff) return;
-  const map = CFG.gp || { fire: 7, boost: 5 }, racer = CFG.padL !== 0;
-  const fireB = racer ? (map.fire == null ? 7 : map.fire) : 7, boostB = racer ? (map.boost == null ? 5 : map.boost) : 6;
-  const dead = (v) => Math.abs(v) < .18 ? 0 : v;
+  const dead = (v) => Math.abs(v || 0) < .16 ? 0 : v;
   let pads; try { pads = navigator.getGamepads(); } catch (e) { padOff = 1; console.warn('gamepads blocked here; keyboard and mouse only'); return; }   // inside a frame that forbids gamepads the call throws every time: stop asking
   for (const gp of pads) {
-    if (!gp || !gp.connected) continue;
-    const ax = dead(gp.axes[0] || 0), ay = dead(gp.axes[1] || 0), ry = dead(gp.axes[3] || 0);
-    if (!CFG.ctl) { yaw += YS() * ax * dt * 1.45 * TUNE.turnK; pitch -= IYS() * ay * dt * 1.2 * TUNE.turnK; dyaw += ax * dt * 1.45 * TUNE.turnK; }
-    else { pitch -= IYS() * ay * dt * 1.15; rollIn += ax * dt * 1.5; }
+    if (!gp || !gp.connected) continue; padLast = gp;
+    const B = (i) => { const b = gp.buttons[i]; return !!(b && (b.pressed || b.value > .45)); }, E = (i) => i >= 0 && B(i) && !padPrev[i];
+    const done = () => { padPrev = gp.buttons.map((b, i) => B(i)); };
+    if (rebind && rebind.startsWith('pad:')) { for (let i = 0; i < gp.buttons.length; i++) if (E(i)) { CFG.pb = CFG.pb || {}; CFG.pb[rebind.slice(4)] = i; rebind = null; setUi(); break; } done(); return; }
+    const ax = dead(gp.axes[0]), ay = dead(gp.axes[1]), rx = dead(gp.axes[2]), ry = dead(gp.axes[3]);
+    if (jpOpen) {   // panels: D-pad or either stick to move, ✕ to pick, ○ to close
+      const v = (B(13) ? 1 : 0) - (B(12) ? 1 : 0) || (Math.abs(ay) > .6 ? Math.sign(ay) : 0) || (Math.abs(ry) > .6 ? Math.sign(ry) : 0), now = performance.now();
+      if (v && items.length && (padNav === 0 || now >= padNav)) { const first = padNav === 0; psel = (psel + v + items.length) % items.length; padNav = now + (first ? 420 : 200); if (typeof setUiPanel === 'function') setUiPanel(); } else if (!v) padNav = 0;
+      if (E(0)) pick(psel); else if (E(1) || E(pb('menu'))) closePanel();
+      done(); continue;
+    }
+    if (ax || ay || rx || ry) padLatch = 1;
+    const K = TUNE.turnK;
+    yaw += YS() * ax * dt * 1.45 * K; pitch -= IYS() * ay * dt * 1.2 * K; dyaw += ax * dt * 1.45 * K;
+    if (CFG.padRoll !== 0) rollIn += rx * dt * 1.7 * K; else { yaw += YS() * rx * dt * .8 * K; dyaw += rx * dt * .8 * K; }
     thrMove(-ry * dt * .85);
-    if (gp.buttons[fireB] && (gp.buttons[fireB].pressed || gp.buttons[fireB].value > .45)) gpFire = 1;
-    if (gp.buttons[boostB] && (gp.buttons[boostB].pressed || gp.buttons[boostB].value > .45)) gpBoost = 1;
-    { const hb = !!(gp.buttons[3] && gp.buttons[3].pressed); if (hb && !padHl && flying()) hlKey(); padHl = hb; }   // v1.36: Y / triangle engages hyperlight
+    if (B(pb('fire'))) gpFire = 1;
+    if (B(pb('boost'))) gpBoost = 1;
+    for (const [a] of PAD_ACTS) if (a !== 'fire' && a !== 'boost' && E(pb(a))) padAct(a);
+    done();
   }
 }
-let frEma = 0;
+
+// v1.53: motion control. Hold the grip on the stick hand and the controller is the dashboard joystick: tilt forward and back to pitch,
+// tilt sideways or twist to turn (or roll, with the space-sim stick model). Hold the other grip and push or pull to move the throttle lever.
+const moGrab = { left: null, right: null };
+function xrMotion(src, grip, onSteer, xf, dt) {
+  const h = src.handedness; if (!grip || !xf || !src.gripSpace) { if (moGrab[h]) { moGrab[h] = null; xrBuzz(.25, 25); } return false; }
+  let pose = null; try { pose = xf.getPose(src.gripSpace, xrRef); } catch (e) {} if (!pose) return false;
+  const o = pose.transform.orientation, p = pose.transform.position, q = [o.x, o.y, o.z, o.w];
+  let G = moGrab[h]; if (!G) { G = moGrab[h] = { q, z: p.z, thr0: thr }; xrBuzz(.5, 35); }
+  if (onSteer) {
+    let r = qmul(qcj(G.q), q); if (r[3] < 0) r = r.map((v) => -v);
+    const sk = CFG.vrMoK || 1, dz = (v) => { const a = Math.abs(v) - .06; return a > 0 ? Math.sign(v) * Math.min(1, a / (.42 / sk)) : 0; };
+    const pI = dz(2 * r[0]) * (CFG.vrMoInv ? -1 : 1), tI = dz(-2 * r[2]), wI = dz(-2 * r[1]), K = TUNE.turnK;
+    pitch += pI * dt * 1.25 * K;
+    if (ctlF()) { rollIn += tI * dt * 1.7 * K; yaw += YS() * wI * dt * 1.2 * K; dyaw += wI * dt * 1.2 * K; }
+    else { const t = Math.max(-1, Math.min(1, tI + wI)); yaw += YS() * t * dt * 1.4 * K; dyaw += t * dt * 1.4 * K; }
+    if (Math.abs(pI) + Math.abs(tI) + Math.abs(wI) > .97 && tm > (G.bz || 0)) { G.bz = tm + .25; xrBuzz(.15, 20); }   // a tick at full deflection
+  } else {
+    const want = Math.max(-.4, Math.min(1, G.thr0 + (G.z - p.z) / .22));   // ~22 cm of travel from stop to full
+    thrMove(want - thr);
+  }
+  return true;
+}
+let frEma = 0, boostWas = 0, rumHt = 0; const Z12 = new Float32Array(12);
 function frame(now, xf) {
   if (!xf !== !xr) return;                                   // a callback left over from the other display loop
   (xr || window).requestAnimationFrame(frame);
@@ -7004,10 +7082,12 @@ function frame(now, xf) {
       const ax = Math.abs(gp.axes[2] || 0) < .12 ? 0 : gp.axes[2], ay = Math.abs(gp.axes[3] || 0) < .12 ? 0 : gp.axes[3];
       const trig = gp.buttons[0] && (gp.buttons[0].pressed || gp.buttons[0].value > .65);
       const grip = gp.buttons[1] && (gp.buttons[1].pressed || gp.buttons[1].value > .4);
-      if (trig && !jpOpen) xFire = 1;
-      if (grip && !jpOpen) boost = 1;
+      const moOn = CFG.vrMo !== 0;   // v1.53: right trigger fires, left trigger boosts; the grips take hold of the dashboard stick and throttle
+      if (trig && !jpOpen) { if (!moOn || src.handedness === 'right') xFire = 1; else boost = 1; }
+      if (grip && !jpOpen && !moOn) boost = 1;
       if (consumed) continue;
       const onSteer = src.handedness === (CFG.vrHand ? 'right' : 'left');
+      if (moOn && !jpOpen && xrMotion(src, grip, onSteer, xf, dt)) continue;
       if (onSteer) {
         if ((CFG.vrTurn || 0) > 0) {
           const step = CFG.vrTurn === 2 ? .78 : .52, held = src.handedness === 'left' ? snapL : snapR;
@@ -7019,21 +7099,23 @@ function frame(now, xf) {
       } else { thrMove(-ay * dt * .85); ms += ax; }
     } if (typeof xrPauseWatch === 'function') xrPauseWatch(dt); }
     if (gpBoost) boost = 1;
+    if (boost && !boostWas) buzz(.35, 170); boostWas = boost;   // v1.53: rumble as boost bites
+    if (v126Heat > .04 && tm > rumHt) { rumHt = tm + .13; if (xr) xrBuzz(Math.min(1, v126Heat * .45 + heatFlare * .5), 120); else padBuzz(v126Heat * .5 + heatFlare * .5, v126Heat * .8, 150); }   // re-entry shakes the stick
     fwd = thr * TUNE.thrSpd * eff * (1 + .12 * upLv('eng'));
     airK = SYS.atm && isCont() ? 1 + (TUNE.airMax - 1) * tss(10800, 22000, v126Hh) : 1; fwd *= airK;
     if (SYS.atm && isCont() && thr >= 0 && thr < .12 && !boost) { const cur = vx * sFx + vy * sFy + vz * sFz, g = Math.max(TUNE.glideMin * airK, cur - (cur * TUNE.glideDrag + TUNE.glideGrav * sFy) * dt); fwd = Math.max(fwd, Math.min(g, 900 * airK)); }   // v1.38: throttle off in the air, the ship glides: nose down it gathers speed, nose up it bleeds it   // v1.36: the higher and thinner the air, the faster you go: the top of the sky is crossed in seconds, up or down
-  } else { yaw += dt * .018; gpFire = 0; }
+  } else { yaw += dt * .018; gpFire = 0; if (rebind && rebind.startsWith('pad:') && !xr) readPad(0); }   // v1.53: Settings is open from the pause menu: still listen for the button being bound
   if (ST.hull < 25 || ST.fuel <= 0) boost = 0;
   if (fly && ST.fuel <= 0) fwd *= .18;                              // dry tanks: emergency thrusters only
   bst += (boost - bst) * (1 - Math.exp(-dt * (boost > bst ? TUNE.boostBite : 2.5)));   // v1.36: boost bites at once, eases off on release
   bHold = boost && fly ? bHold + dt : 0; bRamp = Math.min(1, Math.max(0, (bHold - 1) / 5));   // keep holding boost and it keeps building, to the top of the range
   bOd = SYS.atm ? 0 : Math.min(1, Math.max(0, (bHold - 7) / 18)); if (bOd > 0 && !odOn && !drift) { odOn = 1; pop('OVERDRIVE · ASSIST OFF', '#ffb347'); } if (!boost) odOn = 0;   // hold on past full boost: faster and faster, and the rocks are yours to dodge
   // the ship's attitude is a free rotation: every input turns it about its own axes, so it can roll, loop and fly inverted; code that points the ship sets yaw and pitch and raises snap
-  roll += ((CFG.ctl ? 0 : -dyaw / dt * .1 - ms * .14) - roll) * (1 - Math.exp(-dt * 4)); roll = Math.max(-.5, Math.min(.5, roll));   // standard flight banks into turns
+  roll += ((ctlF() ? 0 : -dyaw / dt * .1 - ms * .14) - roll) * (1 - Math.exp(-dt * 4)); roll = Math.max(-.5, Math.min(.5, roll));   // standard flight banks into turns
   dyaw = 0; trauma = Math.max(0, trauma - dt * 1.6);
-  if (!QA || snap || !CFG.ctl) { QA = qmul(QF, qYP(yaw, pitch)); if (!QAs || snap) QAs = QA.slice(); rollIn = 0; yawL = yaw; pitchL = pitch; }
+  if (!QA || snap || !ctlF()) { QA = qmul(QF, qYP(yaw, pitch)); if (!QAs || snap) QAs = QA.slice(); rollIn = 0; yawL = yaw; pitchL = pitch; }
   else { const dY = yaw - yawL, dP = pitch - pitchL; if (dY || dP || rollIn) QA = qn(qmul(qmul(qmul(QA, qax(0, 1, 0, -dY)), qax(1, 0, 0, dP)), qax(0, 0, 1, -rollIn))); }
-  if (CFG.ctl) { rollIn = 0; const F = qv(qcj(QF), ...qv(QA, 0, 0, -1)); pitch = Math.asin(Math.max(-1, Math.min(1, F[1]))); yaw = Math.atan2(F[0], -F[2]); yawL = yaw; pitchL = pitch; }
+  if (ctlF()) { rollIn = 0; const F = qv(qcj(QF), ...qv(QA, 0, 0, -1)); pitch = Math.asin(Math.max(-1, Math.min(1, F[1]))); yaw = Math.atan2(F[0], -F[2]); yawL = yaw; pitchL = pitch; }
   // Below the clouds the wings ease level, shortest way, without pitching the long way round or reversing mid-turn.
   // On entry this takes several seconds, like a plane settling. In a headset it keeps a gentle hand on the roll.
   if (fly && SYS.atm && QA) {
@@ -7085,7 +7167,8 @@ function frame(now, xf) {
     // wind-up (the view stretches and the stars smear), the tunnel (the new place is loaded behind it), and the drop out
     jumpT += rdt; jk = sm(0, 2.8, jumpT) * (1 - sm(5.8, 7.2, jumpT)); tun = sm(2.4, 3.4, jumpT) * (1 - sm(5.4, 6.5, jumpT));   // v1.36: a longer, heavier jump: wind-up, a full tunnel, then out
     trauma = Math.min(1, trauma + rdt * (.9 * jk + 1.6 * tun)); thr = Math.max(thr, .5 * jk); if (tun > .5) flash = Math.max(flash, .06 * tun * (.5 + .5 * Math.sin(jumpT * 31)));
-    if (jumpT > 4.4 && !jumped) { jumped = 1; QF = [0, 0, 0, 1]; arrive(jumpTo.sec, jumpTo.loc); flash = TEST ? 0 : .3; trauma = 1; if (AC && AC.state === 'running') { note(32, AC.currentTime, .18, 'sine', 2.5, 0); burst(AC.currentTime, 1.4, .2, 700, 50, 'lowpass'); } }
+    if (jumpT > 2.6 && jumpT - rdt <= 2.6) buzz(.8, 900);
+    if (jumpT > 4.4 && !jumped) { buzz(1, 500); jumped = 1; QF = [0, 0, 0, 1]; arrive(jumpTo.sec, jumpTo.loc); flash = TEST ? 0 : .3; trauma = 1; if (AC && AC.state === 'running') { note(32, AC.currentTime, .18, 'sine', 2.5, 0); burst(AC.currentTime, 1.4, .2, 700, 50, 'lowpass'); } }
     if (jumpT > 7.2) { jumpTo = null; jk = 0; tun = 0; }
   }
   // the cockpit rides on the ship: it lags behind hard acceleration, leans into turns, and the stick follows your hand
