@@ -231,8 +231,8 @@ const TUNE_DEF = [
   ['plScale', 'Planets', 'Planet size (×, next arrival)', .5, 5, .1, 2.2], ['spread', 'Planets', 'Planet spacing (×, next arrival)', .5, 5, .1, 1.5], ['orbitMin', 'Planets', 'Places in orbit: nearest (radii, next arrival)', 2, 20, .5, 6], ['dayLen', 'Planets', 'Day length (×)', .1, 10, .1, 1],
   ['apNearR', 'Approach', 'Slow zone (planet radii)', 2, 20, .5, 6], ['apK', 'Approach', 'Pace in the slow zone', .02, .5, .01, .08], ['apFarK', 'Approach', 'Pace further out', .05, 1, .01, .42],
   ['apEng', 'Approach', 'Throttle starts approach within (radii)', 1.2, 30, .5, 2.2],
-  ['heatStart', 'Re-entry', 'Heat starts (km above the ground)', 21, 150, 1, 40], ['heatPeak', 'Re-entry', 'Flare strength at the switch', 0, 1.5, .05, 1], ['heatFlareT', 'Re-entry', 'Flare length (s)', .1, 3, .05, 1.8],
-  ['heatFade', 'Re-entry', 'Heat burn-off (s)', 1, 20, .5, 9], ['burnTime', 'Re-entry', 'Committed burn: seconds to the switch', 2, 20, .5, 7], ['heatHold', 'Re-entry', 'Flare holds after the switch (s)', 0, 5, .1, 1.6], ['exitTime', 'Re-entry', 'Committed climb out: seconds', 1, 12, .5, 4], ['vigStr', 'Re-entry', 'Plasma vignette strength', 0, 2, .05, 1], ['shake', 'Re-entry', 'Shake', 0, 1.5, .05, .4],
+  ['heatStart', 'Re-entry', 'Heat starts (km above the ground)', 21, 150, 1, 34], ['heatPeak', 'Re-entry', 'Flare strength at the switch', 0, 1.5, .05, 1], ['heatFlareT', 'Re-entry', 'Flare length (s)', .1, 6, .05, 3],
+  ['heatFade', 'Re-entry', 'Heat burn-off (s)', 1, 20, .5, 9], ['burnTime', 'Re-entry', 'Committed burn: seconds to the switch', 2, 20, .5, 6], ['heatHold', 'Re-entry', 'Flare holds after the switch (s)', 0, 5, .1, 2], ['exitTime', 'Re-entry', 'Committed climb out: seconds', 1, 12, .5, 4], ['vigStr', 'Re-entry', 'Plasma vignette strength', 0, 2, .05, 1], ['shake', 'Re-entry', 'Shake', 0, 1.5, .05, .4],
   ['skyPale', 'Sky', 'Horizon paleness', 0, 1, .02, .5], ['skyBright', 'Sky', 'Sky brightness', .3, 2, .05, 1], ['skyTwi', 'Sky', 'Twilight floor', 0, 1, .02, .3], ['skyHaze', 'Sky', 'Air thickness scale (m)', 3000, 30000, 500, 11000],
   ['cldBase', 'Clouds', 'Cloud base (km)', 2, 20, .25, 8.5], ['cldTop', 'Clouds', 'Cloud tops (km)', 4, 30, .25, 15.5], ['cldCover', 'Clouds', 'Coverage', .5, 3, .05, 1.6],
   ['cldThresh', 'Clouds', 'Clear-sky threshold', .5, 2, .02, 1.12], ['cldPuff', 'Clouds', 'Puffiness', .2, 2, .05, .95], ['cldBright', 'Clouds', 'Sunlit brightness', .3, 3, .05, 1.45],
@@ -245,7 +245,7 @@ const TUNE_DEF = [
   ['fuelUse', 'Gameplay', 'Fuel use (×)', 0, 5, .05, 1], ['o2Use', 'Gameplay', 'Oxygen use (×)', 0, 5, .05, 1], ['dmg', 'Gameplay', 'Damage taken (×)', 0, 5, .05, 1], ['ore', 'Gameplay', 'Ore per rock (×)', 0, 5, .05, 1],
 ];
 const TUNE = {}; for (const d of TUNE_DEF) TUNE[d[0]] = d[6];
-try { const t = JSON.parse(localStorage.ieTune || '{}'); for (const k in t) if (k in TUNE && isFinite(t[k])) TUNE[k] = +t[k]; } catch {}
+try { const t = JSON.parse(localStorage.ieTune || '{}'), rv = +(localStorage.ieTuneV || 0); for (const k in t) if (k in TUNE && isFinite(t[k]) && !(rv < 2 && (TUNE_DEF.find((d) => d[0] === k) || [])[1] === 'Re-entry')) TUNE[k] = +t[k]; localStorage.ieTuneV = 2; } catch {}   // v1.68: re-entry values saved before this build are dropped once, so the new timing applies
 const TUNE_ON = !/\/infiniteend\/?$/.test(location.pathname) || /[?&]tune/.test(location.search);   // the console exists everywhere but production, unless ?tune
 // v1.45: the event log: everything the game tells you (tips, comms, events, panels, hits, sounds), newest first, for the console
 const EVLOG = []; let evLast0 = '', evLastT = 0, tuneOpen = false, tuneEl = null;
@@ -1165,8 +1165,8 @@ void main(){vec2 q=vU*2.-1.;q.x*=uPs.w;float r=length(q),u=atan(q.y,q.x)/6.2832+
  vec3 col=mix(uPc0,uPc1,smoothstep(.05,.75,r));col=mix(col,uPc2,smoothstep(1.05,1.75,r)*(.25+.45*n3));   // v1.56: colours come in: re-entry plasma, or the cloud-break on the way out
  float ac=floor(u*150.),rn=h2(vec2(ac,7.3)),sp=fract(rn*13.+t*(1.2+rn*2.6)),rs=mix(.1,1.7,sp),fu=fract(u*150.)-.5;
  float sk=exp(-fu*fu*300.)*exp(-pow((r-rs)/(.02+.16*sp),2.))*step(.6,rn)*smoothstep(.15,.6,H)*S*uPq.y;
- I+=F*S*1.4;col=mix(col,uPc0*.85,clamp(F,0.,1.)*.7);
- o=vec4(col*I+vec3(1.,.82,.5)*sk*5.,clamp(I*.5+F*.95+sk*.3,0.,.97));}`;
+ I+=F*S*.9;col=mix(col,uPc0*.85,clamp(F,0.,1.)*.7);
+ o=vec4(col*I+vec3(1.,.82,.5)*sk*5.,clamp(F*.97+I*.45*(1.-F)+sk*.3,0.,.97));}`;   // v1.68: cover follows the flare evenly, so the view thins out gradually instead of clearing all at once
 const TRI_V = `#version 300 es
 out vec2 vU;void main(){vec2 p=vec2(gl_VertexID<<1&2,gl_VertexID&2);vU=p;gl_Position=vec4(p*2.-1.,1,1);}`;
 
@@ -3026,13 +3026,13 @@ function cruiseTick(dt, fly) {
     const P = sysP[nk], rr = nrm([sysS[0] - P[0], sysS[1] - P[1], sysS[2] - P[2]]), dp = sFx * rr[0] + sFy * rr[1] + sFz * rr[2];
     const cv = entPN < 1e8 && dt > 0 ? (entPN - near) / dt : 0; entPN = near;   // closing speed, Mm/s
     if (!entLock && near < TUNE.heatStart / 1000 && dp < -.03 && cv > 0 && !hl) {   // v1.63: the burn starts and the entry commits; it runs on a timeline, so the flare always peaks at the seam
-      entLock = 1; entT0 = tm; entN0 = near; entD = [sFx, sFy, sFz]; tip(`Entry burn · ${SYS.planets[nk].name} · committed`, 2500); }
+      entLock = 1; entT0 = tm; entN0 = Math.max(near, .0206); entDur = TUNE.burnTime * Math.max(.25, Math.min(1, (near - .0203) / Math.max(.001, TUNE.heatStart / 1000 - .0203))); drift = 0; driftV = 0; entD = [sFx, sFy, sFz]; tip(`Entry burn · ${SYS.planets[nk].name} · committed`, 2500); }
     if (entLock) { aimK = nk; navId = 'p' + nk;   // the path is locked; where you look is yours
-      const p = Math.min(1, (tm - entT0) / TUNE.burnTime), nt = entN0 - (entN0 - .0197) * (p * (2 - p) * .35 + p * .65), D = nrm([entD[0] * .45 - rr[0], entD[1] * .45 - rr[1], entD[2] * .45 - rr[2]]), cr = Math.max(.25, -(D[0] * rr[0] + D[1] * rr[1] + D[2] * rr[2]));
+      const p = Math.min(1, (tm - entT0) / entDur), nt = p < 1 ? Math.max(.0203, entN0 - (entN0 - .0203) * (p * (2 - p) * .35 + p * .65)) : .0197, D = nrm([entD[0] * .45 - rr[0], entD[1] * .45 - rr[1], entD[2] * .45 - rr[2]]), cr = Math.max(.25, -(D[0] * rr[0] + D[1] * rr[1] + D[2] * rr[2]));
       const st = Math.max(0, near - nt) / cr; sysS[0] += D[0] * st; sysS[1] += D[1] * st; sysS[2] += D[2] * st; locMove(D[0], D[1], D[2], st, dt, 2500);
-      v126Heat = Math.max(v126Heat, .25 + .75 * Math.pow(p, 1.25)); heatFlare = Math.max(heatFlare, sm(.8, .985, p), sm(.0235, .0203, near)); }
+      v126Heat = Math.max(v126Heat, .25 + .75 * Math.pow(p, 1.25)); heatFlare = Math.max(heatFlare, sm(.78, 1, p)); entFlip = p >= 1; }   // v1.67: one clock: the flare peaks at p = 1 and the flip fires on that same tick
   } else { entLock = 0; entPN = 1e9; }
-  if (!hl && !drift && !SYS.atm) { sysS[0] += vx * dt * 1e-6; sysS[1] += vy * dt * 1e-6; sysS[2] += vz * dt * 1e-6;
+  if (!hl && !drift && !SYS.atm && !entLock) { sysS[0] += vx * dt * 1e-6; sysS[1] += vy * dt * 1e-6; sysS[2] += vz * dt * 1e-6;
     if (bst > .05) { const nf = nk >= 0 ? Math.max(.06, Math.min(1, (near - .02) / .25)) : 1, bv = bst * TUNE.boostSys * (1 + bRamp) * nf * dt; sysS[0] += sFx * bv; sysS[1] += sFy * bv; sysS[2] += sFz * bv; locMove(sFx, sFy, sFz, bv, dt, 700); } }   // v1.56: boost crosses the system at ~15-30 km/s (easing off near a world): enough to circle a planet   // v1.55: your own speed moves you across the system (m/s → Mm): at boost speeds a planet is many minutes away
   if (hl) { drift = 0; driftV = 0; apOn = 0; scE = hlFx * .7; fogX = Math.max(fogX, .0032 * hlFx); return; }   // v1.36: hyperlight carries you; boost no longer creeps you across the system
   if (!drift) { driftV = 0; apOn = 0;
@@ -3052,15 +3052,15 @@ function cruiseTick(dt, fly) {
     const tgt = nr ? Math.max(.0012, near * k) * bo * Math.max(.25, pw) : Math.max(.3, Math.min(900, near * k)) * (crew('nav') ? 1.3 : 1) * pw;
     driftV += (tgt - driftV) * Math.min(1, dt * (nr ? .9 : 1.2)); }
   if (drift === 2 && bst < .15 && driftV < 1) { drift = 0; noAuto = -1; tip('Dropped out of light drift', 3000); }   // let go of boost and the drift runs down and ends
-  sysS[0] += sFx * driftV * dt; sysS[1] += sFy * driftV * dt; sysS[2] += sFz * driftV * dt; locMove(sFx, sFy, sFz, driftV * dt, dt, 3200);
+  if (entLock) { drift = 0; driftV = 0; } else { sysS[0] += sFx * driftV * dt; sysS[1] += sFy * driftV * dt; sysS[2] += sFz * driftV * dt; locMove(sFx, sFy, sFz, driftV * dt, dt, 3200); }
   scE = Math.min(1, driftV / 40) * .7; fogX = Math.max(fogX, .0032);                           // the field around you streams and thins while the sky holds still
   if (nk >= 0) { const R = PR[nk], loc = SYS.locs.findIndex((l) => l.atm === nk + 1), u = near / R;
     if (loc >= 0) { const cont = contK((SYS.pk || [])[nk]), uH = cont ? (TENTRY - TGB) / (R * 1e6) : .05;   // one planet: hand over at the altitude you arrive at, nothing to hide
       if (!cont && u < .2) veil = Math.max(veil, Math.min(1, 1 - (u - .05) / .15));                         // the air closes in
-      let skim = 0; if (u < uH) { const P = sysP[nk], rr = nrm([sysS[0] - P[0], sysS[1] - P[1], sysS[2] - P[2]]), dp = sFx * rr[0] + sFy * rr[1] + sFz * rr[2];   // v1.33: only drop into a sky you are diving into, or the world you chose
+      let skim = 0; if (u < uH && !entLock) { const P = sysP[nk], rr = nrm([sysS[0] - P[0], sysS[1] - P[1], sysS[2] - P[2]]), dp = sFx * rr[0] + sFy * rr[1] + sFz * rr[2];   // v1.33: only drop into a sky you are diving into, or the world you chose
         if (nk !== aimK && dp > -.05 && !entLock) { skim = 1;   // v1.59: only when grazing level; any real descent toward a world with air goes in, whatever is targeted
  const h = R * uH * 1.02; sysS = [P[0] + rr[0] * (R + h), P[1] + rr[1] * (R + h), P[2] + rr[2] * (R + h)]; if (tm > (skimT || 0)) { skimT = tm + 12; tip(`Skimming ${SYS.planets[nk].name}'s air · nose down into it to descend, or fly on`, 4500); } } }
-      if (u < uH && !skim) { { const P = sysP[nk], rr = nrm([sysS[0] - P[0], sysS[1] - P[1], sysS[2] - P[2]]), dp = sFx * rr[0] + sFy * rr[1] + sFz * rr[2], tt = [sFx - rr[0] * dp, sFy - rr[1] * dp, sFz - rr[2] * dp];
+      if ((entLock ? entFlip : u < uH) && !skim) { evLog(`Re-entry · switch at flare ${heatFlare.toFixed(2)}`); { const P = sysP[nk], rr = nrm([sysS[0] - P[0], sysS[1] - P[1], sysS[2] - P[2]]), dp = sFx * rr[0] + sFy * rr[1] + sFz * rr[2], tt = [sFx - rr[0] * dp, sFy - rr[1] * dp, sFz - rr[2] * dp];
           ent = { k: nk, sys: SYS.id, r0: rr, t0: Math.hypot(tt[0], tt[1], tt[2]) < .05 ? nrm(crs(rr, [0, 1, 0])) : nrm(tt), yaw: 0 }; }   // remember where on the planet you came in, and which way you were travelling
         drift = 0; r.from = SYS.loc; const Ucam = camUp(), Pn = sysP[nk].slice(), yaw0 = yaw, r0 = ent.r0, dpE = sFx * r0[0] + sFy * r0[1] + sFz * r0[2], upR = sRx * r0[0] + sRy * r0[1] + sRz * r0[2], upU = sUx * r0[0] + sUy * r0[1] + sUz * r0[2]; if (cont) keepNeb = 1; const QAw = QA ? QA.slice() : null; entLock = 0; hop(loc); py = TENTRY; yaw = yaw0; if (!cont) { pitch = Math.max(-1.45, Math.min(1.45, Math.asin(Math.max(-1, Math.min(1, dpE))))); { const bk = Math.atan2(upR, upU) * (cont ? 1 : .6), q0 = qYP(yaw, pitch), qa = qn(qmul(q0, qax(0, 0, 1, bk))), qb = qn(qmul(q0, qax(0, 0, 1, -bk))); QA = Math.sign(qv(qa, 1, 0, 0)[1]) === Math.sign(upR) ? qa : qb; QAs = QA.slice(); yawL = yaw; pitchL = pitch; } } v126Entry(nk, r0, ent.t0, yaw0, Pn); if (cont) qfEnter(QAw, Ucam); if (cont) { veil = 0; fogX = 0; palEase = 0; v126Burn(); } if (!cont || xr) { levelAim = -.12; rightT = 9; rollBias = 0; tip('Atmospheric entry · thrusters easing you level', 4500); } snap = 0; ent.yaw = yaw; { const cp = Math.cos(pitch), s2 = Math.max(sp, cont ? 650 : 120); vx = Math.sin(yaw) * cp * s2; vy = Math.sin(pitch) * s2; vz = -Math.cos(yaw) * cp * s2; } veil = cont ? 0 : 1; quietUntil = tm + 150; cmT = Math.max(cmT, 200); tip(`${SYS.locs[SYS.loc].name}` + (cont ? ': in the air. Climb to leave, any direction.' : ': the wings will settle. Hold the nose up to climb back out.'), 6000); } }
     else if (u < 1.2 && drift) { drift = 0; driftV = 0; tip(`${SYS.planets[nk].name} has no atmosphere to fly down into: holding orbit. Pick a world with air to go down.`, 6000); } }
@@ -3070,7 +3070,7 @@ const PR = [70, 6.4, 2.6];                                  // planet radii in t
 // v1.46: crossing the system also carries you through the scene around you (rocks, stations, ships stream past and fall behind),
 // at the true speed up to a cap per second: beyond a few km/s the field would only flicker. The field's lattice wraps, so it never runs out.
 function locMove(x, y, z, st, dt, cap) { const m = Math.min(st * 1e6, cap * dt); if (!(m > 0) || px * px + py * py + pz * pz > 4e12) return; px += x * m; py += y * m; pz += z * m; }
-let entLock = 0, entV = 0, entD = [0, 0, -1], entPN = 1e9, entT0 = 0, entN0 = 0;
+let entDur = 6, entFlip = 0, entLock = 0, entV = 0, entD = [0, 0, -1], entPN = 1e9, entT0 = 0, entN0 = 0;
 let sysS = [0, 0, 0], sysP = null, drift = 0, driftV = 0, veil = 0, aimK = -1, aimT = 0, apT = 0, apTip = 0, noAuto = -1, apOn = 0, apDist = 0, apGate = 0, ent = null;
 const gameR = (rad, kind) => (kind === 0 ? .2 + rad * .0012 : .055 + rad * .013) * TUNE.plScale;   // v1.32: planets at game scale, so a world is round from orbit and a descent takes a minute, not an hour
 function syncPR() { if (SYS && SYS.prad) for (let k = 0; k < 3; k++) if (SYS.prad[k] > 0) PR[k] = gameR(SYS.prad[k], (SYS.pk || [])[k]); }
@@ -6169,7 +6169,7 @@ noiseTex();
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.66';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
+const BUILD = 'v1.68';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 let draws = 0, verts = 0, frameDraws = 0, frameVerts = 0;
 const _dei = gl.drawElementsInstanced.bind(gl), _de = gl.drawElements.bind(gl), _da = gl.drawArrays.bind(gl);
 gl.drawElementsInstanced = (m, c, ty, off, n) => { draws++; verts += c * n; return _dei(m, c, ty, off, n); };
