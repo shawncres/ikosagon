@@ -2225,7 +2225,7 @@ function setUi() {
   const row = (k, name, val) => `<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(160,210,240,.14);padding:7px 0"><span>${name}</span><button data-k="${k}" style="min-width:150px;padding:6px 14px;background:${rebind === k ? '#ffb44a' : 'transparent'};color:${rebind === k ? '#000' : '#63e2ff'};border:1px solid rgba(99,226,255,.5);font:inherit;cursor:pointer">${val}</button></div>`;
   const hd = (t) => `<h3 style="margin:26px 0 6px;font-weight:600;letter-spacing:.25em;font-size:13px;color:#ffb44a">${t}</h3>`;
   setP.innerHTML = `<div style="max-width:720px;margin:auto"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="font-weight:300;letter-spacing:.3em;margin:0">SETTINGS</h2><button data-k="close" style="background:none;border:1px solid #63e2ff;color:#63e2ff;padding:6px 18px;font:inherit;cursor:pointer">Done</button></div>`
-    + hd('DISPLAY') + row('hud', 'HUD colour', HCOL[CFG.hud][0]) + row('op', 'HUD brightness', Math.round(CFG.op * 100) + '%') + row('size', 'HUD size', Math.round(CFG.size * 100) + '%') + row('cin', 'Cinematic bars', CFG.cin ? 'on' : 'off') + row('fs', 'Full screen on launch', CFG.fs === 0 ? 'off' : 'on') + hd('LENS EFFECTS') + row('fxVisor', 'Curved visor (HUD wraps at the edges)', LV3(CFG.fxVisor)) + row('fxGlass', 'Visor glass (tinted rim)', LV3(CFG.fxGlass)) + row('fxBlur', 'Motion blur', LV3(CFG.fxBlur)) + row('fxCA', 'Colour fringing at the edges', LV3(CFG.fxCA)) + row('fxGrain', 'Film grain', LV3(CFG.fxGrain)) + row('fxBloom', 'Glow and sun rays', LV3(CFG.fxBloom)) + row('fxFlare', 'Lens flare from the sun', LV3(CFG.fxFlare)) + row('fxScan', 'Scanlines', CFG.fxScan ? 'on' : 'off') + row('fxVig', 'Darkened corners', CFG.fxVig ? 'on' : 'off') + hd('RADIO') + row('radio', 'Ikosagon radio', CFG.radio ? 'on' : 'off') + row('pl', 'My playlist (streams now and then)', CFG.pl ? 'on' : 'off') + hd('VOLUME') + row('vEng', 'Engine and boost', pct(CFG.vEng)) + row('vCht', 'Radio chatter (pilots, traffic control)', pct(CFG.vCht)) + row('vRad', 'Music stream', pct(CFG.vRad)) + row('suno', 'Suno playlist page', 'open in a new tab')
+    + hd('DISPLAY') + row('hud', 'HUD colour', HCOL[CFG.hud][0]) + row('op', 'HUD brightness', Math.round(CFG.op * 100) + '%') + row('size', 'HUD size', Math.round(CFG.size * 100) + '%') + row('cin', 'Cinematic bars', CFG.cin ? 'on' : 'off') + row('fs', 'Full screen on launch', CFG.fs === 0 ? 'off' : 'on') + hd('LENS EFFECTS') + row('fxVisor', 'Curved visor (HUD wraps at the edges)', LV3(CFG.fxVisor)) + row('fxGlass', 'Visor glass (tinted rim)', LV3(CFG.fxGlass)) + row('fxBlur', 'Motion blur', LV3(CFG.fxBlur)) + row('fxCA', 'Colour fringing at the edges', LV3(CFG.fxCA)) + row('fxGrain', 'Film grain', LV3(CFG.fxGrain)) + row('fxBloom', 'Glow and sun rays', LV3(CFG.fxBloom)) + row('fxFlare', 'Lens flare from the sun', LV3(CFG.fxFlare)) + row('fxScan', 'Scanlines', CFG.fxScan ? 'on' : 'off') + row('fxVig', 'Darkened corners', CFG.fxVig ? 'on' : 'off') + hd('RADIO') + row('radio', 'Ikosagon radio', CFG.radio ? 'on' : 'off') + row('pl', 'My playlist (streams now and then)', CFG.pl ? 'on' : 'off') + hd('VOLUME') + row('vEng', 'Engine and boost', pct(CFG.vEng)) + row('vCht', 'Radio chatter (pilots, traffic control)', pct(CFG.vCht)) + row('vRad', 'Music stream', pct(CFG.vRad))
     + hd('FLIGHT') + row('inv', 'Invert pitch', CFG.inv ? 'on' : 'off') + row('ctl', 'Controls', CFG.ctl ? 'space sim' : 'standard') + row('sens', 'Mouse sensitivity', Math.round(CFG.sens * 100) + '%') + row('host', 'Other pilots', ['peaceful', 'wary', 'hostile'][CFG.host]) + row('wipe', 'Reset game', wipeArm ? 'click again: erases everything' : 'erase the save')
     + hd('KEYS · click one, then press the new key') + ACTS.map(([k, n]) => row('key:' + k, n, rebind === 'key:' + k ? 'press a key…' : keyName(CFG.keys[k] || k))).join('') + row('reset', 'All keys', 'reset to defaults') + '</div>';
 }
@@ -2235,7 +2235,7 @@ setP.onclick = (e) => {
   if (k === 'close') { setP.style.display = 'none'; rebind = null; return; }
   if (k.startsWith('key:')) rebind = rebind === k ? null : k;
   else if (k === 'reset') CFG.keys = {};
-  else if (k === 'suno') window.open('https://suno.com/playlist/12f42e02-78a5-4eb2-bf7e-f605817e4c06', '_blank', 'noopener');
+
   else if (k === 'wipe') { if (!wipeArm) wipeArm = 1; else { for (const q of Object.keys(ST)) delete ST[q]; Object.assign(ST, { v: 1, hull: 100, cargo: [0, 0, 0, 0, 0, 0], credits: 0, sec: [0, 0, 0], loc: 0, visited: {}, dead: [], missions: {}, found: {}, courier: null }); save(); try { localStorage.removeItem('esState'); } catch {} setTimeout(() => location.reload(), 1600); e.target.textContent = 'erasing…'; return; } }
   else if (k === 'hud') CFG.hud = (CFG.hud + 1) % HCOL.length; else if (k === 'op') CFG.op = cyc(CFG.op, [1, .7, .45, .25]); else if (k === 'size') CFG.size = cyc(CFG.size, [1, 1.15, .85]);
   else if (k === 'ctl') CFG.ctl = CFG.ctl ? 0 : 1;
@@ -2826,19 +2826,15 @@ function meteorTick(dt, fly) {
     for (let k = 0; k < 7; k++) { const b = f * (1 - k / 7) * 1.6; put(DPa, m.x - px - metD[0] * k * 22, m.y - py - metD[1] * k * 22, m.z - pz - metD[2] * k * 22, m.s * (1 - k * .1), 0, 0, 0, k * .13, b, b * .85, b * .6, 0); } }
 }
 
-// ---- the owner's own tracks, streamed from where they are hosted: now and then one fades in from a random point, plays a minute, fades out ----
-const TRACKS = ['8bca2649-ef58-4337-99da-96bc09457d8e', 'cab7667f-c12b-4b52-89f8-790cadf115f8', 'a8499c7c-09f5-47a4-82ba-ef1ed1d11704', '98987f77-6a7a-4fff-ab98-d48bdb3035e3', '53a8bb5c-0b30-4a08-85b1-628a4a3b71b8', '6ad0e9ff-0b1c-4904-8a12-44d2e5d90187', '00607acb-f516-4f98-8b2a-4fb7b4afa93c', '0f9a39ab-36f0-4090-91a6-1168566e464c'];
-const PHOST = ['https://cdn1.suno.ai/', 'https://cdn2.suno.ai/'];
+// ---- the owner's own tracks, streamed from ikosagon.com (the radio's list): now and then one fades in from a random point, plays a minute, fades out ----
 let plA = null, plOn = 0, plNext = 75, plEnd = 0, plVol = 0, plBad = 0, plWant = .3, plLast = -1, plH = 0;
-let plLocal = null; const plLoadLocal = () => { if (plLocal) return; plLocal = []; try { fetch('music/tracks.json').then((r) => r.ok ? r.json() : []).then((a) => { plLocal = Array.isArray(a) ? a : []; }).catch(() => {}); } catch {} };   // looked for only when the fallback playlist is actually needed
 const plLevel = (v) => { plWant = Math.max(0, Math.min(1, v)); };   // the one place the game sets how loud the stream is: it dips for hails and fights and comes back
 function playlistTick(dt, fly) {
-  plLoadLocal();
   if (!CFG.pl || !fly || plBad > 3 || !AC || AC.state !== 'running') return;
   if (!plOn) {
     plNext -= dt; if (plNext > 0) return; plNext = 150 + Math.random() * 240;
     if (!plA) { plA = new Audio(); plA.preload = 'none'; plA.onerror = () => { plBad++; plOn = 0; plH = 1 - plH; plNext = 8; }; }
-    let n = Math.random() * TRACKS.length | 0; if (n === plLast) n = (n + 1) % TRACKS.length; plLast = n; plA.src = plLocal && plLocal.length ? 'music/' + plLocal[n % plLocal.length] : PHOST[plH] + TRACKS[n] + '.mp3'; plA.volume = 0; plVol = 0;
+    if (!rdList || !rdList.length) { radioLoad(); plNext = 20; return; } const N = rdList.length; let n = Math.random() * N | 0; if (n === plLast && N > 1) n = (n + 1) % N; plLast = n; plA.src = rdList[n].url; plA.volume = 0; plVol = 0;
     plA.onloadedmetadata = () => { try { if (plA.duration > 120) plA.currentTime = Math.random() * (plA.duration - 110); } catch {} };
     const p = plA.play(); if (p && p.then) p.then(() => { plOn = 1; plEnd = 55 + Math.random() * 50; }).catch(() => { plBad++; });
     return;
