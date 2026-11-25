@@ -596,10 +596,10 @@ function mkSys(id) {
   s.seed0 = [rnd() * 40, rnd() * 40, rnd() * 40]; s.seed = s.seed0.slice(); s.rot = [co, k, q]; s.th = th;
   fillWorld(s, id, rnd);
   // the places in it. The first is the system's signature; the rest are drawn from the other kinds.
-  const kinds = [t]; while (kinds.length < 4 + (id >>> 27) % 3) { const k = rnd() * 8 | 0; if (!kinds.includes(k) && (k !== 3 || t === 3)) kinds.push(k); }
+  const kinds = [t]; for (let g3 = 0; kinds.length < 4 + (id >>> 27) % 3 && g3 < 200; g3++) { const k = rnd() * 8 | 0; if (!kinds.includes(k) && (k !== 3 || t === 3)) kinds.push(k); }
   const lr = nameRng(id, 0x504C4143), used = [], LN = (k) => {   // places: a river, a volcano, a port, a desert, a lost ship, a garden... and what it is now
     if (k === 1) return s.planets[2].type === 'none' ? 'The Outer Ice' : 'Ice Rings of ' + s.planets[2].name; if (k === 7) return s.planets[0].type === 'none' ? 'High Anchor' : 'Low Orbit, ' + s.planets[0].name;
-    const [ws, ss] = NM.place[k]; let w; do { w = pickN(lr, ws); } while (used.includes(w) && used.length < ws.length); used.push(w);
+    const [ws, ss] = NM.place[k]; let w; let g2 = 0; do { w = pickN(lr, ws); g2++; } while (used.includes(w) && used.length < ws.length && g2 < 40); used.push(w);
     const sf = pickN(lr, ss); return k === 3 ? 'The ' + w + ' ' + sf : w + ' ' + sf; };
   kinds.forEach((k, i) => s.locs.push({ i, name: LN(k), t: k, kind: NAMES[k], body: k === 7 && t !== 3 ? 0 : k === 1 ? 2 : k === 2 ? 1 : -1, desc: ARC[k].tr }));
   for (let i = 0; i < s.planets.length; i++) { const p = s.planets[i]; if (!p || !p.air) continue; const look = p.kind === 0 || p.kind === 4 ? 7 : p.kind === 5 ? 1 : 0; s.locs.push({ i: s.locs.length, name: p.airName, t: look, kind: 'Atmosphere', body: -1, atm: i + 1, skin: p.kind, desc: p.airDesc }); }
@@ -624,7 +624,7 @@ function setLoc(s, i) {
   { // ---- this place's own genome: field structure, rock mix and size, nebula style, light ----
     const G = mulberry32(Math.imul((s.id ^ Math.imul(s.loc + 11, 0x2545F491)) >>> 0, 2654435761) >>> 0); G(); G();
     const W = [[3, 1, 3, 1], [1, 1, 5, 1], [3, 4, 1, 1], [1, 1, 1, 5], [4, 1, 1, 3], [2, 5, 1, 1], [3, 4, 1, 1], [3, 1, 4, 1]][L.t], tot = W.reduce((a, b) => a + b, 0);
-    let pk = G() * tot, m = 0; while (pk > W[m]) { pk -= W[m]; m++; }
+    let pk = G() * tot, m = 0; while (m < W.length - 1 && pk > W[m]) { pk -= W[m]; m++; }
     const big = () => (G() - .5) * 2e5, tl = (G() - .5) * .9, az = G() * 6.283, n = [Math.sin(tl) * Math.cos(az), Math.cos(tl), Math.sin(tl) * Math.sin(az)];
     s.fg = { o: [big(), big(), big()], oc: [big(), big(), big()], s: .55 + G() * 1.35, sy: .35 + G() * 1.4, m: L.atm ? 3 : m, n, th: 350 + G() * 900, rw: 140 + G() * 420, h0: (G() < .5 ? -1 : 1) * (500 + G() * 1600) };
     s.fz = { kb: .7 + G() * .5, kh: .7 + G() * .7 };                                                       // this place's rocks run small or large
@@ -2617,7 +2617,7 @@ function npcTick(dt) {
       }
     }
     if (a.s > 4) { const L2 = Math.min(a.big ? 900 : 60, a.s * (a.big ? 9 : .9)), w = a.big ? a.size * .03 : a.size * .05, k = Math.min(1, a.s / a.sp), bx3 = a.x - px - a.fx * a.size * .92, by3 = a.y - py - a.fy * a.size * .92, bz3 = a.z - pz - a.fz * a.size * .92; put(DT, bx3 - a.fx * L2 * .5, by3 - a.fy * L2 * .5, bz3 - a.fz * L2 * .5, w, -a.fx * L2, -a.fy * L2, -a.fz * L2, 0, (a.role === 5 ? 2.4 : .5) * k, (a.role === 5 ? .7 : 1.3) * k, (a.role === 5 ? .3 : 2.6) * k, 0); }   // a line of light behind the drives, longer the faster it goes
-    if (a.role === 5) { if (a.foe == null) foeAssign(a); foeUp(a, dt); }
+    if (a.role === 5) { if (a.foe == null && foeB < 1 && !hl && !jumpTo) { foeB++; foeAssign(a); } foeUp(a, dt); }
     put(a.big ? DAf : a.foe >= 0 ? FOEG[a.foe] : DAgs[(a.var || 0) % 3], a.x - px, a.y - py, a.z - pz, a.size, a.fx, a.fy, a.fz, a.seed, a.role === 5 ? FU0 : a.ux, a.role === 5 ? FU1 : a.uy, a.role === 5 ? FU2 : a.uz, a.hue);
     } catch (e) { console.error('npc', a && a.name, e); a.lead = null; ensureWp(a); }
   }
@@ -2873,7 +2873,7 @@ function hudDraw(k) { if (hudOp <= .01 && !(xr && jpOpen)) return;   // v1.37: H
 
 // ---- settings: display, flight, and every key. Kept in the browser. ----
 const HCOL = [['Ice', ['#e6f6ff', 'rgba(160,210,240,.62)', '#ffb44a', '#63e2ff']], ['Amber', ['#ffd9a0', 'rgba(255,190,110,.6)', '#ffffff', '#ffb44a']], ['Green', ['#c8ffd8', 'rgba(120,255,170,.55)', '#ffe27a', '#5dffa0']], ['Violet', ['#ffd6f6', 'rgba(255,150,230,.55)', '#7ee8ff', '#ff7ae0']], ['Red', ['#ffd0c8', 'rgba(255,120,100,.6)', '#ffe9a8', '#ff6a5a']]];
-const ACTS = [['KeyW', 'Throttle up'], ['KeyS', 'Throttle down'], ['KeyA', 'Strafe left'], ['KeyD', 'Strafe right'], ['KeyE', 'Rise'], ['KeyQ', 'Sink'], ['ShiftLeft', 'Boost'], ['Space', 'Fire'], ['KeyX', 'Zero throttle'], ['KeyT', 'Next target'], ['KeyF', 'Interact / hail'], ['KeyJ', 'Warp gate'], ['KeyB', 'Journal'], ['KeyL', 'Log'], ['KeyC', 'Cockpit on / off'], ['Comma', 'Glance left'], ['Period', 'Glance right'], ['Slash', 'Glance behind'], ['KeyR', 'Radio on / off'], ['BracketRight', 'Radio: skip to another song'], ['KeyI', 'Cargo hold'], ['Tab', 'Aux display (full screen)'], ['KeyN', 'Star map'], ['KeyM', 'Mute'], ['KeyV', 'VR / 3D'], ['KeyG', 'Spice sense (slow time, shield)']];
+const ACTS = [['KeyW', 'Throttle up'], ['KeyS', 'Throttle down'], ['KeyA', 'Strafe left'], ['KeyD', 'Strafe right'], ['KeyE', 'Rise'], ['KeyQ', 'Sink'], ['ShiftLeft', 'Boost'], ['Space', 'Fire'], ['KeyX', 'Zero throttle'], ['KeyT', 'Next target'], ['KeyF', 'Interact / hail'], ['KeyJ', 'Warp gate'], ['KeyB', 'Journal'], ['KeyL', 'Log'], ['KeyC', 'Cockpit on / off'], ['Comma', 'Glance left'], ['Period', 'Glance right'], ['Slash', 'Glance behind'], ['KeyR', 'Radio on / off'], ['BracketRight', 'Radio: skip to another song'], ['KeyI', 'Cargo hold'], ['Tab', 'Aux display (full screen)'], ['KeyN', 'Star map'], ['KeyM', 'Mute'], ['KeyV', 'VR / 3D'], ['KeyY', 'Spice sense (slow time, shield)']];
 const CFG = { hud: 1, op: .7, size: .85, cin: 0, host: 0, inv: 0, sens: 1, fx: 1, pl: 1, radio: 1, keys: {}, vEng: .5, vCht: 1, vRad: 1, fxBlur: .5, fxCA: 1, fxGrain: 1, fxScan: 1, fxBloom: 1, fxFlare: 1, fxVig: 1, fxVisor: .5, fxGlass: 1 };
 const pct = (v) => v ? Math.round(v * 100) + '%' : 'off', LV3 = (v) => !v ? 'off' : v < .75 ? 'subtle' : 'full';
 try { Object.assign(CFG, JSON.parse(localStorage.ibCfg || '{}')); } catch {}
@@ -2996,7 +2996,7 @@ function bigStarsSet() {
   if (key !== bsKey) { bsKey = key; bsS.fill(0); bsC.fill(0); const R = mulberry32((SYS.salt ^ 0x51A75) >>> 0), head = SYS.headline || 0, closeOn = !SYS.atm && mulberry32(((SYS.id >>> 0) ^ 0xC105E) >>> 0)() < .3, show = !closeOn && !head && R() < .5, n = head || SYS.atm ? 0 : closeOn ? (R() < .5 ? 0 : 1) : 1 + (R() < .4 ? 1 : 0);   // one headline already owns this sky
     for (let i = 0; i < n; i++) { let u = R() * BSK.reduce((a, k) => a + k[1], 0), K = BSK[0]; for (const k of BSK) { if ((u -= k[1]) <= 0) { K = k; break; } }
       if (i === 0 && show) K = BSK[[1, 2, 3, 6, 7][R() * 5 | 0]]; else if (!show && K[0] !== 0 && K[0] !== 4) K = BSK[0];   // a showpiece in about half the places; otherwise plain suns or a pulsar
-      let x, y, z; do { z = R() * 2 - 1; const a = R() * 6.283, q = Math.sqrt(1 - z * z); x = Math.cos(a) * q; y = Math.sin(a) * q; } while (x * SUN[0] + y * SUN[1] + z * SUN[2] > .9);
+      let x, y, z, g4 = 0; do { g4++; z = R() * 2 - 1; const a = R() * 6.283, q = Math.sqrt(1 - z * z); x = Math.cos(a) * q; y = Math.sin(a) * q; } while (x * SUN[0] + y * SUN[1] + z * SUN[2] > .9 && g4 < 60);
       bsS.set([x, y, z, K[0]], i * 4); bsC.set([K[2][0], K[2][1], K[2][2], (K[3] + (K[4] - K[3]) * R()) * (i ? .8 : 1.2)], i * 4); } }
   if (key !== csKey) { csKey = key; const R = mulberry32(((SYS.id >>> 0) ^ 0xC105E) >>> 0), on = !SYS.atm && R() < .3, sc = SYS.sc || 0, giant = sc <= 2 && R() < .35;
     const RR = [[.05, .09], [.05, .1], [.05, .11], [.04, .08], [.03, .06], [.07, .13], [.05, .09], [.015, .03]][sc], rad = giant ? .11 + R() * .06 : RR[0] + (RR[1] - RR[0]) * R();
@@ -3620,7 +3620,7 @@ function rockAssist(dt) {
     if (sp > 240) { const ux = vx / sp, uy = vy / sp, uz = vz / sp, look = Math.min(2800, sp * 1.9); let best = 1e9; const seen = new Set();
       if (nearSeen.size > 400) nearSeen.clear();
       for (const [L, at] of [[LB, bigAt], [LH, hugeAt]]) { const C = L.C;
-        for (let d = 0; d <= look + C; d += C * .8) { const bx = Math.floor((px + ux * d) / C), by = Math.floor((py + uy * d) / C), bz = Math.floor((pz + uz * d) / C);
+        for (let d = 0, dg = 0; d <= look + C && dg < 160; d += Math.max(C * .8, 20), dg++) { const bx = Math.floor((px + ux * d) / C), by = Math.floor((py + uy * d) / C), bz = Math.floor((pz + uz * d) / C);
           for (let kk = -1; kk < 2; kk++) for (let jj = -1; jj < 2; jj++) for (let ii = -1; ii < 2; ii++) { const cx = bx + ii, cy = by + jj, cz = bz + kk, key = C + ':' + cx + ',' + cy + ',' + cz; if (seen.has(key)) continue; seen.add(key);
             const s = at(C, cx, cy, cz); if (!s) continue;
             const rx = (cx + gj0) * C - px, ry = (cy + gj1) * C - py, rz = (cz + gj2) * C - pz, t = rx * ux + ry * uy + rz * uz; if (t < 0 || t > look) continue;
@@ -3724,7 +3724,7 @@ let rdList = null, rdA = null, rdT = 20, rdVol = 0, rdName = '', rdLast = '', rd
 function radioLoad() { if (location.protocol === 'file:') return; try { fetch(RADIO, { cache: 'no-store' }).then((r) => r.json()).then((a) => { if (Array.isArray(a)) { const l = a.filter((t) => t && t.url); if (l.length) rdList = l; } }).catch(() => { rdBad++; }); } catch { rdBad++; } }
 function radioNext(seek) {
   radioLoad(); if (!rdList || !rdA) return;
-  let t = rdList[Math.random() * rdList.length | 0]; if (rdList.length > 1) while (t.url === rdLast) t = rdList[Math.random() * rdList.length | 0];
+  let t = rdList[Math.random() * rdList.length | 0]; if (rdList.length > 1) for (let g = 0; g < 12 && t.url === rdLast; g++) t = rdList[Math.random() * rdList.length | 0];
   rdLast = t.url; rdName = String(t.title || 'On air').slice(0, 30); rdA.src = t.url; rdVol = Math.min(rdVol, .05); rdA.volume = rdFx ? 1 : rdVol;
   rdA.onloadedmetadata = seek ? () => { try { if (rdA.duration > 60) rdA.currentTime = rdA.duration * (.1 + Math.random() * .65); } catch {} } : null;
   const p = rdA.play(); if (p && p.catch) p.catch(() => { rdRetry = 1; });
@@ -3913,7 +3913,7 @@ function radioVoice(len) {
   if (!AC || AC.state !== 'running') return;
   const t0 = AC.currentTime + .05, out = AC.createGain(), bp = AC.createBiquadFilter(), hp = AC.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1500; bp.Q.value = .7; hp.type = 'highpass'; hp.frequency.value = 350; out.gain.value = .045 * CFG.vCht; if (!CFG.vCht) return; bp.connect(hp).connect(out).connect(AG);
   const base = 95 + Math.random() * 70; let t = t0; burst(t0 - .04, .03, .012, 2600, 1800, 'bandpass');
-  while (t < t0 + len) { const d = .07 + Math.random() * .13, o = AC.createOscillator(), g = AC.createGain(), f1 = AC.createBiquadFilter(), f2 = AC.createBiquadFilter(), p = base * (.85 + Math.random() * .4);
+  for (let vg = 0; t < t0 + len && vg < 60; vg++) { const d = .07 + Math.random() * .13, o = AC.createOscillator(), g = AC.createGain(), f1 = AC.createBiquadFilter(), f2 = AC.createBiquadFilter(), p = base * (.85 + Math.random() * .4);
     o.type = 'sawtooth'; o.frequency.setValueAtTime(p, t); o.frequency.linearRampToValueAtTime(p * (.88 + Math.random() * .25), t + d);
     f1.type = f2.type = 'bandpass'; f1.frequency.value = 300 + Math.random() * 500; f1.Q.value = 5; f2.frequency.value = 900 + Math.random() * 1500; f2.Q.value = 7;
     g.gain.setValueAtTime(.0001, t); g.gain.linearRampToValueAtTime(.9, t + .02); g.gain.setValueAtTime(.9, t + d - .03); g.gain.linearRampToValueAtTime(.0001, t + d);
@@ -4054,14 +4054,14 @@ function scTick() {
   if (air) { SC.t = Math.max(SC.t, now + .1); return; }
   if (SC.t < now) SC.t = now + .05;
   const spb = 60 / T.bpm / 4;
-  while (SC.t < now + .2) {
+  for (let scg = 0; SC.t < now + .2 && scg < 48; scg++) {
     scStep(SC.t, T, energy);
     SC.step++; if ((SC.step & 15) === 0) { SC.bar++; SC.secBar++;
       if (SC.secBar % 4 === 0 && SC.secBar < SC.secLen) {                                 // speed changes cut in at the next four-bar line
         if (energy > .55 && (SC.sec === 'intro' || SC.sec === 'groove' || SC.sec === 'breakdown')) { SC.sec = 'build'; SC.secLen = 4; SC.secBar = 0; }
         else if (energy < .2 && (SC.sec === 'drop' || SC.sec === 'build')) { SC.sec = 'breakdown'; SC.secLen = 8; SC.secBar = 0; } }
       if (SC.secBar >= SC.secLen) { if (SC.sec === 'drop') SC.drops++; SC.sec = scNextSec(energy); SC.secLen = SECS[SC.sec].len; SC.secBar = 0; } }
-    SC.t += spb;
+    SC.t += Math.max(spb, .02);
   }
 }
 
@@ -6313,7 +6313,7 @@ let SP = { n: [0, 0, 0, 0], lv: [0, 0, 0], total: 0, intro: 0, hulls: 0 };
 try { const o = JSON.parse(localStorage.ibSpice); if (o && Array.isArray(o.n) && Array.isArray(o.lv)) SP = Object.assign(SP, o); } catch {}
 const spSave = () => keep('ibSpice', JSON.stringify(SP));
 const spKind = () => SP.n.map((v, i) => v + ' ' + SPN[i].toLowerCase()).join(' · ');
-let spSh = 0, spGrace = 0, spAbT = 0, pkT = 14, introT = 0, introS = 0, introA = null, FO = null, foeHitT = -9, foeHitS = '', FU0 = 0, FU1 = 1, FU2 = 0;
+let foeB = 0, spSh = 0, spGrace = 0, spAbT = 0, pkT = 14, introT = 0, introS = 0, introA = null, FO = null, foeHitT = -9, foeHitS = '', FU0 = 0, FU1 = 1, FU2 = 0;
 const spCk = () => 1 - .1 * SP.lv[2], spCool = () => 6 - .9 * SP.lv[2];
 function spTier() {
   const p = SP.total, dg = SYS.danger || 0, r = Math.random(), pm = p >= 25 ? .02 + .01 * dg : 0, pe = p >= 10 ? .06 + .012 * dg : 0, pr = .14 + .012 * Math.min(12, p / 2) + .03 * dg;
@@ -6322,7 +6322,7 @@ function spTier() {
 function spGot(b) {
   const q = b.q | 0, v = Math.round(b.v * (1 + .6 * q)); ST.spice = Math.min(100, (ST.spice || 0) + v); SP.n[q]++; SP.total++; spSave();
   pop(`${SPN[q]} SPICE +${v}`, SPH[q]); if (q > 0 && AC && AC.state === 'running') spiceSnd(0);
-  if (SP.total === 1) tip('Spice: boost at rocks, or press G, to slow time. Rarer spice (menu: Spice attunement) upgrades slow time, shield and flow', 9000);
+  if (SP.total === 1) tip('Spice: boost at rocks, or press Y, to slow time. Rarer spice (menu: Spice attunement) upgrades slow time, shield and flow', 9000);
 }
 function spOn() { spSh = 1.2 + SP.lv[1]; spAbT = 0; btMax = btT = btT + SP.lv[0] * .45; spGrace = tm + .45 * SP.lv[1]; }
 function spAbsorb(a) {
@@ -6330,7 +6330,7 @@ function spAbsorb(a) {
   return a;
 }
 function spiceSense() {
-  if (!flying() || btT > 0) return; const cost = Math.max(4, Math.round(22 * spCk()));
+  if (!flying() || btT > 0 || hl || jumpTo) return; const cost = Math.max(4, Math.round(22 * spCk()));
   if (btCool > 0) { tip('Spice sense is recharging', 1200); return; }
   if ((ST.spice || 0) < cost) { tip(`Spice sense needs ${cost} spice`, 1800); return; }
   ST.spice -= cost; btMax = btT = 2; btHold = 0; btCool = spCool(); spOn(); pop(`SPICE SENSE · SPICE −${cost}`, '#ff3b5c'); spiceSnd(0);
@@ -6358,6 +6358,7 @@ function foeIntroEnd() { introT = 0; introA = null; hlF = null; if (FO) FO.style
 addEventListener('keydown', (e) => { if (introT > 0 && (e.code === 'Enter' || e.code === 'Backspace' || e.code === 'NumpadEnter')) introS -= 1e5; });
 addEventListener('pointerdown', () => { if (introT > 0 && performance.now() - introS > 700) introS -= 1e5; });
 function spiceX(dt, fly) {
+  foeB = 0;
   if (introT > 0) {
     introT = Math.max(0, 6.5 - (performance.now() - introS) / 1000);
     if (introT <= 0 || !introA || introA.dead || !fly) foeIntroEnd();
@@ -6367,8 +6368,9 @@ function spiceX(dt, fly) {
   if (!fly) return;
   if (btT <= 0 && tm > spGrace) spSh = 0;
   if (btT > 0) spGrace = tm + .45 * SP.lv[1];
-  pkT -= dt; if (pkT <= 0) { pkT = 45 + Math.random() * 60; if (!SYS.atm && BLOOMS.length < 12 && introT <= 0) spPocket(); }
-  if (!SP.intro && introT <= 0) for (const a of NPCS) if (a.role === 5 && !a.dead && !a.fled && a.foe != null) { const d = Math.hypot(a.x - px, a.y - py, a.z - pz); if (d < 3200 && d > 250) { foeIntroStart(a); break; } }
+  pkT -= dt; if (pkT <= 0) { pkT = 45 + Math.random() * 60; if (!SYS.atm && !hl && !jumpTo && BLOOMS.length < 12 && introT <= 0 && px * px + py * py + pz * pz < 4e12) spPocket(); }
+  if (introT > 0 && (hl || jumpTo)) foeIntroEnd();
+  if (!SP.intro && introT <= 0 && !hl && !jumpTo) for (const a of NPCS) if (a.role === 5 && !a.dead && !a.fled && a.foe != null) { const d = Math.hypot(a.x - px, a.y - py, a.z - pz); if (d < 3200 && d > 250) { foeIntroStart(a); break; } }
 }
 function spHud(c, T, hd, wrap) {
   for (let q = 0; q < 4; q++) { c.fillStyle = SPH[q]; c.fillRect(178 + q * 48, 106, 9, 9); T(String(SP.n[q]), 178 + q * 48 + 14, 115, 12, 'left', SPH[q], 700); }
@@ -6384,7 +6386,7 @@ function spicePanel() {
     return { name: b[0], kind: L >= 4 ? 'max' : `Lv ${L} → ${L + 1}`, desc: b[1] + (L >= 4 ? '' : ` · needs ${nx[1]} ${SPN[nx[0]].toLowerCase()}`), run: () => {
       if (L < 4 && SP.n[nx[0]] >= nx[1]) { SP.n[nx[0]] -= nx[1]; SP.lv[i]++; spSave(); pop(`${b[0].toUpperCase()} LEVEL ${SP.lv[i]}`, SPH[nx[0]]); } else if (L < 4) tip(`Not enough ${SPN[nx[0]].toLowerCase()} spice`, 2000); spicePanel(); } }; });
   list.push({ name: 'Back', desc: '', run: () => pausePanel() });
-  panel('Spice attunement', spKind(), list, 'Rarer spice unlocks deeper levels · G triggers spice sense');
+  panel('Spice attunement', spKind(), list, 'Rarer spice unlocks deeper levels · Y triggers spice sense');
 }
 const FOEG = [0, 1, 2, 3, 4, 5, 6, 7].map(() => Dyn(6)), FOEM = [null, null, null, null, null, null, null, null];
 function foeMesh(sd) {
@@ -6427,9 +6429,53 @@ npcHit = function (a, dmg, qd, hx, hy, hz, w) {
   const sh0 = a.sh, was = a.dead; npcHit1(a, dmg, qd, hx, hy, hz, w); if (a.role !== 5) return;
   foeHitT = tm; foeHitS = a.dead ? '✕ FOE DOWN' : sh0 > 0 && a.sh <= 0 ? '◇ SHIELD DOWN' : a.sh > 0 ? '◇ SHIELD HIT' : '✕ HULL HIT';
   if (AC && AC.state === 'running') note(mf(a.dead ? 96 : a.sh > 0 ? 91 : 74), AC.currentTime, .04, 'triangle', .35, 1);
-  if (!was && a.dead) { const q = Math.min(3, spTier() + (Math.random() < .3 ? 1 : 0)); BLOOMS.push({ x: a.x, y: a.y, z: a.z, t: 0, q, v: 10, p: 1, dx: 0, dy: 0, dz: 0 }); pop('SPICE CACHE DROPPED', SPH[q]); }
+  if (!was && a.dead && BLOOMS.length < 24) { const q = Math.min(3, spTier() + (Math.random() < .3 ? 1 : 0)); BLOOMS.push({ x: a.x, y: a.y, z: a.z, t: 0, q, v: 10, p: 1, dx: 0, dy: 0, dz: 0 }); pop('SPICE CACHE DROPPED', SPH[q]); }
 };
-const BUILD = 'v1.71';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
+/* ---- v1.72: freeze telemetry. A 10 s ring of frame facts, a worker that notices a total hang, beacons to /api/ie-log. No IP, no ids. ---- */
+const IE = { R: Array.from({ length: 640 }, () => [0, 0, 0, 0, 0, 0]), i: 0, n: 0, t0: performance.now(), sid: Math.random().toString(36).slice(2, 8), err: '', rep: 0, repT: -1e9, hbN: 0, bootSent: 0, fo: 0, W: null, vis: performance.now(), mxd: 0, mxn: 0, lastSlow: null, N: ['', 'npcTick', 'spiceTick', 'rpgSim', 'hlTick', 'radioTick', 'playlistTick', 'arrive', 'npcSpawn', 'foeAssign', 'rockAssist', 'comm', 'musicTick'] };
+const IE_URL = '/api/ie-log';
+const ieDev = () => (QUEST || xr) ? 'quest' : /Android|iPhone|iPad|Mobi/i.test(navigator.userAgent) ? 'mobile' : 'desktop';
+const ieFlags = () => (flying() ? 1 : 0) | (hl ? 2 : 0) | (jumpTo ? 4 : 0) | (btT > 0 ? 8 : 0) | (introT > 0 ? 16 : 0) | (SYS.atm ? 32 : 0) | (bst > .5 ? 64 : 0) | (xr ? 128 : 0) | (jpOpen ? 256 : 0);
+function ieRing() {
+  const o = [], now = performance.now() - IE.t0; let k = 0;
+  for (let j = 1; j <= IE.n && o.length < 90; j++) { const r = IE.R[(IE.i - j + 640) % 640]; if (now - r[0] > 10000) break; if (j < 12 || r[1] > 50 || (++k % 8) === 0) o.push(r.slice()); }
+  return o.reverse();
+}
+function ieState(kind, extra) {
+  const o = { k: kind, v: BUILD, sid: IE.sid, dev: ieDev(), t: Math.round((performance.now() - IE.t0) / 1000) };
+  try { o.sys = SYS.name; o.loc = SYS.locs[SYS.loc].name; o.f = ieFlags(); o.hl = hl; o.foes = IE.fo; o.pk = BLOOMS.length; o.draws = frameDraws; o.hulls = SP.hulls; o.fps = +fps.toFixed(1); o.S = +S.toFixed(2); o.px = Math.round(Math.hypot(px, py, pz)); o.err = IE.err; o.slow = IE.lastSlow; o.ring = ieRing(); } catch (e) { o.err = 'state: ' + e.message; }
+  if (extra) Object.assign(o, extra); return o;
+}
+function ieSend(kind, extra) {
+  if (location.protocol === 'file:') return;
+  const now = performance.now();
+  if (kind === 'boot') { if (IE.bootSent) return; IE.bootSent = 1; }
+  else if (kind === 'hb') { if (IE.hbN >= 120) return; IE.hbN++; }
+  else { if (IE.rep >= 20 || now - IE.repT < 5000) return; IE.rep++; IE.repT = now; }
+  try { const b = JSON.stringify(ieState(kind, extra)); if (!(navigator.sendBeacon && navigator.sendBeacon(IE_URL, new Blob([b], { type: 'text/plain' })))) fetch(IE_URL, { method: 'POST', body: b, keepalive: true, headers: { 'content-type': 'text/plain' } }).catch(() => {}); } catch (e) {}
+}
+function ieFrame(raw) {
+  if (!IE.booted && bootOK) { IE.booted = 1; ieBoot(); }
+  const r = IE.R[IE.i], now = performance.now(); IE.i = (IE.i + 1) % 640; if (IE.n < 640) IE.n++;
+  if ((IE.i & 7) === 0) { IE.fo = 0; for (const a of NPCS) if (a.role === 5 && !a.dead) IE.fo++; }
+  r[0] = Math.round(now - IE.t0); r[1] = Math.round(Math.min(raw, 600) * 1000); r[2] = ieFlags(); r[3] = IE.fo; r[4] = BLOOMS.length; r[5] = frameDraws;
+  IE.lastSlow = IE.mxd > 30 ? [IE.N[IE.mxn], Math.round(IE.mxd)] : null; IE.mxd = 0;
+  if (raw > 1.5 && raw < 600 && bootOK && now - IE.vis > 3000 && !document.hidden) ieSend('stall', { gap: Math.round(raw * 1000) });
+}
+const ieW = (f, c) => function () { IE.W && IE.W.postMessage(c); const t = performance.now(); try { return f.apply(this, arguments); } finally { const d = performance.now() - t; if (d > IE.mxd) { IE.mxd = d; IE.mxn = c; } } };
+try { npcTick = ieW(npcTick, 1); spiceTick = ieW(spiceTick, 2); rpgSim = ieW(rpgSim, 3); hlTick = ieW(hlTick, 4); radioTick = ieW(radioTick, 5); playlistTick = ieW(playlistTick, 6); arrive = ieW(arrive, 7); npcSpawn = ieW(npcSpawn, 8); foeAssign = ieW(foeAssign, 9); rockAssist = ieW(rockAssist, 10); comm = ieW(comm, 11); } catch (e) {}
+const ieWorkerSrc = "let last=performance.now(),snap='',play=0,sent=0,url='',inn=0,names=[];onmessage=(e)=>{const d=e.data;if(typeof d==='number'){inn=d;return;}url=d.u||url;names=d.n||names;last=performance.now();snap=d.s;play=d.p;if(d.p)sent=0;};setInterval(()=>{const q=performance.now()-last;if(play&&sent<2&&q>(sent?60000:6000)&&url&&snap){sent++;try{const o=JSON.parse(snap);o.k='hang';o.in=names[inn]||'';o.silent=Math.round(q);fetch(url,{method:'POST',body:JSON.stringify(o),keepalive:true,headers:{'content-type':'text/plain'}}).catch(()=>{});}catch(e){}}},1000);";
+function ieBoot() {
+  ieSend('boot');
+  try { IE.W = new Worker(URL.createObjectURL(new Blob([ieWorkerSrc], { type: 'text/javascript' }))); } catch (e) { IE.W = null; }
+  setInterval(() => { const play = flying() && !document.hidden; if (IE.W) { try { IE.W.postMessage({ u: location.origin + IE_URL, n: IE.N, p: play ? 1 : 0, s: JSON.stringify(ieState('snap')) }); } catch (e) {} } }, 1000);
+  setInterval(() => { if (flying() && !document.hidden) ieSend('hb'); }, 30000);
+  addEventListener('visibilitychange', () => { IE.vis = performance.now(); if (IE.W && document.hidden) IE.W.postMessage({ p: 0, s: '' }); });
+  addEventListener('error', (e) => { IE.err = String(e.message || 'error').slice(0, 240); ieSend('error', { msg: IE.err, at: String(e.filename || '').split('/').pop() + ':' + (e.lineno || 0) }); });
+  addEventListener('unhandledrejection', (e) => { IE.err = String(e.reason && e.reason.message || e.reason).slice(0, 240); ieSend('rejection', { msg: IE.err }); });
+  const ce = console.error; console.error = function () { try { IE.err = Array.prototype.map.call(arguments, (x) => x && x.message || String(x)).join(' ').slice(0, 240); } catch (e) {} return ce.apply(console, arguments); };
+}
+const BUILD = 'v1.72';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 let draws = 0, verts = 0, frameDraws = 0, frameVerts = 0;
 const _dei = gl.drawElementsInstanced.bind(gl), _de = gl.drawElements.bind(gl), _da = gl.drawArrays.bind(gl);
 gl.drawElementsInstanced = (m, c, ty, off, n) => { draws++; verts += c * n; return _dei(m, c, ty, off, n); };
@@ -6710,7 +6756,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyJ' && flying()) jpOpen ? closePanel() : gatePanel();
   if (e.code === 'KeyL' && flying()) jpOpen ? closePanel() : logPanel();
   if (e.code === 'KeyN') starMap();
-  if (e.code === 'KeyG' && started) spiceSense();
+  if (e.code === 'KeyY' && started) spiceSense();
   if (e.code === 'KeyR') { CFG.radio = CFG.radio ? 0 : 1; setUi(); if (CFG.radio) radioJump(); tip(CFG.radio ? 'Ikosagon radio on: tuning in somewhere new' : 'Radio off: ship\'s score', 3000); }
   if (e.code === 'BracketRight' && CFG.radio) radioJump();
   if (flying() && !jpOpen && !invOpen && /^Digit[1-5]$/.test(e.code)) wpnSet(+e.code[5] - 1);
@@ -6948,7 +6994,7 @@ function spark(x, y, z, ax, ay, az, life, size, grow, r, g, b, kind) {
 const NBU = 96, bX = new Float64Array(NBU * 3), bV = new Float32Array(NBU * 3), bL = new Float32Array(NBU), bP = new Float32Array(NBU * 6);
 let muzzle = 0, bCur = 0, nLive = 0, gunSpin = 0, fireAcc = 0, shotN = 0, broken = 0;
 const rd = [0, 0, 0];
-const rdir = () => { let x, y, z, l; do { x = Math.random() * 2 - 1; y = Math.random() * 2 - 1; z = Math.random() * 2 - 1; l = x * x + y * y + z * z; } while (l > 1 || l < .01); l = 1 / Math.sqrt(l); rd[0] = x * l; rd[1] = y * l; rd[2] = z * l; };
+const rdir = () => { let x, y, z, l, g5 = 0; do { x = Math.random() * 2 - 1; y = Math.random() * 2 - 1; z = Math.random() * 2 - 1; l = x * x + y * y + z * z; g5++; } while ((l > 1 || l < .01) && g5 < 40); if (l > 1 || l < .01) { x = 0; y = 1; z = 0; l = 1; } l = 1 / Math.sqrt(l); rd[0] = x * l; rd[1] = y * l; rd[2] = z * l; };
 
 const bW = new Uint8Array(NBU), WCOL = [[7, 3.6, 1], [1.4, 7, 2.6], [6.5, 1.6, 9], [1.2, 4.5, 6], [8, 4, 1]], WSH = [[1, .007, 1600, 1.4], [6, .07, 1300, .45], [1, .002, 3400, 1.7], [1, .004, 3000, .26]];
 let gmx = 0, gmy = 0, lastFire = -99, dryTip = 0, fullTip = 0, palEase = 0;                                         // where the guns are pointing, off the nose: they follow the cursor a little   // each weapon has its own light: amber rounds, green shot, violet lance
@@ -7407,6 +7453,7 @@ function frame(now, xf) {
   (xr || window).requestAnimationFrame(frame);
   frameDraws = draws; frameVerts = verts; draws = 0; verts = 0;
   const raw = (now - last) / 1000; last = now; frEma = frEma ? frEma * .95 + Math.min(raw, 1) * .05 : raw; if (raw > .35 && raw > frEma * 3 && bootOK && raw < 60) evLog(`Hitch · a frame took ${Math.round(raw * 1000)} ms` + (SYS.atm ? ' (in a sky)' : ''));
+  ieFrame(raw);
   const rdt = Math.min(.05, Math.max(.001, raw)); btT = Math.max(0, btT - rdt); slow += (((jpOpen || invOpen || PIP.big) && flying() ? .12 : btT > 0 ? .14 + .86 * Math.pow(1 - btT / btMax, 2.4) : introT > 0 ? .3 : 1) - slow) * Math.min(1, rdt * (btT > 0 ? 14 : 4));
   const dt = rdt * slow; tm += dt;                             // with a panel open the world all but stops, and eases back when it closes
   acc += raw; nf++;
