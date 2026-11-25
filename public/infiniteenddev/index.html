@@ -197,6 +197,7 @@ body[class^="g"] #tip{display:none!important}   /* in flight the HUD shows messa
 <script>
 'use strict';
 (async()=>{
+try { navigator.sendBeacon('/api/ie-log', new Blob([JSON.stringify({ k: 'load', v: 'v1.73', dev: /Android|iPhone|iPad|Mobi/i.test(navigator.userAgent) ? 'mobile' : /OculusBrowser/i.test(navigator.userAgent) ? 'quest' : 'desktop', t: 0 })], { type: 'text/plain' })); } catch (e) {}
 // ============================================================================
 // The Infinite End: setup, quality level, hashing and the fields that shape the world
 // ============================================================================
@@ -6432,7 +6433,7 @@ npcHit = function (a, dmg, qd, hx, hy, hz, w) {
   if (!was && a.dead && BLOOMS.length < 24) { const q = Math.min(3, spTier() + (Math.random() < .3 ? 1 : 0)); BLOOMS.push({ x: a.x, y: a.y, z: a.z, t: 0, q, v: 10, p: 1, dx: 0, dy: 0, dz: 0 }); pop('SPICE CACHE DROPPED', SPH[q]); }
 };
 /* ---- v1.72: freeze telemetry. A 10 s ring of frame facts, a worker that notices a total hang, beacons to /api/ie-log. No IP, no ids. ---- */
-const IE = { R: Array.from({ length: 640 }, () => [0, 0, 0, 0, 0, 0]), i: 0, n: 0, t0: performance.now(), sid: Math.random().toString(36).slice(2, 8), err: '', rep: 0, repT: -1e9, hbN: 0, bootSent: 0, fo: 0, W: null, vis: performance.now(), mxd: 0, mxn: 0, lastSlow: null, N: ['', 'npcTick', 'spiceTick', 'rpgSim', 'hlTick', 'radioTick', 'playlistTick', 'arrive', 'npcSpawn', 'foeAssign', 'rockAssist', 'comm', 'musicTick'] };
+const IE = { R: Array.from({ length: 640 }, () => [0, 0, 0, 0, 0, 0]), i: 0, n: 0, t0: performance.now(), sid: Math.random().toString(36).slice(2, 8), err: '', rep: 0, repT: -1e9, hbN: 0, bootSent: 0, fo: 0, W: null, vis: performance.now(), mxd: 0, mxn: 0, lastSlow: null, N: ['', 'npcTick', 'spiceTick', 'rpgSim', 'hlTick', 'radioTick', 'playlistTick', 'arrive', 'npcSpawn', 'foeAssign', 'rockAssist', 'comm', 'musicTick', 'afterSim', 'upd', 'render', 'afterRender'] };
 const IE_URL = '/api/ie-log';
 const ieDev = () => (QUEST || xr) ? 'quest' : /Android|iPhone|iPad|Mobi/i.test(navigator.userAgent) ? 'mobile' : 'desktop';
 const ieFlags = () => (flying() ? 1 : 0) | (hl ? 2 : 0) | (jumpTo ? 4 : 0) | (btT > 0 ? 8 : 0) | (introT > 0 ? 16 : 0) | (SYS.atm ? 32 : 0) | (bst > .5 ? 64 : 0) | (xr ? 128 : 0) | (jpOpen ? 256 : 0);
@@ -6446,6 +6447,7 @@ function ieState(kind, extra) {
   try { o.sys = SYS.name; o.loc = SYS.locs[SYS.loc].name; o.f = ieFlags(); o.hl = hl; o.foes = IE.fo; o.pk = BLOOMS.length; o.draws = frameDraws; o.hulls = SP.hulls; o.fps = +fps.toFixed(1); o.S = +S.toFixed(2); o.px = Math.round(Math.hypot(px, py, pz)); o.err = IE.err; o.slow = IE.lastSlow; o.ring = ieRing(); } catch (e) { o.err = 'state: ' + e.message; }
   if (extra) Object.assign(o, extra); return o;
 }
+function ieSendRaw(o) { try { const b = JSON.stringify(o); if (!(navigator.sendBeacon && navigator.sendBeacon(IE_URL, new Blob([b], { type: 'text/plain' })))) fetch(IE_URL, { method: 'POST', body: b, keepalive: true, headers: { 'content-type': 'text/plain' } }).catch(() => {}); } catch (e) {} }
 function ieSend(kind, extra) {
   if (location.protocol === 'file:') return;
   const now = performance.now();
@@ -6459,23 +6461,28 @@ function ieFrame(raw) {
   const r = IE.R[IE.i], now = performance.now(); IE.i = (IE.i + 1) % 640; if (IE.n < 640) IE.n++;
   if ((IE.i & 7) === 0) { IE.fo = 0; for (const a of NPCS) if (a.role === 5 && !a.dead) IE.fo++; }
   r[0] = Math.round(now - IE.t0); r[1] = Math.round(Math.min(raw, 600) * 1000); r[2] = ieFlags(); r[3] = IE.fo; r[4] = BLOOMS.length; r[5] = frameDraws;
-  IE.lastSlow = IE.mxd > 30 ? [IE.N[IE.mxn], Math.round(IE.mxd)] : null; IE.mxd = 0;
+  IE.lastF = now; IE.lastSlow = IE.mxd > 30 ? [IE.N[IE.mxn], Math.round(IE.mxd)] : null; IE.mxd = 0;
   if (raw > 1.5 && raw < 600 && bootOK && now - IE.vis > 3000 && !document.hidden) ieSend('stall', { gap: Math.round(raw * 1000) });
 }
+const ieMk = (c) => { if (IE.W) IE.W.postMessage(c); };
 const ieW = (f, c) => function () { IE.W && IE.W.postMessage(c); const t = performance.now(); try { return f.apply(this, arguments); } finally { const d = performance.now() - t; if (d > IE.mxd) { IE.mxd = d; IE.mxn = c; } } };
 try { npcTick = ieW(npcTick, 1); spiceTick = ieW(spiceTick, 2); rpgSim = ieW(rpgSim, 3); hlTick = ieW(hlTick, 4); radioTick = ieW(radioTick, 5); playlistTick = ieW(playlistTick, 6); arrive = ieW(arrive, 7); npcSpawn = ieW(npcSpawn, 8); foeAssign = ieW(foeAssign, 9); rockAssist = ieW(rockAssist, 10); comm = ieW(comm, 11); } catch (e) {}
-const ieWorkerSrc = "let last=performance.now(),snap='',play=0,sent=0,url='',inn=0,names=[];onmessage=(e)=>{const d=e.data;if(typeof d==='number'){inn=d;return;}url=d.u||url;names=d.n||names;last=performance.now();snap=d.s;play=d.p;if(d.p)sent=0;};setInterval(()=>{const q=performance.now()-last;if(play&&sent<2&&q>(sent?60000:6000)&&url&&snap){sent++;try{const o=JSON.parse(snap);o.k='hang';o.in=names[inn]||'';o.silent=Math.round(q);fetch(url,{method:'POST',body:JSON.stringify(o),keepalive:true,headers:{'content-type':'text/plain'}}).catch(()=>{});}catch(e){}}},1000);";
+const ieWorkerSrc = "let last=performance.now(),snap='',play=0,sent=0,url='',inn=0,names=[];onmessage=(e)=>{const d=e.data;if(typeof d==='number'){inn=d;return;}url=d.u||url;names=d.n||names;last=performance.now();snap=d.s;play=d.p;if(d.p)sent=0;};setInterval(()=>{const q=performance.now()-last;if(play&&sent<2&&q>(sent?60000:4000)&&url&&snap){sent++;try{const o=JSON.parse(snap);o.k='hang';o.in=names[inn]||'';o.silent=Math.round(q);fetch(url,{method:'POST',body:JSON.stringify(o),keepalive:true,headers:{'content-type':'text/plain'}}).catch(()=>{});}catch(e){}}},1000);";
 function ieBoot() {
+  try { const o = JSON.parse(localStorage.ibLast || 'null'); if (o && !o.clean) { o.k = 'prev'; o.k0 = 'last'; IE.rep = 0; IE.repT = -1e9; ieSendRaw(o); } localStorage.ibLast = ''; } catch (e) {}
+  addEventListener('pagehide', () => { try { const o = ieState('last'); o.clean = 1; localStorage.ibLast = JSON.stringify(o); } catch (e) {} });
+  try { document.querySelector('canvas').addEventListener('webglcontextlost', () => { ieSend('contextlost'); }); } catch (e) {}
   ieSend('boot');
   try { IE.W = new Worker(URL.createObjectURL(new Blob([ieWorkerSrc], { type: 'text/javascript' }))); } catch (e) { IE.W = null; }
-  setInterval(() => { const play = flying() && !document.hidden; if (IE.W) { try { IE.W.postMessage({ u: location.origin + IE_URL, n: IE.N, p: play ? 1 : 0, s: JSON.stringify(ieState('snap')) }); } catch (e) {} } }, 1000);
+  setInterval(() => { const play = flying() && !document.hidden, since = Math.round(performance.now() - (IE.lastF || performance.now())); let st = ''; try { const o = ieState('snap', { since }); st = JSON.stringify(o); if (play) localStorage.ibLast = st; if (play && since > 5000) ieSend('noframes', { since, lost: gl.isContextLost() ? 1 : 0 }); } catch (e) {} if (IE.W) { try { IE.W.postMessage({ u: location.origin + IE_URL, n: IE.N, p: play ? 1 : 0, s: st }); } catch (e) {} } }, 1000);
   setInterval(() => { if (flying() && !document.hidden) ieSend('hb'); }, 30000);
   addEventListener('visibilitychange', () => { IE.vis = performance.now(); if (IE.W && document.hidden) IE.W.postMessage({ p: 0, s: '' }); });
   addEventListener('error', (e) => { IE.err = String(e.message || 'error').slice(0, 240); ieSend('error', { msg: IE.err, at: String(e.filename || '').split('/').pop() + ':' + (e.lineno || 0) }); });
   addEventListener('unhandledrejection', (e) => { IE.err = String(e.reason && e.reason.message || e.reason).slice(0, 240); ieSend('rejection', { msg: IE.err }); });
   const ce = console.error; console.error = function () { try { IE.err = Array.prototype.map.call(arguments, (x) => x && x.message || String(x)).join(' ').slice(0, 240); } catch (e) {} return ce.apply(console, arguments); };
 }
-const BUILD = 'v1.72';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
+const BUILD = 'v1.73';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
+let VBUD = (typeof QUEST !== 'undefined' && QUEST) || mob ? 3500000 : 9000000, vCut = 0;
 let draws = 0, verts = 0, frameDraws = 0, frameVerts = 0;
 const _dei = gl.drawElementsInstanced.bind(gl), _de = gl.drawElements.bind(gl), _da = gl.drawArrays.bind(gl);
 gl.drawElementsInstanced = (m, c, ty, off, n) => { draws++; verts += c * n; return _dei(m, c, ty, off, n); };
@@ -7165,10 +7172,12 @@ let eRx, eRy, eRz, eUx, eUy, eUz, eFx, eFy, eFz, tL, tR, tB, tT, eox = 0, eoy = 
 const CKM = 2.5, CK_FLOOR = -3.64;   // cockpit units per metre in a headset (2.1 m floor to ceiling, seat ~0.65 m, bunk and counter ~0.9 m), and the cabin floor's height
 function draw(P, L, m) {
   if (!L || !L.n || !m) return;
+  let cnt = L.n;
+  if (cnt > 1 && m.n * cnt > 150000) { const left = Math.floor((VBUD - verts) / m.n); if (left < cnt) { cnt = Math.max(0, left); vCut++; if (cnt < 1) return; } }
   gl.useProgram(P.p);
   const u = P.u;
   gl.uniform3f(u.uCell, L.mx, L.my, L.mz); gl.uniform3f(u.uCam, L.fx + eox, L.fy + eoy, L.fz + eoz); gl.uniform3f(u.uCN, L.C, L.N, L.R);
-  gl.bindVertexArray(vaoFor(L, m)); gl.drawElementsInstanced(gl.TRIANGLES, m.n, gl.UNSIGNED_SHORT, 0, L.n);
+  gl.bindVertexArray(vaoFor(L, m)); gl.drawElementsInstanced(gl.TRIANGLES, m.n, gl.UNSIGNED_SHORT, 0, cnt);
 }
 const fam3 = (P, Ls, ms) => { draw(P, Ls[0], ms[0]); draw(P, Ls[1], ms[1]); draw(P, Ls[2], ms[2]); };
 function pass(P, dst, src) {
@@ -7569,7 +7578,7 @@ function frame(now, xf) {
   if (ST.hull < 50) ST.hull = Math.min(50, ST.hull + dt * .045); // a quiet ship creeps back toward half; real plate comes from ferrite or a yard
   const speed = Math.hypot(vx, vy, vz);
 
-  simulate(dt, fly);
+  simulate(dt, fly); ieMk(13);
 
   // the jump: the drive winds up, space stretches, and the new system is there when the flash clears
   if (jumpTo) {
@@ -7594,7 +7603,7 @@ function frame(now, xf) {
   flash *= Math.exp(-dt * 2.2);
   energy += (Math.min(1, speed / 420) * .8 + combat * .3 - energy) * Math.min(1, dt * 2);
 
-  for (let i = 0; i < LAYERS.length; i++) upd(LAYERS[i]);
+  ieMk(14); for (let i = 0; i < LAYERS.length; i++) upd(LAYERS[i]); ieMk(15);
 
   // views
   const fov = Math.tan((64 + 6 * Math.abs(thr) * (1 - bst) + 30 * bst * bst + 22 * hlFx + 6 * bRamp + 34 * jk) * Math.PI / 360);
@@ -7630,6 +7639,7 @@ function frame(now, xf) {
     } else { tT = fov; tB = -fov; tR = fov * W / H; tL = -tR; eox = eoy = eoz = 0; eye(null, 0, 0, W, H, W, H); }
   }
 
+  ieMk(16);
   // moments for the recorded score: a long quiet drift, and a long fast run (which ends when you slow down)
   if (fly && speed < 30 && combat < .1) { if ((calmT += dt) > 45) { calmT = 0; cue('calm'); } } else calmT = 0;
   if (speed > 380) { if ((fastT += dt) > 9) { fastT = 0; cue('surge'); } } else { fastT = 0; if (cueName === 'surge') { cueStop(); cueName = ''; } }

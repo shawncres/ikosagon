@@ -5,7 +5,7 @@
  */
 export const dynamic = "force-dynamic";
 
-const KEYS = ["k", "v", "sid", "dev", "t", "sys", "loc", "f", "hl", "foes", "pk", "draws", "hulls", "fps", "S", "px", "err", "slow", "in", "silent", "gap", "msg", "at"];
+const KEYS = ["k", "v", "sid", "dev", "t", "sys", "loc", "f", "hl", "foes", "pk", "draws", "hulls", "fps", "S", "px", "err", "slow", "in", "silent", "gap", "msg", "at", "since", "lost", "clean"];
 
 function clean(o: unknown) {
   const src = (o && typeof o === "object" ? o : {}) as Record<string, unknown>;

@@ -35,6 +35,8 @@ const nextConfig: NextConfig = {
       { source: "/infiniteendpromo", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
       { source: "/infiniteendpromo/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
       { source: "/infiniteendtest", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
+      { source: "/infiniteenddev", headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }, { key: "X-Robots-Tag", value: "noindex, nofollow" }] },
+      { source: "/infiniteenddev/:path*", headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }, { key: "X-Robots-Tag", value: "noindex, nofollow" }] },
       { source: "/infiniteendtest/:path*", headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
     ];
   },
