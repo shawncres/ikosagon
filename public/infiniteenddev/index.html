@@ -2544,7 +2544,7 @@ function traffic(dt) {                                       // keep a little tr
 }
 function npcTick(dt) {
   traffic(dt); lifeTick(dt);
-  for (const q of DAgs) q.n = 0; DAf.n = 0; if (!AVO.length) AVO.push([LH, hugeAt], [LB, bigAt]);
+  for (const q of DAgs) q.n = 0; for (const q of FOEG) q.n = 0; DAf.n = 0; if (!AVO.length) AVO.push([LH, hugeAt], [LB, bigAt]);
   const fire = flying() && (K.Space || mFire || tFire || xFire);
   for (let n = NPCS.length - 1; n >= 0; n--) {                 // every round in flight is tested against every hull it could reach this frame
     const a = NPCS[n], qd = Math.hypot(a.x - px, a.y - py, a.z - pz); if (qd > 3200) continue; const rr = a.big ? a.size * .45 : a.size * 1.4;
@@ -2617,11 +2617,12 @@ function npcTick(dt) {
       }
     }
     if (a.s > 4) { const L2 = Math.min(a.big ? 900 : 60, a.s * (a.big ? 9 : .9)), w = a.big ? a.size * .03 : a.size * .05, k = Math.min(1, a.s / a.sp), bx3 = a.x - px - a.fx * a.size * .92, by3 = a.y - py - a.fy * a.size * .92, bz3 = a.z - pz - a.fz * a.size * .92; put(DT, bx3 - a.fx * L2 * .5, by3 - a.fy * L2 * .5, bz3 - a.fz * L2 * .5, w, -a.fx * L2, -a.fy * L2, -a.fz * L2, 0, (a.role === 5 ? 2.4 : .5) * k, (a.role === 5 ? .7 : 1.3) * k, (a.role === 5 ? .3 : 2.6) * k, 0); }   // a line of light behind the drives, longer the faster it goes
-    put(a.big ? DAf : DAgs[(a.var || 0) % 3], a.x - px, a.y - py, a.z - pz, a.size, a.fx, a.fy, a.fz, a.seed, a.ux, a.uy, a.uz, a.hue);
+    if (a.role === 5) { if (a.foe == null) foeAssign(a); foeUp(a, dt); }
+    put(a.big ? DAf : a.foe >= 0 ? FOEG[a.foe] : DAgs[(a.var || 0) % 3], a.x - px, a.y - py, a.z - pz, a.size, a.fx, a.fy, a.fz, a.seed, a.role === 5 ? FU0 : a.ux, a.role === 5 ? FU1 : a.uy, a.role === 5 ? FU2 : a.uz, a.hue);
     } catch (e) { console.error('npc', a && a.name, e); a.lead = null; ensureWp(a); }
   }
   for (const j of rp().jobs) if (j.ty === 3 && !j.stage && isHere(jobDest(j))) { const w = wreckAt(j); put(DAf, w[0] - px, w[1] - py, w[2] - pz, 46, .6, .3, .7, .37, .5, .8, .2, .08); put(DPa, w[0] - px, w[1] - py, w[2] - pz, 18, 0, 0, 0, .3, .9, .45, .12, 0); }
-  for (const q of DAgs) flush(q); flush(DAf);
+  for (const q of DAgs) flush(q); for (const q of FOEG) flush(q); flush(DAf);
 }
 
 // ---- navigation: what can be pointed at here, which one is selected, scanning ----
@@ -2768,7 +2769,7 @@ function hudPaint() {
     T('SPICE', 178, 93, 12, 'left', dim, 700); bar(232, 85, 190, spc / 100, btT > 0 ? '#ffffff' : '#ff3b5c'); if (btT > 0) { T('SLOW TIME', 500, 252, 15, 'center', '#ff3b5c', 700); line([[500 - 80 * btT / btMax, 262], [500 + 80 * btT / btMax, 262]], '#ff3b5c', 2); } }
   const hd = Math.atan2(sFx, -sFz) * 57.29578, CARD = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'], wrap = (a) => ((a + 540) % 360) - 180;
   for (let a = 0; a < 360; a += 5) { const x = 500 + wrap(a - hd) * 6.5; if (x < 250 || x > 750) continue; const m = a % 45 === 0; line([[x, 118], [x, m ? 134 : a % 15 ? 123 : 128]], m ? main : dim, m ? 2 : 1); if (m) T(CARD[a / 45], x, 156, 16, 'center', main, 700); }
-  c.fillStyle = main; c.beginPath(); c.moveTo(500, 114); c.lineTo(493, 102); c.lineTo(507, 102); c.fill();
+  c.fillStyle = main; c.beginPath(); c.moveTo(500, 114); c.lineTo(493, 102); c.lineTo(507, 102); c.fill(); spHud(c, T, hd, wrap);
   T(SYS.locs[SYS.loc].name + '  ·  ' + SYS.name, 500, 196, 15, 'center', dim, 700);
   let dist = 0;
   if (cur) { const dx = cur.x - px, dy = cur.y - py, dz = cur.z - pz; dist = Math.hypot(dx, dy, dz); const bx = Math.max(250, Math.min(750, 500 + wrap(Math.atan2(dx, -dz) * 57.29578 - hd) * 6.5)); c.fillStyle = amb; c.beginPath(); c.moveTo(bx, 108); c.lineTo(bx + 7, 116); c.lineTo(bx, 124); c.lineTo(bx - 7, 116); c.fill(); }
@@ -2872,7 +2873,7 @@ function hudDraw(k) { if (hudOp <= .01 && !(xr && jpOpen)) return;   // v1.37: H
 
 // ---- settings: display, flight, and every key. Kept in the browser. ----
 const HCOL = [['Ice', ['#e6f6ff', 'rgba(160,210,240,.62)', '#ffb44a', '#63e2ff']], ['Amber', ['#ffd9a0', 'rgba(255,190,110,.6)', '#ffffff', '#ffb44a']], ['Green', ['#c8ffd8', 'rgba(120,255,170,.55)', '#ffe27a', '#5dffa0']], ['Violet', ['#ffd6f6', 'rgba(255,150,230,.55)', '#7ee8ff', '#ff7ae0']], ['Red', ['#ffd0c8', 'rgba(255,120,100,.6)', '#ffe9a8', '#ff6a5a']]];
-const ACTS = [['KeyW', 'Throttle up'], ['KeyS', 'Throttle down'], ['KeyA', 'Strafe left'], ['KeyD', 'Strafe right'], ['KeyE', 'Rise'], ['KeyQ', 'Sink'], ['ShiftLeft', 'Boost'], ['Space', 'Fire'], ['KeyX', 'Zero throttle'], ['KeyT', 'Next target'], ['KeyF', 'Interact / hail'], ['KeyJ', 'Warp gate'], ['KeyB', 'Journal'], ['KeyL', 'Log'], ['KeyC', 'Cockpit on / off'], ['Comma', 'Glance left'], ['Period', 'Glance right'], ['Slash', 'Glance behind'], ['KeyR', 'Radio on / off'], ['BracketRight', 'Radio: skip to another song'], ['KeyI', 'Cargo hold'], ['Tab', 'Aux display (full screen)'], ['KeyN', 'Star map'], ['KeyM', 'Mute'], ['KeyV', 'VR / 3D']];
+const ACTS = [['KeyW', 'Throttle up'], ['KeyS', 'Throttle down'], ['KeyA', 'Strafe left'], ['KeyD', 'Strafe right'], ['KeyE', 'Rise'], ['KeyQ', 'Sink'], ['ShiftLeft', 'Boost'], ['Space', 'Fire'], ['KeyX', 'Zero throttle'], ['KeyT', 'Next target'], ['KeyF', 'Interact / hail'], ['KeyJ', 'Warp gate'], ['KeyB', 'Journal'], ['KeyL', 'Log'], ['KeyC', 'Cockpit on / off'], ['Comma', 'Glance left'], ['Period', 'Glance right'], ['Slash', 'Glance behind'], ['KeyR', 'Radio on / off'], ['BracketRight', 'Radio: skip to another song'], ['KeyI', 'Cargo hold'], ['Tab', 'Aux display (full screen)'], ['KeyN', 'Star map'], ['KeyM', 'Mute'], ['KeyV', 'VR / 3D'], ['KeyG', 'Spice sense (slow time, shield)']];
 const CFG = { hud: 1, op: .7, size: .85, cin: 0, host: 0, inv: 0, sens: 1, fx: 1, pl: 1, radio: 1, keys: {}, vEng: .5, vCht: 1, vRad: 1, fxBlur: .5, fxCA: 1, fxGrain: 1, fxScan: 1, fxBloom: 1, fxFlare: 1, fxVig: 1, fxVisor: .5, fxGlass: 1 };
 const pct = (v) => v ? Math.round(v * 100) + '%' : 'off', LV3 = (v) => !v ? 'off' : v < .75 ? 'subtle' : 'full';
 try { Object.assign(CFG, JSON.parse(localStorage.ibCfg || '{}')); } catch {}
@@ -2908,17 +2909,18 @@ function setUi() {
   const row = (k, name, val) => `<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgb(var(--hcr) / .14);padding:7px 0"><span>${name}</span><button data-k="${k}" style="min-width:150px;padding:6px 14px;background:${rebind === k ? 'var(--hc)' : 'rgb(var(--hcr) / .06)'};color:${rebind === k ? '#000' : 'var(--hc)'};border:1px solid rgb(var(--hcr) / .5);font:inherit;cursor:pointer">${val}</button></div>`;
   const hd = (t) => `<h3 style="margin:26px 0 6px;font-weight:600;letter-spacing:.25em;font-size:13px;color:var(--hc);text-shadow:0 0 10px rgb(var(--hcr) / .45)">${t}</h3>`;
   setP.innerHTML = `<div style="max-width:720px;margin:auto"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="font-weight:300;letter-spacing:.3em;margin:0">SETTINGS</h2><button data-k="close" style="background:rgb(var(--hcr) / .08);border:1px solid var(--hc);color:var(--hc);padding:6px 18px;font:inherit;cursor:pointer">Done</button></div>`
-    + hd('DISPLAY') + row('hud', 'HUD colour', HCOL[CFG.hud][0]) + row('op', 'HUD brightness', Math.round(CFG.op * 100) + '%') + row('size', 'HUD size', Math.round(CFG.size * 100) + '%') + row('cin', 'Cinematic bars', CFG.cin ? 'on' : 'off') + row('fs', 'Full screen on launch', CFG.fs === 0 ? 'off' : 'on') + hd('LENS EFFECTS') + row('fxVisor', 'Curved visor (HUD wraps at the edges)', LV3(CFG.fxVisor)) + row('fxGlass', 'Visor glass (tinted rim)', LV3(CFG.fxGlass)) + row('fxBlur', 'Motion blur', LV3(CFG.fxBlur)) + row('fxCA', 'Colour fringing at the edges', LV3(CFG.fxCA)) + row('fxGrain', 'Film grain', LV3(CFG.fxGrain)) + row('fxBloom', 'Glow and sun rays', LV3(CFG.fxBloom)) + row('fxFlare', 'Lens flare from the sun', LV3(CFG.fxFlare)) + row('fxScan', 'Scanlines', CFG.fxScan ? 'on' : 'off') + row('fxVig', 'Darkened corners', CFG.fxVig ? 'on' : 'off') + hd('RADIO') + row('radio', 'Ikosagon radio', CFG.radio ? 'on' : 'off') + row('pl', 'My playlist (streams now and then)', CFG.pl ? 'on' : 'off') + hd('VOLUME') + row('vEng', 'Engine and boost', pct(CFG.vEng)) + row('vCht', 'Radio chatter (pilots, traffic control)', pct(CFG.vCht)) + row('vRad', 'Music stream', pct(CFG.vRad)) + row('suno', 'Suno playlist page', 'open in a new tab')
-    + hd('FLIGHT') + row('inv', 'Invert pitch', CFG.inv ? 'on' : 'off') + row('ctl', 'Controls', CFG.ctl ? 'space sim' : 'standard') + row('sens', 'Mouse sensitivity', Math.round(CFG.sens * 100) + '%') + row('host', 'Other pilots', ['peaceful', 'wary', 'hostile'][CFG.host]) + row('wipe', 'New universe', 'start fresh, with a confirmation')
+    + hd('DISPLAY') + row('hud', 'HUD colour', HCOL[CFG.hud][0]) + row('op', 'HUD brightness', Math.round(CFG.op * 100) + '%') + row('size', 'HUD size', Math.round(CFG.size * 100) + '%') + row('cin', 'Cinematic bars', CFG.cin ? 'on' : 'off') + row('fs', 'Full screen on launch', CFG.fs === 0 ? 'off' : 'on') + hd('LENS EFFECTS') + row('fxVisor', 'Curved visor (HUD wraps at the edges)', LV3(CFG.fxVisor)) + row('fxGlass', 'Visor glass (tinted rim)', LV3(CFG.fxGlass)) + row('fxBlur', 'Motion blur', LV3(CFG.fxBlur)) + row('fxCA', 'Colour fringing at the edges', LV3(CFG.fxCA)) + row('fxGrain', 'Film grain', LV3(CFG.fxGrain)) + row('fxBloom', 'Glow and sun rays', LV3(CFG.fxBloom)) + row('fxFlare', 'Lens flare from the sun', LV3(CFG.fxFlare)) + row('fxScan', 'Scanlines', CFG.fxScan ? 'on' : 'off') + row('fxVig', 'Darkened corners', CFG.fxVig ? 'on' : 'off') + hd('RADIO') + row('radio', 'Ikosagon radio', CFG.radio ? 'on' : 'off') + row('pl', 'Playlist between songs', CFG.pl ? 'on' : 'off') + hd('VOLUME') + row('vEng', 'Engine and boost', pct(CFG.vEng)) + row('vCht', 'Radio chatter (pilots, traffic control)', pct(CFG.vCht)) + row('vRad', 'Music stream', pct(CFG.vRad))
+    + hd('FLIGHT') + row('inv', 'Invert pitch', CFG.inv ? 'on' : 'off') + row('ctl', QUEST ? 'Flight style' : 'Controls', QUEST ? (CFG.ctl ? 'free roll' : 'banks into turns') : (CFG.ctl ? 'space sim' : 'standard')) + row('sens', 'Mouse sensitivity', Math.round(CFG.sens * 100) + '%') + row('host', 'Other pilots', ['peaceful', 'wary', 'hostile'][CFG.host]) + row('wipe', 'New universe', 'start fresh, with a confirmation')
     + hd('KEYS · click one, then press the new key') + ACTS.map(([k, n]) => row('key:' + k, n, rebind === 'key:' + k ? 'press a key…' : keyName(CFG.keys[k] || k))).join('') + row('reset', 'All keys', 'reset to defaults') + '</div>';
   if (isPWA()) {   // the store app is played in a headset: desktop-only settings step aside, and the VR ones join
-    for (const k of ['cin', 'fs', 'sens', 'ctl', 'reset', 'suno']) { const b = setP.querySelector(`[data-k="${k}"]`); if (b) b.parentNode.remove(); }
+    for (const k of ['cin', 'fs', 'sens', 'ctl', 'reset']) { const b = setP.querySelector(`[data-k="${k}"]`); if (b) b.parentNode.remove(); }
     setP.querySelectorAll('[data-k^="key:"],[data-k^="fx"]').forEach((b) => b.parentNode.remove());
     setP.querySelectorAll('h3').forEach((h) => { if (/KEYS|LENS/.test(h.textContent)) h.remove(); });
     const h = setP.querySelector('h3'); if (h) h.insertAdjacentHTML('beforebegin', hd('VR') + row('vrH', 'Seat height', VRH[vrHi()][0]) + row('ck', 'Cockpit', cockpit ? 'on' : 'off'));
   }
 }
-const isPWA = () => typeof window.getDigitalGoodsService === 'function' || QS.has('pwa');
+const QUEST = typeof window.getDigitalGoodsService === 'function' || QS.has('pwa') || /OculusBrowser/i.test(navigator.userAgent);
+const isPWA = () => QUEST;
 const VRH = [['lower', -.15], ['normal', 0], ['higher', .15]], vrHi = () => Math.max(0, VRH.findIndex((v) => v[1] === (CFG.vrH || 0)));   // VR seat height: nudges where the cabin floor meets the room's floor
 const cyc = (v, list) => list[(list.indexOf(v) + 1) % list.length];
 setP.onclick = (e) => {
@@ -2926,7 +2928,6 @@ setP.onclick = (e) => {
   if (k === 'close') { setP.style.display = 'none'; rebind = null; return; }
   if (k.startsWith('key:')) rebind = rebind === k ? null : k;
   else if (k === 'reset') CFG.keys = {};
-  else if (k === 'suno') window.open('https://suno.com/playlist/12f42e02-78a5-4eb2-bf7e-f605817e4c06', '_blank', 'noopener');
   else if (k === 'wipe') { setP.style.display = 'none'; newUniverse(); return; }
   else if (k === 'hud') CFG.hud = (CFG.hud + 1) % HCOL.length; else if (k === 'op') CFG.op = cyc(CFG.op, [1, .7, .45, .25, 0]); else if (k === 'size') CFG.size = cyc(CFG.size, [1, 1.15, .85]);
   else if (k === 'ctl') CFG.ctl = CFG.ctl ? 0 : 1;
@@ -3590,7 +3591,7 @@ function swarmFx(k, r, dt) {
 // Boosting at a rock with spice aboard slows the world for a breath, long enough to steer round it.
 function spiceSnd(k) { if (!AC || AC.state !== 'running') return; const t = AC.currentTime; [0, 3, 7, 10].slice(0, k ? 2 : 4).forEach((iv, n) => note(mf(79 + iv), t + n * .045, .035, 'sine', .3, 1)); }
 function spiceTick(dt, fly) {                              // spice: living things shed it, blooms of it drift in the lanes you boost through, near misses shake some loose
-  btCool -= dt; if (cHit) cHitT = tm;
+  btCool -= dt; if (cHit) cHitT = tm; spiceX(dt, fly);
   if (!fly) return;
   let near = 0; for (const [L, R] of [[LJ, 420], [LY, 450], [LWh, 900], [LQ, 1300], [LM, 250]]) { const r = nearInst(L); if (r[0] < R * R) near = 1; }
   if (SYS.atm) { near = 1; const cloud = Math.exp(-((py - 5200) * (py - 5200)) / 1.4e7);
@@ -3599,17 +3600,17 @@ function spiceTick(dt, fly) {                              // spice: living thin
   if (near && ST.spice < 100) { const was = ST.spice; ST.spice = Math.min(100, ST.spice + dt * 5.5); if (Math.random() < dt * 6) fxAdd(px + sFx * 14 + (Math.random() - .5) * 30, py + sFy * 14 + (Math.random() - .5) * 20, pz + sFz * 14 + (Math.random() - .5) * 30, .12 + Math.random() * .2, 1.1, .2, .3);
     if (Math.floor(was / 25) < Math.floor(ST.spice / 25) && tm > spiceTip) { spiceTip = tm + 20; pop(`SPICE ${ST.spice | 0}%`, '#ff3b5c'); } }
   const sp = Math.hypot(vx, vy, vz);
-  bloomT -= dt * TUNE.spice; if (SYS.atm && bloomT <= 0 && BLOOMS.length < 3 && Math.exp(-((py - 4600) * (py - 4600)) / 2.4e6) > .35) { bloomT = 3 + Math.random() * 4; BLOOMS.push({ x: px + sFx * (500 + Math.random() * 900) + (Math.random() - .5) * 220, y: py + (Math.random() - .5) * 140, z: pz + sFz * (500 + Math.random() * 900), t: 0, v: 6 + (Math.random() * 5 | 0) }); }
+  bloomT -= dt * TUNE.spice; if (SYS.atm && bloomT <= 0 && BLOOMS.length < 3 && Math.exp(-((py - 4600) * (py - 4600)) / 2.4e6) > .35) { bloomT = 3 + Math.random() * 4; BLOOMS.push({ x: px + sFx * (500 + Math.random() * 900) + (Math.random() - .5) * 220, y: py + (Math.random() - .5) * 140, z: pz + sFz * (500 + Math.random() * 900), t: 0, q: spTier(), v: 6 + (Math.random() * 5 | 0) }); }
   if (bloomT <= 0 && !SYS.atm && bst > .5 && sp > 400 && BLOOMS.length < 4) {      // a bloom ahead, a little off the line: worth a steer
     bloomT = 4 + Math.random() * 5; const ux = vx / sp, uy = vy / sp, uz = vz / sp, d = Math.min(2600, 700 + sp * 1.4), off = 50 + Math.random() * 220, g = Math.random() * 6.283;
     const ox = sRx * Math.cos(g) + sUx * Math.sin(g), oy = sRy * Math.cos(g) + sUy * Math.sin(g), oz = sRz * Math.cos(g) + sUz * Math.sin(g);
-    BLOOMS.push({ x: px + ux * d + ox * off, y: py + uy * d + oy * off, z: pz + uz * d + oz * off, t: 0, v: 8 + (Math.random() * 6 | 0) }); }
-  for (let i = BLOOMS.length - 1; i >= 0; i--) { const b = BLOOMS[i]; b.t += dt; const ex = b.x - px, ey = b.y - py, ez = b.z - pz, ed = Math.hypot(ex, ey, ez);
-    if (ed < 55) { ST.spice = Math.min(100, (ST.spice || 0) + b.v); pop(`SPICE BLOOM +${b.v}`, '#ff3b5c'); spiceSnd(0); for (let k = 0; k < 10; k++) fxAdd(b.x + (Math.random() - .5) * 40, b.y + (Math.random() - .5) * 40, b.z + (Math.random() - .5) * 40, 1 + Math.random() * 2, 1.6, .25, .4); BLOOMS.splice(i, 1); continue; }
-    if (b.t > 40 || ed > 6000 || (ex * vx + ey * vy + ez * vz < 0 && ed > 600)) { BLOOMS.splice(i, 1); continue; }
+    BLOOMS.push({ x: px + ux * d + ox * off, y: py + uy * d + oy * off, z: pz + uz * d + oz * off, t: 0, q: spTier(), v: 8 + (Math.random() * 6 | 0) }); }
+  for (let i = BLOOMS.length - 1; i >= 0; i--) { const b = BLOOMS[i]; b.t += dt; if (b.dx) { b.x += b.dx * dt; b.y += b.dy * dt; b.z += b.dz * dt; } const ex = b.x - px, ey = b.y - py, ez = b.z - pz, ed = Math.hypot(ex, ey, ez);
+    if (ed < 55 + 18 * SP.lv[2]) { spGot(b); spiceSnd(0); { const cq = SPC[b.q | 0]; for (let k = 0; k < 10; k++) fxAdd(b.x + (Math.random() - .5) * 40, b.y + (Math.random() - .5) * 40, b.z + (Math.random() - .5) * 40, 1 + Math.random() * 2, cq[0] * 1.5, cq[1] * 1.5 + .1, cq[2] * 1.5); } BLOOMS.splice(i, 1); continue; }
+    if (b.t > (b.p ? 170 : 40) + 40 * (b.q | 0) || ed > (b.p ? 9000 : 6000) || (!b.p && ex * vx + ey * vy + ez * vz < 0 && ed > 600)) { BLOOMS.splice(i, 1); continue; }
     const pl = .7 + .3 * Math.sin(tm * 4 + i);
-    put(DPa, ex, ey, ez, Math.max(26, ed * .022), 0, 0, 0, .3, 1.1 * pl, .1 * pl, .22 * pl, 0); put(DPa, ex, ey, ez, Math.max(8, ed * .007), 0, 0, 0, .3, 3 * pl, .5 * pl, .8 * pl, 0);                     // a soft crimson heart, visible from far off
-    for (let k = 0; k < 7; k++) { const a = tm * (.6 + k * .13) + k * 2.1, r = 14 + 10 * Math.sin(k * 1.7 + tm); put(DPa, ex + Math.cos(a) * r, ey + Math.sin(a * 1.3) * r * .6, ez + Math.sin(a) * r, 3 + Math.max(0, ed * .004), 0, 0, 0, .3, 1.8 * pl, .25 * pl, .45 * pl, 0); } }
+    const cq = SPC[b.q | 0]; put(DPa, ex, ey, ez, Math.max(26, ed * .022), 0, 0, 0, .3, cq[0] * pl, cq[1] * pl, cq[2] * pl, 0); put(DPa, ex, ey, ez, Math.max(8, ed * .007), 0, 0, 0, .3, cq[0] * 2.7 * pl, cq[1] * 3 * pl + .3, cq[2] * 2.5 * pl, 0);                     // a soft crimson heart, visible from far off
+    for (let k = 0; k < 7; k++) { const a = tm * (.6 + k * .13) + k * 2.1, r = 14 + 10 * Math.sin(k * 1.7 + tm); put(DPa, ex + Math.cos(a) * r, ey + Math.sin(a * 1.3) * r * .6, ez + Math.sin(a) * r, 3 + Math.max(0, ed * .004), 0, 0, 0, .3, cq[0] * 1.6 * pl, cq[1] * 1.6 * pl, cq[2] * 1.6 * pl, 0); } }
 }
 // the rock assist: looks ahead along the flight path, eases the speed down so nothing is under a second and a half away,
 // and leans the ship off a rock it is about to hit, so a small turn is enough to clear it
@@ -3629,8 +3630,9 @@ function rockAssist(dt) {
   if (!raThr || sp < 240) return;
   const T = raThr, tti = T.t / sp;
   if (bst > .5 && btT <= 0 && btCool <= 0 && tti < 1.1 + Math.min(1, T.s / 200)) {      // the worse the crash would have been, the more spice it takes: speed, size, how dense the rock is, how dead-centre
-    const cost = Math.max(6, Math.round(Math.min(50, (sp / 1600) * 13 * (.7 + Math.min(T.s, 300) / 80) * (T.huge ? 1.4 : 1) * (T.tier ? 1.25 : 1) * (1.2 - .5 * T.m / T.R))));
-    if (ST.spice >= cost) { ST.spice -= cost; btMax = btT = 1.8 + Math.min(1.4, cost / 30); btHold = 0; btCool = 6; save(); pop(`SLOW TIME · SPICE −${cost}`, '#ff3b5c'); spiceSnd(0);
+    const cost0 = Math.max(6, Math.round(Math.min(50, (sp / 1600) * 13 * (.7 + Math.min(T.s, 300) / 80) * (T.huge ? 1.4 : 1) * (T.tier ? 1.25 : 1) * (1.2 - .5 * T.m / T.R))));
+    const cost = Math.max(4, Math.round(cost0 * spCk()));
+    if (ST.spice >= cost) { ST.spice -= cost; btMax = btT = 1.8 + Math.min(1.4, cost / 30); btHold = 0; btCool = spCool(); spOn(); save(); pop(`SLOW TIME · SPICE −${cost}`, '#ff3b5c'); spiceSnd(0);
       for (let k = 0; k < 18; k++) fxAdd(px + sFx * 30 + (Math.random() - .5) * 60, py + sFy * 30 + (Math.random() - .5) * 40, pz + sFz * 30 + (Math.random() - .5) * 60, .3 + Math.random() * .5, 1.4, .2, .35); }
     else if (tm > spiceTip) { spiceTip = tm + 8; tip(`Not enough spice to slow this one (needs ${cost}) · steer!`, 2500); } }
   if (btT > 0 && T.m < T.R * .85 && tti < .9 && btHold < 1.6) { btT = Math.max(btT, btMax * .45); btHold += dt / Math.max(.1, slow); }   // a big rock still dead ahead keeps time slow a little longer
@@ -3687,19 +3689,16 @@ function meteorTick(dt, fly) {
     for (let k = 0; k < 7; k++) { const b = f * (1 - k / 7) * 1.6; put(DPa, m.x - px - metD[0] * k * 22, m.y - py - metD[1] * k * 22, m.z - pz - metD[2] * k * 22, m.s * (1 - k * .1), 0, 0, 0, k * .13, b, b * .85, b * .6, 0); } }
 }
 
-// ---- the owner's own tracks, streamed from where they are hosted: now and then one fades in from a random point, plays a minute, fades out ----
-const TRACKS = ['8bca2649-ef58-4337-99da-96bc09457d8e', 'cab7667f-c12b-4b52-89f8-790cadf115f8', 'a8499c7c-09f5-47a4-82ba-ef1ed1d11704', '98987f77-6a7a-4fff-ab98-d48bdb3035e3', '53a8bb5c-0b30-4a08-85b1-628a4a3b71b8', '6ad0e9ff-0b1c-4904-8a12-44d2e5d90187', '00607acb-f516-4f98-8b2a-4fb7b4afa93c', '0f9a39ab-36f0-4090-91a6-1168566e464c'];
-const PHOST = ['https://cdn1.suno.ai/', 'https://cdn2.suno.ai/'];
-let plA = null, plOn = 0, plNext = 75, plEnd = 0, plVol = 0, plBad = 0, plWant = .3, plLast = -1, plH = 0;
-let plLocal = null; const plLoadLocal = () => { if (plLocal || location.protocol === 'file:') return; plLocal = []; try { fetch('music/tracks.json').then((r) => r.ok ? r.json() : []).then((a) => { plLocal = Array.isArray(a) ? a : []; }).catch(() => {}); } catch {} };   // looked for only when the fallback playlist is actually needed
+// ---- the Ikosagon radio list, streamed from the site: now and then one fades in from a random point, plays a minute, fades out ----
+let plA = null, plOn = 0, plNext = 75, plEnd = 0, plVol = 0, plBad = 0, plWant = .3, plLast = -1;
 const plLevel = (v) => { plWant = Math.max(0, Math.min(1, v)); };   // the one place the game sets how loud the stream is: it dips for hails and fights and comes back
 function playlistTick(dt, fly) {
-  plLoadLocal();
   if (!CFG.pl || !fly || plBad > 3 || !AC || AC.state !== 'running') return;
   if (!plOn) {
     plNext -= dt; if (plNext > 0) return; plNext = 150 + Math.random() * 240;
-    if (!plA) { plA = new Audio(); plA.preload = 'none'; plA.onerror = () => { plBad++; plOn = 0; plH = 1 - plH; plNext = 8; }; }
-    let n = Math.random() * TRACKS.length | 0; if (n === plLast) n = (n + 1) % TRACKS.length; plLast = n; plA.src = plLocal && plLocal.length ? 'music/' + plLocal[n % plLocal.length] : PHOST[plH] + TRACKS[n] + '.mp3'; plA.volume = 0; plVol = 0;
+    if (!rdList || !rdList.length) { plNext = 6; return; }
+    if (!plA) { plA = new Audio(); plA.preload = 'none'; plA.onerror = () => { plBad++; plOn = 0; plNext = 8; }; }
+    let n = Math.random() * rdList.length | 0; if (n === plLast) n = (n + 1) % rdList.length; plLast = n; plA.src = rdList[n].url; plA.volume = 0; plVol = 0;
     plA.onloadedmetadata = () => { try { if (plA.duration > 120) plA.currentTime = Math.random() * (plA.duration - 110); } catch {} };
     const p = plA.play(); if (p && p.then) p.then(() => { plOn = 1; plEnd = 55 + Math.random() * 50; }).catch(() => { plBad++; });
     return;
@@ -3720,7 +3719,7 @@ function lifeScan(N) {
 
 // ---- Ikosagon radio: the same track list the site's own player reads (/api/radio), fetched again before every track,
 // so a song added to the site is on the air the next time one is picked. The game plays the files itself and sets the level.
-const RADIO = 'https://ikosagon.com/api/radio';
+const RADIO = '/api/radio';
 let rdList = null, rdA = null, rdT = 20, rdVol = 0, rdName = '', rdLast = '', rdFetchT = 0, rdBad = 0, rdGap = 0, rdRetry = 0, rdOn = 0;
 function radioLoad() { if (location.protocol === 'file:') return; try { fetch(RADIO, { cache: 'no-store' }).then((r) => r.json()).then((a) => { if (Array.isArray(a)) { const l = a.filter((t) => t && t.url); if (l.length) rdList = l; } }).catch(() => { rdBad++; }); } catch { rdBad++; } }
 function radioNext(seek) {
@@ -3885,7 +3884,7 @@ function pausePanel() {
   if (xr) return vrMenu();
   panel('Paused', `${SYS.locs[SYS.loc].name} · ${SYS.name}`, [{ name: 'Resume', desc: '', run: () => {} }, { name: 'Ikosagon radio', kind: CFG.radio ? 'on' : 'off', desc: 'Your tracks, or the ship\'s own score', run: () => { CFG.radio = CFG.radio ? 0 : 1; setUi(); pausePanel(); } },
     { name: 'Other pilots', kind: ['peaceful', 'wary', 'hostile'][CFG.host], desc: 'Whether raiders come for you', run: () => { CFG.host = (CFG.host + 1) % 3; hostLv = CFG.host; setUi(); npcSpawn(); pausePanel(); } },
-    { name: 'HUD colour', kind: HCOL[CFG.hud][0], desc: '', run: () => { CFG.hud = (CFG.hud + 1) % HCOL.length; setUi(); pausePanel(); } }, { name: 'Journal', desc: 'Contracts, standing, crew, log', run: journalPanel }, { name: 'Star map and full settings', desc: 'These open on the flat screen: leave the headset view to use them', run: () => { if (xr) vr(); } }], 'Right stick click or B closes · ' + BUILD);
+    { name: 'HUD colour', kind: HCOL[CFG.hud][0], desc: '', run: () => { CFG.hud = (CFG.hud + 1) % HCOL.length; setUi(); pausePanel(); } }, { name: 'Spice attunement', kind: spKind(), desc: 'Spend gathered spice on slow time, shield and flow', run: () => spicePanel() }, { name: 'Journal', desc: 'Contracts, standing, crew, log', run: journalPanel }, { name: 'Star map and full settings', desc: 'These open on the flat screen: leave the headset view to use them', run: () => { if (xr) vr(); } }], 'Right stick click or B closes · ' + BUILD);
 }
 // the menu inside the headset: only what applies in VR, the controller map, and the way back to the main menu
 function vrMenu() {
@@ -3895,7 +3894,7 @@ function vrMenu() {
     { name: 'Ikosagon radio', kind: CFG.radio ? 'on' : 'off', desc: 'Your tracks, or the ship\'s own score', run: () => { CFG.radio = CFG.radio ? 0 : 1; setUi(); vrMenu(); } },
     { name: 'Other pilots', kind: ['peaceful', 'wary', 'hostile'][CFG.host], desc: 'Whether raiders come for you', run: () => { CFG.host = (CFG.host + 1) % 3; hostLv = CFG.host; setUi(); npcSpawn(); vrMenu(); } },
     { name: 'HUD colour', kind: HCOL[CFG.hud][0], desc: '', run: () => { CFG.hud = (CFG.hud + 1) % HCOL.length; setUi(); vrMenu(); } },
-    { name: 'Journal', desc: 'Contracts, standing, crew, log', run: journalPanel },
+    { name: 'Spice attunement', kind: spKind(), desc: 'Spend gathered spice on slow time, shield and flow', run: () => spicePanel() }, { name: 'Journal', desc: 'Contracts, standing, crew, log', run: journalPanel },
     { name: 'Controls', desc: 'The controller map', run: () => panel('Controls', 'Touch controllers', [
       { name: 'Left stick', desc: 'Steer' }, { name: 'Right stick', desc: 'Throttle · in menus, move up and down' }, { name: 'Right trigger', desc: 'Fire' }, { name: 'Grip (either)', desc: 'Boost: hold it and it builds' },
       { name: 'A', desc: 'Hail, dock or open what you point at · select in menus' }, { name: 'B', desc: 'Next target · close menus' }, { name: 'Left trigger', desc: 'Next target' },
@@ -4608,20 +4607,25 @@ function v121Dog(a, dt, qx, qy, qz, qd) {
   df.t -= dt;
   const leadT = Math.min(1.25, qd / (860 + dif * 80));
   let tx = px + vx * leadT, ty = py + vy * leadT * .55, tz = pz + vz * leadT;
+  if (df.mode === 4 && (sFx * qx + sFy * qy + sFz * qz) < -qd * .35 && qd < 900) { df.mode = 0; df.t = 1.6; }
   if (df.t <= 0) {
     if (qd < 150) { df.mode = 2; df.t = .8; }
     else if (qd < 400 && pers === 2) { df.mode = 1; df.t = .6; }
     else if (qd < 560 && a.hp < (a.hpM || 1) * .42) { df.mode = 3; df.t = 1.1; }
+    else if (qd > 520 && qd < 1700 && !a.bounty && Math.sin(a.seed * 40 + tm * .17) > .6) { df.mode = 4; df.t = 2.2; df.sd = a.i & 1 ? 1 : -1; }
     else { df.mode = 0; df.t = 1.25; }
   }
   if (df.mode === 1) { const s = 700 / qd; tx = a.x + qz * s; ty = a.y + Math.sin(tm * 2.2 + a.seed * 6) * 150; tz = a.z - qx * s; }
   else if (df.mode === 2) { tx = px + sRx * 620 - sFx * 160; ty = py + 80; tz = pz + sRz * 620 - sFz * 160; }
   else if (df.mode === 3) { tx = a.x + a.fx * 2000; ty = a.y + 180; tz = a.z + a.fz * 2000; a.sp = Math.min(200, (a.sp || 120) + 24); }
+  else if (df.mode === 4) { const sd = df.sd || 1; tx = px - sFx * 520 + sRx * sd * 380 + sUx * 120; ty = py - sFy * 520 + sRy * sd * 380 + sUy * 120; tz = pz - sFz * 520 + sRz * sd * 380 + sUz * 120; }
+  if (qd < 1300 && tm > (df.jk || 0) && df.mode !== 3 && !(a.rt > 0) && (sFx * qx + sFy * qy + sFz * qz) / qd > .985) { df.jk = tm + 1.8 + Math.random(); a.rt = 6.283; a.rl = .001; df.jt = .7; df.js = Math.random() < .5 ? 1 : -1; }
+  if (df.jt > 0) { df.jt -= dt; tx = a.x + (sRx * 700 + sUx * 260) * df.js + a.fx * 300; ty = a.y + (sRy * 700 + sUy * 260) * df.js + a.fy * 300; tz = a.z + (sRz * 700 + sUz * 260) * df.js + a.fz * 300; }
   a.wp = [tx, ty, tz]; a.hold = 0;
   const ax = tx - a.x, ay = ty - a.y, az = tz - a.z, ad = Math.hypot(ax, ay, az) || 1;
   const nose = (a.fx * ax + a.fy * ay + a.fz * az) / ad;
   a.cd = (a.cd || 0) - dt;
-  if (flying() && !a.fled && qd > 80 && qd < 460 + dif * 120 && nose > .99 - dif * .01) {
+  if (flying() && introT <= 0 && !a.fled && qd > 80 && qd < 460 + dif * 120 && nose > .99 - dif * .01) {
     df.tel += dt;
     if (!df.told) { df.told = 1; tip(a.name + ' is lining up a shot', 2200); }
     put(DPa, qx * .22, qy * .22, qz * .22, 3.5 + df.tel * 5, 0, 0, 0, .25, 1.5, .4, .16, 0);
@@ -4630,7 +4634,7 @@ function v121Dog(a, dt, qx, qy, qz, qd) {
       hurtSrc = 'raider'; hurtSrcT = tm; hitFromX = a.x; hitFromY = a.y; hitFromZ = a.z;
       if (atkBy !== a || navId !== 'n' + a.i) { atkBy = a; navId = 'n' + a.i; navAuto = 0; manT = tm; tip('Under fire · ' + a.name + ' targeted', 2200); } atkT = tm;   // v1.56: the reticle swings to whoever is shooting, in red
       hurt(.8 + dif * .5); trauma = Math.min(1, trauma + (typeof xr !== 'undefined' && xr ? .04 : .1)); thud(.14);
-      put(DT, qx, qy, qz, .35, -qx * .08, -qy * .08, -qz * .08, 0, 2.2, .45, .18, 0);
+      a.bt = .22;
     }
   } else { df.tel = Math.max(0, df.tel - dt * 1.5); if (nose < .85) df.told = 0; }
   return true;
@@ -4664,10 +4668,9 @@ function setUi() {
     else body += row('cin', 'Cinematic bars', CFG.cin ? 'on' : 'off') + row('fs', 'Full screen on launch', CFG.fs === 0 ? 'off' : 'on') + row('fxVisor', 'Curved visor', LV3(CFG.fxVisor)) + row('fxGlass', 'Visor glass', LV3(CFG.fxGlass)) + row('fxBlur', 'Motion blur', LV3(CFG.fxBlur)) + row('fxCA', 'Colour fringing', LV3(CFG.fxCA)) + row('fxGrain', 'Film grain', LV3(CFG.fxGrain)) + row('fxBloom', 'Glow', LV3(CFG.fxBloom)) + row('fxFlare', 'Lens flare', LV3(CFG.fxFlare)) + row('fxScan', 'Scanlines', CFG.fxScan ? 'on' : 'off') + row('fxVig', 'Darkened corners', CFG.fxVig ? 'on' : 'off');
   } else if (tab === 'Audio') {
     body = row('radio', 'Ikosagon radio', CFG.radio ? 'on' : 'off') + row('pl', 'Playlist between songs', CFG.pl ? 'on' : 'off') + row('vEng', 'Engine and boost', relSet(CFG.vEng, .5)) + row('vCht', 'Radio chatter', relSet(CFG.vCht, 1)) + row('vRad', 'Music', relSet(CFG.vRad, 1));
-    if (!headset && !touch) body += row('suno', 'Suno playlist', 'open');
   } else if (tab === 'Flight') {
     body = row('host', 'Other pilots', ['peaceful', 'wary', 'hostile'][CFG.host]) + row('inv', 'Invert pitch', CFG.inv ? 'on' : 'off') + row('wipe', 'New universe', 'asks first');
-    if (!touch) body += row('ctl', 'Stick model', CFG.ctl ? 'space sim' : 'standard');
+    if (!touch) body += row('ctl', QUEST ? 'Flight style' : 'Stick model', QUEST ? (CFG.ctl ? 'free roll' : 'banks into turns') : (CFG.ctl ? 'space sim' : 'standard'));
     if (touch) body += `<p style="color:rgb(var(--hcr) / .8);margin:14px 0 0">Hold to fly. Slide to steer. A second finger boosts. The FIRE button shoots. The aux display, gate and journal stay on their own controls.</p>`;
   } else {
     const h3 = (t) => `<h3 style="margin:22px 0 6px;font-weight:600;letter-spacing:.22em;font-size:12px;color:var(--hc)">${t}</h3>`;   // v1.53: gamepad and headset sections, every action remappable
@@ -4697,7 +4700,6 @@ setP.onclick = (e) => {
   if (k === 'vrMoK') { CFG.vrMoK = cyc(CFG.vrMoK || 1, [1, 1.3, 1.7, .6, .8]); setUi(); return; }
   if (k === 'vrMoInv') { CFG.vrMoInv = CFG.vrMoInv ? 0 : 1; setUi(); return; }
   if (k === 'reset') CFG.keys = {};
-  else if (k === 'suno') window.open('https://suno.com/playlist/12f42e02-78a5-4eb2-bf7e-f605817e4c06', '_blank', 'noopener');
   else if (k === 'wipe') { setP.style.display = 'none'; newUniverse(); return; }
   else if (k === 'hud') CFG.hud = (CFG.hud + 1) % HCOL.length;
   else if (k === 'op') CFG.op = cyc(CFG.op, [1, .7, .45, .25, 0]);
@@ -4739,7 +4741,7 @@ function pausePanel() {
     { name: 'Ikosagon radio', kind: CFG.radio ? 'on' : 'off', desc: 'Your tracks, or the ship\'s own score', run: () => { CFG.radio = CFG.radio ? 0 : 1; setUi(); pausePanel(); } },
     { name: 'Other pilots', kind: ['peaceful', 'wary', 'hostile'][CFG.host], desc: 'Whether raiders come looking', run: () => { CFG.host = (CFG.host + 1) % 3; hostLv = CFG.host; setUi(); npcSpawn(); pausePanel(); } },
     { name: 'HUD colour', kind: HCOL[CFG.hud][0], desc: '', run: () => { CFG.hud = (CFG.hud + 1) % HCOL.length; setUi(); pausePanel(); } },
-    { name: 'Journal', desc: 'Contracts, standing, first charts', run: journalPanel },
+    { name: 'Spice attunement', kind: spKind(), desc: 'Spend gathered spice on slow time, shield and flow', run: () => spicePanel() }, { name: 'Journal', desc: 'Contracts, standing, first charts', run: journalPanel },
     { name: 'Star map', desc: 'Where you have been, and the lanes between', run: starMap },
     { name: 'Settings', desc: 'Display, audio, flight, controls', run: () => { closePanel(); setP.style.display = 'block'; setUi(); } },
   ], 'Esc closes · ' + BUILD);
@@ -4763,7 +4765,7 @@ function vrMenu() {
     { name: 'Foveation', kind: ({ 0: 'off', .5: 'medium', 1: 'high' }[CFG.vrFov || 0] || 'off'), desc: 'Lowers the edge of each eye. Medium is the Quest default.', run: () => { CFG.vrFov = cyc(CFG.vrFov || 0, [0, .5, 1]); applyFoveation(); setUi(); vrMenu(); } },
     { name: 'Cockpit', kind: cockpit ? 'on' : 'off', desc: 'The cabin, or open space', run: () => { const b = $('ck'); if (b) b.click(); vrMenu(); } },
     { name: 'HUD colour', kind: HCOL[CFG.hud][0], desc: '', run: () => { CFG.hud = (CFG.hud + 1) % HCOL.length; setUi(); vrMenu(); } },
-    { name: 'Journal', desc: 'Contracts, standing, first charts', run: journalPanel },
+    { name: 'Spice attunement', kind: spKind(), desc: 'Spend gathered spice on slow time, shield and flow', run: () => spicePanel() }, { name: 'Journal', desc: 'Contracts, standing, first charts', run: journalPanel },
     { name: 'Controls', desc: 'Touch Plus, Quest 3 and newer', run: () => panel('Controls', 'Touch Plus', [
       { name: CFG.vrHand ? 'Right stick' : 'Left stick', desc: (CFG.vrTurn ? 'Snap turn and pitch. ' : 'Yaw and pitch. ') + 'This hand keeps flying while a menu is open.' },
       { name: CFG.vrHand ? 'Left stick' : 'Right stick', desc: 'Throttle, and strafe on the sideways axis. In a menu, this stick moves the row.' },
@@ -6304,7 +6306,130 @@ noiseTex();
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.70';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
+/* ---- v1.71: spice tiers and attunement, procedural foes, dogfight upgrades, the Foe intro ---- */
+const SPN = ['COMMON', 'RARE', 'EXOTIC', 'MYTHIC'], SPH = ['#ff3b5c', '#b36bff', '#ffcf3a', '#7ff6ff'], SPC = [[1.1, .1, .22], [.7, .25, 1.5], [1.5, 1, .15], [.5, 1.4, 1.7]];
+const SPB = [['Slow time', 'Each level holds time slow for longer'], ['Spice shield', 'Each level absorbs more fire while time is slow, and a moment after'], ['Flow', 'Each level: cheaper to trigger, faster recharge, wider pull on spice']], SPL = [[0, 6], [1, 3], [2, 2], [3, 1]];
+let SP = { n: [0, 0, 0, 0], lv: [0, 0, 0], total: 0, intro: 0, hulls: 0 };
+try { const o = JSON.parse(localStorage.ibSpice); if (o && Array.isArray(o.n) && Array.isArray(o.lv)) SP = Object.assign(SP, o); } catch {}
+const spSave = () => keep('ibSpice', JSON.stringify(SP));
+const spKind = () => SP.n.map((v, i) => v + ' ' + SPN[i].toLowerCase()).join(' · ');
+let spSh = 0, spGrace = 0, spAbT = 0, pkT = 14, introT = 0, introS = 0, introA = null, FO = null, foeHitT = -9, foeHitS = '', FU0 = 0, FU1 = 1, FU2 = 0;
+const spCk = () => 1 - .1 * SP.lv[2], spCool = () => 6 - .9 * SP.lv[2];
+function spTier() {
+  const p = SP.total, dg = SYS.danger || 0, r = Math.random(), pm = p >= 25 ? .02 + .01 * dg : 0, pe = p >= 10 ? .06 + .012 * dg : 0, pr = .14 + .012 * Math.min(12, p / 2) + .03 * dg;
+  return r < pm ? 3 : r < pm + pe ? 2 : r < pm + pe + pr ? 1 : 0;
+}
+function spGot(b) {
+  const q = b.q | 0, v = Math.round(b.v * (1 + .6 * q)); ST.spice = Math.min(100, (ST.spice || 0) + v); SP.n[q]++; SP.total++; spSave();
+  pop(`${SPN[q]} SPICE +${v}`, SPH[q]); if (q > 0 && AC && AC.state === 'running') spiceSnd(0);
+  if (SP.total === 1) tip('Spice: boost at rocks, or press G, to slow time. Rarer spice (menu: Spice attunement) upgrades slow time, shield and flow', 9000);
+}
+function spOn() { spSh = 1.2 + SP.lv[1]; spAbT = 0; btMax = btT = btT + SP.lv[0] * .45; spGrace = tm + .45 * SP.lv[1]; }
+function spAbsorb(a) {
+  if (spSh > 0 && (btT > 0 || tm < spGrace)) { const t = Math.min(spSh, a); spSh -= t; if (t > .02 && tm > spAbT) { spAbT = tm + .35; pop('SPICE SHIELD', '#7ff6ff'); for (let k = 0; k < 6; k++) fxAdd(px + sFx * 9 + (Math.random() - .5) * 12, py + sFy * 9 + (Math.random() - .5) * 8, pz + sFz * 9 + (Math.random() - .5) * 12, .4 + Math.random() * .5, .4, 1.1, 1.5); } return a - t; }
+  return a;
+}
+function spiceSense() {
+  if (!flying() || btT > 0) return; const cost = Math.max(4, Math.round(22 * spCk()));
+  if (btCool > 0) { tip('Spice sense is recharging', 1200); return; }
+  if ((ST.spice || 0) < cost) { tip(`Spice sense needs ${cost} spice`, 1800); return; }
+  ST.spice -= cost; btMax = btT = 2; btHold = 0; btCool = spCool(); spOn(); pop(`SPICE SENSE · SPICE −${cost}`, '#ff3b5c'); spiceSnd(0);
+}
+function spPocket() {
+  const q = spTier(), n = q === 0 ? 4 : q === 1 ? 4 : q === 2 ? 3 : 2, g = Math.random() * 6.283, off = Math.random() * .7, ox = sRx * Math.cos(g) + sUx * Math.sin(g), oy = sRy * Math.cos(g) + sUy * Math.sin(g), oz = sRz * Math.cos(g) + sUz * Math.sin(g);
+  const d = 1800 + Math.random() * 1400, cx = px + (sFx + ox * off) * d, cy = py + (sFy + oy * off) * d, cz = pz + (sFz + oz * off) * d, vx0 = (Math.random() - .5) * 20, vy0 = (Math.random() - .5) * 8, vz0 = (Math.random() - .5) * 20;
+  for (let i = 0; i < n; i++) BLOOMS.push({ x: cx + (Math.random() - .5) * 320, y: cy + (Math.random() - .5) * 200, z: cz + (Math.random() - .5) * 320, t: 0, q, v: 8 + (Math.random() * 6 | 0), p: 1, dx: vx0, dy: vy0, dz: vz0 });
+  pop(`SPICE POCKET · ${SPN[q]}`, SPH[q]); spiceSnd(1);
+}
+function foeOverlay() {
+  if (FO) return FO; FO = document.createElement('div'); FO.id = 'foeIntro';
+  FO.style.cssText = 'position:fixed;inset:0;z-index:7;pointer-events:none;opacity:0;transition:opacity .6s;font-family:system-ui,sans-serif';
+  FO.innerHTML = '<div style="position:absolute;left:0;right:0;top:0;height:11vh;background:#000"></div><div style="position:absolute;left:0;right:0;bottom:0;height:11vh;background:#000"></div><div id=foeT style="position:absolute;left:0;right:0;top:54%;text-align:center;color:#ff3b5c;letter-spacing:.5em;font-size:min(7vw,64px);font-weight:200;text-shadow:0 0 24px #ff3b5c88;opacity:0;transition:opacity 1s"></div><div id=foeS style="position:absolute;left:0;right:0;top:calc(54% + min(9vw,80px));text-align:center;color:#ffd0d6;letter-spacing:.3em;font-size:min(2.2vw,18px);opacity:0;transition:opacity 1s"></div><div style="position:absolute;right:3vw;bottom:13vh;color:#ffffff99;font-size:13px;letter-spacing:.15em">ENTER · SKIP</div>';
+  document.body.appendChild(FO); return FO;
+}
+function foeIntroStart(a) {
+  SP.intro = 1; spSave(); introA = a; const des = 'VX-' + (a.fseed >>> 0).toString(36).slice(-4).toUpperCase();
+  if (xr || !document.body) { pop('THE FOE', '#ff3b5c'); tip(`Hostile contact · ${a.name} · ${des}`, 5000); return; }
+  introT = 6.5; introS = performance.now(); const o = foeOverlay(); o.style.opacity = 1;
+  const t = o.querySelector('#foeT'), s = o.querySelector('#foeS'); t.textContent = 'THE FOE'; s.textContent = `HOSTILE CONTACT · ${des} · ${a.name.toUpperCase()}`; t.style.opacity = 0; s.style.opacity = 0;
+  setTimeout(() => { t.style.opacity = 1; }, 1400); setTimeout(() => { s.style.opacity = 1; }, 2300);
+}
+function foeIntroEnd() { introT = 0; introA = null; hlF = null; if (FO) FO.style.opacity = 0; }
+addEventListener('keydown', (e) => { if (introT > 0 && (e.code === 'Enter' || e.code === 'Backspace' || e.code === 'NumpadEnter')) introS -= 1e5; });
+addEventListener('pointerdown', () => { if (introT > 0 && performance.now() - introS > 700) introS -= 1e5; });
+function spiceX(dt, fly) {
+  if (introT > 0) {
+    introT = Math.max(0, 6.5 - (performance.now() - introS) / 1000);
+    if (introT <= 0 || !introA || introA.dead || !fly) foeIntroEnd();
+    else { const a = introA, dx = a.x - px, dy = a.y - py, dz = a.z - pz, fx = dx * sFx + dy * sFy + dz * sFz, rx = dx * sRx + dy * sRy + dz * sRz, ux = dx * sUx + dy * sUy + dz * sUz;
+      hlF = [Math.max(-2.2, Math.min(2.2, Math.atan2(rx, fx))), Math.max(-.7, Math.min(.7, Math.atan2(ux, Math.hypot(rx, fx))))]; if (FO && introT < .7) FO.style.opacity = 0; }
+  }
+  if (!fly) return;
+  if (btT <= 0 && tm > spGrace) spSh = 0;
+  if (btT > 0) spGrace = tm + .45 * SP.lv[1];
+  pkT -= dt; if (pkT <= 0) { pkT = 45 + Math.random() * 60; if (!SYS.atm && BLOOMS.length < 12 && introT <= 0) spPocket(); }
+  if (!SP.intro && introT <= 0) for (const a of NPCS) if (a.role === 5 && !a.dead && !a.fled && a.foe != null) { const d = Math.hypot(a.x - px, a.y - py, a.z - pz); if (d < 3200 && d > 250) { foeIntroStart(a); break; } }
+}
+function spHud(c, T, hd, wrap) {
+  for (let q = 0; q < 4; q++) { c.fillStyle = SPH[q]; c.fillRect(178 + q * 48, 106, 9, 9); T(String(SP.n[q]), 178 + q * 48 + 14, 115, 12, 'left', SPH[q], 700); }
+  let bi = -1, bd = 1e12;
+  for (let i = 0; i < BLOOMS.length; i++) { const b = BLOOMS[i], ex = b.x - px, ey = b.y - py, ez = b.z - pz, d2 = ex * ex + ey * ey + ez * ez, q = b.q | 0; if (d2 < bd) { bd = d2; bi = i; }
+    const xx = Math.max(256, Math.min(744, 500 + wrap(Math.atan2(ex, -ez) * 57.29578 - hd) * 6.5)); c.fillStyle = SPH[q]; c.beginPath(); c.moveTo(xx, 140); c.lineTo(xx + 6, 147); c.lineTo(xx, 154); c.lineTo(xx - 6, 147); c.fill(); }
+  if (bi >= 0) { const q = BLOOMS[bi].q | 0; T(`${SPN[q]} SPICE · ${(Math.sqrt(bd) / 1000).toFixed(1)} km`, 178, 135, 12, 'left', SPH[q], 700); }
+  if (spSh > 0 && btT > 0) T('SPICE SHIELD ' + '■'.repeat(Math.ceil(spSh)), 500, 276, 13, 'center', '#7ff6ff', 700);
+  if (tm - foeHitT < .4) T(foeHitS, 500, 226, 15, 'center', '#ff6a3d', 700);
+}
+function spicePanel() {
+  const list = SPB.map((b, i) => { const L = SP.lv[i], nx = SPL[Math.min(L, 3)];
+    return { name: b[0], kind: L >= 4 ? 'max' : `Lv ${L} → ${L + 1}`, desc: b[1] + (L >= 4 ? '' : ` · needs ${nx[1]} ${SPN[nx[0]].toLowerCase()}`), run: () => {
+      if (L < 4 && SP.n[nx[0]] >= nx[1]) { SP.n[nx[0]] -= nx[1]; SP.lv[i]++; spSave(); pop(`${b[0].toUpperCase()} LEVEL ${SP.lv[i]}`, SPH[nx[0]]); } else if (L < 4) tip(`Not enough ${SPN[nx[0]].toLowerCase()} spice`, 2000); spicePanel(); } }; });
+  list.push({ name: 'Back', desc: '', run: () => pausePanel() });
+  panel('Spice attunement', spKind(), list, 'Rarer spice unlocks deeper levels · G triggers spice sense');
+}
+const FOEG = [0, 1, 2, 3, 4, 5, 6, 7].map(() => Dyn(6)), FOEM = [null, null, null, null, null, null, null, null];
+function foeMesh(sd) {
+  const R = mulberry32(sd), u = (a, b) => a + (b - a) * R(), V = [], I = [], pk = (n) => R() * n | 0;
+  const w1 = u(.045, .1), h1 = u(.03, .06), nose = pk(3), sty = pk(4), booms = R() < .3, eng = 1 + pk(4), fins = pk(4);
+  const nz = nose === 0 ? -1 : nose === 1 ? -.92 : -.85, nw = nose === 0 ? .006 : nose === 1 ? w1 * .35 : w1 * .6;
+  loft(V, I, [[nz, nw, nw, 0], [nz + .3, w1 * .55, h1 * .55, 0], [-.2, w1, h1, 0], [.3, w1 * u(.8, 1.15), h1 * u(.9, 1.2), 0], [.72, w1 * .75, h1 * .85, 0], [.86, w1 * .6, h1 * .7, 0]], 6, 0, 0, 0);
+  loft(V, I, [[-.5, .01, .01, h1 * .7], [-.36, w1 * .75, h1 * 1.1, h1 * .55], [-.1, w1 * .65, h1, h1 * .5], [.04, .01, .01, h1 * .5]], 6, 3);
+  const sp = u(.42, .95), z0 = u(-.15, .3), ch = u(.32, .62), tc = sty === 2 ? .06 : u(.1, .3) * ch, dy = sty === 3 ? -u(.04, .12) : u(-.03, .08), th = u(.008, .016), pm = pk(2), root = w1 * .9;
+  const zf0 = z0 - ch * .35, zb0 = z0 + ch * .65, zf1 = sty === 2 ? zb0 - tc : zf0 + (sty === 1 ? -u(.28, .5) : sty === 3 ? u(.05, .2) : u(.22, .6)), zb1 = sty === 2 ? zb0 : zf1 + tc;
+  const W = [[root, 0, zf0], [root, 0, zb0], [sp, dy, zb1], [sp, dy, zf1]]; slab(V, I, W, th, pm); slab(V, I, mirX(W), th, pm);
+  const gx = sp * u(.45, .75), gy = dy * (gx - root) / (sp - root);
+  for (const s of [-1, 1]) { loft(V, I, [[-.8, .008, .008, gy, s * gx], [zb0 - .1, .016, .016, gy, s * gx]], 4, 0); loft(V, I, [[zb1 - .02, .012, .012, dy, s * sp], [zb1 + .05, .012, .012, dy, s * sp]], 4, 4); }
+  if (fins === 0 || fins === 3) slab(V, I, [[0, h1 * .8, .35], [0, h1 * .8, .88], [0, h1 + u(.16, .3), .9 + u(0, .12)], [0, h1 + u(.2, .34), .62]], .012, 1);
+  if (fins === 1 || fins === 3) for (const s of [-1, 1]) { const f = u(.12, .22), g = u(.12, .22); slab(V, I, [[s * w1 * .8, h1 * .5, .4], [s * w1 * .8, h1 * .5, .9], [s * (w1 + f), h1 + g, .95], [s * (w1 + f), h1 + g, .62]], .01, 1); }
+  if (fins === 2) { slab(V, I, [[0, h1 * .8, .4], [0, h1 * .8, .88], [0, h1 + .2, .92], [0, h1 + .22, .66]], .012, 1); slab(V, I, [[0, -h1 * .8, .4], [0, -h1 * .8, .88], [0, -h1 - .18, .9], [0, -h1 - .2, .65]], .012, 1); }
+  if (R() < .4) { const cz = u(-.65, -.45); for (const s of [-1, 1]) slab(V, I, [[s * w1 * .6, 0, cz], [s * w1 * .6, 0, cz + .16], [s * (w1 + .17), 0, cz + .22], [s * (w1 + .17), 0, cz + .08]], .008, 1); }
+  if (R() < .45) for (const s of [-1, 1]) loft(V, I, [[-.98, .008, .008, 0, s * w1 * 2.2], [-.6, .02, .015, 0, s * w1 * 2.4], [-.2, .02, .015, 0, s * w1 * 1.5]], 4, 1);
+  const er = u(.026, .04);
+  if (booms) { for (const s of [-1, 1]) loft(V, I, [[-.1, .02, .02, 0, s * .3], [.4, .03, .03, 0, s * .3], [1, .025, .025, 0, s * .3]], 6, 0, 0, 2); slab(V, I, [[-.3, 0, .7], [.3, 0, .7], [.3, 0, .88], [-.3, 0, .88]], .01, 1); }
+  else { const ex = eng === 1 ? [0] : eng === 2 ? [-.5, .5] : eng === 3 ? [-.6, 0, .6] : [-.7, -.25, .25, .7]; for (const f of ex) loft(V, I, [[.72, er * 1.4, er * 1.4, 0, f * w1 * 1.6], [1, er, er, 0, f * w1 * 1.6]], 6, 0, 0, 2); }
+  return mesh(V, I);
+}
+function foeAssign(a) {
+  let i = 0; while (i < 8 && NPCS.some((b) => b !== a && b.foe === i && !b.dead)) i++;
+  if (i >= 8) { a.foe = -1; return; }
+  if (FOEM[i]) { for (const v of FOEG[i].vao.values()) gl.deleteVertexArray(v); FOEG[i].vao.clear(); gl.deleteBuffer(FOEM[i].vb); gl.deleteBuffer(FOEM[i].ib); }
+  a.fseed = ((Math.random() * 4294967296) ^ (Date.now() & 0xffffffff) ^ Math.imul(++SP.hulls, 2654435761)) >>> 0;
+  FOEM[i] = foeMesh(a.fseed); a.foe = i; a.size = Math.max(a.size, 11 + (a.fseed & 7) * .4); a.hue = ((a.hue || 0) + ((a.fseed >>> 8 & 255) / 255 - .5) * .1 + 1) % 1;
+}
+function foeUp(a, dt) {
+  if (a.rt > 0) { a.rl += dt * 13; if (a.rl >= a.rt) a.rl = a.rt = 0; }
+  const c = Math.cos(a.rl || 0), s = Math.sin(a.rl || 0), cx = a.fy * a.uz - a.fz * a.uy, cy = a.fz * a.ux - a.fx * a.uz, cz = a.fx * a.uy - a.fy * a.ux;
+  FU0 = a.ux * c + cx * s; FU1 = a.uy * c + cy * s; FU2 = a.uz * c + cz * s;
+  if (a.bt > 0) { a.bt -= dt; const qx = a.x - px, qy = a.y - py, qz = a.z - pz, qd = Math.hypot(qx, qy, qz) || 1, ix = -qx / qd, iy = -qy / qd, iz = -qz / qd, p = 1 - a.bt / .22, L = Math.min(qd * .4, 130 + a.size * 5), rx = -a.fz * a.size * .45, rz = a.fx * a.size * .45, d0 = Math.min(qd * .8, p * qd * .9) + a.size, m = d0 + L * .5;
+    put(DT, qx + rx + ix * m, qy + iy * m, qz + rz + iz * m, .5, ix * L, iy * L, iz * L, 0, 2.4, .35, .15, 0); put(DT, qx - rx + ix * m, qy + iy * m, qz - rz + iz * m, .5, ix * L, iy * L, iz * L, 0, 2.4, .35, .15, 0); }
+}
+const npcHit1 = npcHit;
+npcHit = function (a, dmg, qd, hx, hy, hz, w) {
+  const sh0 = a.sh, was = a.dead; npcHit1(a, dmg, qd, hx, hy, hz, w); if (a.role !== 5) return;
+  foeHitT = tm; foeHitS = a.dead ? '✕ FOE DOWN' : sh0 > 0 && a.sh <= 0 ? '◇ SHIELD DOWN' : a.sh > 0 ? '◇ SHIELD HIT' : '✕ HULL HIT';
+  if (AC && AC.state === 'running') note(mf(a.dead ? 96 : a.sh > 0 ? 91 : 74), AC.currentTime, .04, 'triangle', .35, 1);
+  if (!was && a.dead) { const q = Math.min(3, spTier() + (Math.random() < .3 ? 1 : 0)); BLOOMS.push({ x: a.x, y: a.y, z: a.z, t: 0, q, v: 10, p: 1, dx: 0, dy: 0, dz: 0 }); pop('SPICE CACHE DROPPED', SPH[q]); }
+};
+const BUILD = 'v1.71';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 let draws = 0, verts = 0, frameDraws = 0, frameVerts = 0;
 const _dei = gl.drawElementsInstanced.bind(gl), _de = gl.drawElements.bind(gl), _da = gl.drawArrays.bind(gl);
 gl.drawElementsInstanced = (m, c, ty, off, n) => { draws++; verts += c * n; return _dei(m, c, ty, off, n); };
@@ -6495,7 +6620,7 @@ function mission() {
 }
 const taskText = (t) => t.done ? 'Task here complete' : t.ty === 0 ? `Survey: bring aboard three different minerals from this place (${t.got.length}/3)` : t.ty === 1 ? `Collect ${t.n} ${TIERS[t.tier]} here (${t.got}/${t.n})` : 'A faint signal repeats somewhere out here. Find its source.';
 let hitPing = -9, hitAng = 0, hitFromX = 0, hitFromY = 0, hitFromZ = 0, hullHitT = -9;
-function hurt(a) { a *= TUNE.dmg; buzz(Math.min(1, .35 + a / 25), 170);
+function hurt(a) { if (introT > 0) return; a *= TUNE.dmg; a = spAbsorb(a); if (a <= 0) return; buzz(Math.min(1, .35 + a / 25), 170);
   a *= 1 - .2 * upLv('plt');
   const incoming = a;
   a = shieldTake(a);
@@ -6585,6 +6710,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyJ' && flying()) jpOpen ? closePanel() : gatePanel();
   if (e.code === 'KeyL' && flying()) jpOpen ? closePanel() : logPanel();
   if (e.code === 'KeyN') starMap();
+  if (e.code === 'KeyG' && started) spiceSense();
   if (e.code === 'KeyR') { CFG.radio = CFG.radio ? 0 : 1; setUi(); if (CFG.radio) radioJump(); tip(CFG.radio ? 'Ikosagon radio on: tuning in somewhere new' : 'Radio off: ship\'s score', 3000); }
   if (e.code === 'BracketRight' && CFG.radio) radioJump();
   if (flying() && !jpOpen && !invOpen && /^Digit[1-5]$/.test(e.code)) wpnSet(+e.code[5] - 1);
@@ -7058,7 +7184,7 @@ function eye(fb, x, y, w, h, tw, th) {
   gl.uniform1f(ru.uSpin, 0); draw(R, DGt, mGate);
   gl.useProgram(P_CRY.p); if (P_CRY.u.uVd) gl.uniform1f(P_CRY.u.uVd, vd); gl.uniform1f(P_CRY.u.uSpin, .05); draw(P_CRY, LC, mCry);
   gl.disable(gl.CULL_FACE); gl.useProgram(P_SHIP.p); if (P_SHIP.u.uVd) gl.uniform1f(P_SHIP.u.uVd, vd);
-  gl.uniform1i(P_SHIP.u.uShip, 4); for (let i = 0; i < 3; i++) draw(P_SHIP, DAgs[i], mShips[i]); draw(P_SHIP, DAf, mFrig[0]);   // traffic, steered ship by ship
+  gl.uniform1i(P_SHIP.u.uShip, 4); for (let i = 0; i < 3; i++) draw(P_SHIP, DAgs[i], mShips[i]); for (let i = 0; i < 8; i++) if (FOEM[i]) draw(P_SHIP, FOEG[i], FOEM[i]); draw(P_SHIP, DAf, mFrig[0]);   // traffic, steered ship by ship
   gl.uniform1i(P_SHIP.u.uShip, 2); draw(P_SHIP, LDr, mDrone); draw(P_SHIP, LDs, mSiphon); draw(P_SHIP, LDe, mSpark);
   gl.uniform1i(P_SHIP.u.uShip, 3); draw(P_SHIP, DTr, mFrig[1]);
   gl.uniform1i(P_SHIP.u.uShip, 1); draw(P_SHIP, LFr, mFrig[1]); if (FV[1]) draw(P_SHIP, FV[1], mFrig[0]);
@@ -7281,7 +7407,7 @@ function frame(now, xf) {
   (xr || window).requestAnimationFrame(frame);
   frameDraws = draws; frameVerts = verts; draws = 0; verts = 0;
   const raw = (now - last) / 1000; last = now; frEma = frEma ? frEma * .95 + Math.min(raw, 1) * .05 : raw; if (raw > .35 && raw > frEma * 3 && bootOK && raw < 60) evLog(`Hitch · a frame took ${Math.round(raw * 1000)} ms` + (SYS.atm ? ' (in a sky)' : ''));
-  const rdt = Math.min(.05, Math.max(.001, raw)); btT = Math.max(0, btT - rdt); slow += (((jpOpen || invOpen || PIP.big) && flying() ? .12 : btT > 0 ? .14 + .86 * Math.pow(1 - btT / btMax, 2.4) : 1) - slow) * Math.min(1, rdt * (btT > 0 ? 14 : 4));
+  const rdt = Math.min(.05, Math.max(.001, raw)); btT = Math.max(0, btT - rdt); slow += (((jpOpen || invOpen || PIP.big) && flying() ? .12 : btT > 0 ? .14 + .86 * Math.pow(1 - btT / btMax, 2.4) : introT > 0 ? .3 : 1) - slow) * Math.min(1, rdt * (btT > 0 ? 14 : 4));
   const dt = rdt * slow; tm += dt;                             // with a panel open the world all but stops, and eases back when it closes
   acc += raw; nf++;
   if (nf >= 40) {                                            // hold the frame rate by trading resolution
