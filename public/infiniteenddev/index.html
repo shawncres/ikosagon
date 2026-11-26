@@ -390,11 +390,11 @@ const HDRI = HF ? gl.RGBA16F : gl.RGBA8, HDRT = HF ? gl.HALF_FLOAT : gl.UNSIGNED
 // ---- v1.45: the tuning console's numbers. Every slider in the console (F9, test builds) is one of these; the game reads them live.
 // Shawn tunes by feel, copies the block out, and the values become the defaults here.
 const TUNE_DEF = [
-  ['thrSpd', 'Flight', 'Throttle top speed (u/s)', 80, 600, 5, 230], ['boostTop', 'Flight', 'Boost top speed (u/s)', 200, 2000, 10, 480], ['boostBite', 'Flight', 'Boost kick-in speed', .5, 15, .5, 2],
+  ['thrSpd', 'Flight', 'Throttle top speed (u/s)', 80, 600, 5, 230], ['boostTop', 'Flight', 'Boost top speed (u/s)', 200, 2000, 10, 410], ['boostBite', 'Flight', 'Boost kick-in speed', .5, 15, .5, 1.4],
   ['airMax', 'Flight', 'Speed at the top of the air (×)', 1, 10, .1, 6], ['glideMin', 'Flight', 'Glide: minimum speed in air', 0, 300, 5, 70], ['glideDrag', 'Flight', 'Glide: drag', 0, .2, .005, .035],
   ['glideGrav', 'Flight', 'Glide: speed gained nose-down', 0, 200, 5, 55], ['gateBrake', 'Flight', 'Gate braking (0 = off)', 0, 1, .05, .5], ['turnK', 'Flight', 'Stick turn rate (pad, VR)', .3, 3, .05, 1],
   ['hlRate', 'Hyperlight', 'Speed (× distance left, per s)', .3, 5, .1, 1.5], ['hlMax', 'Hyperlight', 'Top speed (Mm/s)', 1, 40, .5, 7], ['hlSpool', 'Hyperlight', 'Spool time (s)', .2, 5, .1, 1.4],
-  ['hlReady', 'Hyperlight', 'Lock time to READY (s)', .2, 5, .1, 1.2], ['hlDrop', 'Hyperlight', 'Drops out at (planet radii)', 1.05, 10, .1, 1.8], ['hlTime0', 'Hyperlight', 'Trip: base time (s)', 1, 15, .5, 4], ['hlTimeK', 'Hyperlight', 'Trip: extra time per √Mm', 0, 15, .5, 4], ['boostSys', 'Flight', 'Boost across the system (Mm/s)', .001, .08, .0005, .003], ['hlPlay', 'Hyperlight', 'Nose play while lit (rad)', 0, .5, .01, .07],
+  ['hlReady', 'Hyperlight', 'Lock time to READY (s)', .2, 5, .1, 1.2], ['hlDrop', 'Hyperlight', 'Drops out at (planet radii)', 1.05, 10, .1, 1.8], ['hlTime0', 'Hyperlight', 'Trip: base time (s)', 1, 15, .5, 4], ['hlTimeK', 'Hyperlight', 'Trip: extra time per √Mm', 0, 15, .5, 4], ['boostSys', 'Flight', 'Boost across the system (Mm/s)', .001, .08, .0005, .0025], ['hlPlay', 'Hyperlight', 'Nose play while lit (rad)', 0, .5, .01, .07],
   ['plScale', 'Planets', 'Planet size (×, next arrival)', .5, 5, .1, 2.2], ['spread', 'Planets', 'Planet spacing (×, next arrival)', .5, 5, .1, 1.5], ['orbitMin', 'Planets', 'Places in orbit: nearest (radii, next arrival)', 2, 20, .5, 6], ['dayLen', 'Planets', 'Day length (×)', .1, 10, .1, 1],
   ['apNearR', 'Approach', 'Slow zone (planet radii)', 2, 20, .5, 6], ['apK', 'Approach', 'Pace in the slow zone', .02, .5, .01, .08], ['grav', 'Gravity', 'Planet gravity (g)', 0, 2, .05, .9], ['gravEsc', 'Gravity', 'Nose-up angle to break free (°)', 10, 70, 1, 35], ['gravLift', 'Gravity', 'Lift from speed', 0, 3, .05, 1], ['gravCush', 'Gravity', 'Ground cushion height (m)', 0, 2000, 25, 350], ['apFarK', 'Approach', 'Pace further out', .05, 1, .01, .42],
   ['apEng', 'Approach', 'Throttle starts approach within (radii)', 1.2, 30, .5, 2.2],
@@ -2970,9 +2970,9 @@ function hudPaint() {
  if (wantedT > 0) T('WANTED  ' + Math.ceil(wantedT), 500, 228, 17, 'center', red, 700);
   T('THR', 822, 56, 15, 'right', dim, 700); bar(580, 46, 190, Math.abs(thr), thr < 0 ? red : bst > .3 ? amb : main); T(Math.round(thr * 100) + '%', 572, 56, 15, 'right', main);
   { const we = ST.wen == null ? 100 : ST.wen, spc = ST.spice || 0;
-    { const hn = SP.n[1], hc = gFlash[1] > .5 ? '#ffffff' : SPH[1]; T('HYPER', 822, 74, 12, 'right', hn ? SPH[1] : dim, 700);
-      for (let k = 0; k < 3; k++) { const x = 580 + k * 66; c.beginPath(); c.moveTo(x + 6, 65); c.lineTo(x + 62, 65); c.lineTo(x + 56, 75); c.lineTo(x, 75); c.closePath(); c.fillStyle = 'rgba(160,210,240,.18)'; c.fill(); if (k < hn) { c.fillStyle = hc; c.fill(); } c.strokeStyle = k < hn ? hc : 'rgba(160,210,240,.45)'; c.lineWidth = 1.2; c.stroke(); } }
-    T(WPN[wpn][0].toUpperCase(), 572, 92, 11, 'right', dim, 600);
+    { const hn = SP.n[1], hc = gFlash[1] > .5 ? '#ffffff' : SPH[1]; T('HYPER', 514, 91, 12, 'left', hn ? SPH[1] : dim, 700);
+      for (let k = 0; k < 3; k++) { const x = 432 + k * 25; c.beginPath(); c.moveTo(x + 7, 80); c.lineTo(x + 23, 80); c.lineTo(x + 16, 92); c.lineTo(x, 92); c.closePath(); c.fillStyle = 'rgba(160,210,240,.18)'; c.fill(); if (k < hn) { c.fillStyle = hc; c.fill(); } c.strokeStyle = k < hn ? hc : 'rgba(160,210,240,.45)'; c.lineWidth = 1.2; c.stroke(); } }
+    T(WPN[wpn][0].toUpperCase(), 770, 103, 11, 'right', dim, 600);
     T('WPNS' + (wpn === 4 ? ' ' + mslN : ''), 822, 92, 12, 'right', dim, 700); bar(580, 84, 190, we / 100, gFlash[2] > .5 ? '#ffffff' : we < 12 ? red : '#ff6a3d');
     T('SPICE', 178, 91, 12, 'left', '#ff6b82', 700); for (let q = 0; q < 4; q++) { const x = 232 + q * 48, f = Math.max(0, Math.min(1, spc / 25 - q)), col = btT > 0 ? '#ffffff' : spc < 25 && q === 0 && (tm * 3 | 0) % 2 ? '#ffb0b8' : '#ff3b5c'; c.fillStyle = 'rgba(160,210,240,.18)'; c.beginPath(); c.moveTo(x + 7, 80); c.lineTo(x + 45, 80); c.lineTo(x + 38, 92); c.lineTo(x, 92); c.closePath(); c.fill(); if (f > 0) { c.save(); c.beginPath(); c.moveTo(x + 7, 80); c.lineTo(x + 45, 80); c.lineTo(x + 38, 92); c.lineTo(x, 92); c.closePath(); c.clip(); c.fillStyle = col; c.fillRect(x, 80, 45 * f, 12); c.restore(); } line([[x + 7, 80], [x + 45, 80], [x + 38, 92], [x, 92], [x + 7, 80]], f > 0 ? col : dim, 1.5); } if (btT > 0) { T('SLOW TIME', 500, 252, 15, 'center', '#ff3b5c', 700); line([[500 - 80 * btT / btMax, 262], [500 + 80 * btT / btMax, 262]], '#ff3b5c', 2); } }
   const hd = Math.atan2(sFx, -sFz) * 57.29578, CARD = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'], wrap = (a) => ((a + 540) % 360) - 180;
@@ -2999,7 +2999,7 @@ function hudPaint() {
   if (cur && cur.kind === 'planet' && SYS.planets[+cur.id[1]]) { const k = +cur.id[1], pl = SYS.planets[k], air = SYS.locs.some((l) => l.atm === k + 1); T((pl.type + (air ? pl.kind === 0 ? ' · fly the cloud tops' : ' · air · can descend' : ' · no air · orbit only')).toUpperCase(), 892, 306, 12, 'right', dim, 600); }
   if (cur && cur.npc) { T('SHD', 736, 304, 11, 'right', dim, 700); bar(742, 296, 150, cur.npc.sh / cur.npc.shM, cy); T('HULL', 736, 318, 11, 'right', dim, 700); bar(742, 310, 150, cur.npc.hp / cur.npc.hpM, cur.npc.hp < cur.npc.hpM * .35 ? red : main); }
   tag('DISTANCE', 908, 366, 'right'); const ds = dist >= 10000 ? (dist / 1000).toFixed(0) : dist >= 1000 ? (dist / 1000).toFixed(1) : String(dist | 0); T(cur && cur.far ? (plRaw(cur) < .1 ? 'KM' : 'MM') : dist >= 1000 ? 'KM' : 'M', 892, 420, 15, 'right', dim, 700); T(cur && cur.far ? plDist(cur) : ds, 860, 420, 40, 'right', main, 700); if (drift) { T(orbAp ? 'ORBITAL APPROACH  ' + (driftV * 1000).toFixed(1) + ' KM/S' : 'LIGHT DRIFT  ' + (driftV / 300).toFixed(driftV < 30 ? 3 : 2) + ' c', 892, 500, 15, 'right', amb, 700); bar(742, 508, 150, Math.min(1, driftV / 300), amb); } else if (!SYS.atm && apOn && aimK >= 0) { const inR = apDist < apGate, air = SYS.locs.some((l) => l.atm === aimK + 1); T(!air && apDist < PR[aimK] * 3 ? 'NO ATMOSPHERE · ORBIT ONLY' : bRamp <= 0 ? (air ? (drift ? 'DESCENDING · THROTTLE SETS THE PACE' : 'THROTTLE TOWARD IT TO APPROACH') : 'HOLD BOOST TO APPROACH') : inR ? 'APPROACH  ' + SYS.planets[aimK].name.toUpperCase() : 'CLOSING · DRIFT AT ' + Math.round(apGate) + ' MM', 892, 500, 15, 'right', amb, 700); bar(742, 508, 150, inR ? bRamp : Math.min(1, apGate / apDist), amb); } else if (SYS.atm && scK > 0) { T('TERMINAL VELOCITY', 892, 500, 15, 'right', amb, 700); bar(742, 508, 150, scK, amb); }
-  if (!SYS.atm && (hl || hlRdy > 0)) { const c = navCur(); T(hl === 2 ? 'HYPERLIGHT · ' + (c && c.far ? plDist(c) + (plRaw(c) < .1 ? ' KM' : ' MM') : '') : hl === 1 ? 'HYPERLIGHT SPOOLING' : hlRdy >= 1.2 ? 'HYPERLIGHT READY · G / SHIFT SHIFT' + (SP.n[1] ? '' : ' · NEEDS PURPLE') : 'HYPERLIGHT · HOLD ON TARGET', 892, 540, 15, 'right', hl || hlRdy >= 1.2 ? cy : dim, 700); bar(742, 548, 150, hl === 2 ? 1 : hl === 1 ? Math.min(1, hlT / 1.4) : Math.min(1, hlRdy / 1.2), hl || hlRdy >= 1.2 ? cy : dim); }   // v1.36
+  if (!SYS.atm && (hl || hlRdy > 0)) { const c = navCur(); T(hl === 2 ? 'HYPERLIGHT · ' + (hlFree ? 'FREE HEADING' : c && c.far ? plDist(c) + (plRaw(c) < .1 ? ' KM' : ' MM') : '') : hl === 1 ? 'HYPERLIGHT SPOOLING' : hlRdy >= 1.2 ? 'HYPERLIGHT READY · G / SHIFT SHIFT' + (SP.n[1] ? '' : ' · NEEDS PURPLE') : 'HYPERLIGHT · HOLD ON TARGET', 892, 540, 15, 'right', hl || hlRdy >= 1.2 ? cy : dim, 700); bar(742, 548, 150, hl === 2 ? 1 : hl === 1 ? Math.min(1, hlT / 1.4) : Math.min(1, hlRdy / 1.2), hl || hlRdy >= 1.2 ? cy : dim); }   // v1.36
   if (cur && scanT > 0) { T('SCANNING', 892, 462, 14, 'right', cy, 700); bar(742, 470, 150, scanT / 1.6, cy); } else if (cur && scanned[cur.id]) T('SCANNED', 892, 462, 14, 'right', dim, 700);
   else if (cur && (cur.npc || cur.id === 'trader' || cur.id === 'gate') && dist < (cur.npc ? scanR() : cur.id === 'gate' ? 2600 : 900)) T(cur.npc ? 'F · HAIL' : 'F · OPEN', 892, 462, 14, 'right', cy, 700);
   // throttle reads only in the top bar; the side ladders (throttle, pitch) are gone
@@ -3216,19 +3216,20 @@ function hop(loc) { const sv = [yaw, pitch, thr, vx, vy, vz]; palEase = 1; softA
 // locks on, and you cross the system in seconds, with only a few degrees of play. It drops out by itself before a planet's air (the
 // approach takes over), on arrival at a place, or if another world's mass is in the way.
 let shiftT = 0, hlAv = [0, 0, 0], hlSpd = 0, hlHits = [], hlLastHit = -9;
-let hl = 0, hlT = 0, hlRdy = 0, hlFx = 0, hlCurveT = 0, hlU = null, hlD0 = 1, hlDur = 8;
+let hl = 0, hlT = 0, hlRdy = 0, hlFx = 0, hlCurveT = 0, hlU = null, hlD0 = 1, hlDur = 8, hlFree = 0, hlRem = 0;
 const hlPos = (c) => { if (!c || !sysP) return null; if (c.kind === 'planet') { const k = +c.id[1]; return sysP[k] || null; } if (c.kind === 'place') { const O = sysPL[c.loc]; return O ? [O[0] - sysO[0], O[1] - sysO[1], O[2] - sysO[2]] : null; } return null; };
 // v1.51: a world only blocks hyperlight when it's actually in the path ahead (leaving the planet you just climbed out of no longer counts)
 function hlBlock(j, u, rem) { const P = sysP[j]; if (!P) return false; const x = P[0] - sysS[0], y = P[1] - sysS[1], z = P[2] - sysS[2], al = x * u[0] + y * u[1] + z * u[2];
   if (al <= 0 || al > rem + PR[j]) return false; return Math.hypot(x - u[0] * al, y - u[1] * al, z - u[2] * al) < PR[j] * 1.15; }
-function hlStop(msg) { hlSpd = 0; hlAv[0] = hlAv[1] = hlAv[2] = 0; if (!hl) hlHits.length = 0; if (hl === 1 && SP.n[1] < 3) { SP.n[1]++; spSave(); } if (hl) buzz(.55, 300); hl = 0; hlU = null; hlT = 0; hlRdy = 0; if (msg) tip(msg, 4000); }
+function hlStop(msg) { hlSpd = 0; hlAv[0] = hlAv[1] = hlAv[2] = 0; if (!hl) hlHits.length = 0; if (hl === 1 && SP.n[1] < 3) { SP.n[1]++; spSave(); } if (hl) buzz(.55, 300); hl = 0; hlFree = 0; hlU = null; hlT = 0; hlRdy = 0; if (msg) tip(msg, 4000); }
 function hlKey() {
   if (SYS.atm) { tip('Hyperlight needs open space: climb out of the air first', 3000); return; }
   if (hl) { hlStop('Hyperlight disengaged'); return; }
-  if (hlRdy >= TUNE.hlReady && SP.n[1] <= 0) { tip('Hyperlight needs a purple spice charge · find purple spice in space, on planets and from foes', 4500); return; }
-  if (hlRdy >= TUNE.hlReady) { SP.n[1]--; spSave(); hlHits.length = 0; { const Q = QA ? QA.slice() : qmul(QF, qYP(yaw, pitch)); QF = Q; yaw = 0; pitch = 0; yawL = 0; pitchL = 0; snap = 1; }   // v1.61: level re-based on where you point, so hyperlight's steering angles stay small (a tilted frame near vertical made it spin)
-    hl = 1; hlT = 0; buzz(.45, 1300); tip('Hyperlight spooling…', 1500); if (AC && AC.state === 'running') burst(AC.currentTime, 1.4, .16, 60, 600, 'lowpass'); }
-  else tip('Hyperlight: target a world or a place, hold it in your sights until it reads READY, then G (or tap Shift twice and hold) · a charge each: ' + SP.n[1] + '/3', 4500);
+  if (SP.n[1] <= 0) { tip('Hyperlight needs a purple spice charge · find purple spice in space, on planets and from foes', 4500); return; }
+  if (jumpTo || entLock) return;
+  hlFree = hlRdy >= TUNE.hlReady ? 0 : 1; hlRem = 60;   /* v1.87: no target locked: hyperlight runs along the nose (60 Mm), gently steerable, until it drops out or you cancel */
+  { SP.n[1]--; spSave(); hlHits.length = 0; { const Q = QA ? QA.slice() : qmul(QF, qYP(yaw, pitch)); QF = Q; yaw = 0; pitch = 0; yawL = 0; pitchL = 0; snap = 1; }   // v1.61: level re-based on where you point, so hyperlight's steering angles stay small (a tilted frame near vertical made it spin)
+    hl = 1; hlT = 0; buzz(.45, 1300); tip(hlFree ? 'Hyperlight spooling · free heading · G to drop out' : 'Hyperlight spooling…', 1800); if (AC && AC.state === 'running') burst(AC.currentTime, 1.4, .16, 60, 600, 'lowpass'); }
 }
 function hlTick(dt, near, nk) {
   hlFx += ((hl === 2 ? 1 : hl === 1 ? Math.min(1, hlT / TUNE.hlSpool) * .6 : 0) - hlFx) * Math.min(1, dt * (hl ? 3 : 1.4));
@@ -3238,8 +3239,10 @@ function hlTick(dt, near, nk) {
       hlRdy = cs > .985 && far ? Math.min(TUNE.hlReady + .8, hlRdy + dt) : Math.max(0, hlRdy - dt * 2); }
     else hlRdy = 0;
     return; }
-  hlT += dt; if (!P) { hlStop('Hyperlight lost its lock'); return; }
-  const k = c.kind === 'planet' ? +c.id[1] : -1, dx = P[0] - sysS[0], dy = P[1] - sysS[1], dz = P[2] - sysS[2], d = Math.hypot(dx, dy, dz) || 1, rem = k >= 0 ? d - PR[k] * TUNE.hlDrop : d - .004; let u = [dx / d, dy / d, dz / d];
+  hlT += dt; if (!P && !hlFree) { hlStop('Hyperlight lost its lock'); return; }
+  const k = !hlFree && c.kind === 'planet' ? +c.id[1] : -1; let u, rem;
+  if (hlFree) { rem = hlRem; u = [sFx, sFy, sFz]; }
+  else { const dx = P[0] - sysS[0], dy = P[1] - sysS[1], dz = P[2] - sysS[2], d = Math.hypot(dx, dy, dz) || 1; rem = k >= 0 ? d - PR[k] * TUNE.hlDrop : d - .004; u = [dx / d, dy / d, dz / d]; }
   for (let j = 0; j < 3; j++) if (j !== k && sysP[j] && hlBlock(j, u, rem)) {   // v1.51: a world in the way: curve out around it, then straight on
     const Q = sysP[j], nl = Math.hypot(sysS[0] - Q[0], sysS[1] - Q[1], sysS[2] - Q[2]) || 1, n = [(sysS[0] - Q[0]) / nl, (sysS[1] - Q[1]) / nl, (sysS[2] - Q[2]) / nl], w = Math.max(0, -(u[0] * n[0] + u[1] * n[1] + u[2] * n[2])) + .35;
     u = nrm([u[0] + n[0] * w, u[1] + n[1] * w, u[2] + n[2] * w]); if (tm > (hlCurveT || 0)) { hlCurveT = tm + 8; tip(`Hyperlight · curving around ${SYS.planets[j].name}`, 2500); } break; }
@@ -3248,7 +3251,7 @@ function hlTick(dt, near, nk) {
   let dyw = yaw - ty; dyw = Math.atan2(Math.sin(dyw), Math.cos(dyw));
   yaw = ty + Math.max(-lim, Math.min(lim, dyw)) * (1 - ease); pitch = tp + Math.max(-lim, Math.min(lim, pitch - tp)) * (1 - ease); snap = 1;   // the nose locks on: only a few degrees of play
   if (hl === 1) { trauma = Math.max(trauma, Math.min(.45, .3 * hlT)); if (hlT > TUNE.hlSpool) { hl = 2; hlT = 0; hlD0 = Math.max(rem, .001); hlDur = TUNE.hlTime0 + TUNE.hlTimeK * Math.sqrt(hlD0); buzz(1, 600); flash = Math.max(flash, .18); trauma = Math.max(trauma, .7); if (AC && AC.state === 'running') burst(AC.currentTime, 2.2, .26, 120, 1600, 'lowpass'); } return; }
-  const p = Math.min(1, hlT / hlDur), v = Math.max(hlD0 * 30 * p * p * (1 - p) * (1 - p) / hlDur * 1.08, p >= 1 ? rem * 3 : 0, .002), st = Math.max(0, Math.min(rem, v * dt));   // v1.56: a trip whose length follows the distance, easing up and down
+  const p = Math.min(1, hlT / hlDur), v = Math.max(hlD0 * 30 * p * p * (1 - p) * (1 - p) / hlDur * 1.08, p >= 1 ? rem * 3 : 0, .002), st = Math.max(0, Math.min(rem, v * dt)); if (hlFree) hlRem = Math.max(0, hlRem - st);   // v1.56: a trip whose length follows the distance, easing up and down
   { const tg = raThr ? Math.min(1.3, .35 + 1.1 * (1 - raThr.m / raThr.R)) : 0, e = Math.min(1, dt * (raThr ? 6 : 1.2));   /* steer round rocks in the path */
     hlAv[0] += ((raThr ? raThr.nx * tg : 0) - hlAv[0]) * e; hlAv[1] += ((raThr ? raThr.ny * tg : 0) - hlAv[1]) * e; hlAv[2] += ((raThr ? raThr.nz * tg : 0) - hlAv[2]) * e; }
   sysS[0] += u[0] * st; sysS[1] += u[1] * st; sysS[2] += u[2] * st; { const um = nrm([u[0] + hlAv[0], u[1] + hlAv[1], u[2] + hlAv[2]]); hlSpd = Math.min(st * 1e6, 9000 * dt) / dt; locMove(um[0], um[1], um[2], st, dt, 9000); }
@@ -3258,7 +3261,8 @@ function hlTick(dt, near, nk) {
   if (nk >= 0 && nk !== k && near < PR[nk] * 2 && hlBlock(nk, u, rem)) { hlStop(`Dropped out of hyperlight · ${SYS.planets[nk].name}'s mass is in the way`); trauma = .6; return; }
   if (rem < .0015 || (hlT > .8 && rem < v * .04)) {
     trauma = Math.max(trauma, .55); flash = Math.max(flash, .12); hlBrake();
-    if (c.kind === 'place') { const L = c.loc; hlStop(); hop(L); tip(`Arrived · ${SYS.locs[L].name}`, 3000); }
+    if (hlFree) hlStop('Out of hyperlight · free heading complete');
+    else if (c.kind === 'place') { const L = c.loc; hlStop(); hop(L); tip(`Arrived · ${SYS.locs[L].name}`, 3000); }
     else hlStop(`Out of hyperlight · ${SYS.planets[k].name} ahead · throttle toward it to approach`); }
 }
 // v1.55: dropping out of hyperlight: braking thrusters fire, a falling hiss with a few hard puffs, and the shake settles
@@ -3332,7 +3336,7 @@ function cruiseTick(dt, fly) {
     if (entLock) { aimK = nk; navId = 'p' + nk;   // the path is locked; where you look is yours
       const p = Math.min(1, (tm - entT0) / entDur), nt = p < 1 ? Math.max(.0203, entN0 - (entN0 - .0203) * (p * (2 - p) * .35 + p * .65)) : .0197, D = nrm([entD[0] * .45 - rr[0], entD[1] * .45 - rr[1], entD[2] * .45 - rr[2]]), cr = Math.max(.25, -(D[0] * rr[0] + D[1] * rr[1] + D[2] * rr[2]));
       const st = Math.max(0, near - nt) / cr; sysS[0] += D[0] * st; sysS[1] += D[1] * st; sysS[2] += D[2] * st; locMove(D[0], D[1], D[2], st, dt, 2500);
-      v126Heat = Math.max(v126Heat, .25 + .75 * Math.pow(p, 1.25)); heatFlare = Math.max(heatFlare, sm(.78, 1, p)); entFlip = p >= 1; }   // v1.67: one clock: the flare peaks at p = 1 and the flip fires on that same tick
+      v126Heat = Math.max(v126Heat, tss(TUNE.heatStart / 1000, .0201, near)); heatFlare = Math.max(heatFlare, Math.pow(tss(.0255, .0201, near), 1.4)); entFlip = p >= 1; }   /* v1.87: the burn follows altitude above the seam, not the carry clock */   // v1.67: one clock: the flare peaks at p = 1 and the flip fires on that same tick
   } else { entLock = 0; entPN = 1e9; }
   if (!hl && !drift && !SYS.atm && !entLock) { sysS[0] += vx * dt * 1e-6; sysS[1] += vy * dt * 1e-6; sysS[2] += vz * dt * 1e-6;
     if (bst > .05) { const nf = nk >= 0 ? Math.max(.06, Math.min(1, (near - .02) / .25)) : 1, bv = bst * TUNE.boostSys * (1 + .5 * bRamp) * nf * dt; sysS[0] += sFx * bv; sysS[1] += sFy * bv; sysS[2] += sFz * bv; locMove(sFx, sFy, sFz, bv, dt, 180); } }   // v1.56: boost crosses the system at ~15-30 km/s (easing off near a world): enough to circle a planet   // v1.55: your own speed moves you across the system (m/s → Mm): at boost speeds a planet is many minutes away
@@ -6292,13 +6296,29 @@ function heatTick(dt) { TCLOUD = TGB + TUNE.cldBase * 1000; TCTOP = TGB + Math.m
     if (exCommit) { const p = Math.min(1, (tm - exT0) / TUNE.exitTime), ht = exH0 + (TOUT - TGB + 60 - exH0) * (p * p * (3 - 2 * p) * .5 + p * .5);   // v1.63: the climb out runs on a timeline: the cloud-break builds softly and peaks at the switch
       if (ht > v126Hh) py += ht - v126Hh; exV = Math.max(exV, .2 + .6 * sm(0, 1, p)); exF = Math.max(exF, sm(.65, 1, p) * .75); } }
   else { exCommit = 0; const q = (tm - exT) / 2.6; if (exS) { exF = exPF * (1 - sm(0, 1, q)); exV = exPV * (1 - sm(0, .7, q)); } else { exV = Math.max(0, exV - dt * 1.1); exF = Math.max(0, exF - dt); } }   // and eases out over ~2.5 s
-  if (heatFlare > 0 && tm > heatHoldT) heatFlare = SYS.atm && tm - entT < 30 ? Math.min(heatFlare, 1 - sm(0, TUNE.heatFlareT, tm - heatHoldT)) : Math.max(0, heatFlare - dt / TUNE.heatFlareT);   // v1.65: after the hold the flare eases off on a curve (was linear)
+  if (brnS) { if (SYS.atm && isCont()) brnTick(dt); else brnS = 0; }
+  if (heatFlare > 0 && tm > heatHoldT && !brnS) heatFlare = SYS.atm && tm - entT < 30 ? Math.min(heatFlare, 1 - sm(0, TUNE.heatFlareT, tm - heatHoldT)) : Math.max(0, heatFlare - dt / TUNE.heatFlareT);   // v1.65: after the hold the flare eases off on a curve (was linear)
   plsT += dt * (.2 + .8 * Math.min(1, v126Heat + heatFlare * .5));   // the plasma's flow slows as the heat bleeds off
-  if (v126Heat > 0 || heatFlare > 0) { if (SYS.atm) { if (tm - entT < 40 && tm >= heatHoldT) v126Heat = Math.min(v126Heat, 1 - sm(0, TUNE.heatFade, tm - heatHoldT)); else if (tm >= heatHoldT) v126Heat = Math.max(0, v126Heat - dt / TUNE.heatFade * (vy > 0 ? 3 : 1)); } const h = v126Heat * v126Heat; v126Fc = [1, .55 + .3 * (1 - h), .25 + .5 * (1 - h)];
+  if (v126Heat > 0 || heatFlare > 0) { if (SYS.atm) { if (brnS) {} else if (tm - entT < 40 && tm >= heatHoldT) v126Heat = Math.min(v126Heat, 1 - sm(0, TUNE.heatFade, tm - heatHoldT)); else if (tm >= heatHoldT) v126Heat = Math.max(0, v126Heat - dt / TUNE.heatFade * (vy > 0 ? 3 : 1)); } const h = v126Heat * v126Heat; v126Fc = [1, .55 + .3 * (1 - h), .25 + .5 * (1 - h)];
     flash = Math.max(flash, heatFlare * heatFlare * .25 * TUNE.heatPeak); trauma = Math.max(trauma, (h * .3 + heatFlare * .4) * TUNE.shake / .4); }
 }
-let heatHoldT = 0, plsT = 0;
-function v126Burn() { heatHoldT = tm + TUNE.heatHold; entT = tm; exV = 0; exF = 0; exCommit = 0; v126Heat = 1; heatFlare = 1; trauma = Math.max(trauma, .45); tip('Atmospheric entry · the air takes your speed', 4000); }   // re-entry: a few seconds of heat on the canopy while the air bleeds the speed off   // set just before a continuous hop: the sky you are in stays the sky you were in
+let heatHoldT = 0, plsT = 0, brnS = 0, brnEnd = 0, brnUp = 0, brnSt = 0, brnLv = 0;
+/* v1.87: the burn below the seam follows altitude, not a timer. A is the height above the ground base. Seam SW is where the orbital planet hands over to the
+   sky shader (TENTRY, 20 km); the cloud deck runs CT..CB (15.5..8.5 km); the ground emerges through the deck from G0 (CB + 2.6 km) to CB + .4 km.
+   (A is py above the ground base, the same measure the cloud deck and the ground fade use.) Heat holds .8 down the deck top, .55 where the ground starts to show, and goes out at the deck base; the flare peaks at the seam and is gone 3.5 km below.
+   Speed scales it (a steep fast entry burns hardest, a shallow one still covers the seam); a climb or a stall ends it. */
+function brnTick(dt) {
+  const A = py - TGB, sp = Math.hypot(vx, vy, vz), vd = Math.max(0, -vy), SW = TENTRY - TGB, CB = TCLOUD - TGB, G0 = CB + 2600, CT = Math.max(G0 + 300, Math.min(TCTOP - TGB, SW - 300));
+  const terr = hasTerr(), FL = TCTOP - TGB - 300;   /* a gas giant has no ground: its floor is the cloud tops */
+  brnUp = vy > 20 ? brnUp + dt : 0; brnSt = sp < 70 && vd < 25 ? brnSt + dt : 0; brnLv = vd < 30 && tm - entT > 4 ? brnLv + dt : 0;
+  if (brnUp > .6 || brnSt > 1.2 || brnLv > 2.5 || exCommit || A < (terr ? CB - 400 : FL - 100)) brnEnd = 1;
+  const s = tss(100, 900, Math.max(vd, .4 * sp)), kv = .6 + .4 * s, amp = kv + (1 - kv) * tss(SW - 2500, SW, A);
+  const ph = !terr ? 1 - tss(SW, FL, A) : A >= CT ? 1 - .2 * tss(SW, CT, A) : A >= G0 ? .8 - .25 * tss(CT, G0, A) : .55 * (1 - tss(G0, CB, A)), pf = 1 - tss(SW - 300, SW - 3500, A);
+  const tH = brnEnd ? 0 : ph * amp * (1 - .3 * tss(15, 45, tm - entT)), tF = brnEnd ? 0 : pf * (.85 + .15 * s);
+  v126Heat += (tH - v126Heat) * (1 - Math.exp(-dt * (tH > v126Heat ? 8 : brnEnd ? 3 : 2.5))); heatFlare += (tF - heatFlare) * (1 - Math.exp(-dt * (tF > heatFlare ? 12 : brnEnd ? 3 : 4)));
+  if (brnEnd && v126Heat < .01 && heatFlare < .01) { brnS = 0; v126Heat = heatFlare = 0; }
+}
+function v126Burn() { brnS = 1; brnEnd = 0; brnUp = 0; brnSt = 0; brnLv = 0; heatHoldT = tm + TUNE.heatHold; entT = tm; exV = 0; exF = 0; exCommit = 0; v126Heat = 1; heatFlare = 1; trauma = Math.max(trauma, .45); tip('Atmospheric entry · the air takes your speed', 4000); }   // re-entry: a few seconds of heat on the canopy while the air bleeds the speed off   // set just before a continuous hop: the sky you are in stays the sky you were in
 let cOn = 0, cM = [1, 0, 0, 0, 1, 0, 0, 0, 1], cC = [0, 0], cS0 = [0, 1, 0], cAx = [1, 0, 0], cT0 = 0;
 const v126PM = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
 const v126PL = new Float32Array(9);   // each planet's light: from its star, fixed per place, the same from far off, up close and from inside
@@ -6479,7 +6499,7 @@ noiseTex();
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.86';
+const BUILD = 'v1.87';
 // v1.74: if the last session ended in a graphics reset, put what was being built at the time in the log (F9 → Copy settings shows it)
 try { const g = JSON.parse(localStorage.ieGlLost || 'null'); if (g) evLog(`Graphics · last reset (${g.build}, ${g.at.slice(0, 16).replace('T', ' ')}): ${g.was ? 'building the ' + g.was + ' program, ' + g.secs + ' s in' : 'no program was being built'}`); } catch {}                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 /* ---- v1.71: spice tiers and attunement, procedural foes, dogfight upgrades, the Foe intro ---- */
@@ -7724,8 +7744,8 @@ function frame(now, xf) {
   if (ST.hull < 25) boost = 0;
   if (fly && boost && !hl && !jumpTo) { const sp0 = ST.spice || 0, need = dt * 3.2; ST.spice = Math.max(0, sp0 - need); if (sp0 < need) { boost = .3 + .7 * (sp0 / need); if (tm > spiceTip) { spiceTip = tm + 6; pop('RED SPICE SPENT · BOOST FADES', '#ff3b5c'); } } }   /* v1.85: boost burns the red meter (about 31 s from full); empty, it only trickles */
   bst += (boost - bst) * (1 - Math.exp(-dt * (boost > bst ? TUNE.boostBite : 2.5)));   // v1.36: boost bites at once, eases off on release
-  bHold = boost && fly ? bHold + dt : 0; bRamp = Math.min(1, Math.max(0, (bHold - 1) / 5));   // keep holding boost and it keeps building, to the top of the range
-  bOd = SYS.atm ? 0 : Math.min(1, Math.max(0, (bHold - 7) / 18)); if (bOd > 0 && !odOn && !drift) { odOn = 1; pop('OVERDRIVE · ASSIST OFF', '#ffb347'); } if (!boost) odOn = 0;   // hold on past full boost: faster and faster, and the rocks are yours to dodge
+  bHold = boost && fly ? bHold + dt : 0; bRamp = sm(0, 1, (bHold - 1) / 6);   // keep holding boost and it keeps building, to the top of the range
+  bOd = SYS.atm ? 0 : sm(0, 1, (bHold - 7) / 18); if (bOd > 0 && !odOn && !drift) { odOn = 1; pop('OVERDRIVE · ASSIST OFF', '#ffb347'); } if (!boost) odOn = 0;   // hold on past full boost: faster and faster, and the rocks are yours to dodge
   // the ship's attitude is a free rotation: every input turns it about its own axes, so it can roll, loop and fly inverted; code that points the ship sets yaw and pitch and raises snap
   roll += ((ctlF() ? 0 : -dyaw / dt * .1 - ms * .14) - roll) * (1 - Math.exp(-dt * 4)); roll = Math.max(-.5, Math.min(.5, roll));   // standard flight banks into turns
   dyaw = 0; trauma = Math.max(0, trauma - dt * 1.6);
@@ -7758,7 +7778,7 @@ function frame(now, xf) {
   const sh = trauma * trauma * .02 + (xr ? 0 : bst * bst * .0035), rr = roll + vRoll + hvRoll, Qb0 = hvPit ? qmul(QAs, qax(1, 0, 0, hvPit)) : QAs, Qb = rr ? qmul(Qb0, qax(0, 0, 1, rr)) : Qb0, Qv = sh > 0 ? qmul(Qb, qmul(qax(0, 1, 0, Math.sin(tm * 71) * sh), qax(1, 0, 0, Math.sin(tm * 93 + 1) * sh))) : Qb;
   { const R = qv(Qv, 1, 0, 0), U = qv(Qv, 0, 1, 0), F = qv(Qv, 0, 0, -1); sRx = R[0]; sRy = R[1]; sRz = R[2]; sUx = U[0]; sUy = U[1]; sUz = U[2]; sFx = F[0]; sFy = F[1]; sFz = F[2];
     spit = Math.asin(Math.max(-1, Math.min(1, F[1]))); syaw = Math.atan2(F[0], -F[2]); }
-  fwd = fwd * (1 - bst) + bst * TUNE.boostTop * eff * (1 + .2 * bRamp + .25 * bOd * (2 - bOd) * (drift ? 0 : 1)) * (SYS.atm && isCont() ? airK : 1);   // v1.36: boost is its own tier: straight to top speed, whatever the throttle says (and the throttle stays where you left it)                                            // local rush tops out near 620; overdrive (held 7 s+) climbs toward ~960 over the next 18 s; the long-range drive carries you across the system                                          // Shift is thrust on its own: no need to hold forward
+  fwd = fwd * (1 - bst) + bst * TUNE.boostTop * eff * (1 + .18 * bRamp + .22 * bOd * (2 - bOd) * (drift ? 0 : 1)) * (SYS.atm && isCont() ? airK : 1);   // v1.36: boost is its own tier: straight to top speed, whatever the throttle says (and the throttle stays where you left it)                                            // local rush tops out near 620; overdrive (held 7 s+) climbs toward ~960 over the next 18 s; the long-range drive carries you across the system                                          // Shift is thrust on its own: no need to hold forward
   if (!SYS.atm && !jumpTo && fly) { const gd2 = Math.hypot(px, py, pz) || 1, toward = -(sFx * px + sFy * py + sFz * pz) / gd2;   // v1.36: the gate brakes you in: you come to rest in front of the ring instead of shooting past
     if (TUNE.gateBrake > 0 && gd2 < 3200 && toward > .55 && (navId === 'gate' || gd2 < 1500)) { const cap = Math.max(20, (gd2 - 110) * (.9 - 1.2 * TUNE.gateBrake)); if (fwd > cap) { fwd = cap; if (tm > gateBrT) { gateBrT = tm + 25; tip('Gate approach · braking', 2200); } } } }
   /* v1.86: ground hover is a dune buggy. Low and slow over terrain the ship rides on a suspension: W drives along the ground, A D steer with a
@@ -7785,7 +7805,7 @@ function frame(now, xf) {
     } else hopW = 0;
     hvRv += (36 * (hv * rT - hvRoll) - 12 * hvRv) * dt; hvRoll += hvRv * dt;   /* body roll: critically damped, w = 6 */
     if (hv === 0 && Math.abs(hvRoll) < .002) hvRoll = hvRv = 0; }
-  const k = 1 - Math.exp(-dt * (bst > .3 ? 1.6 : 1.05));   // v1.73: boost builds rather than slams
+  const k = 1 - Math.exp(-dt * (bst > .3 ? 1.3 : .85));   // v1.73: boost builds rather than slams
   if (hv <= .5) { vx += (sFx * fwd + (sRx * ms + sUx * mu) * 45 - vx) * k; vy += (sFy * fwd + (sRy * ms + sUy * mu) * 45 - vy) * k; vz += (sFz * fwd + (sRz * ms + sUz * mu) * 45 - vz) * k; }
   if (fly) rockAssist(dt);
   const hs = hl === 2 && Math.abs(px - lcx) < 3e4 && Math.abs(py - lcy) < 3e4 && Math.abs(pz - lcz) < 3e4, sw0x = hs ? lcx : px, sw0y = hs ? lcy : py, sw0z = hs ? lcz : pz;
