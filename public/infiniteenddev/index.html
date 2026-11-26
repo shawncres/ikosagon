@@ -259,7 +259,7 @@ function dgFrameStart(now) {
   DG.booted = DG.booted || !!bootOK;
   if (gap > 1500 && DG.booted && !document.hidden) dgHitch(gap);
   DG.firstPrev = DG.first; DG.first = [];
-  DG.meas = DGT && !glLost && now - DG.lastMeas > 4000 ? 1 : 0; if (DG.meas) { DG.lastMeas = now; DG.st = {}; DG.mark = performance.now(); DG.cur = 'frame start'; }
+  DG.meas = DGT && QS.has('dgm') && !glLost && now - DG.lastMeas > 4000 ? 1 : 0;   /* v1.84: per-stage timing forces a GPU wait after every stage; it hitched every 4 s, so it is opt-in (?dgm=1) */ if (DG.meas) { DG.lastMeas = now; DG.st = {}; DG.mark = performance.now(); DG.cur = 'frame start'; }
 }
 function dgFrameEnd() {
   if (!DG.meas) return; dgStage(''); DG.meas = 0; DG.last = DG.st;
@@ -419,11 +419,11 @@ const EVLOG = []; let evLast0 = '', evLastT = 0, tuneOpen = false, tuneEl = null
 function evLog(t) { if (!t) return; t = String(t); const now = performance.now(); if (t === evLast0 && now - evLastT < 4000) return; evLast0 = t; evLastT = now; EVLOG.unshift([now, t]); if (EVLOG.length > 120) EVLOG.length = 120; if (typeof tuneLog === 'function') tuneLog(); }
 // v1.50: one shader build at a time, with a pause between, and never on the title screen. Chrome compiles every page's graphics in one
 // shared GPU process, so several big programs at once could stall the whole browser. A planet you're approaching jumps the queue.
-const BQ = []; let bqCur = '', bqGo = 0, bqT0 = 0;
+const BQ = []; let bqCur = '', bqGo = 0, bqT0 = 0, bqFast = 0, PH = null;
 function bq(name, mk, front) { if (bqCur === name) return; const j = BQ.findIndex((b) => b[0] === name); if (j >= 0) { if (!front) return; BQ.splice(j, 1); }
   if (front) BQ.unshift([name, mk]); else BQ.push([name, mk]); bqRun(); }
 function bqRun() { if (bqCur || !BQ.length || !bqGo || gl.isContextLost()) return; const [n, mk] = BQ.shift(), t0 = performance.now(); bqCur = n; bqT0 = t0;
-  Promise.resolve().then(mk).catch((e) => console.error(n, e)).then(() => { evLog(`Load · ${n} built (${Math.round(performance.now() - t0)} ms)`); setTimeout(() => { bqCur = ''; bqRun(); }, 1500); }); }
+  Promise.resolve().then(mk).catch((e) => console.error(n, e)).then(() => { evLog(`Load · ${n} built (${Math.round(performance.now() - t0)} ms)`); setTimeout(() => { bqCur = ''; bqRun(); }, bqFast ? 0 : 1500); }); }
 const step = (p, t) => { $('bf').style.transform = `scaleX(${p})`; $('pc').textContent = Math.round(p * 100) + '%'; $('st').textContent = t; return new Promise((r) => setTimeout(r, 30)); };
 
 // ---- integer hashing (the whole world is a pure function of these) ----
@@ -805,7 +805,8 @@ function progStart(vs, fs) {
   for (const [t, s] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]]) { const h = gl.createShader(t); gl.shaderSource(h, s); gl.compileShader(h); gl.attachShader(p, h); sh.push([h, s]); }
   gl.linkProgram(p); return { p, sh };
 }
-async function progA(vs, fs, st0, on) {                                  // the same program, but the page stays alive while the GPU works on it
+async function progA(vs, fs, st0, on) {
+  on = on || PH;                                  // the same program, but the page stays alive while the GPU works on it
   const st = st0 || progStart(vs, fs);
   // v1.81: keep waiting however long the driver takes. Asking for the result before it is ready blocks the browser's shared
   // graphics process until the compile finishes: that, after the old 15 s limit ran out, was the whole-browser freeze on Windows.
@@ -872,18 +873,20 @@ layout(location=3)in vec4 iA;layout(location=4)in vec4 iB;layout(location=5)in v
 uniform vec3 uCell,uCam,uCN;uniform float uVd;
 vec3 ctr(){if(uCN.y<.5)return iA.xyz-uCam;vec3 r=mod(iA.xyz-uCell+uCN.y*.5,uCN.y)-uCN.y*.5;return(r+iB.xyz)*uCN.x-uCam;}
 vec4 rockQ(float s,float sp){return quat(normalize(h3(s*91.7)-.5+1e-3),s*40.+TIME*sp*(h1(s*3.)-.5)*2.);}
-vec3 rockS(float s){return .6+.4*h3(s*33.3+5.);}
+vec3 rockS(float s){return .5+.6*h3(s*33.3+5.);}
+vec3 rockD(vec3 o,float sz,float sd){float bn=h1(sd*5.7)-.5,tp=h1(sd*9.1)-.5,iz=1./max(sz,1e-3);o.xz*=1.+tp*.5*o.y*iz;o.x+=bn*.6*o.y*abs(o.y)*iz;return o;}   /* some rocks lean, taper or bend; what grows on them is bent the same way */
 `;
 
 const ROCK_V = VI + `
 uniform float uSpin;uniform int uKind;
 out vec3 vP,vN,vO;flat out vec4 vQ,vI,vJ;
 void main(){
- vec3 c=ctr();float sz=iA.w,sd=iB.w;if(uCN.y>.5)sz*=smoothstep(uCN.x*uCN.y*.5,uCN.x*uCN.y*.28,length(c));
+ vec3 c=ctr();float sz=iA.w,sd=iB.w,dc=uCN.y>.5?length(c+uCam):length(c);if(uCN.y>.5)sz*=smoothstep(uCN.z,uCN.z*.56,dc);
  vec4 q=rockQ(sd,uSpin);
  vec3 s=uKind==0?rockS(sd):uKind==2?.05+.95*pow(h3(sd*7.7),vec3(2.2)):vec3(1);
  vec3 o=aP*s*sz;
- float k=(1.-smoothstep(.9*uCN.z,uCN.z,length(c)))*clamp(1.-uVd,0.,1.);
+ if(uKind==0)o=rockD(o,sz,sd);
+ float k=(1.-smoothstep(.9*uCN.z,uCN.z,dc))*clamp(1.-uVd,0.,1.);
  vec3 p=c+qr(q,o)*k;
  vP=p;vN=qr(q,aN/s);vO=o/sz;vQ=q;vI=vec4(sd,iC.x,iC.y,sz);vJ=vec4(iC.z,iC.w,0,0);
  gl_Position=uVP*vec4(p,1);}`;
@@ -908,8 +911,18 @@ void main(){
   else if(ty==4){alb=mix(alb,vec3(.04,.15,.09),.6);em=uCE.rgb*smoothstep(.68,.76,c.r)*smoothstep(.45,.6,a.r)*2.6*(.6+.4*sin(TIME*1.5+c.g*40.));}
   else if(ty==5){alb=vec3(.02,.02,.03);sp=2.;gs=140.;iri=1.;}
   else if(ty==6){alb=vec3(.03);em=uTier[tr]*(.3+3.5*smoothstep(.12,0.,abs(b.r-.5)))*(.7+.3*sin(TIME*2.+vI.x*20.));sp=1.5;gs=100.;}
+  alb*=mix(vec3(1),.62+.76*vec3(hh(vec2(vI.x,1.)),hh(vec2(vI.x,2.)),hh(vec2(vI.x,3.))),.55);
   alb*=.5+.5*mix(.5,c.r,wc)+.5*mix(.5,e.r,we);
   if(ty!=6&&tr>0)em+=uTier[tr]*vn*3.;
+ }else if(uKind==7){                                          // a limb of a god-machine: scarred gunmetal, bone-pale plates, dried tissue, veins that still glow
+  vec4 a=texture(uNz,vO*2.1+vI.x*7.),b=texture(uNz,vO*9.+.3);
+  N=normalize(N-qr(vQ,(a.gba-.5)*.9+(b.gba-.5)*.5));
+  float pl=smoothstep(.03,.07,abs(fract(vO.y*9.)-.5)),m=a.r*.6+b.r*.4;
+  alb=mix(vec3(.08,.085,.095),vec3(.34,.31,.27),smoothstep(.3,.75,m))*mix(.5,1.,pl);
+  alb=mix(alb,vec3(.17,.07,.06),smoothstep(.55,.8,a.g)*.65);
+  float ve=smoothstep(.05,0.,abs(b.r-.5)-.012)*smoothstep(.5,.72,a.r);
+  em=mix(vec3(.1,.8,.75),vec3(1.,.5,.15),step(.5,fract(vI.x*7.)))*ve*(.7+.5*sin(TIME*.9+vI.x*30.+vO.y*6.));
+  sp=1.1;gs=48.;rim=1.4;
  }else if(uKind==1){
   float an=atan(vO.z,vO.x),rr=length(vO.xz),fs=vI.w>2000.?6.:1.;
   vec2 g=vec2(an*28.65+rr*3.,vO.y*26.+rr*18.)*fs,id=floor(g),f=fract(g);
@@ -1036,11 +1049,11 @@ const CRY_V = VI + `
 uniform float uSpin;
 out vec3 vP,vN;out vec2 vU;flat out vec4 vI;
 void main(){
- vec3 c=ctr();float sz=iA.w,sd=iB.w;if(uCN.y>.5)sz*=smoothstep(uCN.x*uCN.y*.5,uCN.x*uCN.y*.28,length(c));
+ vec3 c=ctr();float sz=iA.w,sd=iB.w,dc=uCN.y>.5?length(c+uCam):length(c);if(uCN.y>.5)sz*=smoothstep(uCN.z,uCN.z*.56,dc);
  vec4 q=rockQ(sd,uSpin);vec3 s=rockS(sd);
  vec3 up=normalize(iC.xyz/s),t=normalize(cross(up,vec3(.31,.9,.23))),b=cross(up,t);
  float cs=sz*(.16+.3*iC.w);
- vec3 o=iC.xyz*s*sz-up*cs*.12+(t*aP.x+up*aP.y+b*aP.z)*cs;
+ vec3 o=rockD(iC.xyz*s*sz,sz,sd)-up*cs*.12+(t*aP.x+up*aP.y+b*aP.z)*cs;
  float k=1.-smoothstep(.9*uCN.z,uCN.z,length(c));
  vec3 p=c+qr(q,o)*k;
  vP=p;vN=qr(q,t*aN.x+up*aN.y+b*aN.z);vU=aU;vI=vec4(sd,iC.w,0,0);
@@ -1097,7 +1110,7 @@ void main(){
   float rs=iA.w;vec4 q=rockQ(sd,uSpin);vec3 s=rockS(sd);hue=iC.w;
   vec3 up=normalize(iC.xyz/s),t=normalize(cross(up,vec3(.31,.9,.23))),bb=cross(up,t);
   float ln=rs*(.3+.9*iC.w),tt=aP.y;
-  vec3 o=iC.xyz*s*rs*.95+up*tt*ln+t*(aP.x*ln*.0018*(1.-.6*tt)+sin(TIME*.6+iC.w*40.-tt*3.)*tt*tt*ln*.13)+bb*cos(TIME*.45+iC.w*23.-tt*2.5)*tt*tt*ln*.1;
+  vec3 o=rockD(iC.xyz*s*rs,rs,sd)*.95+up*tt*ln+t*(aP.x*ln*.0018*(1.-.6*tt)+sin(TIME*.6+iC.w*40.-tt*3.)*tt*tt*ln*.13)+bb*cos(TIME*.45+iC.w*23.-tt*2.5)*tt*tt*ln*.1;
   P0=c;p=c+qr(q,o);vN=qr(q,bb);direct=true;
  }
  float d=length(P0),k=(1.-smoothstep(.8*uCN.z,uCN.z,d))*clamp(1.-uVd,0.,1.);
@@ -2232,6 +2245,56 @@ function cockpitMesh() {
   return me;
 }
 function quadMesh() { return mesh([-1, -1, 0, 0, 0, 1, 0, 0, 1, -1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 0, 1, 1, 1, -1, 1, 0, 0, 0, 1, 0, 1], [0, 1, 2, 0, 2, 3]); }
+// a derelict limb of a god-machine: an arm or a leg of torn plating, ribbed trunk, ball joints, cables and claws. Roughly 1.7 long, about 2000 vertices.
+function limbMesh(kind) {
+  const V = [], I = [];
+  const part = (prof, n, ox, oy, ang, oz = 0) => {              // a turned part, tilted about the view axis and moved
+    const A = [], B = []; lathe(A, B, 0, 0, prof, n, 0);
+    const s0 = V.length / 8, c = Math.cos(ang), s = Math.sin(ang);
+    for (let i = 0; i < A.length; i += 8) V.push(A[i] * c - A[i + 1] * s + ox, A[i] * s + A[i + 1] * c + oy, A[i + 2] + oz, A[i + 3] * c - A[i + 4] * s, A[i + 3] * s + A[i + 4] * c, A[i + 5], 0, 0);
+    for (const j of B) I.push(j + s0);
+  };
+  const plate = (cx, cy, cz, hx, hy, hz, ang) => { const c = Math.cos(ang), s = Math.sin(ang); rbox(V, I, [cx, cy, cz], [c * hx, s * hx, 0], [-s * hy, c * hy, 0], [0, 0, hz]); };
+  const ring = (y, r, ox, oy, ang) => part([[y - .03, r * .94], [y - .012, r * 1.1], [y + .012, r * 1.1], [y + .03, r * .94]], 10, ox, oy, ang);
+  const ball = (r, ox, oy) => part([[-r, 0], [-r * .82, r * .55], [-r * .45, r * .88], [0, r], [r * .45, r * .88], [r * .82, r * .55], [r, 0]], 10, ox, oy, 0);
+  const tube = (ax, ay, bx, by, r, oz) => { const dx = bx - ax, dy = by - ay; part([[0, r], [Math.hypot(dx, dy), r]], 5, ax, ay, Math.atan2(-dx, dy), oz); };
+  const claw = (ox, oy, ang, len, oz) => part([[0, .05], [len * .5, .03], [len, 0]], 6, ox, oy, ang, oz);
+  if (kind === 0) {                                              // an arm: shoulder stump, upper arm, elbow, forearm, three claws and a thumb
+    const a2 = .35, c2 = Math.cos(a2), s2 = Math.sin(a2), loc = (x, y) => [x * c2 - y * s2, x * s2 + y * c2 + .08];
+    part([[.1, .19], [.2, .2], [.3, .22], [.4, .25], [.5, .27], [.62, .3], [.7, .27]], 10, 0, 0, 0);
+    for (const [y, r] of [[.24, .21], [.38, .245], [.52, .28]]) ring(y, r, 0, 0, 0);
+    for (const x of [-1, 0, 1]) claw(x * .2, .68, -x * .5, .34, x * .05);
+    ball(.185, 0, .08);
+    part([[-.5, .2], [-.4, .24], [-.25, .22], [-.1, .18], [0, .16]], 10, 0, .08, a2);
+    for (const [y, r] of [[-.12, .18], [-.28, .225], [-.42, .235]]) ring(y, r, 0, .08, a2);
+    { const [x, y] = loc(0, -.54); plate(x, y, 0, .11, .04, .13, a2); }
+    for (const z of [-.09, 0, .09]) { const [x, y] = loc(0, -.58); claw(x, y, Math.PI + a2 + z * 1.4, .32, z); }
+    { const [x, y] = loc(.14, -.5); claw(x, y, Math.PI + a2 - 1.15, .22, 0); }
+    plate(.28, .5, 0, .03, .2, .14, 0); plate(-.28, .5, 0, .03, .2, .14, 0);
+    { const [x, y] = loc(.2, -.25); plate(x, y, 0, .035, .2, .16, a2); }
+    ball(.09, -.24, .36);
+    for (const sx of [-1, 1]) { const [bx, by] = loc(sx * .18, -.3); tube(sx * .2, .5, bx, by, .022, sx * .09); }
+  } else {                                                       // a leg: hip stump, thigh, knee guard, backward-bent shin, ankle, three toes and a heel spur
+    const a2 = .6, c2 = Math.cos(a2), s2 = Math.sin(a2), loc = (x, y) => [x * c2 - y * s2, x * s2 + y * c2];
+    part([[.02, .2], [.15, .24], [.35, .3], [.55, .3], [.68, .24], [.74, .16]], 10, 0, 0, 0);
+    for (const [y, r] of [[.2, .25], [.4, .31], [.58, .3]]) ring(y, r, 0, 0, 0);
+    for (const x of [-1, 0, 1]) claw(x * .13, .72, -x * .5, .3, x * .05);
+    ball(.22, 0, 0);
+    plate(-.22, .02, 0, .05, .16, .18, 0);
+    part([[-.62, .12], [-.5, .17], [-.3, .22], [-.1, .2], [0, .18]], 10, 0, 0, a2);
+    for (const [y, r] of [[-.15, .21], [-.32, .22], [-.48, .17]]) ring(y, r, 0, 0, a2);
+    const [ax, ay] = loc(0, -.62);
+    ball(.13, ax, ay);
+    plate(ax - .12, ay - .08, 0, .22, .045, .15, 0);
+    for (const z of [-.1, 0, .1]) claw(ax - .32, ay - .07, Math.PI / 2, .34, z);
+    claw(ax + .12, ay - .06, -Math.PI / 2 - .25, .22, 0);
+    { const [x, y] = loc(.16, -.3); plate(x, y, 0, .035, .2, .15, a2); }
+    for (const sx of [-1, 1]) { const [bx, by] = loc(sx * .2, -.2); tube(sx * .22, .55, bx, by, .022, sx * .1); }
+  }
+  let lo = 1e9, hi = -1e9; for (let i = 1; i < V.length; i += 8) { if (V[i] < lo) lo = V[i]; if (V[i] > hi) hi = V[i]; }
+  const mid = (lo + hi) / 2; for (let i = 1; i < V.length; i += 8) V[i] -= mid;
+  return mesh(V, I);
+}
 function boxMesh() { const V = [], I = []; box(V, I, [0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]); return mesh(V, I); }
 
 // ============================================================================
@@ -2264,9 +2327,11 @@ function put(L, sx, sy, sz, size, jx, jy, jz, seed, a, b, c, d) {
 }
 const flush = (L) => { gl.bindBuffer(gl.ARRAY_BUFFER, L.buf); gl.bufferSubData(gl.ARRAY_BUFFER, 0, L.d, 0, L.n * F); };
 const pm = (a, n) => ((a % n) + n) % n;
-let gr2 = 0;
+let gr2 = 0, ldx = 0, ldy = 0, ldz = 0;
 function upd(L) {
-  const C = L.C, N = L.N, H = N / 2, cx = Math.floor(px / C), cy = Math.floor(py / C), cz = Math.floor(pz / C);
+  const C = L.C, N = L.N, H = N / 2;
+  let lk = 0; if (L.lead) { const sp = Math.hypot(ldx, ldy, ldz); lk = sp > 1 ? Math.min(.7, .4 * L.R / sp) : 0; }
+  const cx = Math.floor((px + ldx * lk) / C), cy = Math.floor((py + ldy * lk) / C), cz = Math.floor((pz + ldz * lk) / C);
   L.fx = px - cx * C; L.fy = py - cy * C; L.fz = pz - cz * C;
   for (const s of L.slaves) { s.fx = L.fx; s.fy = L.fy; s.fz = L.fz; }
   if (cx === L.cx && cy === L.cy && cz === L.cz) return;
@@ -2350,6 +2415,18 @@ function genDebris(L, wx, wy, wz, sx, sy, sz) {
   if (!dk || fW((wx + gj0) * C, (wy + gj1) * C, (wz + gj2) * C) - .78 + .3 * dk - (hx(1) - .5) * .25 - .6 * fC((wx + gj0) * C, (wy + gj1) * C, (wz + gj2) * C) <= 0) return;
   const r = hx(5); put(L, sx, sy, sz, .4 + 3.2 * r * r, gj0, gj1, gj2, gsd, 0, 0, 0, 0);
 }
+// v1.84: the oversized derelicts. Rare, huge, minable: a limb of one of the god-machines that fought in this part of the dark.
+let limbP = .008;
+function limbAt(C, wx, wy, wz) { if (SYS.atm) return 0; cellRnd(wx, wy, wz, 44); if (hx(1) > limbP || dead.has(gh)) return 0; const r = hx(5), s = 240 + 480 * r * r; return gateClear(C, wx, wy, wz, s, 1500) ? 0 : s; }
+const limbCol = (C, wx, wy, wz) => limbAt(C, wx, wy, wz) * .72;
+function genLimb(L, wx, wy, wz, sx, sy, sz) { const s = limbAt(L.C, wx, wy, wz); if (s) put(LMV[gh >>> 3 & 1], sx, sy, sz, s, gj0, gj1, gj2, gsd, hx(6), 1 + (hx(7) * 3 | 0), typeAt(), 0); }
+const LIMB_TIPS = ['The wreckage of a god-machine · a limb torn off in some old war', 'Something lived in the heart of this thing · the heart is long gone', 'They came here to fight, and this is what was left of one of them'];
+let limbTipT = 6, limbTipN = 0;
+function limbTick(dt) {
+  limbTipT -= dt; if (limbTipT > 0 || !LL.n) return; limbTipT = .7;
+  const a = nearInst(LMV[0], LL), b = nearInst(LMV[1], LL);
+  if (Math.min(a[0], b[0]) < 2600 * 2600) { tip(LIMB_TIPS[limbTipN++ % LIMB_TIPS.length], 5200); limbTipT = 90; }
+}
 function genRing(L, wx, wy, wz, sx, sy, sz) { if (SYS.atm) return; cellRnd(wx, wy, wz, 12); if (hx(1) < SYS.a.st * .6) put(RV[gh >>> 4 & 3], sx, sy, sz, 320 + 520 * hx(5), gj0, gj1, gj2, gsd, 0, 0, 0, 0); }
 function genMega(L, wx, wy, wz, sx, sy, sz) { if (SYS.atm) return; cellRnd(wx, wy, wz, 15); if (hx(1) < SYS.a.mega * .6) put(MV[gh >>> 4 & 1], sx, sy, sz, 7000 + 11000 * hx(5), gj0, gj1, gj2, gsd, 0, 0, 0, 0); }
 function swarmAt(C, wx, wy, wz) { cellRnd(wx, wy, wz, 5); return fL((wx + gj0) * C, (wy + gj1) * C, (wz + gj2) * C) + (hx(1) - .5) * .4 > .8 - .3 * SYS.a.life[0] && SYS.a.life[0] > 0; }
@@ -2395,6 +2472,7 @@ function collide(L, at) {
 // The HUD is painted on a 2D canvas, uploaded as a texture and drawn on a plane just inside the front glass, so it
 // is the same in a headset as on a flat screen. Target markers are separate quads so they track every frame.
 const HUDW = 1600, HUDH = 900, HZ = -2.42;
+let hudZoom = 1;   /* v1.84: the HUD grows back as the view widens in a boost, so it stays as large on the glass as at cruise */
 const hudC = document.createElement('canvas'); hudC.width = HUDW; hudC.height = HUDH;
 const hc = hudC.getContext('2d'), hudTex = gl.createTexture(), icoTex = gl.createTexture();
 function texFrom(t, cv) {
@@ -2973,7 +3051,7 @@ function hudDraw(k) { if (hudOp <= .01 && !(xr && jpOpen)) return;   // v1.37: H
     gl.uniformMatrix3fv(P.u.uShip, false, M3); if (xr) gl.uniform3f(P.u.uEye, cex, cey, cez); else gl.uniform3f(P.u.uEye, eox * k, eoy * k, eoz * k); gl.uniform3f(P.u.uMo, cockpit ? ckx : 0, cockpit ? cky : 0, cockpit ? ckz : 0);
   }
   gl.bindVertexArray(hudVA); gl.activeTexture(gl.TEXTURE8); gl.uniform1i(P.u.uTx, 8);
-  gl.bindTexture(gl.TEXTURE_2D, hudTex); const asp = W / H, nar = !xr && asp < 1.05, hs2 = xr ? 1 : (nar ? Math.min(1.45, 1.5 * asp / 1.1) : Math.min(1.45, 1.55 * asp / 1.76, cinOn && asp > 1.6 ? 1.5 * asp / 2.39 : 9)) * CFG.size, cy0 = xr ? .2 : 0, hw = nar ? 1.1 * hs2 : 1.76 * hs2;                                   // on a flat screen the display is a visor across the whole view; in a headset it sits on the front glass
+  gl.bindTexture(gl.TEXTURE_2D, hudTex); const asp = W / H, nar = !xr && asp < 1.05, hs2 = xr ? 1 : (nar ? Math.min(1.45, 1.5 * asp / 1.1) : Math.min(1.45, 1.55 * asp / 1.76, cinOn && asp > 1.6 ? 1.5 * asp / 2.39 : 9)) * CFG.size * hudZoom, cy0 = xr ? .2 : 0, hw = nar ? 1.1 * hs2 : 1.76 * hs2;                                   // on a flat screen the display is a visor across the whole view; in a headset it sits on the front glass
   if (visor) { gl.uniform4f(P.u.uR, 0, .05, 5.4, 3.05); gl.uniform4f(P.u.uZ, -9.2, 0, 1, 0); gl.uniform4f(P.u.uUV, 0, 0, 1, 1); }
   else { gl.uniform4f(P.u.uR, 0, cy0, hw, hs2); gl.uniform4f(P.u.uUV, nar ? .1875 : 0, 0, nar ? .8125 : 1, 1); }
   if (visor) gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -3647,7 +3725,7 @@ function starMap() {
 // ---- weapons: R (or the left stick click, or WPN on a touch screen) changes what the trigger does to other ships ----
 // name, cone (radians), damage rate, loudness, pitch, range
 const WPN = [['Gatling', .02, 1, .3, 115, 1500], ['Scatter', .09, .55, .34, 80, 800], ['Lance', .012, 2.6, .26, 190, 2600], ['Mining laser', .02, .3, .12, 420, 750], ['Seeker', .02, 1, .3, 60, 3000]];
-let wpn = 0;
+let wpn = 3;
 function wpnCycle() { wpnSet((wpn + 1) % WPN.length); }
 function wpnSet(i) { if (i < 0 || i >= WPN.length) return; wpn = i; tip(`${wpn + 1} · ` + `Weapon: ${WPN[wpn][0]} · ${['amber rounds: the all-rounder', 'green shot: six at once, strips shields up close', 'violet lance: slow, fast and far, breaks hulls', 'blue mining laser: barely scratches a ship, but the best way to open rocks: more ore from every one, and almost no weapons energy', 'homing seekers: four in the rack, need a ship targeted'][wpn]}`, 3000); }
 
@@ -3695,7 +3773,7 @@ function droneTick(dt, fly) {
     ST.wen = Math.min(100, ST.wen + dt * (ST.fuel > 0 ? 2.2 : .6) * (tm - lastFire > 1.5 ? 1 : .35));
     if (ST.hull < 60 && tm - shHit > 15) ST.hull = Math.min(60, ST.hull + dt * .2);              // field patching: a quiet ship slowly gets itself back to 60%   // the reactor recharges the guns, slowly
   }
-  spiceTick(dt, fly); advTick(); for (let i = 0; i < 3; i++) gFlash[i] = Math.max(0, gFlash[i] - dt * 1.6);
+  spiceTick(dt, fly); if (fly) limbTick(dt); advTick(); for (let i = 0; i < 3; i++) gFlash[i] = Math.max(0, gFlash[i] - dt * 1.6);
   // one warning line, small, above the mission text and in place of it while it lasts
   sysWarn = ''; sysWarnC = '';
   if (ST.fuel <= 0) { sysWarn = `FUEL DRY · EMERGENCY THRUST · TUG IN ${Math.max(1, Math.ceil(50 - strandT))} S`; sysWarnC = '#ff5d4f'; }
@@ -6300,8 +6378,9 @@ function wxFor() {                                            // each sky its ow
   if (!hasTerr()) return -1; const k = tKind(), r = thv(SYS.salt | 0, 911);
   return k === 3 ? (r < .5 ? 0 : -1) : k === 4 ? (r < .75 ? 0 : -1) : k === 5 ? (r < .85 ? 1 : -1) : k === 2 ? (r < .65 ? 2 : -1) : k === 1 ? (r < .85 ? 3 : -1) : k === 6 ? (r < .4 ? 1 : r < .7 ? 3 : -1) : -1;
 }
+function wxQ() { if (WXP === null) { WXP = 0; bq('weather', () => progA(WX_V, WX_F).then((p) => { WXP = p; }, (e) => { console.error('wx', e); WXP = false; })); } }
 function v126Weather() {
-  if (WXP === null) { WXP = 0; bq('weather', () => progA(WX_V, WX_F).then((p) => { WXP = p; }, (e) => { console.error('wx', e); WXP = false; })); }
+  wxQ();
   if (!WXP) return;
   const u = WXP.u, cam = [px + eox, py + eoy, pz + eoz], q = LV >= 1 ? .5 : 1;
   gl.useProgram(WXP.p); gl.bindVertexArray(VA0); gl.uniform3f(u.uCam, ...cam); gl.uniform3f(u.uVl, vx, vy, vz);
@@ -6397,7 +6476,7 @@ noiseTex();
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.83';
+const BUILD = 'v1.84';
 // v1.74: if the last session ended in a graphics reset, put what was being built at the time in the log (F9 → Copy settings shows it)
 try { const g = JSON.parse(localStorage.ieGlLost || 'null'); if (g) evLog(`Graphics · last reset (${g.build}, ${g.at.slice(0, 16).replace('T', ' ')}): ${g.was ? 'building the ' + g.was + ' program, ' + g.secs + ' s in' : 'no program was being built'}`); } catch {}                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 /* ---- v1.71: spice tiers and attunement, procedural foes, dogfight upgrades, the Foe intro ---- */
@@ -6575,15 +6654,14 @@ await step(.36, 'Seeding ore in the rocks…');
 const fam = (sub) => [0, 1, 2].map((v) => rockMesh(sub, (x, y, z) => rockR(v, x, y, z)));
 const mHi = fam(LV > 1 ? 4 : 5), mMid = fam(4), mFar = fam(LV > 1 ? 2 : 3), mLo = fam(1), mShard = [0, 1].map((v) => rockMesh(3, (x, y, z) => shardR(v, x, y, z)));
 await step(.5, 'Waking the leviathans…');
-const mSiphon = siphonMesh(), mSpark = sparkMesh(), mCry = crystalMesh(), mJelly = jellyMesh(), mRay = rayMesh(), mDart = dartMesh(), mRing = ringMesh(), mSpire = spireMesh(), mWhale = whaleMesh(), mSerp = serpentMesh(), mTen = tendrilMesh(), mQuad = quadMesh(), mBox = boxMesh(), mCock = cockpitMesh(), mFighter = fighterMesh(), mFrig = [frigateMesh(0), frigateMesh(1)], mDrone = droneMesh(), mGate = gateMesh();
+const mSiphon = siphonMesh(), mSpark = sparkMesh(), mCry = crystalMesh(), mJelly = jellyMesh(), mRay = rayMesh(), mDart = dartMesh(), mRing = ringMesh(), mSpire = spireMesh(), mWhale = whaleMesh(), mSerp = serpentMesh(), mTen = tendrilMesh(), mQuad = quadMesh(), mBox = boxMesh(), mLimb = [limbMesh(0), limbMesh(1)], mCock = cockpitMesh(), mFighter = fighterMesh(), mFrig = [frigateMesh(0), frigateMesh(1)], mDrone = droneMesh(), mGate = gateMesh();
 for (const g of ST.dead) dead.add(g);
 await step(.62, 'Growing crystal…');
 const pStep = async (p, t, vs, fs, st) => { await step(p, t); DG.load = `${Math.round(p * 100)}% ${t}`; try { localStorage.ieDiagHB = JSON.stringify(dgSnap(0)); } catch {} const t0 = performance.now(), cap = p + .026, bar = $('bf'), pc = $('pc'), r = await progA(vs, fs, st, (el) => { const f = p + (cap - p) * (1 - Math.exp(-el / 5000)); bar.style.transform = `scaleX(${f})`; pc.textContent = Math.round(f * 100) + '%'; if (el > 2500) $('st').textContent = `${t} ${Math.floor(el / 1000)}s`; }), ms = Math.round(performance.now() - t0); if (ms > 120) evLog(`Load · ${Math.round(p * 100)}% ${t} ${ms} ms`); return r; };   // one step per program: the bar moves as each one is ready
 await dgGate();
 const SKYS = SKY_F.replace('#version 300 es', '#version 300 es' + (dgOff('skyplanets') ? '\n#define NOPL' : '') + (dgOff('skyfx') ? '\n#define NOFX' : '') + (dgOff('skystars') ? '\n#define NOBS' : '') + (dgOff('skyground') ? '\n#define NOGND' : ''));
-const PRE = { sky: progStart(TRI_V, SKYS), comp: progStart(TRI_V, COMP_F), cock: progStart(COCK_V, COCK_F), ship: progStart(SHIP_V, ROCK_F) };   /* the longest shaders start compiling now, in parallel, while the earlier steps run */
 const P_ROCK = await pStep(.63, 'Carving the rocks…', ROCK_V, ROCK_F), P_CRY = await pStep(.645, 'Growing crystal…', CRY_V, CRY_F), P_LIFE = await pStep(.66, 'Waking the drifters…', LIFE_V, LIFE_F), P_SPR = await pStep(.675, 'Scattering motes…', SPR_V, SPR_F);
-const P_SKY = await pStep(.69, 'Painting the sky, star by star…', TRI_V, SKYS, PRE.sky), P_BLUR = await pStep(.72, 'Softening the glare…', TRI_V, BLUR_F), P_RAY = await pStep(.73, 'Bending the light…', TRI_V, RAY_F.replace('precision', `#define NS ${Q.rays}\nprecision`)), P_COMP = await pStep(.745, 'Grinding the lens…', TRI_V, COMP_F, PRE.comp), P_COCK = await pStep(.76, 'Lighting the dash…', COCK_V, COCK_F, PRE.cock), P_SHIP = await pStep(.775, 'Plating the hulls…', SHIP_V, ROCK_F, PRE.ship);
+const P_SKY = await pStep(.69, 'Painting the sky, star by star…', TRI_V, SKYS), P_BLUR = await pStep(.72, 'Softening the glare…', TRI_V, BLUR_F), P_RAY = await pStep(.73, 'Bending the light…', TRI_V, RAY_F.replace('precision', `#define NS ${Q.rays}\nprecision`)), P_COMP = await pStep(.745, 'Grinding the lens…', TRI_V, COMP_F), P_COCK = await pStep(.76, 'Lighting the dash…', COCK_V, COCK_F), P_SHIP = await pStep(.775, 'Plating the hulls…', SHIP_V, ROCK_F);
 const P_CAB = await pStep(.79, 'Warming the cab…', COCK_V, COCK_F.replace('#version 300 es', '#version 300 es\n#define CABIN'));   // the quarters and the aux screen: their materials stay out of the dash's shader
 gl.useProgram(P_CAB.p); gl.uniform1i(P_CAB.u.uPip, 6);   // the aux screen's picture lives in texture slot 6
 gl.useProgram(P_SHIP.p); gl.uniform3fv(P_SHIP.u['uTier[0]'], TCOL); gl.uniform1i(P_SHIP.u.uKind, 4); gl.uniform1f(P_SHIP.u.uFlat, 0);
@@ -6592,7 +6670,7 @@ await step(.8, 'Rousing the swarms…');
 
 const LTi = Layer(26000, 4, 1, genTitan, 14), LH = Layer(1500, 10, 1, genHuge, 2), LB = Layer(230, 12, 1, genBig, 1), LS = Layer(48, 18, 1, genSmall, 3);
 TV = [LTi, Sub(LTi, 1), Sub(LTi, 1)]; HV = [LH, Sub(LH, 1), Sub(LH, 1)]; LTd = Sub(LH, 28);
-BF = [LB, Sub(LB, 1), Sub(LB, 1)]; BN = [Sub(LB, 1), Sub(LB, 1), Sub(LB, 1)]; LC = Sub(LB, 7); LTb = Sub(LB, 11);
+LB.lead = LS.lead = LH.lead = 1; BF = [LB, Sub(LB, 1), Sub(LB, 1)]; BN = [Sub(LB, 1), Sub(LB, 1), Sub(LB, 1)]; LC = Sub(LB, 7); LTb = Sub(LB, 11);
 SV = [LS, Sub(LS, 1), Sub(LS, 1)];
 const LG = Layer(700, 6, 1, genGeode, 13), LD = Layer(60, 14, 1, genDebris, 4), LR = Layer(6000, 4, 1, genRing, 12), LMg = Layer(45000, 4, 1, genMega, 15);
 RV = [LR, Sub(LR, 1), Sub(LR, 1), Sub(LR, 1)]; MV = [LMg, Sub(LMg, 1)];
@@ -6601,10 +6679,11 @@ const LY = Layer(1800, 4, 5, genRay, 7), LWh = Layer(5000, 4, 2, genWhale, 17), 
 const LF = Layer(1400, 6, 12, genFleet, 20), LFr = Layer(9000, 4, 2, genFrig, 21), LDr = Layer(600, 6, Math.round(48 * Q.per), genDrone, 22), LDk = Layer(700, 6, 3, genDark, 23);
 FV = [LFr, Sub(LFr, 2)];
 const LW = Layer(520, 6, 2, genWisp, 8), LU = Layer(14, 28, 1, genDust, 9), LP = Layer(110, 10, 1, genSpore, 10);
+const LL = Layer(3600, 6, 1, genLimb, 44), LMV = [LL, Sub(LL, 1)];
 const LDs = Layer(600, 6, Math.round(40 * Q.per), genSiphon, 24), LDe = Layer(600, 6, Math.round(40 * Q.per), genSpark, 25);
-const LAYERS = [LTi, LH, LB, LS, LG, LD, LR, LMg, LJ, LQ, LM, LY, LWh, LSp, LW, LU, LP, LF, LFr, LDr, LDk, LDs, LDe];
+const LAYERS = [LTi, LH, LB, LS, LG, LD, LR, LMg, LJ, LQ, LM, LY, LWh, LSp, LW, LU, LP, LF, LFr, LDr, LDk, LDs, LDe, LL];
 if (typeof v122Boot === 'function') v122Boot();
-const SHOOT = [...HV, ...BF, ...BN, ...SV, LG];             // everything the gun can break
+const SHOOT = [...HV, ...BF, ...BN, ...SV, LG, ...LMV];             // everything the gun can break
 const DGt = Dyn(1), DTr = Dyn(1), GATE = 280, DC = [Dyn(420), Dyn(420)], DGm = Dyn(240), DT = Dyn(200), DPa = Dyn(900);
 
 const G = new Float32Array(52), ubo = gl.createBuffer(), VA0 = gl.createVertexArray();
@@ -6655,7 +6734,7 @@ const qYP = (y, p) => qmul(qax(0, 1, 0, -y), qax(1, 0, 0, p));   // a heading an
 let yaw = .05, pitch = .08, roll = 0, vx = 0, vy = 0, vz = 0, bst = 0, thr = 0, flash = 0, fogD = .0004, tm = 0, snap = 1, dyaw = 0, trauma = 0, REG = 0;
 let sRx = 1, sRy = 0, sRz = 0, sUx = 0, sUy = 1, sUz = 0, sFx = 0, sFy = 0, sFz = -1;   // the ship's right, up and forward
 const pal = new Float32Array(12), skyw = new Float32Array(4), K = {};
-let tn = 0, tx0 = 0, ty0 = 0, tdx = 0, tdy = 0, locked = 0, steer = 0, mxn = 0, myn = 0, mFire = 0, tFire = 0, xFire = 0, muted = 0, stats = 0, started = 0;
+let tn = 0, tx0 = 0, ty0 = 0, tdx = 0, tdy = 0, locked = 0, steer = 0, mxn = 0, myn = 0, mFire = 0, tFire = 0, xFire = 0, fireTap = 0, muted = 0, stats = 0, started = 0;
 const flying = () => B.className[0] === 'g';
 const cargo = ST.cargo;
 function showCargo() {
@@ -6666,7 +6745,7 @@ function showCargo() {
 showCargo();
 
 const lookAt = (x, y, z, d, s) => { px = x + d * .8; py = y + d * .3; pz = z + d * .6; yaw = Math.atan2(x - px, pz - z) + (s || 0); snap = 1; pitch = Math.atan2(y - py, Math.hypot(x - px, z - pz)); };
-const unstick = () => { for (let i = 0; i < 4; i++) { collide(LTi, titanAt); collide(LH, hugeAt); collide(LB, bigAt); } vx = vy = vz = 0; snap = 1; };
+const unstick = () => { for (let i = 0; i < 4; i++) { collide(LTi, titanAt); collide(LH, hugeAt); collide(LB, bigAt); collide(LL, limbCol); } vx = vy = vz = 0; snap = 1; };
 // find the nearest cell of a layer that holds something, and fly to look at it
 function seek(L, ok, d, s) {
   const C = L.C, cx = Math.floor(px / C), cy = Math.floor(py / C), cz = Math.floor(pz / C);
@@ -6800,7 +6879,7 @@ $('jb').onclick = () => jpOpen ? closePanel() : gatePanel();
 addEventListener('keydown', (e) => {
   if (e.code === 'Tab' && flying()) e.preventDefault();   // Tab is the aux display in flight, not focus cycling
   if (e.repeat || e.metaKey || e.ctrlKey) return;
-  K[e.code] = 1;
+  K[e.code] = 1; if (e.code === 'Space') fireTap = 1;
   if (e.code === 'KeyM') setMute(!muted);
   if (e.code === 'KeyC') setCock(!cockpit);
   if (e.code === 'KeyH') { stats = !stats; if (!stats) $('i').textContent = ''; }
@@ -6827,7 +6906,7 @@ addEventListener('keydown', (e) => {
 addEventListener('keyup', (e) => { K[e.code] = 0; });
 addEventListener('blur', () => { for (const k in K) K[k] = 0; mFire = 0; });
 const lock = () => { try { const r = cv.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch {} };
-cv.addEventListener('mousedown', (e) => { if (!flying() || e.button) return; mFire = 1; cv.focus(); if (!locked) lock(); });   // a click always tries to capture the mouse again
+cv.addEventListener('mousedown', (e) => { if (!flying() || e.button) return; mFire = 1; fireTap = 1; cv.focus(); if (!locked) lock(); });   // a click always tries to capture the mouse again
 addEventListener('mouseup', () => { mFire = 0; });
 addEventListener('mousemove', (e) => {
   if (!flying()) return;
@@ -6870,7 +6949,7 @@ const touch = (e) => {
   tn = n; if (!n) tdx = tdy = 0;
 };
 for (const t of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) cv.addEventListener(t, touch, { passive: false });
-for (const [t, v] of [['touchstart', 1], ['touchend', 0], ['touchcancel', 0]]) $('fire').addEventListener(t, (e) => { e.preventDefault(); tFire = v; }, { passive: false });
+for (const [t, v] of [['touchstart', 1], ['touchend', 0], ['touchcancel', 0]]) $('fire').addEventListener(t, (e) => { e.preventDefault(); tFire = v; if (v) fireTap = 1; }, { passive: false });
 
 const tip = (t, ms = 7000) => { pipLog(t); evLog(t); hudTipS = t; hudTipT = performance.now() + Math.min(ms, 6000); const e = $('tip'); e.textContent = t; e.className = 'on'; clearTimeout(tip.t); tip.t = setTimeout(() => { e.className = ''; }, ms); };
 function go() {
@@ -7065,6 +7144,8 @@ const rd = [0, 0, 0];
 const rdir = () => { let x, y, z, l, g5 = 0; do { x = Math.random() * 2 - 1; y = Math.random() * 2 - 1; z = Math.random() * 2 - 1; l = x * x + y * y + z * z; g5++; } while ((l > 1 || l < .01) && g5 < 40); if (l > 1 || l < .01) { x = 0; y = 1; z = 0; l = 1; } l = 1 / Math.sqrt(l); rd[0] = x * l; rd[1] = y * l; rd[2] = z * l; };
 
 const bW = new Uint8Array(NBU), WCOL = [[7, 3.6, 1], [1.4, 7, 2.6], [6.5, 1.6, 9], [1.2, 4.5, 6], [8, 4, 1]], WSH = [[1, .007, 1600, 1.4], [6, .07, 1300, .45], [1, .002, 3400, 1.7], [1, .004, 3000, .26]];
+const bLive = new Int16Array(96); let UPX = 0, UPY = 0, UPZ = 0, hitSndT = 0;
+function hitFx(msg, kill) { foeHitT = tm; foeHitS = msg; if (tm - hitSndT > .045 && AC && AC.state === 'running') { hitSndT = tm; note(kill ? 520 : 1700, AC.currentTime, kill ? .09 : .03, 'triangle', kill ? .07 : .045, 0); } }
 let gmx = 0, gmy = 0, lastFire = -99, dryTip = 0, fullTip = 0, palEase = 0;                                         // where the guns are pointing, off the nose: they follow the cursor a little   // each weapon has its own light: amber rounds, green shot, violet lance
 function shoot() {
   if (!xr) padBuzz(.04, .2, 40);
@@ -7111,28 +7192,40 @@ function bhit(i, cx, cy, cz, r) {
 }
 function simulate(dt, fly) {
   // the gun spins up, then fires 24 rounds a second from alternating barrels
-  const firing = fly && (K.Space || mFire || tFire || xFire || gpFire);
+  const tap = fireTap; fireTap = 0;   /* a click or key press shorter than one frame still fires */
+  const firing = fly && (K.Space || mFire || tFire || xFire || gpFire || tap);
+  if (tap && fly) { fireAcc = Math.max(fireAcc, 1); gunSpin = Math.max(gunSpin, .7); }
   gunSpin += ((firing ? 1 : 0) - gunSpin) * (1 - Math.exp(-dt * (firing ? 8 : 3)));
   { const tx = xr || locked ? 0 : Math.max(-1, Math.min(1, mxn)) * .14, ty = xr || locked ? 0 : -Math.max(-1, Math.min(1, myn)) * .14, k = Math.min(1, dt * 10); gmx += (tx - gmx) * k; gmy += (ty - gmy) * k; }   // guns follow the cursor a little; straight ahead in mouse-look
   if (firing) { lastFire = tm; fireAcc += dt * 11 * gunSpin * [1, .32, .2, 3.4, .12][wpn]; while (fireAcc >= 1) { fireAcc -= 1; if (ST.wen < WEN[wpn]) { fireAcc = 0; if (tm > dryTip) { dryTip = tm + 6; tip('Weapons energy spent · it trickles back · sparks (red) charge it fast', 3500); } break; } ST.wen -= WEN[wpn]; shoot(); } }
   combat *= Math.exp(-dt * .35); muzzle *= Math.exp(-dt * 30);
-  nLive = 0;
+  /* bullets: one compact list of the live ones and a box round all their paths this frame; a rock is only tested if the box touches it */
+  let nl = 0, bx0 = 1e9, by0 = 1e9, bz0 = 1e9, bx1 = -1e9, by1 = -1e9, bz1 = -1e9;
   for (let i = 0; i < NBU; i++) {
     if (bL[i] <= 0) continue;
-    bL[i] -= dt; nLive++;
-    const o = i * 3, q = i * 6; bP[q] = bX[o] - px; bP[q + 1] = bX[o + 1] - py; bP[q + 2] = bX[o + 2] - pz; bP[q + 3] = bV[o] * dt; bP[q + 4] = bV[o + 1] * dt; bP[q + 5] = bV[o + 2] * dt;
-    bX[o] += bV[o] * dt; bX[o + 1] += bV[o + 1] * dt; bX[o + 2] += bV[o + 2] * dt;
+    bL[i] -= dt; bLive[nl++] = i;
+    const o = i * 3, q = i * 6, x0 = bX[o] - px, y0 = bX[o + 1] - py, z0 = bX[o + 2] - pz, ex = bV[o] * dt, ey = bV[o + 1] * dt, ez = bV[o + 2] * dt;
+    bP[q] = x0; bP[q + 1] = y0; bP[q + 2] = z0; bP[q + 3] = ex; bP[q + 4] = ey; bP[q + 5] = ez;
+    bX[o] += ex; bX[o + 1] += ey; bX[o + 2] += ez;
+    const x1 = x0 + ex, y1 = y0 + ey, z1 = z0 + ez;
+    if (x0 < bx0) bx0 = x0; if (x1 < bx0) bx0 = x1; if (x0 > bx1) bx1 = x0; if (x1 > bx1) bx1 = x1;
+    if (y0 < by0) by0 = y0; if (y1 < by0) by0 = y1; if (y0 > by1) by1 = y0; if (y1 > by1) by1 = y1;
+    if (z0 < bz0) bz0 = z0; if (z1 < bz0) bz0 = z1; if (z0 > bz1) bz1 = z0; if (z1 > bz1) bz1 = z1;
   }
+  nLive = nl;
   if (nLive) {
+    /* the layers' offsets were set before the ship moved this frame: add the move, or fast flight shifts every rock off its true place */
+    const dpx = px - UPX, dpy = py - UPY, dpz = pz - UPZ;
     for (let li = 0; li < SHOOT.length; li++) {
-      const L = SHOOT[li], D = L.d, C = L.C, N = L.N, Hh = N / 2, geo = L === LG;
+      const L = SHOOT[li], D = L.d, C = L.C, N = L.N, Hh = N / 2, geo = L === LG, fxn = L.fx + dpx, fyn = L.fy + dpy, fzn = L.fz + dpz;
       for (let n = L.n, o = 0; n > 0; n--, o += F) {
         const size = D[o + 3]; if (!size) continue;
         const rx = ((D[o] - L.mx + Hh) % N + N) % N - Hh, ry = ((D[o + 1] - L.my + Hh) % N + N) % N - Hh, rz = ((D[o + 2] - L.mz + Hh) % N + N) % N - Hh;
-        const cx = (rx + D[o + 4]) * C - L.fx, cy = (ry + D[o + 5]) * C - L.fy, cz = (rz + D[o + 6]) * C - L.fz, r = size * (geo ? 1 : .8), far = 2400 + r;
+        const cx = (rx + D[o + 4]) * C - fxn, cy = (ry + D[o + 5]) * C - fyn, cz = (rz + D[o + 6]) * C - fzn, r = size * (geo ? 1 : .84) + 1.4, far = 2400 + r;
+        if (cx + r < bx0 || cx - r > bx1 || cy + r < by0 || cy - r > by1 || cz + r < bz0 || cz - r > bz1) continue;
         if (cx * cx + cy * cy + cz * cz > far * far) continue;
-        for (let i = 0; i < NBU; i++) {
-          if (bL[i] <= 0 || !bhit(i, cx, cy, cz, r)) continue;
+        for (let jj = 0; jj < nLive; jj++) {
+          const i = bLive[jj]; if (bL[i] <= 0 || !bhit(i, cx, cy, cz, r)) continue;
           const q = i * 6, il = 1 / (Math.hypot(bP[q + 3], bP[q + 4], bP[q + 5]) || 1), ix = bP[q + 3] * il, iy = bP[q + 4] * il, iz = bP[q + 5] * il;
           let hxp = bP[q] + bP[q + 3] * hT - cx, hyp = bP[q + 1] + bP[q + 4] * hT - cy, hzp = bP[q + 2] + bP[q + 5] * hT - cz; const hl = r / (Math.hypot(hxp, hyp, hzp) || 1);
           hit(px + cx + hxp * hl, py + cy + hyp * hl, pz + cz + hzp * hl, ix, iy, iz);
@@ -7142,7 +7235,8 @@ function simulate(dt, fly) {
           if (d >= (geo ? 9 : size < 5 ? 1 : 2 + size * .3)) {
             dead.add(gh); ST.dead.push(gh); if (ST.dead.length > 6000) ST.dead.splice(0, 1000); save(); dmg.delete(gh); D[o + 3] = 0; L.root.cx = 1e9;          // gone for good; rebuild this layer's lists
             shatter(px + cx, py + cy, pz + cz, size, D[o + 8], D[o + 9], D[o + 10], 0, 0, 0, ix, iy, iz);
-          } else dmg.set(gh, d);
+            hitFx(geo ? '◆ GEODE OPEN' : L.root === LL ? '✕ LIMB DOWN' : '✕ ROCK DOWN', 1);
+          } else { dmg.set(gh, d); hitFx(L.root === LL ? '◆ HIT · LIMB' : '◆ HIT', 0); }
           break;
         }
       }
@@ -7155,11 +7249,11 @@ function simulate(dt, fly) {
     const o = i * 3; let x = dX[o] - px, y = dX[o + 1] - py, z = dX[o + 2] - pz; const d2 = x * x + y * y + z * z;
     if (kd === 1) {
       if (d2 > 9e6) { dKind[i] = 0; continue; }
-      if (nLive) for (let b = 0; b < NBU; b++) if (bL[b] > 0 && bhit(b, x, y, z, dSz[i] * .75)) {
+      if (nLive && x + dSz[i] >= bx0 && x - dSz[i] <= bx1 && y + dSz[i] >= by0 && y - dSz[i] <= by1 && z + dSz[i] >= bz0 && z - dSz[i] <= bz1) for (let jj = 0, b = bLive[0]; jj < nLive; b = bLive[++jj]) if (bL[b] > 0 && bhit(b, x, y, z, dSz[i] * .75)) {
         const q = b * 6, il = 1 / (Math.hypot(bP[q + 3], bP[q + 4], bP[q + 5]) || 1), ix = bP[q + 3] * il, iy = bP[q + 4] * il, iz = bP[q + 5] * il;
         hit(px + bP[q] + bP[q + 3] * hT, py + bP[q + 1] + bP[q + 4] * hT, pz + bP[q + 2] + bP[q + 5] * hT, ix, iy, iz); bL[b] = 0;
         dV[o] += ix * 6 / dSz[i]; dV[o + 1] += iy * 6 / dSz[i]; dV[o + 2] += iz * 6 / dSz[i];
-        if ((dHp[i] -= 2) <= 0) { dKind[i] = 0; shatter(dX[o], dX[o + 1], dX[o + 2], dSz[i], dHue[i], dTier[i], dType[i], dV[o], dV[o + 1], dV[o + 2], ix, iy, iz); }
+        if ((dHp[i] -= 2) <= 0) { dKind[i] = 0; shatter(dX[o], dX[o + 1], dX[o + 2], dSz[i], dHue[i], dTier[i], dType[i], dV[o], dV[o + 1], dV[o + 2], ix, iy, iz); hitFx('✕ ROCK DOWN', 1); } else hitFx('◆ HIT', 0);
         break;
       }
       if (!dKind[i]) continue;
@@ -7298,6 +7392,7 @@ function eye(fb, x, y, w, h, tw, th) {
   gl.uniform1i(ru.uKind, 3); gl.uniform1f(ru.uSpin, 4); draw(R, DGm, mDart);
   gl.uniform1f(ru.uFlat, 0);
   gl.uniform1i(ru.uKind, 2); gl.uniform1f(ru.uSpin, 1.1); draw(R, LD, mBox);
+  gl.uniform1i(ru.uKind, 7); gl.uniform1f(ru.uSpin, .03); draw(R, LMV[0], mLimb[0]); draw(R, LMV[1], mLimb[1]);
   gl.uniform1i(ru.uKind, 1); gl.uniform1f(ru.uSpin, .02);
   gl.uniform1f(ru.uSpin, 0); draw(R, DGt, mGate);
   gl.useProgram(P_CRY.p); if (P_CRY.u.uVd) gl.uniform1f(P_CRY.u.uVd, vd); gl.uniform1f(P_CRY.u.uSpin, .05); draw(P_CRY, LC, mCry);
@@ -7648,6 +7743,7 @@ function frame(now, xf) {
   const k = 1 - Math.exp(-dt * (bst > .3 ? 1.6 : 1.05));   // v1.73: boost builds rather than slams
   vx += (sFx * fwd + (sRx * ms + sUx * mu) * 45 - vx) * k; vy += (sFy * fwd + (sRy * ms + sUy * mu) * 45 - vy) * k; vz += (sFz * fwd + (sRz * ms + sUz * mu) * 45 - vz) * k;
   if (fly) rockAssist(dt);
+  const sw0x = px, sw0y = py, sw0z = pz;
   px += vx * dt; py += vy * dt; pz += vz * dt;
   // v1.76: gravity in a planet's sky. Below the break-free angle the world pulls you down (0.9 g by default); speed gives lift,
   // so you settle into a glide, and a cushion near the ground lets you skim the surface instead of hitting it.
@@ -7660,7 +7756,8 @@ function frame(now, xf) {
     if (TUNE.gravCush > 0 && alt < TUNE.gravCush) gSink *= Math.exp(-dt * 4 * (1 - Math.max(0, alt) / TUNE.gravCush));
     py -= gSink * dt;
   } else gSink *= Math.exp(-dt * 3);
-  cHit = 0; collide(LTi, titanAt); collide(LH, hugeAt); collide(LB, bigAt);
+  cHit = 0;   /* swept: the move is walked in steps under 28 u, so a fast boost cannot skip through a rock */
+  { const mx0 = px - sw0x, my0 = py - sw0y, mz0 = pz - sw0z, n = Math.min(5, Math.max(1, Math.ceil(Math.hypot(mx0, my0, mz0) / 28))); px = sw0x; py = sw0y; pz = sw0z; for (let q = 0; q < n; q++) { px += mx0 / n; py += my0 / n; pz += mz0 / n; collide(LTi, titanAt); collide(LH, hugeAt); collide(LB, bigAt); collide(LL, limbCol); } }
   if (cHit) {                                                // a real knock: the ship rebounds, shakes, and above a gentle touch the hull pays for it
     const vn = vx * cNx + vy * cNy + vz * cNz;
     if (vn < 0) {
@@ -7686,7 +7783,7 @@ function frame(now, xf) {
   const il = 1 / dt, axl = ((vx - ovx) * sRx + (vy - ovy) * sRy + (vz - ovz) * sRz) * il, ayl = ((vx - ovx) * sUx + (vy - ovy) * sUy + (vz - ovz) * sUz) * il, azl = ((vx - ovx) * sFx + (vy - ovy) * sFy + (vz - ovz) * sFz) * il;
   const yr = Math.max(-3, Math.min(3, (syaw - oyaw) * il)), pr = Math.max(-3, Math.min(3, (spit - opit) * il)), ck = Math.min(1, dt * 5), cl = (v, a) => Math.max(-a, Math.min(a, v));
   ovx = vx; ovy = vy; ovz = vz; oyaw = syaw; opit = spit;
-  ckx += (cl(-axl * .0015, .12) - yr * .05 - ckx) * ck; cky += (cl(-ayl * .0015, .1) + pr * .04 - cky) * ck; ckz += (cl(-azl * .0009, .22) - jk * .25 - ckz) * ck;
+  ckx += (cl(-axl * .0015, .12) - yr * .05 - ckx) * ck; cky += (cl(-ayl * .0015, .1) + pr * .04 - cky) * ck; ckz += (cl(-azl * .0009, .12) - jk * .25 - ckz) * ck;   /* v1.84: the cabin lags less under boost, so it does not slide away and shrink the HUD */
   ckr += (cl(-yr * .035, .09) - ckr) * ck; stx += (cl(-yr * .35, .45) - stx) * Math.min(1, dt * 9); sty += (cl(-pr * .35, .4) - sty) * Math.min(1, dt * 9);
   palEase = Math.max(0, palEase - rdt * .25); const pk = snap && !palEase ? 1 : Math.min(1, dt * (palEase ? .55 : 2));   // after a climb-out the colours drift over a few seconds instead of cutting
   REG = SYS.t;
@@ -7696,10 +7793,14 @@ function frame(now, xf) {
   flash *= Math.exp(-dt * 2.2);
   energy += (Math.min(1, speed / 420) * .8 + combat * .3 - energy) * Math.min(1, dt * 2);
 
+  /* look-ahead: the rock lists are centred ahead of the ship by up to .7 s of travel (smoothed), so at boost the rocks in front stay alive and in range */
+  { const k = Math.min(1, dt * 2.2); ldx += (vx - ldx) * k; ldy += (vy - ldy) * k; ldz += (vz - ldz) * k; }
   for (let i = 0; i < LAYERS.length; i++) upd(LAYERS[i]);
+  UPX = px; UPY = py; UPZ = pz;
 
   // views
-  const fov = Math.tan((64 + 6 * Math.abs(thr) * (1 - bst) + 30 * bst * bst + 22 * hlFx + 6 * bRamp + 34 * jk) * Math.PI / 360);
+  const fov = Math.tan((64 + 4 * Math.abs(thr) * (1 - bst) + 12 * bst * bst + 8 * hlFx + 4 * bRamp + 34 * jk) * Math.PI / 360);
+  hudZoom = xr ? 1 : Math.min(1.4, 1 + .85 * Math.max(0, fov / .6249 - 1));
   if (xr) {
     const pose = xf.getViewerPose(xrRef), bl = xr.renderState.baseLayer;
     if (pose) for (const v of pose.views) {
@@ -7773,6 +7874,17 @@ window.ES = { warpLook: (a, b) => { dbgJ = a; dbgT = b; }, zero: (i) => { const 
 };
 if (typeof v122Hooks === 'function') v122Hooks();
 if (typeof v123Hooks === 'function') v123Hooks();
+/* v1.84: every background build finishes now, one at a time, behind the loading bar, so no shader or terrain build lands mid-flight in the first seconds of play */
+if (PSC && !dgOff('bg')) {
+  bqFast = 1; plsQ(); skyaQ(); terBuild(); cldQ(); wxQ(); bqGo = 1; bqRun();
+  const n0 = BQ.length + 1, tq = performance.now(), bar = $('bf'), pc = $('pc'); let lastN = n0, tp = tq;
+  PH = (el) => { const f = Math.min(.998, .8 + .19 * (1 - (BQ.length + 1) / (n0 + 1)) + .008 * (1 - Math.exp(-el / 4000))); bar.style.transform = `scaleX(${f})`; pc.textContent = Math.round(f * 100) + '%'; };
+  while ((BQ.length || bqCur) && !gl.isContextLost() && performance.now() - tq < 120000) {
+    const n = BQ.length + 1; if (n !== lastN) { lastN = n; tp = performance.now(); }
+    await step(Math.min(.998, .8 + .19 * (1 - n / (n0 + 1))), 'Warming the planets…' + (performance.now() - tp > 2500 ? ' ' + Math.floor((performance.now() - tp) / 1000) + 's' : ''));
+  }
+  PH = null; bqFast = 0;
+}
 requestAnimationFrame((t) => { last = t; frame(t); });
 await step(1, 'The dark is ready');
 B.className = 'm';
