@@ -825,7 +825,7 @@ function progEnd(st) {
   const bi = gl.getUniformBlockIndex(p, 'G'); if (bi !== gl.INVALID_INDEX) gl.uniformBlockBinding(p, bi, 0);
   const u = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
   const ty = {}; for (let i = 0; i < n; i++) { const inf = gl.getActiveUniform(p, i), nm = inf.name; u[nm] = gl.getUniformLocation(p, nm); ty[nm] = inf.type; }
-  const unit = { uNeb: 0, uNz: 1, uH: 2, uB: 3, uR: 4 }, smp = [gl.SAMPLER_2D, gl.SAMPLER_3D, gl.SAMPLER_CUBE];
+  const unit = { uNeb: 0, uNz: 1, uH: 2, uB: 3, uR: 4, uLat: 9 }, smp = [gl.SAMPLER_2D, gl.SAMPLER_3D, gl.SAMPLER_CUBE];
   for (const k in unit) if (u[k] && smp.includes(ty[k])) gl.uniform1i(u[k], unit[k]);   // texture slots only: the HUD has a vector with the same name
   return { p, u };
 }
@@ -1355,32 +1355,16 @@ out vec2 vU;void main(){vec2 p=vec2(gl_VertexID<<1&2,gl_VertexID&2);vU=p;gl_Posi
 
 // the sky: nebula, stars, the sun, and a ringed giant with a moon
 const SKY_F = HD + `
-in vec2 vU;uniform vec4 uBS[8],uBC[8],uCS;uniform vec3 uCC;uniform vec4 uSky,uPl[3],uPa[3],uOrb,uPh,uPk;uniform vec3 uPb[3],uPLd[3],uSd,uOa,uOb,uPq,uAir,uPD;uniform vec3 uPo;uniform ivec3 uLoop;uniform vec4 uSkT;uniform mat3 uPM;uniform vec4 uPG;out vec4 o;
+in vec2 vU;uniform vec4 uBS[8],uBC[8],uCS;uniform vec3 uCC;uniform vec4 uSky,uPl[3],uPa[3],uOrb,uPh,uPk;uniform vec3 uPb[3],uPLd[3],uSd,uOa,uOb,uPq,uAir,uPD;uniform vec3 uPo;uniform ivec3 uLoop;uniform vec4 uSkT;uniform mat3 uPM;uniform vec4 uPG;out vec4 o;uniform highp sampler3D uLat;
 float hsh(vec3 p){p=fract(p*.3183099+.1);p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
-float n3(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.-2.*f);
- return mix(mix(mix(hsh(i),hsh(i+vec3(1,0,0)),f.x),mix(hsh(i+vec3(0,1,0)),hsh(i+vec3(1,1,0)),f.x),f.y),
-  mix(mix(hsh(i+vec3(0,0,1)),hsh(i+vec3(1,0,1)),f.x),mix(hsh(i+vec3(0,1,1)),hsh(i+vec3(1,1,1)),f.x),f.y),f.z);}
-// smooth noise worked out per pixel: the sky's large shapes are far too magnified to read from a small texture cleanly
+/* v1.88: the noise is one tap of the baked lattice (uLat), blended with the same smoothing curves as before; the hash code is no longer written out per call */
+float n3(vec3 x){vec3 i=floor(x),f=x-i;f=f*f*(3.-2.*f);return textureLod(uLat,(mod(i,128.)+.5+f)*(1./128.),0.).g;}
 #ifndef UZ
 #define UZ
 uniform int uZero;
 #endif
-// v1.77: the noise as small loops the compiler can't unroll (bounded by a never-set uniform): the same values, a fraction of the code.
-// On Windows the DirectX compiler writes every call out in full; unrolled, the planet sky took 60 s to compile on an RTX 3050 Ti.
-// Only in the planet sky program: elsewhere the unrolled forms compile quickly and draw faster.
-#ifdef ATM
-float vn(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*f*(f*(f*6.-15.)+10.);float r=0.;
- for(int c=0;c<8+uZero;c++){vec3 o=vec3(float(c&1),float((c>>1)&1),float((c>>2)&1)),w=mix(1.-f,f,o);r+=w.x*w.y*w.z*hsh(i+o);}return r;}
-#else
-float vn(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*f*(f*(f*6.-15.)+10.);
- return mix(mix(mix(hsh(i),hsh(i+vec3(1,0,0)),f.x),mix(hsh(i+vec3(0,1,0)),hsh(i+vec3(1,1,0)),f.x),f.y),
-  mix(mix(hsh(i+vec3(0,0,1)),hsh(i+vec3(1,0,1)),f.x),mix(hsh(i+vec3(0,1,1)),hsh(i+vec3(1,1,1)),f.x),f.y),f.z);}
-#endif
-#ifdef ATM
-float tn(vec3 p){p*=4.;float r=0.;for(int o=0;o<3+uZero;o++){r+=(o==0?.55:o==1?.3:.15)*vn(o==0?p:o==1?p*2.03+7.:p*4.1+3.);}return r;}
-#else
+float vn(vec3 x){vec3 i=floor(x),f=x-i;f=f*f*f*(f*(f*6.-15.)+10.);return textureLod(uLat,(mod(i,128.)+.5+f)*(1./128.),0.).g;}
 float tn(vec3 p){p*=4.;return .55*vn(p)+.3*vn(p*2.03+7.)+.15*vn(p*4.1+3.);}
-#endif
 float stars(vec3 d,float sc,float th){vec3 p=d*sc,i=floor(p),f=p-i;float h=hsh(i);
  vec3 q=.2+.6*vec3(hsh(i+3.1),hsh(i+7.7),hsh(i+11.3));
  float r=length(f-q),tw=.6+.4*sin(TIME*(1.3+h*7.)+h*97.)*sin(TIME*(.7+h*3.1)+h*41.);   // far stars scintillate, each at its own pace
@@ -1452,18 +1436,16 @@ float shv(ivec3 p){return float(sh3(p)>>8u)*(1./16777216.);}
 #define UZ
 uniform int uZero;
 #endif
-#ifdef ATM
-float sv3(vec3 x){vec3 i=floor(x),f=x-i;f=f*f*(3.-2.*f);ivec3 j=ivec3(i);float r=0.;
+float sv3(vec3 x){vec3 i=floor(x),f=x-i;f=f*f*(3.-2.*f);return textureLod(uLat,(mod(i,128.)+.5+f)*(1./128.),0.).r;}
+float sn(vec3 p){p*=4.;return .55*sv3(p)+.3*sv3(p*2.03+7.)+.15*sv3(p*4.1+3.);}
+/* the exact hashed form, kept for the fine coast detail (sDet) so the sky sphere and the ground terrain agree beyond the lattice; one loop, one call site */
+float sv3x(vec3 x){vec3 i=floor(x),f=x-i;f=f*f*(3.-2.*f);ivec3 j=ivec3(i);float r=0.;
  for(int c=0;c<8+uZero;c++){ivec3 o=ivec3(c&1,(c>>1)&1,(c>>2)&1);vec3 w=mix(1.-f,f,vec3(o));r+=w.x*w.y*w.z*shv(j+o);}return r;}
-#else
-float sv3(vec3 x){vec3 i=floor(x),f=x-i;f=f*f*(3.-2.*f);ivec3 j=ivec3(i);
- float a=mix(mix(shv(j),shv(j+ivec3(1,0,0)),f.x),mix(shv(j+ivec3(0,1,0)),shv(j+ivec3(1,1,0)),f.x),f.y);
- float b=mix(mix(shv(j+ivec3(0,0,1)),shv(j+ivec3(1,0,1)),f.x),mix(shv(j+ivec3(0,1,1)),shv(j+ivec3(1,1,1)),f.x),f.y);return mix(a,b,f.z);}
-#endif
-float sn(vec3 p){p*=4.;float r=0.;for(int o=0;o<3+uZero;o++){r+=(o==0?.55:o==1?.3:.15)*sv3(o==0?p:o==1?p*2.03+7.:p*4.1+3.);}return r;}
+float snx(vec3 p){p*=4.;float r=0.;for(int o=0;o<3+uZero;o++){r+=(o==0?.55:o==1?.3:.15)*sv3x(o==0?p:o==1?p*2.03+7.:p*4.1+3.);}return r;}
 float cloudD(vec3 n,float cz){vec3 cw=n+vec3(sn(n*2.+5.),sn(n*2.3+11.),sn(n*1.8+2.))*.32;float v=sn(cw*1.3);if(cz>0.)v+=((sn(cw*22.+3.)-.5)*.2+(sn(cw*85.+7.)-.5)*.08)*cz;return smoothstep(.52,.84,v);}
 float cloudA(vec3 n){return cloudD(n,0.);}
-vec3 sDet(vec3 n,float cz){return cz<=0.?n:n+((vec3(sn(n*37.+1.),sn(n*41.+2.),sn(n*39.+3.))-.5)*.03+(vec3(sn(n*170.+4.),sn(n*163.+5.),sn(n*177.+6.))-.5)*.007)*cz;}   // v1.38: finer layers of the same pattern, fading in as you close in: same coasts, more detail
+vec3 sDet(vec3 n,float cz){if(cz<=0.)return n;vec3 d=vec3(0.);
+ for(int q=0;q<6+uZero;q++){float sc=q==0?37.:q==1?41.:q==2?39.:q==3?170.:q==4?163.:177.;vec3 e=q%3==0?vec3(1,0,0):q%3==1?vec3(0,1,0):vec3(0,0,1);d+=e*(snx(n*sc+float(q+1))-.5)*(q<3?.03:.007);}return n+d*cz;}   /* v1.38: finer layers of the same pattern, fading in as you close in: same coasts, more detail; v1.88: one exact loop */
 vec3 surfS(vec3 n,int k,vec3 ca,vec3 cb,vec3 L,out float land,out float cl){float w=sn(n*1.15+.2),w2=sn(n*2.6+.7),w3=sn(n*5.2+1.4);vec3 s=mix(ca,cb,w2);cl=0.;land=1.;
   if(k==0){}
   else if(k==1){s=mix(mix(vec3(.045,.016,.01),ca*.3,.6),mix(vec3(.2,.07,.03),cb*.3,.6),w2);land=smoothstep(.07,0.,abs(fract(w*2.4+w2)-.5)-.4);cl=0.;}
@@ -1731,6 +1713,22 @@ void main(){vec2 q=vU-.5;float bs=uCA.w;bool pp=uHt.z<0.;float vs=abs(uHt.z);
 // Textures built at start-up
 // ============================================================================
 // tileable 3D noise: R = value, GBA = its gradient (for bump mapping without extra taps)
+/* v1.88: the sky's hashed noise as one baked lattice (128 cubed, R = the planet's integer hash, G = the float hash), read with one filtered tap.
+   The shader hands the texture its own smoothed fraction, so the blend is the same curve as before, and cells within 64 of the origin hold the very same hash values
+   (the planet's first octaves match the ground exactly). DirectX compiled the unrolled hash code for 48 s; a lookup is one instruction. */
+function latTex() {
+  const S = 128, d = new Float32Array(S * S * S * 2), H = Math.imul;
+  const sh = (x, y, z) => (H((H(x, 1597334673) ^ H(y, 3812015801 | 0) ^ H(z, 2798796415 | 0)) >>> 0, 1597334673) >>> 8) / 16777216;
+  const fr = (x) => x - Math.floor(x), hs = (x, y, z) => { x = fr(x * .3183099 + .1) * 17; y = fr(y * .3183099 + .1) * 17; z = fr(z * .3183099 + .1) * 17; return fr(x * y * z * (x + y + z)); };
+  for (let z = 0, o = 0; z < S; z++) for (let y = 0; y < S; y++) for (let x = 0; x < S; x++, o += 2) {
+    const a = x < 64 ? x : x - S, b = y < 64 ? y : y - S, c = z < 64 ? z : z - S;
+    d[o] = sh(a, b, c); d[o + 1] = hs(a, b, c);
+  }
+  const t = gl.createTexture(); gl.activeTexture(gl.TEXTURE9); gl.bindTexture(gl.TEXTURE_3D, t);
+  gl.texImage3D(gl.TEXTURE_3D, 0, gl.RG16F, S, S, S, 0, gl.RG, gl.FLOAT, d);
+  gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.activeTexture(gl.TEXTURE0);
+}
 function noiseTex() {
   const S = 64, v = new Float32Array(S * S * S);
   rs = 4242;
@@ -6313,7 +6311,7 @@ function brnTick(dt) {
   brnUp = vy > 20 ? brnUp + dt : 0; brnSt = sp < 70 && vd < 25 ? brnSt + dt : 0; brnLv = vd < 30 && tm - entT > 4 ? brnLv + dt : 0;
   if (brnUp > .6 || brnSt > 1.2 || brnLv > 2.5 || exCommit || A < (terr ? CB - 400 : FL - 100)) brnEnd = 1;
   const s = tss(100, 900, Math.max(vd, .4 * sp)), kv = .6 + .4 * s, amp = kv + (1 - kv) * tss(SW - 2500, SW, A);
-  const ph = !terr ? 1 - tss(SW, FL, A) : A >= CT ? 1 - .2 * tss(SW, CT, A) : A >= G0 ? .8 - .25 * tss(CT, G0, A) : .55 * (1 - tss(G0, CB, A)), pf = 1 - tss(SW - 300, SW - 3500, A);
+  const ph = !terr ? 1 - tss(SW, FL, A) : A >= CT ? 1 - .2 * tss(SW, CT, A) : A >= G0 ? .8 - .25 * tss(CT, G0, A) : .55 * (1 - tss(G0, CB, A)), pf = 1 - tss(SW - 300, SW - 5200, A);
   const tH = brnEnd ? 0 : ph * amp * (1 - .3 * tss(15, 45, tm - entT)), tF = brnEnd ? 0 : pf * (.85 + .15 * s);
   v126Heat += (tH - v126Heat) * (1 - Math.exp(-dt * (tH > v126Heat ? 8 : brnEnd ? 3 : 2.5))); heatFlare += (tF - heatFlare) * (1 - Math.exp(-dt * (tF > heatFlare ? 12 : brnEnd ? 3 : 4)));
   if (brnEnd && v126Heat < .01 && heatFlare < .01) { brnS = 0; v126Heat = heatFlare = 0; }
@@ -6355,9 +6353,9 @@ function v126Tick(dt, fly) {
     SUN[0] = L[0]; SUN[1] = L[1]; SUN[2] = L[2];
     if (isCont()) { const k = SYS.atm - 1, Rm = PR[k] * 1e6; tRm = Rm; if (!cOn && key !== v126KeyC) { v126KeyC = key; cC = [px, pz]; } { const cx = cC[0] - px, cy = TGB - Rm - py, cz = cC[1] - pz, dd = Math.hypot(cx, cy, cz); v126PD = [cx / dd, cy / dd, cz / dd]; v126PG = [1, Math.min(.99999, Rm / dd), tKind(), Rm]; v126Hh = dd - Rm; if (!cOn) v126PM.set([1, 0, 0, 0, 1, 0, 0, 0, 1]); } } else { v126PG = [0, 0, 0, 0]; tRm = 1e9; }
     if (hasTerr()) {
-      v126bf = tss(TCLOUD + 300, TCLOUD - 600, py); v126ceil = Math.max(150, TCLOUD - py); v126tf = tss(TCLOUD + 2600, TCLOUD + 400, py);   // the ground emerges through the deck as it thins, not all at once below it
+      v126bf = tss(TCLOUD + 300, TCLOUD - 600, py); v126ceil = Math.max(150, TCLOUD - py); const tfo = tss(TCLOUD + 2600, TCLOUD + 400, py); v126tf = tss(TENTRY + 200, TCLOUD + 400, py);   /* v1.88: the ground fades in from the seam (20 km) down to just under the deck (8.9 km), not from 11 km: the orbital sphere is covered as you fall, no cut. tfo keeps the old 11-9 km window for the haze that closes in as the deck thins */
       const deck = tss(TCLOUD - 300, TCLOUD + 300, py) * tss(TCTOP + 400, TCTOP - 200, py);   // inside the deck: patchy cloud, thicker and thinner as you go
-      { const rv = v126tf > .01 && v126tf < .99 ? Math.sin(Math.PI * v126tf) : 0;   // v1.43: the ground switches on inside the cloud; where the cloud is thin, a haze closes in for that moment
+      { const rv = tfo > .01 && tfo < .99 ? Math.sin(Math.PI * tfo) : 0;   // v1.43: the ground switches on inside the cloud; where the cloud is thin, a haze closes in for that moment
         if ((deck > .02 || rv > 0) && CLOUDAMT[tKind()] > 0) { const cv = tss(.3, .7, Math.min(1, Math.max(0, cloudJ(tSphJ(px, pz)) * 1.1 + (tvn(px * .0012 + py * .0009, pz * .0012) - .5) * .25))); veil = Math.max(veil, deck * (.02 + .3 * cv), rv * (.55 + .3 * (1 - cv))); }
         else if (rv > 0) veil = Math.max(veil, rv * .7); }
       if (v126bf > .02 && (Math.hypot(px - vAt[0], pz - vAt[1]) > 110)) { vAt = [px, pz]; vegBuild(); }
@@ -6432,19 +6430,12 @@ function v126Exit(k) { v126Heat = 0; heatFlare = 0; heatNear = 1e9; heatBlk = tm
 // planet sky. A layer of cloud wrapped round the planet, marched along the view ray; where it forms is the cloud cover seen from orbit,
 // billows are 3D noise, each step is lit by looking a little toward the sun. Output: colour added, and what's behind dimmed by T.
 const CLD_F = HD + `
-in vec2 vU;uniform vec4 uOrb,uPG,uSkT,uC0,uC1,uC2;uniform vec3 uPD,uOa,uAir;uniform mat3 uPM;uniform int uNC;out vec4 o;
+in vec2 vU;uniform vec4 uOrb,uPG,uSkT,uC0,uC1,uC2;uniform vec3 uPD,uOa,uAir;uniform mat3 uPM;uniform int uNC;out vec4 o;uniform highp sampler3D uLat;
 float hsh(vec3 p){p=fract(p*.3183099+.1);p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
-float vn(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*f*(f*(f*6.-15.)+10.);
- return mix(mix(mix(hsh(i),hsh(i+vec3(1,0,0)),f.x),mix(hsh(i+vec3(0,1,0)),hsh(i+vec3(1,1,0)),f.x),f.y),
-  mix(mix(hsh(i+vec3(0,0,1)),hsh(i+vec3(1,0,1)),f.x),mix(hsh(i+vec3(0,1,1)),hsh(i+vec3(1,1,1)),f.x),f.y),f.z);}
+float vn(vec3 x){vec3 i=floor(x),f=x-i;f=f*f*f*(f*(f*6.-15.)+10.);return textureLod(uLat,(mod(i,128.)+.5+f)*(1./128.),0.).g;}
 float tn(vec3 p){p*=4.;return .55*vn(p)+.3*vn(p*2.03+7.)+.15*vn(p*4.1+3.);}
-uint sh3(ivec3 p){uvec3 q=uvec3(p)*uvec3(1597334673u,3812015801u,2798796415u);return (q.x^q.y^q.z)*1597334673u;}
-float shv(ivec3 p){return float(sh3(p)>>8u)*(1./16777216.);}
-float sv3(vec3 x){vec3 i=floor(x),f=x-i;f=f*f*(3.-2.*f);ivec3 j=ivec3(i);
- float a=mix(mix(shv(j),shv(j+ivec3(1,0,0)),f.x),mix(shv(j+ivec3(0,1,0)),shv(j+ivec3(1,1,0)),f.x),f.y);
- float b=mix(mix(shv(j+ivec3(0,0,1)),shv(j+ivec3(1,0,1)),f.x),mix(shv(j+ivec3(0,1,1)),shv(j+ivec3(1,1,1)),f.x),f.y);return mix(a,b,f.z);}
-uniform int uZero;
-float sn(vec3 p){p*=4.;float r=0.;for(int o=0;o<3+uZero;o++){r+=(o==0?.55:o==1?.3:.15)*sv3(o==0?p:o==1?p*2.03+7.:p*4.1+3.);}return r;}
+float sv3(vec3 x){vec3 i=floor(x),f=x-i;f=f*f*(3.-2.*f);return textureLod(uLat,(mod(i,128.)+.5+f)*(1./128.),0.).r;}
+float sn(vec3 p){p*=4.;return .55*sv3(p)+.3*sv3(p*2.03+7.)+.15*sv3(p*4.1+3.);}
 float cloudD(vec3 n,float cz){vec3 cw=n+vec3(sn(n*2.+5.),sn(n*2.3+11.),sn(n*1.8+2.))*.32;float v=sn(cw*1.3);if(cz>0.)v+=((sn(cw*22.+3.)-.5)*.2+(sn(cw*85.+7.)-.5)*.08)*cz;return smoothstep(.52,.84,v);}
 float cloudA(vec3 n){return cloudD(n,0.);}
 void main(){
@@ -6495,11 +6486,11 @@ function cldDraw() {
 // Build everything (with a loading bar), then fly
 // ============================================================================
 await step(.06, 'Igniting stars past the edge…');
-noiseTex();
+noiseTex(); latTex();
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.87';
+const BUILD = 'v1.88';
 // v1.74: if the last session ended in a graphics reset, put what was being built at the time in the log (F9 → Copy settings shows it)
 try { const g = JSON.parse(localStorage.ieGlLost || 'null'); if (g) evLog(`Graphics · last reset (${g.build}, ${g.at.slice(0, 16).replace('T', ' ')}): ${g.was ? 'building the ' + g.was + ' program, ' + g.secs + ' s in' : 'no program was being built'}`); } catch {}                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 /* ---- v1.71: spice tiers and attunement, procedural foes, dogfight upgrades, the Foe intro ---- */
