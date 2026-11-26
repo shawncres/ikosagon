@@ -354,7 +354,7 @@ cv.addEventListener('webglcontextlost', (e) => { e.preventDefault(); if (glLost)
 // v1.79: the start gate (test builds). Shown before any graphics program is built, so a freeze during loading can still be
 // looked at and worked around: the last session's report, the switches, then Start.
 function dgGate() {
-  if (!DGT || navigator.webdriver) return Promise.resolve();
+  if (!DGT || navigator.webdriver || !/[?&]gate/.test(location.search)) return Promise.resolve();
   DG.gated = 1;
   const b = document.createElement('button'); b.textContent = 'TEST'; b.title = 'Test tools (F10 or `)';
   b.style.cssText = 'position:fixed;left:6px;top:6px;z-index:100001;font:11px system-ui;padding:3px 8px;background:#123c;color:#cfe;border:1px solid #4ac;cursor:pointer;opacity:.7';
@@ -374,7 +374,7 @@ function dgGate() {
 // at launch: did the last session end badly?
 // v1.79: when the start gate ran, it already showed the last session's report
 function dgLaunchCheck() {
-  if (!DGT || DG.gated || navigator.webdriver) return; let hb = null, ev = [];
+  if (!DGT || DG.gated || navigator.webdriver || !/[?&]gate/.test(location.search)) return; let hb = null, ev = [];
   try { hb = JSON.parse(localStorage.ieDiagHB || 'null'); ev = JSON.parse(localStorage.ieDiagEv || '[]'); } catch {}
   const recent = ev.filter((e) => hb && e.at >= hb.t - 120000 && (e.kind === 'reset' || e.kind === 'stall'));
   if (hb && !hb.clean) {
@@ -413,7 +413,7 @@ const TUNE_DEF = [
 ];
 const TUNE = {}; for (const d of TUNE_DEF) TUNE[d[0]] = d[6];
 try { const t = JSON.parse(localStorage.ieTune || '{}'), rv = +(localStorage.ieTuneV || 0); for (const k in t) if (k in TUNE && isFinite(t[k]) && !(rv < 2 && (TUNE_DEF.find((d) => d[0] === k) || [])[1] === 'Re-entry') && !(rv < 3 && (TUNE_DEF.find((d) => d[0] === k) || [])[1] === 'Flight')) TUNE[k] = +t[k]; localStorage.ieTuneV = 3; } catch {}   // v1.68: re-entry values saved before this build are dropped once, so the new timing applies
-const TUNE_ON = /[?&]tune/.test(location.search);   // the console exists everywhere but production, unless ?tune
+const TUNE_ON = !/\/infiniteend\/?$/.test(location.pathname) || /[?&]tune/.test(location.search);   // the console exists everywhere but production, unless ?tune
 // v1.45: the event log: everything the game tells you (tips, comms, events, panels, hits, sounds), newest first, for the console
 const EVLOG = []; let evLast0 = '', evLastT = 0, tuneOpen = false, tuneEl = null;
 function evLog(t) { if (!t) return; t = String(t); const now = performance.now(); if (t === evLast0 && now - evLastT < 4000) return; evLast0 = t; evLastT = now; EVLOG.unshift([now, t]); if (EVLOG.length > 120) EVLOG.length = 120; if (typeof tuneLog === 'function') tuneLog(); }
