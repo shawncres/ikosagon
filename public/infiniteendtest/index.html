@@ -217,19 +217,186 @@ const Q = [
 
 const gl = cv.getContext('webgl2', { antialias: false, alpha: false, depth: false, stencil: false, powerPreference: 'high-performance' });
 if (!gl) throw Error('This scene needs WebGL 2. Try a current Chrome, Edge, Firefox or Safari.', { cause: 1 });
+// ============================================================================
+// v1.75 test tools (browser test build only): a flight recorder for freezes.
+// - Every few seconds one frame is timed stage by stage (cockpit, solids, ground, sky, clouds, life, weather, sprites, plasma,
+//   glass, bloom, rays, composite, HUD), each stage waited on with a 1-pixel read so its GPU time is real.
+// - It notes which graphics programs are being built and which are drawn for the first time (a driver may compile a program at
+//   its first use), long frames, and when frames stop arriving while the game's code still runs (a GPU hang).
+// - A heartbeat goes to local storage every second, so a freeze that kills the tab is still on record at the next launch.
+// - After a graphics reset, a stall, or a session that didn't end cleanly, a report names the likely culprit and offers
+//   switches to turn that system off. F10 opens the same panel any time.
+// ============================================================================
+const DGT = !document.querySelector('link[rel~="manifest"]');   // the browser test build has no app manifest link
+const DGOFF = new Set((() => { try { return (localStorage.ieDiagOff || '').split(',').filter(Boolean); } catch { return []; } })());
+const dgOff = (k) => DGOFF.has(k);
+const DGSW = [
+  ['clouds', 'Clouds', 'The cloud layer inside planet skies (not built at all when off)'],
+  ['ground', 'Ground', 'The terrain and trees below the clouds (not built when off)'],
+  ['bg', 'Background builds', 'Planet programs are built ahead of time after launch; off = only when you approach a world'],
+  ['plasma', 'Re-entry plasma', 'The burn and cloud-break effect (not built when off)'],
+  ['weather', 'Weather', 'Rain, snow, dust and ash in planet skies'],
+  ['bloom', 'Bloom and light shafts', 'Glow and star rays (post effects)'],
+  ['life', 'Creatures and swarms', 'Space life, jellyfish, drones'],
+  ['sprites', 'Nebula sheets and particles', 'Large glowing sprites, dust and particles'],
+  ['skyplanets', 'Planets in the sky', 'The planets drawn into the space sky (off = no planets visible from afar)'],
+  ['skyfx', 'Sky extras', 'Galaxy, light ribbon, ringworld, black hole and sky phenomena'],
+  ['skyground', 'World below (from the sky)', 'The detailed ground pattern seen from high in a planet sky (off = plain colour)'],
+  ['skystars', 'Big stars', 'The few large bright stars in the sky'],
+  ['half', 'Lower resolution', 'Renders at 60% resolution (less GPU work per frame)'],
+];
+const DG = { load: '', booted: 0, cur: '', mark: 0, meas: 0, st: {}, last: {}, worst: {}, lastMeas: 0, lastFrameT: performance.now(), first: [], firstPrev: [], hitches: [], stalled: 0, rb: null };
+// the stage → switch that turns it off (programs too)
+const DGMAP = { clouds: 'clouds', ground: 'ground', trees: 'ground', 'planet sky': 'bg', plasma: 'plasma', weather: 'weather', bloom: 'bloom', rays: 'bloom', life: 'life', sprites: 'sprites', sky: 'half', 'space sky': 'half', solids: 'half', cockpit: 'half', glass: 'half', composite: 'half' };
+function dgSync() {   // wait until the GPU has finished everything queued so far: read one pixel of a tiny target
+  if (!DG.rb) { const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null); DG.rb = { f: gl.createFramebuffer(), px: new Uint8Array(4) }; const o = gl.getParameter(gl.FRAMEBUFFER_BINDING); gl.bindFramebuffer(gl.FRAMEBUFFER, DG.rb.f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0); gl.bindFramebuffer(gl.FRAMEBUFFER, o); }
+  const r = gl.getParameter(gl.READ_FRAMEBUFFER_BINDING); gl.bindFramebuffer(gl.READ_FRAMEBUFFER, DG.rb.f); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, DG.rb.px); gl.bindFramebuffer(gl.READ_FRAMEBUFFER, r);
+}
+function dgStage(n) { if (DG.meas && DGT) { dgSync(); const t = performance.now(); if (DG.cur) DG.st[DG.cur] = (DG.st[DG.cur] || 0) + t - DG.mark; DG.mark = t; } DG.cur = n; }
+function dgFrameStart(now) {
+  const gap = now - DG.lastFrameT; DG.lastFrameT = now;
+  if (DG.stalled) { DG.stalled = 0; dgNote('stall-end', `frames resumed after ${(gap / 1000).toFixed(1)} s`); }
+  DG.booted = DG.booted || !!bootOK;
+  if (gap > 1500 && DG.booted && !document.hidden) dgHitch(gap);
+  DG.firstPrev = DG.first; DG.first = [];
+  DG.meas = DGT && !glLost && now - DG.lastMeas > 4000 ? 1 : 0; if (DG.meas) { DG.lastMeas = now; DG.st = {}; DG.mark = performance.now(); DG.cur = 'frame start'; }
+}
+function dgFrameEnd() {
+  if (!DG.meas) return; dgStage(''); DG.meas = 0; DG.last = DG.st;
+  for (const k in DG.st) DG.worst[k] = Math.max(DG.st[k], (DG.worst[k] || 0) * .97);
+  const slow = Object.entries(DG.st).filter(([, v]) => v > 80).sort((a, b) => b[1] - a[1]);
+  if (slow.length) evLog('Slow · ' + slow.map(([k, v]) => `${k} ${Math.round(v)} ms`).join(', '));
+}
+function dgState() {
+  try { return { where: SYS.atm ? `in the sky of ${(SYS.planets[SYS.atm - 1] || {}).name || 'a world'}` : `in space at ${SYS.locs[SYS.loc].name}`, hyper: typeof hl !== 'undefined' && hl ? 1 : 0, entry: typeof entLock !== 'undefined' && entLock ? 1 : 0, alt: typeof v126Alt === 'function' && v126Alt() != null ? +v126Alt().toFixed(1) : null, speed: Math.round(Math.hypot(vx, vy, vz)) }; } catch { return {}; }
+}
+function dgHitch(gap) {
+  const h = { ms: Math.round(gap), at: Date.now(), state: dgState(), building: bqCur || '', firstUse: DG.firstPrev.concat(DG.first) };
+  DG.hitches.unshift(h); DG.hitches.length = Math.min(DG.hitches.length, 6);
+  evLog(`Hitch · ${(gap / 1000).toFixed(1)} s ${h.state.where || ''}` + (h.building ? ` · building ${h.building}` : '') + (h.firstUse.length ? ` · first use of ${h.firstUse.join(', ')}` : ''));
+}
+const DGN = [['P_SKY', 'space sky'], ['P_SKYA', 'planet sky'], ['P_CLD', 'clouds'], ['P_PLS', 'plasma'], ['TP', 'ground'], ['VP', 'trees'], ['WXP', 'weather'], ['P_COMP', 'composite'], ['P_BLUR', 'bloom'], ['P_RAY', 'rays'], ['P_LIFE', 'life'], ['P_SPR', 'sprites'], ['P_ROCK', 'rocks'], ['P_SHIP', 'ships'], ['P_CRY', 'crystals'], ['P_COCK', 'cockpit'], ['P_CAB', 'cabin']];
+const DGPN = new WeakMap();
+{ const cp = gl.createProgram.bind(gl); gl.createProgram = () => { const p = cp(); let n = ''; try { n = bqCur; } catch {} if (n) DGPN.set(p, n); return p; }; }   // programs built by the queue carry its name
+function dgName(p) { if (DGPN.has(p)) return DGPN.get(p); for (const [v, l] of DGN) { try { const o = eval(v); if (o && (o === p || o.p === p)) return l; } catch {} } return 'a program'; }
+{ const up = gl.useProgram.bind(gl), seen = new WeakSet(); gl.useProgram = (p) => { if (p && !seen.has(p)) { seen.add(p); if (DG.booted) DG.first.push(dgName(p)); } up(p); }; }
+function dgNote(kind, text) { try { const r = JSON.parse(localStorage.ieDiagEv || '[]'); r.unshift({ kind, text, at: Date.now(), build: typeof BUILD === 'string' ? BUILD : '' }); localStorage.ieDiagEv = JSON.stringify(r.slice(0, 12)); } catch {} }
+function dgSnap(clean) {
+  return { t: Date.now(), clean: clean ? 1 : 0, build: typeof BUILD === 'string' ? BUILD : '', state: dgState(), building: (typeof bqCur === 'string' && bqCur) || '', buildingFor: bqCur && typeof bqT0 === 'number' ? +((performance.now() - bqT0) / 1000).toFixed(1) : 0,
+    frameAge: +((performance.now() - DG.lastFrameT) / 1000).toFixed(1), firstUse: DG.firstPrev.concat(DG.first), last: DG.last, worst: DG.worst, hitches: DG.hitches, off: [...DGOFF], load: DG.booted ? '' : DG.load };
+}
+// the heartbeat: once a second, even while the picture is frozen (the game's code keeps running)
+if (DGT) setInterval(() => {
+  if (!DG.booted) { try { localStorage.ieDiagHB = JSON.stringify(dgSnap(0)); } catch {} return; }
+  const age = performance.now() - DG.lastFrameT;
+  if (age > 3000 && !document.hidden && !DG.stalled && !glLost) { DG.stalled = 1; const s = dgSnap(0); dgNote('stall', dgExplain(s, 'Frames stopped arriving for over 3 s while the game kept running')); evLog('Graphics · frames stopped (GPU busy or hung)'); }
+  try { localStorage.ieDiagHB = JSON.stringify(dgSnap(0)); } catch {}
+}, 1000);
+addEventListener('pagehide', () => { try { localStorage.ieDiagHB = JSON.stringify(dgSnap(1)); } catch {} });
+// suspects, most likely first: what was being built, what was drawn for the first time, then the slowest stages
+function dgSuspects(s) {
+  const out = [];
+  const add = (name, why) => { const k = DGMAP[name]; if (!out.some((o) => o.name === name)) out.push({ name, why, sw: k || '' }); };
+  if (s.load) add(/sky/i.test(s.load) ? 'space sky' : s.load, 'was being built while loading');
+  if (s.building) add(s.building, `was being built (${s.buildingFor || '?'} s in)`);
+  for (const n of s.firstUse || []) add(n, 'was drawn for the first time just then');
+  for (const h of (s.hitches || []).slice(0, 2)) { if (h.building) add(h.building, `was being built during a ${(h.ms / 1000).toFixed(1)} s hitch`); for (const n of h.firstUse || []) add(n, `first drawn during a ${(h.ms / 1000).toFixed(1)} s hitch`); }
+  const w = Object.entries(s.worst || {}).filter(([k]) => k !== 'frame start').sort((a, b) => b[1] - a[1]);
+  for (const [k, v] of w.slice(0, 3)) if (v > 8) add(k, `slowest stage measured (${Math.round(v)} ms)`);
+  return out;
+}
+function dgExplain(s, head) {
+  const st = s.state || {}, sus = dgSuspects(s);
+  if (s.load) return `${head} · ${s.build} · while loading: ${s.load}` + (sus.length ? ' · suspects: ' + sus.map((o) => `${o.name} (${o.why})`).join('; ') : '');
+  return `${head} · ${s.build} · ${st.where || ''}${st.hyper ? ', in hyperlight' : ''}${st.entry ? ', during entry' : ''}${st.alt != null ? `, ${st.alt} km up` : ''}, ${st.speed || 0} u/s`
+    + (sus.length ? ' · suspects: ' + sus.map((o) => `${o.name} (${o.why})`).join('; ') : ' · no suspect recorded');
+}
+function dgReport(head) {
+  const s = dgSnap(0), ev = (() => { try { return JSON.parse(localStorage.ieDiagEv || '[]'); } catch { return []; } })();
+  const L = [`The Infinite End · test report · ${s.build} · ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`, head || '', 'Switched off: ' + (s.off.length ? s.off.join(', ') : 'nothing'), '', 'Recent events:', ...ev.map((e) => `- ${new Date(e.at).toISOString().slice(5, 16).replace('T', ' ')} [${e.kind}] ${e.text}`), '', 'Stage times, last measured frame (ms): ' + Object.entries(s.last).map(([k, v]) => `${k} ${v.toFixed(1)}`).join(', '), 'Worst recently (ms): ' + Object.entries(s.worst).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k} ${v.toFixed(1)}`).join(', ')];
+  try { L.push('', 'Log:', ...EVLOG.filter((e) => /^(Load|Hitch|Graphics|Slow)/.test(e[1])).slice(0, 20).map((e) => e[1])); } catch {}
+  try { const d = gl.getExtension('WEBGL_debug_renderer_info'); if (d) L.push('', 'GPU: ' + gl.getParameter(d.UNMASKED_RENDERER_WEBGL)); } catch {}
+  return L.join('\n');
+}
+function dgPanel(head, sus) {
+  if (!DGT) return; let d = document.getElementById('dgp'); if (d) d.remove();
+  d = document.createElement('div'); d.id = 'dgp';
+  d.style.cssText = 'position:fixed;inset:0;z-index:100000;overflow:auto;background:#05070cf2;color:#cfe;font:14px/1.5 system-ui,sans-serif;padding:28px';
+  const live = Object.entries(DG.last).filter(([k]) => k !== 'frame start').sort((a, b) => b[1] - a[1]).map(([k, v]) => `<tr><td style="padding:1px 14px 1px 0">${k}</td><td style="text-align:right">${v.toFixed(1)} ms</td></tr>`).join('');
+  const susK = new Set((sus || []).map((o) => o.sw).filter(Boolean));
+  const sw = DGSW.map(([k, n, desc]) => `<div style="display:flex;gap:12px;align-items:center;padding:6px 0;border-bottom:1px solid #ffffff14"><button data-k="${k}" style="min-width:64px;font:inherit;padding:4px 10px;background:${DGOFF.has(k) ? '#3a1414' : '#123'};color:#cfe;border:1px solid ${susK.has(k) ? '#fb4' : '#4ac'};cursor:pointer">${DGOFF.has(k) ? 'OFF' : 'on'}</button><div><b>${n}</b>${susK.has(k) ? ' <span style="color:#fb4">· suspect</span>' : ''}<div style="opacity:.6;font-size:12px">${desc}</div></div></div>`).join('');
+  d.innerHTML = `<div style="max-width:760px;margin:auto"><div style="font-size:20px;letter-spacing:.12em">TEST TOOLS</div>
+    ${head ? `<p style="background:#2a1a08;border:1px solid #fb4;padding:10px 12px">${head}</p>` : ''}
+    ${sus && sus.length ? `<p><b>Likely culprits</b>, most likely first:</p><ol>${sus.map((o) => `<li>${o.name}: ${o.why}${o.sw ? '' : ' (no switch)'}</li>`).join('')}</ol>` : ''}
+    <p><b>Switches</b> (take effect after Reload; kept until you change them). A switch outlined in amber is a suspect.</p>${sw}
+    ${live ? `<p style="margin-top:18px"><b>Last measured frame</b> (GPU time per stage)</p><table>${live}</table>` : ''}
+    <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap"><button id="dgr" style="font:inherit;padding:8px 20px;background:#123;color:#cfe;border:1px solid #4ac;cursor:pointer">Reload</button><button id="dgc" style="font:inherit;padding:8px 20px;background:#123;color:#cfe;border:1px solid #4ac;cursor:pointer">Copy report</button><button id="dgx" style="font:inherit;padding:8px 20px;background:none;color:#cfe;border:1px solid #ffffff33;cursor:pointer">Close</button></div>
+    <p style="opacity:.55;font-size:12px;margin-top:14px">F10, the &#96; key or the TEST button (top left) opens this panel. The report goes to Shawn's builder; it holds no personal data.</p></div>`;
+  d.querySelectorAll('button[data-k]').forEach((b) => b.onclick = () => { const k = b.dataset.k; if (DGOFF.has(k)) DGOFF.delete(k); else DGOFF.add(k); try { localStorage.ieDiagOff = [...DGOFF].join(','); } catch {} const keep = DG.gateGo; dgPanel(head, sus); DG.gateGo = keep; });
+  if (DG.gateGo) { const st = document.createElement('button'); st.textContent = 'Start'; st.style.cssText = 'font:inherit;padding:8px 28px;background:#164;color:#dfe;border:1px solid #6c8;cursor:pointer'; st.onclick = () => { const g = DG.gateGo; DG.gateGo = null; d.remove(); g(); }; d.querySelector('#dgr').before(st); setTimeout(() => st.focus(), 50); }
+  d.querySelector('#dgr').onclick = () => { try { localStorage.ieDiagHB = JSON.stringify(dgSnap(1)); } catch {} location.reload(); };
+  d.querySelector('#dgc').onclick = (e) => { const t = dgReport(head); (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => { e.target.textContent = 'Copied'; }, () => { const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'width:100%;height:220px;margin-top:12px'; d.firstChild.appendChild(ta); ta.select(); }); };
+  d.querySelector('#dgx').onclick = () => d.remove();
+  document.body.appendChild(d); try { document.exitPointerLock && document.exitPointerLock(); } catch {}
+}
+addEventListener('keydown', (e) => { if ((e.code === 'F10' || e.code === 'Backquote') && DGT) { e.preventDefault(); e.stopImmediatePropagation(); const s = dgSnap(0); dgPanel('', dgSuspects(s)); } }, true);
+// a graphics reset: the report, straight away
+let glLost = 0;
+cv.addEventListener('webglcontextlost', (e) => { e.preventDefault(); if (glLost) return; glLost = 1;
+  const s = dgSnap(0), head = dgExplain(s, 'The browser reset the graphics card');
+  dgNote('reset', head); try { evLog('Graphics · ' + head); } catch {}
+  try { if (typeof save === 'function') save(); } catch {}
+  if (DGT) { dgPanel(head + '. Your progress is saved.', dgSuspects(s)); return; }
+  const d = document.createElement('div'); d.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:#05070cee;color:#cfe;font:15px/1.5 system-ui,sans-serif;text-align:center;padding:24px';
+  d.innerHTML = '<div style="font-size:20px;letter-spacing:.12em">GRAPHICS RESET</div><div style="max-width:540px;opacity:.85">The browser restarted the graphics card, so the view stopped. Your progress is saved. Reload to carry on.</div><button style="font:inherit;padding:10px 26px;background:#123;color:#cfe;border:1px solid #4ac;cursor:pointer">Reload</button>';
+  d.querySelector('button').onclick = () => location.reload(); document.body.appendChild(d);
+  try { document.exitPointerLock && document.exitPointerLock(); } catch {} }, false);
+// v1.79: the start gate (test builds). Shown before any graphics program is built, so a freeze during loading can still be
+// looked at and worked around: the last session's report, the switches, then Start.
+function dgGate() {
+  if (!DGT || navigator.webdriver) return Promise.resolve();
+  DG.gated = 1;
+  const b = document.createElement('button'); b.textContent = 'TEST'; b.title = 'Test tools (F10 or `)';
+  b.style.cssText = 'position:fixed;left:6px;top:6px;z-index:100001;font:11px system-ui;padding:3px 8px;background:#123c;color:#cfe;border:1px solid #4ac;cursor:pointer;opacity:.7';
+  b.onclick = () => dgPanel('', dgSuspects(dgSnap(0))); document.body.appendChild(b);
+  let hb = null, ev = [];
+  try { hb = JSON.parse(localStorage.ieDiagHB || 'null'); ev = JSON.parse(localStorage.ieDiagEv || '[]'); } catch {}
+  let head = 'Pick what to switch off (if anything), then Start.';
+  if (hb && !hb.clean) {
+    const recent = ev.filter((e) => e.at >= hb.t - 120000 && (e.kind === 'reset' || e.kind === 'stall'));
+    head = recent.length ? `Last session: ${recent[0].text}` : dgExplain(hb, `Last session didn't end cleanly${hb.load ? '' : ` (frames had stopped ${hb.frameAge} s before the last heartbeat)`}`);
+    if (!recent.length) dgNote('unclean', head);
+  }
+  try { localStorage.ieDiagHB = JSON.stringify(Object.assign(hb || {}, { clean: 1 })); } catch {}
+  DG.gateHead = head; DG.gateSus = hb && !hb.clean ? dgSuspects(hb) : [];
+  return new Promise((res) => { DG.gateGo = res; dgPanel(head, DG.gateSus); });
+}
+// at launch: did the last session end badly?
+// v1.79: when the start gate ran, it already showed the last session's report
+function dgLaunchCheck() {
+  if (!DGT || DG.gated || navigator.webdriver) return; let hb = null, ev = [];
+  try { hb = JSON.parse(localStorage.ieDiagHB || 'null'); ev = JSON.parse(localStorage.ieDiagEv || '[]'); } catch {}
+  const recent = ev.filter((e) => hb && e.at >= hb.t - 120000 && (e.kind === 'reset' || e.kind === 'stall'));
+  if (hb && !hb.clean) {
+    const head = recent.length ? `Last session: ${recent[0].text}` : dgExplain(hb, `Last session didn't end cleanly (the tab was closed or crashed; frames had stopped ${hb.frameAge} s before the last heartbeat)`);
+    if (!recent.length) dgNote('unclean', head);
+    try { localStorage.ieDiagHB = JSON.stringify(Object.assign(hb, { clean: 1 })); } catch {}
+    setTimeout(() => dgPanel(head, dgSuspects(hb)), 600);
+  }
+}
 const HF = gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float');
 const HDRI = HF ? gl.RGBA16F : gl.RGBA8, HDRT = HF ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
 
 // ---- v1.45: the tuning console's numbers. Every slider in the console (F9, test builds) is one of these; the game reads them live.
 // Shawn tunes by feel, copies the block out, and the values become the defaults here.
 const TUNE_DEF = [
-  ['thrSpd', 'Flight', 'Throttle top speed (u/s)', 80, 600, 5, 230], ['boostTop', 'Flight', 'Boost top speed (u/s)', 200, 2000, 10, 630], ['boostBite', 'Flight', 'Boost kick-in speed', 1, 15, .5, 7],
+  ['thrSpd', 'Flight', 'Throttle top speed (u/s)', 80, 600, 5, 230], ['boostTop', 'Flight', 'Boost top speed (u/s)', 200, 2000, 10, 480], ['boostBite', 'Flight', 'Boost kick-in speed', .5, 15, .5, 2],
   ['airMax', 'Flight', 'Speed at the top of the air (×)', 1, 10, .1, 6], ['glideMin', 'Flight', 'Glide: minimum speed in air', 0, 300, 5, 70], ['glideDrag', 'Flight', 'Glide: drag', 0, .2, .005, .035],
   ['glideGrav', 'Flight', 'Glide: speed gained nose-down', 0, 200, 5, 55], ['gateBrake', 'Flight', 'Gate braking (0 = off)', 0, 1, .05, .5], ['turnK', 'Flight', 'Stick turn rate (pad, VR)', .3, 3, .05, 1],
   ['hlRate', 'Hyperlight', 'Speed (× distance left, per s)', .3, 5, .1, 1.5], ['hlMax', 'Hyperlight', 'Top speed (Mm/s)', 1, 40, .5, 7], ['hlSpool', 'Hyperlight', 'Spool time (s)', .2, 5, .1, 1.4],
-  ['hlReady', 'Hyperlight', 'Lock time to READY (s)', .2, 5, .1, 1.2], ['hlDrop', 'Hyperlight', 'Drops out at (planet radii)', 1.05, 10, .1, 1.8], ['hlTime0', 'Hyperlight', 'Trip: base time (s)', 1, 15, .5, 4], ['hlTimeK', 'Hyperlight', 'Trip: extra time per √Mm', 0, 15, .5, 4], ['boostSys', 'Flight', 'Boost across the system (Mm/s)', .002, .08, .001, .005], ['hlPlay', 'Hyperlight', 'Nose play while lit (rad)', 0, .5, .01, .07],
+  ['hlReady', 'Hyperlight', 'Lock time to READY (s)', .2, 5, .1, 1.2], ['hlDrop', 'Hyperlight', 'Drops out at (planet radii)', 1.05, 10, .1, 1.8], ['hlTime0', 'Hyperlight', 'Trip: base time (s)', 1, 15, .5, 4], ['hlTimeK', 'Hyperlight', 'Trip: extra time per √Mm', 0, 15, .5, 4], ['boostSys', 'Flight', 'Boost across the system (Mm/s)', .001, .08, .0005, .003], ['hlPlay', 'Hyperlight', 'Nose play while lit (rad)', 0, .5, .01, .07],
   ['plScale', 'Planets', 'Planet size (×, next arrival)', .5, 5, .1, 2.2], ['spread', 'Planets', 'Planet spacing (×, next arrival)', .5, 5, .1, 1.5], ['orbitMin', 'Planets', 'Places in orbit: nearest (radii, next arrival)', 2, 20, .5, 6], ['dayLen', 'Planets', 'Day length (×)', .1, 10, .1, 1],
-  ['apNearR', 'Approach', 'Slow zone (planet radii)', 2, 20, .5, 6], ['apK', 'Approach', 'Pace in the slow zone', .02, .5, .01, .08], ['apFarK', 'Approach', 'Pace further out', .05, 1, .01, .42],
+  ['apNearR', 'Approach', 'Slow zone (planet radii)', 2, 20, .5, 6], ['apK', 'Approach', 'Pace in the slow zone', .02, .5, .01, .08], ['grav', 'Gravity', 'Planet gravity (g)', 0, 2, .05, .9], ['gravEsc', 'Gravity', 'Nose-up angle to break free (°)', 10, 70, 1, 35], ['gravLift', 'Gravity', 'Lift from speed', 0, 3, .05, 1], ['gravCush', 'Gravity', 'Ground cushion height (m)', 0, 2000, 25, 350], ['apFarK', 'Approach', 'Pace further out', .05, 1, .01, .42],
   ['apEng', 'Approach', 'Throttle starts approach within (radii)', 1.2, 30, .5, 2.2],
   ['heatStart', 'Re-entry', 'Heat starts (km above the ground)', 21, 150, 1, 34], ['heatPeak', 'Re-entry', 'Flare strength at the switch', 0, 1.5, .05, 1], ['heatFlareT', 'Re-entry', 'Flare length (s)', .1, 6, .05, 3],
   ['heatFade', 'Re-entry', 'Heat burn-off (s)', 1, 20, .5, 9], ['burnTime', 'Re-entry', 'Committed burn: seconds to the switch', 2, 20, .5, 6], ['heatHold', 'Re-entry', 'Flare holds after the switch (s)', 0, 5, .1, 2], ['exitTime', 'Re-entry', 'Committed climb out: seconds', 1, 12, .5, 4], ['vigStr', 'Re-entry', 'Plasma vignette strength', 0, 2, .05, 1], ['shake', 'Re-entry', 'Shake', 0, 1.5, .05, .4],
@@ -245,17 +412,17 @@ const TUNE_DEF = [
   ['fuelUse', 'Gameplay', 'Fuel use (×)', 0, 5, .05, 1], ['o2Use', 'Gameplay', 'Oxygen use (×)', 0, 5, .05, 1], ['dmg', 'Gameplay', 'Damage taken (×)', 0, 5, .05, 1], ['ore', 'Gameplay', 'Ore per rock (×)', 0, 5, .05, 1],
 ];
 const TUNE = {}; for (const d of TUNE_DEF) TUNE[d[0]] = d[6];
-try { const t = JSON.parse(localStorage.ieTune || '{}'), rv = +(localStorage.ieTuneV || 0); for (const k in t) if (k in TUNE && isFinite(t[k]) && !(rv < 2 && (TUNE_DEF.find((d) => d[0] === k) || [])[1] === 'Re-entry')) TUNE[k] = +t[k]; localStorage.ieTuneV = 2; } catch {}   // v1.68: re-entry values saved before this build are dropped once, so the new timing applies
-const TUNE_ON = !/\/infiniteend\/?$/.test(location.pathname) || /[?&]tune/.test(location.search);   // the console exists everywhere but production, unless ?tune
+try { const t = JSON.parse(localStorage.ieTune || '{}'), rv = +(localStorage.ieTuneV || 0); for (const k in t) if (k in TUNE && isFinite(t[k]) && !(rv < 2 && (TUNE_DEF.find((d) => d[0] === k) || [])[1] === 'Re-entry') && !(rv < 3 && (TUNE_DEF.find((d) => d[0] === k) || [])[1] === 'Flight')) TUNE[k] = +t[k]; localStorage.ieTuneV = 3; } catch {}   // v1.68: re-entry values saved before this build are dropped once, so the new timing applies
+const TUNE_ON = /[?&]tune/.test(location.search);   // the console exists everywhere but production, unless ?tune
 // v1.45: the event log: everything the game tells you (tips, comms, events, panels, hits, sounds), newest first, for the console
 const EVLOG = []; let evLast0 = '', evLastT = 0, tuneOpen = false, tuneEl = null;
 function evLog(t) { if (!t) return; t = String(t); const now = performance.now(); if (t === evLast0 && now - evLastT < 4000) return; evLast0 = t; evLastT = now; EVLOG.unshift([now, t]); if (EVLOG.length > 120) EVLOG.length = 120; if (typeof tuneLog === 'function') tuneLog(); }
 // v1.50: one shader build at a time, with a pause between, and never on the title screen. Chrome compiles every page's graphics in one
 // shared GPU process, so several big programs at once could stall the whole browser. A planet you're approaching jumps the queue.
-const BQ = []; let bqCur = '', bqGo = 0;
+const BQ = []; let bqCur = '', bqGo = 0, bqT0 = 0;
 function bq(name, mk, front) { if (bqCur === name) return; const j = BQ.findIndex((b) => b[0] === name); if (j >= 0) { if (!front) return; BQ.splice(j, 1); }
   if (front) BQ.unshift([name, mk]); else BQ.push([name, mk]); bqRun(); }
-function bqRun() { if (bqCur || !BQ.length || !bqGo) return; const [n, mk] = BQ.shift(), t0 = performance.now(); bqCur = n;
+function bqRun() { if (bqCur || !BQ.length || !bqGo || gl.isContextLost()) return; const [n, mk] = BQ.shift(), t0 = performance.now(); bqCur = n; bqT0 = t0;
   Promise.resolve().then(mk).catch((e) => console.error(n, e)).then(() => { evLog(`Load · ${n} built (${Math.round(performance.now() - t0)} ms)`); setTimeout(() => { bqCur = ''; bqRun(); }, 1500); }); }
 const step = (p, t) => { $('bf').style.transform = `scaleX(${p})`; $('pc').textContent = Math.round(p * 100) + '%'; $('st').textContent = t; return new Promise((r) => setTimeout(r, 30)); };
 
@@ -385,14 +552,6 @@ function bbCol(Tk) {
 }
 const PKN = ['gas giant', 'lava world', 'desert world', 'ocean world', 'toxic world', 'ice world', 'tidally locked world', 'shattered world'];
 const RAREN = ['common', 'uncommon', 'rare', 'legendary'];
-// v1.69: sub-types per world type (gas giant, lava, desert, ocean, jungle, ice, hot/cold, airless)
-const GSUB = [['banded giant', 'storm giant', 'ice giant', 'hot jupiter'], ['cracked lava world', 'magma ocean', 'sulfur world', 'obsidian world'], ['dune world', 'rift desert', 'salt flats', 'cratered desert'],
-  ['ocean world', 'archipelago', 'hycean world', 'capped ocean world'], ['jungle world', 'violet jungle', 'crimson jungle', 'glowing jungle'], ['snowball', 'cracked ice moon', 'methane world', 'cratered ice'],
-  ['terminator world', 'eyeball world', 'twilight world', 'scorched world'], ['cratered rock', 'carbon world', 'iron world', 'crystal world']];
-// v1.70: a system holds up to NPL bodies: the three main worlds (slots 0-2, unchanged), the system's other worlds farther out, and moons
-const NPL = 8, ROMAN = ['I', 'II', 'III', 'IV'];
-const gRg = (rad, kind, moon) => (kind === 0 ? .2 + rad * .0012 : .055 + rad * .013) * TUNE.plScale * (moon ? .6 : 1);
-const gxOf = (k) => { const p = SYS && SYS.planets && SYS.planets[k]; return new Float32Array(p && p.gx ? p.gx : [0, 0, 0, 0]); };
 const GASBAND = [
   [[.62, .38, .18], [.95, .78, .42]],
   [[.18, .32, .62], [.55, .72, .9]],
@@ -484,17 +643,7 @@ function fillWorld(s, id, R) {
     { const wr = mulberry32(hs(Math.imul(id, 31) + i * 977 ^ 0x504C4E54)), ex = wr() < .17, hr = ex ? wr() * 6.2832 : (wr() - .5) * 1.1, sa = .85 + wr() * .55, va = .62 + wr() * .3;   // v1.51: every world its own colours (exotic ones any hue); own RNG so the universe's layout is unchanged
       const co = Math.cos(hr), k = (1 - co) / 3, q = Math.sin(hr) * .57735, turn = (c) => { const r = co * c[0] + k * (c[0] + c[1] + c[2]) + q * (c[2] - c[1]), g = co * c[1] + k * (c[0] + c[1] + c[2]) + q * (c[0] - c[2]), b = co * c[2] + k * (c[0] + c[1] + c[2]) + q * (c[1] - c[0]), m = (r + g + b) / 3; return [r, g, b].map((v) => Math.max(.015, Math.min(1.2, (m + (v - m) * sa) * va))); };
       base = base.map(turn); }
-    let gx = [0, 0, 0, 0], sub = '';   // v1.69: the genome: a sub-type within the type, and continuous features (crater density/feature strength, polar caps, city lights)
-    { const gr = mulberry32(hs(Math.imul(id, 131) + i * 7919 ^ 0x47454E4F)), sb = gr() * 4 | 0, fa = gr(), cap = gr() < .45 ? gr() * .9 : 0, city = pop === 'domed cities' ? .9 : pop === 'a mining colony' ? .45 : pop === 'outposts' ? .25 : 0;
-      gx = [sb, fa, kind === 0 || kind === 1 ? 0 : cap, city];
-      sub = (GSUB[kind] || [])[sb] || '';
-      const set = (a, b) => { base = [a, b]; };
-      if (kind === 1 && sb === 2) set([.9, .78, .28], [.82, .42, .14]);
-      if (kind === 5 && sb === 2) set([.86, .6, .32], [.72, .45, .25]);
-      if (kind === 7 && sb === 2) set([.5, .3, .18], [.38, .36, .34]);
-      if (kind === 0 && sb === 2) { const h = gr(); set(h < .5 ? [.42, .7, .86] : [.36, .52, .9], h < .5 ? [.6, .85, .92] : [.55, .7, .95]); }
-      if (kind === 3 && sb === 2) set([.08, .22, .5], [.12, .3, .55]); }
-    worlds.push({ au: a, mass, Teq, kind, rad, base, rare, anomaly, rings, moons, air, pop, gx, sub });
+    worlds.push({ au: a, mass, Teq, kind, rad, base, rare, anomaly, rings, moons, air, pop });
   }
   const slot = [null, null, null];
   let gas = null, rock = null, ice = null, rockScore = 1e9;
@@ -503,31 +652,16 @@ function fillWorld(s, id, R) {
     if (w.kind === 5 && (!ice || w.au > ice.au)) ice = w;
     if (w.kind !== 0 && w.kind !== 5) { const sc = Math.abs(w.Teq - 280) + (w.kind === 3 ? -40 : 0); if (sc < rockScore) { rockScore = sc; rock = w; } }
   }
-  if (!gas && worlds.length) gas = worlds.filter((w) => w !== rock && w !== ice).sort((p, q) => q.rad - p.rad)[0] || null;   // v1.69: never the world already in another slot (that put one planet in two places)
+  if (!gas && worlds.length) gas = worlds.slice().sort((p, q) => q.rad - p.rad)[0];
   if (!rock) rock = worlds.find((w) => w !== gas && w !== ice) || null;
   if (!ice) ice = worlds.find((w) => w !== gas && w !== rock) || null;
   slot[0] = gas; slot[1] = rock; slot[2] = ice;
   if (id === HOME && (!slot[1] || !slot[1].air)) {
     slot[1] = { au: 1, mass: 1, Teq: 280, kind: 3, rad: 6.4, base: [[.05, .16, .32], [.28, .48, .28]], rare: 0, anomaly: '', rings: 0, moons: 1, air: 1, pop: 'outposts' };
   }
-  { const xr = mulberry32(hs(Math.imul(id, 197) + 0x4D4F4F4E));   // v1.70: own RNG, so the main three worlds and every place stay where they were
-    const extra = worlds.filter((w) => !slot.includes(w)).sort((p, q) => p.au - q.au).slice(0, 3);
-    for (const w of extra) slot.push(w);
-    const mkMoon = (p, mi, gas) => { const r = xr();
-      let kind, sb, base, air = 0;
-      if (gas && r < .22) { kind = 1; sb = 2; base = [[.9, .78, .28], [.82, .42, .14]]; air = xr() < .4; }
-      else if (gas && r < .42) { kind = 5; sb = 2; base = [[.86, .6, .32], [.72, .45, .25]]; air = 1; }
-      else if (r < (gas ? .66 : .35)) { kind = 5; sb = xr() < .6 ? 1 : 3; base = [[.62, .7, .78], [.92, .9, .86]]; air = xr() < .25; }
-      else { kind = 7; sb = xr() * 4 | 0; base = sb === 2 ? [[.5, .3, .18], [.38, .36, .34]] : sb === 1 ? [[.08, .08, .09], [.28, .27, .3]] : [[.22, .18, .16], [.5, .46, .42]]; }
-      const tw = .82 + xr() * .36; base = base.map((c) => c.map((v) => Math.min(1.1, v * tw * (.92 + xr() * .16))));
-      const rad = gas ? .9 + xr() * 1.9 : .5 + xr() * .9;
-      return { au: p.au, mass: .02 + xr() * .1, Teq: p.Teq, kind, rad, base, rare: kind === 1 || (kind === 5 && sb === 2) ? 1 : 0, anomaly: '', rings: 0, moons: 0, air: kind !== 7 && air, pop: 'none',
-        gx: [sb, xr(), kind === 5 ? xr() * .5 : 0, 0], sub: (GSUB[kind] || [])[sb] || '', moonOf: slot.indexOf(p), mi, mf: gas ? 4.5 + xr() * 4.5 : 3.2 + xr() * 2.6, mu: xr() * 6.2832, me: (xr() - .5) * .35 }; };
-    const par = slot.filter((w) => w && w.moons > 0 && w.kind !== 7).sort((p, q) => (q.kind === 0) - (p.kind === 0) || q.rad - p.rad);
-    for (const p of par) { const n = Math.min(p.moons, p.kind === 0 ? 1 + (xr() < .6) + (xr() < .25) : 1); for (let j = 0; j < n && slot.length < NPL; j++) slot.push(mkMoon(p, j, p.kind === 0)); } }
   const used = [];
   const wr = nameRng(id, 0x574F524C);
-  s.pk = Array(NPL).fill(5); s.pk[0] = 0; s.prad = Array(NPL).fill(0); s.pg = []; s.pr = Array(NPL).fill(0); s.worlds = worlds; s.rareSum = 0;
+  s.pk = [0, 5, 5, 0]; s.prad = [0, 0, 0]; s.worlds = worlds; s.rareSum = 0;
   const SUN0 = [.45 / .9966, .32 / .9966, -.83 / .9966];
   const Rp = mulberry32((id ^ 0x9A11E7) >>> 0);
   // the ecliptic: a plane through the star's direction, tilted a little per system; EC is the arc's direction, EN its normal
@@ -536,11 +670,10 @@ function fillWorld(s, id, R) {
   { const l = Math.hypot(EN[0], EN[1], EN[2]); EN = [EN[0] / l, EN[1] / l, EN[2] / l]; }
   const EC = [(EN[1] * SUN0[2] - EN[2] * SUN0[1]) * sgn, (EN[2] * SUN0[0] - EN[0] * SUN0[2]) * sgn, (EN[0] * SUN0[1] - EN[1] * SUN0[0]) * sgn];
   let feat = -1, fr = -1; for (let i = 0; i < 3; i++) { const w = slot[i]; if (w) { const r0 = w.rad / Math.max(48, w.au * 155); if (r0 > fr) { fr = r0; feat = i; } } }
-  for (let i = 0; i < slot.length; i++) {
-    const w = slot[i], mo = w && w.moonOf != null;
+  for (let i = 0; i < 3; i++) {
+    const w = slot[i];
     let nm = '—';
-    if (mo) nm = s.planets[w.moonOf].name + ' ' + ROMAN[w.mi];
-    else if (w) {
+    if (w) {
       let guard = 0; do { nm = pickN(wr, NM.world); guard++; } while (used.includes(nm) && guard < 12);
       used.push(nm);
       if (s.fac === 0) nm = 'MC-' + nm;
@@ -549,18 +682,16 @@ function fillWorld(s, id, R) {
     // v1.26: the star anchors the system. Planets sit along one arc (the ecliptic) on one side of the star, 40°–115° from it, so they show
     // real phases, never crowd each other, and the biggest-looking one (the nearest) has presence; the rest are small discs, not dots.
     const raw = w ? w.rad / Math.max(48, w.au * 155) : 0;
-    let ang = mo ? 0 : !w ? 0 : i === feat ? .11 + .14 * Rp() : i < 3 ? Math.max(.026, Math.min(.075, raw * 9 + .01 * Rp())) : Math.max(.011, Math.min(.032, raw * 5 + .008 * Rp()));   // v1.70: the outer worlds sit 2-6x farther out
+    const ang = !w ? 0 : i === feat ? .11 + .14 * Rp() : Math.max(.026, Math.min(.075, raw * 9 + .01 * Rp()));
     let d = [0, 1, 0], guard = 0, ok = false;
-    if (mo) { const P = s.pg[w.moonOf], pw = slot[w.moonOf], ca = Math.cos(w.mu), sa = Math.sin(w.mu), u0 = [SUN0[0] * ca + EC[0] * sa + EN[0] * w.me, SUN0[1] * ca + EC[1] * sa + EN[1] * w.me, SUN0[2] * ca + EC[2] * sa + EN[2] * w.me], ul = Math.hypot(...u0), u = u0.map((v) => v / ul), rr = gRg(pw.rad, pw.kind) * w.mf;
-      const G = [P[0] + u[0] * rr, P[1] + u[1] * rr, P[2] + u[2] * rr], gl = Math.hypot(...G); d = G.map((v) => v / gl); ang = gRg(w.rad, w.kind, 1) * TUNE.spread / gl; (s.moonU || (s.moonU = []))[i] = [u[0], u[1], u[2], w.mf, w.moonOf]; }
-    else if (w) do {
+    if (w) do {
       const th = .5 + Rp() * 2.1, el = (Rp() - .5) * .5, ce = Math.cos(el), cs = Math.cos(th) * ce, sn = Math.sin(th) * ce, se = Math.sin(el);
       d = [SUN0[0] * cs + EC[0] * sn + EN[0] * se, SUN0[1] * cs + EC[1] * sn + EN[1] * se, SUN0[2] * cs + EC[2] * sn + EN[2] * se];
       let nearP = false;
-      for (let k = 0; k < i; k++) if (s.pl[k * 4 + 3] > 0 && Math.acos(Math.min(1, d[0] * s.pl[k * 4] + d[1] * s.pl[k * 4 + 1] + d[2] * s.pl[k * 4 + 2])) < Math.max(i < 3 ? .8 : .3, (ang + s.pl[k * 4 + 3]) * 1.6 + .1)) nearP = true;   // v1.33: at least ~46° apart, so a view rarely holds more than two
+      for (let k = 0; k < i; k++) if (s.pl[k * 4 + 3] > 0 && Math.acos(Math.min(1, d[0] * s.pl[k * 4] + d[1] * s.pl[k * 4 + 1] + d[2] * s.pl[k * 4 + 2])) < Math.max(.8, (ang + s.pl[k * 4 + 3]) * 1.6 + .1)) nearP = true;   // v1.33: at least ~46° apart, so a view rarely holds more than two
       ok = !nearP; guard++;
     } while (!ok && guard < 96);
-    s.pr[i] = ang; s.prad[i] = w ? w.rad : 0; s.pk[i] = w ? w.kind : 5; s.pg[i] = w ? (() => { const D = gRg(w.rad, w.kind, mo) / ang * TUNE.spread; return [d[0] * D, d[1] * D, d[2] * D]; })() : null;
+    s.pr[i] = ang; s.prad[i] = w ? w.rad : 0; s.pk[i] = w ? w.kind : 5;
     s.pl.set(w ? [d[0], d[1], d[2], ang] : [0, 1, 0, 0], i * 4);
     (s.pd || (s.pd = []))[i] = w ? [d[0], d[1], d[2]] : null;   // v1.34: the planet's direction from the gate, kept: the system's one map is built from it
     const A = w ? w.base[0] : [.2, .2, .2], B = w ? w.base[1] : [.4, .4, .4];
@@ -569,7 +700,7 @@ function fillWorld(s, id, R) {
     s.pb.set([mix(B[0], s.pal[0]), mix(B[1], s.pal[1]), mix(B[2], s.pal[2])], i * 3);
     const airName = !w || !w.air ? '' : w.kind === 0 ? 'Cloud Tops, ' + nm : w.kind === 5 ? 'Ice Skies of ' + nm : 'Skies of ' + nm;
     const airDesc = !w ? '' : w.kind === 0 ? 'Flight above the cloud deck · banded storms · oxygen in the deck' : w.kind === 1 ? 'A thin burning sky over a lava plain' : w.kind === 2 ? 'Dust and a hard light over dunes' : w.kind === 3 ? 'Thin air over an ocean world · settlements below' : w.kind === 4 ? 'A sour yellow deck · filters advised' : w.kind === 6 ? 'A hot face and a frozen face, and a thin dusk between' : 'Low over a frozen world · fracture light';
-    s.planets.push(w ? { name: nm, type: PKN[w.kind], sub: w.sub, gx: w.gx, kind: w.kind, orbit: +w.au.toFixed(2), moons: w.moons, pop: w.pop, rare: RAREN[w.rare], rareN: w.rare, anomaly: w.anomaly, Teq: Math.round(w.Teq), mass: +w.mass.toFixed(1), air: w.air ? 1 : 0, airName, airDesc, rings: w.rings ? 1 : 0, moonOf: mo ? w.moonOf : null } : { name: '—', type: 'none', kind: 5, orbit: 0, moons: 0, pop: 'none', rare: 'common', rareN: 0, anomaly: '', Teq: 0, mass: 0, air: 0, airName: '', airDesc: '', rings: 0 });
+    s.planets.push(w ? { name: nm, type: PKN[w.kind], kind: w.kind, orbit: +w.au.toFixed(2), moons: w.moons, pop: w.pop, rare: RAREN[w.rare], rareN: w.rare, anomaly: w.anomaly, Teq: Math.round(w.Teq), mass: +w.mass.toFixed(1), air: w.air ? 1 : 0, airName, airDesc, rings: w.rings ? 1 : 0 } : { name: '—', type: 'none', kind: 5, orbit: 0, moons: 0, pop: 'none', rare: 'common', rareN: 0, anomaly: '', Teq: 0, mass: 0, air: 0, airName: '', airDesc: '', rings: 0 });
     if (w) s.rareSum += w.rare;
   }
   s.oreBias = Math.max(-.02, Math.min(.03, (Z - .45) * .05 + (dead ? .01 : 0)));
@@ -577,7 +708,7 @@ function fillWorld(s, id, R) {
   s.oreName = ['rock', 'iron', 'ice', 'molten', 'overgrown', 'obsidian'][s.mat[0]] || 'rock';
 }
 function mkSys(id) {
-  id >>>= 0; const rnd = mulberry32(id ^ MASTER); const t = id & 7, a = ARC[t], s = { id, t, cls: t, a, salt: 0, mat: REGT[t], sky: SKYW[t].slice(), pr: Array(NPL).fill(0), locs: [], loc: 0, planets: [], pal: new Float32Array(12), pl: new Float32Array(NPL * 4), pa: new Float32Array(NPL * 4), pb: new Float32Array(NPL * 3), seed: [0, 0, 0] };
+  id >>>= 0; const rnd = mulberry32(id ^ MASTER); const t = id & 7, a = ARC[t], s = { id, t, cls: t, a, salt: 0, mat: REGT[t], sky: SKYW[t].slice(), pr: [0, 0, 0], locs: [], loc: 0, planets: [], pal: new Float32Array(12), pl: new Float32Array(12), pa: new Float32Array(12), pb: new Float32Array(9), seed: [0, 0, 0] };
   // the kind's colours, with the hue turned a little so two systems of a kind are not twins
   const th = (rnd() - .5) * .9, co = Math.cos(th), si = Math.sin(th), k = (1 - co) / 3, q = si * .57735, P = PAL[t];
   for (let i = 0; i < 12; i += 3) { const r = P[i], g = P[i + 1], b = P[i + 2], w = i < 9 ? 1 : .3; s.pal[i] = r + w * ((co + k - 1) * r + (k - q) * g + (k + q) * b); s.pal[i + 1] = g + w * ((k + q) * r + (co + k - 1) * g + (k - q) * b); s.pal[i + 2] = b + w * ((k - q) * r + (k + q) * g + (co + k - 1) * b); }
@@ -602,7 +733,7 @@ function mkSys(id) {
     const [ws, ss] = NM.place[k]; let w; do { w = pickN(lr, ws); } while (used.includes(w) && used.length < ws.length); used.push(w);
     const sf = pickN(lr, ss); return k === 3 ? 'The ' + w + ' ' + sf : w + ' ' + sf; };
   kinds.forEach((k, i) => s.locs.push({ i, name: LN(k), t: k, kind: NAMES[k], body: k === 7 && t !== 3 ? 0 : k === 1 ? 2 : k === 2 ? 1 : -1, desc: ARC[k].tr }));
-  for (let i = 0; i < s.planets.length; i++) { const p = s.planets[i]; if (!p || !p.air) continue; const look = p.kind === 0 || p.kind === 4 ? 7 : p.kind === 5 ? 1 : 0; s.locs.push({ i: s.locs.length, name: p.airName, t: look, kind: 'Atmosphere', body: -1, atm: i + 1, skin: p.kind, desc: p.airDesc }); }
+  for (let i = 0; i < 3; i++) { const p = s.planets[i]; if (!p || !p.air) continue; const look = p.kind === 0 || p.kind === 4 ? 7 : p.kind === 5 ? 1 : 0; s.locs.push({ i: s.locs.length, name: p.airName, t: look, kind: 'Atmosphere', body: -1, atm: i + 1, skin: p.kind, desc: p.airDesc }); }
   { const h = hs(id ^ 0x5A17) >>> 0, p = (h % 1000) / 1000, q = ((h >>> 10) % 1000) / 1000 * 6.283, y = ((h >>> 20) % 1000) / 1000 * 1.2 - .5, cc = Math.sqrt(Math.max(0, 1 - y * y));   // a rare sight in this system's sky, if any
     s.ph = p < .42 ? 0 : p < .56 ? 1 : p < .67 ? 2 : p < .75 ? 3 : p < .86 ? 4 : p < .95 ? 5 : 6; s.phs = ((h >>> 5) % 97) / 97; s.pq = [Math.cos(q) * cc, y, Math.sin(q) * cc]; }
   s.fac = (hs(id ^ 0xFAC7) >>> 0) % 4; s.danger = (hs(id ^ 0xD4) >>> 0) % 5; s.econ = ['extraction', 'refining', 'agriculture', 'salvage', 'research', 'trade hub'][(hs(id ^ 0xEC0) >>> 0) % 6];
@@ -644,9 +775,7 @@ function setLoc(s, i) {
     s.pal[i] = Math.max(.01, .82 * (co * R0 + k * (R0 + G0 + B0) + q * (B0 - G0)) + .18 * r); s.pal[i + 1] = Math.max(.01, .82 * (co * G0 + k * (R0 + G0 + B0) + q * (R0 - B0)) + .18 * g); s.pal[i + 2] = Math.max(.01, .82 * (co * B0 + k * (R0 + G0 + B0) + q * (G0 - R0)) + .18 * b); }
   for (let i = 0; i < 9; i += 3) { const m = (s.pal[i] + s.pal[i + 1] + s.pal[i + 2]) / 3; for (let j = 0; j < 3; j++) s.pal[i + j] = Math.max(.01, (m + (s.pal[i + j] - m) * (s.sat || 1.45) * (s.moodS || 1)) * (s.bri || 1) * (s.moodB || 1)); }
   s.seed = [s.seed0[0] + s.loc * 7.3, s.seed0[1] + s.loc * 3.1, s.seed0[2] - s.loc * 5.7];
-  for (let k = 0; k < NPL; k++) { const pd = s.pd && s.pd[k]; if (pd) s.pl.set(pd, k * 4); s.pl[k * 4 + 3] = L.body === k ? (k ? .3 : .6) : s.pr[k] || 0; }
-  if (L.atm && s.pg && s.pg[L.atm - 1]) { const o = s.pg[L.atm - 1];   // v1.70: from inside a world's sky, the others are where they really are from that world (a moon's giant looms)
-    for (let k = 0; k < NPL; k++) { const g = s.pg[k]; if (k === L.atm - 1 || !g || !(s.pr[k] > 0)) continue; const v = [g[0] - o[0], g[1] - o[1], g[2] - o[2]], dd = Math.hypot(...v) || 1; s.pl.set([v[0] / dd, v[1] / dd, v[2] / dd, Math.max(.004, Math.min(.3, gRg(s.prad[k], s.pk[k], s.planets[k] && s.planets[k].moonOf != null) / dd))], k * 4); } }
+  for (let k = 0; k < 3; k++) s.pl[k * 4 + 3] = L.body === k ? (k ? .3 : .6) : s.pr[k];
   // one headline per sky: a black hole, a ringworld, or a rare phenomenon. Close stars and showpiece suns yield when one is already up.
   if (s.atm) { s.sky[0] = 0; s.sky[1] = 0; s.ph = 0; s.headline = 0; }
   else if (s.sky[0] > .35) { s.sky[1] = 0; s.sky[2] *= .15; s.sky[3] *= .2; s.ph = 0; s.headline = 1; }
@@ -678,12 +807,15 @@ function progStart(vs, fs) {
 }
 async function progA(vs, fs) {                                  // the same program, but the page stays alive while the GPU works on it
   const st = progStart(vs, fs);
-  if (PSC) { let n = 0; while (!gl.getProgramParameter(st.p, PSC.COMPLETION_STATUS_KHR) && n++ < 900) await new Promise((r) => setTimeout(r, 16)); }
+  // v1.81: keep waiting however long the driver takes. Asking for the result before it is ready blocks the browser's shared
+  // graphics process until the compile finishes: that, after the old 15 s limit ran out, was the whole-browser freeze on Windows.
+  if (PSC) { const t0 = performance.now(); while (!gl.isContextLost() && !gl.getProgramParameter(st.p, PSC.COMPLETION_STATUS_KHR) && performance.now() - t0 < 600000) await new Promise((r) => setTimeout(r, performance.now() - t0 < 2000 ? 16 : 100)); }
   return progEnd(st);
 }
 function prog(vs, fs) { return progEnd(progStart(vs, fs)); }
 function progEnd(st) {
   const p = st.p;
+  if (gl.isContextLost()) throw Error('graphics context lost');
   if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
     for (const [h, s] of st.sh) if (!gl.getShaderParameter(h, gl.COMPILE_STATUS)) throw Error(gl.getShaderInfoLog(h) + '\n' + s.split('\n').map((l, i) => (i + 1) + ': ' + l).join('\n').slice(0, 6000));
     throw Error(gl.getProgramInfoLog(p));
@@ -1018,7 +1150,7 @@ void main(){
  }
  vC=aP.xy;vT=vec3(aP.xy*.22+sd*7.,sd*3.);vP=p;gl_Position=uVP*vec4(p,1);}`;
 const SPR_F = HD + `
-in vec2 vC;in vec4 vK;in vec3 vT;in vec3 vP;out vec4 o;uniform vec4 uPlS[8];
+in vec2 vC;in vec4 vK;in vec3 vT;in vec3 vP;out vec4 o;uniform vec4 uPlS[3];
 void main(){float r=dot(vC,vC),a;
  vec3 jt=vT+(fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(.06711056,.00583715))))-.5)*.012;
  if(vK.w<.5)a=exp(-r*4.)-.018;
@@ -1027,7 +1159,7 @@ void main(){float r=dot(vC,vC),a;
  else if(vK.w<3.5)a=exp(-vC.x*vC.x*5.)*smoothstep(1.,.5,abs(vC.y));
  else if(vK.w<4.5)a=exp(-r*4.)-.018;
  else{float n=texture(uNz,jt).r*texture(uNz,jt*2.7+.4).r*4.;a=smoothstep(1.,.1,r)*smoothstep(.15,1.,n);}
- if(vK.w>1.5&&vK.w<2.5){vec3 dd=normalize(vP);for(int i=0;i<8;i++){vec4 Q=uPlS[i];if(Q.w>0.){float an=acos(clamp(dot(dd,Q.xyz),-1.,1.)),rr=asin(min(Q.w,.999));a*=smoothstep(rr*.985,rr*1.03,an);}}}   // v1.52: the nebula sheets lie beyond the planets: a planet's disc hides them (they used to veil every world)
+ if(vK.w>1.5&&vK.w<2.5){vec3 dd=normalize(vP);for(int i=0;i<3;i++){vec4 Q=uPlS[i];if(Q.w>0.){float an=acos(clamp(dot(dd,Q.xyz),-1.,1.)),rr=asin(min(Q.w,.999));a*=smoothstep(rr*.985,rr*1.03,an);}}}   // v1.52: the nebula sheets lie beyond the planets: a planet's disc hides them (they used to veil every world)
  o=vec4(vK.rgb*max(a,0.),0);}`;
 
 // the cockpit: solid metal lit by the system's star and sky, so light slides across it as the ship turns.
@@ -1210,16 +1342,32 @@ out vec2 vU;void main(){vec2 p=vec2(gl_VertexID<<1&2,gl_VertexID&2);vU=p;gl_Posi
 
 // the sky: nebula, stars, the sun, and a ringed giant with a moon
 const SKY_F = HD + `
-in vec2 vU;uniform vec4 uBS[8],uBC[8],uCS;uniform vec3 uCC;uniform vec4 uSky,uPl[8],uPa[8],uOrb,uPh,uPk;uniform vec3 uPb[8],uPLd[8],uSd,uOa,uOb,uPq,uAir,uPD;uniform float uPoA[8],uPkd[8];uniform ivec3 uLoop;uniform vec4 uSkT;uniform mat3 uPM;uniform vec4 uPG;out vec4 o;
+in vec2 vU;uniform vec4 uBS[8],uBC[8],uCS;uniform vec3 uCC;uniform vec4 uSky,uPl[3],uPa[3],uOrb,uPh,uPk;uniform vec3 uPb[3],uPLd[3],uSd,uOa,uOb,uPq,uAir,uPD;uniform vec3 uPo;uniform ivec3 uLoop;uniform vec4 uSkT;uniform mat3 uPM;uniform vec4 uPG;out vec4 o;
 float hsh(vec3 p){p=fract(p*.3183099+.1);p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
 float n3(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.-2.*f);
  return mix(mix(mix(hsh(i),hsh(i+vec3(1,0,0)),f.x),mix(hsh(i+vec3(0,1,0)),hsh(i+vec3(1,1,0)),f.x),f.y),
   mix(mix(hsh(i+vec3(0,0,1)),hsh(i+vec3(1,0,1)),f.x),mix(hsh(i+vec3(0,1,1)),hsh(i+vec3(1,1,1)),f.x),f.y),f.z);}
 // smooth noise worked out per pixel: the sky's large shapes are far too magnified to read from a small texture cleanly
+#ifndef UZ
+#define UZ
+uniform int uZero;
+#endif
+// v1.77: the noise as small loops the compiler can't unroll (bounded by a never-set uniform): the same values, a fraction of the code.
+// On Windows the DirectX compiler writes every call out in full; unrolled, the planet sky took 60 s to compile on an RTX 3050 Ti.
+// Only in the planet sky program: elsewhere the unrolled forms compile quickly and draw faster.
+#ifdef ATM
+float vn(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*f*(f*(f*6.-15.)+10.);float r=0.;
+ for(int c=0;c<8+uZero;c++){vec3 o=vec3(float(c&1),float((c>>1)&1),float((c>>2)&1)),w=mix(1.-f,f,o);r+=w.x*w.y*w.z*hsh(i+o);}return r;}
+#else
 float vn(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*f*(f*(f*6.-15.)+10.);
  return mix(mix(mix(hsh(i),hsh(i+vec3(1,0,0)),f.x),mix(hsh(i+vec3(0,1,0)),hsh(i+vec3(1,1,0)),f.x),f.y),
   mix(mix(hsh(i+vec3(0,0,1)),hsh(i+vec3(1,0,1)),f.x),mix(hsh(i+vec3(0,1,1)),hsh(i+vec3(1,1,1)),f.x),f.y),f.z);}
+#endif
+#ifdef ATM
+float tn(vec3 p){p*=4.;float r=0.;for(int o=0;o<3+uZero;o++){r+=(o==0?.55:o==1?.3:.15)*vn(o==0?p:o==1?p*2.03+7.:p*4.1+3.);}return r;}
+#else
 float tn(vec3 p){p*=4.;return .55*vn(p)+.3*vn(p*2.03+7.)+.15*vn(p*4.1+3.);}
+#endif
 float stars(vec3 d,float sc,float th){vec3 p=d*sc,i=floor(p),f=p-i;float h=hsh(i);
  vec3 q=.2+.6*vec3(hsh(i+3.1),hsh(i+7.7),hsh(i+11.3));
  float r=length(f-q),tw=.6+.4*sin(TIME*(1.3+h*7.)+h*97.)*sin(TIME*(.7+h*3.1)+h*41.);   // far stars scintillate, each at its own pace
@@ -1287,10 +1435,19 @@ vec3 closeStar(vec3 d){
 // noise, identical on the GPU and in JS (the ground's collision samples it too).
 uint sh3(ivec3 p){uvec3 q=uvec3(p)*uvec3(1597334673u,3812015801u,2798796415u);return (q.x^q.y^q.z)*1597334673u;}
 float shv(ivec3 p){return float(sh3(p)>>8u)*(1./16777216.);}
+#ifndef UZ
+#define UZ
+uniform int uZero;
+#endif
+#ifdef ATM
+float sv3(vec3 x){vec3 i=floor(x),f=x-i;f=f*f*(3.-2.*f);ivec3 j=ivec3(i);float r=0.;
+ for(int c=0;c<8+uZero;c++){ivec3 o=ivec3(c&1,(c>>1)&1,(c>>2)&1);vec3 w=mix(1.-f,f,vec3(o));r+=w.x*w.y*w.z*shv(j+o);}return r;}
+#else
 float sv3(vec3 x){vec3 i=floor(x),f=x-i;f=f*f*(3.-2.*f);ivec3 j=ivec3(i);
  float a=mix(mix(shv(j),shv(j+ivec3(1,0,0)),f.x),mix(shv(j+ivec3(0,1,0)),shv(j+ivec3(1,1,0)),f.x),f.y);
  float b=mix(mix(shv(j+ivec3(0,0,1)),shv(j+ivec3(1,0,1)),f.x),mix(shv(j+ivec3(0,1,1)),shv(j+ivec3(1,1,1)),f.x),f.y);return mix(a,b,f.z);}
-float sn(vec3 p){p*=4.;return .55*sv3(p)+.3*sv3(p*2.03+7.)+.15*sv3(p*4.1+3.);}
+#endif
+float sn(vec3 p){p*=4.;float r=0.;for(int o=0;o<3+uZero;o++){r+=(o==0?.55:o==1?.3:.15)*sv3(o==0?p:o==1?p*2.03+7.:p*4.1+3.);}return r;}
 float cloudD(vec3 n,float cz){vec3 cw=n+vec3(sn(n*2.+5.),sn(n*2.3+11.),sn(n*1.8+2.))*.32;float v=sn(cw*1.3);if(cz>0.)v+=((sn(cw*22.+3.)-.5)*.2+(sn(cw*85.+7.)-.5)*.08)*cz;return smoothstep(.52,.84,v);}
 float cloudA(vec3 n){return cloudD(n,0.);}
 vec3 sDet(vec3 n,float cz){return cz<=0.?n:n+((vec3(sn(n*37.+1.),sn(n*41.+2.),sn(n*39.+3.))-.5)*.03+(vec3(sn(n*170.+4.),sn(n*163.+5.),sn(n*177.+6.))-.5)*.007)*cz;}   // v1.38: finer layers of the same pattern, fading in as you close in: same coasts, more detail
@@ -1305,53 +1462,9 @@ vec3 surfS(vec3 n,int k,vec3 ca,vec3 cb,vec3 L,out float land,out float cl){floa
   else{s=mix(mix(vec3(.8,.9,.97),cb,.4),mix(ca,vec3(.72,.86,.95),.2),.4+.2*w2);s=mix(s,ca*.4,smoothstep(.045,0.,abs(fract(n.y*5.+w*2.4)-.5)-.47)*.6);cl=smoothstep(.66,.9,w)*.2;land=1.;}
 
  s=mix(vec3(dot(s,vec3(.3,.5,.2))),s,1.25);s*=.94+.06*w3;return s;}
-uniform vec4 uGx[8];vec4 gGx=vec4(0);
-// v1.69: the planet genome: sub-types and features layered on each world type, the same in the orbit view and on the ground
-vec3 gh3(vec3 p){p=fract(p*vec3(.1031,.103,.0973));p+=dot(p,p.yxz+33.33);return fract((p.xxy+p.yzz)*p.zyx);}
-float gCrater(vec3 p,out float rim){vec3 i=floor(p),f=fract(p);float fl=0.;rim=0.;
- for(int x=0;x<2;x++)for(int y=0;y<2;y++)for(int z=0;z<2;z++){vec3 o=vec3(float(x),float(y),float(z)),h=gh3(i+o),c=o+(h-.5)*.7;float r=.16+.3*fract(h.x*7.3),d=length(f-c)/r;
-  fl=max(fl,smoothstep(1.,.72,d));rim=max(rim,smoothstep(.14,0.,abs(d-1.)));}
- return fl;}
-void gFeat(vec3 n,int k,vec4 g,vec3 ca,vec3 cb,vec3 L,inout vec3 s,inout float cl,out vec3 em){em=vec3(0);int sb=int(g.x+.5);float a=g.y,b=g.z,c=g.w;
- float w=sn(n*1.15+.2),w2=sn(n*2.6+.7),w3=sn(n*5.2+1.4),hi=sn(n*61.+3.),rm=0.,fl=0.;
- if(k==0){
-  if(sb==1){for(int j=0;j<5;j++){vec3 h=gh3(vec3(float(j)*7.1,a*13.,3.3))*2.-1.,cc=normalize(vec3(h.x,h.y*.45,h.z));float d=acos(clamp(dot(n,cc),-1.,1.)),r=.07+.12*fract(h.x*9.);
-    if(d<r*1.6){vec3 t=normalize(cross(cc,vec3(0.,1.,0.))+1e-4),bt=cross(cc,t);float sw=.5+.5*sin(atan(dot(n,bt),dot(n,t))*2.-d/r*10.);s=mix(s,mix(cb*1.25,ca*.55,sw),smoothstep(r*1.45,r*.5,d));}}}
-  else if(sb==2){s=mix(ca,cb,.5+.5*sin(n.y*4.+w*1.2))*.9;s=mix(s,vec3(dot(s,vec3(.33))),.2);cl=0.;}
-  else if(sb==3){em=vec3(1.,.38,.12)*(.45+.55*w2)*(.5+b);s=mix(s,s*vec3(1.1,.7,.5),.4);}
- }else if(k==1){
-  if(sb==1){s=mix(vec3(.05,.02,.01),ca*.4,w2*.5);em=vec3(1.,.38,.08)*smoothstep(.35,.75,w*.6+w2*.4)*1.6;}
-  else if(sb==2){vec3 io=mix(vec3(.92,.82,.3),vec3(.85,.45,.15),smoothstep(.3,.7,w2));io=mix(io,vec3(.95,.95,.85),smoothstep(.75,.9,w3)*.5);fl=gCrater(n*9.,rm);s=mix(io,vec3(.08,.05,.03),fl*.8);em=vec3(1.,.45,.1)*fl*.7;}
-  else if(sb==3){s=vec3(.03,.03,.035)*(.6+.8*w2);em=vec3(.6,.8,1.)*step(.93,hi)*.9;}
-  else em=vec3(1.,.4,.1)*smoothstep(.045,0.,abs(sn(n*4.+3.)-.5))*(.5+a)*1.4;
- }else if(k==2){
-  if(sb==1)s=mix(s,cb*.5,smoothstep(.04,0.,abs(sn(n*3.2+1.)-.5))*.85);
-  else if(sb==2){s=mix(s,vec3(.92,.9,.86),smoothstep(.45,.6,w));s*=1.-.3*smoothstep(.03,0.,abs(fract(w3*9.)-.5)-.44);}
-  else if(sb==3){fl=gCrater(n*7.,rm);s=mix(s,s*.6,fl*.7)+rm*.09;}
- }else if(k==3){
-  vec3 sea=mix(vec3(.02,.07,.16),ca*.8,.62),grd=mix(cb,ca*.75+.08,smoothstep(.25,.75,w2));
-  if(sb==1)s=mix(sea,grd,smoothstep(.6,.66,w3*.65+w2*.35));
-  else if(sb==2){s=mix(sea*.7,sea*1.15,w2);cl=max(cl,smoothstep(.42,.75,w)*.75);}
- }else if(k==4){
-  if(sb==1)s=mix(s,vec3(.36,.12,.42)*(.7+.5*w2),.55);
-  else if(sb==2)s=mix(s,vec3(.5,.1,.08)*(.7+.5*w2),.55);
-  else if(sb==3)em=vec3(.2,.9,.7)*smoothstep(.55,.8,w3)*.7;
- }else if(k==5){
-  if(sb==1){s=mix(s,vec3(.55,.25,.15),smoothstep(.03,0.,abs(sn(n*3.5+2.)-.5))*.85);s=mix(s,vec3(.6,.3,.2),smoothstep(.02,0.,abs(sn(n*6.+7.)-.5))*.5);}
-  else if(sb==2){s=mix(s,vec3(.85,.55,.25),.45);cl=max(cl,.25);}
-  else if(sb==3){fl=gCrater(n*8.,rm);s=mix(s,s*.7,fl*.6)+rm*.1;}
- }else if(k==6){
-  if(sb==1)s=mix(s,mix(vec3(.02,.08,.2),ca*.6,.4),smoothstep(.55,.72,dot(n,L)));
- }else if(k==7){
-  fl=gCrater(n*(6.+a*8.),rm);
-  if(sb==1){s=vec3(.025,.025,.03)*(.7+.6*w2);em=vec3(.8,.9,1.)*step(.95,hi)*.9;}
-  else if(sb==2)s=mix(vec3(.38,.36,.34),vec3(.55,.25,.12),smoothstep(.4,.7,w2))*(.8+.3*w3);
-  else if(sb==3){vec3 ir=.5+.5*cos(6.283*(w2*1.5+n.y+vec3(0.,.33,.67)));s=mix(s,ir*.6,.6);em=ir*step(.94,hi)*1.1;}
-  s=mix(s,s*.6,fl*.75)+rm*.07;
- }
- if(b>.01&&k!=0&&k!=1){float cap=smoothstep(1.-b*.55-.04,1.-b*.55+.04,abs(n.y)+(w-.5)*.12);s=mix(s,vec3(.88,.92,.96),cap*.9);}
- if(c>.01){float cty=smoothstep(.62,.8,sn(n*38.+5.))*smoothstep(.5,.7,sn(n*7.+1.));em+=vec3(1.,.78,.45)*cty*c*1.2;}
-}
+// v1.78: one pixel's angular size, measured once in main(). planet() runs inside a loop whose length comes from a uniform; a derivative
+// (fwidth) inside such a loop makes the Windows DirectX compiler try to force-unroll it, which took 10-60 s and froze the browser.
+float gPxA=.001;
 vec4 planet(vec3 d,vec3 P,float rp,vec3 ca,vec3 cb,float ring,float kd,vec4 Lo){
  float b=dot(d,P),ds=b*b-(1.-rp*rp);vec4 c=vec4(0);float ts=1e9;vec3 Ls0=Lo.w>0.?Lo.xyz:uSun.xyz;
  vec3 axis=normalize(abs(P.yzx)+vec3(.18,.9,.16));float spin=TIME*.008+P.x*4.+kd*1.7;int k=int(kd+.5);
@@ -1372,12 +1485,11 @@ vec4 planet(vec3 d,vec3 P,float rp,vec3 ca,vec3 cb,float ring,float kd,vec4 Lo){
   else if(k==6){float hot=smoothstep(-.08,.4,dot(n,L));vec3 cold=mix(vec3(.5,.66,.8),cb,.6),hotc=mix(ca*.3,mix(vec3(.95,.32,.06),ca,.45),smoothstep(.1,0.,abs(w-.48)));s=mix(cold,hotc,hot);cl=smoothstep(.72,.92,w2)*.12;land=hot;}
   else if(k==7){float br=smoothstep(.12,0.,abs(w-.4)-.07);s=mix(ca*.5+.03,cb,w2)*(1.-br*.7);cl=0.;land=0.;}
   else{s=mix(mix(vec3(.8,.9,.97),cb,.4),mix(ca,vec3(.72,.86,.95),.2),.4+.2*w2);s=mix(s,ca*.4,smoothstep(.045,0.,abs(fract(n.y*5.+w*2.4)-.5)-.47)*.6);cl=smoothstep(.66,.9,w)*.2;land=1.;}
-  vec3 gem;gFeat(n,k,gGx,ca,cb,L,s,cl,gem);
   s=mix(vec3(dot(s,vec3(.3,.5,.2))),s,1.22);s*=.94+.06*w3;if(k!=1&&k!=7){vec3 cw=n+vec3(sn(n*2.+5.),sn(n*2.3+11.),sn(n*1.8+2.))*.32;float cA=smoothstep(.52,.84,sn(cw*1.3)+(cz>0.?((sn(cw*22.+3.)-.5)*.2+(sn(cw*85.+7.)-.5)*.08)*cz:0.)),cB=smoothstep(.52,.84,sn((cw+L*.07)*1.3));s=mix(s,mix(vec3(.94,.96,.98),ca,.22),cA*(k==0?.4:.82));s*=1.-clamp(cB-cA,0.,1.)*(k==3?.35:.5);}
   float shd=k==5||k==7?0.:(k==3?smoothstep(.46,.64,sn((n+L*.04)*1.15+.2)*.7+sn((n+L*.04)*2.6+.7)*.3):smoothstep(.52,.8,sn((n+L*.05)*1.2)))*(1.-cl);
   s*=1.-.32*shd;s=mix(s,k==0?mix(vec3(.96,.9,.8),ca,.45):mix(vec3(.92,.93,.95),airC,.18),cl);
   float nr=smoothstep(.45,.9,rp),lit=smoothstep(-.14,.2,nl),mu=max(dot(n,-d),0.),rim=pow(1.-mu,2.6)*(1.-nr*.85),hz=pow(1.-mu,1.55)*(1.-nr*.9),tw=exp(-nl*nl*36.)*smoothstep(-.22,.08,nl);
-  vec3 col=s*lit*(.22+.78*max(nl,0.))*(.45+.7*max(atm,vec3(.3)))*.92+atm*.04*lit+gem*(.12+.88*(1.-lit));   // v1.52: falls off toward the terminator (was flat lit, so worlds glowed like discs)
+  vec3 col=s*lit*(.22+.78*max(nl,0.))*(.45+.7*max(atm,vec3(.3)))*.92+atm*.04*lit;   // v1.52: falls off toward the terminator (was flat lit, so worlds glowed like discs)
   if(k==1)col+=vec3(1.,.32,.04)*land*(1.6+.5*sin(TIME*.35+w*18.));
   if(k==3)col+=vec3(1.,.74,.4)*(1.-lit)*land*smoothstep(.7,.9,w3)*1.5;
   if(k==5)col+=vec3(.55,.75,1.)*(1.-lit)*.05;
@@ -1390,7 +1502,7 @@ vec4 planet(vec3 d,vec3 P,float rp,vec3 ca,vec3 cb,float ring,float kd,vec4 Lo){
   if(h<.5){float lit=smoothstep(-.35,.35,dot(normalize(d-P*b),L)),a=(exp(-h*16.)*.65+exp(-h*4.5)*.16*smoothstep(.5,.2,h))*(.015+lit+.6*pow(max(dot(d,Ls0),0.),8.))*(1.-smoothstep(.45,.9,rp)*.92);   // the air glows where the star lights it (and when the star is behind it), not as a ring all the way round
    c=vec4((mix(atm,airC*airK,.4)*a*1.55+vec3(1.,.62,.32)*sunT*pow(max(dot(d,Ls0),0.),5.)*a*.8*airK),min(.88,a*1.2)*airK);}}
  if(ring>.5&&(k==0||k==5||k==7)){vec3 rn=normalize(vec3(.25,1.,.35)),e1=normalize(cross(rn,vec3(0,0,1))),e2=cross(rn,e1);float t=dot(P,rn)/max(dot(d,rn),1e-4);
-  vec3 hp=d*t-P;float r=length(hp)/max(rp,.02),fw=fwidth(r);
+  vec3 hp=d*t-P;float r=length(hp)/max(rp,.02),fw=t*gPxA/(max(abs(dot(d,rn)),.02)*max(rp,.02));
   if(t>0.&&t<ts&&r>1.32&&r<2.75){
    float lane=smoothstep(.42,.16,abs(fract(r*2.6)-.5));lane=mix(lane,.62,smoothstep(.015,.07,fw));
    float env=smoothstep(1.32,1.48,r)*smoothstep(2.75,2.45,r)*(1.-smoothstep(.05,0.,abs(r-1.92))*.8);
@@ -1399,30 +1511,37 @@ vec4 planet(vec3 d,vec3 P,float rp,vec3 ca,vec3 cb,float ring,float kd,vec4 Lo){
    c.rgb=c.rgb*(1.-a*.5)+ice*shd*a*(.4+.6*max(dot(normalize(P),L),0.));c.a=max(c.a,a*.6);}}
  return c;}
 void main(){
- vec3 d=normalize(uFw.xyz+uRt.xyz*mix(uRt.w,uFw.w,vU.x)+uUp.xyz*mix(uUp.w,uVel.w,vU.y));
+ vec3 d=normalize(uFw.xyz+uRt.xyz*mix(uRt.w,uFw.w,vU.x)+uUp.xyz*mix(uUp.w,uVel.w,vU.y));gPxA=length(fwidth(d));
  vec4 t=texture(uNeb,d);vec3 c=neb(d,0.);float dens=max(t.r,t.g),m=1.;
  // storms: lightning flickering inside the densest cloud
  float k=floor(TIME*.6),fl=exp(-fract(TIME*.6)*7.)*step(.45,hsh(vec3(k,1,2)))*(.6+.4*sin(TIME*70.));
  vec3 lp=normalize(vec3(hsh(vec3(k,3,4)),hsh(vec3(k,5,6)),hsh(vec3(k,7,8)))-.5);
  c+=uCE.rgb*fl*uSky.w*exp(-(1.-dot(d,lp))*12.)*dens*dens*6.;
+#ifndef NOFX
  // a spiral galaxy, far behind everything
  {vec3 P=normalize(vec3(.2,.75,.62)),gx=normalize(cross(P,vec3(.3,1,.1))),gy=cross(P,gx);float w=dot(d,P);
   if(w>0.){vec2 g=vec2(dot(d,gx),dot(d,gy)*2.3)/w/.36;float r=length(g);
    float arm=.5+.5*cos(2.*atan(g.y,g.x)-2.6*log(r+.06));
    float gb=(exp(-r*3.2)*(.45+.55*arm)*(.4+1.2*tn(vec3(g*.9,.3)))+exp(-r*16.)*1.1)*smoothstep(1.5,.7,r);
    c+=mix(vec3(1.,.85,.6),vec3(.5,.68,1.),smoothstep(0.,.5,r))*gb*(.025+.45*uSky.z)*(1.-.7*dens);}}
+#endif
  float st=stars(d,110.,.93)*3.+stars(d,230.,.9)*1.6+stars(d,60.,.985)*9.,fine=stars(d,470.,.62),hc=hsh(floor(d*230.));
  float Tk=mix(2800.,18000.,pow(hc,1.15));vec3 scol=mix(vec3(1.,.42,.16),mix(vec3(1.,.9,.7),vec3(.55,.7,1.),smoothstep(5200.,11000.,Tk)),smoothstep(3000.,5600.,Tk));
  c+=(st*1.5+fine*.9)*scol*(1.-.9*t.b);
+#ifndef NOBS
  for(int i=0;i<uLoop.x;i++)c+=bigStar(d,uBS[i],uBC[i])*(1.-.7*t.b);
+#endif
+#ifndef NOFX
  // one soft ribbon of light following a level curve of a smooth, gently warped field
  {vec3 q1=(d+uSd*.07)*.9;q1+=vec3(n3(q1*.8+3.),n3(q1*.8+13.),n3(q1*.8+23.))*1.5;
   float phi=n3(q1+50.)*.7+n3(q1*2.+9.)*.3,den=smoothstep(.5,.85,n3(q1*1.3+31.)*.75+t.r*.35);
   float rib=exp(-(phi-.5)*(phi-.5)*500.),band=exp(-(phi-.5)*(phi-.5)*60.);
   c+=mix(mix(uCB.rgb,uCE.rgb,.6),vec3(1.),rib*.5)*(band*.05+rib*.3)*den*den*(.7+.6*tn(d*9.))*(1.-.8*t.b);}
+#endif
  float s=dot(d,uSun.xyz),s2=dot(d,normalize(uSun.xyz+vec3(.07,.045,.02)));
  c+=glow(d)*(uCS.x>0.?.15:1.)+(uCS.x>0.?closeStar(d):uSunC.rgb*(smoothstep(.99982,.99994,s)*30.+pow(max(s,0.),1500.)*1.3));
  c+=vec3(1.,.3,.12)*(smoothstep(.99996,.99999,s2)*22.+pow(max(s2,0.),4000.)*1.4);
+#ifndef NOFX
  // a ringworld: we are inside its hoop, so it crosses the whole sky as a band of lit land and city lights
  if(uSky.y>.01){vec3 n=normalize(vec3(.35,.25,.9));float sn=dot(d,n),w=.017;
   if(abs(sn)<w){vec3 rd=normalize(d-n*sn),e1=normalize(cross(n,vec3(0,1,0))),e2=cross(n,e1);
@@ -1456,7 +1575,10 @@ void main(){
     c+=mix(vec3(1.,.8,.55),vec3(.8,.88,1.),hsh(vec3(gi,7.)))*(step(1.-fall*.9,h)*exp(-dot(gf,gf)*14.)*1.6+fall*.1);}
   }}
 
- for(int j=0;j<uLoop.y;j++){int i=int(uPoA[j]+.5);float rq=uPG.x>.5?min(uPl[i].w,.3):uPl[i].w;vec3 dq=uPG.x>.5?uPM*d:d;if(rq>0.&&!(uPG.x>.5&&float(i)==uPk.w)&&dot(dq,uPl[i].xyz)>cos(min(3.*asin(min(rq,.999))+.004,3.14159))){float kd=uPkd[i];gGx=uGx[i];vec4 p=planet(dq,uPl[i].xyz,rq,uPa[i].rgb,uPb[i],uPa[i].a,kd,vec4(uPLd[i],dot(uPLd[i],uPLd[i])>.5?1.:0.));c=c*(1.-p.a)+p.rgb;m*=1.-p.a;}}
+#endif
+#ifndef NOPL
+ for(int j=0;j<uLoop.y;j++){int i=int(j==0?uPo.x:j==1?uPo.y:uPo.z);if(uPl[i].w>0.&&!(uPG.x>.5&&float(i)==uPk.w)){float kd=i==0?uPk.x:i==1?uPk.y:uPk.z;vec4 p=planet(uPG.x>.5?uPM*d:d,uPl[i].xyz,uPG.x>.5?min(uPl[i].w,.08):uPl[i].w,uPa[i].rgb,uPb[i],uPa[i].a,kd,vec4(uPLd[i],dot(uPLd[i],uPLd[i])>.5?1.:0.));c=c*(1.-p.a)+p.rgb;m*=1.-p.a;}}
+#endif
 #ifdef ATM
  if(uOrb.x>0.){float R=uPG.x>.5?uPG.w:90000.,h=uOrb.y,cl=R+h,b=-d.y*cl,q=2.*R*h+h*h,disc=b*b-q;vec3 L=uSun.xyz;float sunEl=L.y;c*=1.-.85*smoothstep(-.1,.25,sunEl)*uPh.z;m*=1.-.85*smoothstep(-.1,.25,sunEl)*uPh.z;   // v1.26: under a day sky the stars go: the sun here is the planet's day, set from where you came down
   vec3 sunT=uSunC.rgb/max(max(uSunC.r,uSunC.g),max(uSunC.b,.05)),at=mix(uAir*mix(vec3(1.),sunT,.55),uOa,.25);float sunH=smoothstep(-.25,.25,L.y+.15);
@@ -1464,15 +1586,21 @@ void main(){
   float yh=-sqrt(q)/cl,hzv=d.y-yh,sdh=pow(max(dot(normalize(vec3(d.x,0.,d.z)+1e-4),normalize(vec3(L.x,0.,L.z)+1e-4)),0.),3.);
   vec3 hcol=mix(at*at*.22,mix(at,vec3(.86,.89,.93),uSkT.x)*(.55+.45*sunH)*uSkT.y,sunH)+mix(vec3(1.,.55,.25),uSunC.rgb,.4)*sdh*(.15+.6*sunH)*(.4+.6*smoothstep(.35,-.05,L.y));
   float dens=uPG.x>.5?exp(-h/uSkT.w):1.;   // the air thins with height: at the top of the sky there is almost none
-  gGx=uPk.w>-.5?uGx[int(uPk.w+.5)]:vec4(0);vec4 pp=uPG.x>.5?planet(uPM*d,uPM*uPD,uPG.y,uOa,uOb,0.,uPG.z,vec4(uPM*L,1.)):vec4(0.);
+  vec4 pp=uPG.x>.5?planet(uPM*d,uPM*uPD,uPG.y,uOa,uOb,0.,uPG.z,vec4(uPM*L,1.)):vec4(0.);
   if(b>0.&&disc>0.){float t=b-sqrt(disc);vec3 cc;
    if(uPG.x>.5){cc=pp.rgb;int kk=int(uPG.z+.5);
+#ifndef NOGND
     {vec2 gq=d.xz*t+uOrb.zw;float d1=tn(vec3(gq*.00004,3.3)),d2=tn(vec3(gq*.00025,5.1)),d3=tn(vec3(gq*.0016,7.7)),det=d1*.5+d2*.33+d3*.17;vec2 gs=gq+normalize(L.xz+1e-4)*(220.+t*.004);float e2=tn(vec3(gs*.00025,5.1))*.6+tn(vec3(gs*.0016,7.7))*.4,shd=clamp(1.+((d2*.6+d3*.4)-e2)*3.2*(1.-smoothstep(.2,.9,L.y)*.5),.55,1.35);   // ground detail at three scales: it sharpens as you come down
-     cc*=mix(1.,(.6+.8*det)*shd,1.-smoothstep(4e4,2.5e5,t));if(kk==2)cc*=1.-.12*smoothstep(.4,.9,sin(gq.x*.0021+d2*5.))*(1.-smoothstep(2e4,9e4,t));}float ca2=(kk==0?1.:kk==1?.5:kk==2?.25:kk==3?.65:kk==4?.75:kk==5?.5:kk==6?.4:0.),ct=12500.;
+     cc*=mix(1.,(.6+.8*det)*shd,1.-smoothstep(4e4,2.5e5,t));if(kk==2)cc*=1.-.12*smoothstep(.4,.9,sin(gq.x*.0021+d2*5.))*(1.-smoothstep(2e4,9e4,t));}
+#endif
+   float ca2=(kk==0?1.:kk==1?.5:kk==2?.25:kk==3?.65:kk==4?.75:kk==5?.5:kk==6?.4:0.),ct=12500.;
     if(kk==0&&h>ct+40.&&ca2>0.){float clc=R+h,bc=-d.y*clc,qc=clc*clc-(R+ct)*(R+ct),dc=bc*bc-qc;   // the cloud deck seen from above: the same pattern as its underside, lit from the sun
      if(bc>0.&&dc>0.){float tc=bc-sqrt(dc);vec2 qq=d.xz*tc+uOrb.zw;float nn=tn(vec3(qq*.00012,1.7))*.62+tn(vec3(qq*.0005,4.1))*.38;vec3 nsC=uPM*normalize(d*tc-uPD*(R+h));float cv=clamp(cloudD(nsC,1.)*1.1+(nn-.5)*.25,0.,1.)*(kk==0||kk==1||kk==7?0.:1.);float cvS=cloudD(normalize(nsC+uPM*L*.006),1.);
       vec3 ccl=mix(vec3(.96),at*1.2+.15,.22)*(.06+.95*smoothstep(-.12,.5,L.y));if(kk==0)ccl=mix(ccl,uOa*1.3+.1,.35);ccl*=.82+.18*tn(vec3(qq*.002,2.3));ccl*=clamp(.78+(cv-cvS)*1.6,.45,1.25)*(.8+.2*cv);
       ccl=mix(ccl,hcol,1.-exp(-tc/120000.));cc=mix(cc,ccl,cv);}}}
+#ifdef NOGND
+   else cc=mix(uOb,uOa,.5)*.6;
+#else
    else{vec3 P=d*t,N=normalize(P+vec3(0,cl,0));vec2 s=P.xz+uOrb.zw;
    float big=tn(vec3(s*.000035,.3)),c1=tn(vec3(s*.00011+big*.6,1.7)),c2=tn(vec3(s*.0005,4.1));
    {float h0=smoothstep(.4,.85,big*.5+c1*.4+c2*.18);vec2 pv=d.xz/max(.18,dot(-d,N))*1400.*h0;s+=pv;big=tn(vec3(s*.000035,.3));c1=tn(vec3(s*.00011+big*.6,1.7));c2=tn(vec3(s*.0005,4.1));}
@@ -1491,6 +1619,7 @@ void main(){
    cc+=(ty<1.5?mix(uCE.rgb,vec3(1.,.72,.22),.7)*gp*(.5+1.2*(1.-ndl)):ty<2.5?vec3(1.,.75,.4)*gp*land*(smoothstep(.5,.1,ndl)*1.5+smoothstep(.05,-.4,sunEl)*1.8):vec3(.2,.7,1.)*gp*.15);
    cc+=uSunC.rgb*warm*pow(max(dot(reflect(d,N),L),0.),50.)*.3*cov*ndl;
    }
+#endif
    float sd2=pow(max(dot(d,L),0.),4.);vec3 air=mix(at*at*1.3,vec3(1.,.5,.2),sd2*.6)*(.05+.22*sunH+1.2*sd2);
    if(uPG.x<.5)cc=mix(vec3(dot(cc,vec3(.33))),cc,1.45);float fg=1.-exp(-t/30000.*dens);cc=mix(cc,air,fg*.85);
    cc=mix(cc,hcol,smoothstep(-.09,0.,hzv)*.92*dens);                        // far ground dissolves into the horizon haze
@@ -2432,7 +2561,7 @@ function journalPanel() {
   list.push({ name: 'Next', kind: '', desc: o.text });
   { const cw = rp().crew || {}, n = Object.keys(cw); if (n.length) list.push({ name: 'Crew', kind: n.length + '/3', desc: n.map((k) => `${cw[k]}, ${CREW[k][0].toLowerCase()}`).join(' · ') }); list.push({ name: 'Ship\'s log', kind: Object.keys(rp().lore || {}).length + ' entries', desc: 'Stop or slow down close to things. The log notices.' }); }
   for (const j of r.jobs) list.push({ name: j.title, kind: `${j.pay} cr · ${FAC[j.fac][0]}`, desc: j.text, run: () => { r.jobs = r.jobs.filter((x) => x !== j); gain({ rep: -3, fac: j.fac }); tip('Contract abandoned', 4000); } });
-  list.push({ name: SYS.name, kind: SYS.star, desc: `${FAC[SYS.fac][0]} space · danger ${SYS.danger} · ${SYS.belt || 'mixed'} belt · economy: ${SYS.econ}${SYS.ph ? ' · in its sky: ' + ['', 'a supernova remnant', 'a planetary nebula', 'a pulsar', 'a companion star', 'a comet', 'a globular cluster'][SYS.ph] : ''} · ` + SYS.planets.filter((p) => p.type !== 'none').map((p) => p.moonOf != null ? `${p.name}: a moon of ${SYS.planets[p.moonOf].name}, ${p.sub || p.type}` : `${p.name}: ${p.rare || ''} ${p.type}, ${p.orbit} AU, ${p.moons} moons${p.anomaly ? ', ' + p.anomaly : ''}${p.pop && p.pop !== 'none' ? ', ' + p.pop : ''}`).join(' · ') });
+  list.push({ name: SYS.name, kind: SYS.star, desc: `${FAC[SYS.fac][0]} space · danger ${SYS.danger} · ${SYS.belt || 'mixed'} belt · economy: ${SYS.econ}${SYS.ph ? ' · in its sky: ' + ['', 'a supernova remnant', 'a planetary nebula', 'a pulsar', 'a companion star', 'a comet', 'a globular cluster'][SYS.ph] : ''} · ` + SYS.planets.filter((p) => p.type !== 'none').map((p) => `${p.name}: ${p.rare || ''} ${p.type}, ${p.orbit} AU, ${p.moons} moons${p.anomaly ? ', ' + p.anomaly : ''}${p.pop && p.pop !== 'none' ? ', ' + p.pop : ''}`).join(' · ') });
   { const ch = ST.chart || {}, ks = Object.keys(ch); if (ks.length) list.push({ name: 'First charts', kind: ks.length + ' systems', desc: ks.slice(-5).map((id) => `${ch[id].name}${ch[id].pay ? ' +' + ch[id].pay : ''}`).join(' · ') }); }
   list.push({ name: 'Standing', kind: '', desc: FAC.map((f, i) => `${f[0]}: ${repName(r.rep[i])} (${r.rep[i]})`).join(' · ') });
   list.push({ name: 'The Infinite End', kind: 'why you are out here', desc: 'The outer gates went quiet three centuries ago. The Survey calls it the Silence. You hold a pathfinder licence to go past the last reliable lane and bring the charts home. The Combine pays for them. The Lantern Order says the old rites still open a door. The kettle at the end of the trail was warm.' });
@@ -2638,7 +2767,7 @@ function navBuild() {
     if (best < 1e9) N.push({ id: 'rock', name: 'RICH ROCK', kind: 'rock', x: px + bx, y: py + by, z: pz + bz }); }
   const near = NPCS.map((a) => [(a.x - px) ** 2 + (a.y - py) ** 2 + (a.z - pz) ** 2, a]).sort((p, q) => p[0] - q[0]).slice(0, 5);
   for (const [, a] of near) N.push({ id: 'n' + a.i, name: (ROLE[a.role] + ' ' + a.name).toUpperCase(), kind: 'ship', x: a.x, y: a.y, z: a.z, npc: a });
-  for (let k = 0; k < NPL; k++) if (!SYS.atm && SYS.pr[k] > 0 && SYS.planets[k]) N.push({ id: 'p' + k, name: SYS.planets[k].name.toUpperCase() + (SYS.planets[k].moonOf != null ? ' · MOON' : '') + (SYS.locs.some((l) => l.atm === k + 1) ? '' : ' · NO AIR'), kind: 'planet', far: 1, x: px + SYS.pl[k * 4] * 4e6, y: py + SYS.pl[k * 4 + 1] * 4e6, z: pz + SYS.pl[k * 4 + 2] * 4e6 });
+  for (let k = 0; k < 3; k++) if (!SYS.atm && SYS.pr[k] > 0) N.push({ id: 'p' + k, name: SYS.planets[k].name.toUpperCase() + (SYS.locs.some((l) => l.atm === k + 1) ? '' : ' · NO AIR'), kind: 'planet', far: 1, x: px + SYS.pl[k * 4] * 4e6, y: py + SYS.pl[k * 4 + 1] * 4e6, z: pz + SYS.pl[k * 4 + 2] * 4e6 });
   if (!SYS.atm && sysP) SYS.locs.forEach((l, i) => { if (l.atm || i === SYS.loc || !sysPL[i]) return; const O = sysPL[i], x = O[0] - sysO[0] - sysS[0], y = O[1] - sysO[1] - sysS[1], z = O[2] - sysO[2] - sysS[2], d = Math.hypot(x, y, z) || 1; N.push({ id: 'L' + i, name: l.name.toUpperCase(), kind: 'place', loc: i, far: 1, x: px + x / d * 4e6, y: py + y / d * 4e6, z: pz + z / d * 4e6 }); });   // v1.36: the system's other places, where they really are: hyperlight there
   if (STORM) N.push({ id: 'storm', name: 'ION STORM', kind: 'storm', x: STORM.x, y: STORM.y, z: STORM.z });
   if (SYS.atm && !quietSky()) N.push({ id: 'settle', name: SYS.atm === 1 ? 'CLOUD HARVESTER' : SYS.atm === 2 ? 'SETTLEMENT' : 'ICE STATION', kind: 'settle', x: 2600, y: -1400, z: 2600 });
@@ -2787,7 +2916,7 @@ function hudPaint() {
     c.strokeStyle = dim; c.lineWidth = 1.5; c.beginPath(); c.arc(ax, ay, ar, 0, 6.2832); c.stroke();
     T((pi >= 0 ? '+' : '') + Math.round(pi * 57.3) + '°', ax + ar + 12, ay + 6, 17, 'left', main, 700); }
   at(RX); tag('TARGET', 908, 236, 'right'); T(cur ? cur.name : 'NONE', 892, 284, 22, 'right', amb, 700);
-  if (cur && cur.kind === 'planet' && SYS.planets[+cur.id[1]]) { const k = +cur.id[1], pl = SYS.planets[k], air = SYS.locs.some((l) => l.atm === k + 1); T(((pl.sub || pl.type) + (air ? pl.kind === 0 ? ' · fly the cloud tops' : ' · air · can descend' : ' · no air · orbit only')).toUpperCase(), 892, 306, 12, 'right', dim, 600); }
+  if (cur && cur.kind === 'planet' && SYS.planets[+cur.id[1]]) { const k = +cur.id[1], pl = SYS.planets[k], air = SYS.locs.some((l) => l.atm === k + 1); T((pl.type + (air ? pl.kind === 0 ? ' · fly the cloud tops' : ' · air · can descend' : ' · no air · orbit only')).toUpperCase(), 892, 306, 12, 'right', dim, 600); }
   if (cur && cur.npc) { T('SHD', 736, 304, 11, 'right', dim, 700); bar(742, 296, 150, cur.npc.sh / cur.npc.shM, cy); T('HULL', 736, 318, 11, 'right', dim, 700); bar(742, 310, 150, cur.npc.hp / cur.npc.hpM, cur.npc.hp < cur.npc.hpM * .35 ? red : main); }
   tag('DISTANCE', 908, 366, 'right'); const ds = dist >= 10000 ? (dist / 1000).toFixed(0) : dist >= 1000 ? (dist / 1000).toFixed(1) : String(dist | 0); T(cur && cur.far ? (plRaw(cur) < .1 ? 'KM' : 'MM') : dist >= 1000 ? 'KM' : 'M', 892, 420, 15, 'right', dim, 700); T(cur && cur.far ? plDist(cur) : ds, 860, 420, 40, 'right', main, 700); if (drift) { T(orbAp ? 'ORBITAL APPROACH  ' + (driftV * 1000).toFixed(1) + ' KM/S' : 'LIGHT DRIFT  ' + (driftV / 300).toFixed(driftV < 30 ? 3 : 2) + ' c', 892, 500, 15, 'right', amb, 700); bar(742, 508, 150, Math.min(1, driftV / 300), amb); } else if (!SYS.atm && apOn && aimK >= 0) { const inR = apDist < apGate, air = SYS.locs.some((l) => l.atm === aimK + 1); T(!air && apDist < PR[aimK] * 3 ? 'NO ATMOSPHERE · ORBIT ONLY' : bRamp <= 0 ? (air ? (drift ? 'DESCENDING · THROTTLE SETS THE PACE' : 'THROTTLE TOWARD IT TO APPROACH') : 'HOLD BOOST TO APPROACH') : inR ? 'APPROACH  ' + SYS.planets[aimK].name.toUpperCase() : 'CLOSING · DRIFT AT ' + Math.round(apGate) + ' MM', 892, 500, 15, 'right', amb, 700); bar(742, 508, 150, inR ? bRamp : Math.min(1, apGate / apDist), amb); } else if (SYS.atm && scK > 0) { T('TERMINAL VELOCITY', 892, 500, 15, 'right', amb, 700); bar(742, 508, 150, scK, amb); }
   if (!SYS.atm && (hl || hlRdy > 0)) { const c = navCur(); T(hl === 2 ? 'HYPERLIGHT · ' + (c && c.far ? plDist(c) + (plRaw(c) < .1 ? ' KM' : ' MM') : '') : hl === 1 ? 'HYPERLIGHT SPOOLING' : hlRdy >= 1.2 ? 'HYPERLIGHT READY · G' : 'HYPERLIGHT · HOLD ON TARGET', 892, 540, 15, 'right', hl || hlRdy >= 1.2 ? cy : dim, 700); bar(742, 548, 150, hl === 2 ? 1 : hl === 1 ? Math.min(1, hlT / 1.4) : Math.min(1, hlRdy / 1.2), hl || hlRdy >= 1.2 ? cy : dim); }   // v1.36
@@ -2873,7 +3002,7 @@ function hudDraw(k) { if (hudOp <= .01 && !(xr && jpOpen)) return;   // v1.37: H
 // ---- settings: display, flight, and every key. Kept in the browser. ----
 const HCOL = [['Ice', ['#e6f6ff', 'rgba(160,210,240,.62)', '#ffb44a', '#63e2ff']], ['Amber', ['#ffd9a0', 'rgba(255,190,110,.6)', '#ffffff', '#ffb44a']], ['Green', ['#c8ffd8', 'rgba(120,255,170,.55)', '#ffe27a', '#5dffa0']], ['Violet', ['#ffd6f6', 'rgba(255,150,230,.55)', '#7ee8ff', '#ff7ae0']], ['Red', ['#ffd0c8', 'rgba(255,120,100,.6)', '#ffe9a8', '#ff6a5a']]];
 const ACTS = [['KeyW', 'Throttle up'], ['KeyS', 'Throttle down'], ['KeyA', 'Strafe left'], ['KeyD', 'Strafe right'], ['KeyE', 'Rise'], ['KeyQ', 'Sink'], ['ShiftLeft', 'Boost'], ['Space', 'Fire'], ['KeyX', 'Zero throttle'], ['KeyT', 'Next target'], ['KeyF', 'Interact / hail'], ['KeyJ', 'Warp gate'], ['KeyB', 'Journal'], ['KeyL', 'Log'], ['KeyC', 'Cockpit on / off'], ['Comma', 'Glance left'], ['Period', 'Glance right'], ['Slash', 'Glance behind'], ['KeyR', 'Radio on / off'], ['BracketRight', 'Radio: skip to another song'], ['KeyI', 'Cargo hold'], ['Tab', 'Aux display (full screen)'], ['KeyN', 'Star map'], ['KeyM', 'Mute'], ['KeyV', 'VR / 3D']];
-const CFG = { hud: 1, op: .7, size: .85, cin: 0, host: 0, inv: 0, sens: 1, fx: 1, pl: 1, radio: 1, keys: {}, vEng: .5, vCht: 1, vRad: 1, fxBlur: .5, fxCA: 1, fxGrain: 1, fxScan: 1, fxBloom: 1, fxFlare: 1, fxVig: 1, fxVisor: .5, fxGlass: 1 };
+const CFG = { hud: 1, op: .7, size: .85, cin: 0, host: 0, inv: 0, sens: 1, fx: 1, pl: 1, radio: 1, mus: 'mix', keys: {}, vEng: .5, vCht: 1, vRad: 1, fxBlur: .5, fxCA: 1, fxGrain: 1, fxScan: 1, fxBloom: 1, fxFlare: 1, fxVig: 1, fxVisor: .5, fxGlass: 1 };
 const pct = (v) => v ? Math.round(v * 100) + '%' : 'off', LV3 = (v) => !v ? 'off' : v < .75 ? 'subtle' : 'full';
 try { Object.assign(CFG, JSON.parse(localStorage.ibCfg || '{}')); } catch {}
 if ((CFG.fxMig || 0) < 3) { for (const k of ['fxCA', 'fxGrain', 'fxBloom', 'fxFlare', 'fxGlass', 'fxScan', 'fxVig']) CFG[k] = 1; CFG.fxBlur = .5; CFG.fxVisor = .5; CFG.fxMig = 3; }
@@ -2908,11 +3037,11 @@ function setUi() {
   const row = (k, name, val) => `<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgb(var(--hcr) / .14);padding:7px 0"><span>${name}</span><button data-k="${k}" style="min-width:150px;padding:6px 14px;background:${rebind === k ? 'var(--hc)' : 'rgb(var(--hcr) / .06)'};color:${rebind === k ? '#000' : 'var(--hc)'};border:1px solid rgb(var(--hcr) / .5);font:inherit;cursor:pointer">${val}</button></div>`;
   const hd = (t) => `<h3 style="margin:26px 0 6px;font-weight:600;letter-spacing:.25em;font-size:13px;color:var(--hc);text-shadow:0 0 10px rgb(var(--hcr) / .45)">${t}</h3>`;
   setP.innerHTML = `<div style="max-width:720px;margin:auto"><div style="display:flex;justify-content:space-between;align-items:baseline"><h2 style="font-weight:300;letter-spacing:.3em;margin:0">SETTINGS</h2><button data-k="close" style="background:rgb(var(--hcr) / .08);border:1px solid var(--hc);color:var(--hc);padding:6px 18px;font:inherit;cursor:pointer">Done</button></div>`
-    + hd('DISPLAY') + row('hud', 'HUD colour', HCOL[CFG.hud][0]) + row('op', 'HUD brightness', Math.round(CFG.op * 100) + '%') + row('size', 'HUD size', Math.round(CFG.size * 100) + '%') + row('cin', 'Cinematic bars', CFG.cin ? 'on' : 'off') + row('fs', 'Full screen on launch', CFG.fs === 0 ? 'off' : 'on') + hd('LENS EFFECTS') + row('fxVisor', 'Curved visor (HUD wraps at the edges)', LV3(CFG.fxVisor)) + row('fxGlass', 'Visor glass (tinted rim)', LV3(CFG.fxGlass)) + row('fxBlur', 'Motion blur', LV3(CFG.fxBlur)) + row('fxCA', 'Colour fringing at the edges', LV3(CFG.fxCA)) + row('fxGrain', 'Film grain', LV3(CFG.fxGrain)) + row('fxBloom', 'Glow and sun rays', LV3(CFG.fxBloom)) + row('fxFlare', 'Lens flare from the sun', LV3(CFG.fxFlare)) + row('fxScan', 'Scanlines', CFG.fxScan ? 'on' : 'off') + row('fxVig', 'Darkened corners', CFG.fxVig ? 'on' : 'off') + hd('RADIO') + row('radio', 'Ikosagon radio', CFG.radio ? 'on' : 'off') + row('pl', 'My playlist (streams now and then)', CFG.pl ? 'on' : 'off') + hd('VOLUME') + row('vEng', 'Engine and boost', pct(CFG.vEng)) + row('vCht', 'Radio chatter (pilots, traffic control)', pct(CFG.vCht)) + row('vRad', 'Music stream', pct(CFG.vRad))
+    + hd('DISPLAY') + row('hud', 'HUD colour', HCOL[CFG.hud][0]) + row('op', 'HUD brightness', Math.round(CFG.op * 100) + '%') + row('size', 'HUD size', Math.round(CFG.size * 100) + '%') + row('cin', 'Cinematic bars', CFG.cin ? 'on' : 'off') + row('fs', 'Full screen on launch', CFG.fs === 0 ? 'off' : 'on') + hd('LENS EFFECTS') + row('fxVisor', 'Curved visor (HUD wraps at the edges)', LV3(CFG.fxVisor)) + row('fxGlass', 'Visor glass (tinted rim)', LV3(CFG.fxGlass)) + row('fxBlur', 'Motion blur', LV3(CFG.fxBlur)) + row('fxCA', 'Colour fringing at the edges', LV3(CFG.fxCA)) + row('fxGrain', 'Film grain', LV3(CFG.fxGrain)) + row('fxBloom', 'Glow and sun rays', LV3(CFG.fxBloom)) + row('fxFlare', 'Lens flare from the sun', LV3(CFG.fxFlare)) + row('fxScan', 'Scanlines', CFG.fxScan ? 'on' : 'off') + row('fxVig', 'Darkened corners', CFG.fxVig ? 'on' : 'off') + hd('RADIO') + row('radio', 'Ikosagon radio', CFG.radio ? 'on' : 'off') + row('mus', 'Score style', MUSN[CFG.mus] || MUSN.mix) + row('pl', 'My playlist (streams now and then)', CFG.pl ? 'on' : 'off') + hd('VOLUME') + row('vEng', 'Engine and boost', pct(CFG.vEng)) + row('vCht', 'Radio chatter (pilots, traffic control)', pct(CFG.vCht)) + row('vRad', 'Music stream', pct(CFG.vRad)) + row('suno', 'Suno playlist page', 'open in a new tab')
     + hd('FLIGHT') + row('inv', 'Invert pitch', CFG.inv ? 'on' : 'off') + row('ctl', 'Controls', CFG.ctl ? 'space sim' : 'standard') + row('sens', 'Mouse sensitivity', Math.round(CFG.sens * 100) + '%') + row('host', 'Other pilots', ['peaceful', 'wary', 'hostile'][CFG.host]) + row('wipe', 'New universe', 'start fresh, with a confirmation')
     + hd('KEYS · click one, then press the new key') + ACTS.map(([k, n]) => row('key:' + k, n, rebind === 'key:' + k ? 'press a key…' : keyName(CFG.keys[k] || k))).join('') + row('reset', 'All keys', 'reset to defaults') + '</div>';
   if (isPWA()) {   // the store app is played in a headset: desktop-only settings step aside, and the VR ones join
-    for (const k of ['cin', 'fs', 'sens', 'ctl', 'reset']) { const b = setP.querySelector(`[data-k="${k}"]`); if (b) b.parentNode.remove(); }
+    for (const k of ['cin', 'fs', 'sens', 'ctl', 'reset', 'suno']) { const b = setP.querySelector(`[data-k="${k}"]`); if (b) b.parentNode.remove(); }
     setP.querySelectorAll('[data-k^="key:"],[data-k^="fx"]').forEach((b) => b.parentNode.remove());
     setP.querySelectorAll('h3').forEach((h) => { if (/KEYS|LENS/.test(h.textContent)) h.remove(); });
     const h = setP.querySelector('h3'); if (h) h.insertAdjacentHTML('beforebegin', hd('VR') + row('vrH', 'Seat height', VRH[vrHi()][0]) + row('ck', 'Cockpit', cockpit ? 'on' : 'off'));
@@ -2926,13 +3055,14 @@ setP.onclick = (e) => {
   if (k === 'close') { setP.style.display = 'none'; rebind = null; return; }
   if (k.startsWith('key:')) rebind = rebind === k ? null : k;
   else if (k === 'reset') CFG.keys = {};
+  else if (k === 'suno') window.open('https://suno.com/playlist/12f42e02-78a5-4eb2-bf7e-f605817e4c06', '_blank', 'noopener');
   else if (k === 'wipe') { setP.style.display = 'none'; newUniverse(); return; }
   else if (k === 'hud') CFG.hud = (CFG.hud + 1) % HCOL.length; else if (k === 'op') CFG.op = cyc(CFG.op, [1, .7, .45, .25, 0]); else if (k === 'size') CFG.size = cyc(CFG.size, [1, 1.15, .85]);
   else if (k === 'ctl') CFG.ctl = CFG.ctl ? 0 : 1;
   else if (k === 'vrH') CFG.vrH = VRH[(vrHi() + 1) % VRH.length][1];
   else if (k === 'ck') { const b = $('ck'); if (b) b.click(); }
   else if (k === 'vEng' || k === 'vCht' || k === 'vRad') CFG[k] = cyc(CFG[k], [1, .75, .5, .25, 0]);
-  else if (k === 'cin') CFG.cin = CFG.cin ? 0 : 1; else if (k === 'fs') CFG.fs = CFG.fs === 0 ? 1 : 0; else if (k === 'radio') CFG.radio = CFG.radio ? 0 : 1; else if (k === 'pl') { CFG.pl = CFG.pl ? 0 : 1; if (!CFG.pl && plA) { plA.pause(); plOn = 0; } } else if (['fxBlur', 'fxCA', 'fxGrain', 'fxBloom', 'fxFlare', 'fxVisor', 'fxGlass'].includes(k)) CFG[k] = cyc(CFG[k], [.5, 1, 0]); else if (k === 'fxScan' || k === 'fxVig') CFG[k] = CFG[k] ? 0 : 1; else if (k === 'inv') CFG.inv = CFG.inv ? 0 : 1; else if (k === 'sens') CFG.sens = cyc(CFG.sens, [1, 1.3, 1.7, .5, .75]);
+  else if (k === 'cin') CFG.cin = CFG.cin ? 0 : 1; else if (k === 'fs') CFG.fs = CFG.fs === 0 ? 1 : 0; else if (k === 'radio') CFG.radio = CFG.radio ? 0 : 1; else if (k === 'mus') CFG.mus = cyc(CFG.mus || 'mix', ['mix', 'classic', 'night']); else if (k === 'pl') { CFG.pl = CFG.pl ? 0 : 1; if (!CFG.pl && plA) { plA.pause(); plOn = 0; } } else if (['fxBlur', 'fxCA', 'fxGrain', 'fxBloom', 'fxFlare', 'fxVisor', 'fxGlass'].includes(k)) CFG[k] = cyc(CFG[k], [.5, 1, 0]); else if (k === 'fxScan' || k === 'fxVig') CFG[k] = CFG[k] ? 0 : 1; else if (k === 'inv') CFG.inv = CFG.inv ? 0 : 1; else if (k === 'sens') CFG.sens = cyc(CFG.sens, [1, 1.3, 1.7, .5, .75]);
   else if (k === 'host') { CFG.host = (CFG.host + 1) % 3; hostLv = CFG.host; if (SYS) npcSpawn(); }
   if (k !== 'wipe') wipeArm = 0;
   setUi();
@@ -3028,7 +3158,7 @@ function hlTick(dt, near, nk) {
     return; }
   hlT += dt; if (!P) { hlStop('Hyperlight lost its lock'); return; }
   const k = c.kind === 'planet' ? +c.id[1] : -1, dx = P[0] - sysS[0], dy = P[1] - sysS[1], dz = P[2] - sysS[2], d = Math.hypot(dx, dy, dz) || 1, rem = k >= 0 ? d - PR[k] * TUNE.hlDrop : d - .004; let u = [dx / d, dy / d, dz / d];
-  for (let j = 0; j < NPL; j++) if (j !== k && sysP[j] && hlBlock(j, u, rem)) {   // v1.51: a world in the way: curve out around it, then straight on
+  for (let j = 0; j < 3; j++) if (j !== k && sysP[j] && hlBlock(j, u, rem)) {   // v1.51: a world in the way: curve out around it, then straight on
     const Q = sysP[j], nl = Math.hypot(sysS[0] - Q[0], sysS[1] - Q[1], sysS[2] - Q[2]) || 1, n = [(sysS[0] - Q[0]) / nl, (sysS[1] - Q[1]) / nl, (sysS[2] - Q[2]) / nl], w = Math.max(0, -(u[0] * n[0] + u[1] * n[1] + u[2] * n[2])) + .35;
     u = nrm([u[0] + n[0] * w, u[1] + n[1] * w, u[2] + n[2] * w]); if (tm > (hlCurveT || 0)) { hlCurveT = tm + 8; tip(`Hyperlight · curving around ${SYS.planets[j].name}`, 2500); } break; }
   if (!hlU) hlU = u.slice(); { const a = Math.min(1, dt * (hl === 1 ? 1.6 : .9)); hlU = nrm([hlU[0] + (u[0] - hlU[0]) * a, hlU[1] + (u[1] - hlU[1]) * a, hlU[2] + (u[2] - hlU[2]) * a]); } u = hlU;   // v1.56: the travel direction turns smoothly (curving round a world was a snap every frame)
@@ -3100,7 +3230,7 @@ function cruiseTick(dt, fly) {
   veil += (0 - veil) * Math.min(1, dt * .2); scK = scE = 0;
   if (!sysP) return;
   let near = 1e9, nk = -1;
-  for (let k = 0; k < NPL; k++) { const P = sysP[k]; if (!P) continue; const x = P[0] - sysS[0], y = P[1] - sysS[1], z = P[2] - sysS[2], d = Math.hypot(x, y, z) || 1; SYS.pl[k * 4] = x / d; SYS.pl[k * 4 + 1] = y / d; SYS.pl[k * 4 + 2] = z / d; SYS.pl[k * 4 + 3] = Math.min(1.35, PR[k] / d); if (d - PR[k] < near) { near = d - PR[k]; nk = k; } }
+  for (let k = 0; k < 3; k++) { const P = sysP[k]; if (!P) continue; const x = P[0] - sysS[0], y = P[1] - sysS[1], z = P[2] - sysS[2], d = Math.hypot(x, y, z) || 1; SYS.pl[k * 4] = x / d; SYS.pl[k * 4 + 1] = y / d; SYS.pl[k * 4 + 2] = z / d; SYS.pl[k * 4 + 3] = Math.min(1.35, PR[k] / d); if (d - PR[k] < near) { near = d - PR[k]; nk = k; } }
   hlTick(dt, near, nk);   // v1.44: no frame turning in space (qfAlign retired): your view never moves by itself
   // v1.55: the flare builds over the last ~4 km above the switch and meets the full flare there
   { const cl = near < heatNear - 2e-6 && tm > heatBlk; heatNear = near;   // v1.46: the heat only builds while you're closing on a world with air; moving away it burns off fast
@@ -3118,7 +3248,7 @@ function cruiseTick(dt, fly) {
       v126Heat = Math.max(v126Heat, .25 + .75 * Math.pow(p, 1.25)); heatFlare = Math.max(heatFlare, sm(.78, 1, p)); entFlip = p >= 1; }   // v1.67: one clock: the flare peaks at p = 1 and the flip fires on that same tick
   } else { entLock = 0; entPN = 1e9; }
   if (!hl && !drift && !SYS.atm && !entLock) { sysS[0] += vx * dt * 1e-6; sysS[1] += vy * dt * 1e-6; sysS[2] += vz * dt * 1e-6;
-    if (bst > .05) { const nf = nk >= 0 ? Math.max(.06, Math.min(1, (near - .02) / .25)) : 1, bv = bst * TUNE.boostSys * (1 + bRamp) * nf * dt; sysS[0] += sFx * bv; sysS[1] += sFy * bv; sysS[2] += sFz * bv; locMove(sFx, sFy, sFz, bv, dt, 700); } }   // v1.56: boost crosses the system at ~15-30 km/s (easing off near a world): enough to circle a planet   // v1.55: your own speed moves you across the system (m/s → Mm): at boost speeds a planet is many minutes away
+    if (bst > .05) { const nf = nk >= 0 ? Math.max(.06, Math.min(1, (near - .02) / .25)) : 1, bv = bst * TUNE.boostSys * (1 + .5 * bRamp) * nf * dt; sysS[0] += sFx * bv; sysS[1] += sFy * bv; sysS[2] += sFz * bv; locMove(sFx, sFy, sFz, bv, dt, 180); } }   // v1.56: boost crosses the system at ~15-30 km/s (easing off near a world): enough to circle a planet   // v1.55: your own speed moves you across the system (m/s → Mm): at boost speeds a planet is many minutes away
   if (hl) { drift = 0; driftV = 0; apOn = 0; scE = hlFx * .7; fogX = Math.max(fogX, .0032 * hlFx); return; }   // v1.36: hyperlight carries you; boost no longer creeps you across the system
   if (!drift) { driftV = 0; apOn = 0;
     // light drift is the top of the boost range: a planet targeted and ahead, boost held until it has built all the way, and the drive tips over into drift
@@ -3151,14 +3281,14 @@ function cruiseTick(dt, fly) {
     else if (u < 1.2 && drift) { drift = 0; driftV = 0; tip(`${SYS.planets[nk].name} has no atmosphere to fly down into: holding orbit. Pick a world with air to go down.`, 6000); } }
 }
 let scBack = -1;
-const PR = [70, 6.4, 2.6, 1, 1, 1, 1, 1];                                  // planet radii in thousands of km
+const PR = [70, 6.4, 2.6];                                  // planet radii in thousands of km
 // v1.46: crossing the system also carries you through the scene around you (rocks, stations, ships stream past and fall behind),
 // at the true speed up to a cap per second: beyond a few km/s the field would only flicker. The field's lattice wraps, so it never runs out.
 function locMove(x, y, z, st, dt, cap) { const m = Math.min(st * 1e6, cap * dt); if (!(m > 0) || px * px + py * py + pz * pz > 4e12) return; px += x * m; py += y * m; pz += z * m; }
 let entDur = 6, entFlip = 0, entLock = 0, entV = 0, entD = [0, 0, -1], entPN = 1e9, entT0 = 0, entN0 = 0;
 let sysS = [0, 0, 0], sysP = null, drift = 0, driftV = 0, veil = 0, aimK = -1, aimT = 0, apT = 0, apTip = 0, noAuto = -1, apOn = 0, apDist = 0, apGate = 0, ent = null;
 const gameR = (rad, kind) => (kind === 0 ? .2 + rad * .0012 : .055 + rad * .013) * TUNE.plScale;   // v1.32: planets at game scale, so a world is round from orbit and a descent takes a minute, not an hour
-function syncPR() { if (SYS && SYS.prad) for (let k = 0; k < NPL; k++) if (SYS.prad[k] > 0) PR[k] = gameR(SYS.prad[k], (SYS.pk || [])[k]) * (SYS.planets[k] && SYS.planets[k].moonOf != null ? .6 : 1); }
+function syncPR() { if (SYS && SYS.prad) for (let k = 0; k < 3; k++) if (SYS.prad[k] > 0) PR[k] = gameR(SYS.prad[k], (SYS.pk || [])[k]); }
 // v1.34: one map per system, in Mm, centred on the gate. Planets sit where the gate's sky shows them (spread a little wider);
 // every other place has its own fixed point in that same space: stations and fields in orbit of their planet, the rest out between
 // the worlds. The star lies far off along SUNSP. Whatever place you are at, planets, their sizes, their phases and the sun are
@@ -3167,9 +3297,8 @@ let sysG = null, sysO = [0, 0, 0], STARG = [0, 0, 0], sysPL = [];
 const SPREAD = 1.5;
 function sysMap() {
   const pd = SYS.pd || [];
-  sysG = Array.from({ length: NPL }, (_, k) => { const d = pd[k], w = (SYS.pr || [])[k]; if (!d || !(w > 0)) return null; const D = PR[k] / w * TUNE.spread; return [d[0] * D, d[1] * D, d[2] * D]; });
-  for (let k = 0; k < NPL; k++) { const m = SYS.moonU && SYS.moonU[k], G = m && sysG[m[4]]; if (!G || !sysG[k]) continue; const r = PR[m[4]] * m[3]; sysG[k] = [G[0] + m[0] * r, G[1] + m[1] * r, G[2] + m[2] * r]; }   // v1.70: a moon keeps to its world, whatever the tuning
-  const ds = sysG.slice(0, 3).filter(Boolean).map((g) => Math.hypot(g[0], g[1], g[2])), Dm = ds.length ? ds.reduce((a, b) => a + b, 0) / ds.length : 3, Dx = ds.length ? Math.max(...ds) : 3;
+  sysG = [0, 1, 2].map((k) => { const d = pd[k], w = (SYS.pr || [])[k]; if (!d || !(w > 0)) return null; const D = PR[k] / w * TUNE.spread; return [d[0] * D, d[1] * D, d[2] * D]; });
+  const ds = sysG.filter(Boolean).map((g) => Math.hypot(g[0], g[1], g[2])), Dm = ds.length ? ds.reduce((a, b) => a + b, 0) / ds.length : 3, Dx = ds.length ? Math.max(...ds) : 3;
   STARG = [SUNSP[0] * (Dx * 2.6 + 6), SUNSP[1] * (Dx * 2.6 + 6), SUNSP[2] * (Dx * 2.6 + 6)];
   const place = (loc) => {
     if (!loc) return [0, 0, 0];
@@ -3275,7 +3404,7 @@ function popDraw(c, T) {
 // atmosphere refills it: the scoops open as soon as you're below the clouds. Run dry and your sight narrows, then you black out
 // and a rescue tug tows you to the system gate for a fee. Generous, but it sends you down to the worlds now and then.
 let o2Hyp = 0, o2Out = 0, o2Fill = 0;
-const o2Planet = () => { let best = -1, bd = -2; for (let k = 0; k < NPL; k++) { if (!(SYS.pr[k] > 0)) continue; const d = SYS.pl[k * 4] * sFx + SYS.pl[k * 4 + 1] * sFy + SYS.pl[k * 4 + 2] * sFz; if (d > bd) { bd = d; best = k; } } return best; };   // the world most nearly ahead
+const o2Planet = () => { let best = -1, bd = -2; for (let k = 0; k < 3; k++) { if (!(SYS.pr[k] > 0)) continue; const d = SYS.pl[k * 4] * sFx + SYS.pl[k * 4 + 1] * sFy + SYS.pl[k * 4 + 2] * sFz; if (d > bd) { bd = d; best = k; } } return best; };   // the world most nearly ahead
 function o2Tick(dt) {
   if (ST.o2 == null) ST.o2 = 100;
   if (SYS.atm) {                                                // scoops open below the clouds
@@ -3686,16 +3815,19 @@ function meteorTick(dt, fly) {
     for (let k = 0; k < 7; k++) { const b = f * (1 - k / 7) * 1.6; put(DPa, m.x - px - metD[0] * k * 22, m.y - py - metD[1] * k * 22, m.z - pz - metD[2] * k * 22, m.s * (1 - k * .1), 0, 0, 0, k * .13, b, b * .85, b * .6, 0); } }
 }
 
-// ---- the owner's own tracks, streamed from ikosagon.com (the radio's list): now and then one fades in from a random point, plays a minute, fades out ----
+// ---- the owner's own tracks, streamed from where they are hosted: now and then one fades in from a random point, plays a minute, fades out ----
+const TRACKS = ['8bca2649-ef58-4337-99da-96bc09457d8e', 'cab7667f-c12b-4b52-89f8-790cadf115f8', 'a8499c7c-09f5-47a4-82ba-ef1ed1d11704', '98987f77-6a7a-4fff-ab98-d48bdb3035e3', '53a8bb5c-0b30-4a08-85b1-628a4a3b71b8', '6ad0e9ff-0b1c-4904-8a12-44d2e5d90187', '00607acb-f516-4f98-8b2a-4fb7b4afa93c', '0f9a39ab-36f0-4090-91a6-1168566e464c'];
+const PHOST = ['https://cdn1.suno.ai/', 'https://cdn2.suno.ai/'];
 let plA = null, plOn = 0, plNext = 75, plEnd = 0, plVol = 0, plBad = 0, plWant = .3, plLast = -1, plH = 0;
-
+let plLocal = null; const plLoadLocal = () => { if (plLocal || location.protocol === 'file:') return; plLocal = []; try { fetch('music/tracks.json').then((r) => r.ok ? r.json() : []).then((a) => { plLocal = Array.isArray(a) ? a : []; }).catch(() => {}); } catch {} };   // looked for only when the fallback playlist is actually needed
 const plLevel = (v) => { plWant = Math.max(0, Math.min(1, v)); };   // the one place the game sets how loud the stream is: it dips for hails and fights and comes back
 function playlistTick(dt, fly) {
+  plLoadLocal();
   if (!CFG.pl || !fly || plBad > 3 || !AC || AC.state !== 'running') return;
   if (!plOn) {
     plNext -= dt; if (plNext > 0) return; plNext = 150 + Math.random() * 240;
     if (!plA) { plA = new Audio(); plA.preload = 'none'; plA.onerror = () => { plBad++; plOn = 0; plH = 1 - plH; plNext = 8; }; }
-    if (!rdList || !rdList.length) { radioLoad(); plNext = 20; return; } const N = rdList.length; let n = Math.random() * N | 0; if (n === plLast && N > 1) n = (n + 1) % N; plLast = n; plA.src = rdList[n].url; plA.volume = 0; plVol = 0;
+    let n = Math.random() * TRACKS.length | 0; if (n === plLast) n = (n + 1) % TRACKS.length; plLast = n; plA.src = plLocal && plLocal.length ? 'music/' + plLocal[n % plLocal.length] : PHOST[plH] + TRACKS[n] + '.mp3'; plA.volume = 0; plVol = 0;
     plA.onloadedmetadata = () => { try { if (plA.duration > 120) plA.currentTime = Math.random() * (plA.duration - 110); } catch {} };
     const p = plA.play(); if (p && p.then) p.then(() => { plOn = 1; plEnd = 55 + Math.random() * 50; }).catch(() => { plBad++; });
     return;
@@ -4040,6 +4172,10 @@ function scStep(t, T, e) {
   if (S.lead) { const dg = T.motif[(SC.secBar & 1) * 16 + s]; if (dg != null && Math.random() < .85) scLead(t, scNote(T, dg, 1), spb * 3, .035, T); }
   if (SC.sec === 'build' && SC.secBar === SC.secLen - 2 && s === 0) scSwell(t, spb * 32, .05);
 }
+// v1.73: two score styles. Classic is the v1.13 score (arpeggio, 808s, trap hats, the groove); night is the soft set from v1.18.
+// Each star system picks one (classic about two systems in three); Settings → Score style can fix it either way.
+const MUSN = { mix: 'both, by star system', classic: 'classic (808s and arps)', night: 'night (soft)' };
+function mStyle() { const c = CFG.mus || 'mix'; if (c === 'classic' || c === 'night') return c; return hs(Math.imul(SYS.id | 0, 2654435761) ^ 0x4D555349) % 3 === 2 ? 'night' : 'classic'; }
 function scTick() {
   if (!AC || AC.state !== 'running') return;
   scInit();
@@ -4659,7 +4795,8 @@ function setUi() {
     if (headset) body += row('vrRs', 'Render scale', rsN + ' · next entry') + row('vrFov', 'Fixed foveation', fovN) + row('ck', 'Cockpit', cockpit ? 'on' : 'off') + `<p style="color:rgb(var(--hcr) / .8);margin:14px 0 0">Quest 3 budget is 13.9 ms at 72 Hz, 11.1 ms at 90, 8.3 ms at 120. A steady 72 is kinder than a 120 that drops frames. Foveation cheapens the edge of each eye. This game draws the world to an offscreen buffer first, so the foveation mostly helps the final pass. Drop the render scale if the frame time slips. Quest 3S has no 120 Hz mode.</p>`;
     else body += row('cin', 'Cinematic bars', CFG.cin ? 'on' : 'off') + row('fs', 'Full screen on launch', CFG.fs === 0 ? 'off' : 'on') + row('fxVisor', 'Curved visor', LV3(CFG.fxVisor)) + row('fxGlass', 'Visor glass', LV3(CFG.fxGlass)) + row('fxBlur', 'Motion blur', LV3(CFG.fxBlur)) + row('fxCA', 'Colour fringing', LV3(CFG.fxCA)) + row('fxGrain', 'Film grain', LV3(CFG.fxGrain)) + row('fxBloom', 'Glow', LV3(CFG.fxBloom)) + row('fxFlare', 'Lens flare', LV3(CFG.fxFlare)) + row('fxScan', 'Scanlines', CFG.fxScan ? 'on' : 'off') + row('fxVig', 'Darkened corners', CFG.fxVig ? 'on' : 'off');
   } else if (tab === 'Audio') {
-    body = row('radio', 'Ikosagon radio', CFG.radio ? 'on' : 'off') + row('pl', 'Playlist between songs', CFG.pl ? 'on' : 'off') + row('vEng', 'Engine and boost', relSet(CFG.vEng, .5)) + row('vCht', 'Radio chatter', relSet(CFG.vCht, 1)) + row('vRad', 'Music', relSet(CFG.vRad, 1));
+    body = row('radio', 'Ikosagon radio', CFG.radio ? 'on' : 'off') + row('mus', 'Score style', MUSN[CFG.mus] || MUSN.mix) + row('pl', 'Playlist between songs', CFG.pl ? 'on' : 'off') + row('vEng', 'Engine and boost', relSet(CFG.vEng, .5)) + row('vCht', 'Radio chatter', relSet(CFG.vCht, 1)) + row('vRad', 'Music', relSet(CFG.vRad, 1));
+    if (!headset && !touch) body += row('suno', 'Suno playlist', 'open');
   } else if (tab === 'Flight') {
     body = row('host', 'Other pilots', ['peaceful', 'wary', 'hostile'][CFG.host]) + row('inv', 'Invert pitch', CFG.inv ? 'on' : 'off') + row('wipe', 'New universe', 'asks first');
     if (!touch) body += row('ctl', 'Stick model', CFG.ctl ? 'space sim' : 'standard');
@@ -4692,6 +4829,7 @@ setP.onclick = (e) => {
   if (k === 'vrMoK') { CFG.vrMoK = cyc(CFG.vrMoK || 1, [1, 1.3, 1.7, .6, .8]); setUi(); return; }
   if (k === 'vrMoInv') { CFG.vrMoInv = CFG.vrMoInv ? 0 : 1; setUi(); return; }
   if (k === 'reset') CFG.keys = {};
+  else if (k === 'suno') window.open('https://suno.com/playlist/12f42e02-78a5-4eb2-bf7e-f605817e4c06', '_blank', 'noopener');
   else if (k === 'wipe') { setP.style.display = 'none'; newUniverse(); return; }
   else if (k === 'hud') CFG.hud = (CFG.hud + 1) % HCOL.length;
   else if (k === 'op') CFG.op = cyc(CFG.op, [1, .7, .45, .25, 0]);
@@ -4712,6 +4850,7 @@ setP.onclick = (e) => {
   else if (k === 'cin') CFG.cin = CFG.cin ? 0 : 1;
   else if (k === 'fs') CFG.fs = CFG.fs === 0 ? 1 : 0;
   else if (k === 'radio') CFG.radio = CFG.radio ? 0 : 1;
+  else if (k === 'mus') CFG.mus = cyc(CFG.mus || 'mix', ['mix', 'classic', 'night']);
   else if (k === 'pl') { CFG.pl = CFG.pl ? 0 : 1; if (!CFG.pl && plA) { plA.pause(); plOn = 0; } }
   else if (['fxBlur', 'fxCA', 'fxGrain', 'fxBloom', 'fxFlare', 'fxVisor', 'fxGlass'].includes(k)) CFG[k] = cyc(CFG[k], [.5, 1, 0]);
   else if (k === 'fxScan' || k === 'fxVig') CFG[k] = CFG[k] ? 0 : 1;
@@ -5752,7 +5891,7 @@ arrive = function (sec, loc, quiet) {
   try {
     if (!SYS.atm && SYS.pl) {
       let best = 0, bi = 0;
-      for (let k = 0; k < NPL; k++) if ((SYS.pl[k * 4 + 3] || 0) > best) { best = SYS.pl[k * 4 + 3]; bi = k; }
+      for (let k = 0; k < 3; k++) if ((SYS.pl[k * 4 + 3] || 0) > best) { best = SYS.pl[k * 4 + 3]; bi = k; }
       if (best > .02) {
         yaw = Math.atan2(SYS.pl[bi * 4], -SYS.pl[bi * 4 + 2]);
         pitch = Math.max(-.22, Math.min(.32, Math.asin(Math.max(-1, Math.min(1, SYS.pl[bi * 4 + 1] * .65)))));
@@ -5905,55 +6044,9 @@ float shv(ivec3 p){return float(sh3(p)>>8u)*(1./16777216.);}
 float sv3(vec3 x){vec3 i=floor(x),f=x-i;f=f*f*(3.-2.*f);ivec3 j=ivec3(i);
  float a=mix(mix(shv(j),shv(j+ivec3(1,0,0)),f.x),mix(shv(j+ivec3(0,1,0)),shv(j+ivec3(1,1,0)),f.x),f.y);
  float b=mix(mix(shv(j+ivec3(0,0,1)),shv(j+ivec3(1,0,1)),f.x),mix(shv(j+ivec3(0,1,1)),shv(j+ivec3(1,1,1)),f.x),f.y);return mix(a,b,f.z);}
-float sn(vec3 p){p*=4.;return .55*sv3(p)+.3*sv3(p*2.03+7.)+.15*sv3(p*4.1+3.);}
+uniform int uZero;
+float sn(vec3 p){p*=4.;float r=0.;for(int o=0;o<3+uZero;o++){r+=(o==0?.55:o==1?.3:.15)*sv3(o==0?p:o==1?p*2.03+7.:p*4.1+3.);}return r;}
 float cloudA(vec3 n){vec3 cw=n+vec3(sn(n*2.+5.),sn(n*2.3+11.),sn(n*1.8+2.))*.32;return smoothstep(.52,.84,sn(cw*1.3));}
-uniform vec4 uGx;vec3 gEmT=vec3(0);
-// v1.69: the planet genome: sub-types and features layered on each world type, the same in the orbit view and on the ground
-vec3 gh3(vec3 p){p=fract(p*vec3(.1031,.103,.0973));p+=dot(p,p.yxz+33.33);return fract((p.xxy+p.yzz)*p.zyx);}
-float gCrater(vec3 p,out float rim){vec3 i=floor(p),f=fract(p);float fl=0.;rim=0.;
- for(int x=0;x<2;x++)for(int y=0;y<2;y++)for(int z=0;z<2;z++){vec3 o=vec3(float(x),float(y),float(z)),h=gh3(i+o),c=o+(h-.5)*.7;float r=.16+.3*fract(h.x*7.3),d=length(f-c)/r;
-  fl=max(fl,smoothstep(1.,.72,d));rim=max(rim,smoothstep(.14,0.,abs(d-1.)));}
- return fl;}
-void gFeat(vec3 n,int k,vec4 g,vec3 ca,vec3 cb,vec3 L,inout vec3 s,inout float cl,out vec3 em){em=vec3(0);int sb=int(g.x+.5);float a=g.y,b=g.z,c=g.w;
- float w=sn(n*1.15+.2),w2=sn(n*2.6+.7),w3=sn(n*5.2+1.4),hi=sn(n*61.+3.),rm=0.,fl=0.;
- if(k==0){
-  if(sb==1){for(int j=0;j<5;j++){vec3 h=gh3(vec3(float(j)*7.1,a*13.,3.3))*2.-1.,cc=normalize(vec3(h.x,h.y*.45,h.z));float d=acos(clamp(dot(n,cc),-1.,1.)),r=.07+.12*fract(h.x*9.);
-    if(d<r*1.6){vec3 t=normalize(cross(cc,vec3(0.,1.,0.))+1e-4),bt=cross(cc,t);float sw=.5+.5*sin(atan(dot(n,bt),dot(n,t))*2.-d/r*10.);s=mix(s,mix(cb*1.25,ca*.55,sw),smoothstep(r*1.45,r*.5,d));}}}
-  else if(sb==2){s=mix(ca,cb,.5+.5*sin(n.y*4.+w*1.2))*.9;s=mix(s,vec3(dot(s,vec3(.33))),.2);cl=0.;}
-  else if(sb==3){em=vec3(1.,.38,.12)*(.45+.55*w2)*(.5+b);s=mix(s,s*vec3(1.1,.7,.5),.4);}
- }else if(k==1){
-  if(sb==1){s=mix(vec3(.05,.02,.01),ca*.4,w2*.5);em=vec3(1.,.38,.08)*smoothstep(.35,.75,w*.6+w2*.4)*1.6;}
-  else if(sb==2){vec3 io=mix(vec3(.92,.82,.3),vec3(.85,.45,.15),smoothstep(.3,.7,w2));io=mix(io,vec3(.95,.95,.85),smoothstep(.75,.9,w3)*.5);fl=gCrater(n*9.,rm);s=mix(io,vec3(.08,.05,.03),fl*.8);em=vec3(1.,.45,.1)*fl*.7;}
-  else if(sb==3){s=vec3(.03,.03,.035)*(.6+.8*w2);em=vec3(.6,.8,1.)*step(.93,hi)*.9;}
-  else em=vec3(1.,.4,.1)*smoothstep(.045,0.,abs(sn(n*4.+3.)-.5))*(.5+a)*1.4;
- }else if(k==2){
-  if(sb==1)s=mix(s,cb*.5,smoothstep(.04,0.,abs(sn(n*3.2+1.)-.5))*.85);
-  else if(sb==2){s=mix(s,vec3(.92,.9,.86),smoothstep(.45,.6,w));s*=1.-.3*smoothstep(.03,0.,abs(fract(w3*9.)-.5)-.44);}
-  else if(sb==3){fl=gCrater(n*7.,rm);s=mix(s,s*.6,fl*.7)+rm*.09;}
- }else if(k==3){
-  vec3 sea=mix(vec3(.02,.07,.16),ca*.8,.62),grd=mix(cb,ca*.75+.08,smoothstep(.25,.75,w2));
-  if(sb==1)s=mix(sea,grd,smoothstep(.6,.66,w3*.65+w2*.35));
-  else if(sb==2){s=mix(sea*.7,sea*1.15,w2);cl=max(cl,smoothstep(.42,.75,w)*.75);}
- }else if(k==4){
-  if(sb==1)s=mix(s,vec3(.36,.12,.42)*(.7+.5*w2),.55);
-  else if(sb==2)s=mix(s,vec3(.5,.1,.08)*(.7+.5*w2),.55);
-  else if(sb==3)em=vec3(.2,.9,.7)*smoothstep(.55,.8,w3)*.7;
- }else if(k==5){
-  if(sb==1){s=mix(s,vec3(.55,.25,.15),smoothstep(.03,0.,abs(sn(n*3.5+2.)-.5))*.85);s=mix(s,vec3(.6,.3,.2),smoothstep(.02,0.,abs(sn(n*6.+7.)-.5))*.5);}
-  else if(sb==2){s=mix(s,vec3(.85,.55,.25),.45);cl=max(cl,.25);}
-  else if(sb==3){fl=gCrater(n*8.,rm);s=mix(s,s*.7,fl*.6)+rm*.1;}
- }else if(k==6){
-  if(sb==1)s=mix(s,mix(vec3(.02,.08,.2),ca*.6,.4),smoothstep(.55,.72,dot(n,L)));
- }else if(k==7){
-  fl=gCrater(n*(6.+a*8.),rm);
-  if(sb==1){s=vec3(.025,.025,.03)*(.7+.6*w2);em=vec3(.8,.9,1.)*step(.95,hi)*.9;}
-  else if(sb==2)s=mix(vec3(.38,.36,.34),vec3(.55,.25,.12),smoothstep(.4,.7,w2))*(.8+.3*w3);
-  else if(sb==3){vec3 ir=.5+.5*cos(6.283*(w2*1.5+n.y+vec3(0.,.33,.67)));s=mix(s,ir*.6,.6);em=ir*step(.94,hi)*1.1;}
-  s=mix(s,s*.6,fl*.75)+rm*.07;
- }
- if(b>.01&&k!=0&&k!=1){float cap=smoothstep(1.-b*.55-.04,1.-b*.55+.04,abs(n.y)+(w-.5)*.12);s=mix(s,vec3(.88,.92,.96),cap*.9);}
- if(c>.01){float cty=smoothstep(.62,.8,sn(n*38.+5.))*smoothstep(.5,.7,sn(n*7.+1.));em+=vec3(1.,.78,.45)*cty*c*1.2;}
-}
 vec3 surfS(vec3 n,int k,vec3 ca,vec3 cb,vec3 L,out float land,out float cl){float w=sn(n*1.15+.2),w2=sn(n*2.6+.7),w3=sn(n*5.2+1.4);vec3 s=mix(ca,cb,w2);cl=0.;land=1.;
   if(k==0){}
   else if(k==1){s=mix(mix(vec3(.045,.016,.01),ca*.3,.6),mix(vec3(.2,.07,.03),cb*.3,.6),w2);land=smoothstep(.07,0.,abs(fract(w*2.4+w2)-.5)-.4);cl=0.;}
@@ -5964,7 +6057,6 @@ vec3 surfS(vec3 n,int k,vec3 ca,vec3 cb,vec3 L,out float land,out float cl){floa
   else if(k==7){float br=smoothstep(.12,0.,abs(w-.4)-.07);s=mix(ca*.5+.03,cb,w2)*(1.-br*.7);cl=0.;land=0.;}
   else{s=mix(mix(vec3(.8,.9,.97),cb,.4),mix(ca,vec3(.72,.86,.95),.2),.4+.2*w2);s=mix(s,ca*.4,smoothstep(.045,0.,abs(fract(n.y*5.+w*2.4)-.5)-.47)*.6);cl=smoothstep(.66,.9,w)*.2;land=1.;}
 
- {vec3 gem;gFeat(n,k,uGx,ca,cb,L,s,cl,gem);gEmT=gem;}
  s=mix(vec3(dot(s,vec3(.3,.5,.2))),s,1.25);s*=.94+.06*w3;return s;}
 
 uint thu(ivec2 p){uvec2 q=uvec2(p)*uvec2(1597334673u,3812015801u);return (q.x^q.y)*1597334673u;}
@@ -6018,7 +6110,7 @@ void main(){vec3 N=normalize(vN),L=uSun.xyz,d=vW-uCam;float dist=length(d);d/=di
   if(k==2)c*=1.+.12*sin(vW.x*.09+vW.z*.05+m1*4.)*fd;
   vec2 gq=vec2(tvn(vW.xz*.6+vec2(.37,0.))-m2,tvn(vW.xz*.6+vec2(0.,.37))-m2)*fd2;N=normalize(N+vec3(gq.x,0.,gq.y)*1.6);}
  float ndl=max(dot(N,L),0.),sunH=smoothstep(-.25,.25,L.y+.15);vec3 at=mix(uAir*mix(vec3(1.),sunT,.55),uOa,.25);
- vec3 col=c*(uSunC.rgb*ndl*1.25+at*at*(.07+.16*sunH)*(.6+.4*N.y)+.01)+gEmT*(1.-sunH*.85)*.7;
+ vec3 col=c*(uSunC.rgb*ndl*1.25+at*at*(.07+.16*sunH)*(.6+.4*N.y)+.01);
  if(uK.w>-1e8&&vH<uK.w){   // v1.45 water: shallow to deep colour, moving waves, the sky reflected by angle, a sun glint, foam at the shore
   float wa=.09*uSkT2.w*(1.-smoothstep(1500.,25000.,dist)),tt=TIME;vec2 wp=vW.xz;
   float w1=sv3(vec3(wp*.006+vec2(tt*.05,tt*.03),1.)),w2=sv3(vec3(wp*.025-vec2(tt*.09,-tt*.06),2.)),w3=sv3(vec3(wp*.006+vec2(tt*.05,tt*.03)+vec2(.9,0.),1.)),w4=sv3(vec3(wp*.025-vec2(tt*.09,-tt*.06)+vec2(0.,.9),2.));
@@ -6043,8 +6135,9 @@ void main(){vec3 N=normalize(vN2),L=uSun.xyz,d=vW-uCam;float dist=length(d);d/=d
  float f=(1.-exp(-dist/9000.))*.85;o=vec4(mix(col,tHaze(d),max(f,smoothstep(900.,1150.,dist))),1.);}`;
 let terBusy = 0;
 let P_PLS = null;
-function plsQ(front) { if (P_PLS) return; bq('plasma', () => progA(PLS_V, PLS_F).then((p) => { P_PLS = p; }), front); }
+function plsQ(front) { if (P_PLS || dgOff('plasma')) return; bq('plasma', () => progA(PLS_V, PLS_F).then((p) => { P_PLS = p; }), front); }
 function terBuild(front) {   // the ground and the trees
+  if (dgOff('ground')) return;
   const g = () => !TP && bq('ground', () => progA(TER_V, TER_F).then((p) => { TP = p; }), front), t = () => TUNE.trees && !VP && bq('trees', () => progA(VEG_V, VEG_F).then((p) => { VP = p; }), front);
   if (front) { t(); g(); } else { g(); t(); } }
 let TP = null, VP = null, tVA = null, tN0 = 0, tVA1 = null, tN1 = 0, vVA = null, vIB = null, vN = 0, vCnt = 0, vAt = [1e9, 1e9], vData = null;
@@ -6091,7 +6184,7 @@ function v126Draw(vd) {
   gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS); gl.depthMask(true); gl.disable(gl.CULL_FACE); gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
   const k = SYS.atm - 1, kind = tKind(), oa = [SYS.pa[k * 4], SYS.pa[k * 4 + 1], SYS.pa[k * 4 + 2]], ob = [SYS.pb[k * 3], SYS.pb[k * 3 + 1], SYS.pb[k * 3 + 2]];
   const set = (P) => { const u = P.u; gl.useProgram(P.p); gl.uniform4f(u.uK, tPar[0], tPar[1], tPar[2], tPar[3] > -1e8 ? tPar[3] : -1e9); gl.uniform4f(u.uT, kind, 0, TGB, tSeed);
-    gl.uniform3f(u.uCam, px + eox, py + eoy, pz + eoz); if (u.uCv) gl.uniform4f(u.uCv, cC[0], cC[1], tRm, 1); gl.uniform3f(u.uOa, ...oa); gl.uniform3f(u.uOb, ...ob); if (u.uGx) gl.uniform4fv(u.uGx, gxOf(SYS.atm - 1)); gl.uniform3f(u.uAir, ...v126Air); if (u.uPMt) gl.uniformMatrix3fv(u.uPMt, false, v126PM); if (u.uSkT) gl.uniform4f(u.uSkT, TUNE.skyPale, TUNE.skyBright, TUNE.skyTwi, TUNE.skyHaze); if (u.uSkT2) gl.uniform4f(u.uSkT2, TUNE.grRelief, TUNE.waterShine, TUNE.waterSky, TUNE.waterWave); if (u.uTf) gl.uniform1f(u.uTf, v126tf); if (u.uTe) gl.uniform1f(u.uTe, tss(TCLOUD - 2500, TCLOUD + 200, py)); };
+    gl.uniform3f(u.uCam, px + eox, py + eoy, pz + eoz); if (u.uCv) gl.uniform4f(u.uCv, cC[0], cC[1], tRm, 1); gl.uniform3f(u.uOa, ...oa); gl.uniform3f(u.uOb, ...ob); gl.uniform3f(u.uAir, ...v126Air); if (u.uPMt) gl.uniformMatrix3fv(u.uPMt, false, v126PM); if (u.uSkT) gl.uniform4f(u.uSkT, TUNE.skyPale, TUNE.skyBright, TUNE.skyTwi, TUNE.skyHaze); if (u.uSkT2) gl.uniform4f(u.uSkT2, TUNE.grRelief, TUNE.waterShine, TUNE.waterSky, TUNE.waterWave); if (u.uTf) gl.uniform1f(u.uTf, v126tf); if (u.uTe) gl.uniform1f(u.uTe, tss(TCLOUD - 2500, TCLOUD + 200, py)); };
   set(TP); const lv = LV >= 1 ? 7 : 8, rMax = 12 * (1 << (lv - 1)) * 32;
   gl.uniform4f(TP.u.uC, TUNE.grFog, tPar[5], 1, rMax);   // v1.33: denser aerial haze, so height reads
   for (let l = 0; l < lv; l++) { gl.uniform4f(TP.u.uLv, 12 * (1 << l), l === lv - 1 ? 1 : 0, 0, 0); gl.bindVertexArray(l ? tVA1 : tVA); gl.drawElements(gl.TRIANGLES, l ? tN1 : tN0, gl.UNSIGNED_SHORT, 0); }
@@ -6124,8 +6217,8 @@ let heatHoldT = 0, plsT = 0;
 function v126Burn() { heatHoldT = tm + TUNE.heatHold; entT = tm; exV = 0; exF = 0; exCommit = 0; v126Heat = 1; heatFlare = 1; trauma = Math.max(trauma, .45); tip('Atmospheric entry · the air takes your speed', 4000); }   // re-entry: a few seconds of heat on the canopy while the air bleeds the speed off   // set just before a continuous hop: the sky you are in stays the sky you were in
 let cOn = 0, cM = [1, 0, 0, 0, 1, 0, 0, 0, 1], cC = [0, 0], cS0 = [0, 1, 0], cAx = [1, 0, 0], cT0 = 0;
 const v126PM = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
-const v126PL = new Float32Array(NPL * 3);   // each planet's light: from its star, fixed per place, the same from far off, up close and from inside
-function v126Lights() { if (SYS.atm || !sysP) return; for (let k = 0; k < NPL; k++) { const P = sysP[k]; if (!P) { v126PL.fill(0, k * 3, k * 3 + 3); continue; } const L = starDir(P); v126PL.set(L, k * 3); } }
+const v126PL = new Float32Array(9);   // each planet's light: from its star, fixed per place, the same from far off, up close and from inside
+function v126Lights() { if (SYS.atm || !sysP) return; for (let k = 0; k < 3; k++) { const P = sysP[k]; if (!P) { v126PL.fill(0, k * 3, k * 3 + 3); continue; } const L = starDir(P); v126PL.set(L, k * 3); } }
 // v1.34: one star, at one place in the system: every world lit from where it really is
 const starDir = (P) => nrm([STARG[0] - sysO[0] - P[0], STARG[1] - sysO[1] - P[1], STARG[2] - sysO[2] - P[2]]);
 let v126PG = [0, 0, 0, 0], v126PD = [0, -1, 0];
@@ -6178,7 +6271,7 @@ function v126Alt() { return hasTerr() ? Math.max(0, py - tGround(px, pz)) / 1000
 const v123SimV = v123Sim;
 v123Sim = function (dt, fly) { v123SimV(dt, fly); try { v126Tick(dt, fly); } catch (e) { console.error('v126', e); } };
 const v122DrawV126 = v122Draw;
-v122Draw = function (vd, pass) { if (!pass) { try { v126Draw(vd); } catch (e) { console.error('v126 draw', e); TP = null; } } else { try { v126Weather(); } catch (e) { console.error('wx', e); WXP = false; } } if (!SYS.atm) v122DrawV126(vd, pass); };
+v122Draw = function (vd, pass) { if (!pass) { try { if (!dgOff('ground')) v126Draw(vd); } catch (e) { console.error('v126 draw', e); TP = null; } } else { try { if (!dgOff('weather')) v126Weather(); } catch (e) { console.error('wx', e); WXP = false; } } if (!SYS.atm) v122DrawV126(vd, pass); };
 const npcSpawnV126 = npcSpawn;
 npcSpawn = function () { npcSpawnV126(); if (SYS.atm) for (let i = NPCS.length - 1; i >= 0; i--) { const a = NPCS[i]; if (a.big || a.size > 60 || a.role === 6 && a.size > 30) NPCS.splice(i, 1); } };   // no capital ships or leviathans in a planet's sky
 const v123BootV126 = v123Boot;
@@ -6245,7 +6338,8 @@ float shv(ivec3 p){return float(sh3(p)>>8u)*(1./16777216.);}
 float sv3(vec3 x){vec3 i=floor(x),f=x-i;f=f*f*(3.-2.*f);ivec3 j=ivec3(i);
  float a=mix(mix(shv(j),shv(j+ivec3(1,0,0)),f.x),mix(shv(j+ivec3(0,1,0)),shv(j+ivec3(1,1,0)),f.x),f.y);
  float b=mix(mix(shv(j+ivec3(0,0,1)),shv(j+ivec3(1,0,1)),f.x),mix(shv(j+ivec3(0,1,1)),shv(j+ivec3(1,1,1)),f.x),f.y);return mix(a,b,f.z);}
-float sn(vec3 p){p*=4.;return .55*sv3(p)+.3*sv3(p*2.03+7.)+.15*sv3(p*4.1+3.);}
+uniform int uZero;
+float sn(vec3 p){p*=4.;float r=0.;for(int o=0;o<3+uZero;o++){r+=(o==0?.55:o==1?.3:.15)*sv3(o==0?p:o==1?p*2.03+7.:p*4.1+3.);}return r;}
 float cloudD(vec3 n,float cz){vec3 cw=n+vec3(sn(n*2.+5.),sn(n*2.3+11.),sn(n*1.8+2.))*.32;float v=sn(cw*1.3);if(cz>0.)v+=((sn(cw*22.+3.)-.5)*.2+(sn(cw*85.+7.)-.5)*.08)*cz;return smoothstep(.52,.84,v);}
 float cloudA(vec3 n){return cloudD(n,0.);}
 void main(){
@@ -6274,21 +6368,23 @@ void main(){
  float hz=1.-exp(-(t0+ds*3.)/uC1.w);acc=mix(acc,hcol*(1.-T),hz*.85);o=vec4(acc,T);}`;
 
 let P_CLD = null;
-function cldQ(front) { if (P_CLD !== null) return; bq('clouds', () => progA(TRI_V, CLD_F).then((p) => { P_CLD = p; }, (e) => { console.error('clouds', e); P_CLD = false; }), front); }
+function cldQ(front) { if (P_CLD !== null || dgOff('clouds')) return; bq('clouds', () => progA(TRI_V, CLD_F).then((p) => { P_CLD = p; }, (e) => { console.error('clouds', e); P_CLD = false; }), front); }
 function cldWant(force) {   // a world with air within ~14 radii (or its sky): its programs jump the queue, in the order they're needed
   if (P_CLD !== null && TP && VP && P_SKYA && P_PLS) return;
   if (B.className[0] !== 'g') return;   // never on the title screen
   let want = force || SYS.atm && isCont();
-  if (!want && sysP) for (let k = 0; k < NPL; k++) if (sysP[k] && SYS.locs.some((l) => l.atm === k + 1) && Math.hypot(sysP[k][0] - sysS[0], sysP[k][1] - sysS[1], sysP[k][2] - sysS[2]) < PR[k] * 14) want = true;
+  if (!want && sysP) for (let k = 0; k < 3; k++) if (sysP[k] && SYS.locs.some((l) => l.atm === k + 1) && Math.hypot(sysP[k][0] - sysS[0], sysP[k][1] - sysS[1], sysP[k][2] - sysS[2]) < PR[k] * 14) want = true;
   if (!want) return;
   bqGo = 1; cldQ(true); terBuild(true); skyaQ(true); plsQ(true);
 }
 function cldDraw() {
-  cldWant(); if (!P_CLD || !(SYS.atm && isCont())) return; const kk = tKind(); if (kk === 0 || kk === 1 || kk === 7) return;
+  if (dgOff('clouds')) return; cldWant(); if (!P_CLD || !(SYS.atm && isCont())) return; const kk = tKind(); if (kk === 0 || kk === 1 || kk === 7) return;
+  dgStage('clouds');
   const u = P_CLD.u; gl.useProgram(P_CLD.p);
   gl.uniform4f(u.uOrb, 0, Math.max(20, v126Hh), px, pz); gl.uniform4f(u.uPG, v126PG[0], v126PG[1], v126PG[2], v126PG[3]); gl.uniform3f(u.uPD, v126PD[0], v126PD[1], v126PD[2]); gl.uniformMatrix3fv(u.uPM, false, v126PM);
   const k = SYS.atm - 1; gl.uniform3f(u.uOa, SYS.pa[k * 4], SYS.pa[k * 4 + 1], SYS.pa[k * 4 + 2]); if (u.uAir) gl.uniform3f(u.uAir, ...v126Air); gl.uniform1i(u.uNC, TUNE.cldSteps | 0); gl.uniform4f(u.uSkT, TUNE.skyPale, TUNE.skyBright, TUNE.skyTwi, TUNE.skyHaze); gl.uniform4f(u.uC0, TUNE.cldBase * 1000, TUNE.cldTop * 1000, TUNE.cldCover, TUNE.cldThresh); gl.uniform4f(u.uC1, TUNE.cldPuff, TUNE.cldBright, TUNE.cldDense, TUNE.cldFar * 1000); gl.uniform4f(u.uC2, TUNE.cldLight, TUNE.cldMax * 1000, TUNE.cldAmb, TUNE.cldTower);
   gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.ONE, gl.SRC_ALPHA, gl.ZERO, gl.SRC_ALPHA); gl.bindVertexArray(VA0); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.disable(gl.BLEND);
+  dgStage('sky');
 }
 // ============================================================================
 // Build everything (with a loading bar), then fly
@@ -6298,7 +6394,9 @@ noiseTex();
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.70';                                          // shown on the pause screen. From v1.20 a new value keeps the save.
+const BUILD = 'v1.81';
+// v1.74: if the last session ended in a graphics reset, put what was being built at the time in the log (F9 → Copy settings shows it)
+try { const g = JSON.parse(localStorage.ieGlLost || 'null'); if (g) evLog(`Graphics · last reset (${g.build}, ${g.at.slice(0, 16).replace('T', ' ')}): ${g.was ? 'building the ' + g.was + ' program, ' + g.secs + ' s in' : 'no program was being built'}`); } catch {}                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 let draws = 0, verts = 0, frameDraws = 0, frameVerts = 0;
 const _dei = gl.drawElementsInstanced.bind(gl), _de = gl.drawElements.bind(gl), _da = gl.drawArrays.bind(gl);
 gl.drawElementsInstanced = (m, c, ty, off, n) => { draws++; verts += c * n; return _dei(m, c, ty, off, n); };
@@ -6351,9 +6449,11 @@ await step(.5, 'Waking the leviathans…');
 const mSiphon = siphonMesh(), mSpark = sparkMesh(), mCry = crystalMesh(), mJelly = jellyMesh(), mRay = rayMesh(), mDart = dartMesh(), mRing = ringMesh(), mSpire = spireMesh(), mWhale = whaleMesh(), mSerp = serpentMesh(), mTen = tendrilMesh(), mQuad = quadMesh(), mBox = boxMesh(), mCock = cockpitMesh(), mFighter = fighterMesh(), mFrig = [frigateMesh(0), frigateMesh(1)], mDrone = droneMesh(), mGate = gateMesh();
 for (const g of ST.dead) dead.add(g);
 await step(.62, 'Growing crystal…');
-const pStep = async (p, t, vs, fs) => { await step(p, t); const t0 = performance.now(), r = await progA(vs, fs), ms = Math.round(performance.now() - t0); if (ms > 120) evLog(`Load · ${Math.round(p * 100)}% ${t} ${ms} ms`); return r; };   // one step per program: the bar moves as each one is ready
+const pStep = async (p, t, vs, fs) => { await step(p, t); DG.load = `${Math.round(p * 100)}% ${t}`; try { localStorage.ieDiagHB = JSON.stringify(dgSnap(0)); } catch {} const t0 = performance.now(), r = await progA(vs, fs), ms = Math.round(performance.now() - t0); if (ms > 120) evLog(`Load · ${Math.round(p * 100)}% ${t} ${ms} ms`); return r; };   // one step per program: the bar moves as each one is ready
+await dgGate();
+const SKYS = SKY_F.replace('#version 300 es', '#version 300 es' + (dgOff('skyplanets') ? '\n#define NOPL' : '') + (dgOff('skyfx') ? '\n#define NOFX' : '') + (dgOff('skystars') ? '\n#define NOBS' : '') + (dgOff('skyground') ? '\n#define NOGND' : ''));
 const P_ROCK = await pStep(.63, 'Carving the rocks…', ROCK_V, ROCK_F), P_CRY = await pStep(.645, 'Growing crystal…', CRY_V, CRY_F), P_LIFE = await pStep(.66, 'Waking the drifters…', LIFE_V, LIFE_F), P_SPR = await pStep(.675, 'Scattering motes…', SPR_V, SPR_F);
-const P_SKY = await pStep(.69, 'Painting the sky, star by star…', TRI_V, SKY_F), P_BLUR = await pStep(.72, 'Softening the glare…', TRI_V, BLUR_F), P_RAY = await pStep(.73, 'Bending the light…', TRI_V, RAY_F.replace('precision', `#define NS ${Q.rays}\nprecision`)), P_COMP = await pStep(.745, 'Grinding the lens…', TRI_V, COMP_F), P_COCK = await pStep(.76, 'Lighting the dash…', COCK_V, COCK_F), P_SHIP = await pStep(.775, 'Plating the hulls…', SHIP_V, ROCK_F);
+const P_SKY = await pStep(.69, 'Painting the sky, star by star…', TRI_V, SKYS), P_BLUR = await pStep(.72, 'Softening the glare…', TRI_V, BLUR_F), P_RAY = await pStep(.73, 'Bending the light…', TRI_V, RAY_F.replace('precision', `#define NS ${Q.rays}\nprecision`)), P_COMP = await pStep(.745, 'Grinding the lens…', TRI_V, COMP_F), P_COCK = await pStep(.76, 'Lighting the dash…', COCK_V, COCK_F), P_SHIP = await pStep(.775, 'Plating the hulls…', SHIP_V, ROCK_F);
 const P_CAB = await pStep(.79, 'Warming the cab…', COCK_V, COCK_F.replace('#version 300 es', '#version 300 es\n#define CABIN'));   // the quarters and the aux screen: their materials stay out of the dash's shader
 gl.useProgram(P_CAB.p); gl.uniform1i(P_CAB.u.uPip, 6);   // the aux screen's picture lives in texture slot 6
 gl.useProgram(P_SHIP.p); gl.uniform3fv(P_SHIP.u['uTier[0]'], TCOL); gl.uniform1i(P_SHIP.u.uKind, 4); gl.uniform1f(P_SHIP.u.uFlat, 0);
@@ -6407,7 +6507,7 @@ function ensureT(w, h) {
   T.ray = keepT(tex2(Math.max(1, w >> 2), Math.max(1, h >> 2), true));
 }
 function resize() {
-  const k = Math.min(devicePixelRatio || 1, Q.dpr) * (stereo ? 1 : S);
+  const k = Math.min(devicePixelRatio || 1, Q.dpr) * (stereo ? 1 : S) * (dgOff('half') ? .6 : 1);
   W = Math.max(96, Math.round(cv.clientWidth * k)); H = Math.max(54, Math.round(cv.clientHeight * k));
   if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
 }
@@ -6606,7 +6706,7 @@ addEventListener('mousemove', (e) => {
 cv.addEventListener('mouseleave', () => { mxn = myn = 0; });
 addEventListener('wheel', (e) => { if (flying()) thrMove(-e.deltaY * .0007); }, { passive: true });
 // v1.36: the throttle stops at zero on the way down; reverse takes a fresh push (let go a moment, then pull again)
-let thrStop = 0, thrDecT = -9, thrTip = 0, airK = 1, gateBrT = 0;
+let thrStop = 0, thrDecT = -9, thrTip = 0, airK = 1, gateBrT = 0, gSink = 0;
 // v1.39: crossing between space and a planet's air, "level" changes meaning (level with space / level with the ground). Instead of the
 // view snapping to the new level in one frame, it keeps the up it had and rolls to the new level over a few seconds.
 let vRoll = 0, QF = [0, 0, 0, 1];   // v1.40: QF = the frame "level" is measured in (see qfAlign)
@@ -6677,13 +6777,13 @@ labels();
 // Sound. Nothing is recorded: a pad, a walking melody, bass and drums are synthesized, and each region has
 // its own key, scale and tempo. Speed adds energy; gunfire brings in the percussion.
 // ============================================================================
-bootOK = 1;
+bootOK = 1; dgLaunchCheck();
 // v1.44: what the loader doesn't build: the planet-side sky and the clouds, built after the menu is up (in the background where the
 // browser can), or on the way into a planet otherwise
 let SKP = P_SKY, P_SKYA = null, skyaBusy = 0;
-const SKYA_F = () => SKY_F.replace('#version 300 es', '#version 300 es\n#define ATM');
+const SKYA_F = () => SKYS.replace('#version 300 es', '#version 300 es\n#define ATM');
 function skyaQ(front) { if (P_SKYA) return; bq('planet sky', () => progA(TRI_V, SKYA_F()).then((p) => { if (!P_SKYA) P_SKYA = p; }), front); }
-function bgBuild() { bqGo = 1; bqRun(); if (!PSC) return; plsQ(); skyaQ(); terBuild(); cldQ(); }   // v1.50: starts a few seconds after you launch, not on the title screen   // v1.41: the sound system exists from here: timers that touch it may run
+function bgBuild() { bqGo = 1; bqRun(); if (!PSC || dgOff('bg')) return; plsQ(); skyaQ(); terBuild(); cldQ(); }   // v1.50: starts a few seconds after you launch, not on the title screen   // v1.41: the sound system exists from here: timers that touch it may run
 let AC = null, AG = null, DL = null, NB = null, windG = null, windF = null, boostG = null, boostF = null, gatG = null, padF = null, padO = [], mT = 0, mStep = 0, mReg = -1, mWalk = 5, combat = 0, energy = 0;
 const mf = (m) => 440 * 2 ** ((m - 69) / 12);
 // the recorded score: five passages cut from the track, laid end to end in one file (start, length, level).
@@ -6757,9 +6857,24 @@ function burst(t, dur, v, f0, f1, type) {                    // filtered noise: 
 }
 function sched() {
   if (!AC || AC.state !== 'running' || document.hidden) return;
-  { const air = radioAir(); if (air !== padMute) { padMute = air; const t = AC.currentTime; padG.gain.cancelScheduledValues(t); padG.gain.setTargetAtTime(0, t, .4); if (air && cueG) { cueG.gain.cancelScheduledValues(t); cueG.gain.setTargetAtTime(0, t, .4); cueEnd = t; } }
-    if (air) { mT = Math.max(mT, AC.currentTime + .1); scTick(); return; } }   // while the radio is on the air, every part of the ship's own music is silent: sequencer, pad, recorded passages, swells       // the radio has the air: the sequenced score rests and picks up when the song ends
-  scTick();
+  const cl = mStyle() === 'classic', now = AC.currentTime;
+  { const air = radioAir(); if (air !== padMute) { padMute = air; if (air && cueG) { cueG.gain.cancelScheduledValues(now); cueG.gain.setTargetAtTime(0, now, .4); cueEnd = now; } }
+    padG.gain.setTargetAtTime(air || !cl || muted ? 0 : .11, now, air || !cl ? .4 : 2);
+    if (cl && SC.out) { SC.out.gain.setTargetAtTime(0, now, .8); SC.t = Math.max(SC.t, now + .1); }
+    if (air) { mT = Math.max(mT, now + .1); if (!cl) scTick(); return; } }   // while the radio is on the air, every part of the ship's own music is silent: sequencer, pad, recorded passages, swells       // the radio has the air: the sequenced score rests and picks up when the song ends
+  if (!cl) { mT = Math.max(mT, now + .1); scTick(); return; }
+  // classic: the v1.13 sequencer, as it was
+  if (mReg < 0) { mReg = REG; retune(REG, chordAt(bar)); }
+  const e = energy, spb = 60 / TMP() / 4, solo = AC.currentTime < cueEnd, oct = REG & 4 ? 12 : 0;
+  if (mT < AC.currentTime) mT = AC.currentTime + .05;
+  while (mT < AC.currentTime + .2) {
+    const s = mStep++ & 15; if (s === 0) { bar++; mReg = REG; retune(REG, chordAt(bar)); }
+    const rd = chordAt(bar), pat = arpAt(bar), st = pat[s], dens = e > .45 ? 1 : e > .12 ? !(s & 1) : !(s & 3);
+    if (dens && st > -1) arp(mf(48 + oct + sn(rd + st)), mT, (.012 + .03 * e) * (solo ? .35 : 1) * ARPV(), 380 + 1500 * e);
+    if (!solo) groove(mT, s, e, rd, spb);
+    beat808(mT, s, e, rd, solo);
+    mT += spb;
+  }
 }
 // each round: a short low knock with a little body of filtered noise under it
 function gunSnd() {
@@ -7018,6 +7133,7 @@ function eye(fb, x, y, w, h, tw, th) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, T.ms || T.hdr.f); gl.viewport(0, 0, tw, th);
   gl.depthMask(true); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS); gl.disable(gl.BLEND); gl.enable(gl.CULL_FACE);
+  dgStage('cockpit');
   if (cockpit && flying()) {                                 // the cockpit goes in first, at the very front of the depth range
     const k = xr ? 1 / 6 : stereo ? .25 : 1, vib = .0015 + .004 * Math.abs(thr) + .012 * bst + trauma * .04, cg = (i) => Math.min(1, Math.log2(1 + cargo[i]) / 6);
     gl.depthRange(0, .01); pipTick(); gl.activeTexture(gl.TEXTURE6); gl.bindTexture(gl.TEXTURE_2D, PIP.tex); gl.activeTexture(gl.TEXTURE0); gl.bindVertexArray(VAC);
@@ -7036,6 +7152,7 @@ function eye(fb, x, y, w, h, tw, th) {
     }
     gl.depthRange(0, 1);
   }
+  dgStage('solids');
   const R = P_ROCK, ru = R.u, vd = Math.min(1, veil || 0);
   gl.useProgram(R.p); if (ru.uVd) gl.uniform1f(ru.uVd, vd); gl.uniform1i(ru.uKind, 0); gl.uniform1f(ru.uFlat, 0);
   gl.uniform1f(ru.uSpin, .002); fam3(R, TV, mHi);
@@ -7057,21 +7174,27 @@ function eye(fb, x, y, w, h, tw, th) {
   gl.uniform1i(P_SHIP.u.uShip, 3); draw(P_SHIP, DTr, mFrig[1]);
   gl.uniform1i(P_SHIP.u.uShip, 1); draw(P_SHIP, LFr, mFrig[1]); if (FV[1]) draw(P_SHIP, FV[1], mFrig[0]);
   gl.uniform1i(P_SHIP.u.uShip, 6); draw(P_SHIP, RV[0], mRing); draw(P_SHIP, RV[1], mSpire); draw(P_SHIP, RV[2], mHubS); draw(P_SHIP, RV[3], mDockS); draw(P_SHIP, MV[0], mRing); draw(P_SHIP, MV[1], mSpire);
+  dgStage('ground');
   if (typeof v122Draw === 'function') v122Draw(vd, 0);
+  dgStage('sky');
   // the sky fills whatever is left
   gl.depthFunc(gl.LEQUAL); gl.depthMask(false);
   if (NO.includes('k')) skyw.fill(0);
-  SKP = SYS.atm ? (P_SKYA || (P_SKYA = prog(TRI_V, SKYA_F()))) : P_SKY;   // v1.44: the planet-side sky is its own program, built in the background after load
-  gl.useProgram(SKP.p); bigStarsSet(); gl.uniform4fv(SKP.u.uSky, skyw); gl.uniform4fv(SKP.u['uPl[0]'], SYS.pl); { const dk = PLI.map((k) => { const w = SYS.pl[k * 4 + 3]; return w > 0 ? PR[k] / w : 1e18; }); PLO.forEach((_, j) => { PLO[j] = j; }); PLO.sort((a, b) => dk[b] - dk[a]); if (SKP.u['uPoA[0]']) gl.uniform1fv(SKP.u['uPoA[0]'], PLO); for (let k = 0; k < NPL; k++) PLK[k] = (SYS.pk || [])[k] == null ? 5 : SYS.pk[k]; if (SKP.u['uPkd[0]']) gl.uniform1fv(SKP.u['uPkd[0]'], PLK); } if (SKP.u.uLoop) gl.uniform3i(SKP.u.uLoop, 8, NPL, 0); if (SKP.u.uSkT) gl.uniform4f(SKP.u.uSkT, TUNE.skyPale, TUNE.skyBright, TUNE.skyTwi, TUNE.skyHaze);
+  // v1.81: never build the planet sky on the spot (that blocks the whole browser on Windows): until it is ready the space sky stands in
+  if (SYS.atm && !P_SKYA) skyaQ(1);
+  SKP = SYS.atm && P_SKYA ? P_SKYA : P_SKY;   // v1.44: the planet-side sky is its own program, built in the background after load
+  gl.useProgram(SKP.p); bigStarsSet(); gl.uniform4fv(SKP.u.uSky, skyw); gl.uniform4fv(SKP.u['uPl[0]'], SYS.pl); { const dk = [0, 1, 2].map((k) => { const w = SYS.pl[k * 4 + 3]; return w > 0 ? PR[k] / w : 1e18; }); const o = [0, 1, 2].sort((a, b) => dk[b] - dk[a]); gl.uniform3f(SKP.u.uPo, o[0], o[1], o[2]); } if (SKP.u.uLoop) gl.uniform3i(SKP.u.uLoop, 8, 3, 0); if (SKP.u.uSkT) gl.uniform4f(SKP.u.uSkT, TUNE.skyPale, TUNE.skyBright, TUNE.skyTwi, TUNE.skyHaze);
   // v1.41: loop counts come in as uniforms, so the shader compiler can't copy the loop bodies out (compile time on Windows)
   // v1.52: the line below sat inside that comment from v1.41 to v1.51, so planets in space got no surface colour at all
-  gl.uniform4fv(SKP.u['uPa[0]'], SYS.pa); if (SKP.u['uGx[0]']) { if (!SYS.gxA) SYS.gxA = new Float32Array(PLI.flatMap((k) => Array.from(gxOf(k)))); gl.uniform4fv(SKP.u['uGx[0]'], SYS.gxA); } gl.uniform3fv(SKP.u['uPb[0]'], SYS.pb); gl.uniform3f(SKP.u.uSd, SYS.seed[0], SYS.seed[1], SYS.seed[2]); gl.uniform4f(SKP.u.uPh, SYS.atm ? 0 : SYS.ph, SYS.phs, SYS.atm ? v126bf : 0, v126ceil); if (SKP.u.uAir) gl.uniform3f(SKP.u.uAir, ...v126Air); gl.uniform3f(SKP.u.uPq, SYS.pq[0], SYS.pq[1], SYS.pq[2]);
+  gl.uniform4fv(SKP.u['uPa[0]'], SYS.pa); gl.uniform3fv(SKP.u['uPb[0]'], SYS.pb); gl.uniform3f(SKP.u.uSd, SYS.seed[0], SYS.seed[1], SYS.seed[2]); gl.uniform4f(SKP.u.uPh, SYS.atm ? 0 : SYS.ph, SYS.phs, SYS.atm ? v126bf : 0, v126ceil); if (SKP.u.uAir) gl.uniform3f(SKP.u.uAir, ...v126Air); gl.uniform3f(SKP.u.uPq, SYS.pq[0], SYS.pq[1], SYS.pq[2]);
   { const pk = SYS.pk || [0, 3, 5, 0]; if (SKP.u.uPk) gl.uniform4f(SKP.u.uPk, pk[0], pk[1], pk[2], SYS.atm ? SYS.atm - 1 : -1); if (SKP.u['uPLd[0]']) gl.uniform3fv(SKP.u['uPLd[0]'], v126PL); if (SKP.u.uPG) { gl.uniform4f(SKP.u.uPG, v126PG[0], v126PG[1], v126PG[2], v126PG[3]); gl.uniformMatrix3fv(SKP.u.uPM, false, v126PM); gl.uniform3f(SKP.u.uPD, v126PD[0], v126PD[1], v126PD[2]); }
     const k = SYS.atm ? SYS.atm - 1 : 0, skin = SYS.atm && SYS.locs[SYS.loc] ? SYS.locs[SYS.loc].skin : 0;
     const look = !SYS.atm ? 0 : skin === 0 || skin === 4 ? 1 : skin === 5 || skin === 7 ? 3 : 2;
     gl.uniform4f(SKP.u.uOrb, look, (isCont() ? Math.max(20, v126Hh) : Math.max(700, Math.min(30000, 2600 + py * .5))), px, pz); gl.uniform3f(SKP.u.uOa, SYS.pa[k * 4], SYS.pa[k * 4 + 1], SYS.pa[k * 4 + 2]); gl.uniform3f(SKP.u.uOb, SYS.pb[k * 3], SYS.pb[k * 3 + 1], SYS.pb[k * 3 + 2]); } gl.bindVertexArray(VA0); gl.drawArrays(gl.TRIANGLES, 0, 3); cldDraw();
   // glowing things, added on top (alpha is left alone: it marks open sky for the star shafts)
   gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE); gl.disable(gl.CULL_FACE);
+  dgStage('life');
+  if (!dgOff('life')) {
   const Lf = P_LIFE, lu = Lf.u;
   gl.useProgram(Lf.p); if (lu.uVd) gl.uniform1f(lu.uVd, vd);
   if (NO.includes('l') || SYS.atm) LQ.n = LJ.n = LWh.n = 0;   // v1.26: space life stays in space
@@ -7083,7 +7206,11 @@ function eye(fb, x, y, w, h, tw, th) {
   gl.uniform1i(lu.uKind, 3); draw(Lf, LWh, mWhale);
   gl.uniform1i(lu.uKind, 4); draw(Lf, LSp, mSerp);
   gl.uniform1i(lu.uKind, 5); gl.uniform1f(lu.uSpin, .012); draw(Lf, LTd, mTen); gl.uniform1f(lu.uSpin, .05); draw(Lf, LTb, mTen);
+  }
+  dgStage('weather');
   if (typeof v122Draw === 'function') v122Draw(vd, 1);
+  dgStage('sprites');
+  if (!dgOff('sprites')) {
   const Sp = P_SPR;
   gl.useProgram(Sp.p); if (Sp.u['uPlS[0]']) gl.uniform4fv(Sp.u['uPlS[0]'], SYS.atm ? Z12 : SYS.pl);
   gl.uniform1i(Sp.u.uMode, 2); gl.uniform1f(Sp.u.uDark, 1); gl.blendFuncSeparate(gl.ZERO, gl.ONE_MINUS_SRC_COLOR, gl.ZERO, gl.ONE); draw(Sp, LDk, mQuad);
@@ -7093,13 +7220,16 @@ function eye(fb, x, y, w, h, tw, th) {
   if (!NO.includes('p')) { gl.uniform1i(Sp.u.uMode, 1); draw(Sp, LP, mQuad); }
   if (!NO.includes('t')) { gl.uniform1i(Sp.u.uMode, 3); draw(Sp, DT, mQuad); }
   if (!NO.includes('a')) { gl.uniform1i(Sp.u.uMode, 4); draw(Sp, DPa, mQuad); }
-  if (P_PLS && flying() && (v126Heat > .003 || heatFlare > .003 || exV > .003 || exF > .003)) {   // v1.46: the bow shock, behind the cockpit's depth
+  }
+  dgStage('plasma');
+  if (P_PLS && !dgOff('plasma') && flying() && (v126Heat > .003 || heatFlare > .003 || exV > .003 || exF > .003)) {   // v1.46: the bow shock, behind the cockpit's depth
     const cf = gl.isEnabled(gl.CULL_FACE); gl.useProgram(P_PLS.p); gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE); gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS); gl.depthMask(false); gl.disable(gl.CULL_FACE);
     const exM = exV + exF > v126Heat + heatFlare;   // v1.56: leaving: the cloud-break (white, the air's colour, then the system's own haze); arriving: re-entry plasma
     if (exM) { const a = v126Air, k = exS ? Math.min(1, (tm - exT) / .9) : 0, pl = SYS.pal, nb = [pl[0] * .85 + .25, pl[1] * .85 + .25, pl[2] * .85 + .25], nb2 = [pl[3] * .9 + .2, pl[4] * .9 + .2, pl[5] * .9 + .2], mx = (u, w, t) => [u[0] + (w[0] - u[0]) * t, u[1] + (w[1] - u[1]) * t, u[2] + (w[2] - u[2]) * t];
       const c0 = mx([1.25, 1.3, 1.35], nb2, k * .7), c1 = mx([.75 + a[0] * .45, .78 + a[1] * .45, .82 + a[2] * .45], nb, k), c2 = mx([a[0] * .7, a[1] * .7, a[2] * .8], nb2, k);
       gl.uniform4f(P_PLS.u.uPs, Math.pow(exV, 1.2), exF, tm, tw / th); gl.uniform4f(P_PLS.u.uPq, TUNE.vigStr, 0, 0, 0); gl.uniform3f(P_PLS.u.uPc0, ...c0); gl.uniform3f(P_PLS.u.uPc1, ...c1); gl.uniform3f(P_PLS.u.uPc2, ...c2); }
     else { gl.uniform4f(P_PLS.u.uPs, Math.pow(v126Heat, 1.4), heatFlare * TUNE.heatPeak, plsT, tw / th); gl.uniform4f(P_PLS.u.uPq, TUNE.vigStr, 1, 0, 0); gl.uniform3f(P_PLS.u.uPc0, 2.6, 2.47, 2.03); gl.uniform3f(P_PLS.u.uPc1, 1.5, .63, .105); gl.uniform3f(P_PLS.u.uPc2, .55, .154, .858); } gl.bindVertexArray(VA0); gl.drawArrays(gl.TRIANGLES, 0, 3); if (cf) gl.enable(gl.CULL_FACE); }
+  dgStage('glass');
   if (cockpit && flying()) {                                 // the glass, over everything outside
     gl.depthRange(0, .01); gl.useProgram(P_COCK.p); gl.bindVertexArray(VAC); gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE);   // glass adds its reflections and takes a little light away
     gl.drawElements(gl.TRIANGLES, mCock.ng, gl.UNSIGNED_SHORT, (mCock.n - mCock.ng) * 2); gl.depthRange(0, 1);
@@ -7110,23 +7240,29 @@ function eye(fb, x, y, w, h, tw, th) {
     gl.blitFramebuffer(0, 0, tw, th, 0, 0, tw, th, gl.COLOR_BUFFER_BIT, gl.NEAREST);
   }
   // bloom: blur down a chain of half-size targets, then add them back up
+  dgStage('bloom');
   const bl = T.bl;
+  if (dgOff('bloom')) { gl.clearColor(0, 0, 0, 0); for (const b of bl) { gl.bindFramebuffer(gl.FRAMEBUFFER, b.f); gl.viewport(0, 0, b.w, b.h); gl.clear(gl.COLOR_BUFFER_BIT); } } else {
   for (let i = 0; i < bl.length; i++) { const s = i ? bl[i - 1] : T.hdr; pass(P_BLUR, bl[i], s); gl.uniform2f(P_BLUR.u.uPx, 1 / s.w, 1 / s.h); gl.drawArrays(gl.TRIANGLES, 0, 3); }
   gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE);
   for (let i = bl.length - 2; i >= 0; i--) { const s = bl[i + 1]; pass(P_BLUR, bl[i], s); gl.uniform2f(P_BLUR.u.uPx, .5 / s.w, .5 / s.h); gl.drawArrays(gl.TRIANGLES, 0, 3); }
   gl.disable(gl.BLEND);
+  }
   // star shafts
+  dgStage('rays');
   const sw = G[3] * SUN[0] + G[7] * SUN[1] + G[11] * SUN[2], sx = G[0] * SUN[0] + G[4] * SUN[1] + G[8] * SUN[2], sy = G[1] * SUN[0] + G[5] * SUN[1] + G[9] * SUN[2];
   pass(P_RAY, T.ray, T.hdr);
   const sux = sw > .01 ? sx / sw * .5 + .5 : .5, suy = sw > .01 ? sy / sw * .5 + .5 : .5, sus = sm(.05, .5, sw);
-  gl.uniform3f(P_RAY.u.uSunS, sux, suy, NO.includes('r') ? 0 : sus * Math.min(.9, .2 + fogD * 600) * (csU[0] ? .15 : 1));   // a close star is a surface to look at, not a searchlight   // dustier space, stronger shafts
+  gl.uniform3f(P_RAY.u.uSunS, sux, suy, NO.includes('r') || dgOff('bloom') ? 0 : sus * Math.min(.9, .2 + fogD * 600) * (csU[0] ? .15 : 1));   // a close star is a surface to look at, not a searchlight   // dustier space, stronger shafts
   gl.drawArrays(gl.TRIANGLES, 0, 3);
+  dgStage('composite');
   // tone-map into the destination
   gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.viewport(x, y, w, h);
   gl.useProgram(P_COMP.p); gl.uniform2f(P_COMP.u.uPx, 1 / tw, 1 / th); { const v = (k) => xr ? 0 : CFG[k], fb = v('fxBlur') * 1.1, fc = v('fxCA'), vig = xr ? (CFG.vrVig || 0) * (.4 + .6 * Math.min(1, bst)) : v('fxVig'); gl.uniform4f(P_COMP.u.uFx, fc ? fc * 1.9 : 0, v('fxGrain') * .09, mbx * fb, mby * fb); gl.uniform1f(P_COMP.u.uFs, fb * mbs); gl.uniform4f(P_COMP.u.uFy, v('fxScan'), CFG.fxBloom, vig, o2Hyp); gl.uniform4f(P_COMP.u.uFz, v('fxGlass'), 0, 0, 0); } gl.uniform3f(P_COMP.u.uJ, Math.max(jk, dbgJ, scE * .22, hlFx * .6) * .9, Math.max(tun, dbgT, hlFx * .26), jumpT + tm + hlT * 2.5); { const fx = sFx * eRx + sFy * eRy + sFz * eRz, fy = sFx * eUx + sFy * eUy + sFz * eUz, fz = Math.max(.15, sFx * eFx + sFy * eFy + sFz * eFz), cl = (v) => Math.max(-.5, Math.min(1.5, v));   // where the ship's nose falls in this eye's picture
     gl.uniform2f(P_COMP.u.uJc, cl((fx / fz - tL) / (tR - tL)), cl((fy / fz - tB) / (tT - tB))); } if (P_COMP.u.uFc) gl.uniform3f(P_COMP.u.uFc, v126Fc[0], v126Fc[1], v126Fc[2]); if (P_COMP.u.uHt) gl.uniform4f(P_COMP.u.uHt, v126Heat * v126Heat, heatFlare * TUNE.heatPeak, P_PLS ? -TUNE.vigStr : TUNE.vigStr, tm); gl.uniform3f(P_COMP.u.uFl, sux, suy, sux > -.2 && sux < 1.2 && suy > -.2 && suy < 1.2 ? sus * CFG.fxFlare * (csU[0] ? .2 : 1) : 0);
   gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, T.hdr.t); gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, bl[0].t); gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, T.ray.t);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
+  dgStage('hud');
   hudDraw(xr ? 1 / 6 : stereo ? .25 : 1);                     // the display goes on last, over the finished picture, so blur, grain and fringing never touch its text
 }
 
@@ -7269,10 +7405,11 @@ function xrMotion(src, grip, onSteer, xf, dt) {
   }
   return true;
 }
-let frEma = 0, boostWas = 0, rumHt = 0, boostLk = 0; const Z12 = new Float32Array(NPL * 4), PLI = Array.from({ length: NPL }, (_, k) => k), PLO = new Float32Array(NPL), PLK = new Float32Array(NPL);
+let frEma = 0, boostWas = 0, rumHt = 0, boostLk = 0; const Z12 = new Float32Array(12);
 function frame(now, xf) {
   if (!xf !== !xr) return;                                   // a callback left over from the other display loop
   (xr || window).requestAnimationFrame(frame);
+  dgFrameStart(now);
   frameDraws = draws; frameVerts = verts; draws = 0; verts = 0;
   const raw = (now - last) / 1000; last = now; frEma = frEma ? frEma * .95 + Math.min(raw, 1) * .05 : raw; if (raw > .35 && raw > frEma * 3 && bootOK && raw < 60) evLog(`Hitch · a frame took ${Math.round(raw * 1000)} ms` + (SYS.atm ? ' (in a sky)' : ''));
   const rdt = Math.min(.05, Math.max(.001, raw)); btT = Math.max(0, btT - rdt); slow += (((jpOpen || invOpen || PIP.big) && flying() ? .12 : btT > 0 ? .14 + .86 * Math.pow(1 - btT / btMax, 2.4) : 1) - slow) * Math.min(1, rdt * (btT > 0 ? 14 : 4));
@@ -7372,13 +7509,24 @@ function frame(now, xf) {
   const sh = trauma * trauma * .02 + (xr ? 0 : bst * bst * .0035), rr = roll + vRoll, Qb = rr ? qmul(QAs, qax(0, 0, 1, rr)) : QAs, Qv = sh > 0 ? qmul(Qb, qmul(qax(0, 1, 0, Math.sin(tm * 71) * sh), qax(1, 0, 0, Math.sin(tm * 93 + 1) * sh))) : Qb;
   { const R = qv(Qv, 1, 0, 0), U = qv(Qv, 0, 1, 0), F = qv(Qv, 0, 0, -1); sRx = R[0]; sRy = R[1]; sRz = R[2]; sUx = U[0]; sUy = U[1]; sUz = U[2]; sFx = F[0]; sFy = F[1]; sFz = F[2];
     spit = Math.asin(Math.max(-1, Math.min(1, F[1]))); syaw = Math.atan2(F[0], -F[2]); }
-  fwd = fwd * (1 - bst) + bst * TUNE.boostTop * eff * (1 + .35 * bRamp + .55 * bOd * (2 - bOd) * (drift ? 0 : 1)) * (SYS.atm && isCont() ? airK : 1);   // v1.36: boost is its own tier: straight to top speed, whatever the throttle says (and the throttle stays where you left it)                                            // local rush tops out near 620; overdrive (held 7 s+) climbs toward ~960 over the next 18 s; the long-range drive carries you across the system                                          // Shift is thrust on its own: no need to hold forward
+  fwd = fwd * (1 - bst) + bst * TUNE.boostTop * eff * (1 + .2 * bRamp + .25 * bOd * (2 - bOd) * (drift ? 0 : 1)) * (SYS.atm && isCont() ? airK : 1);   // v1.36: boost is its own tier: straight to top speed, whatever the throttle says (and the throttle stays where you left it)                                            // local rush tops out near 620; overdrive (held 7 s+) climbs toward ~960 over the next 18 s; the long-range drive carries you across the system                                          // Shift is thrust on its own: no need to hold forward
   if (!SYS.atm && !jumpTo && fly) { const gd2 = Math.hypot(px, py, pz) || 1, toward = -(sFx * px + sFy * py + sFz * pz) / gd2;   // v1.36: the gate brakes you in: you come to rest in front of the ring instead of shooting past
     if (TUNE.gateBrake > 0 && gd2 < 3200 && toward > .55 && (navId === 'gate' || gd2 < 1500)) { const cap = Math.max(20, (gd2 - 110) * (.9 - 1.2 * TUNE.gateBrake)); if (fwd > cap) { fwd = cap; if (tm > gateBrT) { gateBrT = tm + 25; tip('Gate approach · braking', 2200); } } } }
-  const k = 1 - Math.exp(-dt * (bst > .3 ? 3 : 1.05));
+  const k = 1 - Math.exp(-dt * (bst > .3 ? 1.6 : 1.05));   // v1.73: boost builds rather than slams
   vx += (sFx * fwd + (sRx * ms + sUx * mu) * 45 - vx) * k; vy += (sFy * fwd + (sRy * ms + sUy * mu) * 45 - vy) * k; vz += (sFz * fwd + (sRz * ms + sUz * mu) * 45 - vz) * k;
   if (fly) rockAssist(dt);
   px += vx * dt; py += vy * dt; pz += vz * dt;
+  // v1.76: gravity in a planet's sky. Below the break-free angle the world pulls you down (0.9 g by default); speed gives lift,
+  // so you settle into a glide, and a cushion near the ground lets you skim the surface instead of hitting it.
+  // Pitch up past the break-free angle and the pull lets go, so you can climb out. (Not during the committed entry or exit.)
+  if (fly && SYS.atm && isCont() && TUNE.grav > 0 && !entLock && !exCommit) {
+    const sp = Math.hypot(vx, vy, vz), esc = spit > TUNE.gravEsc * Math.PI / 180;
+    if (esc) gSink *= Math.exp(-dt * 1.6);
+    else { gSink += 9.81 * TUNE.grav * dt; gSink /= 1 + dt * (.15 + TUNE.gravLift * sp * sp * 4e-5); }
+    const alt = hasTerr() ? py - tGround(px, pz) : v126Hh;
+    if (TUNE.gravCush > 0 && alt < TUNE.gravCush) gSink *= Math.exp(-dt * 4 * (1 - Math.max(0, alt) / TUNE.gravCush));
+    py -= gSink * dt;
+  } else gSink *= Math.exp(-dt * 3);
   cHit = 0; collide(LTi, titanAt); collide(LH, hugeAt); collide(LB, bigAt);
   if (cHit) {                                                // a real knock: the ship rebounds, shakes, and above a gentle touch the hull pays for it
     const vn = vx * cNx + vy * cNy + vz * cNz;
@@ -7450,6 +7598,7 @@ function frame(now, xf) {
       for (let e = 0; e < 2; e++) { const o = (e ? .25 : -.25); eox = sRx * o; eoy = sRy * o; eoz = sRz * o; eye(null, e * hw, 0, hw, H, Math.round(hw * S), Math.round(H * S)); }
     } else { tT = fov; tB = -fov; tR = fov * W / H; tL = -tR; eox = eoy = eoz = 0; eye(null, 0, 0, W, H, W, H); }
   }
+  dgFrameEnd();
 
   // moments for the recorded score: a long quiet drift, and a long fast run (which ends when you slow down)
   if (fly && speed < 30 && combat < .1) { if ((calmT += dt) > 45) { calmT = 0; cue('calm'); } } else calmT = 0;
@@ -7482,7 +7631,7 @@ function frame(now, xf) {
 
 arrive(ST.sec, ST.loc, 1); if (SYS.atm) arrive(ST.sec, 0, 1);   // v1.42: a session always starts in space (a save made in a planet's sky resumes at the system's gate)
 resize();
-window.ES = { warpLook: (a, b) => { dbgJ = a; dbgT = b; }, zero: (i) => { const L = LAYERS[i]; L.n = 0; for (const s of L.slaves) s.n = 0; return LAYERS.length; }, dbg: (z) => { if (z) for (let i = 0; i < NPL; i++) SYS.pl[i * 4 + 3] = 0; return Array.from(SYS.pl).map((v) => +v.toFixed(2)).concat(Array.from(SYS.pa).map((v) => +v.toFixed(2))); },
+window.ES = { warpLook: (a, b) => { dbgJ = a; dbgT = b; }, zero: (i) => { const L = LAYERS[i]; L.n = 0; for (const s of L.slaves) s.n = 0; return LAYERS.length; }, dbg: (z) => { if (z) for (let i = 0; i < 3; i++) SYS.pl[i * 4 + 3] = 0; return Array.from(SYS.pl).map((v) => +v.toFixed(2)).concat(Array.from(SYS.pa).map((v) => +v.toFixed(2))); },
   build: () => BUILD, perf: () => ({ fps: +fps.toFixed(1), draws: frameDraws, verts: frameVerts, w: W, h: H, scale: +S.toFixed(2), lv: LV }), gen: () => ({ name: SYS.name, star: SYS.star, temp: SYS.temp | 0, fac: SYS.fac, danger: SYS.danger, belt: SYS.belt, dead: !!SYS.dead, planets: (SYS.planets || []).filter((p) => p.type !== 'none').map((p) => ({ name: p.name, type: p.type, rare: p.rare, au: p.orbit, moons: p.moons, anomaly: p.anomaly || '' })) }), cabin: () => ({ nv: mCock.nv, cb: mCock.cb, qt: mCock.qt, n: mCock.n, ng: mCock.ng }), newGame: newUniverse, goto: (sec, loc) => arrive(sec, loc || 0, 1), market: marketPanel, ph: (t) => { SYS.ph = t; SYS.pq = [sFx, sFy, sFz]; }, bh: () => { SYS.sky[0] = 1; pitch = Math.asin(-.22); yaw = Math.atan2(.58, -.78); snap = 1; }, seeNpc: (i) => { const a = NPCS.filter((q) => !q.big && q.var === i)[0]; if (!a) return -1; px = a.x + 22; py = a.y + 7; pz = a.z + 22; const dx = a.x - px, dy = a.y - py, dz = a.z - pz, l = Math.hypot(dx, dy, dz); pitch = Math.asin(dy / l); yaw = Math.atan2(dx, -dz); snap = 1; vx = vy = vz = 0; thr = 0; return a.var; }, linger: () => { for (let i = 0; i < 90; i++) lingerTick(.05); return [lingT, lingId, jpOpen]; }, tp: (x, y, z) => { px = x; py = y; pz = z; vx = vy = vz = 0; thr = 0; }, navCur, interact, map: starMap, drift: driftToggle, near: (k, f) => { const P = sysP[k]; sysS = [P[0] * f, P[1] * f, P[2] * f]; }, dsys: () => [sysS.map((v) => v | 0), driftV | 0, +SYS.pl[3].toFixed(3), SYS.atm, +veil.toFixed(2)], aim: (k, s) => { const d = SYS.pl, q = s || 1; pitch = Math.asin(q * d[k * 4 + 1]); yaw = Math.atan2(q * d[k * 4], -q * d[k * 4 + 2]); snap = 1; }, good: goodPanel, sc: (k, t) => { scP = k; scT = t; }, scOut: (t) => { scOut = t; vy = 120; thr = 1; }, host: (v) => { hostLv = v; npcSpawn(); }, rp: () => ST.rp, head: (y, p) => { hlF = y == null ? null : [y, p || 0]; }, nav: () => NAV.map((n) => n.id), npcs: () => NPCS.length, journal: journalPanel, board: boardPanel, hail: () => hailPanel(NPCS[0]), cycle: navCycle, atm: () => arrive(SYS.sec, SYS.locs.findIndex((l) => l.atm), 1), vrPanel: (v) => { hudForce = v; }, jt: () => [jumpT, !!jumpTo, SYS.loc, SYS.name, slow], system: describe, on: (f) => hooks.push(f), kind: (t) => { for (let x = 1; x < 400; x++) if ((sysIdAt(x, 0, 0) & 7) === t) return arrive([x, 0, 0], 0, 1); }, place: (t) => { const l = SYS.locs.find((q) => q.t === t); if (l) arrive(SYS.sec, l.i, 1); return !!l; }, startJump, gatePanel, logPanel, tradePanel, closePanel, hull: () => ST.hull, beacon: () => { px = bcn[0] + 200; py = bcn[1]; pz = bcn[2]; }, trader: () => trader, go, vr, cock: setCock, thr: (v) => { thr = v; }, key: (c, v) => { K[c] = v; }, look: (y, p) => { yaw = y; pitch = p; snap = 1; }, at: (x, y, z) => { px = x; py = y; pz = z; snap = 1; }, stereo: (v) => { stereo = v; resize(); },
   jelly: (d = 60, s = 0) => seek(LJ, swarmAt, d, s), rock: (d) => seek(LH, hugeAt, d), big: (d) => seek(LB, bigAt, d), titan: (d) => seek(LTi, titanAt, d), geode: (d = 40) => seek(LG, geodeAt, d),
   fleet: (d = 60) => seek(LF, cellHas(20, SYS.a.fl * .6), d), frig: (d = 1) => seek(LFr, cellHas(21, SYS.a.fr * .7), d), siph: (d = 40) => seek(LDs, cellHas(24, SYS.a.dr * .13 + .008), d), spark: (d = 40) => seek(LDe, cellHas(25, SYS.a.dr * .13 + .008), d), inv: (m) => invShow(m), closeStar: (sc, giant, rad) => { bigStarsSet(); csU = [rad || .2, sc, 1.3, giant ? 1 : 0]; csC = giant ? [1, .34, .1] : CSC[sc]; yaw = Math.atan2(SUN[0], -SUN[2]); pitch = Math.asin(SUN[1]); snap = 1; }, bigLook: (i, ty) => { bigStarsSet(); if (ty != null) bsS[i * 4 + 3] = ty; const x = bsS[i * 4], y = bsS[i * 4 + 1], z = bsS[i * 4 + 2]; yaw = Math.atan2(x, -z); pitch = Math.asin(y); snap = 1; return [bsS[i * 4 + 3], bsC[i * 4 + 3]]; }, musMeter: () => { if (!SC.an) { SC.an = AC.createAnalyser(); SC.an.fftSize = 2048; SC.lim.connect(SC.an); } if (!SC.mi) { const b = new Float32Array(2048); SC.mm = { pk: 0, ss: 0, n: 0 }; SC.mi = setInterval(() => { SC.an.getFloatTimeDomainData(b); for (const x of b) { SC.mm.pk = Math.max(SC.mm.pk, Math.abs(x)); SC.mm.ss += x * x; SC.mm.n++; } }, 20); } const r = { pk: +SC.mm.pk.toFixed(3), rms: +Math.sqrt(SC.mm.ss / Math.max(1, SC.mm.n)).toFixed(3), sec: SC.sec }; SC.mm = { pk: 0, ss: 0, n: 0 }; return r; }, musSec: (s) => { SC.sec = s; SC.secBar = 0; SC.secLen = SECS[s].len; }, jumpTest: (l) => startJump({ sec: SYS.sec, loc: l == null ? (SYS.loc + 1) % SYS.locs.length : l }), mus: () => { if (!SC.an && SC.lim) { SC.an = AC.createAnalyser(); SC.an.fftSize = 2048; SC.lim.connect(SC.an); } const T = SC.trk, b = new Float32Array(2048); let pk = 0, rms = 0; if (SC.an) { SC.an.getFloatTimeDomainData(b); for (const x of b) { pk = Math.max(pk, Math.abs(x)); rms += x * x; } rms = Math.sqrt(rms / 2048); } return { sec: SC.sec, bar: SC.bar, secBar: SC.secBar, e: +energy.toFixed(2), bpm: T && T.bpm, mode: T && T.mode, style: T && T.style, root: T && T.root, pk: +pk.toFixed(3), rms: +rms.toFixed(3), ac: AC && AC.state }; }, vel: (s) => { vx = sFx * s; vy = sFy * s; vz = sFz * s; bst = 1; }, bloomNow: () => { bloomT = 0; }, life: (cmd) => { if (cmd === 'call') { cmT = 0; } if (cmd === 'near' && CM) { const rx = sFy * sUz - sFz * sUy, rz = sFx * sUy - sFy * sUx; CM.a.x = px + rx * 75 + sFx * 150; CM.a.y = py + 12 + sFy * 150; CM.a.z = pz + rz * 75 + sFz * 150; CM.a.fx = sFx; CM.a.fy = sFy; CM.a.fz = sFz; } if (cmd === 'talk' && CM && CM.ph !== 'offer') CM.t = 99; if (cmd === 'esc' && CM) { for (let i = 0; i < 60 && CM.off.ty !== 'escort'; i++) CM.off = mkOffer(CM.ch); } if (cmd === 'accept') cmAccept(); if (CM && /^arc:/.test(cmd)) { const [, id, st] = cmd.split(':'); CM.ch.arc = { id, step: +st }; if (id === 'rival') CM.ch.raider = 1; CM.off = mkOffer(CM.ch); } if (CM && /^ty:/.test(cmd)) { const w = cmd.slice(3); for (let i = 0; i < 200 && !(CM.off.ty === w && (w !== 'job' || /scan|bounty|crate/i.test(CM.off.text))); i++) CM.off = mkOffer(CM.ch); } if (cmd === 'hurt') for (const a of NPCS) if (a.role === 5 && !a.dead) a.hp = a.hpM * .2; if (cmd === 'raid') cmAmbush(2, 'player'); if (cmd === 'amb' && ESC) { ESC.amb = 0; } return JSON.stringify({ cm: CM && { ph: CM.ph, ty: CM.off.ty, who: CM.ch.n, ship: CM.ch.sh, d: Math.round(Math.hypot(CM.a.x - px, CM.a.y - py, CM.a.z - pz)) }, esc: ESC && { n: ESC.ships.filter((s) => !s.dead).length, wave: ESC.wave, raiders: ESC.raiders.filter((r) => !r.dead).length, wait: ESC.wait }, off: CM && CM.off.text, npc: NPCS.filter((a) => a.role === 5 && !a.dead).map((a) => a.name + (a.fled ? '(fled)' : '') + (a.rival ? '(rival)' : '')).join(','), ally: NPCS.filter((a) => a.ally).length, cast: Object.keys(ST.cast || {}).length, comm: commS }); }, o2: (h) => { if (h != null) { o2Hyp = h; o2Out = 30; ST.o2 = 0; } return [ST.o2, o2Hyp, o2Out, flying()]; }, pip: (tab) => { if (tab != null) { PIP.tab = tab; if (!PIP.big) pipOpen(); } return [flying(), jpOpen, invOpen, PIP.big]; }, bh: (h) => { bHold = h; return [bRamp, bOd]; }, sys: () => ({ bl: BLOOMS.length, grv: grooveAt(bar), arp: ARPS.indexOf(arpAt(bar)), chord: chordAt(bar), ac: AC && AC.state, spd: Math.round(Math.hypot(vx, vy, vz)), thr: raThr && { t: raThr.t | 0, m: raThr.m | 0, R: raThr.R | 0 }, hull: ST.hull, fuel: ST.fuel, wen: ST.wen, spice: ST.spice, cargo: ST.cargo.slice(), warn: sysWarn, sw: swOn, slow, btT }), setSys: (o) => { if (o.cargo) { o.cargo.forEach((v, i) => cargo[i] = v); delete o.cargo; } Object.assign(ST, o); }, drone: (d = 40) => seek(LDr, cellHas(22, SYS.a.dr * .16 + .008), d),
@@ -7506,7 +7655,7 @@ function tuneSave() { const o = {}; for (const d of TUNE_DEF) if (TUNE[d[0]] !==
 function tuneSet(k, v) { TUNE[k] = v; const r = tuneEl && tuneEl.querySelector(`input[data-k="${k}"]`); if (r) r.value = v; const o = tuneEl && tuneEl.querySelector('#tv_' + k); if (o) o.textContent = tuneFmt(v); }
 function tuneCopy() {
   const o = {}; for (const d of TUNE_DEF) if (TUNE[d[0]] !== d[6]) o[d[0]] = TUNE[d[0]];
-  const txt = `Infinite End tuning · ${BUILD}\n` + (Object.keys(o).length ? JSON.stringify(o, null, 1) : '(all defaults)') + (() => { const L = EVLOG.filter((e) => /^(Load|Hitch)/.test(e[1])).slice(0, 25).map((e) => e[1]); return L.length ? '\nLoad and hitches:\n' + L.join('\n') : ''; })();
+  const txt = `Infinite End tuning · ${BUILD}\n` + (Object.keys(o).length ? JSON.stringify(o, null, 1) : '(all defaults)') + (() => { const L = EVLOG.filter((e) => /^(Load|Hitch|Graphics)/.test(e[1])).slice(0, 30).map((e) => e[1]); return L.length ? '\nLoad and hitches:\n' + L.join('\n') : ''; })();
   const fall = () => { const ta = tuneEl.querySelector('#tcopy'); ta.value = txt; ta.style.display = 'block'; ta.select(); tip('Select-all is done: copy it with Ctrl+C', 3000); };
   try { navigator.clipboard.writeText(txt).then(() => tip('Tuning copied: paste it to Claude', 3000), fall); } catch { fall(); }
 }
