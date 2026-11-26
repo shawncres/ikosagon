@@ -805,11 +805,11 @@ function progStart(vs, fs) {
   for (const [t, s] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]]) { const h = gl.createShader(t); gl.shaderSource(h, s); gl.compileShader(h); gl.attachShader(p, h); sh.push([h, s]); }
   gl.linkProgram(p); return { p, sh };
 }
-async function progA(vs, fs) {                                  // the same program, but the page stays alive while the GPU works on it
-  const st = progStart(vs, fs);
+async function progA(vs, fs, st0, on) {                                  // the same program, but the page stays alive while the GPU works on it
+  const st = st0 || progStart(vs, fs);
   // v1.81: keep waiting however long the driver takes. Asking for the result before it is ready blocks the browser's shared
   // graphics process until the compile finishes: that, after the old 15 s limit ran out, was the whole-browser freeze on Windows.
-  if (PSC) { const t0 = performance.now(); while (!gl.isContextLost() && !gl.getProgramParameter(st.p, PSC.COMPLETION_STATUS_KHR) && performance.now() - t0 < 600000) await new Promise((r) => setTimeout(r, performance.now() - t0 < 2000 ? 16 : 100)); }
+  if (PSC) { const t0 = performance.now(); while (!gl.isContextLost() && !gl.getProgramParameter(st.p, PSC.COMPLETION_STATUS_KHR) && performance.now() - t0 < 600000) { if (on) on(performance.now() - t0); await new Promise((r) => setTimeout(r, performance.now() - t0 < 2000 ? 16 : 100)); } }
   return progEnd(st);
 }
 function prog(vs, fs) { return progEnd(progStart(vs, fs)); }
@@ -6397,7 +6397,7 @@ noiseTex();
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.82';
+const BUILD = 'v1.83';
 // v1.74: if the last session ended in a graphics reset, put what was being built at the time in the log (F9 → Copy settings shows it)
 try { const g = JSON.parse(localStorage.ieGlLost || 'null'); if (g) evLog(`Graphics · last reset (${g.build}, ${g.at.slice(0, 16).replace('T', ' ')}): ${g.was ? 'building the ' + g.was + ' program, ' + g.secs + ' s in' : 'no program was being built'}`); } catch {}                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 /* ---- v1.71: spice tiers and attunement, procedural foes, dogfight upgrades, the Foe intro ---- */
@@ -6578,11 +6578,12 @@ await step(.5, 'Waking the leviathans…');
 const mSiphon = siphonMesh(), mSpark = sparkMesh(), mCry = crystalMesh(), mJelly = jellyMesh(), mRay = rayMesh(), mDart = dartMesh(), mRing = ringMesh(), mSpire = spireMesh(), mWhale = whaleMesh(), mSerp = serpentMesh(), mTen = tendrilMesh(), mQuad = quadMesh(), mBox = boxMesh(), mCock = cockpitMesh(), mFighter = fighterMesh(), mFrig = [frigateMesh(0), frigateMesh(1)], mDrone = droneMesh(), mGate = gateMesh();
 for (const g of ST.dead) dead.add(g);
 await step(.62, 'Growing crystal…');
-const pStep = async (p, t, vs, fs) => { await step(p, t); DG.load = `${Math.round(p * 100)}% ${t}`; try { localStorage.ieDiagHB = JSON.stringify(dgSnap(0)); } catch {} const t0 = performance.now(), r = await progA(vs, fs), ms = Math.round(performance.now() - t0); if (ms > 120) evLog(`Load · ${Math.round(p * 100)}% ${t} ${ms} ms`); return r; };   // one step per program: the bar moves as each one is ready
+const pStep = async (p, t, vs, fs, st) => { await step(p, t); DG.load = `${Math.round(p * 100)}% ${t}`; try { localStorage.ieDiagHB = JSON.stringify(dgSnap(0)); } catch {} const t0 = performance.now(), cap = p + .026, bar = $('bf'), pc = $('pc'), r = await progA(vs, fs, st, (el) => { const f = p + (cap - p) * (1 - Math.exp(-el / 5000)); bar.style.transform = `scaleX(${f})`; pc.textContent = Math.round(f * 100) + '%'; if (el > 2500) $('st').textContent = `${t} ${Math.floor(el / 1000)}s`; }), ms = Math.round(performance.now() - t0); if (ms > 120) evLog(`Load · ${Math.round(p * 100)}% ${t} ${ms} ms`); return r; };   // one step per program: the bar moves as each one is ready
 await dgGate();
 const SKYS = SKY_F.replace('#version 300 es', '#version 300 es' + (dgOff('skyplanets') ? '\n#define NOPL' : '') + (dgOff('skyfx') ? '\n#define NOFX' : '') + (dgOff('skystars') ? '\n#define NOBS' : '') + (dgOff('skyground') ? '\n#define NOGND' : ''));
+const PRE = { sky: progStart(TRI_V, SKYS), comp: progStart(TRI_V, COMP_F), cock: progStart(COCK_V, COCK_F), ship: progStart(SHIP_V, ROCK_F) };   /* the longest shaders start compiling now, in parallel, while the earlier steps run */
 const P_ROCK = await pStep(.63, 'Carving the rocks…', ROCK_V, ROCK_F), P_CRY = await pStep(.645, 'Growing crystal…', CRY_V, CRY_F), P_LIFE = await pStep(.66, 'Waking the drifters…', LIFE_V, LIFE_F), P_SPR = await pStep(.675, 'Scattering motes…', SPR_V, SPR_F);
-const P_SKY = await pStep(.69, 'Painting the sky, star by star…', TRI_V, SKYS), P_BLUR = await pStep(.72, 'Softening the glare…', TRI_V, BLUR_F), P_RAY = await pStep(.73, 'Bending the light…', TRI_V, RAY_F.replace('precision', `#define NS ${Q.rays}\nprecision`)), P_COMP = await pStep(.745, 'Grinding the lens…', TRI_V, COMP_F), P_COCK = await pStep(.76, 'Lighting the dash…', COCK_V, COCK_F), P_SHIP = await pStep(.775, 'Plating the hulls…', SHIP_V, ROCK_F);
+const P_SKY = await pStep(.69, 'Painting the sky, star by star…', TRI_V, SKYS, PRE.sky), P_BLUR = await pStep(.72, 'Softening the glare…', TRI_V, BLUR_F), P_RAY = await pStep(.73, 'Bending the light…', TRI_V, RAY_F.replace('precision', `#define NS ${Q.rays}\nprecision`)), P_COMP = await pStep(.745, 'Grinding the lens…', TRI_V, COMP_F, PRE.comp), P_COCK = await pStep(.76, 'Lighting the dash…', COCK_V, COCK_F, PRE.cock), P_SHIP = await pStep(.775, 'Plating the hulls…', SHIP_V, ROCK_F, PRE.ship);
 const P_CAB = await pStep(.79, 'Warming the cab…', COCK_V, COCK_F.replace('#version 300 es', '#version 300 es\n#define CABIN'));   // the quarters and the aux screen: their materials stay out of the dash's shader
 gl.useProgram(P_CAB.p); gl.uniform1i(P_CAB.u.uPip, 6);   // the aux screen's picture lives in texture slot 6
 gl.useProgram(P_SHIP.p); gl.uniform3fv(P_SHIP.u['uTier[0]'], TCOL); gl.uniform1i(P_SHIP.u.uKind, 4); gl.uniform1f(P_SHIP.u.uFlat, 0);
