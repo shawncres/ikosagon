@@ -53,7 +53,8 @@ h1 .the { font-size: .3em; letter-spacing: .9em; font-weight: 400; color: var(--
 h1 span + span { color: #0000; -webkit-text-stroke: 1.5px var(--t); letter-spacing: .32em; font-weight: 400; }
 #tag { max-width: 26em; color: var(--dim); font-size: .92em; }
 #ld { margin-top: 2.2em; font-size: .8em; letter-spacing: .28em; text-transform: uppercase; color: var(--t); }
-#ld b { display: inline-block; width: 3.2em; color: var(--ink); font-weight: 600; }
+#ld, #ld b { font-variant-numeric: tabular-nums; }
+#ld b { display: inline-block; width: 3.2em; color: var(--ink); font-weight: 600; white-space: pre; text-align: right; }
 .m #ld { display: none; }
 #cargo { display: none !important; }
 /* v1.45 tuning console */
@@ -419,12 +420,23 @@ const EVLOG = []; let evLast0 = '', evLastT = 0, tuneOpen = false, tuneEl = null
 function evLog(t) { if (!t) return; t = String(t); const now = performance.now(); if (t === evLast0 && now - evLastT < 4000) return; evLast0 = t; evLastT = now; EVLOG.unshift([now, t]); if (EVLOG.length > 120) EVLOG.length = 120; if (typeof tuneLog === 'function') tuneLog(); }
 // v1.50: one shader build at a time, with a pause between, and never on the title screen. Chrome compiles every page's graphics in one
 // shared GPU process, so several big programs at once could stall the whole browser. A planet you're approaching jumps the queue.
+const BQT = [];   /* every build's name and ms, for the slowest-first summary at the end of loading */
 const BQ = []; let bqCur = '', bqGo = 0, bqT0 = 0, bqFast = 0, PH = null;
 function bq(name, mk, front) { if (bqCur === name) return; const j = BQ.findIndex((b) => b[0] === name); if (j >= 0) { if (!front) return; BQ.splice(j, 1); }
   if (front) BQ.unshift([name, mk]); else BQ.push([name, mk]); bqRun(); }
 function bqRun() { if (bqCur || !BQ.length || !bqGo || gl.isContextLost()) return; const [n, mk] = BQ.shift(), t0 = performance.now(); bqCur = n; bqT0 = t0;
-  Promise.resolve().then(mk).catch((e) => console.error(n, e)).then(() => { evLog(`Load · ${n} built (${Math.round(performance.now() - t0)} ms)`); setTimeout(() => { bqCur = ''; bqRun(); }, bqFast ? 0 : 1500); }); }
-const step = (p, t) => { $('bf').style.transform = `scaleX(${p})`; $('pc').textContent = Math.round(p * 100) + '%'; $('st').textContent = t; return new Promise((r) => setTimeout(r, 30)); };
+  Promise.resolve().then(mk).catch((e) => console.error(n, e)).then(() => { evLog(`Load · ${n} built (${Math.round(performance.now() - t0)} ms)`); BQT.push([n, Math.round(performance.now() - t0)]); setTimeout(() => { bqCur = ''; bqRun(); }, bqFast ? 0 : 1500); }); }
+/* v1.89: the loading figure never goes down. Everything sets a target (ldTo keeps only the highest); a 30 ms ticker eases the shown value toward it and,
+   between targets, creeps slowly toward just past it, so a long build looks alive without ever jumping back. The percentage is padded with figure
+   spaces and set in tabular digits, so the line does not shift width as the digits change. */
+const LDG = { v: 0, t: 0, n: -1, w: performance.now() };
+function ldTo(p) { if (p > LDG.t) LDG.t = Math.min(1, p); }
+function ldDraw() { const n = Math.round(LDG.v * 100); if (n === LDG.n) return; LDG.n = n; $('bf').style.transform = `scaleX(${LDG.v})`; $('pc').textContent = String(n).padStart(3, '\u2007') + '%'; }
+function ldTick() { const now = performance.now(), dt = Math.min(250, now - LDG.w); LDG.w = now; const cap = LDG.t >= 1 ? 1 : Math.min(.995, LDG.t + .012);
+  let v = LDG.v + (LDG.t - LDG.v) * (1 - Math.exp(-dt / 180)); if (v < cap) v += (cap - v) * dt / 45000; if (LDG.t >= 1) v = Math.max(v, Math.min(1, LDG.v + dt / 400));
+  if (v > LDG.v) LDG.v = Math.min(1, v); ldDraw(); }
+setInterval(ldTick, 30);
+const step = (p, t) => { ldTo(p); $('st').textContent = t; return new Promise((r) => setTimeout(r, 30)); };
 
 // ---- integer hashing (the whole world is a pure function of these) ----
 const U = 1 / 4294967296;
@@ -920,9 +932,10 @@ void main(){
   float pl=smoothstep(.03,.07,abs(fract(vO.y*9.)-.5)),m=a.r*.6+b.r*.4;
   alb=mix(vec3(.08,.085,.095),vec3(.34,.31,.27),smoothstep(.3,.75,m))*mix(.5,1.,pl);
   alb=mix(alb,vec3(.17,.07,.06),smoothstep(.55,.8,a.g)*.65);
-  float ve=smoothstep(.05,0.,abs(b.r-.5)-.012)*smoothstep(.5,.72,a.r);
-  em=mix(vec3(.1,.8,.75),vec3(1.,.5,.15),step(.5,fract(vI.x*7.)))*ve*(.7+.5*sin(TIME*.9+vI.x*30.+vO.y*6.));
-  sp=1.1;gs=48.;rim=1.4;
+  float ve=smoothstep(.05,0.,abs(b.r-.5)-.02)*smoothstep(.4,.72,a.r);vec3 vc=mix(vec3(.1,.8,.75),vec3(1.,.5,.15),step(.5,fract(vI.x*7.)));float pu=.7+.5*sin(TIME*.9+vI.x*30.+vO.y*6.);
+  float f7=pow(1.-max(dot(N,V),0.),2.4);   /* v1.89: readable at range: wider glowing veins, and a faint vein-coloured glow along every edge, so a far limb is not a dark silhouette */
+  em=vc*(ve*2.4+f7*.55+.05)*pu;
+  sp=1.1;gs=48.;rim=2.6;
  }else if(uKind==1){
   float an=atan(vO.z,vO.x),rr=length(vO.xz),fs=vI.w>2000.?6.:1.;
   vec2 g=vec2(an*28.65+rr*3.,vO.y*26.+rr*18.)*fs,id=floor(g),f=fract(g);
@@ -1438,14 +1451,12 @@ uniform int uZero;
 #endif
 float sv3(vec3 x){vec3 i=floor(x),f=x-i;f=f*f*(3.-2.*f);return textureLod(uLat,(mod(i,128.)+.5+f)*(1./128.),0.).r;}
 float sn(vec3 p){p*=4.;return .55*sv3(p)+.3*sv3(p*2.03+7.)+.15*sv3(p*4.1+3.);}
-/* the exact hashed form, kept for the fine coast detail (sDet) so the sky sphere and the ground terrain agree beyond the lattice; one loop, one call site */
-float sv3x(vec3 x){vec3 i=floor(x),f=x-i;f=f*f*(3.-2.*f);ivec3 j=ivec3(i);float r=0.;
- for(int c=0;c<8+uZero;c++){ivec3 o=ivec3(c&1,(c>>1)&1,(c>>2)&1);vec3 w=mix(1.-f,f,vec3(o));r+=w.x*w.y*w.z*shv(j+o);}return r;}
-float snx(vec3 p){p*=4.;float r=0.;for(int o=0;o<3+uZero;o++){r+=(o==0?.55:o==1?.3:.15)*sv3x(o==0?p:o==1?p*2.03+7.:p*4.1+3.);}return r;}
 float cloudD(vec3 n,float cz){vec3 cw=n+vec3(sn(n*2.+5.),sn(n*2.3+11.),sn(n*1.8+2.))*.32;float v=sn(cw*1.3);if(cz>0.)v+=((sn(cw*22.+3.)-.5)*.2+(sn(cw*85.+7.)-.5)*.08)*cz;return smoothstep(.52,.84,v);}
 float cloudA(vec3 n){return cloudD(n,0.);}
-vec3 sDet(vec3 n,float cz){if(cz<=0.)return n;vec3 d=vec3(0.);
- for(int q=0;q<6+uZero;q++){float sc=q==0?37.:q==1?41.:q==2?39.:q==3?170.:q==4?163.:177.;vec3 e=q%3==0?vec3(1,0,0):q%3==1?vec3(0,1,0):vec3(0,0,1);d+=e*(snx(n*sc+float(q+1))-.5)*(q<3?.03:.007);}return n+d*cz;}   /* v1.38: finer layers of the same pattern, fading in as you close in: same coasts, more detail; v1.88: one exact loop */
+vec3 sDet(vec3 n,float cz){if(cz<=0.)return n;vec3 d=vec3(-.0185);
+ for(int c=0;c<144+uZero;c++){int q=c/24,o=(c/8)%3;float sc=q==0?37.:q==1?41.:q==2?39.:q==3?170.:q==4?163.:177.;vec3 e=q%3==0?vec3(1,0,0):q%3==1?vec3(0,1,0):vec3(0,0,1);
+  vec3 p=(n*sc+float(q+1))*4.;p=o==0?p:o==1?p*2.03+7.:p*4.1+3.;vec3 i=floor(p),f=p-i;f=f*f*(3.-2.*f);ivec3 k=ivec3(c&1,(c>>1)&1,(c>>2)&1);vec3 w=mix(1.-f,f,vec3(k));
+  d+=e*(q<3?.03:.007)*(o==0?.55:o==1?.3:.15)*w.x*w.y*w.z*shv(ivec3(i)+k);}return n+d*cz;}   /* v1.38: finer layers of the same pattern, fading in as you close in: same coasts, more detail; v1.89: one flat exact loop (6 layers x 3 octaves x 8 corners), one hash call site */
 vec3 surfS(vec3 n,int k,vec3 ca,vec3 cb,vec3 L,out float land,out float cl){float w=sn(n*1.15+.2),w2=sn(n*2.6+.7),w3=sn(n*5.2+1.4);vec3 s=mix(ca,cb,w2);cl=0.;land=1.;
   if(k==0){}
   else if(k==1){s=mix(mix(vec3(.045,.016,.01),ca*.3,.6),mix(vec3(.2,.07,.03),cb*.3,.6),w2);land=smoothstep(.07,0.,abs(fract(w*2.4+w2)-.5)-.4);cl=0.;}
@@ -1571,8 +1582,17 @@ void main(){
   }}
 
 #endif
+vec4 pp=vec4(0.);
+#ifdef ATM
+#define PXN 1
+#else
+#define PXN 0
+#endif
 #ifndef NOPL
- for(int j=0;j<uLoop.y;j++){int i=int(j==0?uPo.x:j==1?uPo.y:uPo.z);if(uPl[i].w>0.&&!(uPG.x>.5&&float(i)==uPk.w)){float kd=i==0?uPk.x:i==1?uPk.y:uPk.z;vec4 p=planet(uPG.x>.5?uPM*d:d,uPl[i].xyz,uPG.x>.5?min(uPl[i].w,.08):uPl[i].w,uPa[i].rgb,uPb[i],uPa[i].a,kd,vec4(uPLd[i],dot(uPLd[i],uPLd[i])>.5?1.:0.));c=c*(1.-p.a)+p.rgb;m*=1.-p.a;}}
+ for(int j=0;j<uLoop.y+PXN;j++){bool cu=j>=uLoop.y;int i=int(j==0?uPo.x:j==1?uPo.y:uPo.z);bool pl=uPG.x>.5;
+  if(cu?(pl&&uOrb.x>0.):(uPl[i].w>0.&&!(pl&&float(i)==uPk.w))){float kd=cu?uPG.z:i==0?uPk.x:i==1?uPk.y:uPk.z;
+   vec4 p=planet(cu||pl?uPM*d:d,cu?uPM*uPD:uPl[i].xyz,cu?uPG.y:pl?min(uPl[i].w,.08):uPl[i].w,cu?uOa:uPa[i].rgb,cu?uOb:uPb[i],cu?0.:uPa[i].a,kd,cu?vec4(uPM*uSun.xyz,1.):vec4(uPLd[i],dot(uPLd[i],uPLd[i])>.5?1.:0.));
+   if(cu)pp=p;else{c=c*(1.-p.a)+p.rgb;m*=1.-p.a;}}}   /* v1.89: the planet you are inside rides the same loop as the others (one call site: planet() is written out once, not twice) */
 #endif
 #ifdef ATM
  if(uOrb.x>0.){float R=uPG.x>.5?uPG.w:90000.,h=uOrb.y,cl=R+h,b=-d.y*cl,q=2.*R*h+h*h,disc=b*b-q;vec3 L=uSun.xyz;float sunEl=L.y;c*=1.-.85*smoothstep(-.1,.25,sunEl)*uPh.z;m*=1.-.85*smoothstep(-.1,.25,sunEl)*uPh.z;   // v1.26: under a day sky the stars go: the sun here is the planet's day, set from where you came down
@@ -1581,7 +1601,6 @@ void main(){
   float yh=-sqrt(q)/cl,hzv=d.y-yh,sdh=pow(max(dot(normalize(vec3(d.x,0.,d.z)+1e-4),normalize(vec3(L.x,0.,L.z)+1e-4)),0.),3.);
   vec3 hcol=mix(at*at*.22,mix(at,vec3(.86,.89,.93),uSkT.x)*(.55+.45*sunH)*uSkT.y,sunH)+mix(vec3(1.,.55,.25),uSunC.rgb,.4)*sdh*(.15+.6*sunH)*(.4+.6*smoothstep(.35,-.05,L.y));
   float dens=uPG.x>.5?exp(-h/uSkT.w):1.;   // the air thins with height: at the top of the sky there is almost none
-  vec4 pp=uPG.x>.5?planet(uPM*d,uPM*uPD,uPG.y,uOa,uOb,0.,uPG.z,vec4(uPM*L,1.)):vec4(0.);
   if(b>0.&&disc>0.){float t=b-sqrt(disc);vec3 cc;
    if(uPG.x>.5){cc=pp.rgb;int kk=int(uPG.z+.5);
 #ifndef NOGND
@@ -2414,13 +2433,25 @@ function genDebris(L, wx, wy, wz, sx, sy, sz) {
   const r = hx(5); put(L, sx, sy, sz, .4 + 3.2 * r * r, gj0, gj1, gj2, gsd, 0, 0, 0, 0);
 }
 // v1.84: the oversized derelicts. Rare, huge, minable: a limb of one of the god-machines that fought in this part of the dark.
-let limbP = .008;
-function limbAt(C, wx, wy, wz) { if (SYS.atm) return 0; cellRnd(wx, wy, wz, 44); if (hx(1) > limbP || dead.has(gh)) return 0; const r = hx(5), s = 240 + 480 * r * r; return gateClear(C, wx, wy, wz, s, 1500) ? 0 : s; }
+let limbP = .014, limbF = null, limbFK = '';   /* v1.89: about 2.5 limbs expected in the field (was 1.7), plus one always placed in view near where you arrive */
+function limbAt(C, wx, wy, wz) { if (SYS.atm) return 0; cellRnd(wx, wy, wz, 44); if (limbF && wx === limbF[0] && wy === limbF[1] && wz === limbF[2] && !dead.has(gh)) return 340; if (hx(1) > limbP || dead.has(gh)) return 0; const r = hx(5), s = 240 + 480 * r * r; return gateClear(C, wx, wy, wz, s, 1500) ? 0 : s; }
 const limbCol = (C, wx, wy, wz) => limbAt(C, wx, wy, wz) * .72;
 function genLimb(L, wx, wy, wz, sx, sy, sz) { const s = limbAt(L.C, wx, wy, wz); if (s) put(LMV[gh >>> 3 & 1], sx, sy, sz, s, gj0, gj1, gj2, gsd, hx(6), 1 + (hx(7) * 3 | 0), typeAt(), 0); }
 const LIMB_TIPS = ['The wreckage of a god-machine · a limb torn off in some old war', 'Something lived in the heart of this thing · the heart is long gone', 'They came here to fight, and this is what was left of one of them'];
 let limbTipT = 6, limbTipN = 0;
+function limbSeed() {
+  const key = SYS.id + ':' + SYS.loc; if (limbFK === key) return; limbFK = key; limbF = null; LL.cx = 1e9; if (SYS.atm) return;
+  const C = LL.C, f = nrm([sFx, sFy, sFz]); let best = null, bs = 1e18;
+  const cx = Math.floor((px + f[0] * 5200) / C), cy = Math.floor((py + f[1] * 5200) / C), cz = Math.floor((pz + f[2] * 5200) / C);
+  for (const minDot of [.84, .6, -1]) { for (let k = -1; k <= 1; k++) for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+    const wx = cx + i, wy = cy + j, wz = cz + k; cellRnd(wx, wy, wz, 44); if (dead.has(gh) || gateClear(C, wx, wy, wz, 340, 1500)) continue;
+    const dx = (wx + gj0) * C - px, dy = (wy + gj1) * C - py, dz = (wz + gj2) * C - pz, d = Math.hypot(dx, dy, dz), dt = (dx * f[0] + dy * f[1] + dz * f[2]) / d;
+    if (d < 2400 || d > 9500 || dt < minDot) continue; const sc = Math.abs(d - 5000) + (1 - dt) * 6000; if (sc < bs) { bs = sc; best = [wx, wy, wz]; } }
+    if (best) break; }
+  limbF = best; LL.cx = 1e9;
+}
 function limbTick(dt) {
+  limbSeed();
   limbTipT -= dt; if (limbTipT > 0 || !LL.n) return; limbTipT = .7;
   const a = nearInst(LMV[0], LL), b = nearInst(LMV[1], LL);
   if (Math.min(a[0], b[0]) < 2600 * 2600) { tip(LIMB_TIPS[limbTipN++ % LIMB_TIPS.length], 5200); limbTipT = 90; }
@@ -6487,10 +6518,14 @@ function cldDraw() {
 // ============================================================================
 await step(.06, 'Igniting stars past the edge…');
 noiseTex(); latTex();
+const SKYS = SKY_F.replace('#version 300 es', '#version 300 es' + (dgOff('skyplanets') ? '\n#define NOPL' : '') + (dgOff('skyfx') ? '\n#define NOFX' : '') + (dgOff('skystars') ? '\n#define NOBS' : '') + (dgOff('skyground') ? '\n#define NOGND' : ''));
+/* v1.89: the two long compiles start now and run on the driver's own threads while the loader builds everything else, instead of starting at 69% and waiting out the whole time */
+let SKYA_ST = null, SKY_ST = null;
+if (PSC && !dgOff('bg')) { try { SKYA_ST = progStart(TRI_V, SKYS.replace('#version 300 es', '#version 300 es\n#define ATM')); SKY_ST = progStart(TRI_V, SKYS); } catch (e) { console.error('sky early', e); SKYA_ST = SKY_ST = null; } }
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.88';
+const BUILD = 'v1.89';
 // v1.74: if the last session ended in a graphics reset, put what was being built at the time in the log (F9 → Copy settings shows it)
 try { const g = JSON.parse(localStorage.ieGlLost || 'null'); if (g) evLog(`Graphics · last reset (${g.build}, ${g.at.slice(0, 16).replace('T', ' ')}): ${g.was ? 'building the ' + g.was + ' program, ' + g.secs + ' s in' : 'no program was being built'}`); } catch {}                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 /* ---- v1.71: spice tiers and attunement, procedural foes, dogfight upgrades, the Foe intro ---- */
@@ -6675,11 +6710,10 @@ await step(.5, 'Waking the leviathans…');
 const mSiphon = siphonMesh(), mSpark = sparkMesh(), mCry = crystalMesh(), mJelly = jellyMesh(), mRay = rayMesh(), mDart = dartMesh(), mRing = ringMesh(), mSpire = spireMesh(), mWhale = whaleMesh(), mSerp = serpentMesh(), mTen = tendrilMesh(), mQuad = quadMesh(), mBox = boxMesh(), mLimb = [limbMesh(0), limbMesh(1)], mCock = cockpitMesh(), mFighter = fighterMesh(), mFrig = [frigateMesh(0), frigateMesh(1)], mDrone = droneMesh(), mGate = gateMesh();
 for (const g of ST.dead) dead.add(g);
 await step(.62, 'Growing crystal…');
-const pStep = async (p, t, vs, fs, st) => { await step(p, t); DG.load = `${Math.round(p * 100)}% ${t}`; try { localStorage.ieDiagHB = JSON.stringify(dgSnap(0)); } catch {} const t0 = performance.now(), cap = p + .026, bar = $('bf'), pc = $('pc'), r = await progA(vs, fs, st, (el) => { const f = p + (cap - p) * (1 - Math.exp(-el / 5000)); bar.style.transform = `scaleX(${f})`; pc.textContent = Math.round(f * 100) + '%'; if (el > 2500) $('st').textContent = `${t} ${Math.floor(el / 1000)}s`; }), ms = Math.round(performance.now() - t0); if (ms > 120) evLog(`Load · ${Math.round(p * 100)}% ${t} ${ms} ms`); return r; };   // one step per program: the bar moves as each one is ready
+const pStep = async (p, t, vs, fs, st) => { await step(p, t); DG.load = `${Math.round(p * 100)}% ${t}`; try { localStorage.ieDiagHB = JSON.stringify(dgSnap(0)); } catch {} let lastS = -1; const t0 = performance.now(), cap = p + .026, r = await progA(vs, fs, st, (el) => { ldTo(p + (cap - p) * (1 - Math.exp(-el / 5000))); if (el > 2500) { const sec = Math.floor(el / 1000); if (sec !== lastS) { lastS = sec; $('st').textContent = `${t} ${sec}s`; } } }), ms = Math.round(performance.now() - t0); if (ms > 120) evLog(`Load · ${Math.round(p * 100)}% ${t} ${ms} ms`); BQT.push([`${Math.round(p * 100)}% ${t}`, ms]); return r; };   // one step per program: the bar moves as each one is ready
 await dgGate();
-const SKYS = SKY_F.replace('#version 300 es', '#version 300 es' + (dgOff('skyplanets') ? '\n#define NOPL' : '') + (dgOff('skyfx') ? '\n#define NOFX' : '') + (dgOff('skystars') ? '\n#define NOBS' : '') + (dgOff('skyground') ? '\n#define NOGND' : ''));
 const P_ROCK = await pStep(.63, 'Carving the rocks…', ROCK_V, ROCK_F), P_CRY = await pStep(.645, 'Growing crystal…', CRY_V, CRY_F), P_LIFE = await pStep(.66, 'Waking the drifters…', LIFE_V, LIFE_F), P_SPR = await pStep(.675, 'Scattering motes…', SPR_V, SPR_F);
-const P_SKY = await pStep(.69, 'Painting the sky, star by star…', TRI_V, SKYS), P_BLUR = await pStep(.72, 'Softening the glare…', TRI_V, BLUR_F), P_RAY = await pStep(.73, 'Bending the light…', TRI_V, RAY_F.replace('precision', `#define NS ${Q.rays}\nprecision`)), P_COMP = await pStep(.745, 'Grinding the lens…', TRI_V, COMP_F), P_COCK = await pStep(.76, 'Lighting the dash…', COCK_V, COCK_F), P_SHIP = await pStep(.775, 'Plating the hulls…', SHIP_V, ROCK_F);
+const P_SKY = await pStep(.69, 'Painting the sky, star by star…', TRI_V, SKYS, SKY_ST), P_BLUR = await pStep(.72, 'Softening the glare…', TRI_V, BLUR_F), P_RAY = await pStep(.73, 'Bending the light…', TRI_V, RAY_F.replace('precision', `#define NS ${Q.rays}\nprecision`)), P_COMP = await pStep(.745, 'Grinding the lens…', TRI_V, COMP_F), P_COCK = await pStep(.76, 'Lighting the dash…', COCK_V, COCK_F), P_SHIP = await pStep(.775, 'Plating the hulls…', SHIP_V, ROCK_F);
 const P_CAB = await pStep(.79, 'Warming the cab…', COCK_V, COCK_F.replace('#version 300 es', '#version 300 es\n#define CABIN'));   // the quarters and the aux screen: their materials stay out of the dash's shader
 gl.useProgram(P_CAB.p); gl.uniform1i(P_CAB.u.uPip, 6);   // the aux screen's picture lives in texture slot 6
 gl.useProgram(P_SHIP.p); gl.uniform3fv(P_SHIP.u['uTier[0]'], TCOL); gl.uniform1i(P_SHIP.u.uKind, 4); gl.uniform1f(P_SHIP.u.uFlat, 0);
@@ -7011,7 +7045,7 @@ bootOK = 1; dgLaunchCheck();
 // browser can), or on the way into a planet otherwise
 let SKP = P_SKY, P_SKYA = null, skyaBusy = 0;
 const SKYA_F = () => SKYS.replace('#version 300 es', '#version 300 es\n#define ATM');
-function skyaQ(front) { if (P_SKYA) return; bq('planet sky', () => progA(TRI_V, SKYA_F()).then((p) => { if (!P_SKYA) P_SKYA = p; }), front); }
+function skyaQ(front) { if (P_SKYA) return; bq('planet sky', () => { const st = SKYA_ST; SKYA_ST = null; return progA(TRI_V, SKYA_F(), st || undefined).then((p) => { if (!P_SKYA) P_SKYA = p; }); }, front); }
 function bgBuild() { bqGo = 1; bqRun(); if (!PSC || dgOff('bg')) return; plsQ(); skyaQ(); terBuild(); cldQ(); }   // v1.50: starts a few seconds after you launch, not on the title screen   // v1.41: the sound system exists from here: timers that touch it may run
 let AC = null, AG = null, DL = null, NB = null, windG = null, windF = null, boostG = null, boostF = null, gatG = null, padF = null, padO = [], mT = 0, mStep = 0, mReg = -1, mWalk = 5, combat = 0, energy = 0;
 const mf = (m) => 440 * 2 ** ((m - 69) / 12);
@@ -7933,16 +7967,18 @@ if (typeof v123Hooks === 'function') v123Hooks();
 /* v1.84: every background build finishes now, one at a time, behind the loading bar, so no shader or terrain build lands mid-flight in the first seconds of play */
 if (PSC && !dgOff('bg')) {
   bqFast = 1; plsQ(); skyaQ(); terBuild(); cldQ(); wxQ(); bqGo = 1; bqRun();
-  const n0 = BQ.length + 1, tq = performance.now(), bar = $('bf'), pc = $('pc'); let lastN = n0, tp = tq;
-  PH = (el) => { const f = Math.min(.998, .8 + .19 * (1 - (BQ.length + 1) / (n0 + 1)) + .008 * (1 - Math.exp(-el / 4000))); bar.style.transform = `scaleX(${f})`; pc.textContent = Math.round(f * 100) + '%'; };
+  const n0 = BQ.length + 1, tq = performance.now(); let lastS = -1;
+  PH = (el) => { ldTo(.8 + .19 * (1 - (BQ.length + 1) / (n0 + 1)) + .008 * (1 - Math.exp(-el / 4000))); };
   while ((BQ.length || bqCur) && !gl.isContextLost() && performance.now() - tq < 120000) {
-    const n = BQ.length + 1; if (n !== lastN) { lastN = n; tp = performance.now(); }
-    await step(Math.min(.998, .8 + .19 * (1 - n / (n0 + 1))), 'Warming the planets…' + (performance.now() - tp > 2500 ? ' ' + Math.floor((performance.now() - tp) / 1000) + 's' : ''));
+    const n = BQ.length + 1, el = performance.now() - tq, sec = Math.floor(el / 1000); if (sec !== lastS) lastS = sec;
+    await step(Math.min(.998, .8 + .19 * (1 - n / (n0 + 1))), 'Warming the planets…' + (el > 2500 ? ' ' + sec + 's' : ''));
   }
+  { const sl = BQT.slice().sort((a, b) => b[1] - a[1]).slice(0, 4).map((b) => `${b[0]} ${b[1]} ms`).join(' · '); evLog(`Load · slowest builds: ${sl}`); }
   PH = null; bqFast = 0;
 }
 requestAnimationFrame((t) => { last = t; frame(t); });
 await step(1, 'The dark is ready');
+for (let i = 0; i < 50 && LDG.v < .995; i++) await new Promise((r) => setTimeout(r, 30));   /* let the figure reach 100% before the loader goes */
 B.className = 'm';
 // Installed from the Meta Horizon Store (a packaged web app): open straight into the headset. Launching the app counts as the user's
 // tap, so the session is allowed without one. Ordinary website visits never auto-enter. If the headset won't start, the menu stays up.
