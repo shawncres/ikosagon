@@ -2973,7 +2973,7 @@ function hudPaint() {
     T('FUEL', 822, 74, 12, 'right', dim, 700); bar(580, 66, 190, fu / 100, gFlash[1] > .5 ? '#ffffff' : fu < 15 ? red : '#ffd84a');
     T(WPN[wpn][0].toUpperCase(), 572, 92, 11, 'right', dim, 600);
     T('WPNS' + (wpn === 4 ? ' ' + mslN : ''), 822, 92, 12, 'right', dim, 700); bar(580, 84, 190, we / 100, gFlash[2] > .5 ? '#ffffff' : we < 12 ? red : '#ff6a3d');
-    T('SPICE', 178, 93, 12, 'left', dim, 700); bar(232, 85, 190, spc / 100, btT > 0 ? '#ffffff' : '#ff3b5c'); if (btT > 0) { T('SLOW TIME', 500, 252, 15, 'center', '#ff3b5c', 700); line([[500 - 80 * btT / btMax, 262], [500 + 80 * btT / btMax, 262]], '#ff3b5c', 2); } }
+    T('SPICE', 178, 91, 12, 'left', '#ff6b82', 700); for (let q = 0; q < 4; q++) { const x = 232 + q * 48, f = Math.max(0, Math.min(1, spc / 25 - q)), col = btT > 0 ? '#ffffff' : spc < 25 && q === 0 && (tm * 3 | 0) % 2 ? '#ffb0b8' : '#ff3b5c'; c.fillStyle = 'rgba(160,210,240,.18)'; c.beginPath(); c.moveTo(x + 7, 80); c.lineTo(x + 45, 80); c.lineTo(x + 38, 92); c.lineTo(x, 92); c.closePath(); c.fill(); if (f > 0) { c.save(); c.beginPath(); c.moveTo(x + 7, 80); c.lineTo(x + 45, 80); c.lineTo(x + 38, 92); c.lineTo(x, 92); c.closePath(); c.clip(); c.fillStyle = col; c.fillRect(x, 80, 45 * f, 12); c.restore(); } line([[x + 7, 80], [x + 45, 80], [x + 38, 92], [x, 92], [x + 7, 80]], f > 0 ? col : dim, 1.5); } if (btT > 0) { T('SLOW TIME', 500, 252, 15, 'center', '#ff3b5c', 700); line([[500 - 80 * btT / btMax, 262], [500 + 80 * btT / btMax, 262]], '#ff3b5c', 2); } }
   const hd = Math.atan2(sFx, -sFz) * 57.29578, CARD = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'], wrap = (a) => ((a + 540) % 360) - 180;
   for (let a = 0; a < 360; a += 5) { const x = 500 + wrap(a - hd) * 6.5; if (x < 250 || x > 750) continue; const m = a % 45 === 0; line([[x, 118], [x, m ? 134 : a % 15 ? 123 : 128]], m ? main : dim, m ? 2 : 1); if (m) T(CARD[a / 45], x, 156, 16, 'center', main, 700); }
   c.fillStyle = main; c.beginPath(); c.moveTo(500, 114); c.lineTo(493, 102); c.lineTo(507, 102); c.fill(); spHud(c, T, hd, wrap);
@@ -2998,7 +2998,7 @@ function hudPaint() {
   if (cur && cur.kind === 'planet' && SYS.planets[+cur.id[1]]) { const k = +cur.id[1], pl = SYS.planets[k], air = SYS.locs.some((l) => l.atm === k + 1); T((pl.type + (air ? pl.kind === 0 ? ' · fly the cloud tops' : ' · air · can descend' : ' · no air · orbit only')).toUpperCase(), 892, 306, 12, 'right', dim, 600); }
   if (cur && cur.npc) { T('SHD', 736, 304, 11, 'right', dim, 700); bar(742, 296, 150, cur.npc.sh / cur.npc.shM, cy); T('HULL', 736, 318, 11, 'right', dim, 700); bar(742, 310, 150, cur.npc.hp / cur.npc.hpM, cur.npc.hp < cur.npc.hpM * .35 ? red : main); }
   tag('DISTANCE', 908, 366, 'right'); const ds = dist >= 10000 ? (dist / 1000).toFixed(0) : dist >= 1000 ? (dist / 1000).toFixed(1) : String(dist | 0); T(cur && cur.far ? (plRaw(cur) < .1 ? 'KM' : 'MM') : dist >= 1000 ? 'KM' : 'M', 892, 420, 15, 'right', dim, 700); T(cur && cur.far ? plDist(cur) : ds, 860, 420, 40, 'right', main, 700); if (drift) { T(orbAp ? 'ORBITAL APPROACH  ' + (driftV * 1000).toFixed(1) + ' KM/S' : 'LIGHT DRIFT  ' + (driftV / 300).toFixed(driftV < 30 ? 3 : 2) + ' c', 892, 500, 15, 'right', amb, 700); bar(742, 508, 150, Math.min(1, driftV / 300), amb); } else if (!SYS.atm && apOn && aimK >= 0) { const inR = apDist < apGate, air = SYS.locs.some((l) => l.atm === aimK + 1); T(!air && apDist < PR[aimK] * 3 ? 'NO ATMOSPHERE · ORBIT ONLY' : bRamp <= 0 ? (air ? (drift ? 'DESCENDING · THROTTLE SETS THE PACE' : 'THROTTLE TOWARD IT TO APPROACH') : 'HOLD BOOST TO APPROACH') : inR ? 'APPROACH  ' + SYS.planets[aimK].name.toUpperCase() : 'CLOSING · DRIFT AT ' + Math.round(apGate) + ' MM', 892, 500, 15, 'right', amb, 700); bar(742, 508, 150, inR ? bRamp : Math.min(1, apGate / apDist), amb); } else if (SYS.atm && scK > 0) { T('TERMINAL VELOCITY', 892, 500, 15, 'right', amb, 700); bar(742, 508, 150, scK, amb); }
-  if (!SYS.atm && (hl || hlRdy > 0)) { const c = navCur(); T(hl === 2 ? 'HYPERLIGHT · ' + (c && c.far ? plDist(c) + (plRaw(c) < .1 ? ' KM' : ' MM') : '') : hl === 1 ? 'HYPERLIGHT SPOOLING' : hlRdy >= 1.2 ? 'HYPERLIGHT READY · G' : 'HYPERLIGHT · HOLD ON TARGET', 892, 540, 15, 'right', hl || hlRdy >= 1.2 ? cy : dim, 700); bar(742, 548, 150, hl === 2 ? 1 : hl === 1 ? Math.min(1, hlT / 1.4) : Math.min(1, hlRdy / 1.2), hl || hlRdy >= 1.2 ? cy : dim); }   // v1.36
+  if (!SYS.atm && (hl || hlRdy > 0)) { const c = navCur(); T(hl === 2 ? 'HYPERLIGHT · ' + (c && c.far ? plDist(c) + (plRaw(c) < .1 ? ' KM' : ' MM') : '') : hl === 1 ? 'HYPERLIGHT SPOOLING' : hlRdy >= 1.2 ? 'HYPERLIGHT READY · G / SHIFT SHIFT' + (SP.n[1] ? '' : ' · NEEDS PURPLE') : 'HYPERLIGHT · HOLD ON TARGET', 892, 540, 15, 'right', hl || hlRdy >= 1.2 ? cy : dim, 700); bar(742, 548, 150, hl === 2 ? 1 : hl === 1 ? Math.min(1, hlT / 1.4) : Math.min(1, hlRdy / 1.2), hl || hlRdy >= 1.2 ? cy : dim); }   // v1.36
   if (cur && scanT > 0) { T('SCANNING', 892, 462, 14, 'right', cy, 700); bar(742, 470, 150, scanT / 1.6, cy); } else if (cur && scanned[cur.id]) T('SCANNED', 892, 462, 14, 'right', dim, 700);
   else if (cur && (cur.npc || cur.id === 'trader' || cur.id === 'gate') && dist < (cur.npc ? scanR() : cur.id === 'gate' ? 2600 : 900)) T(cur.npc ? 'F · HAIL' : 'F · OPEN', 892, 462, 14, 'right', cy, 700);
   // throttle reads only in the top bar; the side ladders (throttle, pitch) are gone
@@ -3214,18 +3214,20 @@ function hop(loc) { const sv = [yaw, pitch, thr, vx, vy, vz]; palEase = 1; softA
 // ---- v1.36: hyperlight. Space only. Hold a world or a place in your sights until it reads READY, press G: the drive spools, the nose
 // locks on, and you cross the system in seconds, with only a few degrees of play. It drops out by itself before a planet's air (the
 // approach takes over), on arrival at a place, or if another world's mass is in the way.
+let shiftT = 0, hlAv = [0, 0, 0], hlSpd = 0, hlHits = [], hlLastHit = -9;
 let hl = 0, hlT = 0, hlRdy = 0, hlFx = 0, hlCurveT = 0, hlU = null, hlD0 = 1, hlDur = 8;
 const hlPos = (c) => { if (!c || !sysP) return null; if (c.kind === 'planet') { const k = +c.id[1]; return sysP[k] || null; } if (c.kind === 'place') { const O = sysPL[c.loc]; return O ? [O[0] - sysO[0], O[1] - sysO[1], O[2] - sysO[2]] : null; } return null; };
 // v1.51: a world only blocks hyperlight when it's actually in the path ahead (leaving the planet you just climbed out of no longer counts)
 function hlBlock(j, u, rem) { const P = sysP[j]; if (!P) return false; const x = P[0] - sysS[0], y = P[1] - sysS[1], z = P[2] - sysS[2], al = x * u[0] + y * u[1] + z * u[2];
   if (al <= 0 || al > rem + PR[j]) return false; return Math.hypot(x - u[0] * al, y - u[1] * al, z - u[2] * al) < PR[j] * 1.15; }
-function hlStop(msg) { if (hl) buzz(.55, 300); hl = 0; hlU = null; hlT = 0; hlRdy = 0; if (msg) tip(msg, 4000); }
+function hlStop(msg) { hlSpd = 0; hlAv[0] = hlAv[1] = hlAv[2] = 0; if (!hl) hlHits.length = 0; if (hl === 1 && SP.n[1] < 3) { SP.n[1]++; spSave(); } if (hl) buzz(.55, 300); hl = 0; hlU = null; hlT = 0; hlRdy = 0; if (msg) tip(msg, 4000); }
 function hlKey() {
   if (SYS.atm) { tip('Hyperlight needs open space: climb out of the air first', 3000); return; }
   if (hl) { hlStop('Hyperlight disengaged'); return; }
-  if (hlRdy >= TUNE.hlReady) { { const Q = QA ? QA.slice() : qmul(QF, qYP(yaw, pitch)); QF = Q; yaw = 0; pitch = 0; yawL = 0; pitchL = 0; snap = 1; }   // v1.61: level re-based on where you point, so hyperlight's steering angles stay small (a tilted frame near vertical made it spin)
+  if (hlRdy >= TUNE.hlReady && SP.n[1] <= 0) { tip('Hyperlight needs a purple spice charge · find purple spice in pockets and from foes', 4500); return; }
+  if (hlRdy >= TUNE.hlReady) { SP.n[1]--; spSave(); hlHits.length = 0; { const Q = QA ? QA.slice() : qmul(QF, qYP(yaw, pitch)); QF = Q; yaw = 0; pitch = 0; yawL = 0; pitchL = 0; snap = 1; }   // v1.61: level re-based on where you point, so hyperlight's steering angles stay small (a tilted frame near vertical made it spin)
     hl = 1; hlT = 0; buzz(.45, 1300); tip('Hyperlight spooling…', 1500); if (AC && AC.state === 'running') burst(AC.currentTime, 1.4, .16, 60, 600, 'lowpass'); }
-  else tip('Hyperlight: target a world or a place, hold it in your sights until it reads READY, then G', 4500);
+  else tip('Hyperlight: target a world or a place, hold it in your sights until it reads READY, then G (or tap Shift twice and hold) · a charge each: ' + SP.n[1] + '/3', 4500);
 }
 function hlTick(dt, near, nk) {
   hlFx += ((hl === 2 ? 1 : hl === 1 ? Math.min(1, hlT / TUNE.hlSpool) * .6 : 0) - hlFx) * Math.min(1, dt * (hl ? 3 : 1.4));
@@ -3246,7 +3248,12 @@ function hlTick(dt, near, nk) {
   yaw = ty + Math.max(-lim, Math.min(lim, dyw)) * (1 - ease); pitch = tp + Math.max(-lim, Math.min(lim, pitch - tp)) * (1 - ease); snap = 1;   // the nose locks on: only a few degrees of play
   if (hl === 1) { trauma = Math.max(trauma, Math.min(.45, .3 * hlT)); if (hlT > TUNE.hlSpool) { hl = 2; hlT = 0; hlD0 = Math.max(rem, .001); hlDur = TUNE.hlTime0 + TUNE.hlTimeK * Math.sqrt(hlD0); buzz(1, 600); flash = Math.max(flash, .18); trauma = Math.max(trauma, .7); if (AC && AC.state === 'running') burst(AC.currentTime, 2.2, .26, 120, 1600, 'lowpass'); } return; }
   const p = Math.min(1, hlT / hlDur), v = Math.max(hlD0 * 30 * p * p * (1 - p) * (1 - p) / hlDur * 1.08, p >= 1 ? rem * 3 : 0, .002), st = Math.max(0, Math.min(rem, v * dt));   // v1.56: a trip whose length follows the distance, easing up and down
-  sysS[0] += u[0] * st; sysS[1] += u[1] * st; sysS[2] += u[2] * st; locMove(u[0], u[1], u[2], st, dt, 9000); trauma = Math.max(trauma, .12 * hlFx);
+  { const tg = raThr ? Math.min(1.3, .35 + 1.1 * (1 - raThr.m / raThr.R)) : 0, e = Math.min(1, dt * (raThr ? 6 : 1.2));   /* steer round rocks in the path */
+    hlAv[0] += ((raThr ? raThr.nx * tg : 0) - hlAv[0]) * e; hlAv[1] += ((raThr ? raThr.ny * tg : 0) - hlAv[1]) * e; hlAv[2] += ((raThr ? raThr.nz * tg : 0) - hlAv[2]) * e; }
+  sysS[0] += u[0] * st; sysS[1] += u[1] * st; sysS[2] += u[2] * st; { const um = nrm([u[0] + hlAv[0], u[1] + hlAv[1], u[2] + hlAv[2]]); hlSpd = Math.min(st * 1e6, 9000 * dt) / dt; locMove(um[0], um[1], um[2], st, dt, 9000); }
+  if (cHit && tm - hlLastHit > .3) { hlLastHit = tm; hlHits.push(tm); while (hlHits.length && tm - hlHits[0] > 8) hlHits.shift(); trauma = Math.max(trauma, .55); flash = Math.max(flash, .1);
+    if (hlHits.length >= 3) { hlHits.length = 0; hlStop('Dropped out of hyperlight · too many rocks in the path · it needs another purple charge'); trauma = .8; return; }
+    pop(`IMPACT ${hlHits.length}/3`, '#ff6a3d'); } trauma = Math.max(trauma, .12 * hlFx);
   if (nk >= 0 && nk !== k && near < PR[nk] * 2 && hlBlock(nk, u, rem)) { hlStop(`Dropped out of hyperlight · ${SYS.planets[nk].name}'s mass is in the way`); trauma = .6; return; }
   if (rem < .0015 || (hlT > .8 && rem < v * .04)) {
     trauma = Math.max(trauma, .55); flash = Math.max(flash, .12); hlBrake();
@@ -3739,6 +3746,7 @@ function fxTick(dt) { for (let i = FXL.length - 1; i >= 0; i--) { const f = FXL[
 // from Cinnabar. Any of the three ores will do at half the yield. With nothing in the hold they can only watch.
 const SWM = [['MENDERS', 'hull', [1, 2, 3], 12, 8, '#c3ccdc', [.8, .86, 1]], ['SIPHONS', 'fuel', [2, 1, 3], 20, 10, '#ffd84a', [1, .82, .25]], ['SPARKS', 'weapons', [3, 2, 1], 24, 14, '#ff6a3d', [1, .32, .14]]];
 const WEN = [.35, 1.6, 4, .02, 3];                                      // gun energy per shot, by weapon
+let hv = 0, hvOn = 0, hvWas = 0, hvPit = 0, hvRoll = 0, hvT = 0, hvG = 0, hopW = 0, gbT = 8, hvPv = 0, hvRv = 0, hbW = 0, hbT = -9, hbRaw = 0, hvLock = 0, dashT = 0;
 let btHold = 0, nearSeen = new Set(), cHitT = -9, BLOOMS = [], bloomT = 6, drT = 0, swN = [null, null, null], swOn = -1, swCred = [0, 0, 0], swTip = [0, 0, 0], swWork = 0, strandT = 0, fuelTip = 0, sysWarn = '', sysWarnC = '', spiceAcc = 0, spiceTip = 0, btT = 0, btMax = 2, btCool = 0, raT = 0, raThr = null;
 const sysLv = (k) => k === 0 ? ST.hull : k === 1 ? ST.fuel : ST.wen;
 function sysAdd(k, v) { if (k === 0) ST.hull = Math.min(100, ST.hull + v); else if (k === 1) ST.fuel = Math.min(100, ST.fuel + v); else ST.wen = Math.min(100, ST.wen + v); }
@@ -3803,10 +3811,16 @@ function spiceTick(dt, fly) {                              // spice: living thin
   if (SYS.atm) { near = 1; const cloud = Math.exp(-((py - 5200) * (py - 5200)) / 1.4e7);
     if (cloud > .15 && ST.spice < 100) { const was = ST.spice; ST.spice = Math.min(100, ST.spice + dt * 5 * cloud); if (Math.random() < dt * 6 * cloud) fxAdd(px + (Math.random() - .5) * 50, py + (Math.random() - .5) * 24, pz + (Math.random() - .5) * 50, .35 + Math.random() * .7, 1.35, .22, .42); if (Math.floor(was / 25) < Math.floor(ST.spice / 25) && tm > spiceTip) { spiceTip = tm + 16; pop('SPICE IN THE CLOUDS', '#ff3b5c'); } } }
   if (!near && ST.spice > 0 && bst > .85) ST.spice = Math.max(0, ST.spice - dt * .04);   // spice stays in the hold; only a hard boost shakes a little loose
-  if (near && ST.spice < 100) { const was = ST.spice; ST.spice = Math.min(100, ST.spice + dt * 5.5); if (Math.random() < dt * 6) fxAdd(px + sFx * 14 + (Math.random() - .5) * 30, py + sFy * 14 + (Math.random() - .5) * 20, pz + sFz * 14 + (Math.random() - .5) * 30, .12 + Math.random() * .2, 1.1, .2, .3);
+  if (near && ST.spice < 100) { const was = ST.spice; ST.spice = Math.min(100, ST.spice + dt * 1); if (Math.random() < dt * 6) fxAdd(px + sFx * 14 + (Math.random() - .5) * 30, py + sFy * 14 + (Math.random() - .5) * 20, pz + sFz * 14 + (Math.random() - .5) * 30, .12 + Math.random() * .2, 1.1, .2, .3);
     if (Math.floor(was / 25) < Math.floor(ST.spice / 25) && tm > spiceTip) { spiceTip = tm + 20; pop(`SPICE ${ST.spice | 0}%`, '#ff3b5c'); } }
   const sp = Math.hypot(vx, vy, vz);
   bloomT -= dt * TUNE.spice; if (SYS.atm && bloomT <= 0 && BLOOMS.length < 3 && Math.exp(-((py - 4600) * (py - 4600)) / 2.4e6) > .35) { bloomT = 3 + Math.random() * 4; BLOOMS.push({ x: px + sFx * (500 + Math.random() * 900) + (Math.random() - .5) * 220, y: py + (Math.random() - .5) * 140, z: pz + sFz * (500 + Math.random() * 900), t: 0, q: spTier(), v: 6 + (Math.random() * 5 | 0) }); }
+  gbT -= dt; if (gbT <= 0 && SYS.atm && hasTerr() && !hl && !jumpTo && flying()) {   /* v1.85: the surface keeps the rarer spice: a few low pockets near the ground (purple, gold, cyan; never red), found by hovering */
+    gbT = 10 + Math.random() * 10; let gn = 0; for (let i = 0; i < BLOOMS.length; i++) if (BLOOMS[i].g) gn++;
+    if (gn < 3 && BLOOMS.length < 10 && py - tGround(px, pz) < 400) {
+      const ga = Math.random() * 6.283, gd = 350 + Math.random() * 650, gcx = px + Math.cos(ga) * gd, gcz = pz + Math.sin(ga) * gd, gr = Math.random(), gq = gr < .1 ? 3 : gr < .35 ? 2 : 1;
+      for (let i = 0; i < 2; i++) { const gx = gcx + (Math.random() - .5) * 160, gz = gcz + (Math.random() - .5) * 160; BLOOMS.push({ x: gx, y: tGround(gx, gz) + 24 + Math.random() * 16, z: gz, t: 0, q: gq, v: 10, p: 1, g: 1 }); }
+      pop(`SURFACE POCKET · ${SPN[gq]}`, SPH[gq]); spiceSnd(1); } }
   if (bloomT <= 0 && !SYS.atm && bst > .5 && sp > 400 && BLOOMS.length < 4) {      // a bloom ahead, a little off the line: worth a steer
     bloomT = 4 + Math.random() * 5; const ux = vx / sp, uy = vy / sp, uz = vz / sp, d = Math.min(2600, 700 + sp * 1.4), off = 50 + Math.random() * 220, g = Math.random() * 6.283;
     const ox = sRx * Math.cos(g) + sUx * Math.sin(g), oy = sRy * Math.cos(g) + sUy * Math.sin(g), oz = sRz * Math.cos(g) + sUz * Math.sin(g);
@@ -3821,29 +3835,31 @@ function spiceTick(dt, fly) {                              // spice: living thin
 // the rock assist: looks ahead along the flight path, eases the speed down so nothing is under a second and a half away,
 // and leans the ship off a rock it is about to hit, so a small turn is enough to clear it
 function rockAssist(dt) {
-  const sp = Math.hypot(vx, vy, vz);
+  const hlOn = hl === 2 && hlU && hlSpd > 50, sp = hlOn ? hlSpd : Math.hypot(vx, vy, vz), spMin = btT > 0 ? 60 : 240;
   raT -= dt; if (raT <= 0) { raT = .07; raThr = null;
-    if (sp > 240) { const ux = vx / sp, uy = vy / sp, uz = vz / sp, look = Math.min(2800, sp * 1.9); let best = 1e9; const seen = new Set();
+    if (sp > spMin) { const ux = hlOn ? hlU[0] : vx / sp, uy = hlOn ? hlU[1] : vy / sp, uz = hlOn ? hlU[2] : vz / sp, look = Math.min(hlOn ? 5400 : 2800, sp * 1.9); let best = 1e9; const seen = new Set();
       if (nearSeen.size > 400) nearSeen.clear();
-      for (const [L, at] of [[LB, bigAt], [LH, hugeAt]]) { const C = L.C;
+      for (const [L, at] of [[LB, bigAt], [LH, hugeAt], [LL, limbCol]]) { const C = L.C;
         for (let d = 0, dg = 0; d <= look + C && dg < 160; d += Math.max(C * .8, 20), dg++) { const bx = Math.floor((px + ux * d) / C), by = Math.floor((py + uy * d) / C), bz = Math.floor((pz + uz * d) / C);
           for (let kk = -1; kk < 2; kk++) for (let jj = -1; jj < 2; jj++) for (let ii = -1; ii < 2; ii++) { const cx = bx + ii, cy = by + jj, cz = bz + kk, key = C + ':' + cx + ',' + cy + ',' + cz; if (seen.has(key)) continue; seen.add(key);
             const s = at(C, cx, cy, cz); if (!s) continue;
             const rx = (cx + gj0) * C - px, ry = (cy + gj1) * C - py, rz = (cz + gj2) * C - pz, t = rx * ux + ry * uy + rz * uz; if (t < 0 || t > look) continue;
-            const ox = ux * t - rx, oy = uy * t - ry, oz = uz * t - rz, m = Math.hypot(ox, oy, oz), R = s * .93 + 18;
-            if (sp > 500 && t < sp * .14 && m > R && m < R + 90 && !nearSeen.has(key) && tm - cHitT > 1) { nearSeen.add(key); const g = Math.round((3 + 4 * (1 - (m - R) / 90)) * (1 + bOd)); ST.spice = Math.min(100, (ST.spice || 0) + g); spiceSnd(1); }
+            const ox = ux * t - rx, oy = uy * t - ry, oz = uz * t - rz, m = Math.hypot(ox, oy, oz), R = s * .93 + 18 + (btT > 0 || hlOn ? 30 + s * .3 : 0);   /* slowed time and hyperlight clear a rock by a margin */
+            if (!hlOn && sp > 500 && t < sp * .14 && m > R && m < R + 90 && !nearSeen.has(key) && tm - cHitT > 1) { nearSeen.add(key); const g = Math.round((3 + 4 * (1 - (m - R) / 90)) * (1 + bOd)); ST.spice = Math.min(100, (ST.spice || 0) + g); spiceSnd(1); }
             if (m < R && t - s < best) { best = t - s; raThr = { t: Math.max(1, t - s), m, R, s, huge: L === LH, tier: hx(3) < .3 ? 1 : 0, nx: m > .1 ? ox / m : sRx, ny: m > .1 ? oy / m : sRy, nz: m > .1 ? oz / m : sRz }; } } } } } }
-  if (!raThr || sp < 240) return;
+  if (!raThr || hlOn || sp < spMin) return;
   const T = raThr, tti = T.t / sp;
   if (bst > .5 && btT <= 0 && btCool <= 0 && tti < 1.1 + Math.min(1, T.s / 200)) {      // the worse the crash would have been, the more spice it takes: speed, size, how dense the rock is, how dead-centre
     const cost0 = Math.max(6, Math.round(Math.min(50, (sp / 1600) * 13 * (.7 + Math.min(T.s, 300) / 80) * (T.huge ? 1.4 : 1) * (T.tier ? 1.25 : 1) * (1.2 - .5 * T.m / T.R))));
-    const cost = Math.max(4, Math.round(cost0 * spCk()));
+    const cost = Math.max(4, Math.round(25 * spCk()));   /* one segment of the red meter */
     if (ST.spice >= cost) { ST.spice -= cost; btMax = btT = 1.8 + Math.min(1.4, cost / 30); btHold = 0; btCool = spCool(); spOn(); save(); pop(`SLOW TIME · SPICE −${cost}`, '#ff3b5c'); spiceSnd(0);
       for (let k = 0; k < 18; k++) fxAdd(px + sFx * 30 + (Math.random() - .5) * 60, py + sFy * 30 + (Math.random() - .5) * 40, pz + sFz * 30 + (Math.random() - .5) * 60, .3 + Math.random() * .5, 1.4, .2, .35); }
     else if (tm > spiceTip) { spiceTip = tm + 8; tip(`Not enough spice to slow this one (needs ${cost}) · steer!`, 2500); } }
   if (btT > 0 && T.m < T.R * .85 && tti < .9 && btHold < 1.6) { btT = Math.max(btT, btMax * .45); btHold += dt / Math.max(.1, slow); }   // a big rock still dead ahead keeps time slow a little longer
-  if (tti < .7 && bOd < .7) { const want = Math.max(240, T.t / .7); if (sp > want) { const f = Math.max(want / sp, 1 - dt * 1.5 * (1 - bOd)); vx *= f; vy *= f; vz *= f; } }   // overdrive: the safety brake lets go   // only the last moment eases off: a boost run still needs steering
-  const a = 70 * (1 - T.m / T.R) * dt * (1 - .9 * bOd); vx += T.nx * a; vy += T.ny * a; vz += T.nz * a;
+  if (tti < .7 && bOd < .7 && btT <= 0) { const want = Math.max(240, T.t / .7); if (sp > want) { const f = Math.max(want / sp, 1 - dt * 1.5 * (1 - bOd)); vx *= f; vy *= f; vz *= f; } }   // overdrive: the safety brake lets go   // only the last moment eases off: a boost run still needs steering
+  const gb = btT > 0 ? Math.min(4, 1 / Math.max(.25, slow)) * 1.5 : 1, a = 70 * (1 - T.m / T.R) * dt * (1 - .9 * bOd * (btT > 0 ? 0 : 1)) * gb;   /* slowed time: the steering still works in real time */
+  vx += T.nx * a; vy += T.ny * a; vz += T.nz * a;
+  if (btT > 0) { const ls = 150 * (1 - T.m / T.R) * dt; px += T.nx * ls; py += T.ny * ls; pz += T.nz * ls; }   /* and a sidestep that the nose's pull cannot undo */
 }
 
 // ---- touch screens: the actions that have keys get buttons ----
@@ -6476,26 +6492,30 @@ noiseTex();
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.84';
+const BUILD = 'v1.85';
 // v1.74: if the last session ended in a graphics reset, put what was being built at the time in the log (F9 → Copy settings shows it)
 try { const g = JSON.parse(localStorage.ieGlLost || 'null'); if (g) evLog(`Graphics · last reset (${g.build}, ${g.at.slice(0, 16).replace('T', ' ')}): ${g.was ? 'building the ' + g.was + ' program, ' + g.secs + ' s in' : 'no program was being built'}`); } catch {}                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 /* ---- v1.71: spice tiers and attunement, procedural foes, dogfight upgrades, the Foe intro ---- */
-const SPN = ['COMMON', 'RARE', 'EXOTIC', 'MYTHIC'], SPH = ['#ff3b5c', '#b36bff', '#ffcf3a', '#7ff6ff'], SPC = [[1.1, .1, .22], [.7, .25, 1.5], [1.5, 1, .15], [.5, 1.4, 1.7]];
-const SPB = [['Slow time', 'Each level holds time slow for longer'], ['Spice shield', 'Each level absorbs more fire while time is slow, and a moment after'], ['Flow', 'Each level: cheaper to trigger, faster recharge, wider pull on spice']], SPL = [[0, 6], [1, 3], [2, 2], [3, 1]];
+const SPN = ['RED', 'PURPLE', 'EXOTIC', 'MYTHIC'], SPH = ['#ff3b5c', '#b36bff', '#ffcf3a', '#7ff6ff'], SPC = [[1.1, .1, .22], [.7, .25, 1.5], [1.5, 1, .15], [.5, 1.4, 1.7]];
+const SPB = [['Slow time', 'Each level holds time slow for longer'], ['Spice shield', 'Each level absorbs more fire while time is slow, and a moment after'], ['Flow', 'Each level: cheaper to trigger, faster recharge, wider pull on spice']], SPL = [[2, 1], [2, 2], [3, 1], [3, 2]];   /* v1.85: red fuels boost and slow time, purple is a hyperlight charge; attunement now takes the rarer two */
 let SP = { n: [0, 0, 0, 0], lv: [0, 0, 0], total: 0, intro: 0, hulls: 0 };
 try { const o = JSON.parse(localStorage.ibSpice); if (o && Array.isArray(o.n) && Array.isArray(o.lv)) SP = Object.assign(SP, o); } catch {}
+if (!SP.v185) { SP.v185 = 1; SP.n[1] = Math.min(3, (SP.n[1] || 0) + 1); }   /* one starter hyperlight charge */
+SP.n[1] = Math.max(0, Math.min(3, SP.n[1] | 0));
 const spSave = () => keep('ibSpice', JSON.stringify(SP));
 const spKind = () => SP.n.map((v, i) => v + ' ' + SPN[i].toLowerCase()).join(' · ');
 let foeB = 0, spSh = 0, spGrace = 0, spAbT = 0, pkT = 14, introT = 0, introS = 0, introA = null, FO = null, foeHitT = -9, foeHitS = '', FU0 = 0, FU1 = 1, FU2 = 0;
 const spCk = () => 1 - .1 * SP.lv[2], spCool = () => 6 - .9 * SP.lv[2];
 function spTier() {
-  const p = SP.total, dg = SYS.danger || 0, r = Math.random(), pm = p >= 25 ? .02 + .01 * dg : 0, pe = p >= 10 ? .06 + .012 * dg : 0, pr = .14 + .012 * Math.min(12, p / 2) + .03 * dg;
+  const p = SP.total, dg = SYS.danger || 0, r = Math.random(), pm = p >= 25 ? .02 + .01 * dg : 0, pe = p >= 10 ? .06 + .012 * dg : 0, pr = .26 + .012 * Math.min(12, p / 2) + .03 * dg;
   return r < pm ? 3 : r < pm + pe ? 2 : r < pm + pe + pr ? 1 : 0;
 }
 function spGot(b) {
-  const q = b.q | 0, v = Math.round(b.v * (1 + .6 * q)); ST.spice = Math.min(100, (ST.spice || 0) + v); SP.n[q]++; SP.total++; spSave();
-  pop(`${SPN[q]} SPICE +${v}`, SPH[q]); if (q > 0 && AC && AC.state === 'running') spiceSnd(0);
-  if (SP.total === 1) tip('Spice: boost at rocks, or press Y, to slow time. Rarer spice (menu: Spice attunement) upgrades slow time, shield and flow', 9000);
+  const q = b.q | 0, v = Math.round(b.v * (1 + .6 * q)); SP.total++;
+  if (q === 1) { if (SP.n[1] < 3) { SP.n[1]++; pop(`HYPERLIGHT CHARGE ${SP.n[1]}/3`, SPH[1]); } else { ST.spice = Math.min(100, (ST.spice || 0) + 12); pop('PURPLE SPICE · CHARGES FULL', SPH[1]); } }
+  else { ST.spice = Math.min(100, (ST.spice || 0) + v); SP.n[q]++; pop(`${SPN[q]} SPICE +${v}`, SPH[q]); }
+  spSave(); if (q > 0 && AC && AC.state === 'running') spiceSnd(0);
+  if (SP.total === 1) tip('Red spice fuels boost and slow time (Y) · purple spice is one hyperlight charge each, up to 3 · gold and cyan upgrade you (menu: Spice attunement)', 9000);
 }
 function spOn() { spSh = 1.2 + SP.lv[1]; spAbT = 0; btMax = btT = btT + SP.lv[0] * .45; spGrace = tm + .45 * SP.lv[1]; }
 function spAbsorb(a) {
@@ -6503,13 +6523,13 @@ function spAbsorb(a) {
   return a;
 }
 function spiceSense() {
-  if (!flying() || btT > 0 || hl || jumpTo) return; const cost = Math.max(4, Math.round(22 * spCk()));
+  if (!flying() || btT > 0 || hl || jumpTo) return; const cost = Math.max(4, Math.round(25 * spCk()));
   if (btCool > 0) { tip('Spice sense is recharging', 1200); return; }
   if ((ST.spice || 0) < cost) { tip(`Spice sense needs ${cost} spice`, 1800); return; }
   ST.spice -= cost; btMax = btT = 2; btHold = 0; btCool = spCool(); spOn(); pop(`SPICE SENSE · SPICE −${cost}`, '#ff3b5c'); spiceSnd(0);
 }
 function spPocket() {
-  const q = spTier(), n = q === 0 ? 4 : q === 1 ? 4 : q === 2 ? 3 : 2, g = Math.random() * 6.283, off = Math.random() * .7, ox = sRx * Math.cos(g) + sUx * Math.sin(g), oy = sRy * Math.cos(g) + sUy * Math.sin(g), oz = sRz * Math.cos(g) + sUz * Math.sin(g);
+  const q = spTier(), n = q === 0 ? 4 : q === 1 ? 2 : q === 2 ? 3 : 2, g = Math.random() * 6.283, off = Math.random() * .7, ox = sRx * Math.cos(g) + sUx * Math.sin(g), oy = sRy * Math.cos(g) + sUy * Math.sin(g), oz = sRz * Math.cos(g) + sUz * Math.sin(g);
   const d = 1800 + Math.random() * 1400, cx = px + (sFx + ox * off) * d, cy = py + (sFy + oy * off) * d, cz = pz + (sFz + oz * off) * d, vx0 = (Math.random() - .5) * 20, vy0 = (Math.random() - .5) * 8, vz0 = (Math.random() - .5) * 20;
   for (let i = 0; i < n; i++) BLOOMS.push({ x: cx + (Math.random() - .5) * 320, y: cy + (Math.random() - .5) * 200, z: cz + (Math.random() - .5) * 320, t: 0, q, v: 8 + (Math.random() * 6 | 0), p: 1, dx: vx0, dy: vy0, dz: vz0 });
   pop(`SPICE POCKET · ${SPN[q]}`, SPH[q]); spiceSnd(1);
@@ -6547,6 +6567,7 @@ function spiceX(dt, fly) {
 }
 function spHud(c, T, hd, wrap) {
   for (let q = 0; q < 4; q++) { c.fillStyle = SPH[q]; c.fillRect(178 + q * 48, 106, 9, 9); T(String(SP.n[q]), 178 + q * 48 + 14, 115, 12, 'left', SPH[q], 700); }
+  const dm = 'rgba(160,210,240,.55)'; T('HYPERLIGHT', 384, 115, 12, 'left', SP.n[1] ? SPH[1] : dm, 700); for (let k = 0; k < 3; k++) { const x = 480 + k * 18, y = 110; c.beginPath(); c.moveTo(x, y - 7); c.lineTo(x + 7, y); c.lineTo(x, y + 7); c.lineTo(x - 7, y); c.closePath(); if (k < SP.n[1]) { c.fillStyle = SPH[1]; c.fill(); } c.strokeStyle = k < SP.n[1] ? SPH[1] : dm; c.lineWidth = 1.5; c.stroke(); }
   let bi = -1, bd = 1e12;
   for (let i = 0; i < BLOOMS.length; i++) { const b = BLOOMS[i], ex = b.x - px, ey = b.y - py, ez = b.z - pz, d2 = ex * ex + ey * ey + ez * ez, q = b.q | 0; if (d2 < bd) { bd = d2; bi = i; }
     const xx = Math.max(256, Math.min(744, 500 + wrap(Math.atan2(ex, -ez) * 57.29578 - hd) * 6.5)); c.fillStyle = SPH[q]; c.beginPath(); c.moveTo(xx, 140); c.lineTo(xx + 6, 147); c.lineTo(xx, 154); c.lineTo(xx - 6, 147); c.fill(); }
@@ -6880,6 +6901,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Tab' && flying()) e.preventDefault();   // Tab is the aux display in flight, not focus cycling
   if (e.repeat || e.metaKey || e.ctrlKey) return;
   K[e.code] = 1; if (e.code === 'Space') fireTap = 1;
+  if ((e.code === 'ShiftLeft' || e.code === 'ShiftRight') && flying()) { const n = performance.now(); if (n - shiftT < 380) { shiftT = 0; setTimeout(() => { if ((K.ShiftLeft || K.ShiftRight) && flying() && !hl && !hvOn && tm >= hvLock) hlKey(); }, 240); } else shiftT = n; }   /* tap, tap and hold */
   if (e.code === 'KeyM') setMute(!muted);
   if (e.code === 'KeyC') setCock(!cockpit);
   if (e.code === 'KeyH') { stats = !stats; if (!stats) $('i').textContent = ''; }
@@ -7144,7 +7166,7 @@ const rd = [0, 0, 0];
 const rdir = () => { let x, y, z, l, g5 = 0; do { x = Math.random() * 2 - 1; y = Math.random() * 2 - 1; z = Math.random() * 2 - 1; l = x * x + y * y + z * z; g5++; } while ((l > 1 || l < .01) && g5 < 40); if (l > 1 || l < .01) { x = 0; y = 1; z = 0; l = 1; } l = 1 / Math.sqrt(l); rd[0] = x * l; rd[1] = y * l; rd[2] = z * l; };
 
 const bW = new Uint8Array(NBU), WCOL = [[7, 3.6, 1], [1.4, 7, 2.6], [6.5, 1.6, 9], [1.2, 4.5, 6], [8, 4, 1]], WSH = [[1, .007, 1600, 1.4], [6, .07, 1300, .45], [1, .002, 3400, 1.7], [1, .004, 3000, .26]];
-const bLive = new Int16Array(96); let UPX = 0, UPY = 0, UPZ = 0, hitSndT = 0;
+const bLive = new Int16Array(96); let UPX = 0, UPY = 0, UPZ = 0, hitSndT = 0, lcx = 0, lcy = 0, lcz = 0;
 function hitFx(msg, kill) { foeHitT = tm; foeHitS = msg; if (tm - hitSndT > .045 && AC && AC.state === 'running') { hitSndT = tm; note(kill ? 520 : 1700, AC.currentTime, kill ? .09 : .03, 'triangle', kill ? .07 : .045, 0); } }
 let gmx = 0, gmy = 0, lastFire = -99, dryTip = 0, fullTip = 0, palEase = 0;                                         // where the guns are pointing, off the nose: they follow the cursor a little   // each weapon has its own light: amber rounds, green shot, violet lance
 function shoot() {
@@ -7695,13 +7717,25 @@ function frame(now, xf) {
     if (gpBoost) boost = 1;
     if (entLock || exCommit) boost = boostLk; else boostLk = boost;   // v1.59: boost holds as it was through a planet transition
     if (boost && !boostWas) buzz(.35, 170); boostWas = boost;   // v1.53: rumble as boost bites
+    /* v1.85: on the ground Shift is a dash (red spice) instead of boost; a double-tap lifts you off back into flight, and holding the second press boosts away */
+    hbRaw = boost;
+    if (boost && !hbW) {
+      if (hvOn && tm - hbT < .45) { hvLock = tm + 4; vy += 90; pitch = Math.max(pitch, .16); tip('LIFT-OFF', 1200); }
+      else if (hvOn && tm > dashT) {
+        if ((ST.spice || 0) < 8) { tip('Dash needs red spice', 1500); dashT = tm + 1; }
+        else { ST.spice -= 8; dashT = tm + .6; vx += Math.sin(syaw) * 340; vz -= Math.cos(syaw) * 340; trauma = Math.max(trauma, .2); buzz(.4, 120); }
+      }
+      hbT = tm;
+    }
+    hbW = boost; if (hvOn && tm >= hvLock) boost = 0;
     if (v126Heat > .04 && tm > rumHt) { rumHt = tm + .13; if (xr) xrBuzz(Math.min(1, v126Heat * .45 + heatFlare * .5), 120); else padBuzz(v126Heat * .5 + heatFlare * .5, v126Heat * .8, 150); }   // re-entry shakes the stick
     fwd = thr * TUNE.thrSpd * eff * (1 + .12 * upLv('eng'));
     airK = SYS.atm && isCont() ? 1 + (TUNE.airMax - 1) * tss(10800, 22000, v126Hh) : 1; fwd *= airK;
-    if (SYS.atm && isCont() && thr >= 0 && thr < .12 && !boost) { const cur = vx * sFx + vy * sFy + vz * sFz, g = Math.max(TUNE.glideMin * airK, cur - (cur * TUNE.glideDrag + TUNE.glideGrav * sFy) * dt); fwd = Math.max(fwd, Math.min(g, 900 * airK)); }   // v1.38: throttle off in the air, the ship glides: nose down it gathers speed, nose up it bleeds it   // v1.36: the higher and thinner the air, the faster you go: the top of the sky is crossed in seconds, up or down
+    if (SYS.atm && isCont() && thr >= 0 && thr < .12 && !boost && hv < .5) { const cur = vx * sFx + vy * sFy + vz * sFz, g = Math.max(TUNE.glideMin * airK, cur - (cur * TUNE.glideDrag + TUNE.glideGrav * sFy) * dt); fwd = Math.max(fwd, Math.min(g, 900 * airK)); }   // v1.38: throttle off in the air, the ship glides: nose down it gathers speed, nose up it bleeds it   // v1.36: the higher and thinner the air, the faster you go: the top of the sky is crossed in seconds, up or down
   } else { yaw += dt * .018; gpFire = 0; if (rebind && rebind.startsWith('pad:') && !xr) readPad(0); }   // v1.53: Settings is open from the pause menu: still listen for the button being bound
   if (ST.hull < 25 || ST.fuel <= 0) boost = 0;
   if (fly && ST.fuel <= 0) fwd *= .18;                              // dry tanks: emergency thrusters only
+  if (fly && boost && !hl && !jumpTo) { const sp0 = ST.spice || 0, need = dt * 3.2; ST.spice = Math.max(0, sp0 - need); if (sp0 < need) { boost = .3 + .7 * (sp0 / need); if (tm > spiceTip) { spiceTip = tm + 6; pop('RED SPICE SPENT · BOOST FADES', '#ff3b5c'); } } }   /* v1.85: boost burns the red meter (about 31 s from full); empty, it only trickles */
   bst += (boost - bst) * (1 - Math.exp(-dt * (boost > bst ? TUNE.boostBite : 2.5)));   // v1.36: boost bites at once, eases off on release
   bHold = boost && fly ? bHold + dt : 0; bRamp = Math.min(1, Math.max(0, (bHold - 1) / 5));   // keep holding boost and it keeps building, to the top of the range
   bOd = SYS.atm ? 0 : Math.min(1, Math.max(0, (bHold - 7) / 18)); if (bOd > 0 && !odOn && !drift) { odOn = 1; pop('OVERDRIVE · ASSIST OFF', '#ffb347'); } if (!boost) odOn = 0;   // hold on past full boost: faster and faster, and the rocks are yours to dodge
@@ -7732,23 +7766,38 @@ function frame(now, xf) {
     }
   }
   rightT = Math.max(0, rightT - dt); atmWas = fly && SYS.atm ? 1 : 0;
-  { const tk = 1 - Math.exp(-dt * (rightT > 0 ? 2.6 : 6.5)); QAs = qslerp(QAs, QA, tk); }                              // the ship turns with a little lag: it has mass (more gently while righting)
+  { const tk = 1 - Math.exp(-dt * (rightT > 0 ? 2.6 : 6.5 - hv * 1.5)); QAs = qslerp(QAs, QA, tk); }                              // the ship turns with a little lag: it has mass (more gently while righting)
   vRoll *= Math.exp(-dt * .3); if (Math.abs(vRoll) < .002) vRoll = 0;
-  const sh = trauma * trauma * .02 + (xr ? 0 : bst * bst * .0035), rr = roll + vRoll, Qb = rr ? qmul(QAs, qax(0, 0, 1, rr)) : QAs, Qv = sh > 0 ? qmul(Qb, qmul(qax(0, 1, 0, Math.sin(tm * 71) * sh), qax(1, 0, 0, Math.sin(tm * 93 + 1) * sh))) : Qb;
+  const sh = trauma * trauma * .02 + (xr ? 0 : bst * bst * .0035), rr = roll + vRoll + hvRoll, Qb0 = hvPit ? qmul(QAs, qax(1, 0, 0, hvPit)) : QAs, Qb = rr ? qmul(Qb0, qax(0, 0, 1, rr)) : Qb0, Qv = sh > 0 ? qmul(Qb, qmul(qax(0, 1, 0, Math.sin(tm * 71) * sh), qax(1, 0, 0, Math.sin(tm * 93 + 1) * sh))) : Qb;
   { const R = qv(Qv, 1, 0, 0), U = qv(Qv, 0, 1, 0), F = qv(Qv, 0, 0, -1); sRx = R[0]; sRy = R[1]; sRz = R[2]; sUx = U[0]; sUy = U[1]; sUz = U[2]; sFx = F[0]; sFy = F[1]; sFz = F[2];
     spit = Math.asin(Math.max(-1, Math.min(1, F[1]))); syaw = Math.atan2(F[0], -F[2]); }
   fwd = fwd * (1 - bst) + bst * TUNE.boostTop * eff * (1 + .2 * bRamp + .25 * bOd * (2 - bOd) * (drift ? 0 : 1)) * (SYS.atm && isCont() ? airK : 1);   // v1.36: boost is its own tier: straight to top speed, whatever the throttle says (and the throttle stays where you left it)                                            // local rush tops out near 620; overdrive (held 7 s+) climbs toward ~960 over the next 18 s; the long-range drive carries you across the system                                          // Shift is thrust on its own: no need to hold forward
   if (!SYS.atm && !jumpTo && fly) { const gd2 = Math.hypot(px, py, pz) || 1, toward = -(sFx * px + sFy * py + sFz * pz) / gd2;   // v1.36: the gate brakes you in: you come to rest in front of the ring instead of shooting past
     if (TUNE.gateBrake > 0 && gd2 < 3200 && toward > .55 && (navId === 'gate' || gd2 < 1500)) { const cap = Math.max(20, (gd2 - 110) * (.9 - 1.2 * TUNE.gateBrake)); if (fwd > cap) { fwd = cap; if (tm > gateBrT) { gateBrT = tm + 25; tip('Gate approach · braking', 2200); } } } }
-  const k = 1 - Math.exp(-dt * (bst > .3 ? 1.6 : 1.05));   // v1.73: boost builds rather than slams
-  vx += (sFx * fwd + (sRx * ms + sUx * mu) * 45 - vx) * k; vy += (sFy * fwd + (sRy * ms + sUy * mu) * 45 - vy) * k; vz += (sFz * fwd + (sRz * ms + sUz * mu) * 45 - vz) * k;
+  /* v1.85: ground hover. Throttle low near the terrain: the ship settles at ride height on a spring-damper, bobs a little, leans with the slope,
+     and handles like a vehicle: snappy strafe, quick turns, E hops. Throttle up (or boost) and it eases back into flight. Three terrain samples, only while hovering. */
+  { const hvOk = fly && SYS.atm && hasTerr() && !hl && !jumpTo && !entLock && !exCommit && tm >= hvLock && (!hbRaw || hvOn);
+    if (hvOk) { hvG = tGround(px, pz); const al = py - hvG; if (!hvOn) { if (al < 90 && thr < .1) hvOn = 1; } else if (al > 220 || thr > .16) hvOn = 0; } else hvOn = 0;
+    if (hvOn && !hvWas && tm > hvT) { hvT = tm + 25; tip('HOVER · Shift dashes · double-tap Shift or throttle up to fly · E hops', 3200); } hvWas = hvOn;
+    hv += ((hvOn ? 1 : 0) - hv) * (1 - Math.exp(-dt * (hvOn ? 2.2 : 3))); if (hv < .004) hv = 0;
+    let pT = 0, rT = 0;
+    if (hv > .02) {
+      vy += hv * (26 * (hvG + 26 + Math.sin(tm * 1.7) * 2.4 - py) - 10.2 * vy) * dt;   /* critically damped: 2 * sqrt(26) */
+      if (mu > 0 && !hopW && hvOn) vy += 170 * hv; hopW = mu > 0 ? 1 : 0;
+      const gx = (tGround(px + 30, pz) - hvG) / 30, gz = (tGround(px, pz + 30) - hvG) / 30, cy = Math.cos(syaw), sy = Math.sin(syaw);
+      pT = Math.max(-.3, Math.min(.3, Math.atan(gx * sy - gz * cy) * .5)); rT = Math.max(-.3, Math.min(.3, Math.atan(gx * cy + gz * sy) * .5));
+    } else hopW = 0;
+    hvPv += (36 * (hv * pT - hvPit) - 12 * hvPv) * dt; hvPit += hvPv * dt; hvRv += (36 * (hv * rT - hvRoll) - 12 * hvRv) * dt; hvRoll += hvRv * dt;   /* tilt: critically damped, w = 6 */
+    if (hv === 0 && Math.abs(hvPit) + Math.abs(hvRoll) < .002) hvPit = hvRoll = hvPv = hvRv = 0; }
+  const k = 1 - Math.exp(-dt * ((bst > .3 ? 1.6 : 1.05) + hv * 2.6)), sv = 45 * (1 + 1.2 * hv);   // v1.73: boost builds rather than slams
+  vx += (sFx * fwd + (sRx * ms + sUx * mu) * sv - vx) * k; vy += (sFy * fwd + (sRy * ms + sUy * mu) * sv - vy) * k; vz += (sFz * fwd + (sRz * ms + sUz * mu) * sv - vz) * k;
   if (fly) rockAssist(dt);
-  const sw0x = px, sw0y = py, sw0z = pz;
+  const hs = hl === 2 && Math.abs(px - lcx) < 3e4 && Math.abs(py - lcy) < 3e4 && Math.abs(pz - lcz) < 3e4, sw0x = hs ? lcx : px, sw0y = hs ? lcy : py, sw0z = hs ? lcz : pz;
   px += vx * dt; py += vy * dt; pz += vz * dt;
   // v1.76: gravity in a planet's sky. Below the break-free angle the world pulls you down (0.9 g by default); speed gives lift,
   // so you settle into a glide, and a cushion near the ground lets you skim the surface instead of hitting it.
   // Pitch up past the break-free angle and the pull lets go, so you can climb out. (Not during the committed entry or exit.)
-  if (fly && SYS.atm && isCont() && TUNE.grav > 0 && !entLock && !exCommit) {
+  if (fly && SYS.atm && isCont() && TUNE.grav > 0 && !entLock && !exCommit && hv < .5 && tm > hvLock - 2.8) {   /* gravity waits 1.2 s after a hover lift-off */
     const sp = Math.hypot(vx, vy, vz), esc = spit > TUNE.gravEsc * Math.PI / 180;
     if (esc) gSink *= Math.exp(-dt * 1.6);
     else { gSink += 9.81 * TUNE.grav * dt; gSink /= 1 + dt * (.15 + TUNE.gravLift * sp * sp * 4e-5); }
@@ -7757,7 +7806,7 @@ function frame(now, xf) {
     py -= gSink * dt;
   } else gSink *= Math.exp(-dt * 3);
   cHit = 0;   /* swept: the move is walked in steps under 28 u, so a fast boost cannot skip through a rock */
-  { const mx0 = px - sw0x, my0 = py - sw0y, mz0 = pz - sw0z, n = Math.min(5, Math.max(1, Math.ceil(Math.hypot(mx0, my0, mz0) / 28))); px = sw0x; py = sw0y; pz = sw0z; for (let q = 0; q < n; q++) { px += mx0 / n; py += my0 / n; pz += mz0 / n; collide(LTi, titanAt); collide(LH, hugeAt); collide(LB, bigAt); collide(LL, limbCol); } }
+  { const mx0 = px - sw0x, my0 = py - sw0y, mz0 = pz - sw0z, n = Math.min(hl === 2 ? 14 : 5, Math.max(1, Math.ceil(Math.hypot(mx0, my0, mz0) / 28))); px = sw0x; py = sw0y; pz = sw0z; for (let q = 0; q < n; q++) { px += mx0 / n; py += my0 / n; pz += mz0 / n; collide(LTi, titanAt); collide(LH, hugeAt); collide(LB, bigAt); collide(LL, limbCol); } lcx = px; lcy = py; lcz = pz; }
   if (cHit) {                                                // a real knock: the ship rebounds, shakes, and above a gentle touch the hull pays for it
     const vn = vx * cNx + vy * cNy + vz * cNz;
     if (vn < 0) {
@@ -7781,7 +7830,7 @@ function frame(now, xf) {
   }
   // the cockpit rides on the ship: it lags behind hard acceleration, leans into turns, and the stick follows your hand
   const il = 1 / dt, axl = ((vx - ovx) * sRx + (vy - ovy) * sRy + (vz - ovz) * sRz) * il, ayl = ((vx - ovx) * sUx + (vy - ovy) * sUy + (vz - ovz) * sUz) * il, azl = ((vx - ovx) * sFx + (vy - ovy) * sFy + (vz - ovz) * sFz) * il;
-  const yr = Math.max(-3, Math.min(3, (syaw - oyaw) * il)), pr = Math.max(-3, Math.min(3, (spit - opit) * il)), ck = Math.min(1, dt * 5), cl = (v, a) => Math.max(-a, Math.min(a, v));
+  const yr = Math.max(-3, Math.min(3, (syaw - oyaw) * il)), pr = Math.max(-3, Math.min(3, (spit - opit) * il)), ck = Math.min(1, dt * (5 - 2 * hv)), cl = (v, a) => Math.max(-a, Math.min(a, v));
   ovx = vx; ovy = vy; ovz = vz; oyaw = syaw; opit = spit;
   ckx += (cl(-axl * .0015, .12) - yr * .05 - ckx) * ck; cky += (cl(-ayl * .0015, .1) + pr * .04 - cky) * ck; ckz += (cl(-azl * .0009, .12) - jk * .25 - ckz) * ck;   /* v1.84: the cabin lags less under boost, so it does not slide away and shrink the HUD */
   ckr += (cl(-yr * .035, .09) - ckr) * ck; stx += (cl(-yr * .35, .45) - stx) * Math.min(1, dt * 9); sty += (cl(-pr * .35, .4) - sty) * Math.min(1, dt * 9);
