@@ -3126,7 +3126,7 @@ function setUi() {
     const h = setP.querySelector('h3'); if (h) h.insertAdjacentHTML('beforebegin', hd('VR') + row('vrH', 'Seat height', VRH[vrHi()][0]) + row('ck', 'Cockpit', cockpit ? 'on' : 'off'));
   }
 }
-const QUEST = typeof window.getDigitalGoodsService === 'function' || QS.has('pwa') || /OculusBrowser/i.test(navigator.userAgent);
+const QUEST = QS.has('pwa') || /OculusBrowser/i.test(navigator.userAgent) || (typeof window.getDigitalGoodsService === 'function' && /Android/i.test(navigator.userAgent));
 const isPWA = () => QUEST;
 const VRH = [['lower', -.15], ['normal', 0], ['higher', .15]], vrHi = () => Math.max(0, VRH.findIndex((v) => v[1] === (CFG.vrH || 0)));   // VR seat height: nudges where the cabin floor meets the room's floor
 const cyc = (v, list) => list[(list.indexOf(v) + 1) % list.length];
