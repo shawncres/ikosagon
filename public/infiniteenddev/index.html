@@ -2856,7 +2856,7 @@ function navBuild() {
   lifeScan(N); [[RV[0], 'RING STATION'], [RV[1], 'SPIRE STATION'], [RV[2], 'HUB STATION'], [RV[3], 'SHIPYARD']].forEach(([L, nm], i) => { const r = nearInst(L, LR); if (r[0] < 9000 * 9000) N.push({ id: 'stn' + i, name: nm, kind: 'station', x: px + r[1], y: py + r[2], z: pz + r[3] }); });
   ['MENDER SWARM', 'SIPHON SWARM', 'SPARK SWARM'].forEach((nm, k) => { const r = swN[k]; if (r && r[0] < 6000 * 6000) N.push({ id: 'sw' + k, name: nm, kind: 'swarm', x: px + r[1], y: py + r[2], z: pz + r[3] }); });
   NAV = N; obj = objective();
-  { const lowK = ST.hull < 30 ? 0 : ST.fuel < 20 ? 1 : ST.wen < 12 ? 2 : -1; if (lowK >= 0 && navAuto && N.some((n) => n.id === 'sw' + lowK)) { obj = { ...obj, nav: 'sw' + lowK }; } }
+  { const lowK = ST.hull < 30 ? 0 : (ST.spice || 0) < 6 ? 1 : ST.wen < 12 ? 2 : -1; if (lowK >= 0 && navAuto && N.some((n) => n.id === 'sw' + lowK)) { obj = { ...obj, nav: 'sw' + lowK }; } }
   const homeNav = SYS.atm ? 'settle' : 'gate';
   if (navAuto) { const want = obj.nav === 'npc' ? (N.find((n) => n.npc) || {}).id : obj.nav === 'bounty' ? (N.find((n) => n.npc && n.npc.bounty) || {}).id : obj.nav; navId = N.some((n) => n.id === want) ? want : homeNav; }
   else if (!N.some((n) => n.id === navId)) navId = homeNav;
@@ -2969,8 +2969,9 @@ function hudPaint() {
   { const o2 = ST.o2 == null ? 100 : ST.o2, lo = o2 < 15, bl = lo && (tm * 3 | 0) % 2; T('O2', 178, 78, 12, 'left', lo ? red : dim, 700); bar(232, 70, 190, o2 / 100, bl ? '#ffffff' : lo ? red : '#7fd8ff'); if (SYS.atm && o2 < 100) T('REFILLING', 430, 78, 11, 'left', '#7fd8ff', 700); }
  if (wantedT > 0) T('WANTED  ' + Math.ceil(wantedT), 500, 228, 17, 'center', red, 700);
   T('THR', 822, 56, 15, 'right', dim, 700); bar(580, 46, 190, Math.abs(thr), thr < 0 ? red : bst > .3 ? amb : main); T(Math.round(thr * 100) + '%', 572, 56, 15, 'right', main);
-  { const fu = ST.fuel == null ? 100 : ST.fuel, we = ST.wen == null ? 100 : ST.wen, spc = ST.spice || 0;
-    T('FUEL', 822, 74, 12, 'right', dim, 700); bar(580, 66, 190, fu / 100, gFlash[1] > .5 ? '#ffffff' : fu < 15 ? red : '#ffd84a');
+  { const we = ST.wen == null ? 100 : ST.wen, spc = ST.spice || 0;
+    { const hn = SP.n[1], hc = gFlash[1] > .5 ? '#ffffff' : SPH[1]; T('HYPER', 822, 74, 12, 'right', hn ? SPH[1] : dim, 700);
+      for (let k = 0; k < 3; k++) { const x = 580 + k * 66; c.beginPath(); c.moveTo(x + 6, 65); c.lineTo(x + 62, 65); c.lineTo(x + 56, 75); c.lineTo(x, 75); c.closePath(); c.fillStyle = 'rgba(160,210,240,.18)'; c.fill(); if (k < hn) { c.fillStyle = hc; c.fill(); } c.strokeStyle = k < hn ? hc : 'rgba(160,210,240,.45)'; c.lineWidth = 1.2; c.stroke(); } }
     T(WPN[wpn][0].toUpperCase(), 572, 92, 11, 'right', dim, 600);
     T('WPNS' + (wpn === 4 ? ' ' + mslN : ''), 822, 92, 12, 'right', dim, 700); bar(580, 84, 190, we / 100, gFlash[2] > .5 ? '#ffffff' : we < 12 ? red : '#ff6a3d');
     T('SPICE', 178, 91, 12, 'left', '#ff6b82', 700); for (let q = 0; q < 4; q++) { const x = 232 + q * 48, f = Math.max(0, Math.min(1, spc / 25 - q)), col = btT > 0 ? '#ffffff' : spc < 25 && q === 0 && (tm * 3 | 0) % 2 ? '#ffb0b8' : '#ff3b5c'; c.fillStyle = 'rgba(160,210,240,.18)'; c.beginPath(); c.moveTo(x + 7, 80); c.lineTo(x + 45, 80); c.lineTo(x + 38, 92); c.lineTo(x, 92); c.closePath(); c.fill(); if (f > 0) { c.save(); c.beginPath(); c.moveTo(x + 7, 80); c.lineTo(x + 45, 80); c.lineTo(x + 38, 92); c.lineTo(x, 92); c.closePath(); c.clip(); c.fillStyle = col; c.fillRect(x, 80, 45 * f, 12); c.restore(); } line([[x + 7, 80], [x + 45, 80], [x + 38, 92], [x, 92], [x + 7, 80]], f > 0 ? col : dim, 1.5); } if (btT > 0) { T('SLOW TIME', 500, 252, 15, 'center', '#ff3b5c', 700); line([[500 - 80 * btT / btMax, 262], [500 + 80 * btT / btMax, 262]], '#ff3b5c', 2); } }
@@ -3164,7 +3165,7 @@ function keysShow() {
     [kk('KeyB', 'KeyN'), 'Journal · star map'], [kk('KeyL'), 'Log: task here, signal, hold, places visited'],
     [kk('KeyR', 'BracketRight'), 'Radio on / off · skip song'], [[kk('Comma')[0] + '  ' + kk('Period')[0] + '  ' + kk('Slash')[0], kk('Comma', 'Period', 'Slash')[1]], 'Glance left, right, behind'],
     [kk('KeyC', 'KeyV'), 'Cockpit · VR'], [[kk('KeyM')[0] + ' · H · Esc', kk('KeyM')[1]], 'Mute · stats · menu'],
-    [['Swarms', 0], 'Slow down inside one and it works your ore: silver menders turn Ferrite into hull, yellow siphons turn Pyrite into fuel, red sparks turn Cinnabar into weapons energy'],
+    [['Swarms', 0], 'Slow down inside one and it works your ore: silver menders turn Ferrite into hull, yellow siphons turn Pyrite into red spice, red sparks turn Cinnabar into weapons energy'],
     [['Spice', 0], 'Fly through crimson blooms while boosting, skim rocks, or linger near living things. Boosting into a near-certain crash spends some to slow time']];
   $('keyl').innerHTML = rows.map(([[k, ch], d]) => `<dt${ch ? ' class=ch' : ''}>${k.replace(/</g, '&lt;')}</dt><dd>${d}</dd>`).join('');
   $('keyn').textContent = (sim ? 'Space sim controls are on. ' : '') + (Object.keys(CFG.keys).length ? 'Keys you have changed are shown in the second colour. ' : '') + 'Change keys in Settings.';
@@ -3224,7 +3225,7 @@ function hlStop(msg) { hlSpd = 0; hlAv[0] = hlAv[1] = hlAv[2] = 0; if (!hl) hlHi
 function hlKey() {
   if (SYS.atm) { tip('Hyperlight needs open space: climb out of the air first', 3000); return; }
   if (hl) { hlStop('Hyperlight disengaged'); return; }
-  if (hlRdy >= TUNE.hlReady && SP.n[1] <= 0) { tip('Hyperlight needs a purple spice charge · find purple spice in pockets and from foes', 4500); return; }
+  if (hlRdy >= TUNE.hlReady && SP.n[1] <= 0) { tip('Hyperlight needs a purple spice charge · find purple spice in space, on planets and from foes', 4500); return; }
   if (hlRdy >= TUNE.hlReady) { SP.n[1]--; spSave(); hlHits.length = 0; { const Q = QA ? QA.slice() : qmul(QF, qYP(yaw, pitch)); QF = Q; yaw = 0; pitch = 0; yawL = 0; pitchL = 0; snap = 1; }   // v1.61: level re-based on where you point, so hyperlight's steering angles stay small (a tilted frame near vertical made it spin)
     hl = 1; hlT = 0; buzz(.45, 1300); tip('Hyperlight spooling…', 1500); if (AC && AC.state === 'running') burst(AC.currentTime, 1.4, .16, 60, 600, 'lowpass'); }
   else tip('Hyperlight: target a world or a place, hold it in your sights until it reads READY, then G (or tap Shift twice and hold) · a charge each: ' + SP.n[1] + '/3', 4500);
@@ -3440,7 +3441,7 @@ function goodPanel(g) {
 }
 
 // ---- the hold: one slot grid for ore, trade goods and ship supplies. Each slot takes one kind, stacked to a limit. ----
-const SUP = [['Fuel cell', '#ffd84a', 'fuel', 40, 36], ['Energy cell', '#ff6a3d', 'weapons', 50, 30], ['Repair kit', '#c3ccdc', 'hull', 35, 50]];   // name, colour, what it fills, by how much, base price
+const SUP = [['Hyperlight cell', '#b36bff', 'hyperlight', 1, 90], ['Energy cell', '#ff6a3d', 'weapons', 50, 30], ['Repair kit', '#c3ccdc', 'hull', 35, 50]];   // name, colour, what it fills, by how much, base price
 const ITEMS = [];
 for (let t = 1; t < 6; t++) ITEMS.push({ id: 'o' + t, name: TIERS[t], col: TCSS[t], stack: [0, 20, 20, 15, 6, 3][t], kind: 'ore', get: () => cargo[t], set: (v) => { cargo[t] = v; }, sell: () => TVAL[t], buy: t < 4 ? () => Math.round(TVAL[t] * 2.4 + 2) : null, shape: 'gem' });
 GOODS.forEach(([n], g) => ITEMS.push({ id: 'g' + g, name: n, col: '#d8c9a6', stack: 10, kind: 'good', get: () => (rp().hold || {})[g] || 0, set: (v) => { (rp().hold || (rp().hold = {}))[g] = v; }, sell: () => Math.round(priceAt(SYS, SYS.loc, g) * .92), buy: () => priceAt(SYS, SYS.loc, g), shape: 'crate' }));
@@ -3452,7 +3453,8 @@ function roomFor(it) { const n = it.get(), part = n % it.stack ? it.stack - n % 
 function addItem(id, n) { const it = IT[id], k = Math.min(n, roomFor(it)); if (k > 0) it.set(it.get() + k); return k; }
 function useSup(s) {
   const it = IT['s' + s]; if (!it.get()) return;
-  const lv = s === 0 ? ST.fuel : s === 1 ? ST.wen : ST.hull; if (lv >= 99) return tip(`${SUP[s][2][0].toUpperCase() + SUP[s][2].slice(1)} is already full`, 2500);
+  const lv = s === 0 ? 0 : s === 1 ? ST.wen : ST.hull; if (lv >= 99) return tip(`${SUP[s][2][0].toUpperCase() + SUP[s][2].slice(1)} is already full`, 2500);
+  if (s === 0) { if (SP.n[1] >= 3) return tip('Hyperlight charges are full', 2500); it.set(it.get() - 1); SP.n[1]++; spSave(); gFlash[1] = 1; pop(`HYPERLIGHT CHARGE ${SP.n[1]}/3`, SPH[1]); showCargo(); save(); return; }
   it.set(it.get() - 1); sysAdd(s === 0 ? 1 : s === 1 ? 2 : 0, SUP[s][3]); gFlash[s === 0 ? 1 : s === 1 ? 2 : 0] = 1; convSnd(s === 0 ? 1 : s === 1 ? 2 : 0);
   pop(`${SUP[s][0].toUpperCase()} · +${SUP[s][3]} ${SUP[s][2].toUpperCase()}`, SUP[s][1]); showCargo(); save();
 }
@@ -3528,7 +3530,6 @@ function advise(lv, key, steps, msg) {
 }
 function advTick() {
   if (!flying()) return;
-  advise(ST.fuel, 'fuel', [25, 10], (s) => `Fuel ${s}% · ${s === 10 ? 'ease off the boost · ' : ''}${swarmAdvice(1)}`);
   const cause = tm - hurtSrcT < 8 ? (hurtSrc === 'storm' ? 'get out of the ion storm · ' : hurtSrc === 'raider' ? 'break away from the raider, or fight with the lance · ' : hurtSrc === 'rock' ? 'slow down among the rocks · ' : '') : '';
   advise(ST.hull, 'hull', [35, 20, 10], (s) => s >= 60 ? `Hull ${s}% · ${cause || 'menders (silver) repair with Ferrite'}` : `${s <= 10 ? 'HULL FAILING' : 'Hull ' + s + '%'} · ${cause}${swarmAdvice(0)}${s <= 20 && trader ? ' · or the trader repairs' : ''}`);
   advise(ST.wen, 'wen', [15], (s) => `Weapons ${s}% · the mining laser (4) runs on almost nothing · ${swarmAdvice(2)}`);
@@ -3551,12 +3552,12 @@ function holdList() { return ITEMS.filter((it) => it.get() > 0).map((it) => [it,
 function invDraw() {
   const used = slotsUsed(), cap = holdSlots(), g = (v, col, n) => `<span style="display:inline-block;margin-right:18px">${n} <b style="color:${col}">${v | 0}%</b></span>`;
   const head = `<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap"><h2 style="font-weight:300;letter-spacing:.3em;margin:0">${invMode === 'hold' ? 'HOLD' : invMode === 'trader' ? 'TRADER' : 'MARKET'}</h2><button data-a="close" style="background:none;border:1px solid #63e2ff;color:#63e2ff;padding:6px 16px;cursor:pointer">Done</button></div>
-    <p style="color:#9fb6c4;margin:8px 0 16px">${ST.credits} credits · <b style="color:${used >= cap ? '#ff5d4f' : '#dcecf6'}">${used}/${cap} slots</b> · ${g(ST.hull, '#c3ccdc', 'Hull')}${g(ST.fuel, '#ffd84a', 'Fuel')}${g(ST.wen, '#ff6a3d', 'Weapons')}${g(ST.spice || 0, '#ff3b5c', 'Spice')}</p>`;
+    <p style="color:#9fb6c4;margin:8px 0 16px">${ST.credits} credits · <b style="color:${used >= cap ? '#ff5d4f' : '#dcecf6'}">${used}/${cap} slots</b> · ${g(ST.hull, '#c3ccdc', 'Hull')}${g(ST.wen, '#ff6a3d', 'Weapons')}${g(ST.spice || 0, '#ff3b5c', 'Spice')}</p>`;
   const empty = Math.max(0, cap - used), slotsH = (h) => h + `<span style="display:inline-block;width:92px;height:92px;margin:0 6px 6px 0;border:1px dashed #2a3c46;vertical-align:top"></span>`.repeat(Math.min(empty, 40));
   if (invMode === 'hold') {
     const it = IT[invSel], n = it ? it.get() : 0;
     const act = it && n ? `<div style="margin:10px 0 18px"><b style="color:${it.col}">${it.name}</b> × ${n} &nbsp; ${it.use != null ? `<button data-a="use" style="margin-right:8px">Use one (+${SUP[it.use][3]} ${SUP[it.use][2]})</button>` : ''}<button data-a="drop1" style="margin-right:8px">Jettison one</button><button data-a="dropall">Jettison all</button></div>`
-      : `<div style="margin:10px 0 18px;color:#9fb6c4">Click a stack to use or jettison it. Ore is worth most to traders; swarms turn it into hull, fuel and weapons energy. The cargo bay upgrade adds four slots.</div>`;
+      : `<div style="margin:10px 0 18px;color:#9fb6c4">Click a stack to use or jettison it. Ore is worth most to traders; swarms turn it into hull, spice and weapons energy. The cargo bay upgrade adds four slots.</div>`;
     invP.innerHTML = `<div style="max-width:1000px;margin:auto">${head}${slotsH(tiles(holdList(), 'hold'))}${act}<p style="color:#6f8796">I or Esc to close</p></div>`;
   } else {
     const shop = ITEMS.filter((it) => it.buy && (invMode === 'market' ? it.kind !== 'ore' : it.kind !== 'good')).map((it) => [it, 0, it.buy()]);
@@ -3744,15 +3745,15 @@ function fxTick(dt) { for (let i = FXL.length - 1; i >= 0; i--) { const f = FXL[
 // ---- ship systems: fuel, gun energy, hull, and the drone swarms that turn ore into all three ----
 // Menders (silver) work Ferrite into hull plate, siphons (yellow) crack Pyrite into fuel, sparks (red) charge the weapons
 // from Cinnabar. Any of the three ores will do at half the yield. With nothing in the hold they can only watch.
-const SWM = [['MENDERS', 'hull', [1, 2, 3], 12, 8, '#c3ccdc', [.8, .86, 1]], ['SIPHONS', 'fuel', [2, 1, 3], 20, 10, '#ffd84a', [1, .82, .25]], ['SPARKS', 'weapons', [3, 2, 1], 24, 14, '#ff6a3d', [1, .32, .14]]];
+const SWM = [['MENDERS', 'hull', [1, 2, 3], 12, 8, '#c3ccdc', [.8, .86, 1]], ['SIPHONS', 'spice', [2, 1, 3], 20, 10, '#ffd84a', [1, .82, .25]], ['SPARKS', 'weapons', [3, 2, 1], 24, 14, '#ff6a3d', [1, .32, .14]]];
 const WEN = [.35, 1.6, 4, .02, 3];                                      // gun energy per shot, by weapon
-let hv = 0, hvOn = 0, hvWas = 0, hvPit = 0, hvRoll = 0, hvT = 0, hvG = 0, hopW = 0, gbT = 8, hvPv = 0, hvRv = 0, hbW = 0, hbT = -9, hbRaw = 0, hvLock = 0, dashT = 0;
+let hv = 0, hvOn = 0, hvWas = 0, hvPit = 0, hvRoll = 0, hvT = 0, hvG = 0, hopW = 0, gbT = 8, hvPv = 0, hvRv = 0, hvSm = 0, hbW = 0, hbT = -9, hbRaw = 0, hvLock = 0, dashT = 0;
 let btHold = 0, nearSeen = new Set(), cHitT = -9, BLOOMS = [], bloomT = 6, drT = 0, swN = [null, null, null], swOn = -1, swCred = [0, 0, 0], swTip = [0, 0, 0], swWork = 0, strandT = 0, fuelTip = 0, sysWarn = '', sysWarnC = '', spiceAcc = 0, spiceTip = 0, btT = 0, btMax = 2, btCool = 0, raT = 0, raThr = null;
-const sysLv = (k) => k === 0 ? ST.hull : k === 1 ? ST.fuel : ST.wen;
-function sysAdd(k, v) { if (k === 0) ST.hull = Math.min(100, ST.hull + v); else if (k === 1) ST.fuel = Math.min(100, ST.fuel + v); else ST.wen = Math.min(100, ST.wen + v); }
+const sysLv = (k) => k === 0 ? ST.hull : k === 1 ? (ST.spice || 0) : ST.wen;
+function sysAdd(k, v) { if (k === 0) ST.hull = Math.min(100, ST.hull + v); else if (k === 1) ST.spice = Math.min(100, (ST.spice || 0) + v); else ST.wen = Math.min(100, ST.wen + v); }
 function oreFor(k) { for (const t of SWM[k][2]) if (cargo[t] > 0) return t; return 0; }
 function droneTick(dt, fly) {
-  if (ST.fuel == null) ST.fuel = 100; if (ST.wen == null) ST.wen = 100; if (ST.spice == null || ST.spice < 10 && !ST.spiceV) { ST.spice = 60; ST.spiceV = 1; }
+  ST.fuel = 100; if (ST.wen == null) ST.wen = 100; if (ST.spice == null || ST.spice < 10 && !ST.spiceV) { ST.spice = 60; ST.spiceV = 1; }
   drT -= dt; if (drT <= 0) { drT = .4; [LDr, LDs, LDe].forEach((L, k) => { const r = nearInst(L); swN[k] = r[0] < 1e11 ? r : null; }); }
   swOn = -1; let bd = 1e12;
   for (let k = 0; k < 3; k++) { const r = swN[k]; if (r && r[0] < 380 * 380 && r[0] < bd) { bd = r[0]; swOn = k; } }
@@ -3771,22 +3772,17 @@ function droneTick(dt, fly) {
     }
     if (swWork) { swarmFx(k, swN[k], dt); workTick(k, dt); }
   }
-  // fuel: generous, but not endless. Idle sips, throttle drinks, boost and drift gulp.
+  /* v1.86: fuel is gone (the field stays pinned at 100 so old saves load); the purple hyperlight charges took its place */
   if (fly) {
-    const use = bst * (.035 + .05 * bRamp + .04 * bOd);                              // only boost (and the drift it carries you into) burns fuel, and slowly
-    const was = ST.fuel; ST.fuel = Math.max(0, ST.fuel - use * dt);
-    if (was > 0 && ST.fuel <= 0) { tip('Fuel dry · emergency thrusters only · find a siphon swarm, or hold on: your beacon is calling a tug', 8000); strandT = 0; }
-    if (ST.fuel <= 0) { strandT += dt; if (strandT > 50) { strandT = 0; const fee = Math.min(ST.credits, Math.round(60 * (typeof diffK === 'function' ? diffK() : 1))); ST.credits -= fee; ST.fuel = 25; showCargo(); save(); comm(`Distress beacon answered. Salvage tug to ${call()}: tanks topped to a quarter.${fee ? ' Tow is ' + fee + ' credits.' : ' This one is on us.'}`); } }
+    ST.fuel = 100;
     o2Tick(dt);
-    ST.wen = Math.min(100, ST.wen + dt * (ST.fuel > 0 ? 2.2 : .6) * (tm - lastFire > 1.5 ? 1 : .35));
+    ST.wen = Math.min(100, ST.wen + dt * 2.2 * (tm - lastFire > 1.5 ? 1 : .35));
     if (ST.hull < 60 && tm - shHit > 15) ST.hull = Math.min(60, ST.hull + dt * .2);              // field patching: a quiet ship slowly gets itself back to 60%   // the reactor recharges the guns, slowly
   }
   spiceTick(dt, fly); if (fly) limbTick(dt); advTick(); for (let i = 0; i < 3; i++) gFlash[i] = Math.max(0, gFlash[i] - dt * 1.6);
   // one warning line, small, above the mission text and in place of it while it lasts
   sysWarn = ''; sysWarnC = '';
-  if (ST.fuel <= 0) { sysWarn = `FUEL DRY · EMERGENCY THRUST · TUG IN ${Math.max(1, Math.ceil(50 - strandT))} S`; sysWarnC = '#ff5d4f'; }
-  else if (ST.hull < 30) { sysWarn = `HULL ${ST.hull | 0}% · MENDERS (SILVER) ${swN[0] ? kmTo(0).toUpperCase() : 'NOT ON SCOPE'} · FERRITE ${cargo[1]}${IT.s2.get() ? ' · REPAIR KIT (I)' : ''}`; sysWarnC = '#ff5d4f'; }
-  else if (ST.fuel < 15) { sysWarn = `FUEL ${ST.fuel | 0}% · SIPHONS (YELLOW) ${swN[1] ? kmTo(1).toUpperCase() : 'NOT ON SCOPE'} · PYRITE ${cargo[2]}${IT.s0.get() ? ' · FUEL CELL (I)' : ''}`; sysWarnC = '#ffb44a'; }
+  if (ST.hull < 30) { sysWarn = `HULL ${ST.hull | 0}% · MENDERS (SILVER) ${swN[0] ? kmTo(0).toUpperCase() : 'NOT ON SCOPE'} · FERRITE ${cargo[1]}${IT.s2.get() ? ' · REPAIR KIT (I)' : ''}`; sysWarnC = '#ff5d4f'; }
   else if (ST.wen < 12) { sysWarn = `WEAPONS ${ST.wen | 0}% · SPARKS (RED) ${swN[2] ? kmTo(2).toUpperCase() : 'NOT ON SCOPE'} · CINNABAR ${cargo[3]} · MINING LASER RUNS FREE`; sysWarnC = '#ffb44a'; }
   else if (swWork) { const S = SWM[swOn]; sysWarn = `${S[0]} · ${TIERS[S[2][0]].toUpperCase()} → ${S[1].toUpperCase()}  ${sysLv(swOn) | 0}%`; sysWarnC = S[5]; }
 }
@@ -3815,10 +3811,10 @@ function spiceTick(dt, fly) {                              // spice: living thin
     if (Math.floor(was / 25) < Math.floor(ST.spice / 25) && tm > spiceTip) { spiceTip = tm + 20; pop(`SPICE ${ST.spice | 0}%`, '#ff3b5c'); } }
   const sp = Math.hypot(vx, vy, vz);
   bloomT -= dt * TUNE.spice; if (SYS.atm && bloomT <= 0 && BLOOMS.length < 3 && Math.exp(-((py - 4600) * (py - 4600)) / 2.4e6) > .35) { bloomT = 3 + Math.random() * 4; BLOOMS.push({ x: px + sFx * (500 + Math.random() * 900) + (Math.random() - .5) * 220, y: py + (Math.random() - .5) * 140, z: pz + sFz * (500 + Math.random() * 900), t: 0, q: spTier(), v: 6 + (Math.random() * 5 | 0) }); }
-  gbT -= dt; if (gbT <= 0 && SYS.atm && hasTerr() && !hl && !jumpTo && flying()) {   /* v1.85: the surface keeps the rarer spice: a few low pockets near the ground (purple, gold, cyan; never red), found by hovering */
+  gbT -= dt; if (gbT <= 0 && SYS.atm && hasTerr() && !hl && !jumpTo && flying()) {   /* v1.85: the surface keeps the rarer spice: a few low pockets near the ground (yellow 72%, purple 22%, cyan 6%; never red), found by hovering */
     gbT = 10 + Math.random() * 10; let gn = 0; for (let i = 0; i < BLOOMS.length; i++) if (BLOOMS[i].g) gn++;
     if (gn < 3 && BLOOMS.length < 10 && py - tGround(px, pz) < 400) {
-      const ga = Math.random() * 6.283, gd = 350 + Math.random() * 650, gcx = px + Math.cos(ga) * gd, gcz = pz + Math.sin(ga) * gd, gr = Math.random(), gq = gr < .1 ? 3 : gr < .35 ? 2 : 1;
+      const ga = Math.random() * 6.283, gd = 350 + Math.random() * 650, gcx = px + Math.cos(ga) * gd, gcz = pz + Math.sin(ga) * gd, gr = Math.random(), gq = gr < .06 ? 3 : gr < .28 ? 1 : 2;
       for (let i = 0; i < 2; i++) { const gx = gcx + (Math.random() - .5) * 160, gz = gcz + (Math.random() - .5) * 160; BLOOMS.push({ x: gx, y: tGround(gx, gz) + 24 + Math.random() * 16, z: gz, t: 0, q: gq, v: 10, p: 1, g: 1 }); }
       pop(`SURFACE POCKET · ${SPN[gq]}`, SPH[gq]); spiceSnd(1); } }
   if (bloomT <= 0 && !SYS.atm && bst > .5 && sp > 400 && BLOOMS.length < 4) {      // a bloom ahead, a little off the line: worth a steer
@@ -4323,8 +4319,8 @@ function pipPaint(x, W, ink, big) {
     for (let i = 1; i < 7; i++) { const a = (i / 7 + t * .04) % 1 * Math.PI, w = Math.abs(Math.cos(a)) * r; A(.3 + .55 * Math.sin(a), () => { x.beginPath(); x.ellipse(cx, cy, w, r, 0, 0, 6.283); x.stroke(); }); }
     A(.5, () => { for (let i = 1; i < 6; i++) { const yy = cy - r + i * r * 2 / 6, w = Math.sqrt(r * r - (yy - cy) ** 2); x.beginPath(); x.ellipse(cx, yy, w, w * .17, 0, 0, 6.283); x.stroke(); } });
     const ba = t * .8; x.beginPath(); x.arc(cx + Math.cos(ba) * r * .55, cy + Math.sin(ba * .7) * r * .4, 5, 0, 6.283); x.fill();
-    [['HULL', ST.hull], ['O2', ST.o2 == null ? 100 : ST.o2], ['FUEL', ST.fuel], ['WPNS', ST.wen], ['SPICE', ST.spice || 0]].forEach(([n, v], i) => { const y = 84 + i * 40, v1 = Math.max(0, Math.min(100, v || 0));
-      T(n, 262, y, 22); seg(352, y, 14, 13, 22, v1 / 100, v1 < 25); T(String(Math.round(v1)), 616, y, 22, 700, 'right'); });
+    [['HULL', ST.hull], ['O2', ST.o2 == null ? 100 : ST.o2], ['HYPER', SP.n[1] * 100 / 3], ['WPNS', ST.wen], ['SPICE', ST.spice || 0]].forEach(([n, v], i) => { const y = 84 + i * 40, v1 = Math.max(0, Math.min(100, v || 0));
+      T(n, 262, y, 22); seg(352, y, 14, 13, 22, v1 / 100, v1 < 25); T(n === 'HYPER' ? SP.n[1] + '/3' : String(Math.round(v1)), 616, y, 22, 700, 'right'); });
     A(.7, () => T(`SPEED ${Math.round(Math.hypot(vx, vy, vz))}   HOLD ${slotsUsed()}/${holdSlots()}`, 262, 280, 17, 600));
   } else if (tab === 'HOLD') {
     const it = ITEMS.filter((q) => q.get() > 0); T(`CARGO  ${slotsUsed()} / ${holdSlots()} SLOTS`, 22, 82, 18); seg(330, 82, 20, 11, 16, slotsUsed() / holdSlots());
@@ -4444,7 +4440,7 @@ function mkOffer(ch) {
     return { ty: 'escort', pay, cargo: cg, dest: far ? 'the warp gate' : 'the outer marker', text: `I am running ${cg} through ${SYS.locs[SYS.loc].name}. Raiders have been hitting this run. Fly cover to ${far ? 'the warp gate' : 'the outer marker'} and it is ${pay} credits.` }; }
   if (r < .62 && rp().jobs.length < 3) { const j = mkJob(mulberry32((Date.now() ^ cmSeq * 131) >>> 0), 'cm' + cmSeq); j.fac = ch.fac;
     return { ty: 'job', job: j, text: `I need someone I can trust. ${j.text} Pays ${j.pay}.` }; }
-  if (r < .78 && ST.fuel > 25) return { ty: 'fuel', pay: 50 + (Math.random() * 60 | 0), text: `My ${pickL(FAULT)}. Could you spare ten units of fuel? I will pay you back with interest.` };
+  if (r < .78 && (ST.spice || 0) > 25) return { ty: 'fuel', pay: 50 + (Math.random() * 60 | 0), text: `My ${pickL(FAULT)}. Could you spare ten units of spice? I will pay you back with interest.` };
   const tips = [`Word is the trader here is paying over the odds for ${TIERS[1 + (Math.random() * 3 | 0)]} this week.`, `Rich rocks out past ${SYS.locs[(SYS.loc + 1) % SYS.locs.length].name}. I saw a geode the size of a house.`,
     `Watch yourself near ${SYS.locs[(SYS.loc + 2) % SYS.locs.length].name}. Raiders have been sniffing around.`, `Running low on air? ${SYS.planets[1].name} has the gentlest skies for a scoop run.`];
   if (rp().trail < 6) tips.push(`Odd signal reported out at ${trail()[rp().trail].pl}, ${trail()[rp().trail].sy}. Nobody wants to go and look.`);
@@ -4484,7 +4480,7 @@ function cmAccept() {
   const c = CM, ch = c.ch, o = c.off; if (!c || c.ph !== 'offer') return false;
   cmLine(say(pickL(VOICE.yes[ch.tr]), ch)); ch.rel = Math.min(100, ch.rel + 3);
   if (o.ty === 'job') { rp().jobs.push(o.job); save(); navAuto = 1; tip(`Contract taken: ${o.job.title} · ${o.job.pay} credits · see the journal (B)`, 7000); cmLeave(); }
-  else if (o.ty === 'fuel') { ST.fuel -= 10; ST.credits += o.pay; remember(ch, 'helped', 12); showCargo(); save(); pop(`FUEL −10 · +${o.pay} CR`, '#ffd84a'); cmLeave(); }
+  else if (o.ty === 'fuel') { ST.spice = Math.max(0, (ST.spice || 0) - 10); ST.credits += o.pay; remember(ch, 'helped', 12); showCargo(); save(); pop(`SPICE −10 · +${o.pay} CR`, '#ffd84a'); cmLeave(); }
   else if (o.ty === 'escort') escStart(c);
   return true;
 }
@@ -4560,7 +4556,7 @@ const mkJobT = (ty) => { for (let i = 0; i < 60; i++) { const j = mkJob(mulberry
 function arcOffer(ch) {
   const A = ch.arc, s = A.step;
   if (A.id === 'debt') {
-    if (s === 0) return { ty: 'fuel', pay: 0, arc: 1, text: `My ${pickL(FAULT)}. I can't pay you now, but I swear I'll make it right. Ten units of fuel?` };
+    if (s === 0) return { ty: 'fuel', pay: 0, arc: 1, text: `My ${pickL(FAULT)}. I can't pay you now, but I swear I'll make it right. Ten units of spice?` };
     if (s === 1) { const pay = 150 + (Math.random() * 120 | 0); return { ty: 'gift', pay, arc: 1, text: `I said I'd make it right. ${pay} credits, and a tip: ${pickL([`the trader at ${SYS.locs[0].name} buys ${TIERS[3]} high`, `there's a geode field near ${SYS.locs[(SYS.loc + 1) % SYS.locs.length].name}`, `patrols leave ${SYS.locs[(SYS.loc + 2) % SYS.locs.length].name} alone on the night shift`])}.` }; }
     if (s === 2) return { ty: 'rescue', pay: 300, arc: 1, text: `${call()}, it's my brother. His ship is dead in the water, two kilometres out, and raiders are circling. Please. I can't fight them.` };
     return { ty: 'ally', arc: 1, text: `I don't have words. From now on, if you're in a fight anywhere near ${mkSys(sysIdAt(ch.home[0], ch.home[1], ch.home[2])).name}, call and I'll come.` };
@@ -4599,7 +4595,7 @@ cmAccept = function () {
   if (o.ty === 'gift') { ST.credits += o.pay; remember(ch, 'helped', 5); pop(`+${o.pay} CR · ${ch.n.toUpperCase()} PAYS A DEBT`, '#ffd84a'); showCargo(); arcNext(ch); cmLine(say(pickL(VOICE.yes[ch.tr]), ch)); cmLeave(); return true; }
   if (o.ty === 'ally') { ch.ally = 1; remember(ch, 'saved', 10); pop(`${ch.n.toUpperCase()} WILL FLY WITH YOU`, '#7fd8ff'); arcNext(ch); cmLine('Count on it.'); cmLeave(); return true; }
   if (o.ty === 'rescue') { cmLine(say(pickL(VOICE.yes[ch.tr]), ch)); rescueStart(c); if (o.arc) arcNext(ch); return true; }
-  if (o.ty === 'fuel' && o.pay === 0) { ST.fuel -= 10; remember(ch, 'helped', 15); pop('FUEL −10 · A DEBT IS OWED', '#ffd84a'); showCargo(); arcNext(ch); cmLine(say(pickL(VOICE.yes[ch.tr]), ch)); cmLeave(); return true; }
+  if (o.ty === 'fuel' && o.pay === 0) { ST.spice = Math.max(0, (ST.spice || 0) - 10); remember(ch, 'helped', 15); pop('SPICE −10 · A DEBT IS OWED', '#ffd84a'); showCargo(); arcNext(ch); cmLine(say(pickL(VOICE.yes[ch.tr]), ch)); cmLeave(); return true; }
   const ok = cmAccept0(); if (ok && o.arc) arcNext(ch); return ok;
 };
 // offers that need no answer move the arc on by themselves
@@ -5091,18 +5087,13 @@ o2Tick = function (dt) {
 const droneTick0 = droneTick;
 droneTick = function (dt, fly) {
   droneTick0(dt, fly);
-  if (!fly || ST.fuel == null) return;
-  const cruise = Math.abs(thr) * .0075 * diffK();
-  if (cruise > 0 && ST.fuel > 0) ST.fuel = Math.max(0, ST.fuel - cruise * dt * TUNE.fuelUse);
+  ST.fuel = 100;
 };
 
 const startJump0 = startJump;
 startJump = function (d) {
   if (!d || jumpTo || !flying()) return;
   const far = d.sec && (d.sec[0] !== SYS.sec[0] || d.sec[1] !== SYS.sec[1] || d.sec[2] !== SYS.sec[2]);
-  const cost = (far ? 12 : 6) * (ST.lens ? .62 : 1) * (.7 + diffK() * .32);
-  if ((ST.fuel || 0) < cost) { tip('Not enough fuel to light the jump. Dock, or scoop a gas giant.', 5200); return; }
-  ST.fuel -= cost * TUNE.fuelUse;
   const need = far ? (ST.lens ? 2 : 5) : 0;
   if (need && (ST.spice || 0) >= need) { ST.spice -= need; tip('Spice fix on the lane. The jump sits down.', 3200); }
   else if (need) { trauma = Math.min(1, trauma + .4); tip('No spice fix. The lane will kick.', 3600); }
@@ -5117,16 +5108,16 @@ function v122Meters(dt, fly) {
   else if (knd === 4 && Math.hypot(vx, vy, vz) > 240) heatAcc += dt * .28 * diffK();
   else if (knd === 0) {
     const push = 1 + bst * 1.8;
-    ST.fuel = Math.min(100, (ST.fuel || 0) + dt * 3.4 * push);
+    ST.spice = Math.min(100, (ST.spice || 0) + dt * 3.4 * push);
     heatAcc += dt * (.12 + bst * .85) * diffK();
-    if (!scoopTip) { scoopTip = 1; tip('Scooping the cloud deck. The hull takes heat if you boost through it.', 5600); }
+    if (!scoopTip) { scoopTip = 1; tip('Scooping the cloud deck for red spice. The hull takes heat if you boost through it.', 5600); }
   }
   if (SYS.atm && Math.hypot(vx, vy, vz) > 520 && knd !== 0) heatAcc += dt * .18 * diffK();
   const sun = sFx * SUN[0] + sFy * SUN[1] + sFz * SUN[2];
   if (!SYS.atm && csU[0] > .1 && sun > .84) {
-    ST.fuel = Math.min(100, (ST.fuel || 0) + dt * (1.6 + csU[0] * 6));
+    ST.spice = Math.min(100, (ST.spice || 0) + dt * (1.6 + csU[0] * 6));
     heatAcc += dt * (.4 + bst) * diffK() * (1 + csU[0] * 3);
-    if (tm > heatTip) { heatTip = tm + 9; tip('Corona scoop. Fuel is coming in. So is the heat.', 4200); }
+    if (tm > heatTip) { heatTip = tm + 9; tip('Corona scoop. Red spice is coming in. So is the heat.', 4200); }
   }
   if (heatAcc > 1.4) { const h = heatAcc; heatAcc = 0; cook(h); if (tm > heatTip) { heatTip = tm + 6; tip('Hull is taking heat.', 3000); } }
   if (ST.hull < 42 && bst < .25 && (cargo[1] || 0) > 0) {
@@ -5145,10 +5136,6 @@ function v122Meters(dt, fly) {
 
 function v122Berth(list) {
   const mul = berthMul(), missF = 100 - (ST.fuel || 0), missA = 100 - (ST.o2 == null ? 100 : ST.o2);
-  if (missF > 3) {
-    const cost = Math.max(6, Math.ceil(missF * .42 * mul));
-    list.push({ name: 'Fill the tanks', kind: cost + ' cr', desc: 'Station manifold. A gas giant scoops for free if you accept the heat.', run: () => { if (ST.credits < cost) return tip('Not enough credits for fuel', 3000); ST.credits -= cost; ST.fuel = 100; gain({ rep: 1, xp: 3 }); save(); showCargo(); tip('Tanks full', 3000); } });
-  }
   if (missA > 3) {
     const cost = Math.max(3, Math.ceil(missA * .14 * mul));
     list.push({ name: 'Top up the air', kind: cost + ' cr', desc: 'Bottled oxygen. Ocean decks and ice worlds skim it.', run: () => { if (ST.credits < cost) return tip('Not enough credits for air', 3000); ST.credits -= cost; ST.o2 = 100; gain({ rep: 1 }); save(); tip('Cabin air full', 2500); } });
@@ -5163,7 +5150,7 @@ function v122Berth(list) {
 
 const outfitPanel121 = outfitPanel;
 outfitPanel = function () {
-  const lens = ST.lens ? null : { name: 'Silence lens', kind: (ST.spice || 0) >= 25 ? '25 spice' : '480 cr', desc: 'Alien-tech nav. Long jumps burn less fuel and less spice.', run: () => {
+  const lens = ST.lens ? null : { name: 'Silence lens', kind: (ST.spice || 0) >= 25 ? '25 spice' : '480 cr', desc: 'Alien-tech nav. Long jumps burn less spice.', run: () => {
     if ((ST.spice || 0) >= 25) ST.spice -= 25;
     else if (ST.credits >= 480) ST.credits -= 480;
     else return tip('The lens wants 25 spice, or 480 credits', 4000);
@@ -5791,7 +5778,7 @@ function v123Collect(i) {
   if (!tag) return false;
   const names = { 11: 'WATER ICE', 12: 'VOLATILES', 13: 'NICKEL-IRON', 14: 'RELIC' };
   if (tag === 11) { ST.o2 = Math.min(100, (ST.o2 == null ? 100 : ST.o2) + 10); pop('WATER ICE · O2 +10', '#7fd8ff'); }
-  else if (tag === 12) { ST.fuel = Math.min(100, (ST.fuel || 0) + 8); pop('VOLATILES · FUEL +8', '#ffd84a'); }
+  else if (tag === 12) { ST.spice = Math.min(100, (ST.spice || 0) + 8); pop('VOLATILES · SPICE +8', '#ffd84a'); }
   else if (tag === 13) { if (ST.hull < 92) { ST.hull = Math.min(100, ST.hull + 4); pop('NICKEL-IRON · HULL +4', '#c3ccdc'); } else { cargo[1] = (cargo[1] || 0) + 1; pop('+1 FERRITE', '#c3ccdc'); } }
   else if (tag === 14) { const cr = 80 + (Math.random() * 220 | 0); ST.credits += cr; ST.spice = Math.min(100, (ST.spice || 0) + 4); pop('RELIC · +' + cr + ' CR', '#cf6bff'); codexAdd('relic' + (cr % 7), 'A pocket relic', 'Something in the rock was older than the belt.'); }
   else return false;
@@ -5851,7 +5838,7 @@ function v123EventTick(dt) {
     if (E.ph === 'warn' && d < 500) {
       E.ph = 'choice';
       panel('Distress', E.a.name, [
-        { name: 'Spare fuel and a tow', desc: 'Ten fuel. They pay you back, and the Union hears about it.', run: () => { if ((ST.fuel || 0) < 10) return tip('You do not have ten fuel to spare', 3000); ST.fuel -= 10; ST.credits += 160; gain({ rep: 6, xp: 20 }); pop('+160 CR · UNION', '#ffd84a'); E.a.wp = [E.a.x + 4000, E.a.y, E.a.z]; E.a.hold = 0; E.a.sp = 40; EVQ = null; } },
+        { name: 'Spare spice and a tow', desc: 'Ten spice. They pay you back, and the Union hears about it.', run: () => { if ((ST.spice || 0) < 10) return tip('You do not have ten spice to spare', 3000); ST.spice = Math.max(0, (ST.spice || 0) - 10); ST.credits += 160; gain({ rep: 6, xp: 20 }); pop('+160 CR · UNION', '#ffd84a'); E.a.wp = [E.a.x + 4000, E.a.y, E.a.z]; E.a.hold = 0; E.a.sp = 40; EVQ = null; } },
         { name: 'Strip what you can', desc: 'They cannot stop you. The lane will remember.', run: () => { cargo[1] = (cargo[1] || 0) + 2; ST.credits += 40; gain({ rep: -8 }); pop('+2 FERRITE', '#c3ccdc'); E.a.dead = 1; EVQ = null; } },
         { name: 'Call it in and leave', desc: 'Patrols are slow. You did the decent minimum.', run: () => { gain({ rep: 2, xp: 8 }); EVQ = null; } }
       ], 'A selects · B closes');
@@ -5882,7 +5869,7 @@ function v123EventTick(dt) {
     put(DPa, E.x - px, E.y - py, E.z - pz, 22, 0, 0, 0, .3, .7, .85, 1, 0);
     put(DPa, E.x - px - E.vx * .4, E.y - py, E.z - pz - E.vz * .4, 40, 0, 0, 0, .1, .25, .35, .5, 0);
     const d = Math.hypot(E.x - px, E.y - py, E.z - pz);
-    if (d < 180 && !E.got) { E.got = 1; ST.o2 = Math.min(100, (ST.o2 == null ? 100 : ST.o2) + 16); ST.fuel = Math.min(100, (ST.fuel || 0) + 6); pop('COMET ICE · O2 +16 · FUEL +6', '#7fd8ff'); codexAdd('comet' + (SYS.id % 4), 'A comet in ' + SYS.name, 'Ice and a little fuel, if you fly through the dust.'); }
+    if (d < 180 && !E.got) { E.got = 1; ST.o2 = Math.min(100, (ST.o2 == null ? 100 : ST.o2) + 16); ST.spice = Math.min(100, (ST.spice || 0) + 6); pop('COMET ICE · O2 +16 · SPICE +6', '#7fd8ff'); codexAdd('comet' + (SYS.id % 4), 'A comet in ' + SYS.name, 'Ice and a little fuel, if you fly through the dust.'); }
     if (E.t > 40) EVQ = null;
   } else if (E.kind === 'flare') {
     if (E.t > 6 && E.t < 16) {
@@ -6492,11 +6479,11 @@ noiseTex();
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.85';
+const BUILD = 'v1.86';
 // v1.74: if the last session ended in a graphics reset, put what was being built at the time in the log (F9 → Copy settings shows it)
 try { const g = JSON.parse(localStorage.ieGlLost || 'null'); if (g) evLog(`Graphics · last reset (${g.build}, ${g.at.slice(0, 16).replace('T', ' ')}): ${g.was ? 'building the ' + g.was + ' program, ' + g.secs + ' s in' : 'no program was being built'}`); } catch {}                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 /* ---- v1.71: spice tiers and attunement, procedural foes, dogfight upgrades, the Foe intro ---- */
-const SPN = ['RED', 'PURPLE', 'EXOTIC', 'MYTHIC'], SPH = ['#ff3b5c', '#b36bff', '#ffcf3a', '#7ff6ff'], SPC = [[1.1, .1, .22], [.7, .25, 1.5], [1.5, 1, .15], [.5, 1.4, 1.7]];
+const SPN = ['RED', 'PURPLE', 'YELLOW', 'MYTHIC'], SPH = ['#ff3b5c', '#b36bff', '#ffcf3a', '#7ff6ff'], SPC = [[1.1, .1, .22], [.7, .25, 1.5], [1.5, 1, .15], [.5, 1.4, 1.7]];
 const SPB = [['Slow time', 'Each level holds time slow for longer'], ['Spice shield', 'Each level absorbs more fire while time is slow, and a moment after'], ['Flow', 'Each level: cheaper to trigger, faster recharge, wider pull on spice']], SPL = [[2, 1], [2, 2], [3, 1], [3, 2]];   /* v1.85: red fuels boost and slow time, purple is a hyperlight charge; attunement now takes the rarer two */
 let SP = { n: [0, 0, 0, 0], lv: [0, 0, 0], total: 0, intro: 0, hulls: 0 };
 try { const o = JSON.parse(localStorage.ibSpice); if (o && Array.isArray(o.n) && Array.isArray(o.lv)) SP = Object.assign(SP, o); } catch {}
@@ -6507,15 +6494,15 @@ const spKind = () => SP.n.map((v, i) => v + ' ' + SPN[i].toLowerCase()).join(' �
 let foeB = 0, spSh = 0, spGrace = 0, spAbT = 0, pkT = 14, introT = 0, introS = 0, introA = null, FO = null, foeHitT = -9, foeHitS = '', FU0 = 0, FU1 = 1, FU2 = 0;
 const spCk = () => 1 - .1 * SP.lv[2], spCool = () => 6 - .9 * SP.lv[2];
 function spTier() {
-  const p = SP.total, dg = SYS.danger || 0, r = Math.random(), pm = p >= 25 ? .02 + .01 * dg : 0, pe = p >= 10 ? .06 + .012 * dg : 0, pr = .26 + .012 * Math.min(12, p / 2) + .03 * dg;
+  const p = SP.total, dg = SYS.danger || 0, r = Math.random(), pm = p >= 25 ? .02 + .01 * dg : 0, pe = p >= 10 ? .06 + .012 * dg : 0, pr = .34 + .012 * Math.min(12, p / 2) + .03 * dg;
   return r < pm ? 3 : r < pm + pe ? 2 : r < pm + pe + pr ? 1 : 0;
 }
 function spGot(b) {
   const q = b.q | 0, v = Math.round(b.v * (1 + .6 * q)); SP.total++;
-  if (q === 1) { if (SP.n[1] < 3) { SP.n[1]++; pop(`HYPERLIGHT CHARGE ${SP.n[1]}/3`, SPH[1]); } else { ST.spice = Math.min(100, (ST.spice || 0) + 12); pop('PURPLE SPICE · CHARGES FULL', SPH[1]); } }
+  if (q === 1) { if (SP.n[1] < 3) { SP.n[1]++; gFlash[1] = 1; pop(`HYPERLIGHT CHARGE ${SP.n[1]}/3`, SPH[1]); } else { ST.spice = Math.min(100, (ST.spice || 0) + 12); pop('PURPLE SPICE · CHARGES FULL', SPH[1]); } }
   else { ST.spice = Math.min(100, (ST.spice || 0) + v); SP.n[q]++; pop(`${SPN[q]} SPICE +${v}`, SPH[q]); }
   spSave(); if (q > 0 && AC && AC.state === 'running') spiceSnd(0);
-  if (SP.total === 1) tip('Red spice fuels boost and slow time (Y) · purple spice is one hyperlight charge each, up to 3 · gold and cyan upgrade you (menu: Spice attunement)', 9000);
+  if (SP.total === 1) tip('Red spice fuels boost and slow time (Y) · purple spice is one hyperlight charge each, up to 3 · yellow and cyan upgrade you (menu: Spice attunement) · yellow pockets sit near planet surfaces', 9000);
 }
 function spOn() { spSh = 1.2 + SP.lv[1]; spAbT = 0; btMax = btT = btT + SP.lv[0] * .45; spGrace = tm + .45 * SP.lv[1]; }
 function spAbsorb(a) {
@@ -6567,7 +6554,6 @@ function spiceX(dt, fly) {
 }
 function spHud(c, T, hd, wrap) {
   for (let q = 0; q < 4; q++) { c.fillStyle = SPH[q]; c.fillRect(178 + q * 48, 106, 9, 9); T(String(SP.n[q]), 178 + q * 48 + 14, 115, 12, 'left', SPH[q], 700); }
-  const dm = 'rgba(160,210,240,.55)'; T('HYPERLIGHT', 384, 115, 12, 'left', SP.n[1] ? SPH[1] : dm, 700); for (let k = 0; k < 3; k++) { const x = 480 + k * 18, y = 110; c.beginPath(); c.moveTo(x, y - 7); c.lineTo(x + 7, y); c.lineTo(x, y + 7); c.lineTo(x - 7, y); c.closePath(); if (k < SP.n[1]) { c.fillStyle = SPH[1]; c.fill(); } c.strokeStyle = k < SP.n[1] ? SPH[1] : dm; c.lineWidth = 1.5; c.stroke(); }
   let bi = -1, bd = 1e12;
   for (let i = 0; i < BLOOMS.length; i++) { const b = BLOOMS[i], ex = b.x - px, ey = b.y - py, ez = b.z - pz, d2 = ex * ex + ey * ey + ez * ez, q = b.q | 0; if (d2 < bd) { bd = d2; bi = i; }
     const xx = Math.max(256, Math.min(744, 500 + wrap(Math.atan2(ex, -ez) * 57.29578 - hd) * 6.5)); c.fillStyle = SPH[q]; c.beginPath(); c.moveTo(xx, 140); c.lineTo(xx + 6, 147); c.lineTo(xx, 154); c.lineTo(xx - 6, 147); c.fill(); }
@@ -6876,7 +6862,7 @@ function gatePanel() {
 function tradePanel() {
   let v = 0; for (let i = 1; i < 6; i++) v += cargo[i] * TVAL[i];
   const R = mulberry32(SYS.salt ^ 0x7EADE0 ^ Math.floor(Date.now() / 864e5)), others = SYS.locs.filter((l) => l.i !== SYS.loc), to = others[R() * others.length | 0], pay = 60 + (R() * 15 | 0) * 10, list = [];
-  list.push({ name: 'Trade', kind: `${slotsUsed()}/${holdSlots()} slots`, desc: 'Open your hold beside the trader\'s stock: ore, fuel cells, energy cells, repair kits', run: () => { closePanel(); invShow('trader'); } });
+  list.push({ name: 'Trade', kind: `${slotsUsed()}/${holdSlots()} slots`, desc: 'Open your hold beside the trader\'s stock: ore, hyperlight cells, energy cells, repair kits', run: () => { closePanel(); invShow('trader'); } });
   list.push(v ? { name: 'Sell all minerals', kind: `${v} credits`, desc: 'Every mineral aboard, at the going rate', run: () => { ST.credits += v; cargo.fill(0); showCargo(); save(); tip(`Hold sold · +${v} credits`, 4000); } } : { name: 'Nothing to sell', desc: 'Your hold is empty' });
   if (ST.hull < 99) { const cost = Math.ceil((100 - ST.hull) * 1.5 * (typeof berthMul === 'function' ? berthMul() : 1)); list.push(ST.credits >= cost ? { name: 'Repair the hull', kind: `${cost} credits`, desc: `Hull is at ${ST.hull | 0}%. ${typeof berthNote === 'function' ? berthNote() : 'The yard will plate it.'}`, run: () => { ST.credits -= cost; ST.hull = 100; gain({ rep: 1, xp: 4 }); save(); showCargo(); tip('Hull repaired', 3000); } } : { name: 'Repair the hull', kind: `${cost} credits`, desc: `Hull is at ${ST.hull | 0}%. Not enough credits yet: sell the hold, or crack ferrite in the field.` }); }
   if (typeof v122Berth === 'function') v122Berth(list);
@@ -7715,6 +7701,8 @@ function frame(now, xf) {
       } else { thrMove(-ay * dt * .85); ms += ax; }
     } if (typeof xrPauseWatch === 'function') xrPauseWatch(dt); }
     if (gpBoost) boost = 1;
+    if (hvOn && !CFG.ctl) { const fw2 = K.KeyW || K.ArrowUp ? 1 : 0, bk2 = K.KeyS || K.ArrowDown ? 1 : 0; if (fw2) thr = Math.min(1, thr + dt * .9); else if (!bk2) thr *= Math.exp(-dt * 1.4); if (thr > 0 && thr < .01) thr = 0; }   /* buggy: W is the pedal, it rolls off when released */
+    if (hvOn) { hvSm += (Math.max(-1, Math.min(1, ms)) - hvSm) * Math.min(1, dt * 7); const hs2 = Math.hypot(vx, vz), tr = 2.1 * Math.min(1, .25 + hs2 / 70) * (1 - .3 * Math.min(1, hs2 / 190)); yaw += YS() * hvSm * tr * dt; dyaw += hvSm * tr * dt; ms = 0; } else hvSm = 0;   /* A D steer; turn rate grows with speed */
     if (entLock || exCommit) boost = boostLk; else boostLk = boost;   // v1.59: boost holds as it was through a planet transition
     if (boost && !boostWas) buzz(.35, 170); boostWas = boost;   // v1.53: rumble as boost bites
     /* v1.85: on the ground Shift is a dash (red spice) instead of boost; a double-tap lifts you off back into flight, and holding the second press boosts away */
@@ -7733,8 +7721,7 @@ function frame(now, xf) {
     airK = SYS.atm && isCont() ? 1 + (TUNE.airMax - 1) * tss(10800, 22000, v126Hh) : 1; fwd *= airK;
     if (SYS.atm && isCont() && thr >= 0 && thr < .12 && !boost && hv < .5) { const cur = vx * sFx + vy * sFy + vz * sFz, g = Math.max(TUNE.glideMin * airK, cur - (cur * TUNE.glideDrag + TUNE.glideGrav * sFy) * dt); fwd = Math.max(fwd, Math.min(g, 900 * airK)); }   // v1.38: throttle off in the air, the ship glides: nose down it gathers speed, nose up it bleeds it   // v1.36: the higher and thinner the air, the faster you go: the top of the sky is crossed in seconds, up or down
   } else { yaw += dt * .018; gpFire = 0; if (rebind && rebind.startsWith('pad:') && !xr) readPad(0); }   // v1.53: Settings is open from the pause menu: still listen for the button being bound
-  if (ST.hull < 25 || ST.fuel <= 0) boost = 0;
-  if (fly && ST.fuel <= 0) fwd *= .18;                              // dry tanks: emergency thrusters only
+  if (ST.hull < 25) boost = 0;
   if (fly && boost && !hl && !jumpTo) { const sp0 = ST.spice || 0, need = dt * 3.2; ST.spice = Math.max(0, sp0 - need); if (sp0 < need) { boost = .3 + .7 * (sp0 / need); if (tm > spiceTip) { spiceTip = tm + 6; pop('RED SPICE SPENT · BOOST FADES', '#ff3b5c'); } } }   /* v1.85: boost burns the red meter (about 31 s from full); empty, it only trickles */
   bst += (boost - bst) * (1 - Math.exp(-dt * (boost > bst ? TUNE.boostBite : 2.5)));   // v1.36: boost bites at once, eases off on release
   bHold = boost && fly ? bHold + dt : 0; bRamp = Math.min(1, Math.max(0, (bHold - 1) / 5));   // keep holding boost and it keeps building, to the top of the range
@@ -7774,23 +7761,32 @@ function frame(now, xf) {
   fwd = fwd * (1 - bst) + bst * TUNE.boostTop * eff * (1 + .2 * bRamp + .25 * bOd * (2 - bOd) * (drift ? 0 : 1)) * (SYS.atm && isCont() ? airK : 1);   // v1.36: boost is its own tier: straight to top speed, whatever the throttle says (and the throttle stays where you left it)                                            // local rush tops out near 620; overdrive (held 7 s+) climbs toward ~960 over the next 18 s; the long-range drive carries you across the system                                          // Shift is thrust on its own: no need to hold forward
   if (!SYS.atm && !jumpTo && fly) { const gd2 = Math.hypot(px, py, pz) || 1, toward = -(sFx * px + sFy * py + sFz * pz) / gd2;   // v1.36: the gate brakes you in: you come to rest in front of the ring instead of shooting past
     if (TUNE.gateBrake > 0 && gd2 < 3200 && toward > .55 && (navId === 'gate' || gd2 < 1500)) { const cap = Math.max(20, (gd2 - 110) * (.9 - 1.2 * TUNE.gateBrake)); if (fwd > cap) { fwd = cap; if (tm > gateBrT) { gateBrT = tm + 25; tip('Gate approach · braking', 2200); } } } }
-  /* v1.85: ground hover. Throttle low near the terrain: the ship settles at ride height on a spring-damper, bobs a little, leans with the slope,
-     and handles like a vehicle: snappy strafe, quick turns, E hops. Throttle up (or boost) and it eases back into flight. Three terrain samples, only while hovering. */
+  /* v1.86: ground hover is a dune buggy. Low and slow over terrain the ship rides on a suspension: W drives along the ground, A D steer with a
+     speed-dependent turn rate, the tail slides in hard turns, bumps bounce, crests give airtime and landings settle with a damped bounce, and the
+     nose follows the slope. Shift dashes (red spice); double-tap Shift lifts off. Three terrain samples, only while hovering. */
   { const hvOk = fly && SYS.atm && hasTerr() && !hl && !jumpTo && !entLock && !exCommit && tm >= hvLock && (!hbRaw || hvOn);
-    if (hvOk) { hvG = tGround(px, pz); const al = py - hvG; if (!hvOn) { if (al < 90 && thr < .1) hvOn = 1; } else if (al > 220 || thr > .16) hvOn = 0; } else hvOn = 0;
-    if (hvOn && !hvWas && tm > hvT) { hvT = tm + 25; tip('HOVER · Shift dashes · double-tap Shift or throttle up to fly · E hops', 3200); } hvWas = hvOn;
-    hv += ((hvOn ? 1 : 0) - hv) * (1 - Math.exp(-dt * (hvOn ? 2.2 : 3))); if (hv < .004) hv = 0;
-    let pT = 0, rT = 0;
+    if (hvOk) { hvG = tGround(px, pz); const al0 = py - hvG; if (!hvOn) { if (al0 < 60 && Math.hypot(vx, vz) < 230) hvOn = 1; } else if (al0 > 220) hvOn = 0; } else hvOn = 0;
+    if (hvOn && !hvWas && tm > hvT) { hvT = tm + 25; tip('BUGGY · W drive · A D steer · E hop · Shift dash · double-tap Shift lifts off', 3600); } hvWas = hvOn;
+    hv += ((hvOn ? 1 : 0) - hv) * (1 - Math.exp(-dt * (hvOn ? 4 : 3))); if (hv < .004) hv = 0;
+    let rT = 0;
     if (hv > .02) {
-      vy += hv * (26 * (hvG + 26 + Math.sin(tm * 1.7) * 2.4 - py) - 10.2 * vy) * dt;   /* critically damped: 2 * sqrt(26) */
-      if (mu > 0 && !hopW && hvOn) vy += 170 * hv; hopW = mu > 0 ? 1 : 0;
-      const gx = (tGround(px + 30, pz) - hvG) / 30, gz = (tGround(px, pz + 30) - hvG) / 30, cy = Math.cos(syaw), sy = Math.sin(syaw);
-      pT = Math.max(-.3, Math.min(.3, Math.atan(gx * sy - gz * cy) * .5)); rT = Math.max(-.3, Math.min(.3, Math.atan(gx * cy + gz * sy) * .5));
+      const al = py - hvG, fx = Math.sin(syaw), fz = -Math.cos(syaw), rx = -fz, rz = fx, gr = al < 34;
+      const ah = tGround(px + fx * 14, pz + fz * 14) - hvG, sd = tGround(px + rx * 14, pz + rz * 14) - hvG;
+      if (hv > .5) {
+        let vf = vx * fx + vz * fz, vl = vx * rx + vz * rz; const vt = thr * 190 * (.6 + .4 * eff);
+        vf += (vt - vf) * (1 - Math.exp(-dt * (vt > vf ? 1.6 : 2.6)));
+        const sp = Math.hypot(vf, vl); vl *= Math.exp(-dt * (gr ? 3.4 - 2.2 * Math.min(1, Math.abs(hvSm) * sp / 110) : .25));
+        vx = fx * vf + rx * vl; vz = fz * vf + rz * vl;
+        vy -= 36 * dt; const tg = hvG + 26; if (py < tg) vy += Math.max(0, 26 * (tg - py) - 7.6 * vy) * dt;   /* soft suspension: pushes up only, zeta about .75 */
+        if (mu > 0 && !hopW && gr) vy += 40; hopW = mu > 0 ? 1 : 0;
+        pitch += (Math.max(-.6, Math.min(.6, gr ? Math.atan2(ah, 14) : Math.atan2(vy, 70) * .6)) * .9 - pitch) * (1 - Math.exp(-dt * 6));
+        rT = Math.max(-.35, Math.min(.35, Math.atan2(sd, 14) * .8 + hvSm * Math.min(1, sp / 190) * .14));
+      }
     } else hopW = 0;
-    hvPv += (36 * (hv * pT - hvPit) - 12 * hvPv) * dt; hvPit += hvPv * dt; hvRv += (36 * (hv * rT - hvRoll) - 12 * hvRv) * dt; hvRoll += hvRv * dt;   /* tilt: critically damped, w = 6 */
-    if (hv === 0 && Math.abs(hvPit) + Math.abs(hvRoll) < .002) hvPit = hvRoll = hvPv = hvRv = 0; }
-  const k = 1 - Math.exp(-dt * ((bst > .3 ? 1.6 : 1.05) + hv * 2.6)), sv = 45 * (1 + 1.2 * hv);   // v1.73: boost builds rather than slams
-  vx += (sFx * fwd + (sRx * ms + sUx * mu) * sv - vx) * k; vy += (sFy * fwd + (sRy * ms + sUy * mu) * sv - vy) * k; vz += (sFz * fwd + (sRz * ms + sUz * mu) * sv - vz) * k;
+    hvRv += (36 * (hv * rT - hvRoll) - 12 * hvRv) * dt; hvRoll += hvRv * dt;   /* body roll: critically damped, w = 6 */
+    if (hv === 0 && Math.abs(hvRoll) < .002) hvRoll = hvRv = 0; }
+  const k = 1 - Math.exp(-dt * (bst > .3 ? 1.6 : 1.05));   // v1.73: boost builds rather than slams
+  if (hv <= .5) { vx += (sFx * fwd + (sRx * ms + sUx * mu) * 45 - vx) * k; vy += (sFy * fwd + (sRy * ms + sUy * mu) * 45 - vy) * k; vz += (sFz * fwd + (sRz * ms + sUz * mu) * 45 - vz) * k; }
   if (fly) rockAssist(dt);
   const hs = hl === 2 && Math.abs(px - lcx) < 3e4 && Math.abs(py - lcy) < 3e4 && Math.abs(pz - lcz) < 3e4, sw0x = hs ? lcx : px, sw0y = hs ? lcy : py, sw0z = hs ? lcz : pz;
   px += vx * dt; py += vy * dt; pz += vz * dt;
