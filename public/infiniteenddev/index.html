@@ -1002,7 +1002,8 @@ void main(){
  vec3 amb=neb(N,6.)*1.6+.004,H=normalize(L+V);
  vec3 col=alb*(uSunC.rgb*df*3.2+amb)+uSunC.rgb*pow(max(dot(N,H),0.),gs)*sp*df;
  col+=fr*fr*fr*neb(N,6.)*.85*rim+uSunC.rgb*pow(fr,2.2)*.22*rim+em+iri*(.5+.5*cos(6.283*(fr*1.6+vI.x+vec3(0,.33,.67))))*fr*fr*.15;
- o=vec4(fog(col,vP,uCN.z),0);}`;
+ vec3 fc=fog(col,vP,uCN.z);if(uKind==1)fc=mix(col,fc,.4);   /* v1.90: the warp gate is a landmark: the nebula fog took 80% of it from a few km out, so it vanished on the way in */
+ o=vec4(fc,0);}`;
 
 // ships fly: uShip 0 = fighter wings holding formation round a patrol loop, 1 = frigates on a slow orbit,
 // 2 = drone swarms hanging in a turning lattice. iC = a, b, hue, index. Shaded by ROCK_F as hull (uKind 4).
@@ -3406,7 +3407,7 @@ const PR = [70, 6.4, 2.6];                                  // planet radii in t
 // at the true speed up to a cap per second: beyond a few km/s the field would only flicker. The field's lattice wraps, so it never runs out.
 function locMove(x, y, z, st, dt, cap) { const m = Math.min(st * 1e6, cap * dt); if (!(m > 0) || px * px + py * py + pz * pz > 4e12) return; px += x * m; py += y * m; pz += z * m; }
 let entDur = 6, entFlip = 0, entLock = 0, entV = 0, entD = [0, 0, -1], entPN = 1e9, entT0 = 0, entN0 = 0;
-let sysS = [0, 0, 0], sysP = null, drift = 0, driftV = 0, veil = 0, aimK = -1, aimT = 0, apT = 0, apTip = 0, noAuto = -1, apOn = 0, apDist = 0, apGate = 0, ent = null;
+let sysS = [0, 0, 0], sysP = null, drift = 0, driftV = 0, veil = 0, vdS = 0, aimK = -1, aimT = 0, apT = 0, apTip = 0, noAuto = -1, apOn = 0, apDist = 0, apGate = 0, ent = null;
 const gameR = (rad, kind) => (kind === 0 ? .2 + rad * .0012 : .055 + rad * .013) * TUNE.plScale;   // v1.32: planets at game scale, so a world is round from orbit and a descent takes a minute, not an hour
 function syncPR() { if (SYS && SYS.prad) for (let k = 0; k < 3; k++) if (SYS.prad[k] > 0) PR[k] = gameR(SYS.prad[k], (SYS.pk || [])[k]); }
 // v1.34: one map per system, in Mm, centred on the gate. Planets sit where the gate's sky shows them (spread a little wider);
@@ -6525,7 +6526,7 @@ if (PSC && !dgOff('bg')) { try { SKYA_ST = progStart(TRI_V, SKYS.replace('#versi
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.89';
+const BUILD = 'v1.90';
 // v1.74: if the last session ended in a graphics reset, put what was being built at the time in the log (F9 → Copy settings shows it)
 try { const g = JSON.parse(localStorage.ieGlLost || 'null'); if (g) evLog(`Graphics · last reset (${g.build}, ${g.at.slice(0, 16).replace('T', ' ')}): ${g.was ? 'building the ' + g.was + ' program, ' + g.secs + ' s in' : 'no program was being built'}`); } catch {}                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 /* ---- v1.71: spice tiers and attunement, procedural foes, dogfight upgrades, the Foe intro ---- */
@@ -7352,7 +7353,8 @@ function simulate(dt, fly) {
   }
   const gd = gateDist(), gp = .8 + .2 * Math.sin(tm * 2.3);
   DGt.n = 0;
-  if (!SYS.atm && veil < .45) {
+  vdS = SYS.atm ? Math.min(1, veil || 0) : vdS + (Math.min(1, scE * 2.5) - vdS) * Math.min(1, dt * 3);   /* v1.90: in space the gate and its traffic follow the cruise, not the leftover cloud veil of the last planet */
+  if (!SYS.atm && scE < .4) {
     put(DGt, -px, -py, -pz, GATE, 0, 0, 0, .37, 0, 0, 0, 0);
     const gk = (i) => (pal[6 + i] * .5 + [.2, .5, 1][i] * .5) * gp;
     put(DPa, -px, -py, -pz, GATE * .9, 0, 0, 0, .21, .045 * gk(0), .045 * gk(1), .045 * gk(2), 1); put(DPa, -px, -py, -pz, GATE * .7, 0, 0, 0, .64, .03 * gk(0), .03 * gk(1), .03 * gk(2), 1);
@@ -7447,9 +7449,8 @@ function eye(fb, x, y, w, h, tw, th) {
   gl.uniform1i(ru.uKind, 2); gl.uniform1f(ru.uSpin, 1.1); draw(R, LD, mBox);
   gl.uniform1i(ru.uKind, 7); gl.uniform1f(ru.uSpin, .03); draw(R, LMV[0], mLimb[0]); draw(R, LMV[1], mLimb[1]);
   gl.uniform1i(ru.uKind, 1); gl.uniform1f(ru.uSpin, .02);
-  gl.uniform1f(ru.uSpin, 0); draw(R, DGt, mGate);
   gl.useProgram(P_CRY.p); if (P_CRY.u.uVd) gl.uniform1f(P_CRY.u.uVd, vd); gl.uniform1f(P_CRY.u.uSpin, .05); draw(P_CRY, LC, mCry);
-  gl.disable(gl.CULL_FACE); gl.useProgram(P_SHIP.p); if (P_SHIP.u.uVd) gl.uniform1f(P_SHIP.u.uVd, vd);
+  gl.disable(gl.CULL_FACE); gl.useProgram(P_SHIP.p); if (P_SHIP.u.uVd) gl.uniform1f(P_SHIP.u.uVd, vdS);
   gl.uniform1i(P_SHIP.u.uShip, 4); for (let i = 0; i < 3; i++) draw(P_SHIP, DAgs[i], mShips[i]); for (let i = 0; i < 8; i++) if (FOEM[i]) draw(P_SHIP, FOEG[i], FOEM[i]); draw(P_SHIP, DAf, mFrig[0]);   // traffic, steered ship by ship
   gl.uniform1i(P_SHIP.u.uShip, 2); draw(P_SHIP, LDr, mDrone); draw(P_SHIP, LDs, mSiphon); draw(P_SHIP, LDe, mSpark);
   gl.uniform1i(P_SHIP.u.uShip, 3); draw(P_SHIP, DTr, mFrig[1]);
@@ -7501,6 +7502,11 @@ function eye(fb, x, y, w, h, tw, th) {
   if (!NO.includes('p')) { gl.uniform1i(Sp.u.uMode, 1); draw(Sp, LP, mQuad); }
   if (!NO.includes('t')) { gl.uniform1i(Sp.u.uMode, 3); draw(Sp, DT, mQuad); }
   if (!NO.includes('a')) { gl.uniform1i(Sp.u.uMode, 4); draw(Sp, DPa, mQuad); }
+  }
+  if (DGt.n) {   /* v1.90: the warp gate is drawn after the nebula wisps, which are additive and hid it entirely from a km or two out in dusty systems */
+    const R2 = P_ROCK, r2 = R2.u; gl.disable(gl.BLEND); gl.enable(gl.CULL_FACE); gl.depthMask(true); gl.depthFunc(gl.LESS);
+    gl.useProgram(R2.p); if (r2.uVd) gl.uniform1f(r2.uVd, vdS); gl.uniform1i(r2.uKind, 1); gl.uniform1f(r2.uFlat, 0); gl.uniform1f(r2.uSpin, 0); draw(R2, DGt, mGate);
+    gl.disable(gl.CULL_FACE); gl.depthMask(false); gl.depthFunc(gl.LEQUAL); gl.enable(gl.BLEND); gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE);
   }
   dgStage('plasma');
   if (P_PLS && !dgOff('plasma') && flying() && (v126Heat > .003 || heatFlare > .003 || exV > .003 || exF > .003)) {   // v1.46: the bow shock, behind the cockpit's depth
