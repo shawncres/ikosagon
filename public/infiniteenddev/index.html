@@ -229,6 +229,7 @@ if (!gl) throw Error('This scene needs WebGL 2. Try a current Chrome, Edge, Fire
 // - After a graphics reset, a stall, or a session that didn't end cleanly, a report names the likely culprit and offers
 //   switches to turn that system off. F10 opens the same panel any time.
 // ============================================================================
+var VIS = null;
 const DGT = !document.querySelector('link[rel~="manifest"]');   // the browser test build has no app manifest link
 const DGOFF = new Set((() => { try { return (localStorage.ieDiagOff || '').split(',').filter(Boolean); } catch { return []; } })());
 const dgOff = (k) => DGOFF.has(k);
@@ -332,7 +333,7 @@ function dgPanel(head, sus) {
     ${sus && sus.length ? `<p><b>Likely culprits</b>, most likely first:</p><ol>${sus.map((o) => `<li>${o.name}: ${o.why}${o.sw ? '' : ' (no switch)'}</li>`).join('')}</ol>` : ''}
     <p><b>Switches</b> (take effect after Reload; kept until you change them). A switch outlined in amber is a suspect.</p>${sw}
     ${live ? `<p style="margin-top:18px"><b>Last measured frame</b> (GPU time per stage)</p><table>${live}</table>` : ''}
-    <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap"><button id="dgr" style="font:inherit;padding:8px 20px;background:#123;color:#cfe;border:1px solid #4ac;cursor:pointer">Reload</button><button id="dgc" style="font:inherit;padding:8px 20px;background:#123;color:#cfe;border:1px solid #4ac;cursor:pointer">Copy report</button><button id="dgf" style="font:inherit;padding:8px 20px;background:#123;color:#cfe;border:1px solid #4ac;cursor:pointer">Flights</button><button id="dgx" style="font:inherit;padding:8px 20px;background:none;color:#cfe;border:1px solid #ffffff33;cursor:pointer">Close</button></div>
+    <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap"><button id="dgr" style="font:inherit;padding:8px 20px;background:#123;color:#cfe;border:1px solid #4ac;cursor:pointer">Reload</button><button id="dgc" style="font:inherit;padding:8px 20px;background:#123;color:#cfe;border:1px solid #4ac;cursor:pointer">Copy report</button><button id="dgf" style="font:inherit;padding:8px 20px;background:#123;color:#cfe;border:1px solid #4ac;cursor:pointer">Flights</button><button id="dgv" style="font:inherit;padding:8px 20px;background:#123;color:#cfe;border:1px solid #4ac;cursor:pointer">Cull debug: ${VIS && VIS.on ? 'ON' : 'off'}</button><button id="dgx" style="font:inherit;padding:8px 20px;background:none;color:#cfe;border:1px solid #ffffff33;cursor:pointer">Close</button></div>
     <p style="opacity:.55;font-size:12px;margin-top:14px">F10, the &#96; key or the TEST button (top left) opens this panel. The report goes to Shawn's builder; it holds no personal data.</p></div>`;
   d.querySelectorAll('button[data-k]').forEach((b) => b.onclick = () => { const k = b.dataset.k; if (DGOFF.has(k)) DGOFF.delete(k); else DGOFF.add(k); try { localStorage.ieDiagOff = [...DGOFF].join(','); } catch {} const keep = DG.gateGo; dgPanel(head, sus); DG.gateGo = keep; });
   if (DG.gateGo) { const st = document.createElement('button'); st.textContent = 'Start'; st.style.cssText = 'font:inherit;padding:8px 28px;background:#164;color:#dfe;border:1px solid #6c8;cursor:pointer'; st.onclick = () => { const g = DG.gateGo; DG.gateGo = null; d.remove(); g(); }; d.querySelector('#dgr').before(st); setTimeout(() => st.focus(), 50); }
@@ -340,6 +341,7 @@ function dgPanel(head, sus) {
   d.querySelector('#dgc').onclick = (e) => { const t = dgReport(head); (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => { e.target.textContent = 'Copied'; }, () => { const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'width:100%;height:220px;margin-top:12px'; d.firstChild.appendChild(ta); ta.select(); }); };
   d.querySelector('#dgx').onclick = () => d.remove();
   d.querySelector('#dgf').onclick = () => { if (FL) FL.panel(); };
+  d.querySelector('#dgv').onclick = () => { if (VIS) { VIS.set(!VIS.on); const keep = DG.gateGo; dgPanel(head, sus); DG.gateGo = keep; } };
   document.body.appendChild(d); try { document.exitPointerLock && document.exitPointerLock(); } catch {}
 }
 addEventListener('keydown', (e) => { if ((e.code === 'F10' || e.code === 'Backquote') && DGT) { e.preventDefault(); e.stopImmediatePropagation(); const s = dgSnap(0); dgPanel('', dgSuspects(s)); } }, true);
@@ -892,7 +894,9 @@ vec3 h3(float n){return fract(sin(vec3(n*127.1,n*269.5+1.3,n*419.2+2.7))*43758.5
 const VI = HD + `
 layout(location=0)in vec3 aP;layout(location=1)in vec3 aN;layout(location=2)in vec2 aU;
 layout(location=3)in vec4 iA;layout(location=4)in vec4 iB;layout(location=5)in vec4 iC;
-uniform vec3 uCell,uCam,uCN;uniform float uVd;
+uniform vec3 uCell,uCam,uCN;uniform float uVd,uCut;
+/* v2.00: size of a rock from its distance. Inside the window the old fade (from the window centre), but never for anything within 80-120 m of the eye; when the vertex budget cut the list, uCut is the distance of the last rock kept */
+float lodK(float dc,float d){float f=uCN.y>.5?smoothstep(uCN.z,uCN.z*.56,dc):1.;f=max(f,1.-smoothstep(80.,120.,d));return uCut>0.?f*smoothstep(uCut,uCut*.75,d):f;}
 vec3 ctr(){if(uCN.y<.5)return iA.xyz-uCam;vec3 r=mod(iA.xyz-uCell+uCN.y*.5,uCN.y)-uCN.y*.5;return(r+iB.xyz)*uCN.x-uCam;}
 vec4 rockQ(float s,float sp){return quat(normalize(h3(s*91.7)-.5+1e-3),s*40.+TIME*sp*(h1(s*3.)-.5)*2.);}
 vec3 rockS(float s){return .5+.6*h3(s*33.3+5.);}
@@ -903,7 +907,7 @@ const ROCK_V = VI + `
 uniform float uSpin;uniform int uKind;
 out vec3 vP,vN,vO;flat out vec4 vQ,vI,vJ;
 void main(){
- vec3 c=ctr();float sz=iA.w,sd=iB.w,dc=uCN.y>.5?length(c+uCam):length(c);if(uCN.y>.5)sz*=smoothstep(uCN.z,uCN.z*.56,dc);
+ vec3 c=ctr();float sz=iA.w,sd=iB.w,dc=uCN.y>.5?length(c+uCam):length(c);sz*=lodK(dc,length(c));
  vec4 q=rockQ(sd,uSpin);
  vec3 s=uKind==0?rockS(sd):uKind==2?.05+.95*pow(h3(sd*7.7),vec3(2.2)):vec3(1);
  vec3 o=aP*s*sz;
@@ -1073,7 +1077,7 @@ const CRY_V = VI + `
 uniform float uSpin;
 out vec3 vP,vN;out vec2 vU;flat out vec4 vI;
 void main(){
- vec3 c=ctr();float sz=iA.w,sd=iB.w,dc=uCN.y>.5?length(c+uCam):length(c);if(uCN.y>.5)sz*=smoothstep(uCN.z,uCN.z*.56,dc);
+ vec3 c=ctr();float sz=iA.w,sd=iB.w,dc=uCN.y>.5?length(c+uCam):length(c);sz*=lodK(dc,length(c));
  vec4 q=rockQ(sd,uSpin);vec3 s=rockS(sd);
  vec3 up=normalize(iC.xyz/s),t=normalize(cross(up,vec3(.31,.9,.23))),b=cross(up,t);
  float cs=sz*(.16+.3*iC.w);
@@ -2368,6 +2372,26 @@ const COFF = new Map();
 function cellOrder(H) { let a = COFF.get(H); if (a) return a; const H2 = (H + .5) * (H + .5), l = [];
   for (let k = -H; k < H; k++) for (let j = -H; j < H; j++) for (let i = -H; i < H; i++) { const r = i * i + j * j + k * k; if (r <= H2) l.push([i, j, k, r]); }
   l.sort((p, q) => p[3] - q[3] || p[2] - q[2] || p[1] - q[1] || p[0] - q[0]); a = new Int16Array(l.length * 4); l.forEach((e, n) => a.set(e, n * 4)); COFF.set(H, a); return a; }
+/* v2.00: lists that can be cut by the vertex budget are kept sorted by distance from the ship as of the last rebuild (dd = those distances), so a cut drops the farthest rocks, not the ones
+   behind a window that is centred ahead of the ship. Everything within KEEP_R of the ship is exempt from the cut. */
+const SRT_K = new Float64Array(40000), SRT_I = new Int32Array(40000), SRT_T = new Float32Array(40000 * F), KEEP_R = 130;
+function sortNear(S, L) {
+  const n = S.n; if (n < 9 || n > 40000) { S.dd = null; return; }
+  const D = S.d, C = L.C, N = L.N, H = N / 2, fx = L.fx, fy = L.fy, fz = L.fz, mx = L.mx, my = L.my, mz = L.mz;
+  for (let q = 0, o = 0; q < n; q++, o += F) {
+    const x = (((D[o] - mx + H) % N + N) % N - H + D[o + 4]) * C - fx, y = (((D[o + 1] - my + H) % N + N) % N - H + D[o + 5]) * C - fy, z = (((D[o + 2] - mz + H) % N + N) % N - H + D[o + 6]) * C - fz;
+    SRT_K[q] = x * x + y * y + z * z; SRT_I[q] = q;
+  }
+  const ix = SRT_I.subarray(0, n); ix.sort((a, b) => SRT_K[a] - SRT_K[b]);
+  if (!S.dd || S.dd.length < S.max) S.dd = new Float32Array(S.max);
+  for (let k = 0; k < n; k++) { const q = ix[k]; SRT_T.set(D.subarray(q * F, q * F + F), k * F); S.dd[k] = Math.sqrt(SRT_K[q]); }
+  D.set(SRT_T.subarray(0, n * F)); S.bx = px; S.by = py; S.bz = pz;
+}
+function keepN(S) {
+  const lim = KEEP_R + Math.hypot(px - S.bx, py - S.by, pz - S.bz), dd = S.dd; let lo = 0, hi = S.n;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (dd[mid] <= lim) lo = mid + 1; else hi = mid; }
+  return lo;
+}
 function upd(L) {
   const C = L.C, N = L.N, H = N / 2;
   let lk = 0; if (L.lead) { const sp = Math.hypot(ldx, ldy, ldz); lk = sp > 1 ? Math.min(.7, .4 * L.R / sp) : 0; }
@@ -2375,6 +2399,7 @@ function upd(L) {
   L.fx = px - cx * C; L.fy = py - cy * C; L.fz = pz - cz * C;
   for (const s of L.slaves) { s.fx = L.fx; s.fy = L.fy; s.fz = L.fz; }
   if (cx === L.cx && cy === L.cy && cz === L.cz) return;
+  if (VIS && VIS.on) VIS.pre(L);
   L.cx = cx; L.cy = cy; L.cz = cz; L.mx = pm(cx, N); L.my = pm(cy, N); L.mz = pm(cz, N);
   L.n = 0; for (const s of L.slaves) s.n = 0;
   const so = cellOrder(H);
@@ -2383,8 +2408,10 @@ function upd(L) {
       if (zr) { BZ.cut++; continue; } if (sh && L.shell) { BZ.shell++; L.shell(L, cx + i, cy + j, cz + k, pm(cx + i, N), pm(cy + j, N), pm(cz + k, N)); continue; } }
     L.gen(L, cx + i, cy + j, cz + k, pm(cx + i, N), pm(cy + j, N), pm(cz + k, N));
   }
+  if (L.srt) { sortNear(L, L); for (const s of L.slaves) sortNear(s, L); }
   flush(L);
   for (const s of L.slaves) { s.mx = L.mx; s.my = L.my; s.mz = L.mz; flush(s); }
+  if (VIS && VIS.on) VIS.post(L);
 }
 function bzUpdate(dt) {
   BZ.n = 0; let ch = 0;
@@ -6576,7 +6603,7 @@ if (PSC && !dgOff('bg')) { try { SKYA_ST = progStart(TRI_V, SKYS.replace('#versi
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.99';
+const BUILD = 'v2.00';
 // v1.74: if the last session ended in a graphics reset, put what was being built at the time in the log (F9 → Copy settings shows it)
 try { const g = JSON.parse(localStorage.ieGlLost || 'null'); if (g) evLog(`Graphics · last reset (${g.build}, ${g.at.slice(0, 16).replace('T', ' ')}): ${g.was ? 'building the ' + g.was + ' program, ' + g.secs + ' s in' : 'no program was being built'}`); } catch {}                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 /* ---- v1.71: spice tiers and attunement, procedural foes, dogfight upgrades, the Foe intro ---- */
@@ -6708,6 +6735,106 @@ npcHit = function (a, dmg, qd, hx, hy, hz, w) {
   if (AC && AC.state === 'running') note(mf(a.dead ? 96 : a.sh > 0 ? 91 : 74), AC.currentTime, .04, 'triangle', .35, 1);
   if (!was && a.dead && BLOOMS.length < 24) { const q = Math.min(3, spTier() + (Math.random() < .3 ? 1 : 0)); BLOOMS.push({ x: a.x, y: a.y, z: a.z, t: 0, q, v: 10, p: 1, dx: 0, dy: 0, dz: 0 }); pop('SPICE CACHE DROPPED', SPH[q]); }
 };
+/* v2.00: the culling overlay (test builds only, switched on in the test panel or with ?vis=1). Per frame and per view it sorts every instance near the ship into
+   what is drawn and what is not, and says why: the vertex budget cut the list, the distance fade shrank it, the view frustum, the near plane, or a cell rebuild that
+   dropped it from the list. Nothing here runs unless it is on. */
+VIS = !DGT ? null : (() => {
+  const V = { on: 0, rad: 150, eyes: [], cur: null, names: null, lost: {}, born: {}, sumBy: [], lostT: 0, bornT: 0, rebuilds: 0, tags: [], last: null, hist: [], el: null, cv: null, ctx: null, uiT: 0, frames: 0, sum: {}, pend: null };
+  const ss = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const ZN = .4, KEYS = ['vis', 'bud', 'fade', 'frus', 'near'], SPR = { LU: 1, LP: 1, LW: 1, LDk: 1 };
+  const lists = () => [['TV', TV], ['HV', HV], ['BF', BF], ['BN', BN], ['SV', SV], ['LG', [LG]], ['LD', [LD]], ['DC', DC], ['LMV', LMV], ['RV', RV], ['MV', MV], ['LU', [LU]], ['LP', [LP]], ['LW', [LW]], ['LDr', [LDr]], ['LFr', [LFr]], ['LDk', [LDk]]];
+  V.init = () => { V.names = new Map(); V.roots = new Map(); for (const [n, a] of lists()) a.forEach((L, i) => { if (L && !V.names.has(L)) V.names.set(L, a.length > 1 ? n + i : n); }); LAYERS.forEach((L, i) => V.roots.set(L, i)); };
+  V.nm = (L) => V.names.get(L) || 'L' + L.max;
+  V.rootId = (L) => { const r = L.root || L; return V.roots.has(r) ? V.roots.get(r) : -1; };
+  V.begin = (x, y, w, h) => {
+    if (!V.names) V.init();
+    V.cur = { x, y, w, h, L: [], tL, tR, tB, tT, R: [eRx, eRy, eRz], U: [eUx, eUy, eUz], F: [eFx, eFy, eFz], eo: [eox, eoy, eoz], vb: VBUD / eyeN, v0: verts, vs: 0 };
+    V.eyes.push(V.cur);
+  };
+  V.rec = (L, m, cnt, cr, P) => { if (V.cur) V.cur.L.push([L, m, cnt, verts - eyeV0, cr || 0, P === P_ROCK || P === P_CRY]); };
+  const rel = (L, D, o, eo) => {
+    const C = L.C, N = L.N;
+    if (N > 0) { const H = N / 2, rx = ((D[o] - L.mx + H) % N + N) % N - H, ry = ((D[o + 1] - L.my + H) % N + N) % N - H, rz = ((D[o + 2] - L.mz + H) % N + N) % N - H;
+      return [(rx + D[o + 4]) * C, (ry + D[o + 5]) * C, (rz + D[o + 6]) * C, rx, ry, rz]; }
+    return [D[o] + L.fx, D[o + 1] + L.fy, D[o + 2] + L.fz, 0, 0, 0];
+  };
+  V.frame = () => {
+    V.frames++; const out = [];
+    for (let e = 0; e < V.eyes.length; e++) {
+      const E = V.eyes[e], r = { eye: e, vis: 0, bud: 0, fade: 0, frus: 0, near: 0, tot: 0, by: {}, bl: [] }; out.push(r);
+      const qx = Math.sqrt(1 + E.tR * E.tR), qxl = Math.sqrt(1 + E.tL * E.tL), qt = Math.sqrt(1 + E.tT * E.tT), qb = Math.sqrt(1 + E.tB * E.tB);
+      r.cock = E.L.length ? E.L[0][3] : 0; r.budget = E.vb;
+      for (const [L, m, cnt, vb, cr, rk] of E.L) {
+        const D = L.d, n = L.n, N = L.N, nm = V.nm(L), Rr = N > 0 ? (cnt < n && !cr ? L.R * Math.cbrt(cnt / n) : L.R) : 1, by = r.by[nm] || (r.by[nm] = { vis: 0, bud: 0, fade: 0, frus: 0, near: 0, n: n, cnt: cnt });
+        by.n = n; by.cnt = cnt; by.v = m.n * cnt; by.b0 = vb; by.mn = m.n;
+        for (let q = 0, o = 0; q < n; q++, o += 12) {
+          const base = D[o + 3]; if (!base) continue;
+          const c = rel(L, D, o), cx = c[0] - L.fx - E.eo[0] + (N > 0 ? 0 : 0), cy = c[1] - L.fy - E.eo[1], cz = c[2] - L.fz - E.eo[2];
+          const dc = N > 0 ? Math.hypot(c[0], c[1], c[2]) : 0, d = Math.hypot(cx, cy, cz); if (d - base * 1.3 > V.rad) continue;
+          let sh = N > 0 ? ss(Rr, Rr * .56, dc) : 1; if (rk) sh = Math.max(sh, 1 - ss(80, 120, d)); if (cr) sh *= ss(cr, cr * .75, d);
+          const kf = N > 0 ? 1 - ss(.9 * Rr, Rr, dc) : 1, s2 = base * sh * kf;
+          const sp = SPR[nm] === 1; if (!sp) r.tot++;
+          let k = 'vis';
+          if (q >= cnt) k = 'bud';
+          else if (s2 < base * .5) k = 'fade';
+          else {
+            const z = cx * E.F[0] + cy * E.F[1] + cz * E.F[2], xx = cx * E.R[0] + cy * E.R[1] + cz * E.R[2], yy = cx * E.U[0] + cy * E.U[1] + cz * E.U[2], rr = s2;
+            if (z + rr < ZN || xx - E.tR * z > rr * qx || E.tL * z - xx > rr * qxl || yy - E.tT * z > rr * qt || E.tB * z - yy > rr * qb) k = 'frus';
+            else if (z - rr < ZN) k = 'near';
+          }
+          if (!sp) r[k]++; by[k]++;
+          if (!sp && k !== 'vis' && k !== 'frus' && r.bl.length < 80) r.bl.push([k, cx, cy, cz, s2, nm]);
+        }
+      }
+    }
+    V.last = out; V.tags = out.map((r, i) => ({ e: V.eyes[i], bl: r.bl }));
+    for (const r of out) { for (const k of KEYS) V.sum[k] = (V.sum[k] || 0) + r[k]; const sb = V.sumBy[r.eye] || (V.sumBy[r.eye] = {}); for (const [n, b] of Object.entries(r.by)) { const a = sb[n] || (sb[n] = { vis: 0, bud: 0, fade: 0, frus: 0, near: 0, cut: 0, n: 0, v: 0, b0: 0, cnt: 0, mn: 0 }); for (const k of KEYS) a[k] += b[k]; if (b.cnt < b.n) a.cut++; a.n += b.n; a.v += b.v; a.b0 += b.b0; a.cnt += b.cnt; a.mn = b.mn; } sb.__cock = (sb.__cock || 0) + r.cock; sb.__bud = r.budget; }
+    V.hist.push(out.map((r) => ({ vis: r.vis, bud: r.bud, fade: r.fade, frus: r.frus, near: r.near, tot: r.tot, vt: frameVerts }))); if (V.hist.length > 900) V.hist.shift();
+    V.eyes = []; V.cur = null; V.ui();
+  };
+  /* a cell rebuild: remember what sat within the radius before, and see what is missing afterwards */
+  const near = (L, add) => {
+    const out = new Map(), Ls = [L, ...L.slaves], id = V.rootId(L), C = L.C, N = L.N, H = N / 2, rad = V.rad * (add ? 1.6 : 1);
+    const fx = px - L.cx * C, fy = py - L.cy * C, fz = pz - L.cz * C;   /* the ship against this window's own corner (L.fx already holds the new one while a rebuild starts) */
+    for (let li = 0; li < Ls.length; li++) { const S = Ls[li], D = S.d;
+      for (let q = 0, o = 0; q < S.n; q++, o += 12) { if (!D[o + 3]) continue;
+        const rx = ((D[o] - L.mx + H) % N + N) % N - H, ry = ((D[o + 1] - L.my + H) % N + N) % N - H, rz = ((D[o + 2] - L.mz + H) % N + N) % N - H, x = (rx + D[o + 4]) * C, y = (ry + D[o + 5]) * C, z = (rz + D[o + 6]) * C;
+        if (Math.hypot(x - fx, y - fy, z - fz) > rad) continue;
+        const wx = (L.cx + rx + D[o + 4]) * C, wy = (L.cy + ry + D[o + 5]) * C, wz = (L.cz + rz + D[o + 6]) * C;
+        out.set(id + ':' + Math.round(wx * 8) + ',' + Math.round(wy * 8) + ',' + Math.round(wz * 8), [x - fx, y - fy, z - fz, D[o + 3]]); } }
+    return out;
+  };
+  V.pre = (L) => { if (L.cx > 1e8 || !L.N) { V.pend = null; return; } V.pend = near(L, 0); V.pcx = [L.cx, L.cy, L.cz]; };
+  V.post = (L) => {
+    const old = V.pend; V.pend = null; if (!old) return; V.rebuilds++;
+    const cur = near(L, 1), nm = V.nm(L.root || L).replace(/\d$/, '');
+    for (const [k, v] of old) if (!cur.has(k)) { V.lost[nm] = (V.lost[nm] || 0) + 1; V.lostT++; V.stags.push([v[0], v[1], v[2], v[3], performance.now()]); }
+    let b = 0; for (const [k, v] of cur) if (!old.has(k) && Math.hypot(v[0], v[1], v[2]) < V.rad) { b++; }
+    V.born[nm] = (V.born[nm] || 0) + b; V.bornT += b; while (V.stags.length > 60) V.stags.shift();
+  };
+  V.stags = [];
+  V.report = () => { const L = V.last || []; return { eyes: L.map((r) => ({ vis: r.vis, bud: r.bud, fade: r.fade, frus: r.frus, near: r.near, tot: r.tot, by: r.by })), lost: V.lost, lostT: V.lostT, born: V.born, bornT: V.bornT, rebuilds: V.rebuilds, frames: V.frames, sum: V.sum, sumBy: V.sumBy }; };
+  V.reset = () => { V.lost = {}; V.born = {}; V.lostT = V.bornT = V.rebuilds = V.frames = 0; V.sum = {}; V.sumBy = []; V.hist.length = 0; V.stags.length = 0; };
+  V.ui = () => {
+    if (xr) return;
+    if (!V.el) { const d = document.createElement('div'); d.id = 'vis'; d.style.cssText = 'position:fixed;top:8px;right:8px;z-index:99990;background:#000b;color:#cfe;font:11px/1.35 ui-monospace,monospace;padding:6px 9px;border:1px solid #4ac8;pointer-events:none;white-space:pre-wrap;word-break:break-all;max-width:60vw;overflow:hidden';
+      document.body.appendChild(d); V.el = d; const c = document.createElement('canvas'); c.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:99989;pointer-events:none'; document.body.appendChild(c); V.cv = c; V.ctx = c.getContext('2d'); }
+    const cv = V.cv, rw = innerWidth * (devicePixelRatio || 1) | 0, rh = innerHeight * (devicePixelRatio || 1) | 0; if (cv.width !== rw || cv.height !== rh) { cv.width = rw; cv.height = rh; }
+    const g = V.ctx, kx = cv.width / (W || 1), ky = cv.height / (H || 1), col = { bud: '#f44', fade: '#fc3', near: '#f0f' }; g.clearRect(0, 0, cv.width, cv.height); g.lineWidth = 2;
+    for (const T of V.tags) { const E = T.e; for (const b of T.bl) { const z = b[1] * E.F[0] + b[2] * E.F[1] + b[3] * E.F[2]; if (z < .05) continue; const xx = b[1] * E.R[0] + b[2] * E.R[1] + b[3] * E.R[2], yy = b[1] * E.U[0] + b[2] * E.U[1] + b[3] * E.U[2];
+      const u = (xx / z - E.tL) / (E.tR - E.tL), v = 1 - (yy / z - E.tB) / (E.tT - E.tB); if (u < 0 || u > 1 || v < 0 || v > 1) continue;
+      const sx = (E.x + u * E.w) * kx, sy = (E.y + v * E.h) * ky; g.strokeStyle = col[b[0]] || '#fff'; g.strokeRect(sx - 6, sy - 6, 12, 12); } }
+    const now = performance.now(); g.strokeStyle = '#3ff'; for (const t of V.stags) { if (now - t[4] > 1500) continue; const E = V.last && V.tags[0] && V.tags[0].e; if (!E) break; const z = t[0] * E.F[0] + t[1] * E.F[1] + t[2] * E.F[2]; if (z < .05) continue;
+      const xx = t[0] * E.R[0] + t[1] * E.R[1] + t[2] * E.R[2], yy = t[0] * E.U[0] + t[1] * E.U[1] + t[2] * E.U[2], u = (xx / z - E.tL) / (E.tR - E.tL), v = 1 - (yy / z - E.tB) / (E.tT - E.tB); if (u < 0 || u > 1 || v < 0 || v > 1) continue; g.beginPath(); g.arc((E.x + u * E.w) * kx, (E.y + v * E.h) * ky, 9, 0, 6.283); g.stroke(); }
+    if (now - V.uiT < 250) return; V.uiT = now;
+    const L = V.last || [], eN = ['', '', '', ''], rows = L.map((r) => `eye ${r.eye}: near ${r.tot}  drawn ${r.vis}  budget ${r.bud}  fade ${r.fade}  frustum ${r.frus}  near-plane ${r.near}`);
+    const top = []; for (const r of L.slice(0, 1)) for (const [n, b] of Object.entries(r.by)) if (b.bud || b.cnt < b.n) top.push(`${n} ${b.cnt}/${b.n}`); void eN;
+    V.el.textContent = `CULL DEBUG · radius ${V.rad} m (red budget, yellow fade, magenta near plane, cyan list rebuild)\n${rows.join('\n')}\nrebuilds ${V.rebuilds}  dropped near the ship ${V.lostT}  ${JSON.stringify(V.lost)}  new ${V.bornT}\nbudget cuts: ${top.join('  ') || 'none'}\nbudget per view ${(VBUD / (L.length || 1) / 1000) | 0}k`;
+  };
+  V.set = (on) => { V.on = on ? 1 : 0; try { localStorage.ieVis = V.on; } catch {} if (!on) { if (V.el) V.el.remove(); if (V.cv) V.cv.remove(); V.el = V.cv = V.ctx = null; V.eyes = []; V.cur = null; } };
+  return V;
+})();
+if (VIS && (QS.has('vis') || (() => { try { return localStorage.ieVis === '1'; } catch { return false; } })())) VIS.on = 1;
 let VBUD = QUEST || mob ? 3500000 : 9000000;
 let draws = 0, verts = 0, frameDraws = 0, frameVerts = 0, eyeV0 = 0, eyeN = 1;   /* v1.95: the vertex budget is split per view: eye 1 used to spend it all and eye 2 lost the later instance lists (small rocks, debris, limbs) */
 const _dei = gl.drawElementsInstanced.bind(gl), _de = gl.drawElements.bind(gl), _da = gl.drawArrays.bind(gl);
@@ -6773,7 +6900,7 @@ await step(.8, 'Rousing the swarms…');
 
 const LTi = Layer(26000, 4, 1, genTitan, 14), LH = Layer(1500, 10, 1, genHuge, 2), LB = Layer(230, 12, 1, genBig, 1), LS = Layer(48, 18, 1, genSmall, 3);
 TV = [LTi, Sub(LTi, 1), Sub(LTi, 1)]; HV = [LH, Sub(LH, 1), Sub(LH, 1)]; LTd = Sub(LH, 28);
-LB.lead = LS.lead = LH.lead = 1; BF = [LB, Sub(LB, 1), Sub(LB, 1)]; BN = [Sub(LB, 1), Sub(LB, 1), Sub(LB, 1)]; LC = Sub(LB, 7); LTb = Sub(LB, 11);
+LB.lead = LS.lead = LH.lead = 1; LB.srt = LS.srt = LH.srt = 1; BF = [LB, Sub(LB, 1), Sub(LB, 1)]; BN = [Sub(LB, 1), Sub(LB, 1), Sub(LB, 1)]; LC = Sub(LB, 7); LTb = Sub(LB, 11);
 SV = [LS, Sub(LS, 1), Sub(LS, 1)];
 const LG = Layer(700, 6, 1, genGeode, 13), LD = Layer(60, 14, 1, genDebris, 4), LR = Layer(6000, 4, 1, genRing, 12), LMg = Layer(45000, 4, 1, genMega, 15);
 RV = [LR, Sub(LR, 1), Sub(LR, 1), Sub(LR, 1)]; MV = [LMg, Sub(LMg, 1)];
@@ -7436,11 +7563,20 @@ let eRx, eRy, eRz, eUx, eUy, eUz, eFx, eFy, eFz, tL, tR, tB, tT, eox = 0, eoy = 
 const CKM = 2.5, CK_FLOOR = -3.64;   // cockpit units per metre in a headset (2.1 m floor to ceiling, seat ~0.65 m, bunk and counter ~0.9 m), and the cabin floor's height
 function draw(P, L, m) {
   if (!L || !L.n || !m) return;
-  let cnt = L.n;
-  if (cnt > 1 && m.n * cnt > 150000) { const left = Math.floor((VBUD / eyeN - (verts - eyeV0)) / m.n); if (left < cnt) { cnt = Math.max(0, left); if (cnt < 1) return; } }
+  let cnt = L.n, cutR = 0;
+  if (cnt > 1 && m.n * cnt > 150000) {
+    const left = Math.floor((VBUD / eyeN - (verts - eyeV0)) / m.n);
+    if (left < cnt) {
+      cnt = Math.max(0, left);
+      if (L.dd) { const kp = keepN(L); if (cnt < kp) cnt = kp; if (cnt < L.n && cnt > 0 && P.u.uCut) cutR = Math.max(KEEP_R, L.dd[cnt - 1] - Math.hypot(px - L.bx, py - L.by, pz - L.bz)); }
+      if (cnt < 1) { if (VIS && VIS.on) VIS.rec(L, m, 0, 0, P); return; }
+    }
+  }
+  if (VIS && VIS.on) VIS.rec(L, m, cnt, cutR, P);
   gl.useProgram(P.p);
   const u = P.u;
-  gl.uniform3f(u.uCell, L.mx, L.my, L.mz); gl.uniform3f(u.uCam, L.fx + eox, L.fy + eoy, L.fz + eoz); gl.uniform3f(u.uCN, L.C, L.N, cnt < L.n ? L.R * Math.cbrt(cnt / L.n) : L.R);   /* v1.97: a cut list shrinks its fade radius with it, so the last rocks thin out instead of vanishing */
+  if (u.uCut) gl.uniform1f(u.uCut, cutR);
+  gl.uniform3f(u.uCell, L.mx, L.my, L.mz); gl.uniform3f(u.uCam, L.fx + eox, L.fy + eoy, L.fz + eoz); gl.uniform3f(u.uCN, L.C, L.N, cnt < L.n && !cutR ? L.R * Math.cbrt(cnt / L.n) : L.R);   /* v1.97: a cut list shrinks its fade radius with it, so the last rocks thin out instead of vanishing (v2.00: a sorted list fades by distance from the ship instead, uCut) */
   gl.bindVertexArray(vaoFor(L, m)); gl.drawElementsInstanced(gl.TRIANGLES, m.n, gl.UNSIGNED_SHORT, 0, cnt);
 }
 const fam3 = (P, Ls, ms) => { draw(P, Ls[0], ms[0]); draw(P, Ls[1], ms[1]); draw(P, Ls[2], ms[2]); };
@@ -7450,6 +7586,7 @@ function pass(P, dst, src) {
 }
 function eye(fb, x, y, w, h, tw, th) {
   ensureT(tw, th); eyeV0 = verts;
+  if (VIS && VIS.on) VIS.begin(x, y, w, h);
   // globals for every shader
   const zn = NO.includes('n') ? 6 : .4, zf = 4e5, Az = (zf + zn) / (zn - zf), p0 = 2 / (tR - tL), p8 = (tR + tL) / (tR - tL), p5 = 2 / (tT - tB), p9 = (tT + tB) / (tT - tB);
   G[0] = p0 * eRx - p8 * eFx; G[1] = p5 * eUx - p9 * eFx; G[2] = -Az * eFx; G[3] = eFx;
@@ -7491,10 +7628,10 @@ function eye(fb, x, y, w, h, tw, th) {
   dgStage('solids');
   const R = P_ROCK, ru = R.u, vd = Math.min(1, veil || 0);
   gl.useProgram(R.p); if (ru.uVd) gl.uniform1f(ru.uVd, vd); gl.uniform1i(ru.uKind, 0); gl.uniform1f(ru.uFlat, 0);
-  gl.uniform1f(ru.uSpin, .002); fam3(R, TV, mHi);
+  gl.uniform1f(ru.uSpin, .6); fam3(R, SV, mLo);   /* v2.00: nearest and cheapest first, so when the budget runs out it is the titans and the far rocks that go, not the small rocks beside you */
+  gl.uniform1f(ru.uSpin, .05); fam3(R, BN, mMid); fam3(R, BF, mFar);
   gl.uniform1f(ru.uSpin, .012); fam3(R, HV, mHi);
-  gl.uniform1f(ru.uSpin, .05); fam3(R, BF, mFar); fam3(R, BN, mMid);
-  gl.uniform1f(ru.uSpin, .6); fam3(R, SV, mLo);
+  gl.uniform1f(ru.uSpin, .002); fam3(R, TV, mHi);
   gl.uniform1f(ru.uFlat, 1);
   gl.uniform1f(ru.uSpin, .8); draw(R, LG, mShard[0]);
   gl.uniform1f(ru.uSpin, 1.6); draw(R, DC[0], mShard[0]); draw(R, DC[1], mShard[1]);
@@ -7993,6 +8130,7 @@ function frame(now, xf) {
       eyeN = 2; for (let e = 0; e < 2; e++) { const o = (e ? .25 : -.25); eox = sRx * o; eoy = sRy * o; eoz = sRz * o; eye(null, e * hw, 0, hw, H, Math.round(hw * S), Math.round(H * S)); }
     } else { eyeN = 1; tT = fov; tB = -fov; tR = fov * W / H; tL = -tR; eox = eoy = eoz = 0; eye(null, 0, 0, W, H, W, H); }
   }
+  if (VIS && VIS.on) VIS.frame();
   dgFrameEnd();
 
   // moments for the recorded score: a long quiet drift, and a long fast run (which ends when you slow down)
