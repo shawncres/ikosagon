@@ -6562,7 +6562,7 @@ if (PSC && !dgOff('bg')) { try { SKYA_ST = progStart(TRI_V, SKYS.replace('#versi
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.94';
+const BUILD = 'v1.95';
 // v1.74: if the last session ended in a graphics reset, put what was being built at the time in the log (F9 → Copy settings shows it)
 try { const g = JSON.parse(localStorage.ieGlLost || 'null'); if (g) evLog(`Graphics · last reset (${g.build}, ${g.at.slice(0, 16).replace('T', ' ')}): ${g.was ? 'building the ' + g.was + ' program, ' + g.secs + ' s in' : 'no program was being built'}`); } catch {}                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 /* ---- v1.71: spice tiers and attunement, procedural foes, dogfight upgrades, the Foe intro ---- */
@@ -6695,7 +6695,7 @@ npcHit = function (a, dmg, qd, hx, hy, hz, w) {
   if (!was && a.dead && BLOOMS.length < 24) { const q = Math.min(3, spTier() + (Math.random() < .3 ? 1 : 0)); BLOOMS.push({ x: a.x, y: a.y, z: a.z, t: 0, q, v: 10, p: 1, dx: 0, dy: 0, dz: 0 }); pop('SPICE CACHE DROPPED', SPH[q]); }
 };
 let VBUD = QUEST || mob ? 3500000 : 9000000;
-let draws = 0, verts = 0, frameDraws = 0, frameVerts = 0;
+let draws = 0, verts = 0, frameDraws = 0, frameVerts = 0, eyeV0 = 0, eyeN = 1;   /* v1.95: the vertex budget is split per view: eye 1 used to spend it all and eye 2 lost the later instance lists (small rocks, debris, limbs) */
 const _dei = gl.drawElementsInstanced.bind(gl), _de = gl.drawElements.bind(gl), _da = gl.drawArrays.bind(gl);
 gl.drawElementsInstanced = (m, c, ty, off, n) => { draws++; verts += c * n; return _dei(m, c, ty, off, n); };
 gl.drawElements = (m, c, ty, off) => { draws++; verts += c; return _de(m, c, ty, off); };
@@ -7422,7 +7422,7 @@ const CKM = 2.5, CK_FLOOR = -3.64;   // cockpit units per metre in a headset (2.
 function draw(P, L, m) {
   if (!L || !L.n || !m) return;
   let cnt = L.n;
-  if (cnt > 1 && m.n * cnt > 150000) { const left = Math.floor((VBUD - verts) / m.n); if (left < cnt) { cnt = Math.max(0, left); if (cnt < 1) return; } }
+  if (cnt > 1 && m.n * cnt > 150000) { const left = Math.floor((VBUD / eyeN - (verts - eyeV0)) / m.n); if (left < cnt) { cnt = Math.max(0, left); if (cnt < 1) return; } }
   gl.useProgram(P.p);
   const u = P.u;
   gl.uniform3f(u.uCell, L.mx, L.my, L.mz); gl.uniform3f(u.uCam, L.fx + eox, L.fy + eoy, L.fz + eoz); gl.uniform3f(u.uCN, L.C, L.N, L.R);
@@ -7434,7 +7434,7 @@ function pass(P, dst, src) {
   gl.useProgram(P.p); gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, src.t);
 }
 function eye(fb, x, y, w, h, tw, th) {
-  ensureT(tw, th);
+  ensureT(tw, th); eyeV0 = verts;
   // globals for every shader
   const zn = NO.includes('n') ? 6 : .4, zf = 4e5, Az = (zf + zn) / (zn - zf), p0 = 2 / (tR - tL), p8 = (tR + tL) / (tR - tL), p5 = 2 / (tT - tB), p9 = (tT + tB) / (tT - tB);
   G[0] = p0 * eRx - p8 * eFx; G[1] = p5 * eUx - p9 * eFx; G[2] = -Az * eFx; G[3] = eFx;
@@ -7940,7 +7940,7 @@ function frame(now, xf) {
   hudZoom = xr ? 1 : Math.min(1.4, 1 + .85 * Math.max(0, fov / .6249 - 1));
   if (xr) {
     const pose = xf.getViewerPose(xrRef), bl = xr.renderState.baseLayer;
-    if (pose) for (const v of pose.views) {
+    if (pose) { eyeN = Math.max(1, pose.views.length); for (const v of pose.views) {
       const vp = bl.getViewport(v), m = v.transform.matrix, p = v.projectionMatrix, hp = pose.transform.position, ep = v.transform.position;
       // the headset's orientation rides on the ship's: its axes are expressed in the ship's right / up / back
       eRx = sRx * m[0] + sUx * m[1] - sFx * m[2]; eRy = sRy * m[0] + sUy * m[1] - sFy * m[2]; eRz = sRz * m[0] + sUz * m[1] - sFz * m[2];
@@ -7956,7 +7956,7 @@ function frame(now, xf) {
         const cy = Math.max(-.72, Math.min(1.28, .22 + dy + lift));
         cex = sRx * cx + sUx * cy - sFx * cz; cey = sRy * cx + sUy * cy - sFy * cz; cez = sRz * cx + sUz * cy - sFz * cz; }
       eye(bl.framebuffer, vp.x, vp.y, vp.width, vp.height, Math.round(vp.width * .8), Math.round(vp.height * .8));
-    }
+    } }
   } else {
     eRx = sRx; eRy = sRy; eRz = sRz; eUx = sUx; eUy = sUy; eUz = sUz; eFx = sFx; eFy = sFy; eFz = sFz;
     { const ty = hlF != null ? hlF[0] : K.Slash ? 3.1 : ((K.Period ? 1 : 0) - (K.Comma ? 1 : 0)) * 1.75, tp = hlF != null ? hlF[1] : 0, k = Math.min(1, rdt * 6); hlY += (ty - hlY) * k; hlP += (tp - hlP) * k;   // glance round the cabin
@@ -7966,8 +7966,8 @@ function frame(now, xf) {
         eUx = eRy * eFz - eRz * eFy; eUy = eRz * eFx - eRx * eFz; eUz = eRx * eFy - eRy * eFx; } }
     if (stereo) {
       const hw = W >> 1, a = hw / H, t = Math.tan(45 * Math.PI / 180); tT = t; tB = -t; tR = t * a; tL = -t * a;
-      for (let e = 0; e < 2; e++) { const o = (e ? .25 : -.25); eox = sRx * o; eoy = sRy * o; eoz = sRz * o; eye(null, e * hw, 0, hw, H, Math.round(hw * S), Math.round(H * S)); }
-    } else { tT = fov; tB = -fov; tR = fov * W / H; tL = -tR; eox = eoy = eoz = 0; eye(null, 0, 0, W, H, W, H); }
+      eyeN = 2; for (let e = 0; e < 2; e++) { const o = (e ? .25 : -.25); eox = sRx * o; eoy = sRy * o; eoz = sRz * o; eye(null, e * hw, 0, hw, H, Math.round(hw * S), Math.round(H * S)); }
+    } else { eyeN = 1; tT = fov; tB = -fov; tR = fov * W / H; tL = -tR; eox = eoy = eoz = 0; eye(null, 0, 0, W, H, W, H); }
   }
   dgFrameEnd();
 
