@@ -1693,7 +1693,7 @@ const COMP_F = HD + `
 uniform sampler2D uH,uB,uR;uniform vec2 uPx,uJc;uniform vec3 uFl,uJ,uFc;uniform vec4 uFx,uFy,uFz,uHt;uniform float uFs;in vec2 vU;out vec4 o;
 vec3 aces(vec3 x){return clamp(x*(2.51*x+.03)/(x*(2.43*x+.59)+.14),0.,1.);}
 void main(){vec2 q=vU-.5;float bs=uCA.w;bool pp=uHt.z<0.;float vs=abs(uHt.z);
- vec2 of=q*dot(q,q)*(.004+.05*bs)*uFx.x,hd=vec2(0);
+ vec2 of=q*dot(q,q)*((.004+.05*bs)*uFx.x+.02*uJ.y),hd=vec2(0);   /* v1.93: the colour channels part further out from the centre as the hyperlight tunnel deepens */
  if(uHt.x+uHt.y>.001){float hz=(uHt.x+uHt.y*.6)*vs;hd=vec2(sin(vU.y*83.+uHt.w*21.)+sin(vU.y*37.-uHt.w*13.),cos(vU.x*71.-uHt.w*19.)+sin(vU.x*29.+uHt.w*9.))*.0011*hz*smoothstep(.0,.35,length(q));}   // heat shimmer
  vec3 c=vec3(texture(uH,vU+of+hd).r,texture(uH,vU+hd).g,texture(uH,vU-of+hd).b);
  vec2 mv=uFx.zw+q*dot(q,q)*uFs;                               // motion blur: the turn, plus speed streaming past the edges
@@ -1706,9 +1706,10 @@ void main(){vec2 q=vU-.5;float bs=uCA.w;bool pp=uHt.z<0.;float vs=abs(uHt.z);
   c+=vis*uSunC.rgb*(vec3(.45,.65,1.)*exp(-abs(sv.y)*110.)*exp(-abs(sv.x)*3.2)*.22+vec3(.6,.8,1.)*exp(-dot(g1,g1)*700.)*.035+vec3(1.,.7,.5)*smoothstep(.012,0.,abs(length(g2)-.11))*.02);}
  if(uJ.y>0.){vec2 qa=qj*vec2(uPx.y/uPx.x,1.);float r=length(qa),a=atan(qa.y,qa.x),z=.22/(r+.03)+uJ.z*5.;
   float ag=(a+3.1416)*52.,id=floor(ag),af=fract(ag)-.5,h=h1(id),h2=h1(id+91.),ln=exp(-af*af*(10.+30.*h2));
-  float s=(pow(fract(z*(.25+h*.9)+h2*9.),6.)*step(.3,h)+.3*pow(fract(z*(.6+h2)+h*5.),10.))*ln;
+  float f1=fract(z*(.25+h*.9)+h2*9.),g1=step(.3,h)*ln,s1=pow(f1,6.)*g1,s2=.3*pow(fract(z*(.6+h2)+h*5.),10.)*ln,am=step(h1(id+53.),.18);
+  vec3 sc=mix(vec3(.45,.72,1.),vec3(1.,.8,.28),am)*s1+mix(vec3(1.,.12,.06),vec3(1.,.5,.1),am)*max(pow(f1,2.2)*g1-s1,0.)*.6;   /* v1.93: blue-white at the head of each streak, red-shifted down its tail, about one in five amber */
   float sw=texture(uNz,vec3(cos(a)*.35,sin(a)*.35,z*.06)).r;
-  vec3 tc=mix(uCE.rgb,vec3(.35,.6,1.),.6)*(s*smoothstep(.03,.45,r)*4.+sw*sw*r*.9)+vec3(.9,.95,1.)*exp(-r*r*90.)*(1.+.4*sin(uJ.z*40.))+c*.25;
+  vec3 tc=sc*smoothstep(.03,.45,r)*3.4+mix(uCE.rgb,vec3(.35,.6,1.),.6)*(s2*smoothstep(.03,.45,r)*4.+sw*sw*r*.9)+vec3(.9,.95,1.)*exp(-r*r*90.)*(1.+.4*sin(uJ.z*40.))+c*.25;
   c=mix(c,tc,uJ.y);}
  if(uFz.x>0.){vec2 vq=q*vec2(uPx.y/uPx.x,1.)*vec2(.92,1.);float rim=length(vq*vec2(.9,1.3)+vec2(0.,.1))-.8;   // the visor: a tinted rim where the glass curves away, a faint line on its edge
   float gm=smoothstep(-.02,.06,rim)*uFz.x;vec2 rq=vU-q*.035*gm;vec3 bent=texture(uH,rq).rgb;
@@ -3246,12 +3247,12 @@ function hop(loc) { const sv = [yaw, pitch, thr, vx, vy, vz]; palEase = 1; softA
 // locks on, and you cross the system in seconds, with only a few degrees of play. It drops out by itself before a planet's air (the
 // approach takes over), on arrival at a place, or if another world's mass is in the way.
 let shiftT = 0, hlAv = [0, 0, 0], hlSpd = 0, hlHits = [], hlLastHit = -9;
-let hl = 0, hlT = 0, hlRdy = 0, hlFx = 0, hlCurveT = 0, hlU = null, hlD0 = 1, hlDur = 8, hlFree = 0, hlRem = 0;
+let hl = 0, hlT = 0, hlRdy = 0, hlFx = 0, hlFl = 0, hlFb = 1, hlCurveT = 0, hlU = null, hlD0 = 1, hlDur = 8, hlFree = 0, hlRem = 0;
 const hlPos = (c) => { if (!c || !sysP) return null; if (c.kind === 'planet') { const k = +c.id[1]; return sysP[k] || null; } if (c.kind === 'place') { const O = sysPL[c.loc]; return O ? [O[0] - sysO[0], O[1] - sysO[1], O[2] - sysO[2]] : null; } return null; };
 // v1.51: a world only blocks hyperlight when it's actually in the path ahead (leaving the planet you just climbed out of no longer counts)
 function hlBlock(j, u, rem) { const P = sysP[j]; if (!P) return false; const x = P[0] - sysS[0], y = P[1] - sysS[1], z = P[2] - sysS[2], al = x * u[0] + y * u[1] + z * u[2];
   if (al <= 0 || al > rem + PR[j]) return false; return Math.hypot(x - u[0] * al, y - u[1] * al, z - u[2] * al) < PR[j] * 1.15; }
-function hlStop(msg) { hlSpd = 0; hlAv[0] = hlAv[1] = hlAv[2] = 0; if (!hl) hlHits.length = 0; if (hl === 1 && SP.n[1] < 3) { SP.n[1]++; spSave(); } if (hl) buzz(.55, 300); hl = 0; hlFree = 0; hlU = null; hlT = 0; hlRdy = 0; if (msg) tip(msg, 4000); }
+function hlStop(msg) { hlSpd = 0; hlAv[0] = hlAv[1] = hlAv[2] = 0; if (!hl) hlHits.length = 0; if (hl === 1 && SP.n[1] < 3) { SP.n[1]++; spSave(); } if (hl) buzz(.55, 300); if (hl === 2) { hlFl = .8; hlFb = 0; flash = Math.max(flash, .3); } hl = 0; hlFree = 0; hlU = null; hlT = 0; hlRdy = 0; if (msg) tip(msg, 4000); }
 function hlKey() {
   if (SYS.atm) { tip('Hyperlight needs open space: climb out of the air first', 3000); return; }
   if (hl) { hlStop('Hyperlight disengaged'); return; }
@@ -3262,6 +3263,7 @@ function hlKey() {
     hl = 1; hlT = 0; buzz(.45, 1300); tip(hlFree ? 'Hyperlight spooling · free heading · G to drop out' : 'Hyperlight spooling…', 1800); if (AC && AC.state === 'running') burst(AC.currentTime, 1.4, .16, 60, 600, 'lowpass'); }
 }
 function hlTick(dt, near, nk) {
+  hlFl = Math.max(0, hlFl - dt);
   hlFx += ((hl === 2 ? 1 : hl === 1 ? Math.min(1, hlT / TUNE.hlSpool) * .6 : 0) - hlFx) * Math.min(1, dt * (hl ? 3 : 1.4));
   const c = navCur(), P = hlPos(c);
   if (!hl) {
@@ -3280,7 +3282,7 @@ function hlTick(dt, near, nk) {
   const ypu = ypFromDir(u), ty = ypu[0], tp = ypu[1], lim = hl === 1 ? 3 : TUNE.hlPlay, ease = Math.min(1, dt * (hl === 1 ? 2.2 : 5));
   let dyw = yaw - ty; dyw = Math.atan2(Math.sin(dyw), Math.cos(dyw));
   yaw = ty + Math.max(-lim, Math.min(lim, dyw)) * (1 - ease); pitch = tp + Math.max(-lim, Math.min(lim, pitch - tp)) * (1 - ease); snap = 1;   // the nose locks on: only a few degrees of play
-  if (hl === 1) { trauma = Math.max(trauma, Math.min(.45, .3 * hlT)); if (hlT > TUNE.hlSpool) { hl = 2; hlT = 0; hlD0 = Math.max(rem, .001); hlDur = TUNE.hlTime0 + TUNE.hlTimeK * Math.sqrt(hlD0); buzz(1, 600); flash = Math.max(flash, .18); trauma = Math.max(trauma, .7); if (AC && AC.state === 'running') burst(AC.currentTime, 2.2, .26, 120, 1600, 'lowpass'); } return; }
+  if (hl === 1) { trauma = Math.max(trauma, Math.min(.45, .3 * hlT)); if (hlT > TUNE.hlSpool) { hl = 2; hlT = 0; hlD0 = Math.max(rem, .001); hlDur = TUNE.hlTime0 + TUNE.hlTimeK * Math.sqrt(hlD0); buzz(1, 600); flash = Math.max(flash, .3); hlFl = .7; hlFb = 1; trauma = Math.max(trauma, .7); if (AC && AC.state === 'running') burst(AC.currentTime, 2.2, .26, 120, 1600, 'lowpass'); } return; }
   const p = Math.min(1, hlT / hlDur), v = Math.max(hlD0 * 30 * p * p * (1 - p) * (1 - p) / hlDur * 1.08, p >= 1 ? rem * 3 : 0, .002), st = Math.max(0, Math.min(rem, v * dt)); if (hlFree) hlRem = Math.max(0, hlRem - st);   // v1.56: a trip whose length follows the distance, easing up and down
   { const tg = raThr ? Math.min(1.3, .35 + 1.1 * (1 - raThr.m / raThr.R)) : 0, e = Math.min(1, dt * (raThr ? 6 : 1.2));   /* steer round rocks in the path */
     hlAv[0] += ((raThr ? raThr.nx * tg : 0) - hlAv[0]) * e; hlAv[1] += ((raThr ? raThr.ny * tg : 0) - hlAv[1]) * e; hlAv[2] += ((raThr ? raThr.nz * tg : 0) - hlAv[2]) * e; }
@@ -6533,7 +6535,7 @@ if (PSC && !dgOff('bg')) { try { SKYA_ST = progStart(TRI_V, SKYS.replace('#versi
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.92';
+const BUILD = 'v1.93';
 // v1.74: if the last session ended in a graphics reset, put what was being built at the time in the log (F9 → Copy settings shows it)
 try { const g = JSON.parse(localStorage.ieGlLost || 'null'); if (g) evLog(`Graphics · last reset (${g.build}, ${g.at.slice(0, 16).replace('T', ' ')}): ${g.was ? 'building the ' + g.was + ' program, ' + g.secs + ' s in' : 'no program was being built'}`); } catch {}                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 /* ---- v1.71: spice tiers and attunement, procedural foes, dogfight upgrades, the Foe intro ---- */
@@ -7553,7 +7555,7 @@ function eye(fb, x, y, w, h, tw, th) {
   // tone-map into the destination
   gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.viewport(x, y, w, h);
   gl.useProgram(P_COMP.p); gl.uniform2f(P_COMP.u.uPx, 1 / tw, 1 / th); { const v = (k) => xr ? 0 : CFG[k], fb = v('fxBlur') * 1.1, fc = v('fxCA'), vig = xr ? (CFG.vrVig || 0) * (.4 + .6 * Math.min(1, bst)) : v('fxVig'); gl.uniform4f(P_COMP.u.uFx, fc ? fc * 1.9 : 0, v('fxGrain') * .09, mbx * fb, mby * fb); gl.uniform1f(P_COMP.u.uFs, fb * mbs); gl.uniform4f(P_COMP.u.uFy, v('fxScan'), CFG.fxBloom, vig, o2Hyp); gl.uniform4f(P_COMP.u.uFz, v('fxGlass'), 0, 0, 0); } gl.uniform3f(P_COMP.u.uJ, Math.max(jk, dbgJ, scE * .22, hlFx * .6) * .9, Math.max(tun, dbgT, hlFx * .26), jumpT + tm + hlT * 2.5); { const fx = sFx * eRx + sFy * eRy + sFz * eRz, fy = sFx * eUx + sFy * eUy + sFz * eUz, fz = Math.max(.15, sFx * eFx + sFy * eFy + sFz * eFz), cl = (v) => Math.max(-.5, Math.min(1.5, v));   // where the ship's nose falls in this eye's picture
-    gl.uniform2f(P_COMP.u.uJc, cl((fx / fz - tL) / (tR - tL)), cl((fy / fz - tB) / (tT - tB))); } if (P_COMP.u.uFc) gl.uniform3f(P_COMP.u.uFc, v126Fc[0], v126Fc[1], v126Fc[2]); if (P_COMP.u.uHt) gl.uniform4f(P_COMP.u.uHt, v126Heat * v126Heat, heatFlare * TUNE.heatPeak, P_PLS ? -TUNE.vigStr : TUNE.vigStr, tm); gl.uniform3f(P_COMP.u.uFl, sux, suy, sux > -.2 && sux < 1.2 && suy > -.2 && suy < 1.2 ? sus * CFG.fxFlare * (csU[0] ? .2 : 1) : 0);
+    gl.uniform2f(P_COMP.u.uJc, cl((fx / fz - tL) / (tR - tL)), cl((fy / fz - tB) / (tT - tB))); } if (P_COMP.u.uFc) { const hk = Math.min(1, hlFl * 2.2), hr = hlFb ? .35 : 1, hg = hlFb ? .6 : .22, hb = hlFb ? 1 : .12; gl.uniform3f(P_COMP.u.uFc, v126Fc[0] + (hr - v126Fc[0]) * hk, v126Fc[1] + (hg - v126Fc[1]) * hk, v126Fc[2] + (hb - v126Fc[2]) * hk); } if (P_COMP.u.uHt) gl.uniform4f(P_COMP.u.uHt, v126Heat * v126Heat, heatFlare * TUNE.heatPeak, P_PLS ? -TUNE.vigStr : TUNE.vigStr, tm); gl.uniform3f(P_COMP.u.uFl, sux, suy, sux > -.2 && sux < 1.2 && suy > -.2 && suy < 1.2 ? sus * CFG.fxFlare * (csU[0] ? .2 : 1) : 0);
   gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, T.hdr.t); gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, bl[0].t); gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, T.ray.t);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   dgStage('hud');
