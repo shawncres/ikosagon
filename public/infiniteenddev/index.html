@@ -727,12 +727,12 @@ function mkSys(id) {
   for (let i = 0; i < 12; i++) s.pal[i] = Math.max(.01, s.pal[i]);
   // v1.47: every system rolls a colour mood, so the galaxy runs from teal to crimson, gold, violet, dreary and dark, rainbow and iridescent.
   // (v1.21 to v1.46 pulled every sky 50-60% toward a colour from the star's near-white temperature, which made them all one mauve.)
-  { const mr = mulberry32(hs(hs(id ^ 0x4D4F4F44) + 0x9E3779B9)), h = mr() < .3 ? mr() * .42 : mr();   // half the time warm through green (red, orange, gold, yellow, lime, green)   // v1.48: every part of the palette is continuous, so no two systems share a look
+  { const mr = mulberry32(hs(hs(id ^ 0x4D4F4F44) + 0x9E3779B9)), h = (() => { const u = mr(); return u < .46 ? -.04 + u / .46 * .2 : (u - .46) / .54; })();   /* v1.91: nearly half of systems are warm (crimson, red, orange, amber: 346° to 58°), the rest run the whole wheel */   // v1.48: every part of the palette is continuous, so no two systems share a look
     const hv = (hh, sa, va) => { hh = ((hh % 1) + 1) % 1; const f = (n) => { const k = (n + hh * 6) % 6; return va - va * sa * Math.max(0, Math.min(k, 4 - k, 1)); }; return [f(5), f(3), f(1)]; };
-    const sp = Math.pow(mr(), 1.6), o1 = (mr() - .5) * (.08 + sp * .95), o2 = (mr() - .5) * (.08 + sp * .95), gl = Math.pow(mr(), 2.6);   // spread: shades of one hue → complementary → triadic; gloom: mostly bright, sometimes very dark
+    const sp = Math.pow(mr(), 1.6), o1r = (mr() - .5) * (.08 + sp * .95), o1 = sp > .38 ? (o1r < 0 ? -1 : 1) * (.2 + .3 * sp) : o1r, o2 = (mr() - .5) * (.08 + sp * .95), gl = Math.pow(mr(), 2.6);   // spread: shades of one hue → complementary → triadic; gloom: mostly bright, sometimes very dark
     const C = [hv(h, .35 + mr() * .6, .55 + mr() * .45), hv(h + o1, .35 + mr() * .6, .45 + mr() * .5), hv(h + o2, .15 + mr() * .6, .7 + mr() * .3)];
     s.moodB = 1.45 - gl * 1.0 + mr() * .15; s.moodS = 1.2 - gl * .6;
-    const rb = Math.max(0, Math.min(1, mr() * 2.2 - 1.6)), ir = mr() < .38 ? .45 + mr() * .55 : 0;   // ~27% of systems carry some rainbow, ~19% some iridescence, in any amount and both at once
+    const rb = Math.max(0, Math.min(1, mr() * 2.2 - 1.85)), ir = mr() < .13 ? .45 + mr() * .55 : 0;   /* v1.91: about 16% carry rainbow and 13% iridescence, so the colour itself shows and the iridescent ones are the special tier; over 45% of systems now hold two distant hues */
     s.moodFx = rb || ir ? 1 + Math.round(rb * 15) + Math.round(ir * 15) / 16 : 0;
     s.mood = `h${(h * 360) | 0} spread ${sp.toFixed(2)} gloom ${gl.toFixed(2)}${rb ? ' rainbow ' + rb.toFixed(2) : ''}${ir ? ' iridescent ' + ir.toFixed(2) : ''}`;
     for (let j = 0; j < 3; j++) for (let c = 0; c < 3; c++) s.pal[j * 3 + c] = Math.max(.01, C[j][c] * .85 + s.pal[j * 3 + c] * .15); }
@@ -3415,20 +3415,27 @@ function syncPR() { if (SYS && SYS.prad) for (let k = 0; k < 3; k++) if (SYS.pra
 // the worlds. The star lies far off along SUNSP. Whatever place you are at, planets, their sizes, their phases and the sun are
 // worked out from where you really are, so the system looks the same system from everywhere.
 let sysG = null, sysO = [0, 0, 0], STARG = [0, 0, 0], sysPL = [];
-const SPREAD = 1.5;
+const SPREAD = 1.5, GCLR = 8, GZONE = 2;   /* v1.91: a gate keeps eight planet radii from every world (the burn, the slow zone and the approach pull are all inside six) and its path out never passes within two radii of one */
+const segD = (A, B, G) => { const x = B[0] - A[0], y = B[1] - A[1], z = B[2] - A[2], l = x * x + y * y + z * z, t = l > 0 ? Math.max(0, Math.min(1, ((G[0] - A[0]) * x + (G[1] - A[1]) * y + (G[2] - A[2]) * z) / l)) : 0; return Math.hypot(A[0] + x * t - G[0], A[1] + y * t - G[1], A[2] + z * t - G[2]); };
 function sysMap() {
   const pd = SYS.pd || [];
-  sysG = [0, 1, 2].map((k) => { const d = pd[k], w = (SYS.pr || [])[k]; if (!d || !(w > 0)) return null; const D = PR[k] / w * TUNE.spread; return [d[0] * D, d[1] * D, d[2] * D]; });
+  sysG = [0, 1, 2].map((k) => { const d = pd[k], w = (SYS.pr || [])[k]; if (!d || !(w > 0)) return null; const D = Math.max(PR[k] / w * TUNE.spread, PR[k] * GCLR * 1.05); return [d[0] * D, d[1] * D, d[2] * D]; });
   const ds = sysG.filter(Boolean).map((g) => Math.hypot(g[0], g[1], g[2])), Dm = ds.length ? ds.reduce((a, b) => a + b, 0) / ds.length : 3, Dx = ds.length ? Math.max(...ds) : 3;
   STARG = [SUNSP[0] * (Dx * 2.6 + 6), SUNSP[1] * (Dx * 2.6 + 6), SUNSP[2] * (Dx * 2.6 + 6)];
+  const clrOk = (O) => sysG.every((g, k) => !g || Math.hypot(O[0] - g[0], O[1] - g[1], O[2] - g[2]) >= PR[k] * GCLR);
+  const pathOk = (O) => !sysG.some((g, k) => g && segD(O, [0, 0, 0], g) < PR[k] * GZONE);
+  const settle = (O) => { for (let n = 0; n < 4 && !clrOk(O); n++) sysG.forEach((g, k) => { if (!g) return; const x = O[0] - g[0], y = O[1] - g[1], z = O[2] - g[2], d = Math.hypot(x, y, z) || 1, m = PR[k] * GCLR * 1.05; if (d < m) O = [g[0] + x / d * m, g[1] + y / d * m, g[2] + z / d * m]; }); return O; };
   const place = (loc) => {
     if (!loc) return [0, 0, 0];
     const L = SYS.locs[loc] || {}, R = mulberry32((Math.imul((SYS.id >>> 0) ^ 0x9e37, 2654435761) ^ Math.imul(loc + 1, 40503)) >>> 0), rv = () => { const z = R() * 2 - 1, a = R() * 6.283, q = Math.sqrt(1 - z * z); return [q * Math.cos(a), z, q * Math.sin(a)]; };
-    if (L.body >= 0 && sysG[L.body]) { const G = sysG[L.body], v = rv(), u = nrm([SUNSP[0] * .8 + v[0], SUNSP[1] * .8 + v[1] * .5, SUNSP[2] * .8 + v[2]]), r = PR[L.body] * (TUNE.orbitMin + (TUNE.orbitMin * .85) * R());   // in orbit, mostly on the sunlit side (v1.54: farther out, 6-11 radii by default)
-      return [G[0] + u[0] * r, G[1] + u[1] * r, G[2] + u[2] * r]; }
+    let last = null;
+    if (L.body >= 0 && sysG[L.body]) { const G = sysG[L.body];
+      for (let t = 0; t < 16; t++) { const v = rv(), u = nrm([SUNSP[0] * .8 + v[0], SUNSP[1] * .8 + v[1] * .5, SUNSP[2] * .8 + v[2]]), r = PR[L.body] * (Math.max(TUNE.orbitMin, GCLR) + (Math.max(TUNE.orbitMin, GCLR) * .85) * R());   // in orbit, mostly on the sunlit side (v1.54: farther out, 6-11 radii by default; v1.91: never nearer than eight)
+        const O = [G[0] + u[0] * r, G[1] + u[1] * r, G[2] + u[2] * r]; last = O; if (clrOk(O) && pathOk(O)) return O; }
+      return settle(last); }
     for (let t = 0; t < 12; t++) { const v = rv(), r = Dm * (.45 + .7 * R()), O = [v[0] * r, v[1] * r * .35, v[2] * r];   // out between the worlds, near the system's plane
-      if (sysG.every((g, k) => !g || Math.hypot(O[0] - g[0], O[1] - g[1], O[2] - g[2]) > PR[k] * TUNE.orbitMin * 1.7)) return O; }
-    return [0, Dm * .4, 0];
+      if (sysG.every((g, k) => !g || Math.hypot(O[0] - g[0], O[1] - g[1], O[2] - g[2]) > PR[k] * TUNE.orbitMin * 1.7) && clrOk(O) && pathOk(O)) return O; }
+    return settle([0, Dm * .4, 0]);
   };
   sysO = place(SYS.loc); sysPL = SYS.locs.map((l, i) => l.atm ? null : place(i));
 }
@@ -6526,7 +6533,7 @@ if (PSC && !dgOff('bg')) { try { SKYA_ST = progStart(TRI_V, SKYS.replace('#versi
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.90';
+const BUILD = 'v1.91';
 // v1.74: if the last session ended in a graphics reset, put what was being built at the time in the log (F9 → Copy settings shows it)
 try { const g = JSON.parse(localStorage.ieGlLost || 'null'); if (g) evLog(`Graphics · last reset (${g.build}, ${g.at.slice(0, 16).replace('T', ' ')}): ${g.was ? 'building the ' + g.was + ' program, ' + g.secs + ' s in' : 'no program was being built'}`); } catch {}                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 /* ---- v1.71: spice tiers and attunement, procedural foes, dogfight upgrades, the Foe intro ---- */
