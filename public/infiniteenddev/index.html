@@ -6339,9 +6339,9 @@ function v126Draw(vd) {
   const k = SYS.atm - 1, kind = tKind(), oa = [SYS.pa[k * 4], SYS.pa[k * 4 + 1], SYS.pa[k * 4 + 2]], ob = [SYS.pb[k * 3], SYS.pb[k * 3 + 1], SYS.pb[k * 3 + 2]];
   const set = (P) => { const u = P.u; gl.useProgram(P.p); gl.uniform4f(u.uK, tPar[0], tPar[1], tPar[2], tPar[3] > -1e8 ? tPar[3] : -1e9); gl.uniform4f(u.uT, kind, 0, TGB, tSeed);
     gl.uniform3f(u.uCam, px + eox, py + eoy, pz + eoz); if (u.uCv) gl.uniform4f(u.uCv, cC[0], cC[1], tRm, 1); gl.uniform3f(u.uOa, ...oa); gl.uniform3f(u.uOb, ...ob); gl.uniform3f(u.uAir, ...v126Air); if (u.uPMt) gl.uniformMatrix3fv(u.uPMt, false, v126PM); if (u.uSkT) gl.uniform4f(u.uSkT, TUNE.skyPale, TUNE.skyBright, TUNE.skyTwi, TUNE.skyHaze); if (u.uSkT2) gl.uniform4f(u.uSkT2, TUNE.grRelief, TUNE.waterShine, TUNE.waterSky, TUNE.waterWave); if (u.uTf) gl.uniform1f(u.uTf, v126tf); if (u.uTe) gl.uniform1f(u.uTe, tss(TCLOUD - 2500, TCLOUD + 200, py)); };
-  set(TP); const lv = LV >= 1 ? 7 : 8, rMax = 12 * (1 << (lv - 1)) * 32;
+  set(TP); const lv = xr ? 6 : LV >= 1 ? 7 : 8, rMax = 12 * (1 << (lv - 1)) * 32, hg = Math.max(1, py - tGround(px, pz)); let l0 = 0; while (l0 < lv - 3 && 24 * (1 << l0) <= hg * .0024) l0++;   /* v1.96: the ground mesh was the whole cost of planet flight (about 70% of a frame, twice over in a headset). A headset draws six rings (12 km), and the rings finer than a pixel at this height are skipped: the first one drawn is a full square, so there is no hole. */
   gl.uniform4f(TP.u.uC, TUNE.grFog, tPar[5], 1, rMax);   // v1.33: denser aerial haze, so height reads
-  for (let l = 0; l < lv; l++) { gl.uniform4f(TP.u.uLv, 12 * (1 << l), l === lv - 1 ? 1 : 0, 0, 0); gl.bindVertexArray(l ? tVA1 : tVA); gl.drawElements(gl.TRIANGLES, l ? tN1 : tN0, gl.UNSIGNED_SHORT, 0); }
+  for (let l = l0; l < lv; l++) { gl.uniform4f(TP.u.uLv, 12 * (1 << l), l === lv - 1 ? 1 : 0, 0, 0); gl.bindVertexArray(l > l0 ? tVA1 : tVA); gl.drawElements(gl.TRIANGLES, l > l0 ? tN1 : tN0, gl.UNSIGNED_SHORT, 0); }
   if (vCnt && VP && TUNE.trees) { set(VP); gl.bindVertexArray(vVA); gl.drawArraysInstanced(gl.TRIANGLES, 0, vN, vCnt); }
   gl.bindVertexArray(VA0); gl.depthFunc(gl.LEQUAL);
   if (!dT) gl.disable(gl.DEPTH_TEST); if (cF) gl.enable(gl.CULL_FACE); if (!bl) gl.disable(gl.BLEND); gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE);
@@ -6562,7 +6562,7 @@ if (PSC && !dgOff('bg')) { try { SKYA_ST = progStart(TRI_V, SKYS.replace('#versi
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.95';
+const BUILD = 'v1.96';
 // v1.74: if the last session ended in a graphics reset, put what was being built at the time in the log (F9 → Copy settings shows it)
 try { const g = JSON.parse(localStorage.ieGlLost || 'null'); if (g) evLog(`Graphics · last reset (${g.build}, ${g.at.slice(0, 16).replace('T', ' ')}): ${g.was ? 'building the ' + g.was + ' program, ' + g.secs + ' s in' : 'no program was being built'}`); } catch {}                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 /* ---- v1.71: spice tiers and attunement, procedural foes, dogfight upgrades, the Foe intro ---- */
@@ -7732,6 +7732,13 @@ function xrMotion(src, grip, onSteer, xf, dt) {
   return true;
 }
 let frEma = 0, boostWas = 0, rumHt = 0, boostLk = 0; const Z12 = new Float32Array(12);
+let xrQ = .8, xrHold = 0;
+/* v1.96: a headset used to render every eye at a fixed 80% whatever the load, and a planet's sky, cloud and ground cost far more than space: it crawled. The eye buffer now trades resolution to hold the frame rate (a is the mean frame time in ms): down fast when late, back up slowly when there is room. */
+function xrAdapt(a, now) {
+  const tg = 1000 / ((xr && xr.frameRate) || 72);
+  if (a > tg * 1.12 && xrQ > .45) { xrQ = Math.max(.45, xrQ * (a > tg * 1.7 ? .8 : .9)); xrHold = now + 4000; }
+  else if (a < tg * .88 && xrQ < .8 && now > xrHold) { xrQ = Math.min(.8, xrQ * 1.05); xrHold = now + 2500; }
+}
 function frame(now, xf) {
   if (!xf !== !xr) return;                                   // a callback left over from the other display loop
   (xr || window).requestAnimationFrame(frame);
@@ -7743,6 +7750,7 @@ function frame(now, xf) {
   acc += raw; nf++;
   if (nf >= 40) {                                            // hold the frame rate by trading resolution
     const a = acc / nf * 1000; fps = 1000 / a; acc = 0; nf = 0;
+    if (xr) xrAdapt(a, now);
     if (!TEST && !document.hidden && !xr) {
       if (a > 21 && S > .45) { S = Math.max(.45, S * .86); hold = now + (cool = Math.min(cool * 2, 120000)); resize(); }
       else if (LV < 2 && !started && tm > 4 && (a > 45 || a > 30 && S <= .45)) { keep('esLevel', LV + 1); location.reload(); }   // far too slow: step the detail down while the menu is still up
@@ -7955,7 +7963,7 @@ function frame(now, xf) {
         const cx = Math.max(-2.6, Math.min(2.6, dx)), cz = Math.max(-1.4, Math.min(3.4, .12 + dz));
         const cy = Math.max(-.72, Math.min(1.28, .22 + dy + lift));
         cex = sRx * cx + sUx * cy - sFx * cz; cey = sRy * cx + sUy * cy - sFy * cz; cez = sRz * cx + sUz * cy - sFz * cz; }
-      eye(bl.framebuffer, vp.x, vp.y, vp.width, vp.height, Math.round(vp.width * .8), Math.round(vp.height * .8));
+      eye(bl.framebuffer, vp.x, vp.y, vp.width, vp.height, Math.round(vp.width * xrQ), Math.round(vp.height * xrQ));
     } }
   } else {
     eRx = sRx; eRy = sRy; eRz = sRz; eUx = sUx; eUy = sUy; eUz = sUz; eFx = sFx; eFy = sFy; eFz = sFz;
