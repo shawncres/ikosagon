@@ -42,7 +42,8 @@ p, h1, ul { margin: 0; padding: 0; }
 #ldsky::after { background-image: radial-gradient(1px 1px at 47px 138px,#cfe3ff,transparent),radial-gradient(1px 1px at 356px 340px,#fff,transparent),radial-gradient(1px 1px at 31px 374px,#ffe9d0,transparent),radial-gradient(1px 1px at 331px 295px,#cfe3ff,transparent),radial-gradient(1px 1px at 145px 366px,#cfe3ff,transparent),radial-gradient(1px 1px at 342px 177px,#fff,transparent),radial-gradient(1px 1px at 236px 181px,#dfe8ff,transparent),radial-gradient(1px 1px at 312px 59px,#cfe3ff,transparent),radial-gradient(1px 1px at 30px 111px,#ffe9d0,transparent),radial-gradient(1px 1px at 66px 378px,#dfe8ff,transparent),radial-gradient(1px 1px at 203px 200px,#cfe3ff,transparent),radial-gradient(1px 1px at 41px 85px,#cfe3ff,transparent),radial-gradient(1px 1px at 205px 281px,#ffe9d0,transparent),radial-gradient(1px 1px at 70px 220px,#ffe9d0,transparent),radial-gradient(1px 1px at 361px 212px,#ffe9d0,transparent),radial-gradient(1px 1px at 349px 194px,#dfe8ff,transparent),radial-gradient(1px 1px at 77px 42px,#dfe8ff,transparent),radial-gradient(1px 1px at 77px 118px,#dfe8ff,transparent); background-size: 390px 390px; opacity: .55; animation: ldd 260s linear infinite reverse; }
 @keyframes ldd { to { transform: translate3d(-240px, -120px, 0); } }
 #bf { transition: transform .45s ease-out; }
-.g #m { opacity: 0; visibility: hidden; }
+.g #m, .rp #m { opacity: 0; visibility: hidden; }
+.att #m { opacity: .38; transition: opacity 1.6s, visibility .5s; }
 #col { position: relative; padding: 0 0 8vh 6vw; }
 #col::before { content: ""; position: absolute; left: 3.2vw; top: 0; bottom: 8vh; width: 1px; background: linear-gradient(var(--t), #35f2d600); }
 #kick { font-size: .72em; letter-spacing: .5em; color: var(--a); text-transform: uppercase; }
@@ -331,13 +332,14 @@ function dgPanel(head, sus) {
     ${sus && sus.length ? `<p><b>Likely culprits</b>, most likely first:</p><ol>${sus.map((o) => `<li>${o.name}: ${o.why}${o.sw ? '' : ' (no switch)'}</li>`).join('')}</ol>` : ''}
     <p><b>Switches</b> (take effect after Reload; kept until you change them). A switch outlined in amber is a suspect.</p>${sw}
     ${live ? `<p style="margin-top:18px"><b>Last measured frame</b> (GPU time per stage)</p><table>${live}</table>` : ''}
-    <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap"><button id="dgr" style="font:inherit;padding:8px 20px;background:#123;color:#cfe;border:1px solid #4ac;cursor:pointer">Reload</button><button id="dgc" style="font:inherit;padding:8px 20px;background:#123;color:#cfe;border:1px solid #4ac;cursor:pointer">Copy report</button><button id="dgx" style="font:inherit;padding:8px 20px;background:none;color:#cfe;border:1px solid #ffffff33;cursor:pointer">Close</button></div>
+    <div style="display:flex;gap:10px;margin-top:20px;flex-wrap:wrap"><button id="dgr" style="font:inherit;padding:8px 20px;background:#123;color:#cfe;border:1px solid #4ac;cursor:pointer">Reload</button><button id="dgc" style="font:inherit;padding:8px 20px;background:#123;color:#cfe;border:1px solid #4ac;cursor:pointer">Copy report</button><button id="dgf" style="font:inherit;padding:8px 20px;background:#123;color:#cfe;border:1px solid #4ac;cursor:pointer">Flights</button><button id="dgx" style="font:inherit;padding:8px 20px;background:none;color:#cfe;border:1px solid #ffffff33;cursor:pointer">Close</button></div>
     <p style="opacity:.55;font-size:12px;margin-top:14px">F10, the &#96; key or the TEST button (top left) opens this panel. The report goes to Shawn's builder; it holds no personal data.</p></div>`;
   d.querySelectorAll('button[data-k]').forEach((b) => b.onclick = () => { const k = b.dataset.k; if (DGOFF.has(k)) DGOFF.delete(k); else DGOFF.add(k); try { localStorage.ieDiagOff = [...DGOFF].join(','); } catch {} const keep = DG.gateGo; dgPanel(head, sus); DG.gateGo = keep; });
   if (DG.gateGo) { const st = document.createElement('button'); st.textContent = 'Start'; st.style.cssText = 'font:inherit;padding:8px 28px;background:#164;color:#dfe;border:1px solid #6c8;cursor:pointer'; st.onclick = () => { const g = DG.gateGo; DG.gateGo = null; d.remove(); g(); }; d.querySelector('#dgr').before(st); setTimeout(() => st.focus(), 50); }
   d.querySelector('#dgr').onclick = () => { try { localStorage.ieDiagHB = JSON.stringify(dgSnap(1)); } catch {} location.reload(); };
   d.querySelector('#dgc').onclick = (e) => { const t = dgReport(head); (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(() => { e.target.textContent = 'Copied'; }, () => { const ta = document.createElement('textarea'); ta.value = t; ta.style.cssText = 'width:100%;height:220px;margin-top:12px'; d.firstChild.appendChild(ta); ta.select(); }); };
   d.querySelector('#dgx').onclick = () => d.remove();
+  d.querySelector('#dgf').onclick = () => { if (FL) FL.panel(); };
   document.body.appendChild(d); try { document.exitPointerLock && document.exitPointerLock(); } catch {}
 }
 addEventListener('keydown', (e) => { if ((e.code === 'F10' || e.code === 'Backquote') && DGT) { e.preventDefault(); e.stopImmediatePropagation(); const s = dgSnap(0); dgPanel('', dgSuspects(s)); } }, true);
@@ -2361,6 +2363,11 @@ let gr2 = 0, ldx = 0, ldy = 0, ldz = 0;
 const BZ = { n: 0, x: [0, 0, 0], y: [0, 0, 0], z: [0, 0, 0], r: [0, 0, 0], lx: [0, 0, 0], ly: [0, 0, 0], lz: [0, 0, 0], ln: 0, q: 0, T: 0, cut: 0, shell: 0 }, BZSH = 320;
 const bzIn = (x, y, z, m) => { for (let b = 0; b < BZ.n; b++) { const dx = x - BZ.x[b], dy = y - BZ.y[b], dz = z - BZ.z[b], r = BZ.r[b] + (m || 0); if (dx * dx + dy * dy + dz * dz < r * r) return true; } return false; };
 function bzPush(o) { for (let b = 0; b < BZ.n; b++) { let dx = o.x - BZ.x[b], dy = o.y - BZ.y[b], dz = o.z - BZ.z[b]; const d = Math.hypot(dx, dy, dz) || 1, r = BZ.r[b] + 120; if (d < r) { o.x = BZ.x[b] + dx / d * r; o.y = BZ.y[b] + dy / d * r; o.z = BZ.z[b] + dz / d * r; if (o.wp) o.wp = [o.x, o.y, o.z]; } } }
+/* v1.97: a layer's cells are built nearest first, so when the vertex budget cuts a list short (a headset gets half a frame's budget per eye) it drops the farthest cells, the same ones every frame, instead of whatever came last in the scan. */
+const COFF = new Map();
+function cellOrder(H) { let a = COFF.get(H); if (a) return a; const H2 = (H + .5) * (H + .5), l = [];
+  for (let k = -H; k < H; k++) for (let j = -H; j < H; j++) for (let i = -H; i < H; i++) { const r = i * i + j * j + k * k; if (r <= H2) l.push([i, j, k, r]); }
+  l.sort((p, q) => p[3] - q[3] || p[2] - q[2] || p[1] - q[1] || p[0] - q[0]); a = new Int16Array(l.length * 4); l.forEach((e, n) => a.set(e, n * 4)); COFF.set(H, a); return a; }
 function upd(L) {
   const C = L.C, N = L.N, H = N / 2;
   let lk = 0; if (L.lead) { const sp = Math.hypot(ldx, ldy, ldz); lk = sp > 1 ? Math.min(.7, .4 * L.R / sp) : 0; }
@@ -2370,9 +2377,8 @@ function upd(L) {
   if (cx === L.cx && cy === L.cy && cz === L.cz) return;
   L.cx = cx; L.cy = cy; L.cz = cz; L.mx = pm(cx, N); L.my = pm(cy, N); L.mz = pm(cz, N);
   L.n = 0; for (const s of L.slaves) s.n = 0;
-  const H2 = (H + .5) * (H + .5);
-  for (let k = -H; k < H; k++) for (let j = -H; j < H; j++) for (let i = -H; i < H; i++) {
-    if ((gr2 = i * i + j * j + k * k) > H2) continue;
+  const so = cellOrder(H);
+  for (let q = 0; q < so.length; q += 4) { const i = so[q], j = so[q + 1], k = so[q + 2]; gr2 = so[q + 3];
     if (BZ.n) { const m = C * .87, xc = (cx + i + .5) * C, yc = (cy + j + .5) * C, zc = (cz + k + .5) * C; let zr = 0, sh = 0; for (let b = 0; b < BZ.n; b++) { const dx = xc - BZ.x[b], dy = yc - BZ.y[b], dz = zc - BZ.z[b], d2 = dx * dx + dy * dy + dz * dz, r = BZ.r[b] + m; if (d2 < r * r) { zr = 1; break; } const rs = r + BZSH; if (d2 < rs * rs) sh = 1; }
       if (zr) { BZ.cut++; continue; } if (sh && L.shell) { BZ.shell++; L.shell(L, cx + i, cy + j, cz + k, pm(cx + i, N), pm(cy + j, N), pm(cz + k, N)); continue; } }
     L.gen(L, cx + i, cy + j, cz + k, pm(cx + i, N), pm(cy + j, N), pm(cz + k, N));
@@ -3981,6 +3987,7 @@ function meteorTick(dt, fly) {
 let plA = null, plOn = 0, plNext = 75, plEnd = 0, plVol = 0, plBad = 0, plWant = .3, plLast = -1;
 const plLevel = (v) => { plWant = Math.max(0, Math.min(1, v)); };   // the one place the game sets how loud the stream is: it dips for hails and fights and comes back
 function playlistTick(dt, fly) {
+  if (FL && FL.rp) return;
   if (!CFG.pl || !fly || plBad > 3 || !AC || AC.state !== 'running') return;
   if (!plOn) {
     plNext -= dt; if (plNext > 0) return; plNext = 150 + Math.random() * 240;
@@ -4038,6 +4045,7 @@ function radioFx() {
 function radioJump() { if (CFG.radio && rdA && rdList) radioNext(1); }      // launch and every warp: another song, somewhere in its middle
 let rdWas = 0, rdHold = false;
 function radioTick(dt) {
+  if (FL && FL.rp) return;
   const fly = document.body.className[0] === 'g'; rdOn = 0;
   if (rdFx && (!CFG.radio || rdHold || rdA.paused)) try { rdFx.ng.gain.setTargetAtTime(0, AC.currentTime, .05); } catch {}
   if (!CFG.radio) { if (rdA && !rdA.paused) rdA.pause(); return; }
@@ -6562,7 +6570,7 @@ if (PSC && !dgOff('bg')) { try { SKYA_ST = progStart(TRI_V, SKYS.replace('#versi
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.96';
+const BUILD = 'v1.97';
 // v1.74: if the last session ended in a graphics reset, put what was being built at the time in the log (F9 → Copy settings shows it)
 try { const g = JSON.parse(localStorage.ieGlLost || 'null'); if (g) evLog(`Graphics · last reset (${g.build}, ${g.at.slice(0, 16).replace('T', ' ')}): ${g.was ? 'building the ' + g.was + ' program, ' + g.secs + ' s in' : 'no program was being built'}`); } catch {}                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 /* ---- v1.71: spice tiers and attunement, procedural foes, dogfight upgrades, the Foe intro ---- */
@@ -6735,7 +6743,7 @@ function newUniverse() {
   try { if (idb) idb.transaction('kv', 'readwrite').objectStore('kv').put(ST, 'state'); else localStorage.esState = JSON.stringify(ST); } catch {}
   setTimeout(() => location.reload(), 400);
 }
-function save() { clearTimeout(saveT); saveT = setTimeout(() => { try { if (idb) idb.transaction('kv', 'readwrite').objectStore('kv').put(ST, 'state'); else localStorage.esState = JSON.stringify(ST); } catch {} }, 1000); }
+function save() { clearTimeout(saveT); saveT = setTimeout(() => { if (FL && FL.rp) return; try { if (idb) idb.transaction('kv', 'readwrite').objectStore('kv').put(ST, 'state'); else localStorage.esState = JSON.stringify(ST); } catch {} }, 1000); }
 if (!TEST || QS.has('keep')) await loadState();
 SYS = mkSys(sysIdAt(ST.sec[0], ST.sec[1], ST.sec[2])); SYS.sec = ST.sec;
 await step(.18, 'Pouring nebulae into the void…');
@@ -6852,6 +6860,7 @@ const cellHas = (salt, p) => (C, x, y, z) => (cellRnd(x, y, z, salt), hx(1) < p 
 // You always come out of that location's warp gate, which sits at the origin of its space.
 const hooks = [];
 function arrive(sec, loc, quiet) {
+  if (FL) FL.arr(sec, loc);
   const id = sysIdAt(sec[0], sec[1], sec[2]);
   if (!SYS || SYS.id !== id) SYS = mkSys(id);
   SYS.sec = sec; setLoc(SYS, loc || 0); if (!keepNeb) bakeNebula(SYS.seed); keepNeb = 0;    // each place has its own clouds
@@ -7044,7 +7053,7 @@ const touch = (e) => {
 for (const t of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) cv.addEventListener(t, touch, { passive: false });
 for (const [t, v] of [['touchstart', 1], ['touchend', 0], ['touchcancel', 0]]) $('fire').addEventListener(t, (e) => { e.preventDefault(); tFire = v; if (v) fireTap = 1; }, { passive: false });
 
-const tip = (t, ms = 7000) => { pipLog(t); evLog(t); hudTipS = t; hudTipT = performance.now() + Math.min(ms, 6000); const e = $('tip'); e.textContent = t; e.className = 'on'; clearTimeout(tip.t); tip.t = setTimeout(() => { e.className = ''; }, ms); };
+const tip = (t, ms = 7000) => { if (FL) FL.tip(t); pipLog(t); evLog(t); hudTipS = t; hudTipT = performance.now() + Math.min(ms, 6000); const e = $('tip'); e.textContent = t; e.className = 'on'; clearTimeout(tip.t); tip.t = setTimeout(() => { e.className = ''; }, ms); };
 function go() {
   if (!started) setTimeout(() => cue('theme', 1), 9000);     // the first flight opens with the theme
   B.className = 'g'; if (!started) setTimeout(bgBuild, 3000); started = 1; $('launch').textContent = 'Back to the dark'; audio(); cv.focus();
@@ -7425,7 +7434,7 @@ function draw(P, L, m) {
   if (cnt > 1 && m.n * cnt > 150000) { const left = Math.floor((VBUD / eyeN - (verts - eyeV0)) / m.n); if (left < cnt) { cnt = Math.max(0, left); if (cnt < 1) return; } }
   gl.useProgram(P.p);
   const u = P.u;
-  gl.uniform3f(u.uCell, L.mx, L.my, L.mz); gl.uniform3f(u.uCam, L.fx + eox, L.fy + eoy, L.fz + eoz); gl.uniform3f(u.uCN, L.C, L.N, L.R);
+  gl.uniform3f(u.uCell, L.mx, L.my, L.mz); gl.uniform3f(u.uCam, L.fx + eox, L.fy + eoy, L.fz + eoz); gl.uniform3f(u.uCN, L.C, L.N, cnt < L.n ? L.R * Math.cbrt(cnt / L.n) : L.R);   /* v1.97: a cut list shrinks its fade radius with it, so the last rocks thin out instead of vanishing */
   gl.bindVertexArray(vaoFor(L, m)); gl.drawElementsInstanced(gl.TRIANGLES, m.n, gl.UNSIGNED_SHORT, 0, cnt);
 }
 const fam3 = (P, Ls, ms) => { draw(P, Ls[0], ms[0]); draw(P, Ls[1], ms[1]); draw(P, Ls[2], ms[2]); };
@@ -7939,6 +7948,7 @@ function frame(now, xf) {
 
   /* look-ahead: the rock lists are centred ahead of the ship by up to .7 s of travel (smoothed), so at boost the rocks in front stay alive and in range */
   { const k = Math.min(1, dt * 2.2); ldx += (vx - ldx) * k; ldy += (vy - ldy) * k; ldz += (vz - ldz) * k; }
+  if (FL) FL.tick(rdt);
   bzUpdate(dt);
   for (let i = 0; i < LAYERS.length; i++) upd(LAYERS[i]);
   UPX = px; UPY = py; UPZ = pz;
@@ -8031,6 +8041,363 @@ if (PSC && !dgOff('bg')) {
   { const sl = BQT.slice().sort((a, b) => b[1] - a[1]).slice(0, 4).map((b) => `${b[0]} ${b[1]} ms`).join(' · '); evLog(`Load · slowest builds: ${sl}`); }
   PH = null; bqFast = 0;
 }
+/* ===== v1.97 FLIGHT RECORDER, REPLAY AND ATTRACT MODE (test builds only: FL is null elsewhere) =====
+   A flight is one JSON object, schema v1, built to be training data for a small pathing model:
+     v:1  b:build  id  pilot:'human' now, 'ai' for machine flights later (streams play every pilot)  dev:random device id (no personal data)  t0:start epoch ms  dur:seconds
+     seed:master seed (the galaxy)  sys:system id  sysN:name  sec:[x,y,z] sector  loc:place index at the start
+     cfg:{CFG fields without key binds, _cock:cockpit}  wpn:weapon  hdr:{hull,spice,fuel,o2,wen,credits}
+     k:[per-column scale]  s:flat int array, 32 columns per sample, 10 Hz, every column delta coded except column 15 (flags)
+       0 dt ms | 1-3 ship x y z (local frame) | 4-6 system position | 7-10 attitude quaternion x y z w | 11-13 velocity
+       14 throttle | 15 flags | 16 hull | 17 spice | 18 fuel | 19 hyperlight fx | 20 boost fx | 21 radio level | 22 stream level
+       23 credits | 24 cargo total | 25-28 spice meters SP.n | 29 mouse x | 30 mouse y | 31 steer
+     flags bits: 1 boost | 2 fire | 4 hyperlight | 8 hyperlight cruise | 16 in atmosphere | 32 hover | 64 bullet time
+       128 entering | 256 leaving | 512 galaxy map open | 1024 inventory open
+     e:[[ms,code,...]] discrete events: A arrive sec0 sec1 sec2 loc | T tip text | R radio url title offset(0.1s) on
+       P stream url offset(0.1s) on title | S settings json | W weapon | E flag edge bit value | H hull change | C credits change | M cargo change
+   Recording costs one small typed-array write per sample; nothing is allocated per frame. Replay never touches saves or progress. */
+var FL = !DGT ? null : (() => {
+  const KI = 'ieFlIdx', KP = 'ieFlD_', MAXN = 10, CAP = 2400000, MAXS = 480, NC = 32, MAXE = 4000;
+  const KS = [1, 10, 10, 10, 1e6, 1e6, 1e6, 2000, 2000, 2000, 2000, 10, 10, 10, 100, 1, 1, 10, 10, 100, 100, 100, 100, 1, 1, 1, 1, 1, 1, 100, 100, 100];
+  const BIG = new Float64Array(Math.ceil(MAXS * 10.5) * NC), CUR = new Float64Array(NC), PRV = new Float64Array(NC);
+  const rj = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
+  const o = { rec: 0, rp: 0, up: DGT && !TEST, idle: 20, att: 0, stm: null, srv: null, err: 0, nS: 0, last: null };
+  let fr = null, acc = 0, ns = 0, idleT = 0, pollT = 0, pq = [0, 0, 0, 1], lastFl = 0, lastCfg = '', lastW = -1, lastRd = null, lastPl = null;
+  const dev = () => { let d = rj('ieFlDev'); if (!d) { d = Math.random().toString(36).slice(2, 12); try { localStorage.setItem('ieFlDev', JSON.stringify(d)); } catch {} } return d; };
+  const trk = (u) => { if (rdList) for (const t of rdList) if (rel(t.url) === u) return String(t.title || '').slice(0, 30); return ''; };
+  const rel = (u) => { u = String(u || ''); return u.startsWith(location.origin) ? u.slice(location.origin.length) : u; };
+  const b64 = (u8) => { let s = ''; for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192)); return btoa(s); };
+  const unb = (s) => { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
+  const gz = async (str) => b64(new Uint8Array(await new Response(new Blob([str]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer()));
+  const ungz = async (s) => new Response(new Blob([unb(s)]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+  const cfgNow = () => { const c = {}; for (const k in CFG) if (k !== 'keys') c[k] = CFG[k]; c._cock = cockpit ? 1 : 0; return c; };
+  const cargoN = () => { let n = 0; for (const v of ST.cargo) n += v; return n; };
+  const flagsNow = () => (bst > .5 ? 1 : 0) | (mFire || tFire || xFire ? 2 : 0) | (hl ? 4 : 0) | (hl && hlFx > .8 ? 8 : 0) | (SYS.atm ? 16 : 0) | (hvOn ? 32 : 0) | (btT > 0 ? 64 : 0) | (entLock ? 128 : 0) | (exCommit ? 256 : 0) | (jpOpen ? 512 : 0) | (invOpen ? 1024 : 0);
+  function quat() {
+    const m00 = sRx, m10 = sRy, m20 = sRz, m01 = sUx, m11 = sUy, m21 = sUz, m02 = -sFx, m12 = -sFy, m22 = -sFz, tr = m00 + m11 + m22; let x, y, z, w, s;
+    if (tr > 0) { s = Math.sqrt(tr + 1) * 2; w = s / 4; x = (m21 - m12) / s; y = (m02 - m20) / s; z = (m10 - m01) / s; }
+    else if (m00 > m11 && m00 > m22) { s = Math.sqrt(1 + m00 - m11 - m22) * 2; w = (m21 - m12) / s; x = s / 4; y = (m01 + m10) / s; z = (m02 + m20) / s; }
+    else if (m11 > m22) { s = Math.sqrt(1 + m11 - m00 - m22) * 2; w = (m02 - m20) / s; x = (m01 + m10) / s; y = s / 4; z = (m12 + m21) / s; }
+    else { s = Math.sqrt(1 + m22 - m00 - m11) * 2; w = (m10 - m01) / s; x = (m02 + m20) / s; y = (m12 + m21) / s; z = s / 4; }
+    if (x * pq[0] + y * pq[1] + z * pq[2] + w * pq[3] < 0) { x = -x; y = -y; z = -z; w = -w; }
+    pq[0] = x; pq[1] = y; pq[2] = z; pq[3] = w;
+  }
+  function begin() {
+    fr = { v: 1, b: BUILD, pilot: 'human', id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), dev: dev(), t0: Date.now(), dur: 0, seed: MASTER >>> 0, sys: SYS.id, sysN: SYS.name, sec: ST.sec.slice(), loc: SYS.loc,
+      cfg: cfgNow(), wpn, hdr: { hull: ST.hull, spice: ST.spice, fuel: ST.fuel, o2: ST.o2, wen: ST.wen, credits: ST.credits }, k: KS, s: null, e: [], t: 0 };
+    ns = 0; acc = .1; pollT = 0; PRV.fill(0); lastCfg = JSON.stringify(fr.cfg); lastW = wpn; lastFl = 0; lastRd = null; lastPl = null; pq[0] = pq[1] = pq[2] = 0; pq[3] = 1;
+    fr.e.push([0, 'A', ST.sec[0], ST.sec[1], ST.sec[2], SYS.loc]);
+    o.rec = 1;
+  }
+  function sample() {
+    const c = CUR, ms = Math.round(fr.t * 1000); quat();
+    c[0] = ms; c[1] = px * 10; c[2] = py * 10; c[3] = pz * 10; c[4] = sysS[0] * 1e6; c[5] = sysS[1] * 1e6; c[6] = sysS[2] * 1e6;
+    c[7] = pq[0] * 2000; c[8] = pq[1] * 2000; c[9] = pq[2] * 2000; c[10] = pq[3] * 2000; c[11] = vx * 10; c[12] = vy * 10; c[13] = vz * 10;
+    c[14] = thr * 100; const fl = flagsNow(); c[15] = fl; c[16] = ST.hull; c[17] = (ST.spice || 0) * 10; c[18] = (ST.fuel || 0) * 10; c[19] = hlFx * 100; c[20] = bst * 100; c[21] = rdVol * 100; c[22] = plVol * 100;
+    c[23] = ST.credits; c[24] = cargoN(); c[25] = SP.n[0]; c[26] = SP.n[1]; c[27] = SP.n[2]; c[28] = SP.n[3]; c[29] = (mxn || 0) * 100; c[30] = (myn || 0) * 100; c[31] = (steer || 0) * 100;
+    const b = ns * NC; if (b + NC > BIG.length) { finish(); return; }
+    for (let i = 0; i < NC; i++) { const q = Math.round(c[i]); BIG[b + i] = i === 15 ? q : q - PRV[i]; PRV[i] = q; }
+    BIG[b] = ms - (ns ? PRV_T : 0); PRV_T = ms; ns++;
+    if (ns > 1) {
+      const ch = fl ^ lastFl; if (ch) for (let b2 = 1; b2 <= 1024; b2 <<= 1) if (ch & b2 && fr.e.length < MAXE) fr.e.push([ms, 'E', b2, fl & b2 ? 1 : 0]);
+      const dh = Math.round(c[16] - PRVH); if (dh && fr.e.length < MAXE) fr.e.push([ms, 'H', dh]);
+      const dc = Math.round(c[23] - PRVC); if (dc && fr.e.length < MAXE) fr.e.push([ms, 'C', dc]);
+      const dm = Math.round(c[24] - PRVM); if (dm && fr.e.length < MAXE) fr.e.push([ms, 'M', dm]);
+    }
+    lastFl = fl; PRVH = c[16]; PRVC = c[23]; PRVM = c[24];
+    if (wpn !== lastW) { lastW = wpn; fr.e.push([ms, 'W', wpn]); }
+  }
+  let PRV_T = 0, PRVH = 0, PRVC = 0, PRVM = 0;
+  function poll() {
+    const ms = Math.round(fr.t * 1000);
+    { const j = JSON.stringify(cfgNow()); if (j !== lastCfg) { lastCfg = j; fr.e.push([ms, 'S', j]); } }
+    if (rdA) { const on = CFG.radio && !rdA.paused && rdOn ? 1 : 0, u = rel(rdLast), off = Math.round(rdA.currentTime * 10);
+      if (!lastRd || lastRd[0] !== u || lastRd[2] !== on || Math.abs(off - (lastRd[1] + (ms - lastRd[3]) / 100)) > 25) { lastRd = [u, off, on, ms]; fr.e.push([ms, 'R', u, rdName, off, on]); } }
+    { const on = plOn && plA && !plA.paused ? 1 : 0, u = on ? rel(plA.src) : '', off = on ? Math.round(plA.currentTime * 10) : 0;
+      if (!lastPl ? on : (lastPl[0] !== u || lastPl[2] !== on || (on && Math.abs(off - (lastPl[1] + (ms - lastPl[3]) / 100)) > 25))) { lastPl = [u, off, on, ms]; fr.e.push([ms, 'P', u, off, on, on ? trk(u) : '']); } }
+  }
+  async function finish() {
+    if (!fr) return; const f = fr; fr = null; o.rec = 0; f.dur = Math.round(f.t * 10) / 10;
+    if (ns < 60 || f.dur < 8) return;
+    f.s = Array.from(BIG.subarray(0, ns * NC)); delete f.t; f.n = ns;
+    o.last = f; o.nS++;
+    try { await store(f); } catch {}
+    if (o.up) upload(f);
+  }
+  const sysName = (f) => f.sysN || f.sys || '?';
+  function idx() { const a = rj(KI); return Array.isArray(a) ? a : []; }
+  function putIdx(a) { try { localStorage.setItem(KI, JSON.stringify(a)); } catch {} }
+  async function store(f) {
+    const txt = JSON.stringify(f); let data; try { data = 'g:' + await gz(txt); } catch { data = 'j:' + txt; }
+    const a = idx(); a.unshift({ id: f.id, t: f.t0, dur: f.dur, sys: sysName(f), b: f.b, n: f.n, z: data.length, pin: 0, up: 0, pl: f.pilot || 'human' });
+    let tot = 0; const out = [];
+    for (const m of a) { if (out.length >= MAXN && !m.pin) { try { localStorage.removeItem(KP + m.id); } catch {} continue; } tot += m.z; out.push(m); }
+    while (tot > CAP && out.length > 1) { let k = out.length - 1; while (k > 0 && out[k].pin) k--; if (out[k].pin) break; tot -= out[k].z; try { localStorage.removeItem(KP + out[k].id); } catch {} out.splice(k, 1); }
+    try { localStorage.setItem(KP + f.id, data); putIdx(out); } catch { try { localStorage.removeItem(KP + f.id); } catch {} return null; }
+    return data.length;
+  }
+  async function get(id) { const d = localStorage.getItem(KP + id); if (!d) return null; return JSON.parse(d.startsWith('g:') ? await ungz(d.slice(2)) : d.slice(2)); }
+  function del(id) { try { localStorage.removeItem(KP + id); } catch {} putIdx(idx().filter((m) => m.id !== id)); }
+  function pin(id) { const a = idx(); for (const m of a) m.pin = m.id === id ? (m.pin ? 0 : 1) : 0; putIdx(a); }
+  async function imp(txt) { const f = JSON.parse(txt); if (!f || f.v !== 1 || !Array.isArray(f.s) || !Array.isArray(f.e) || f.s.length % NC) throw new Error('not a flight'); f.pilot = String(f.pilot || 'human').replace(/[^\w]/g, '').slice(0, 12); f.id = String(f.id || Date.now().toString(36)).replace(/[^\w]/g, '').slice(0, 24); f.n = f.s.length / NC; await store(f); return f; }
+  function exp(f) { const u = URL.createObjectURL(new Blob([JSON.stringify(f)], { type: 'application/json' })), a = document.createElement('a'); a.href = u; a.download = `infinite-end-flight-${f.id}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(u), 4000); }
+  async function upload(f) {
+    try { let body; try { body = JSON.stringify({ z: 1, d: await gz(JSON.stringify(f)) }); } catch { body = JSON.stringify({ z: 0, f }); }
+      const r = await fetch('/api/ie-flights', { method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: body.length < 60000 }); const j = await r.json().catch(() => null);
+      if (j && j.ok) { const a = idx(); for (const m of a) if (m.id === f.id) m.up = 1; putIdx(a); o.upOk = (o.upOk | 0) + 1; } else o.upErr = j ? j.e : r.status;
+    } catch (e) { o.upErr = String(e); }
+  }
+  async function srvList() { try { const r = await fetch('/api/ie-flights', { cache: 'no-store' }); const a = await r.json(); o.srv = Array.isArray(a) ? a : []; } catch { o.srv = o.srv || []; } return o.srv; }
+  async function srvGet(id) { const r = await fetch('/api/ie-flights?id=' + encodeURIComponent(id), { cache: 'no-store' }); if (!r.ok) throw new Error('fetch'); return r.json(); }
+
+  /* ---- replay ---- */
+  let rp = null, snap = null, lsDesc = null, proxyOn = 0, hud = null, fade = null;
+  const dec = (f) => {
+    const n = f.s.length / NC, T = new Float64Array(n), P = new Float64Array(n * NC), c = new Float64Array(NC);
+    for (let i = 0; i < n; i++) { for (let j = 0; j < NC; j++) { const v = f.s[i * NC + j]; if (j === 15) c[j] = v; else c[j] += v; P[i * NC + j] = c[j]; } T[i] = c[0]; }
+    return { n, T, P };
+  };
+  function lockStore(on) {
+    if (on === proxyOn) return; proxyOn = on;
+    if (on) { const real = window.localStorage; lsDesc = Object.getOwnPropertyDescriptor(window, 'localStorage'); const px2 = new Proxy(real, { set(t, k, v) { if (/^ieFl/.test(k)) t[k] = v; return true; }, deleteProperty(t, k) { if (/^ieFl/.test(k)) delete t[k]; return true; },
+      get(t, k) { if (k === 'setItem') return (a, b) => { if (/^ieFl/.test(a)) t.setItem(a, b); }; if (k === 'removeItem') return (a) => { if (/^ieFl/.test(a)) t.removeItem(a); }; if (k === 'clear') return () => {}; const v = t[k]; return typeof v === 'function' ? v.bind(t) : v; } });
+      try { Object.defineProperty(window, 'localStorage', { configurable: true, get: () => px2 }); } catch {} }
+    else { try { if (lsDesc) Object.defineProperty(window, 'localStorage', lsDesc); else delete window.localStorage; } catch {} }
+  }
+  function applyCfg(j) { try { const c = JSON.parse(j); for (const k in c) { if (k === '_cock') cockpit = !!c[k]; else CFG[k] = c[k]; } } catch {} }
+  const rdSet = (v) => { try { if (rdFx) { rdFx.g.gain.setTargetAtTime(v * .9, AC.currentTime, .1); rdFx.ng.gain.setTargetAtTime(v * .012, AC.currentTime, .1); } else if (rdA) rdA.volume = Math.max(0, Math.min(1, v)); } catch {} };
+  function audio(e, tms) {
+    const ago = Math.max(0, (rp.t * 1000 - e[0]) / 1000);
+    if (e[1] === 'R') {
+      if (!CFG.radio) return; if (!rdA) { rdA = new Audio(); rdA.preload = 'auto'; }
+      if (!e[5]) { try { rdA.pause(); } catch {} caption(''); return; }
+      rdName = e[3] || rdName; const u = e[2] || '', off = e[4] / 10 + ago, same = rdA.src && rel(rdA.src) === u;
+      if (!same) { rdA.src = u; rdA.onloadedmetadata = () => { try { rdA.currentTime = off; } catch {} }; rdA.onended = null; } else { try { rdA.currentTime = off; } catch {} }
+      try { const p = rdA.play(); if (p && p.then) p.then(() => { if (rp) caption(rdName); }, () => {}); } catch {}
+    } else {
+      if (!plA) { plA = new Audio(); plA.preload = 'none'; }
+      if (!e[4]) { try { plA.pause(); } catch {} plOn = 0; return; }
+      const off = e[3] / 10 + ago; plA.src = e[2]; plA.volume = 0; plA.onloadedmetadata = () => { try { plA.currentTime = off; } catch {} };
+      try { const p = plA.play(); if (p && p.then) p.then(() => { if (rp) caption(e[5] || ''); }, () => {}); } catch {}
+    }
+  }
+  function doEvent(e) {
+    const c = e[1];
+    if (c === 'A') { rp.arr++; arrive([e[2], e[3], e[4]], e[5], 1); if (rp.d) while (rp.i + 1 < rp.d.n && rp.d.T[rp.i] < e[0]) rp.i++; }
+    else if (c === 'S') applyCfg(e[2]);
+    else if (c === 'W') wpn = e[2];
+    else if (c === 'R' || c === 'P') audio(e);
+  }
+  function step(rdt) {
+    const R = rp; if (R.ended) return; const d = R.d, T = d && d.T, P = d && d.P, n = d && d.n; R.t += rdt; const tms = R.t * 1000;
+    while (R.ei < R.f.e.length && R.f.e[R.ei][0] <= tms) doEvent(R.f.e[R.ei++]);
+    if (R.live) { if (R.ei > 0) liveStep(R, rdt); if (R.t >= R.f.dur) end(); return; }
+    while (R.i + 1 < n && T[R.i + 1] <= tms) R.i++;
+    if (R.i >= n - 1 && tms >= T[n - 1]) { end(); return; }
+    const i = R.i, j = Math.min(n - 1, i + 1), a = i * NC, b = j * NC, span = T[j] - T[i], u = span > 0 ? Math.max(0, Math.min(1, (tms - T[i]) / span)) : 0, L = (k) => (P[a + k] + (P[b + k] - P[a + k]) * u) / KS[k];
+    px = L(1); py = L(2); pz = L(3); sysS[0] = L(4); sysS[1] = L(5); sysS[2] = L(6);
+    let x = P[a + 7], y = P[a + 8], z = P[a + 9], w = P[a + 10], x2 = P[b + 7], y2 = P[b + 8], z2 = P[b + 9], w2 = P[b + 10]; if (x * x2 + y * y2 + z * z2 + w * w2 < 0) { x2 = -x2; y2 = -y2; z2 = -z2; w2 = -w2; }
+    x += (x2 - x) * u; y += (y2 - y) * u; z += (z2 - z) * u; w += (w2 - w) * u; const nn = 1 / Math.hypot(x, y, z, w); x *= nn; y *= nn; z *= nn; w *= nn;
+    sRx = 1 - 2 * (y * y + z * z); sRy = 2 * (x * y + z * w); sRz = 2 * (x * z - y * w); sUx = 2 * (x * y - z * w); sUy = 1 - 2 * (x * x + z * z); sUz = 2 * (y * z + x * w);
+    sFx = -2 * (x * z + y * w); sFy = -2 * (y * z - x * w); sFz = -(1 - 2 * (x * x + y * y));
+    spit = Math.asin(Math.max(-1, Math.min(1, sFy))); syaw = Math.atan2(sFx, -sFz);
+    vx = L(11); vy = L(12); vz = L(13); thr = L(14); const fl = P[a + 15]; hl = fl & 4 ? 1 : 0; hlFx = L(19); bst = L(20);
+    ST.hull = L(16); ST.spice = L(17); ST.fuel = L(18); ST.credits = Math.round(L(23)); rdVol = L(21); plVol = L(22);
+    if (rdA && !rdA.paused) rdSet(Math.max(0, Math.min(1, rdVol)) * .62 * CFG.vRad); if (plA && !plA.paused) { try { plA.volume = Math.max(0, Math.min(1, plVol * CFG.vRad)); } catch {} }
+  }
+  function swallow(e) {
+    if (!rp) return; const tg = e.target; if (tg && tg.closest && tg.closest('#dgp,#flp,#flh')) return;
+    if (e.type === 'keydown' && e.code === 'F10') return;
+    if (rp.mode === 'attract') { if (e.type === 'mousemove' || e.type === 'pointermove') { rp.mv += Math.abs(e.movementX || 0) + Math.abs(e.movementY || 0); if (rp.mv < 40) return; } if (e.type === 'keyup' || e.type === 'mouseup' || e.type === 'pointerup' || e.type === 'touchend') { e.stopImmediatePropagation(); return; } e.stopImmediatePropagation(); e.preventDefault(); stop(); return; }
+    if (e.type === 'keydown' && e.code === 'Escape') { e.stopImmediatePropagation(); e.preventDefault(); stop(); return; }
+    e.stopImmediatePropagation(); if (e.cancelable) e.preventDefault();
+  }
+  for (const t of ['keydown', 'keyup', 'mousedown', 'mouseup', 'mousemove', 'pointerdown', 'pointerup', 'pointermove', 'wheel', 'click', 'touchstart', 'touchend', 'touchmove', 'contextmenu']) window.addEventListener(t, swallow, { capture: true, passive: false });
+  for (const t of ['keydown', 'mousedown', 'pointerdown', 'wheel', 'touchstart']) addEventListener(t, () => { o.lastIn = performance.now(); }, { capture: true, passive: true });
+  addEventListener('mousemove', (e) => { if (Math.abs(e.movementX || 0) + Math.abs(e.movementY || 0) > 12) o.lastIn = performance.now(); }, { capture: true, passive: true });
+  o.lastIn = performance.now();
+  function fadeEl() { if (!fade) { fade = document.createElement('div'); fade.style.cssText = 'position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;z-index:99990;transition:opacity .7s'; document.body.appendChild(fade); } return fade; }
+  /* the only thing on screen during playback: the song, set small, bright when it changes and then dimmed. Clicking it leaves a test replay. */
+  let capT = 0, capTxt = '';
+  function capEl() { if (hud) return hud; hud = document.createElement('div'); hud.id = 'flh'; hud.style.cssText = 'position:fixed;right:34px;bottom:58px;z-index:99995;text-align:right;color:#f2efe6;font:300 15px/1.35 "Iowan Old Style","Palatino Linotype",Georgia,serif;letter-spacing:.03em;opacity:0;transition:opacity 1.1s;text-shadow:0 0 14px #000c,0 0 3px #0008;max-width:60vw;cursor:default'; hud.innerHTML = '<div></div><div style="font:400 9px/1.6 system-ui,sans-serif;letter-spacing:.3em;text-transform:uppercase;opacity:.7;margin-top:2px">Ikosagon Radio</div>'; hud.onclick = () => { if (rp && rp.mode === 'test') stop(); }; document.body.appendChild(hud); return hud; }
+  function caption(t) { const h = capEl(); clearTimeout(capT); if (!t) { h.style.opacity = 0; capTxt = ''; return; } if (t !== capTxt) { capTxt = t; h.firstChild.textContent = t; } h.style.transition = 'opacity .9s'; h.style.opacity = 1; capT = setTimeout(() => { h.style.transition = 'opacity 3s'; h.style.opacity = .38; }, 6500); }
+  async function play(f, opt) {
+    opt = opt || {}; if (!f || !f.e || (!f.live && (!f.s || f.s.length < NC * 2))) return false;
+    if (rec0()) await finish();
+    const was = !!rp;
+    if (!was) {
+      snap = { st: JSON.stringify(ST), master: MASTER, home: HOME, dead: [...dead], cfg: JSON.stringify(cfgNow()), cls: B.className, wpn, sp: SP.n.slice(), pos: [px, py, pz, sysS.slice(), vx, vy, vz, thr, yaw, pitch, QA ? QA.slice() : null, QAs ? QAs.slice() : null, bst, hlFx, hl], rdLast, plOn };
+      lockStore(1); try { rdHold = true; } catch {}
+    }
+    clearTimeout(saveT);
+    for (const k of Object.keys(ST)) delete ST[k]; Object.assign(ST, blankState(f.seed >>> 0)); MASTER = ST.seed >>> 0; HOME = hs(MASTER ^ 0x40E) >>> 0; dead.clear();
+    Object.assign(ST, f.hdr || {}); applyCfg(JSON.stringify(f.cfg || {})); wpn = f.wpn == null ? wpn : f.wpn; hl = 0; hlFx = 0; bst = 0; if (typeof btT !== 'undefined') btT = 0;
+    const d = f.live ? null : dec(f); rp = { f, d, t: 0, i: 0, ei: 0, mode: opt.mode || 'test', mv: 0, hT: 0, arr: 0, drift: 0, live: f.live ? { init: 0 } : null }; o.rp = 1; o.att = rp.mode === 'attract' ? 1 : 0;
+    if (!was) menu(); B.className = 'm'; B.classList.toggle('att', !!o.att); B.classList.toggle('rp', !o.att);
+    capEl();
+    for (const L of LAYERS) L.cx = 1e9;
+    return true;
+  }
+  const rec0 = () => !!fr;
+  function end() {
+    if (rp.ended) return; rp.ended = 1;
+    if (o.stm) { streamNext(); return; }
+    if (rp.mode === 'attract') { attractNext(); return; }
+    stop();
+  }
+  function stop() {
+    if (!rp) return; const keepDown = rp.mode; rp = null; o.rp = 0; o.att = 0; o.stm = null; o.lastIn = performance.now();
+    try { if (rdA) { rdA.pause(); } if (plA) { plA.pause(); plOn = 0; } } catch {}
+    const S0 = snap; snap = null;
+    for (const k of Object.keys(ST)) delete ST[k]; Object.assign(ST, JSON.parse(S0.st)); MASTER = S0.master; HOME = S0.home; dead.clear(); for (const g of S0.dead) dead.add(g);
+    applyCfg(S0.cfg); wpn = S0.wpn; SP.n = S0.sp; lockStore(0);
+    softArr = 1; arrive(ST.sec, ST.loc, 1); softArr = 0;
+    for (const k of Object.keys(ST)) delete ST[k]; Object.assign(ST, JSON.parse(S0.st));
+    const p = S0.pos; px = p[0]; py = p[1]; pz = p[2]; sysS[0] = p[3][0]; sysS[1] = p[3][1]; sysS[2] = p[3][2]; vx = p[4]; vy = p[5]; vz = p[6]; thr = p[7]; yaw = p[8]; pitch = p[9]; if (p[10]) { QA = p[10]; QAs = p[11]; } bst = p[12]; hlFx = p[13]; hl = p[14];
+    B.className = S0.cls; if (hud) { hud.remove(); hud = null; } capTxt = ''; clearTimeout(capT); if (fade) fade.style.opacity = 0;
+    try { rdHold = false; rdLast = ''; if (CFG.radio && rdA && rdList) radioNext(0); } catch {}
+    for (const L of LAYERS) L.cx = 1e9; save();
+  }
+  /* ---- stream: flight after flight, crossfaded ---- */
+  async function streamStart(items, shuffle) {
+    const q = items.slice(); if (shuffle) for (let i = q.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [q[i], q[j]] = [q[j], q[i]]; }
+    if (!q.length) return; o.stm = { q, i: -1, bad: 0 }; closePanels(); await streamNext(true);
+  }
+  async function streamNext(first) {
+    const s = o.stm; if (!s) return; const fe = fadeEl();
+    if (!first) { fe.style.opacity = 1; await new Promise((r) => setTimeout(r, 750)); if (!o.stm) return; }
+    s.i = (s.i + 1) % s.q.length; const it = s.q[s.i];
+    try { const f = it.src === 'srv' ? await srvGet(it.id) : await get(it.id); if (!o.stm) return; if (!f) throw 0; s.bad = 0; await play(f, { mode: 'test' }); if (!rp) return; rp.mode = 'test'; }
+    catch { if (++s.bad > 4) { stop(); return; } return streamNext(true); }
+    fe.style.opacity = 0;
+  }
+  function closePanels() { const d = document.getElementById('dgp'); if (d) d.remove(); const p = document.getElementById('flp'); if (p) p.remove(); }
+
+  /* ---- the AI pilot: a live controller for the idle title. Contract (so a trained model drops in with no refactor):
+     input  Float32Array(16) of state features, filled by featNow(); output Float32Array(4) [yaw, pitch, throttle, boost], each -1..1.
+     features: 0 throttle | 1 speed/660 | 2 boost | 3 hyperlight fx | 4 yaw rate | 5 pitch rate | 6 bank | 7 pitch angle | 8 altitude/2e4 (clamped) |
+       9 sin heading | 10 cos heading | 11 time in flight/150 | 12-15 clearance ahead / left / right / up (1 = clear; 1 until a sensor fills them)
+     model file /infiniteenddev/ai-pilot.json: { "v":1, "sizes":[16,h,...,4], "w":[flat row-major out*in per layer], "b":[per layer] }, tanh layers.
+     A model runs when that file loads; FL.ai.use(fn) installs any controller fn(feat, out) by hand (tests, experiments). ---- */
+  const NF = 16, FEAT = new Float32Array(NF), OUT = new Float32Array(4);
+  const ai = { fn: null, name: '', tried: -1e9, sense: null };
+  function mlp(m) {
+    const sz = m.sizes, L = sz.length - 1, bufs = sz.map((n) => new Float32Array(n));
+    return (f, out) => { bufs[0].set(f.subarray(0, sz[0])); for (let l = 0; l < L; l++) { const W = m.w[l], B = m.b[l], a = bufs[l], z = bufs[l + 1], ni = sz[l], no = sz[l + 1]; for (let r = 0; r < no; r++) { let v = B[r]; const o = r * ni; for (let c = 0; c < ni; c++) v += W[o + c] * a[c]; z[r] = Math.tanh(v); } } out.set(bufs[L].subarray(0, 4)); };
+  }
+  function modelOk(m) { try { if (!m || m.v !== 1 || !Array.isArray(m.sizes) || m.sizes.length < 2 || m.sizes[0] > NF || m.sizes[m.sizes.length - 1] < 4 || m.w.length !== m.sizes.length - 1 || m.b.length !== m.w.length) return false;
+    for (let l = 0; l < m.w.length; l++) if (m.w[l].length !== m.sizes[l] * m.sizes[l + 1] || m.b[l].length !== m.sizes[l + 1]) return false; return true; } catch { return false; } }
+  async function aiLoad() {
+    if (ai.fn) return true; if (performance.now() - ai.tried < 300000 || location.protocol === 'file:') return false; ai.tried = performance.now();
+    try { const r = await fetch(new URL('ai-pilot.json', location.href), { cache: 'no-cache' }); if (!r.ok) return false; const m = await r.json(); if (!modelOk(m)) return false; ai.fn = mlp(m); ai.name = 'model'; return true; } catch { return false; }
+  }
+  ai.use = (fn) => { ai.fn = fn; ai.name = fn ? 'custom' : ''; };
+  function featNow(L, f) {
+    f.fill(0); f[0] = L.thr; f[1] = L.spd / 660; f[2] = L.bst; f[3] = 0; f[4] = L.yr; f[5] = L.pr; f[6] = L.roll; f[7] = L.p / 1.5; f[8] = Math.max(-1, Math.min(1, py / 2e4));
+    f[9] = Math.sin(L.y); f[10] = Math.cos(L.y); f[11] = L.t / 150; f[12] = f[13] = f[14] = f[15] = 1; if (ai.sense) ai.sense(f);
+  }
+  function liveStep(R, rdt) {
+    const L = R.live; if (!L.init) { L.init = 1; L.y = Math.random() * 6.283; L.p = 0; L.roll = 0; L.thr = .5; L.spd = 180; L.bst = 0; L.yr = 0; L.pr = 0; L.t = 0; }
+    L.t = R.t; featNow(L, FEAT); OUT.fill(0); try { ai.fn(FEAT, OUT); } catch { OUT.fill(0); }
+    const dt = Math.min(.05, rdt), yw = Math.max(-1, Math.min(1, OUT[0])), pt = Math.max(-1, Math.min(1, OUT[1])), tg = Math.max(0, Math.min(1, OUT[2])), bo = OUT[3] > .5 ? 1 : 0;
+    L.yr += (yw * .9 - L.yr) * Math.min(1, dt * 3); L.pr += (pt * .6 - L.pr) * Math.min(1, dt * 3); L.y += L.yr * dt; L.p = Math.max(-1.3, Math.min(1.3, L.p + L.pr * dt));
+    L.thr += (tg - L.thr) * Math.min(1, dt * 1.5); L.bst += (bo - L.bst) * Math.min(1, dt * 1.2); L.roll += (-L.yr * .5 - L.roll) * Math.min(1, dt * 2);
+    const tgt = 60 + L.thr * 240 + L.bst * 340; L.spd += (tgt - L.spd) * Math.min(1, dt * .8);
+    const cy = Math.cos(L.y), sy = Math.sin(L.y), cp = Math.cos(L.p), sp = Math.sin(L.p);
+    let fx = cp * sy, fy = sp, fz = -cp * cy, rx = cy, ry = 0, rz = sy, ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx;
+    const cr = Math.cos(L.roll), sr = Math.sin(L.roll), r2x = rx * cr + ux * sr, r2y = ry * cr + uy * sr, r2z = rz * cr + uz * sr, u2x = ux * cr - rx * sr, u2y = uy * cr - ry * sr, u2z = uz * cr - rz * sr;
+    sRx = r2x; sRy = r2y; sRz = r2z; sUx = u2x; sUy = u2y; sUz = u2z; sFx = fx; sFy = fy; sFz = fz; spit = L.p; syaw = Math.atan2(fx, -fz);
+    vx = fx * L.spd; vy = fy * L.spd; vz = fz * L.spd; px += vx * dt; py += vy * dt; pz += vz * dt; thr = L.thr; bst = L.bst; hlFx = 0; hl = 0;
+    const h = Math.hypot(px, py, pz); if (h > 60000) { px *= 60000 / h; py *= 60000 / h; pz *= 60000 / h; }
+  }
+  /* what the idle title plays: the AI pilot if a model is there, otherwise a recorded flight (pinned, then the server's, then this device's) */
+  async function getAttractPilot() {
+    if (await aiLoad()) return { kind: 'ai', name: ai.name };
+    const loc = idx(), pn = loc.find((m) => m.pin); if (pn) return { kind: 'rec', src: 'loc', id: pn.id };
+    let pool = (o.srv || []).map((m) => ({ kind: 'rec', src: 'srv', id: m.id }));
+    if (!pool.length) pool = loc.map((m) => ({ kind: 'rec', src: 'loc', id: m.id }));
+    if (o.lastPick && pool.length > 1) pool = pool.filter((p) => p.id !== o.lastPick);
+    return pool.length ? pool[Math.random() * pool.length | 0] : null;
+  }
+  async function liveFlight() {
+    const seed = (Math.random() * 4294967296) >>> 0; if (!rdList && typeof radioLoad === 'function') radioLoad();
+    const e = [[0, 'A', 0, 0, 0, 0]], t = rdList && rdList.length ? rdList[Math.random() * rdList.length | 0] : null;
+    if (t) e.push([0, 'R', rel(t.url), String(t.title || 'On air').slice(0, 30), 600 + (Math.random() * 1200 | 0), 1]);
+    return { v: 1, live: 1, pilot: 'ai', id: 'live', seed, sec: [0, 0, 0], loc: 0, hdr: {}, cfg: {}, dur: 150, e, s: [], sysN: 'live' };
+  }
+  /* ---- attract: the idle title plays a saved flight behind the menu ---- */
+  let attBusy = 0;
+  async function attractNext() {
+    if (attBusy) return; attBusy = 1; let ok = 0;
+    try { const it = await getAttractPilot(); if (it) { o.lastPick = it.id; const f = it.kind === 'ai' ? await liveFlight() : it.src === 'srv' ? await srvGet(it.id) : await get(it.id);
+      if (f && (rp && rp.mode === 'attract' || !rp && B.className === 'm' && !started)) ok = await play(f, { mode: 'attract' }); } }
+    catch {}
+    attBusy = 0; if (!ok && rp && rp.ended && rp.mode === 'attract') stop();
+  }
+  function titleOpen() { return B.className === 'm' && !started && !document.getElementById('dgp') && !document.getElementById('flp') && !document.hidden && !xr; }
+  setInterval(() => {
+    if (rp || attBusy) return;
+    if (o.srv === null) { o.srv = []; if (location.protocol !== 'file:') setTimeout(() => srvList(), 3000); }
+    if (titleOpen() && (performance.now() - o.lastIn) / 1000 >= o.idle && (!TEST || o.testAtt)) attractNext();
+    if (!rec0() && !rp && o.gpPoll) o.gpPoll = 0;
+  }, 1000);
+  setInterval(() => { if (!navigator.getGamepads) return; for (const g of navigator.getGamepads()) if (g && g.buttons.some((b) => b.pressed)) { if (rp && rp.mode === 'attract') stop(); o.lastIn = performance.now(); } }, 400);
+  addEventListener('pagehide', () => { if (fr) { const f = fr; fr = null; o.rec = 0; f.dur = Math.round(f.t * 10) / 10; if (ns >= 60 && f.dur >= 8) { f.s = Array.from(BIG.subarray(0, ns * NC)); delete f.t; f.n = ns; try { const a = idx(); localStorage.setItem(KP + f.id, 'j:' + JSON.stringify(f)); a.unshift({ id: f.id, t: f.t0, dur: f.dur, sys: sysName(f), b: f.b, n: f.n, z: 0, pin: 0, up: 0, pl: f.pilot || 'human' }); putIdx(a.slice(0, MAXN)); } catch {} } } });
+  /* ---- per-frame hook ---- */
+  o.tick = function (rdt) {
+    if (rp) { step(rdt); return; }
+    const fly = flying();
+    if (!fr) { if (!fly) return; begin(); }
+    if (!fly) { idleT += rdt; if (idleT > 30) finish(); return; }
+    idleT = 0; fr.t += rdt; acc += rdt; if (acc < .1) return; acc = Math.min(acc - .1, .1); sample(); if (!fr) return;
+    if ((pollT += .1) >= 1) { pollT = 0; poll(); }
+    if (fr.t > MAXS) finish();
+  };
+  o.arr = function (sec, loc) { if (fr && !rp) { const ms = Math.round(fr.t * 1000); if (fr.e.length < MAXE) fr.e.push([ms, 'A', sec[0], sec[1], sec[2], loc | 0]); } };
+  o.tip = function (t) { if (fr && !rp && fr.e.length < MAXE) fr.e.push([Math.round(fr.t * 1000), 'T', String(t).slice(0, 120)]); };
+
+  /* ---- the Flights panel (opened from the test panel) ---- */
+  const bs = 'font:inherit;padding:3px 10px;background:#123;color:#cfe;border:1px solid #4ac;cursor:pointer;margin-right:6px';
+  const fmtD = (t) => new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const fmtT = (s) => Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0');
+  o.panel = async function () {
+    closePanels(); const d = document.createElement('div'); d.id = 'flp';
+    d.style.cssText = 'position:fixed;inset:0;z-index:100001;overflow:auto;background:#05070cf6;color:#cfe;font:14px/1.5 system-ui,sans-serif;padding:28px';
+    document.body.appendChild(d); try { document.exitPointerLock && document.exitPointerLock(); } catch {}
+    const draw = () => {
+      const a = idx(), srv = o.srv || [], by = {};
+      for (const m of srv) (by[new Date(m.t).toDateString()] = by[new Date(m.t).toDateString()] || []).push(m);
+      const row = (m, src) => `<div style="display:flex;gap:10px;align-items:center;padding:4px 0;border-bottom:1px solid #ffffff14"><span style="min-width:150px">${fmtD(m.t)}</span><span style="min-width:48px">${fmtT(m.dur)}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${m.sys}${(m.pl || m.pilot) && (m.pl || m.pilot) !== 'human' ? ' · ' + (m.pl || m.pilot) : ''}${m.pin ? ' · pinned for title' : ''}</span><span style="opacity:.6;min-width:60px">${(m.z / 1024).toFixed(0)} KB</span>
+        <button style="${bs}" data-a="play" data-s="${src}" data-i="${m.id}">Play</button>${src === 'loc' ? `<button style="${bs}" data-a="exp" data-i="${m.id}">Export</button><button style="${bs}" data-a="pin" data-i="${m.id}">${m.pin ? 'Unpin' : 'Pin for title'}</button><button style="${bs}" data-a="del" data-i="${m.id}">Delete</button>` : ''}</div>`;
+      d.innerHTML = `<div style="max-width:880px;margin:auto"><div style="font-size:20px;letter-spacing:.12em">FLIGHTS</div>
+        <p style="opacity:.7">Every flight is recorded as it happens (about ${o.last ? (Math.round(o.last.s.length / o.last.dur * 6)) : 40} numbers a second, tiny). Replays play the same galaxy, the same song from the same moment, and never touch your save. Esc leaves a replay.</p>
+        <p><b>On this device</b> (last ${MAXN}${o.cur ? `; recording now: ${fmtT(o.cur.t)}` : ''})</p>${a.length ? a.map((m) => row(m, 'loc')).join('') : '<p style="opacity:.6">None yet: fly for a few seconds, then come back.</p>'}
+        <div style="margin:10px 0"><button style="${bs}" id="fl_imp">Import file…</button><input id="fl_in" type="file" accept=".json,application/json" style="display:none"><button style="${bs}" id="fl_st1">Stream mine</button></div>
+        <p style="margin-top:22px"><b>Server flights</b> (every test build uploads its finished flights) <button style="${bs}" id="fl_rf">Refresh</button> <span id="fl_msg" style="opacity:.7"></span></p>
+        <div style="margin:6px 0"><button style="${bs}" id="fl_sa">Stream all, shuffled</button><button style="${bs}" id="fl_sc">Stream all, oldest first</button><button style="${bs}" id="fl_sn">Stream all, newest first</button></div>
+        ${Object.keys(by).length ? Object.keys(by).map((k) => `<p style="margin:14px 0 2px"><b>${k}</b> · ${by[k].length} flights <button style="${bs}" data-a="day" data-k="${k}">Stream this day</button></p>${by[k].map((m) => row(m, 'srv')).join('')}`).join('') : '<p style="opacity:.6">None loaded.</p>'}
+        <div style="margin-top:20px"><button style="${bs}" id="fl_x">Close</button></div></div>`;
+      d.querySelectorAll('button[data-a]').forEach((b) => b.onclick = async () => {
+        const a2 = b.dataset.a, id = b.dataset.i;
+        if (a2 === 'play') { const f = b.dataset.s === 'srv' ? await srvGet(id).catch(() => null) : await get(id); if (!f) { d.querySelector('#fl_msg').textContent = 'could not load that flight'; return; } closePanels(); play(f, { mode: 'test' }); }
+        else if (a2 === 'exp') { const f = await get(id); if (f) exp(f); }
+        else if (a2 === 'pin') { pin(id); draw(); }
+        else if (a2 === 'del') { del(id); draw(); }
+        else if (a2 === 'day') { const k = b.dataset.k; streamStart((o.srv || []).filter((m) => new Date(m.t).toDateString() === k).sort((p, q) => p.t - q.t).map((m) => ({ src: 'srv', id: m.id })), 0); }
+      });
+      d.querySelector('#fl_imp').onclick = () => d.querySelector('#fl_in').click();
+      d.querySelector('#fl_in').onchange = async (e) => { const fl = e.target.files[0]; if (!fl) return; try { await imp(await fl.text()); draw(); } catch { d.querySelector('#fl_msg').textContent = 'that file is not a flight'; } };
+      d.querySelector('#fl_st1').onclick = () => streamStart(idx().map((m) => ({ src: 'loc', id: m.id })), 1);
+      const all = (sh, rev) => () => { const l = (o.srv || []).slice().sort((p, q) => (rev ? q.t - p.t : p.t - q.t)).map((m) => ({ src: 'srv', id: m.id })); streamStart(l, sh); };
+      d.querySelector('#fl_sa').onclick = all(1); d.querySelector('#fl_sc').onclick = all(0, 0); d.querySelector('#fl_sn').onclick = all(0, 1);
+      d.querySelector('#fl_rf').onclick = async () => { d.querySelector('#fl_msg').textContent = 'loading…'; await srvList(); draw(); };
+      d.querySelector('#fl_x').onclick = () => d.remove();
+    };
+    draw(); if (o.srv === null || !o.srv.length) { await srvList(); if (document.getElementById('flp') === d) draw(); }
+  };
+  Object.assign(o, { ai, getAttractPilot, idx, get, del, pin, imp, exp, play, stop, store, finish, srvList, srvGet, streamStart, closePanels, upload, attractNext, dec, NC, KS });
+  Object.defineProperty(o, 'cur', { get: () => fr }); Object.defineProperty(o, 'rpS', { get: () => rp });
+  return o;
+})();
 requestAnimationFrame((t) => { last = t; frame(t); });
 await step(1, 'The dark is ready');
 for (let i = 0; i < 50 && LDG.v < .995; i++) await new Promise((r) => setTimeout(r, 30));   /* let the figure reach 100% before the loader goes */
