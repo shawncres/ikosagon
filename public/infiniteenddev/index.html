@@ -6570,7 +6570,7 @@ if (PSC && !dgOff('bg')) { try { SKYA_ST = progStart(TRI_V, SKYS.replace('#versi
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.97';
+const BUILD = 'v1.98';
 // v1.74: if the last session ended in a graphics reset, put what was being built at the time in the log (F9 → Copy settings shows it)
 try { const g = JSON.parse(localStorage.ieGlLost || 'null'); if (g) evLog(`Graphics · last reset (${g.build}, ${g.at.slice(0, 16).replace('T', ' ')}): ${g.was ? 'building the ' + g.was + ' program, ' + g.secs + ' s in' : 'no program was being built'}`); } catch {}                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 /* ---- v1.71: spice tiers and attunement, procedural foes, dogfight upgrades, the Foe intro ---- */
@@ -8044,7 +8044,7 @@ if (PSC && !dgOff('bg')) {
 /* ===== v1.97 FLIGHT RECORDER, REPLAY AND ATTRACT MODE (test builds only: FL is null elsewhere) =====
    A flight is one JSON object, schema v1, built to be training data for a small pathing model:
      v:1  b:build  id  pilot:'human' now, 'ai' for machine flights later (streams play every pilot)  dev:random device id (no personal data)  t0:start epoch ms  dur:seconds
-     seed:master seed (the galaxy)  sys:system id  sysN:name  sec:[x,y,z] sector  loc:place index at the start
+     au:{r:[station track url,title,offset 0.1s,on,level%],p:[stream url,offset,on,title,level%]} audio at the start | seed:master seed (the galaxy)  sys:system id  sysN:name  sec:[x,y,z] sector  loc:place index at the start
      cfg:{CFG fields without key binds, _cock:cockpit}  wpn:weapon  hdr:{hull,spice,fuel,o2,wen,credits}
      k:[per-column scale]  s:flat int array, 32 columns per sample, 10 Hz, every column delta coded except column 15 (flags)
        0 dt ms | 1-3 ship x y z (local frame) | 4-6 system position | 7-10 attitude quaternion x y z w | 11-13 velocity
@@ -8081,11 +8081,19 @@ var FL = !DGT ? null : (() => {
     if (x * pq[0] + y * pq[1] + z * pq[2] + w * pq[3] < 0) { x = -x; y = -y; z = -z; w = -w; }
     pq[0] = x; pq[1] = y; pq[2] = z; pq[3] = w;
   }
+  function audSnap() {
+    const a = { r: null, p: null };
+    if (rdA) a.r = [rel(rdLast), rdName, Math.round(rdA.currentTime * 10), CFG.radio && !rdA.paused ? 1 : 0, Math.round(rdVol * 100)];
+    if (plOn && plA && !plA.paused) a.p = [rel(plA.src), Math.round(plA.currentTime * 10), 1, trk(rel(plA.src)), Math.round(plVol * 100)];
+    return a;
+  }
   function begin() {
     fr = { v: 1, b: BUILD, pilot: 'human', id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), dev: dev(), t0: Date.now(), dur: 0, seed: MASTER >>> 0, sys: SYS.id, sysN: SYS.name, sec: ST.sec.slice(), loc: SYS.loc,
       cfg: cfgNow(), wpn, hdr: { hull: ST.hull, spice: ST.spice, fuel: ST.fuel, o2: ST.o2, wen: ST.wen, credits: ST.credits }, k: KS, s: null, e: [], t: 0 };
     ns = 0; acc = .1; pollT = 0; PRV.fill(0); lastCfg = JSON.stringify(fr.cfg); lastW = wpn; lastFl = 0; lastRd = null; lastPl = null; pq[0] = pq[1] = pq[2] = 0; pq[3] = 1;
     fr.e.push([0, 'A', ST.sec[0], ST.sec[1], ST.sec[2], SYS.loc]);
+    fr.au = audSnap(); if (fr.au.r) fr.e.push([0, 'R', fr.au.r[0], fr.au.r[1], fr.au.r[2], fr.au.r[3]]); if (fr.au.p) fr.e.push([0, 'P', fr.au.p[0], fr.au.p[1], fr.au.p[2], fr.au.p[3]]);
+    lastRd = fr.au.r ? [fr.au.r[0], fr.au.r[2], fr.au.r[3], 0] : null; lastPl = fr.au.p ? [fr.au.p[0], fr.au.p[1], 1, 0] : null;
     o.rec = 1;
   }
   function sample() {
@@ -8164,21 +8172,49 @@ var FL = !DGT ? null : (() => {
     else { try { if (lsDesc) Object.defineProperty(window, 'localStorage', lsDesc); else delete window.localStorage; } catch {} }
   }
   function applyCfg(j) { try { const c = JSON.parse(j); for (const k in c) { if (k === '_cock') cockpit = !!c[k]; else CFG[k] = c[k]; } } catch {} }
-  const rdSet = (v) => { try { if (rdFx) { rdFx.g.gain.setTargetAtTime(v * .9, AC.currentTime, .1); rdFx.ng.gain.setTargetAtTime(v * .012, AC.currentTime, .1); } else if (rdA) rdA.volume = Math.max(0, Math.min(1, v)); } catch {} };
-  function audio(e, tms) {
+  const rdSet = (v) => { v *= aF; try { if (rdFx) { rdFx.g.gain.setTargetAtTime(v * .9, AC.currentTime, .1); rdFx.ng.gain.setTargetAtTime(v * .012, AC.currentTime, .1); } else if (rdA) rdA.volume = Math.max(0, Math.min(1, v)); } catch {} };
+  /* playback audio: every flight starts from a full radio state (header f.au, else its first radio event, else whatever is on the air), (re)applied and played with retry;
+     transitions dip the level instead of stopping. The game's own onended handler is never removed, so the radio carries on when a track ends. */
+  let aF = 1, aT = 1, retryT = 0, want = 0;
+  const radioEl = () => { if (!rdA) { rdA = new Audio(); rdA.preload = 'auto'; rdA.onended = () => radioNext(0); rdA.onerror = () => { rdBad++; if (rdBad < 14) setTimeout(() => radioNext(0), 2500); }; } return rdA; };
+  function kick() {
+    if (AC && AC.state === 'suspended') { try { AC.resume(); } catch {} }
+    if (rdA && want && rdA.paused) { try { const p = rdA.play(); if (p && p.then) p.then(() => { if (rp && rdName) caption(rdName); }, () => {}); } catch {} }
+    if (plA && plOn && plA.paused) { try { const p = plA.play(); if (p && p.catch) p.catch(() => {}); } catch {} }
+  }
+  function radioSet(u, title, off, on) {
+    if (!CFG.radio) { want = 0; return; }
+    const el = radioEl();
+    if (!on) { want = 0; try { el.pause(); } catch {} caption(''); return; }
+    want = 1;
+    if (!u) { if (el.paused && rdList && rdList.length) radioNext(1); else if (rdName) caption(rdName); kick(); return; }
+    rdName = title || rdName; const same = el.src && rel(el.src) === u && !el.ended;
+    if (!same) { el.src = u; el.onloadedmetadata = () => { try { el.currentTime = Math.max(0, off); } catch {} }; }
+    else if (Math.abs(el.currentTime - off) > 3.5) { try { el.currentTime = Math.max(0, off); } catch {} }
+    rdVol = Math.max(rdVol, .12); kick(); caption(rdName);
+  }
+  function audStart(f) {
+    const au = f.au && f.au.r, ev = f.e || []; let r = null;
+    if (au && au[3]) r = { u: au[0], t: au[1], off: au[2] / 10, on: 1 };
+    else for (const e of ev) if (e[1] === 'R' && e[5] && e[2]) { r = { u: e[2], t: e[3], off: Math.max(0, e[4] / 10 - e[0] / 1000), on: 1 }; break; }
+    if (r) radioSet(r.u, r.t, r.off, 1); else radioSet('', '', 0, 1);
+    const pl = f.au && f.au.p; if (pl && pl[2] && plA !== undefined) { plSet(pl[0], pl[3], pl[1], 1); }
+  }
+  function plSet(u, title, off, on) {
+    if (!plA) { plA = new Audio(); plA.preload = 'none'; }
+    if (!on || !u) { try { plA.pause(); } catch {} plOn = 0; return; }
+    if (!plA.src || rel(plA.src) !== u) { plA.src = u; plA.onloadedmetadata = () => { try { plA.currentTime = Math.max(0, off); } catch {} }; }
+    plOn = 1; try { const p = plA.play(); if (p && p.catch) p.catch(() => {}); } catch {}
+  }
+  function audio(e) {
     const ago = Math.max(0, (rp.t * 1000 - e[0]) / 1000);
-    if (e[1] === 'R') {
-      if (!CFG.radio) return; if (!rdA) { rdA = new Audio(); rdA.preload = 'auto'; }
-      if (!e[5]) { try { rdA.pause(); } catch {} caption(''); return; }
-      rdName = e[3] || rdName; const u = e[2] || '', off = e[4] / 10 + ago, same = rdA.src && rel(rdA.src) === u;
-      if (!same) { rdA.src = u; rdA.onloadedmetadata = () => { try { rdA.currentTime = off; } catch {} }; rdA.onended = null; } else { try { rdA.currentTime = off; } catch {} }
-      try { const p = rdA.play(); if (p && p.then) p.then(() => { if (rp) caption(rdName); }, () => {}); } catch {}
-    } else {
-      if (!plA) { plA = new Audio(); plA.preload = 'none'; }
-      if (!e[4]) { try { plA.pause(); } catch {} plOn = 0; return; }
-      const off = e[3] / 10 + ago; plA.src = e[2]; plA.volume = 0; plA.onloadedmetadata = () => { try { plA.currentTime = off; } catch {} };
-      try { const p = plA.play(); if (p && p.then) p.then(() => { if (rp) caption(e[5] || ''); }, () => {}); } catch {}
-    }
+    if (e[1] === 'R') radioSet(e[2] || '', e[3], e[4] / 10 + ago, e[5]);
+    else plSet(e[2], e[5], e[3] / 10 + ago, e[4]);
+  }
+  function aTick(rdt) {
+    aF += (aT - aF) * Math.min(1, rdt * 4);
+    if (want && rdA && rdA.paused && !rdA.ended && (retryT -= rdt) < 0) { retryT = 1.5; kick(); }
+    if (rdName && rdName !== capTxt && rdA && !rdA.paused && want) caption(rdName);
   }
   function doEvent(e) {
     const c = e[1];
@@ -8202,10 +8238,10 @@ var FL = !DGT ? null : (() => {
     spit = Math.asin(Math.max(-1, Math.min(1, sFy))); syaw = Math.atan2(sFx, -sFz);
     vx = L(11); vy = L(12); vz = L(13); thr = L(14); const fl = P[a + 15]; hl = fl & 4 ? 1 : 0; hlFx = L(19); bst = L(20);
     ST.hull = L(16); ST.spice = L(17); ST.fuel = L(18); ST.credits = Math.round(L(23)); rdVol = L(21); plVol = L(22);
-    if (rdA && !rdA.paused) rdSet(Math.max(0, Math.min(1, rdVol)) * .62 * CFG.vRad); if (plA && !plA.paused) { try { plA.volume = Math.max(0, Math.min(1, plVol * CFG.vRad)); } catch {} }
+    if (rdA && !rdA.paused) rdSet(Math.max(.1, Math.min(1, rdVol)) * .62 * CFG.vRad); if (plA && !plA.paused) { try { plA.volume = Math.max(0, Math.min(1, plVol * CFG.vRad * aF)); } catch {} }
   }
   function swallow(e) {
-    if (!rp) return; const tg = e.target; if (tg && tg.closest && tg.closest('#dgp,#flp,#flh')) return;
+    if (!rp) return; if (e.isTrusted && (e.type === 'keydown' || e.type === 'pointerdown' || e.type === 'touchstart' || e.type === 'mousedown')) kick(); const tg = e.target; if (tg && tg.closest && tg.closest('#dgp,#flp,#flh')) return;
     if (e.type === 'keydown' && e.code === 'F10') return;
     if (rp.mode === 'attract') { if (e.type === 'mousemove' || e.type === 'pointermove') { rp.mv += Math.abs(e.movementX || 0) + Math.abs(e.movementY || 0); if (rp.mv < 40) return; } if (e.type === 'keyup' || e.type === 'mouseup' || e.type === 'pointerup' || e.type === 'touchend') { e.stopImmediatePropagation(); return; } e.stopImmediatePropagation(); e.preventDefault(); stop(); return; }
     if (e.type === 'keydown' && e.code === 'Escape') { e.stopImmediatePropagation(); e.preventDefault(); stop(); return; }
@@ -8234,6 +8270,7 @@ var FL = !DGT ? null : (() => {
     const d = f.live ? null : dec(f); rp = { f, d, t: 0, i: 0, ei: 0, mode: opt.mode || 'test', mv: 0, hT: 0, arr: 0, drift: 0, live: f.live ? { init: 0 } : null }; o.rp = 1; o.att = rp.mode === 'attract' ? 1 : 0;
     if (!was) menu(); B.className = 'm'; B.classList.toggle('att', !!o.att); B.classList.toggle('rp', !o.att);
     capEl();
+    audStart(f); aT = 1; if (!was) aF = 1;
     for (const L of LAYERS) L.cx = 1e9;
     return true;
   }
@@ -8241,11 +8278,11 @@ var FL = !DGT ? null : (() => {
   function end() {
     if (rp.ended) return; rp.ended = 1;
     if (o.stm) { streamNext(); return; }
-    if (rp.mode === 'attract') { attractNext(); return; }
+    if (rp.mode === 'attract') { aT = 0; setTimeout(attractNext, 700); return; }
     stop();
   }
   function stop() {
-    if (!rp) return; const keepDown = rp.mode; rp = null; o.rp = 0; o.att = 0; o.stm = null; o.lastIn = performance.now();
+    if (!rp) return; const keepDown = rp.mode; aT = aF = 1; want = 0; rp = null; o.rp = 0; o.att = 0; o.stm = null; o.lastIn = performance.now();
     try { if (rdA) { rdA.pause(); } if (plA) { plA.pause(); plOn = 0; } } catch {}
     const S0 = snap; snap = null;
     for (const k of Object.keys(ST)) delete ST[k]; Object.assign(ST, JSON.parse(S0.st)); MASTER = S0.master; HOME = S0.home; dead.clear(); for (const g of S0.dead) dead.add(g);
@@ -8264,7 +8301,7 @@ var FL = !DGT ? null : (() => {
   }
   async function streamNext(first) {
     const s = o.stm; if (!s) return; const fe = fadeEl();
-    if (!first) { fe.style.opacity = 1; await new Promise((r) => setTimeout(r, 750)); if (!o.stm) return; }
+    if (!first) { fe.style.opacity = 1; aT = 0; await new Promise((r) => setTimeout(r, 750)); if (!o.stm) return; }
     s.i = (s.i + 1) % s.q.length; const it = s.q[s.i];
     try { const f = it.src === 'srv' ? await srvGet(it.id) : await get(it.id); if (!o.stm) return; if (!f) throw 0; s.bad = 0; await play(f, { mode: 'test' }); if (!rp) return; rp.mode = 'test'; }
     catch { if (++s.bad > 4) { stop(); return; } return streamNext(true); }
@@ -8344,7 +8381,7 @@ var FL = !DGT ? null : (() => {
   addEventListener('pagehide', () => { if (fr) { const f = fr; fr = null; o.rec = 0; f.dur = Math.round(f.t * 10) / 10; if (ns >= 60 && f.dur >= 8) { f.s = Array.from(BIG.subarray(0, ns * NC)); delete f.t; f.n = ns; try { const a = idx(); localStorage.setItem(KP + f.id, 'j:' + JSON.stringify(f)); a.unshift({ id: f.id, t: f.t0, dur: f.dur, sys: sysName(f), b: f.b, n: f.n, z: 0, pin: 0, up: 0, pl: f.pilot || 'human' }); putIdx(a.slice(0, MAXN)); } catch {} } } });
   /* ---- per-frame hook ---- */
   o.tick = function (rdt) {
-    if (rp) { step(rdt); return; }
+    if (rp) { aTick(rdt); step(rdt); return; }
     const fly = flying();
     if (!fr) { if (!fly) return; begin(); }
     if (!fly) { idleT += rdt; if (idleT > 30) finish(); return; }
