@@ -45,11 +45,13 @@ function init(sql: NeonQueryFunction<false, false>) {
         dur integer NOT NULL,
         sys text NOT NULL,
         pilot text NOT NULL DEFAULT 'human',
+        sg text NOT NULL DEFAULT '',
         n integer NOT NULL,
         raw integer NOT NULL,
         data text NOT NULL
       )`;
       await sql`ALTER TABLE ie_flights ADD COLUMN IF NOT EXISTS pilot text NOT NULL DEFAULT 'human'`;
+      await sql`ALTER TABLE ie_flights ADD COLUMN IF NOT EXISTS sg text NOT NULL DEFAULT ''`;
       await sql`CREATE INDEX IF NOT EXISTS ie_flights_created ON ie_flights (created DESC)`;
     })().catch((e) => {
       ready = null;
@@ -57,6 +59,17 @@ function init(sql: NeonQueryFunction<false, false>) {
     });
   }
   return ready;
+}
+
+/* the song runs of a flight (which track played when), kept beside it so a song montage can be planned from the list alone */
+function segInfo(f: Record<string, unknown>) {
+  try {
+    const g = Array.isArray(f.sg) ? (f.sg as unknown[]).slice(0, 12) : [];
+    const t = JSON.stringify({ g, e: typeof f.en === "number" ? f.en : 0.3 });
+    return t.length < 3500 ? t : "";
+  } catch {
+    return "";
+  }
 }
 
 const clean = (s: unknown, n: number) => String(s ?? "").replace(/[^\w .:+\-]/g, "").slice(0, n);
@@ -108,8 +121,8 @@ export async function POST(req: Request) {
       (SELECT count(*) FROM ie_flights WHERE dev = ${dev} AND created > now() - interval '1 day')::int AS d,
       (SELECT count(*) FROM ie_flights WHERE created > now() - interval '1 day')::int AS a`) as { d: number; a: number }[];
     if (c[0].d >= PER_DEV_DAY || c[0].a >= PER_DAY) return Response.json({ ok: false, e: "rate" }, { status: 429 });
-    await sql`INSERT INTO ie_flights (id, dev, build, dur, sys, pilot, n, raw, data)
-      VALUES (${id}, ${dev}, ${clean(f.b, 12)}, ${Math.round(f.dur as number)}, ${clean(f.sysN || f.sys, 40)}, ${clean(f.pilot, 12) || "human"}, ${(f.s as unknown[]).length}, ${raw.length}, ${zip.toString("base64")})
+    await sql`INSERT INTO ie_flights (id, dev, build, dur, sys, pilot, sg, n, raw, data)
+      VALUES (${id}, ${dev}, ${clean(f.b, 12)}, ${Math.round(f.dur as number)}, ${clean(f.sysN || f.sys, 40)}, ${clean(f.pilot, 12) || "human"}, ${segInfo(f)}, ${(f.s as unknown[]).length}, ${raw.length}, ${zip.toString("base64")})
       ON CONFLICT (id) DO NOTHING`;
     await sql`DELETE FROM ie_flights WHERE id IN (SELECT id FROM ie_flights ORDER BY created DESC OFFSET ${KEEP})`;
     return Response.json({ ok: true, id, bytes: zip.length });
@@ -131,9 +144,9 @@ export async function GET(req: Request) {
         headers: { "content-type": "application/json", "cache-control": "no-store" },
       });
     }
-    const r = (await sql`SELECT id, extract(epoch FROM created)::bigint * 1000 AS t, build AS b, dur, sys, pilot, n, length(data) AS z
+    const r = (await sql`SELECT id, extract(epoch FROM created)::bigint * 1000 AS t, build AS b, dur, sys, pilot, sg, n, length(data) AS z
       FROM ie_flights ORDER BY created DESC LIMIT 300`) as Record<string, unknown>[];
-    return Response.json(r.map((x) => ({ ...x, t: Number(x.t) })), { headers: { "cache-control": "no-store" } });
+    return Response.json(r.map((x) => { let sg = null; try { sg = x.sg ? JSON.parse(String(x.sg)) : null; } catch {} return { ...x, t: Number(x.t), sg }; }), { headers: { "cache-control": "no-store" } });
   } catch {
     return Response.json([], { status: 500 });
   }
