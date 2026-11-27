@@ -1173,7 +1173,7 @@ void main(){
  }else if(uMode==3){
   vec3 ax=iB.xyz;p=c+normalize(cross(ax,c))*sz*aP.x+ax*(aP.y*.5+.5);vK=vec4(iC.rgb,3.);
  }else{
-  p=c+(uRt.xyz*aP.x+uUp.xyz*aP.y)*sz;vK=vec4(iC.rgb,4.+iC.w);
+  p=c+(uRt.xyz*aP.x+uUp.xyz*aP.y)*sz;vK=vec4(iC.rgb*(sz>100.?smoothstep(.6*sz,3.*sz,length(c)):smoothstep(.2*sz,1.1*sz,length(c))),4.+iC.w);   /* v1.92: a glow thins out as you close on it, so the gate's halo no longer fills the screen */
  }
  vC=aP.xy;vT=vec3(aP.xy*.22+sd*7.,sd*3.);vP=p;gl_Position=uVP*vec4(p,1);}`;
 const SPR_F = HD + `
@@ -6533,7 +6533,7 @@ if (PSC && !dgOff('bg')) { try { SKYA_ST = progStart(TRI_V, SKYS.replace('#versi
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.91';
+const BUILD = 'v1.92';
 // v1.74: if the last session ended in a graphics reset, put what was being built at the time in the log (F9 → Copy settings shows it)
 try { const g = JSON.parse(localStorage.ieGlLost || 'null'); if (g) evLog(`Graphics · last reset (${g.build}, ${g.at.slice(0, 16).replace('T', ' ')}): ${g.was ? 'building the ' + g.was + ' program, ' + g.secs + ' s in' : 'no program was being built'}`); } catch {}                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 /* ---- v1.71: spice tiers and attunement, procedural foes, dogfight upgrades, the Foe intro ---- */
