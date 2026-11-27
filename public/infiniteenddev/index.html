@@ -3280,28 +3280,34 @@ function hop(loc) { const sv = [yaw, pitch, thr, vx, vy, vz]; palEase = 1; softA
 // locks on, and you cross the system in seconds, with only a few degrees of play. It drops out by itself before a planet's air (the
 // approach takes over), on arrival at a place, or if another world's mass is in the way.
 let shiftT = 0, hlAv = [0, 0, 0], hlSpd = 0, hlHits = [], hlLastHit = -9;
-let hl = 0, hlT = 0, hlRdy = 0, hlFx = 0, hlFl = 0, hlFb = 1, hlCurveT = 0, hlU = null, hlD0 = 1, hlDur = 8, hlFree = 0, hlRem = 0;
+let hl = 0, hlT = 0, hlRdy = 0, hlFx = 0, hlFl = 0, hlFb = 1, hlCurveT = 0, hlU = null, hlD0 = 1, hlDur = 8, hlFree = 0, hlRem = 0, hlTg = null;
 const hlPos = (c) => { if (!c || !sysP) return null; if (c.kind === 'planet') { const k = +c.id[1]; return sysP[k] || null; } if (c.kind === 'place') { const O = sysPL[c.loc]; return O ? [O[0] - sysO[0], O[1] - sysO[1], O[2] - sysO[2]] : null; } return null; };
 // v1.51: a world only blocks hyperlight when it's actually in the path ahead (leaving the planet you just climbed out of no longer counts)
 function hlBlock(j, u, rem) { const P = sysP[j]; if (!P) return false; const x = P[0] - sysS[0], y = P[1] - sysS[1], z = P[2] - sysS[2], al = x * u[0] + y * u[1] + z * u[2];
   if (al <= 0 || al > rem + PR[j]) return false; return Math.hypot(x - u[0] * al, y - u[1] * al, z - u[2] * al) < PR[j] * 1.15; }
-function hlStop(msg) { hlSpd = 0; hlAv[0] = hlAv[1] = hlAv[2] = 0; if (!hl) hlHits.length = 0; if (hl === 1 && SP.n[1] < 3) { SP.n[1]++; spSave(); } if (hl) buzz(.55, 300); if (hl === 2) { hlFl = .8; hlFb = 0; flash = Math.max(flash, .3); } hl = 0; hlFree = 0; hlU = null; hlT = 0; hlRdy = 0; if (msg) tip(msg, 4000); }
+function hlStop(msg) { hlSpd = 0; hlAv[0] = hlAv[1] = hlAv[2] = 0; if (!hl) hlHits.length = 0; if (hl === 1 && SP.n[1] < 3) { SP.n[1]++; spSave(); } if (hl) buzz(.55, 300); if (hl === 2) { hlFl = .8; hlFb = 0; flash = Math.max(flash, .3); } hl = 0; hlFree = 0; hlU = null; hlT = 0; hlRdy = 0; hlTg = null; if (msg) tip(msg, 4000); }
+/* v1.99: hyperlight goes where you chose or where you point, nothing else. The target counts only if you picked it (T, or the lock from aiming); the objective
+   the game suggests (the gate, a waypoint) never does. With no chosen target it runs along the nose. The choice is taken at the key press and held for the trip. */
+function hlTarget() {
+  if (navAuto || jumpTo) return null; const c = navCur(), P = c && hlPos(c); if (!P) return null;
+  const dx = P[0] - sysS[0], dy = P[1] - sysS[1], dz = P[2] - sysS[2], d = Math.hypot(dx, dy, dz), k = c.kind === 'planet' ? +c.id[1] : -1;
+  return (k >= 0 ? d - PR[k] > PR[k] * 5 : d > .03) ? c : null;
+}
 function hlKey() {
   if (SYS.atm) { tip('Hyperlight needs open space: climb out of the air first', 3000); return; }
   if (hl) { hlStop('Hyperlight disengaged'); return; }
   if (SP.n[1] <= 0) { tip('Hyperlight needs a purple spice charge · find purple spice in space, on planets and from foes', 4500); return; }
   if (jumpTo || entLock) return;
-  hlFree = hlRdy >= TUNE.hlReady ? 0 : 1; hlRem = 60;   /* v1.87: no target locked: hyperlight runs along the nose (60 Mm), gently steerable, until it drops out or you cancel */
+  const tg = hlTarget(); hlFree = tg ? 0 : 1; hlRem = 60; hlTg = tg ? { kind: tg.kind, id: tg.id, loc: tg.loc, name: tg.name } : null; hlU = null; hlRdy = 0; hlCurveT = 0; hlAv[0] = hlAv[1] = hlAv[2] = 0;   /* v1.87: no target: hyperlight runs along the nose (60 Mm), gently steerable, until it drops out or you cancel */
   { SP.n[1]--; spSave(); hlHits.length = 0; { const Q = QA ? QA.slice() : qmul(QF, qYP(yaw, pitch)); QF = Q; yaw = 0; pitch = 0; yawL = 0; pitchL = 0; snap = 1; }   // v1.61: level re-based on where you point, so hyperlight's steering angles stay small (a tilted frame near vertical made it spin)
-    hl = 1; hlT = 0; buzz(.45, 1300); tip(hlFree ? 'Hyperlight spooling · free heading · G to drop out' : 'Hyperlight spooling…', 1800); if (AC && AC.state === 'running') burst(AC.currentTime, 1.4, .16, 60, 600, 'lowpass'); }
+    hl = 1; hlT = 0; buzz(.45, 1300); tip(hlFree ? 'Hyperlight spooling · free heading · G to drop out' : 'Hyperlight spooling to ' + (hlTg.name || 'target') + '…', 1800); if (AC && AC.state === 'running') burst(AC.currentTime, 1.4, .16, 60, 600, 'lowpass'); }
 }
 function hlTick(dt, near, nk) {
   hlFl = Math.max(0, hlFl - dt);
   hlFx += ((hl === 2 ? 1 : hl === 1 ? Math.min(1, hlT / TUNE.hlSpool) * .6 : 0) - hlFx) * Math.min(1, dt * (hl ? 3 : 1.4));
-  const c = navCur(), P = hlPos(c);
+  const c = hl && hlTg ? hlTg : navCur(), P = hlPos(c);
   if (!hl) {
-    if (P && !jumpTo) { const dx = P[0] - sysS[0], dy = P[1] - sysS[1], dz = P[2] - sysS[2], d = Math.hypot(dx, dy, dz) || 1, cs = (sFx * dx + sFy * dy + sFz * dz) / d, k = c.kind === 'planet' ? +c.id[1] : -1, far = k >= 0 ? d - PR[k] > PR[k] * 5 : d > .03;
-      hlRdy = cs > .985 && far ? Math.min(TUNE.hlReady + .8, hlRdy + dt) : Math.max(0, hlRdy - dt * 2); }
+    if (hlTarget()) hlRdy = Math.min(TUNE.hlReady + .8, hlRdy + dt * 4);
     else hlRdy = 0;
     return; }
   hlT += dt; if (!P && !hlFree) { hlStop('Hyperlight lost its lock'); return; }
@@ -6570,7 +6576,7 @@ if (PSC && !dgOff('bg')) { try { SKYA_ST = progStart(TRI_V, SKYS.replace('#versi
 // ---- what is remembered. The universe is regenerated from seeds every time; only the player's own marks on it
 // are stored (IndexedDB, falling back to localStorage): cargo, credits, where they are, where they have been,
 // which rocks they broke, task progress, discoveries, a courier job in hand.
-const BUILD = 'v1.98';
+const BUILD = 'v1.99';
 // v1.74: if the last session ended in a graphics reset, put what was being built at the time in the log (F9 → Copy settings shows it)
 try { const g = JSON.parse(localStorage.ieGlLost || 'null'); if (g) evLog(`Graphics · last reset (${g.build}, ${g.at.slice(0, 16).replace('T', ' ')}): ${g.was ? 'building the ' + g.was + ' program, ' + g.secs + ' s in' : 'no program was being built'}`); } catch {}                                          // shown on the pause screen. From v1.20 a new value keeps the save.
 /* ---- v1.71: spice tiers and attunement, procedural foes, dogfight upgrades, the Foe intro ---- */
@@ -7762,7 +7768,7 @@ function frame(now, xf) {
     if (xr) xrAdapt(a, now);
     if (!TEST && !document.hidden && !xr) {
       if (a > 21 && S > .45) { S = Math.max(.45, S * .86); hold = now + (cool = Math.min(cool * 2, 120000)); resize(); }
-      else if (LV < 2 && !started && tm > 4 && (a > 45 || a > 30 && S <= .45)) { keep('esLevel', LV + 1); location.reload(); }   // far too slow: step the detail down while the menu is still up
+      else if (LV < 2 && !started && !(FL && FL.rp) && tm > 4 && (a > 45 || a > 30 && S <= .45)) { keep('esLevel', LV + 1); location.reload(); }   // far too slow: step the detail down while the menu is still up
       else if (LV < 2 && a > 34 && S <= .45 && !slowTip) { slowTip = 1; tip('Running slow: try a lower detail level in the menu', 8000); }
       else if (a < 17.6 && S < 1 && now > hold) { S = Math.min(1, S * 1.1); hold = now + 3000; resize(); }
     }
@@ -8049,17 +8055,57 @@ if (PSC && !dgOff('bg')) {
      k:[per-column scale]  s:flat int array, 32 columns per sample, 10 Hz, every column delta coded except column 15 (flags)
        0 dt ms | 1-3 ship x y z (local frame) | 4-6 system position | 7-10 attitude quaternion x y z w | 11-13 velocity
        14 throttle | 15 flags | 16 hull | 17 spice | 18 fuel | 19 hyperlight fx | 20 boost fx | 21 radio level | 22 stream level
-       23 credits | 24 cargo total | 25-28 spice meters SP.n | 29 mouse x | 30 mouse y | 31 steer
+       23 credits | 24 cargo total | 25-28 spice meters SP.n | 29 mouse x | 30 mouse y | 31 steer | 32-35 clearance ahead, left, right, up (0-100, 100 = clear to 1200 m)
+       nc: columns per sample (36 now; flights without nc have 32). sg: [[track url, title, flight s0, flight s1, song s0, song s1, energy]] the song runs this flight can be cut to; en: flight energy 0-1
      flags bits: 1 boost | 2 fire | 4 hyperlight | 8 hyperlight cruise | 16 in atmosphere | 32 hover | 64 bullet time
        128 entering | 256 leaving | 512 galaxy map open | 1024 inventory open
      e:[[ms,code,...]] discrete events: A arrive sec0 sec1 sec2 loc | T tip text | R radio url title offset(0.1s) on
        P stream url offset(0.1s) on title | S settings json | W weapon | E flag edge bit value | H hull change | C credits change | M cargo change
    Recording costs one small typed-array write per sample; nothing is allocated per frame. Replay never touches saves or progress. */
 var FL = !DGT ? null : (() => {
-  const KI = 'ieFlIdx', KP = 'ieFlD_', MAXN = 10, CAP = 2400000, MAXS = 480, NC = 32, MAXE = 4000;
-  const KS = [1, 10, 10, 10, 1e6, 1e6, 1e6, 2000, 2000, 2000, 2000, 10, 10, 10, 100, 1, 1, 10, 10, 100, 100, 100, 100, 1, 1, 1, 1, 1, 1, 100, 100, 100];
+  const KI = 'ieFlIdx', KP = 'ieFlD_', MAXN = 10, CAP = 2400000, MAXS = 480, NC = 36, NP = 32, MAXE = 4000;
+  const KS = [1, 10, 10, 10, 1e6, 1e6, 1e6, 2000, 2000, 2000, 2000, 10, 10, 10, 100, 1, 1, 10, 10, 100, 100, 100, 100, 1, 1, 1, 1, 1, 1, 100, 100, 100, 100, 100, 100, 100];
   const BIG = new Float64Array(Math.ceil(MAXS * 10.5) * NC), CUR = new Float64Array(NC), PRV = new Float64Array(NC);
   const rj = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
+
+  const sgCache = rj('ieFlSg') || {}, durCache = rj('ieFlDur') || {};
+  const sgSave = () => { try { const k = Object.keys(sgCache); if (k.length > 400) for (const x of k.slice(0, k.length - 400)) delete sgCache[x]; localStorage.setItem('ieFlSg', JSON.stringify(sgCache)); } catch {} };
+  const enOf = (f, t0, t1) => { const nc = f.nc || 32, s = f.s; let t = 0, hit = 0, tot = 0; for (let i = 0; i * nc < s.length; i++) { t += s[i * nc]; const ts = t / 1000; if (ts >= t0 && ts <= t1) { tot++; if (s[i * nc + 15] & 5) hit++; } } return tot ? hit / tot : 0; };
+  /* the song runs in a flight: [url, title, flight s0, flight s1, song s0, song s1, energy]. A run is one track playing in step with the flight clock. */
+  function segsOf(f) {
+    const out = [], push = (c, t) => { if (c && t - c.t0 >= 4) out.push([c.u, c.ti, +c.t0.toFixed(1), +t.toFixed(1), +c.s0.toFixed(1), +(c.s0 + t - c.t0).toFixed(1)]); };
+    let cr = null, cp = null;
+    for (const e of f.e) {
+      const t = e[0] / 1000;
+      if (e[1] === 'R') { const u = e[2], off = e[4] / 10;
+        if (e[5] && u) { if (cr && cr.u === u && Math.abs(cr.s0 + (t - cr.t0) - off) < 2.5) continue; push(cr, t); cr = { u, ti: e[3] || '', t0: t, s0: off }; } else { push(cr, t); cr = null; } }
+      else if (e[1] === 'P') { const u = e[2], off = e[3] / 10;
+        if (e[4] && u) { if (cp && cp.u === u && Math.abs(cp.s0 + (t - cp.t0) - off) < 2.5) continue; push(cp, t); cp = { u, ti: e[5] || '', t0: t, s0: off }; } else { push(cp, t); cp = null; } }
+    }
+    push(cr, f.dur); push(cp, f.dur);
+    for (const g of out) g.push(+enOf(f, g[2], g[3]).toFixed(2));
+    return out;
+  }
+  /* clearance: how far the ship can fly ahead, left, right and up before a rock gets in the way (1 = clear to 1200 m, 0 = touching). Cheap range-culled ray test over the rock lists. */
+  const CL = new Float32Array(4);
+  function clearance() {
+    let m0 = 1200, m1 = 1200, m2 = 1200, m3 = 1200; const RNG = 1200, MG = 14, Ls = SHOOT;
+    for (let li = 0; li < Ls.length; li++) {
+      const L = Ls[li]; if (LMV.includes(L)) continue;
+      const D = L.d, C = L.C, N = L.N, Hh = N / 2, mx = L.mx, my = L.my, mz = L.mz, fx = L.fx, fy = L.fy, fz = L.fz;
+      for (let n = L.n, q = 0; n > 0; n--, q += F) {
+        const size = D[q + 3]; if (!size) continue;
+        const x = (((D[q] - mx + Hh) % N + N) % N - Hh + D[q + 4]) * C - fx, y = (((D[q + 1] - my + Hh) % N + N) % N - Hh + D[q + 5]) * C - fy, z = (((D[q + 2] - mz + Hh) % N + N) % N - Hh + D[q + 6]) * C - fz;
+        const r = size * .84 + 1.4, d2 = x * x + y * y + z * z, lim = RNG + r; if (d2 > lim * lim) continue;
+        const rm = (r + MG) * (r + MG);
+        let a = x * sFx + y * sFy + z * sFz; if (a > 0 && a - r < m0 && d2 - a * a < rm) m0 = Math.max(0, a - r);
+        a = x * sRx + y * sRy + z * sRz; if (a < 0) { a = -a; if (a - r < m1 && d2 - a * a < rm) m1 = Math.max(0, a - r); } else if (a - r < m2 && d2 - a * a < rm) m2 = Math.max(0, a - r);
+        a = x * sUx + y * sUy + z * sUz; if (a > 0 && a - r < m3 && d2 - a * a < rm) m3 = Math.max(0, a - r);
+      }
+    }
+    CL[0] = m0 / RNG; CL[1] = m1 / RNG; CL[2] = m2 / RNG; CL[3] = m3 / RNG;
+    return CL;
+  }
   const o = { rec: 0, rp: 0, up: DGT && !TEST, idle: 20, att: 0, stm: null, srv: null, err: 0, nS: 0, last: null };
   let fr = null, acc = 0, ns = 0, idleT = 0, pollT = 0, pq = [0, 0, 0, 1], lastFl = 0, lastCfg = '', lastW = -1, lastRd = null, lastPl = null;
   const dev = () => { let d = rj('ieFlDev'); if (!d) { d = Math.random().toString(36).slice(2, 12); try { localStorage.setItem('ieFlDev', JSON.stringify(d)); } catch {} } return d; };
@@ -8089,7 +8135,7 @@ var FL = !DGT ? null : (() => {
   }
   function begin() {
     fr = { v: 1, b: BUILD, pilot: 'human', id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), dev: dev(), t0: Date.now(), dur: 0, seed: MASTER >>> 0, sys: SYS.id, sysN: SYS.name, sec: ST.sec.slice(), loc: SYS.loc,
-      cfg: cfgNow(), wpn, hdr: { hull: ST.hull, spice: ST.spice, fuel: ST.fuel, o2: ST.o2, wen: ST.wen, credits: ST.credits }, k: KS, s: null, e: [], t: 0 };
+      nc: NC, cfg: cfgNow(), wpn, hdr: { hull: ST.hull, spice: ST.spice, fuel: ST.fuel, o2: ST.o2, wen: ST.wen, credits: ST.credits }, k: KS, s: null, e: [], t: 0 };
     ns = 0; acc = .1; pollT = 0; PRV.fill(0); lastCfg = JSON.stringify(fr.cfg); lastW = wpn; lastFl = 0; lastRd = null; lastPl = null; pq[0] = pq[1] = pq[2] = 0; pq[3] = 1;
     fr.e.push([0, 'A', ST.sec[0], ST.sec[1], ST.sec[2], SYS.loc]);
     fr.au = audSnap(); if (fr.au.r) fr.e.push([0, 'R', fr.au.r[0], fr.au.r[1], fr.au.r[2], fr.au.r[3]]); if (fr.au.p) fr.e.push([0, 'P', fr.au.p[0], fr.au.p[1], fr.au.p[2], fr.au.p[3]]);
@@ -8102,6 +8148,7 @@ var FL = !DGT ? null : (() => {
     c[7] = pq[0] * 2000; c[8] = pq[1] * 2000; c[9] = pq[2] * 2000; c[10] = pq[3] * 2000; c[11] = vx * 10; c[12] = vy * 10; c[13] = vz * 10;
     c[14] = thr * 100; const fl = flagsNow(); c[15] = fl; c[16] = ST.hull; c[17] = (ST.spice || 0) * 10; c[18] = (ST.fuel || 0) * 10; c[19] = hlFx * 100; c[20] = bst * 100; c[21] = rdVol * 100; c[22] = plVol * 100;
     c[23] = ST.credits; c[24] = cargoN(); c[25] = SP.n[0]; c[26] = SP.n[1]; c[27] = SP.n[2]; c[28] = SP.n[3]; c[29] = (mxn || 0) * 100; c[30] = (myn || 0) * 100; c[31] = (steer || 0) * 100;
+    if (!(ns & 1)) clearance(); c[32] = CL[0] * 100; c[33] = CL[1] * 100; c[34] = CL[2] * 100; c[35] = CL[3] * 100;
     const b = ns * NC; if (b + NC > BIG.length) { finish(); return; }
     for (let i = 0; i < NC; i++) { const q = Math.round(c[i]); BIG[b + i] = i === 15 ? q : q - PRV[i]; PRV[i] = q; }
     BIG[b] = ms - (ns ? PRV_T : 0); PRV_T = ms; ns++;
@@ -8127,6 +8174,7 @@ var FL = !DGT ? null : (() => {
     if (!fr) return; const f = fr; fr = null; o.rec = 0; f.dur = Math.round(f.t * 10) / 10;
     if (ns < 60 || f.dur < 8) return;
     f.s = Array.from(BIG.subarray(0, ns * NC)); delete f.t; f.n = ns;
+    try { f.sg = segsOf(f); f.en = +enOf(f, 0, f.dur).toFixed(2); sgCache[f.id] = { sg: f.sg, en: f.en, dur: f.dur }; sgSave(); } catch {}
     o.last = f; o.nS++;
     try { await store(f); } catch {}
     if (o.up) upload(f);
@@ -8146,7 +8194,7 @@ var FL = !DGT ? null : (() => {
   async function get(id) { const d = localStorage.getItem(KP + id); if (!d) return null; return JSON.parse(d.startsWith('g:') ? await ungz(d.slice(2)) : d.slice(2)); }
   function del(id) { try { localStorage.removeItem(KP + id); } catch {} putIdx(idx().filter((m) => m.id !== id)); }
   function pin(id) { const a = idx(); for (const m of a) m.pin = m.id === id ? (m.pin ? 0 : 1) : 0; putIdx(a); }
-  async function imp(txt) { const f = JSON.parse(txt); if (!f || f.v !== 1 || !Array.isArray(f.s) || !Array.isArray(f.e) || f.s.length % NC) throw new Error('not a flight'); f.pilot = String(f.pilot || 'human').replace(/[^\w]/g, '').slice(0, 12); f.id = String(f.id || Date.now().toString(36)).replace(/[^\w]/g, '').slice(0, 24); f.n = f.s.length / NC; await store(f); return f; }
+  async function imp(txt) { const f = JSON.parse(txt); if (!f || f.v !== 1 || !Array.isArray(f.s) || !Array.isArray(f.e) || f.s.length % (f.nc || 32)) throw new Error('not a flight'); f.pilot = String(f.pilot || 'human').replace(/[^\w]/g, '').slice(0, 12); f.id = String(f.id || Date.now().toString(36)).replace(/[^\w]/g, '').slice(0, 24); f.n = f.s.length / (f.nc || 32); await store(f); return f; }
   function exp(f) { const u = URL.createObjectURL(new Blob([JSON.stringify(f)], { type: 'application/json' })), a = document.createElement('a'); a.href = u; a.download = `infinite-end-flight-${f.id}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(u), 4000); }
   async function upload(f) {
     try { let body; try { body = JSON.stringify({ z: 1, d: await gz(JSON.stringify(f)) }); } catch { body = JSON.stringify({ z: 0, f }); }
@@ -8160,8 +8208,8 @@ var FL = !DGT ? null : (() => {
   /* ---- replay ---- */
   let rp = null, snap = null, lsDesc = null, proxyOn = 0, hud = null, fade = null;
   const dec = (f) => {
-    const n = f.s.length / NC, T = new Float64Array(n), P = new Float64Array(n * NC), c = new Float64Array(NC);
-    for (let i = 0; i < n; i++) { for (let j = 0; j < NC; j++) { const v = f.s[i * NC + j]; if (j === 15) c[j] = v; else c[j] += v; P[i * NC + j] = c[j]; } T[i] = c[0]; }
+    const nc = f.nc || 32, n = f.s.length / nc, T = new Float64Array(n), P = new Float64Array(n * NP), c = new Float64Array(NP);
+    for (let i = 0; i < n; i++) { for (let j = 0; j < NP; j++) { const v = f.s[i * nc + j]; if (j === 15) c[j] = v; else c[j] += v; P[i * NP + j] = c[j]; } T[i] = c[0]; }
     return { n, T, P };
   };
   function lockStore(on) {
@@ -8221,15 +8269,15 @@ var FL = !DGT ? null : (() => {
     if (c === 'A') { rp.arr++; arrive([e[2], e[3], e[4]], e[5], 1); if (rp.d) while (rp.i + 1 < rp.d.n && rp.d.T[rp.i] < e[0]) rp.i++; }
     else if (c === 'S') applyCfg(e[2]);
     else if (c === 'W') wpn = e[2];
-    else if (c === 'R' || c === 'P') audio(e);
+    else if (c === 'R' || c === 'P') { if (!rp.mont) audio(e); }
   }
   function step(rdt) {
-    const R = rp; if (R.ended) return; const d = R.d, T = d && d.T, P = d && d.P, n = d && d.n; R.t += rdt; const tms = R.t * 1000;
+    const R = rp; if (R.ended) return; const d = R.d, T = d && d.T, P = d && d.P, n = d && d.n; if (R.mont && R.clip && o.mt) R.t = R.clip.tS + (o.mt.st - R.clip.sT); else R.t += rdt; let tms = R.t * 1000;
     while (R.ei < R.f.e.length && R.f.e[R.ei][0] <= tms) doEvent(R.f.e[R.ei++]);
     if (R.live) { if (R.ei > 0) liveStep(R, rdt); if (R.t >= R.f.dur) end(); return; }
     while (R.i + 1 < n && T[R.i + 1] <= tms) R.i++;
-    if (R.i >= n - 1 && tms >= T[n - 1]) { end(); return; }
-    const i = R.i, j = Math.min(n - 1, i + 1), a = i * NC, b = j * NC, span = T[j] - T[i], u = span > 0 ? Math.max(0, Math.min(1, (tms - T[i]) / span)) : 0, L = (k) => (P[a + k] + (P[b + k] - P[a + k]) * u) / KS[k];
+    if (R.i >= n - 1 && tms >= T[n - 1]) { if (!R.mont) { end(); return; } tms = T[n - 1]; }
+    const i = R.i, j = Math.min(n - 1, i + 1), a = i * NP, b = j * NP, span = T[j] - T[i], u = span > 0 ? Math.max(0, Math.min(1, (tms - T[i]) / span)) : 0, L = (k) => (P[a + k] + (P[b + k] - P[a + k]) * u) / KS[k];
     px = L(1); py = L(2); pz = L(3); sysS[0] = L(4); sysS[1] = L(5); sysS[2] = L(6);
     let x = P[a + 7], y = P[a + 8], z = P[a + 9], w = P[a + 10], x2 = P[b + 7], y2 = P[b + 8], z2 = P[b + 9], w2 = P[b + 10]; if (x * x2 + y * y2 + z * z2 + w * w2 < 0) { x2 = -x2; y2 = -y2; z2 = -z2; w2 = -w2; }
     x += (x2 - x) * u; y += (y2 - y) * u; z += (z2 - z) * u; w += (w2 - w) * u; const nn = 1 / Math.hypot(x, y, z, w); x *= nn; y *= nn; z *= nn; w *= nn;
@@ -8237,11 +8285,12 @@ var FL = !DGT ? null : (() => {
     sFx = -2 * (x * z + y * w); sFy = -2 * (y * z - x * w); sFz = -(1 - 2 * (x * x + y * y));
     spit = Math.asin(Math.max(-1, Math.min(1, sFy))); syaw = Math.atan2(sFx, -sFz);
     vx = L(11); vy = L(12); vz = L(13); thr = L(14); const fl = P[a + 15]; hl = fl & 4 ? 1 : 0; hlFx = L(19); bst = L(20);
-    ST.hull = L(16); ST.spice = L(17); ST.fuel = L(18); ST.credits = Math.round(L(23)); rdVol = L(21); plVol = L(22);
+    ST.hull = L(16); ST.spice = L(17); ST.fuel = L(18); ST.credits = Math.round(L(23)); if (R.mont) rdVol = .34; else { rdVol = L(21); plVol = L(22); }
     if (rdA && !rdA.paused) rdSet(Math.max(.1, Math.min(1, rdVol)) * .62 * CFG.vRad); if (plA && !plA.paused) { try { plA.volume = Math.max(0, Math.min(1, plVol * CFG.vRad * aF)); } catch {} }
   }
+  function abortMt() { o.mt = null; try { if (rdA) { rdA.pause(); rdA.onended = () => radioNext(0); } } catch {} want = 0; if (fade) fade.style.opacity = 0; o.lastIn = performance.now(); }
   function swallow(e) {
-    if (!rp) return; if (e.isTrusted && (e.type === 'keydown' || e.type === 'pointerdown' || e.type === 'touchstart' || e.type === 'mousedown')) kick(); const tg = e.target; if (tg && tg.closest && tg.closest('#dgp,#flp,#flh')) return;
+    if (!rp) { if (o.mt && o.mt.attract && (e.type === 'keydown' || e.type === 'mousedown' || e.type === 'pointerdown' || e.type === 'touchstart' || e.type === 'wheel')) { e.stopImmediatePropagation(); abortMt(); } return; } if (e.isTrusted && (e.type === 'keydown' || e.type === 'pointerdown' || e.type === 'touchstart' || e.type === 'mousedown')) kick(); const tg = e.target; if (tg && tg.closest && tg.closest('#dgp,#flp,#flh')) return;
     if (e.type === 'keydown' && e.code === 'F10') return;
     if (rp.mode === 'attract') { if (e.type === 'mousemove' || e.type === 'pointermove') { rp.mv += Math.abs(e.movementX || 0) + Math.abs(e.movementY || 0); if (rp.mv < 40) return; } if (e.type === 'keyup' || e.type === 'mouseup' || e.type === 'pointerup' || e.type === 'touchend') { e.stopImmediatePropagation(); return; } e.stopImmediatePropagation(); e.preventDefault(); stop(); return; }
     if (e.type === 'keydown' && e.code === 'Escape') { e.stopImmediatePropagation(); e.preventDefault(); stop(); return; }
@@ -8257,20 +8306,21 @@ var FL = !DGT ? null : (() => {
   function capEl() { if (hud) return hud; hud = document.createElement('div'); hud.id = 'flh'; hud.style.cssText = 'position:fixed;right:34px;bottom:58px;z-index:99995;text-align:right;color:#f2efe6;font:300 15px/1.35 "Iowan Old Style","Palatino Linotype",Georgia,serif;letter-spacing:.03em;opacity:0;transition:opacity 1.1s;text-shadow:0 0 14px #000c,0 0 3px #0008;max-width:60vw;cursor:default'; hud.innerHTML = '<div></div><div style="font:400 9px/1.6 system-ui,sans-serif;letter-spacing:.3em;text-transform:uppercase;opacity:.7;margin-top:2px">Ikosagon Radio</div>'; hud.onclick = () => { if (rp && rp.mode === 'test') stop(); }; document.body.appendChild(hud); return hud; }
   function caption(t) { const h = capEl(); clearTimeout(capT); if (!t) { h.style.opacity = 0; capTxt = ''; return; } if (t !== capTxt) { capTxt = t; h.firstChild.textContent = t; } h.style.transition = 'opacity .9s'; h.style.opacity = 1; capT = setTimeout(() => { h.style.transition = 'opacity 3s'; h.style.opacity = .38; }, 6500); }
   async function play(f, opt) {
-    opt = opt || {}; if (!f || !f.e || (!f.live && (!f.s || f.s.length < NC * 2))) return false;
+    opt = opt || {}; if (!f || !f.e || (!f.live && (!f.s || f.s.length < NP * 2))) return false;
     if (rec0()) await finish();
     const was = !!rp;
     if (!was) {
-      snap = { st: JSON.stringify(ST), master: MASTER, home: HOME, dead: [...dead], cfg: JSON.stringify(cfgNow()), cls: B.className, wpn, sp: SP.n.slice(), pos: [px, py, pz, sysS.slice(), vx, vy, vz, thr, yaw, pitch, QA ? QA.slice() : null, QAs ? QAs.slice() : null, bst, hlFx, hl], rdLast, plOn };
+      snap = { st: JSON.stringify(ST), master: MASTER, home: HOME, dead: [...dead], cfg: JSON.stringify(cfgNow()), cls: B.className, wpn, sp: SP.n.slice(), pos: [px, py, pz, sysS.slice(), vx, vy, vz, thr, yaw, pitch, QA ? QA.slice() : null, QAs ? QAs.slice() : null, bst, hlFx, hl], rdLast, plOn, nav: navId, navAuto };
       lockStore(1); try { rdHold = true; } catch {}
     }
     clearTimeout(saveT);
     for (const k of Object.keys(ST)) delete ST[k]; Object.assign(ST, blankState(f.seed >>> 0)); MASTER = ST.seed >>> 0; HOME = hs(MASTER ^ 0x40E) >>> 0; dead.clear();
-    Object.assign(ST, f.hdr || {}); applyCfg(JSON.stringify(f.cfg || {})); wpn = f.wpn == null ? wpn : f.wpn; hl = 0; hlFx = 0; bst = 0; if (typeof btT !== 'undefined') btT = 0;
-    const d = f.live ? null : dec(f); rp = { f, d, t: 0, i: 0, ei: 0, mode: opt.mode || 'test', mv: 0, hT: 0, arr: 0, drift: 0, live: f.live ? { init: 0 } : null }; o.rp = 1; o.att = rp.mode === 'attract' ? 1 : 0;
+    Object.assign(ST, f.hdr || {}); applyCfg(JSON.stringify(f.cfg || {})); wpn = f.wpn == null ? wpn : f.wpn; hl = 0; hlFx = 0; bst = 0; hlU = null; hlTg = null; hlFree = 0; hlRdy = 0; hlT = 0; hlAv[0] = hlAv[1] = hlAv[2] = 0; hlHits.length = 0; if (typeof btT !== 'undefined') btT = 0;
+    const d = f.live ? null : dec(f); rp = { f, d, t: opt.at || 0, i: 0, ei: 0, mont: !!opt.mont, clip: null, mode: opt.mode || 'test', mv: 0, hT: 0, arr: 0, drift: 0, live: f.live ? { init: 0 } : null }; o.rp = 1; o.att = rp.mode === 'attract' ? 1 : 0;
+    if (opt.at && d) { const am = opt.at * 1000; while (rp.i + 1 < d.n && d.T[rp.i + 1] <= am) rp.i++; for (let k = 0; k < f.e.length && f.e[k][0] <= am; k++) if (f.e[k][1] === 'A') rp.ei = k; }
     if (!was) menu(); B.className = 'm'; B.classList.toggle('att', !!o.att); B.classList.toggle('rp', !o.att);
     capEl();
-    audStart(f); aT = 1; if (!was) aF = 1;
+    if (!opt.mont) audStart(f); aT = 1; if (!was) aF = 1;
     for (const L of LAYERS) L.cx = 1e9;
     return true;
   }
@@ -8282,14 +8332,14 @@ var FL = !DGT ? null : (() => {
     stop();
   }
   function stop() {
-    if (!rp) return; const keepDown = rp.mode; aT = aF = 1; want = 0; rp = null; o.rp = 0; o.att = 0; o.stm = null; o.lastIn = performance.now();
+    if (!rp) return; const keepDown = rp.mode; aT = aF = 1; want = 0; if (o.mt) { o.mt = null; if (rdA) rdA.onended = () => radioNext(0); } rp = null; o.rp = 0; o.att = 0; o.stm = null; o.lastIn = performance.now();
     try { if (rdA) { rdA.pause(); } if (plA) { plA.pause(); plOn = 0; } } catch {}
     const S0 = snap; snap = null;
     for (const k of Object.keys(ST)) delete ST[k]; Object.assign(ST, JSON.parse(S0.st)); MASTER = S0.master; HOME = S0.home; dead.clear(); for (const g of S0.dead) dead.add(g);
     applyCfg(S0.cfg); wpn = S0.wpn; SP.n = S0.sp; lockStore(0);
     softArr = 1; arrive(ST.sec, ST.loc, 1); softArr = 0;
     for (const k of Object.keys(ST)) delete ST[k]; Object.assign(ST, JSON.parse(S0.st));
-    const p = S0.pos; px = p[0]; py = p[1]; pz = p[2]; sysS[0] = p[3][0]; sysS[1] = p[3][1]; sysS[2] = p[3][2]; vx = p[4]; vy = p[5]; vz = p[6]; thr = p[7]; yaw = p[8]; pitch = p[9]; if (p[10]) { QA = p[10]; QAs = p[11]; } bst = p[12]; hlFx = p[13]; hl = p[14];
+    const p = S0.pos; px = p[0]; py = p[1]; pz = p[2]; sysS[0] = p[3][0]; sysS[1] = p[3][1]; sysS[2] = p[3][2]; vx = p[4]; vy = p[5]; vz = p[6]; thr = p[7]; yaw = p[8]; pitch = p[9]; if (p[10]) { QA = p[10]; QAs = p[11]; } bst = p[12]; hlFx = p[13]; hl = 0; hlU = null; hlTg = null; hlFree = 0; hlRdy = 0; hlT = 0; hlAv[0] = hlAv[1] = hlAv[2] = 0; hlHits.length = 0; navId = S0.nav; navAuto = S0.navAuto;
     B.className = S0.cls; if (hud) { hud.remove(); hud = null; } capTxt = ''; clearTimeout(capT); if (fade) fade.style.opacity = 0;
     try { rdHold = false; rdLast = ''; if (CFG.radio && rdA && rdList) radioNext(0); } catch {}
     for (const L of LAYERS) L.cx = 1e9; save();
@@ -8312,7 +8362,7 @@ var FL = !DGT ? null : (() => {
   /* ---- the AI pilot: a live controller for the idle title. Contract (so a trained model drops in with no refactor):
      input  Float32Array(16) of state features, filled by featNow(); output Float32Array(4) [yaw, pitch, throttle, boost], each -1..1.
      features: 0 throttle | 1 speed/660 | 2 boost | 3 hyperlight fx | 4 yaw rate | 5 pitch rate | 6 bank | 7 pitch angle | 8 altitude/2e4 (clamped) |
-       9 sin heading | 10 cos heading | 11 time in flight/150 | 12-15 clearance ahead / left / right / up (1 = clear; 1 until a sensor fills them)
+       9 sin heading | 10 cos heading | 11 time in flight/150 | 12-15 clearance ahead / left / right / up (1 = clear to 1200 m; from clearance(), the same numbers the recorder stores in columns 32-35)
      model file /infiniteenddev/ai-pilot.json: { "v":1, "sizes":[16,h,...,4], "w":[flat row-major out*in per layer], "b":[per layer] }, tanh layers.
      A model runs when that file loads; FL.ai.use(fn) installs any controller fn(feat, out) by hand (tests, experiments). ---- */
   const NF = 16, FEAT = new Float32Array(NF), OUT = new Float32Array(4);
@@ -8330,11 +8380,12 @@ var FL = !DGT ? null : (() => {
   ai.use = (fn) => { ai.fn = fn; ai.name = fn ? 'custom' : ''; };
   function featNow(L, f) {
     f.fill(0); f[0] = L.thr; f[1] = L.spd / 660; f[2] = L.bst; f[3] = 0; f[4] = L.yr; f[5] = L.pr; f[6] = L.roll; f[7] = L.p / 1.5; f[8] = Math.max(-1, Math.min(1, py / 2e4));
-    f[9] = Math.sin(L.y); f[10] = Math.cos(L.y); f[11] = L.t / 150; f[12] = f[13] = f[14] = f[15] = 1; if (ai.sense) ai.sense(f);
+    f[9] = Math.sin(L.y); f[10] = Math.cos(L.y); f[11] = L.t / 150; f[12] = L.cl[0]; f[13] = L.cl[1]; f[14] = L.cl[2]; f[15] = L.cl[3]; if (ai.sense) ai.sense(f);
   }
   function liveStep(R, rdt) {
-    const L = R.live; if (!L.init) { L.init = 1; L.y = Math.random() * 6.283; L.p = 0; L.roll = 0; L.thr = .5; L.spd = 180; L.bst = 0; L.yr = 0; L.pr = 0; L.t = 0; }
-    L.t = R.t; featNow(L, FEAT); OUT.fill(0); try { ai.fn(FEAT, OUT); } catch { OUT.fill(0); }
+    const L = R.live; if (!L.init) { L.init = 1; L.y = Math.random() * 6.283; L.p = 0; L.roll = 0; L.thr = .5; L.spd = 180; L.bst = 0; L.yr = 0; L.pr = 0; L.t = 0; L.cl = new Float32Array([1, 1, 1, 1]); L.cT = 0; }
+    L.t = R.t; if ((L.cT -= rdt) < 0) { L.cT = .25; clearance(); L.cl.set(CL); }
+    featNow(L, FEAT); OUT.fill(0); try { ai.fn(FEAT, OUT); } catch { OUT.fill(0); }
     const dt = Math.min(.05, rdt), yw = Math.max(-1, Math.min(1, OUT[0])), pt = Math.max(-1, Math.min(1, OUT[1])), tg = Math.max(0, Math.min(1, OUT[2])), bo = OUT[3] > .5 ? 1 : 0;
     L.yr += (yw * .9 - L.yr) * Math.min(1, dt * 3); L.pr += (pt * .6 - L.pr) * Math.min(1, dt * 3); L.y += L.yr * dt; L.p = Math.max(-1.3, Math.min(1.3, L.p + L.pr * dt));
     L.thr += (tg - L.thr) * Math.min(1, dt * 1.5); L.bst += (bo - L.bst) * Math.min(1, dt * 1.2); L.roll += (-L.yr * .5 - L.roll) * Math.min(1, dt * 2);
@@ -8350,6 +8401,7 @@ var FL = !DGT ? null : (() => {
   async function getAttractPilot() {
     if (await aiLoad()) return { kind: 'ai', name: ai.name };
     const loc = idx(), pn = loc.find((m) => m.pin); if (pn) return { kind: 'rec', src: 'loc', id: pn.id };
+    try { const ix = await mtIndex(false); if (ix.tracks.length && ix.tracks[0].cov >= .5 && ix.flights.length > 1) return { kind: 'mont', id: 'mont' }; } catch {}
     let pool = (o.srv || []).map((m) => ({ kind: 'rec', src: 'srv', id: m.id }));
     if (!pool.length) pool = loc.map((m) => ({ kind: 'rec', src: 'loc', id: m.id }));
     if (o.lastPick && pool.length > 1) pool = pool.filter((p) => p.id !== o.lastPick);
@@ -8365,14 +8417,14 @@ var FL = !DGT ? null : (() => {
   let attBusy = 0;
   async function attractNext() {
     if (attBusy) return; attBusy = 1; let ok = 0;
-    try { const it = await getAttractPilot(); if (it) { o.lastPick = it.id; const f = it.kind === 'ai' ? await liveFlight() : it.src === 'srv' ? await srvGet(it.id) : await get(it.id);
+    try { const it = await getAttractPilot(); if (it && it.kind === 'mont') { ok = await montageStart({ attract: 1, minCov: .5 }) ? 1 : 0; } else if (it) { o.lastPick = it.id; const f = it.kind === 'ai' ? await liveFlight() : it.src === 'srv' ? await srvGet(it.id) : await get(it.id);
       if (f && (rp && rp.mode === 'attract' || !rp && B.className === 'm' && !started)) ok = await play(f, { mode: 'attract' }); } }
     catch {}
     attBusy = 0; if (!ok && rp && rp.ended && rp.mode === 'attract') stop();
   }
   function titleOpen() { return B.className === 'm' && !started && !document.getElementById('dgp') && !document.getElementById('flp') && !document.hidden && !xr; }
   setInterval(() => {
-    if (rp || attBusy) return;
+    if (rp || attBusy || o.mt) return;
     if (o.srv === null) { o.srv = []; if (location.protocol !== 'file:') setTimeout(() => srvList(), 3000); }
     if (titleOpen() && (performance.now() - o.lastIn) / 1000 >= o.idle && (!TEST || o.testAtt)) attractNext();
     if (!rec0() && !rp && o.gpPoll) o.gpPoll = 0;
@@ -8381,7 +8433,7 @@ var FL = !DGT ? null : (() => {
   addEventListener('pagehide', () => { if (fr) { const f = fr; fr = null; o.rec = 0; f.dur = Math.round(f.t * 10) / 10; if (ns >= 60 && f.dur >= 8) { f.s = Array.from(BIG.subarray(0, ns * NC)); delete f.t; f.n = ns; try { const a = idx(); localStorage.setItem(KP + f.id, 'j:' + JSON.stringify(f)); a.unshift({ id: f.id, t: f.t0, dur: f.dur, sys: sysName(f), b: f.b, n: f.n, z: 0, pin: 0, up: 0, pl: f.pilot || 'human' }); putIdx(a.slice(0, MAXN)); } catch {} } } });
   /* ---- per-frame hook ---- */
   o.tick = function (rdt) {
-    if (rp) { aTick(rdt); step(rdt); return; }
+    if (rp) { aTick(rdt); if (o.mt && rp.mont) mtTick(rdt); step(rdt); return; }
     const fly = flying();
     if (!fr) { if (!fly) return; begin(); }
     if (!fly) { idleT += rdt; if (idleT > 30) finish(); return; }
@@ -8392,6 +8444,112 @@ var FL = !DGT ? null : (() => {
   o.arr = function (sec, loc) { if (fr && !rp) { const ms = Math.round(fr.t * 1000); if (fr.e.length < MAXE) fr.e.push([ms, 'A', sec[0], sec[1], sec[2], loc | 0]); } };
   o.tip = function (t) { if (fr && !rp && fr.e.length < MAXE) fr.e.push([Math.round(fr.t * 1000), 'T', String(t).slice(0, 120)]); };
 
+
+  /* ---- song montage: play whole songs, with footage that was flown to that part of the song ----
+     The index lists, per track, every recorded run of it (flight, flight time, song time). A plan covers the song from 0 to its end in clips of
+     8-20 s (never under 4 s, cuts on a 4 s grid), each cut from a flight whose recording was at that moment of the song. A gap with no matching
+     footage is filled with unsynced footage of similar energy (flagged sync:0). The song element is the clock: it is never seeked or paused;
+     footage time = clip start + (song time - clip song start). Only the picture cuts (a short dip), the audio runs straight on. */
+  const fcache = new Map();
+  function loadFlight(cl) {
+    const k = cl.src + cl.fid;
+    if (!fcache.has(k)) { if (fcache.size >= 5) fcache.delete(fcache.keys().next().value); fcache.set(k, (cl.src === 'srv' ? srvGet(cl.fid) : get(cl.fid)).catch(() => null)); }
+    return fcache.get(k);
+  }
+  async function mtIndex(fetchMissing) {
+    const fl = new Map(); let budget = fetchMissing ? 24 : 0;
+    const add = async (id, src, dur, sgi) => {
+      if (fl.has(id)) return; let c = sgCache[id];
+      if (!c && sgi && sgi.g) c = sgCache[id] = { sg: sgi.g, en: sgi.e || .3, dur };
+      if (!c && (src === 'loc' || budget > 0)) { if (src !== 'loc') budget--; try { const f = src === 'loc' ? await get(id) : await srvGet(id); if (f) c = sgCache[id] = { sg: f.sg || segsOf(f), en: f.en != null ? f.en : +enOf(f, 0, f.dur).toFixed(2), dur: f.dur }; } catch {} }
+      fl.set(id, { id, src, dur: dur || (c && c.dur) || 0, en: c ? c.en : .3, sg: c ? c.sg : null });
+    };
+    for (const m of idx()) await add(m.id, 'loc', m.dur, null);
+    for (const m of (o.srv || [])) await add(m.id, 'srv', m.dur, m.sg);
+    if (fetchMissing) sgSave();
+    const tr = new Map();
+    for (const f of fl.values()) for (const g of (f.sg || [])) {
+      let t = tr.get(g[0]); if (!t) tr.set(g[0], t = { u: g[0], title: g[1] || 'On air', segs: [], flights: new Set(), dur: durCache[g[0]] || 0 });
+      t.segs.push({ fid: f.id, src: f.src, t0: g[2], t1: g[3], s0: g[4], s1: g[5], en: g[6] != null ? g[6] : f.en }); t.flights.add(f.id); if (g[1]) t.title = g[1];
+    }
+    for (const t of tr.values()) {
+      const iv = t.segs.map((x) => [x.s0, x.s1]).sort((a, b) => a[0] - b[0]); let cov = 0, e = -1, mx = 0;
+      for (const [a, b] of iv) { mx = Math.max(mx, b); if (a > e) { cov += b - a; e = b; } else if (b > e) { cov += b - e; e = b; } }
+      t.est = !t.dur; t.D = t.dur || mx + 20; t.cov = Math.min(1, cov / t.D); t.n = t.flights.size;
+    }
+    const list = [...tr.values()].sort((a, b) => b.cov - a.cov || b.n - a.n);
+    o.mtIdx = { flights: [...fl.values()], tracks: list };
+    return o.mtIdx;
+  }
+  function planSong(tr, D, pool) {
+    const grid = 4, clips = [], rnd = Math.random; let T = 0, prev = null, pen = .3, guard = 0;
+    while (T < D - .05 && guard++ < 400) {
+      let best = null, bs = -1;
+      for (const g of tr.segs) { const room = g.s1 - T; if (g.s0 <= T + .05 && room >= Math.min(4, D - T)) { const sc = Math.min(room, 20) + (g.fid !== prev ? 6 : 0) + rnd() * 2; if (sc > bs) { bs = sc; best = g; } } }
+      if (best) {
+        let end = Math.round((T + 8 + rnd() * 10) / grid) * grid; end = Math.min(end, best.s1, T + 20, D); if (end < T + Math.min(4, D - T)) end = Math.min(best.s1, D, T + 4);
+        if (best.s1 - end < 4 && best.s1 - T <= 24) end = Math.min(best.s1, D); if (D - end < 4) end = D;
+        if (end <= T + .5) end = Math.min(D, T + 4);
+        clips.push({ fid: best.fid, src: best.src, tS: best.t0 + (T - best.s0), sT: T, sE: end, sync: 1 }); T = end; prev = best.fid; pen = best.en;
+      } else {
+        let nx = D; for (const g of tr.segs) if (g.s0 > T + .05 && g.s0 < nx) nx = g.s0;
+        let len = Math.min(nx - T, 20); if (D - (T + len) < 4) len = D - T; if (len < 1) len = Math.min(1, D - T);
+        let fb = null, fs = -9; for (const f of pool) { if (f.dur < len + 2 || f.id === prev) continue; const sc = -Math.abs(f.en - pen) + rnd() * .35; if (sc > fs) { fs = sc; fb = f; } }
+        if (!fb) for (const f of pool) if (f.dur >= len + 1) { fb = f; break; }
+        if (!fb) return clips;
+        clips.push({ fid: fb.id, src: fb.src, tS: rnd() * Math.max(0, fb.dur - len - 1), sT: T, sE: T + len, sync: 0 }); T += len; prev = fb.id; pen = fb.en;
+      }
+    }
+    if (clips.length) clips[clips.length - 1].sE = D;
+    return clips;
+  }
+  async function montageStart(opt) {
+    opt = opt || {}; if (rec0()) await finish();
+    const ix = await mtIndex(true), pool = ix.flights.filter((f) => f.dur >= 6); if (!pool.length) return false;
+    let order = ix.tracks.filter((t) => t.cov >= (opt.minCov || .2)); if (opt.track) order = ix.tracks.filter((t) => t.u === opt.track); if (!order.length) order = ix.tracks.slice(0, 1); if (!order.length) return false;
+    o.stm = null; closePanels(); radioEl(); if (plA) { try { plA.pause(); } catch {} plOn = 0; }
+    o.mt = { order, pool, si: -1, cur: null, st: 0, vc: 0, busy: 0, loading: 0, attract: !!opt.attract, one: !!opt.track, n: 0 };
+    mtNext(); return true;
+  }
+  async function mtNext() {
+    const M = o.mt; if (!M || M.loading) return; M.loading = 1;
+    try {
+      for (let k = 0; k <= M.order.length; k++) {
+        const tr = M.order[M.si = (M.si + 1) % M.order.length], el = radioEl(); want = 0;
+        el.onended = null; try { el.pause(); } catch {} el.src = tr.u; el.preload = 'auto';
+        let D = await new Promise((res) => { const t = setTimeout(() => res(0), 7000); el.onloadedmetadata = () => { clearTimeout(t); res(el.duration); }; el.onerror = () => { clearTimeout(t); res(0); }; });
+        el.onloadedmetadata = null; if (!o.mt) return;
+        if (!(D > 0 && isFinite(D))) D = tr.D; durCache[tr.u] = D; try { localStorage.setItem('ieFlDur', JSON.stringify(durCache)); } catch {}
+        const plan = planSong(tr, D, M.pool); if (!plan.length) continue;
+        const c = { tr, D, plan, ci: -1 }, c0 = plan[0], fm = await loadFlight(c0); if (!fm || !o.mt) continue;
+        M.cur = c; M.st = 0; M.vc = 0; await play(fm, { mode: M.attract ? 'attract' : 'test', mont: 1, at: c0.tS }); if (!rp) return;
+        rp.clip = c0; c.ci = 0; rdName = tr.title; rdVol = .34; want = 1; aT = 1; el.onended = () => { if (o.mt) mtNext(); }; kick(); caption(rdName);
+        if (fade) fade.style.opacity = 0; M.n++; return;
+      }
+      stop();
+    } catch { stop(); } finally { if (o.mt) o.mt.loading = 0; }
+  }
+  function mtNow() { const el = rdA, M = o.mt; if (el && !el.paused && el.readyState > 1) { M.vc = el.currentTime; return M.vc; } return M.vc; }
+  function mtTick(rdt) {
+    const M = o.mt, c = M.cur; if (!c || M.busy || M.loading) return;
+    const el = rdA, on = el && !el.paused && el.readyState > 1;
+    if (on) { M.st = el.currentTime; M.vc = M.st; } else { M.vc += rdt; M.st = M.vc; }
+    const st = M.st, plan = c.plan; if (c.D - st < 2.2) aT = 0;
+    if (st >= c.D - .05 || (el && el.ended)) { mtNext(); return; }
+    let k = c.ci; while (k + 1 < plan.length && st >= plan[k].sE) k++;
+    const cl = plan[k];
+    if (k === c.ci) {
+      if (k + 1 < plan.length) { if (st >= cl.sE - .4 && !cl.fo) { cl.fo = 1; const fe = fadeEl(); fe.style.transition = 'opacity .35s'; fe.style.opacity = 1; } if (st >= cl.sT + 1.5 && !cl.pf) { cl.pf = 1; loadFlight(plan[k + 1]); } }
+      return;
+    }
+    mtGo(k);
+  }
+  async function mtGo(k) {
+    const M = o.mt, c = M.cur; M.busy = 1; const cl = c.plan[k], fe = fadeEl(); fe.style.transition = 'opacity .35s'; fe.style.opacity = 1;
+    try { const fm = await loadFlight(cl); if (o.mt && M.cur === c && fm) { const at = Math.max(0, Math.min(fm.dur - .3, cl.tS + (M.st - cl.sT))); await play(fm, { mode: M.attract ? 'attract' : 'test', mont: 1, at }); if (rp) { rp.clip = cl; M.st = mtNow(); rp.t = cl.tS + (M.st - cl.sT); } } c.ci = k; }
+    catch { c.ci = k; }
+    M.busy = 0; fe.style.opacity = 0;
+  }
   /* ---- the Flights panel (opened from the test panel) ---- */
   const bs = 'font:inherit;padding:3px 10px;background:#123;color:#cfe;border:1px solid #4ac;cursor:pointer;margin-right:6px';
   const fmtD = (t) => new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -8409,6 +8567,8 @@ var FL = !DGT ? null : (() => {
         <p style="opacity:.7">Every flight is recorded as it happens (about ${o.last ? (Math.round(o.last.s.length / o.last.dur * 6)) : 40} numbers a second, tiny). Replays play the same galaxy, the same song from the same moment, and never touch your save. Esc leaves a replay.</p>
         <p><b>On this device</b> (last ${MAXN}${o.cur ? `; recording now: ${fmtT(o.cur.t)}` : ''})</p>${a.length ? a.map((m) => row(m, 'loc')).join('') : '<p style="opacity:.6">None yet: fly for a few seconds, then come back.</p>'}
         <div style="margin:10px 0"><button style="${bs}" id="fl_imp">Import file…</button><input id="fl_in" type="file" accept=".json,application/json" style="display:none"><button style="${bs}" id="fl_st1">Stream mine</button></div>
+        <p style="margin-top:22px"><b>Song montage</b> <button style="${bs}" id="fl_mt">Song montage</button> <span style="opacity:.6">whole songs, cut from footage flown to that part of the song</span></p>
+        ${(o.mtIdx && o.mtIdx.tracks.length) ? o.mtIdx.tracks.map((t) => `<div style="display:flex;gap:10px;align-items:center;padding:3px 0;border-bottom:1px solid #ffffff14"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.title}</span><span style="min-width:90px">${Math.round(t.cov * 100)}% covered${t.est ? ' ~' : ''}</span><span style="opacity:.6;min-width:70px">${t.n} flight${t.n > 1 ? 's' : ''}</span><button style="${bs}" data-a="song" data-u="${t.u}">Play song</button></div>`).join('') : '<p style="opacity:.6">No song coverage yet: flights recorded with the radio on will show here.</p>'}
         <p style="margin-top:22px"><b>Server flights</b> (every test build uploads its finished flights) <button style="${bs}" id="fl_rf">Refresh</button> <span id="fl_msg" style="opacity:.7"></span></p>
         <div style="margin:6px 0"><button style="${bs}" id="fl_sa">Stream all, shuffled</button><button style="${bs}" id="fl_sc">Stream all, oldest first</button><button style="${bs}" id="fl_sn">Stream all, newest first</button></div>
         ${Object.keys(by).length ? Object.keys(by).map((k) => `<p style="margin:14px 0 2px"><b>${k}</b> · ${by[k].length} flights <button style="${bs}" data-a="day" data-k="${k}">Stream this day</button></p>${by[k].map((m) => row(m, 'srv')).join('')}`).join('') : '<p style="opacity:.6">None loaded.</p>'}
@@ -8421,6 +8581,8 @@ var FL = !DGT ? null : (() => {
         else if (a2 === 'del') { del(id); draw(); }
         else if (a2 === 'day') { const k = b.dataset.k; streamStart((o.srv || []).filter((m) => new Date(m.t).toDateString() === k).sort((p, q) => p.t - q.t).map((m) => ({ src: 'srv', id: m.id })), 0); }
       });
+      d.querySelector('#fl_mt').onclick = () => { montageStart(); };
+      d.querySelectorAll('button[data-a=song]').forEach((b) => b.onclick = () => montageStart({ track: b.dataset.u }));
       d.querySelector('#fl_imp').onclick = () => d.querySelector('#fl_in').click();
       d.querySelector('#fl_in').onchange = async (e) => { const fl = e.target.files[0]; if (!fl) return; try { await imp(await fl.text()); draw(); } catch { d.querySelector('#fl_msg').textContent = 'that file is not a flight'; } };
       d.querySelector('#fl_st1').onclick = () => streamStart(idx().map((m) => ({ src: 'loc', id: m.id })), 1);
@@ -8430,8 +8592,10 @@ var FL = !DGT ? null : (() => {
       d.querySelector('#fl_x').onclick = () => d.remove();
     };
     draw(); if (o.srv === null || !o.srv.length) { await srvList(); if (document.getElementById('flp') === d) draw(); }
+    await mtIndex(true); if (document.getElementById('flp') === d) draw();
+    if (o.mtIdx) for (const t of o.mtIdx.tracks) if (t.est && !t.pr) { t.pr = 1; const a = new Audio(); a.preload = 'metadata'; a.onloadedmetadata = () => { if (a.duration > 0 && isFinite(a.duration)) { durCache[t.u] = a.duration; try { localStorage.setItem('ieFlDur', JSON.stringify(durCache)); } catch {} if (document.getElementById('flp') === d) mtIndex(false).then(() => { if (document.getElementById('flp') === d) draw(); }); } }; a.src = t.u; }
   };
-  Object.assign(o, { ai, getAttractPilot, idx, get, del, pin, imp, exp, play, stop, store, finish, srvList, srvGet, streamStart, closePanels, upload, attractNext, dec, NC, KS });
+  Object.assign(o, { montageStart, mtIndex, planSong, segsOf, enOf, clearance, CL, ai, getAttractPilot, idx, get, del, pin, imp, exp, play, stop, store, finish, srvList, srvGet, streamStart, closePanels, upload, attractNext, dec, NC, KS });
   Object.defineProperty(o, 'cur', { get: () => fr }); Object.defineProperty(o, 'rpS', { get: () => rp });
   return o;
 })();
